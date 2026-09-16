@@ -14,17 +14,17 @@ raw filesystem consumer still owns its claim lifetime; use receive/done for
 the coordinated lease and durable completion behavior. DD-063 has the interface.
 """
 
-import json
 import hashlib
-from contextlib import contextmanager
-from functools import wraps
+import json
 import os
 import re
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
 from typing import Optional
 
@@ -301,13 +301,21 @@ class Inbox:
                 if (message := self._read_queue_file(path)) is not None]
 
     @_serialized
-    def done(self, message_id: str) -> None:
+    def done(self, message_id: str, *, by: Optional[str] = None) -> None:
         """Forget a message: the reply went out, or the consumer decided there
         is nothing to say. Clears the queue as well as cur/, so a reply made
         straight from `ls` without a `receive` does not leave the message
-        waiting to be handed out again."""
+        waiting to be handed out again.
+
+        `by` names the consumer that handled the message (host, co-ai,
+        receive, reply, done, consume:<cmd>). It is a descriptive label only:
+        nothing reads it to decide anything, and it is omitted when None so
+        records written before it existed still read."""
         # Persist completion before removal; silence is an outcome, not a send.
-        self._append(self.completed, json.dumps({"id": message_id, "at": _now_iso()}))
+        record = {"id": message_id, "at": _now_iso()}
+        if by is not None:
+            record["by"] = by
+        self._append(self.completed, json.dumps(record))
         wanted = _safe(message_id)
         for directory in (self.cur, self.new):
             for path in directory.iterdir():
@@ -381,7 +389,11 @@ class Inbox:
         reply_to: Optional[str] = None,
         provider_id: Optional[str] = None,
         error: Optional[str] = None,
+        by: Optional[str] = None,
     ) -> None:
+        """One line in sent.jsonl. `by` names the consumer that sent it; it is
+        a descriptive label only and is omitted when None so older records
+        still read."""
         record = {
             "at": _now_iso(),
             "chat": chat,
@@ -391,6 +403,8 @@ class Inbox:
             "ok": error is None,
             "error": error,
         }
+        if by is not None:
+            record["by"] = by
         self._append(self.sent, json.dumps(record, ensure_ascii=False, separators=(",", ":")))
 
     def already_replied(self, message_id: str) -> bool:
@@ -419,6 +433,13 @@ class Inbox:
         except FileNotFoundError:
             return []
         return [line for line in lines if line.strip()][-count:]
+
+    def recent_records(self, path: Path, count: int = 5) -> list[dict]:
+        """The last `count` well-formed records from a JSONL file. A missing
+        file reads as no records; records written before `by` existed read
+        with no `by` key."""
+        records = list(self._records(path))
+        return records[max(0, len(records) - count):]
 
     # ---- the listener lock -----------------------------------------------------
     #
