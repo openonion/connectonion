@@ -1,5 +1,6 @@
 """CLI routing tests for `co gmail`."""
 
+import re
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -243,7 +244,17 @@ def test_gmail_inbox_forwards_a_window():
 
 def test_gmail_inbox_refuses_a_window_with_json_rather_than_dropping_it():
     """The envelope path pages a Gmail query and takes no window; silently
-    ignoring --since would return the last 10 and look like it worked."""
+    ignoring --since would return the last 10 and look like it worked.
+
+    The message is read with the colour stripped. Rich renders an error box,
+    and with colour on it breaks `--since` into separately styled runs —
+    `\\x1b[1;2;34m-\\x1b[0m\\x1b[1;2;34m-since\\x1b[0m` — so the literal
+    substring is not in the output at all. That passes on a developer's
+    machine, where colour is off, and fails on every CI job, where it is not.
+    Asserting on the stripped text checks what the reader sees rather than how
+    it was painted.
+    """
     result = runner.invoke(app, ["gmail", "inbox", "--since", "30d", "--json"])
     assert result.exit_code != 0
-    assert "--since" in result.output and "1521" in result.output
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    assert "--since" in plain and "1521" in plain
