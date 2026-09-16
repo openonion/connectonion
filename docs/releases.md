@@ -36,9 +36,31 @@ co lark check
 
 ## Current preview
 
-**None.** 1.8.5 is stable and there is no open preview line; the next feature
-work enters through a 1.8.6 preview. `pip install connectonion` gives you 1.8.5,
-and `--pre` currently resolves to the same thing.
+Alpha **1.8.6a1** runs a model on your own machine. `model="ollama/qwen2.5:0.5b"`
+needs no API key, no credits and sends nothing off the laptop — text, structured
+output validated by Pydantic, and real tool calls. Any other local runtime is
+reached with an explicit `base_url`, and that address is checked **before** the
+model name, which is what stops a model you happened to call `gpt-4` in LM Studio
+from routing on its name and handing your `OPENAI_API_KEY` to whatever is
+listening on that port. Existing routing is unchanged.
+
+It also adds **WhatsApp** as a third inbox provider behind an optional extra —
+the same nine verbs as `co feishu` and `co lark`, connecting as a linked
+companion device because the Cloud API has no endpoint for joining a group a
+human created. **It has not been accepted against a real account yet**; see the
+notes.
+
+Mail listings take `--since` / `--until`, Outlook gains `--json`, and
+`co gmail inbox --since --json` refuses rather than silently dropping the window.
+And `done.jsonl` finally names the consumer that handled each message, closing a
+1.8.5 known limit.
+
+```bash
+python -m pip install --pre connectonion==1.8.6a1
+co --version
+```
+
+See [1.8.6a1 release notes](releases/1.8.6a1.md).
 
 <details>
 <summary>The preview line that became 1.8.5</summary>
