@@ -67,6 +67,7 @@ def test_json_review_uses_the_333_agent_factory_seam(tmp_path, monkeypatch):
         "result": "review result",
         "outcome": "natural",
         "error": None,
+        "usage": None,
     }
     assert calls == [(("co/test", 4, True, 1), {"resumable": True})]
     assert not (tmp_path / "ai" / "sessions").exists()
