@@ -86,11 +86,26 @@ See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 The planned 1.8.4b1 was not published separately; its reviewed changes are included
 in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Release candidate: none
+## Release candidate: 1.8.6a1 (alpha)
 
-1.8.5 is stable and there is no open preview line. The next feature work enters
-through a 1.8.6 preview, per the rule above that a feature is proven in patch
-previews before the line it belongs to is called done.
+A model that runs on your own machine: `model="ollama/…"` needs no key and no
+credits, and any other local runtime is reached with an explicit `base_url`. That
+address is checked before any name inference, which is a safety rule rather than
+a preference — a model called `gpt-4` in LM Studio would otherwise route on its
+name and hand `OPENAI_API_KEY` to whatever is listening on that port. Existing
+routing is unchanged, including an unknown name still being an error.
+
+WhatsApp joins Feishu and Lark as an inbox provider behind an optional extra,
+connecting as a linked companion device because the Cloud API has no way to join
+a group a human created. Mail listings take `--since` / `--until`, Outlook gains
+`--json`, and `co gmail inbox --since --json` refuses rather than silently
+dropping the window. `done.jsonl` and `sent.jsonl` now name the consumer that
+handled each message, closing a 1.8.5 known limit.
+
+Stable remains 1.8.5. **WhatsApp has not been accepted against a real account** —
+no device linked, no message sent or received — and #1555 requires that before
+1.8.6 is stable.
+See [1.8.6a1 notes](docs/releases/1.8.6a1.md).
 
 ### Superseded: 1.8.5b11 (beta, published)
 
@@ -300,9 +315,21 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.5
+## Current Version: 1.8.6a1
 
 ### Version History
+- 1.8.6a1 (**alpha: a model on your own machine.** `model="ollama/…"` needs no
+  key, no credits and no request leaving the laptop; any other local runtime —
+  LM Studio, vLLM, an internal gateway — is reached with an explicit `base_url`,
+  which is checked *before* name inference so a locally named `gpt-4` cannot
+  capture your cloud key. Existing routing is untouched, unknown names still
+  error rather than falling back locally. WhatsApp joins Feishu and Lark as an
+  inbox provider behind an optional extra, as a linked companion device because
+  the Cloud API cannot join a group a human made. Mail takes `--since`/`--until`,
+  Outlook gains `--json`, and Gmail refuses the one combination not yet composed
+  rather than dropping the window. `done.jsonl` names the consumer, closing a
+  1.8.5 known limit. Stable remains 1.8.5; WhatsApp is **not** accepted against a
+  real account.)
 - 1.8.5 (**stable: a chat bot is a directory of files.** `co feishu` / `co lark`
   turn a bot into `~/.co/inbox/<provider>/` — nine verbs, an atomic take so two
   consumers never get one message, and a message sent while the listener was

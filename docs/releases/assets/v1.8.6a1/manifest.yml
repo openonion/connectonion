@@ -1,0 +1,39 @@
+version: v1.8.6a1
+# Terminal captures, because that is where 1.8.6a1's changes are visible. The
+# Ollama blocks are verbatim output from a live Ollama 0.34 running
+# qwen2.5:0.5b on the merged main, with every cloud key removed from the
+# environment first — not mock-ups, so the picture cannot drift from the
+# behaviour. WhatsApp has no capture on purpose: it has not been accepted
+# against a real account, and a screenshot of a stand-in would suggest
+# otherwise.
+images:
+- file: local-model-no-cloud-key.png
+  alt: Three calls to a local Ollama model returning text, a validated Pydantic object,
+    and a parsed tool call.
+  caption: A model on your own machine — text, structured output and real tool calls,
+    with no cloud key in the environment.
+  scenario: Merged main at 1ed285ac, live Ollama 0.34 with qwen2.5:0.5b; OPENAI_API_KEY
+    and the other provider keys removed before import.
+  viewport: 1020x481 terminal capture
+  commit: 1ed285ac8bbe6a03ea38da06232da2d82a55c25a
+  source_run: https://github.com/openonion/connectonion/actions/runs/35065054081
+- file: local-endpoint-never-borrows-a-cloud-key.png
+  alt: A custom endpoint using a placeholder key, and a refusal when co/ is combined
+    with base_url.
+  caption: An explicit address beats the name, so a locally named gpt-4 cannot capture
+    your cloud key.
+  scenario: Merged main at 1ed285ac, same live Ollama session; the refusal is the
+    real ValueError from create_llm.
+  viewport: 1020x456 terminal capture
+  commit: 1ed285ac8bbe6a03ea38da06232da2d82a55c25a
+  source_run: https://github.com/openonion/connectonion/actions/runs/35065054081
+- file: mail-window-refuses-rather-than-drops.png
+  alt: An Outlook listing filtered by date window in JSON, and Gmail refusing the same
+    combination.
+  caption: Mail by date window, and the one combination that refuses rather than silently
+    dropping the filter.
+  scenario: Outlook output from the PR author's run against a real mailbox; the Gmail
+    refusal is the shipped message, verified in tests under FORCE_COLOR both ways.
+  viewport: 1020x406 terminal capture
+  commit: 1ed285ac8bbe6a03ea38da06232da2d82a55c25a
+  source_run: https://github.com/openonion/connectonion/actions/runs/34967343290
