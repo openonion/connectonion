@@ -5,75 +5,84 @@ date: 2026-09-16
 
 # The window that would have been dropped
 
-`co outlook inbox --since 30d` and `co gmail inbox --since 2w` work now. So does
-`--until`, and `co outlook inbox --json`. Small, useful, and the interesting part
-is the one combination that refuses.
-
-## The refusal
+`co gmail inbox --since 30d --json` does not work. It stops and says so:
 
 ```
-$ co gmail inbox --since 30d --json
 --since/--until do not work with --json yet; run without --json,
 or see issue #1521
 ```
 
+Shipping that refusal was the hard call in an otherwise small change, and the
+case for *not* shipping it was strong enough that I nearly didn't.
+
+## The shape of the problem
+
 Gmail's `--json` already exists and answers with a versioned envelope —
 `schema_version`, `provider`, `account`, `status`, `data`, `error`, plus
-`--cursor` paging. The date window has not been composed with that contract yet.
+`--cursor` paging. That contract has callers.
 
-The easy thing would have been to accept both flags and quietly ignore the
-window. The command would have returned the last ten messages, printed a clean
-JSON envelope, and exited 0. Every visible signal says success. The caller reads
-"messages from the last 30 days" and gets "the most recent ten, from whenever".
+The new date window arrived separately. Composing the two properly means
+deciding how a window interacts with cursor paging: does the cursor stay valid
+if the window moves, does `status` report that the window truncated the result,
+what does `completeness` mean when both a cap and a window are in play. Real
+work, none of it done.
 
-That is a worse outcome than the error, and it is worse in a specific way: it is
-undetectable from the output. An agent building a report on those ten messages
-has no way to know the window was dropped. It would find out weeks later, from a
-number that was wrong and had always looked right.
+So for one release, the two features exist and cannot be combined.
 
-## What the issue said, and what was there
+## The argument for letting it through
 
-The issue described this as a wiring job — the library already had `list_between`,
-so the CLI just had to expose it.
+Accept both flags, ignore the window, return the last ten messages.
 
-It did not. That description was read off an unmerged Wiki branch, where the
-method existed; on `main` neither provider had it. Believing the issue would have
-meant an afternoon looking for a function that was not there.
+It sounds indefensible written down. It is not, in the moment. The command
+succeeds. The envelope is well-formed. The caller gets messages — real ones,
+from their real mailbox, the most recent ones, which is what they'd have got
+before the flag existed. Nobody is worse off than last week. The flag arrives
+"partially supported", the docs note it, and the composition lands next release.
 
-So `list_between` and `my_addresses` come over for both providers, **ported
-verbatim** from the Wiki branch, so that when that branch lands the two copies
-are identical text and there is nothing to reconcile. They were never Wiki-specific
-anyway — anything that reads mail by time window needs them, and leaving them
-inside a 6,785-line feature branch was the wrong address.
+That reasoning is how the calendar bug in 1.8.5 happened. `co gcalendar` created
+events with attendees, invited nobody, and printed `Event created`. Every signal
+said success. It survived until a client's guest mentioned they'd received
+nothing.
 
-## Outlook gets `--json`, Gmail keeps the one it has
+## What decided it
 
-Outlook had no `--json` at all. It gets a plain array of the provider's own
-fields. Gmail's envelope is untouched.
+The two failures are not equally visible, and the difference is not about
+severity.
 
-Two differently-shaped `--json` outputs in the same CLI is worse than one command
-lacking the flag: the reader cannot tell which shape they are about to get
-without remembering which provider they typed. One gap is a thing you can look
-up. Two contradictory answers is a thing you get wrong silently.
+An error is a thing the caller can see. A dropped window is not — not from the
+output, not from the exit code, not from the JSON, not ever. The envelope that
+comes back from `--since 30d --json` is byte-identical to the one from a plain
+`--json`. There is no field that says "your filter was ignored". An agent
+building a monthly report on those ten messages has no way to learn the window
+never applied. It finds out weeks later, from a number that is wrong and has
+always looked right.
 
-## A date it cannot read
+That asymmetry is the whole decision. Both options fail; only one of them is
+detectable.
 
-```
-$ co outlook inbox --since 上周
-Cannot read '上周' as a date. Use 30d, 2w, 6m, 1y, or 2026-06-01.      (exit 2)
-```
+## The cost of saying no
 
-It names the formats rather than saying the input was invalid. Someone who typed
-a date in a form the parser does not take needs the list, not a verdict.
+It is not free, and pretending otherwise would be its own kind of dishonesty.
 
-## The pattern
+Someone with a script doing `--since 7d --json` has to change it — either drop
+`--json` and parse text, or wait. The command surface is now slightly ragged:
+two flags that each work alone and not together, which is a thing you have to
+remember. Documentation has to carry the exception.
 
-Three decisions in one small PR, all the same shape: when two features cannot yet
-be combined honestly, say so at the boundary instead of producing an answer that
-is confidently incomplete.
+I think that is the right trade, but it is a trade, and the receipt is the issue
+number in the error message. `see issue #1521` is not decoration — it is where
+the caller goes to find out whether this is still true.
 
-The releases this week have been full of the other version of that — a calendar
-invitation that reached nobody while printing "Event created", a recovery pass
-that failed every sixty seconds to an empty room. Silence and false success cost
-more than an error, because an error is the only one of the three that sends
-somebody to look.
+## The rule underneath
+
+When two features cannot yet be combined honestly, refuse at the boundary
+instead of producing an answer that is confidently incomplete.
+
+The releases this week keep circling the same failure: a calendar invitation
+that reached nobody while printing success, a recovery pass that failed every
+sixty seconds to an empty room, a scope link that said "App updated" and granted
+nothing. None of those were crashes. All of them were confident output
+describing something that had not happened.
+
+An error costs someone an afternoon. Silent success costs them the thing they
+were relying on, and they find out from somebody else.
