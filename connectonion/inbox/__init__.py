@@ -11,10 +11,13 @@ LLM-Note:
 from .store import Inbox, Message
 
 # name → (module, class, constructor kwargs). Lark is Feishu with a different
-# domain and its own credentials, not a second implementation.
+# domain and its own credentials, not a second implementation. WhatsApp needs
+# an extra (`pip install 'connectonion[whatsapp]'`), which costs nothing here:
+# the module is imported by name only when someone asks for that provider.
 PROVIDERS = {
     "feishu": ("connectonion.inbox.feishu", "Feishu", {"domain": "feishu"}),
     "lark": ("connectonion.inbox.feishu", "Feishu", {"domain": "lark"}),
+    "whatsapp": ("connectonion.inbox.whatsapp", "WhatsApp", {}),
 }
 
 

@@ -1110,7 +1110,7 @@ def telegram_send(
     handle_telegram_send(chat, message)
 
 
-# Inbox providers: feishu, lark. One directory per provider under
+# Inbox providers: feishu, lark, whatsapp. One directory per provider under
 # ~/.co/inbox/, the same nine verbs on each. The tool knows nothing about
 # agents; anything that can read a file consumes it (DD-063).
 def _inbox_group(name: str, help_text: str) -> typer.Typer:
@@ -1195,6 +1195,7 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
 
 app.add_typer(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, send, reply."), name="feishu")
 app.add_typer(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply."), name="lark")
+app.add_typer(_inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply."), name="whatsapp")
 
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.

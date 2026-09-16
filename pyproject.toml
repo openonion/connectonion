@@ -99,6 +99,15 @@ synology = [
     "pysnmp>=7.1,<8",
     "paramiko>=4,<5",
 ]
+# WhatsApp as an inbox. An extra because the cost is not shared: neonize is a
+# 21MB compiled Go library (whatsmeow) plus pillow, python-magic and four more
+# packages, and python-magic needs libmagic from the system. Nobody who only
+# uses Feishu should pay for that. Pinned exactly rather than `>=`: the wheel
+# carries a snapshot of whatsmeow's WhatsApp protocol implementation, so a
+# version bump is a protocol change and deserves to be a deliberate one.
+whatsapp = [
+    "neonize==0.4.3.post0",
+]
 dev = [
     "pytest>=9.0.3",
     "pytest-asyncio>=0.21.0",
