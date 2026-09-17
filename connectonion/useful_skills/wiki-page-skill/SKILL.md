@@ -118,6 +118,10 @@ missing sections when reviewing older pages; mapping reruns do not overwrite
 existing content. Never execute a skill merely to document it.
 
 Catalog pages belong in `skills/catalog/`, not `skills/candidates/` or
-`skills/approved/`. This template does not implement run-log collection or add
-skill investigation support to the person/project collector. Without those
-sources, usage history and performance remain unverified.
+`skills/approved/`. `co wiki investigate skills/catalog/<page>.md` now collects retained co eval
+summary records into a linked run-evidence note without a model or mail access.
+Use repeatable `--eval-dir` flags for additional summary directories. It matches
+explicit slash-command invocation names, not tool-based invocation or all harnesses;
+it does not establish source-version identity or evaluate goal achievement.
+Review the linked tasks, outputs and recorded evaluations before claiming success
+or verified changes. Missing evidence remains unverified.

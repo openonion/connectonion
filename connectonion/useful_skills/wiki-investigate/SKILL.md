@@ -129,8 +129,14 @@ thing to act on. Each entry names who owes what, and since when.
 For a **project**, follow `wiki-page-project`, appended by the runner. When
 invoked directly through `co ai`, read `../wiki-page-project/SKILL.md` before
 writing. Preserve the existing skeleton headings exactly. Installed-skill
-catalog pages have their own `wiki-page-skill` template; the person/project
-investigation collector must not be used to investigate skill files.
+catalog pages have their own `wiki-page-skill` template and a deterministic
+run-evidence collection path: `co wiki --root "<root>" investigate
+skills/catalog/<page>.md --eval-dir "<co-eval-summary-directory>"`. This reads
+retained explicit slash-command invocations without opening mail or running a
+model. Review its linked report for observed attempt counts, inputs, outputs,
+tool-call reports and recorded evaluations. Do not treat unassessed runs as
+successes or tool reports as verified changes. Do not run the skill merely to
+document it. Name-based log attribution cannot establish the installed version.
 
 ## Supplement sources through their own tools
 

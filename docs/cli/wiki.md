@@ -195,3 +195,25 @@ release, new background job, broad mailbox backfill or production wiki rewrite
 is implied by the architecture refactor.
 
 See [acceptance evidence](../testing/wiki-acceptance.md).
+
+### Inspect one skill's retained run evidence
+
+```bash
+co wiki --root /path/to/wiki investigate skills/catalog/example.md --eval-dir /path/to/.co/evals
+```
+
+Skill pages dispatch to a local, deterministic collector instead of the mail/model
+investigation pipeline. Omit `--eval-dir` to use `~/.co/evals`; repeat it for
+additional summary directories. The collector reads immediate summary YAML files
+(up to 1,000 per directory, 4 MB each), matches exact `/skill-name` inputs, and
+deduplicates retained run/turn identities. It writes a linked note containing
+inputs, retained outputs, reported tool calls, recorded evaluations and coverage.
+The skill page gets a managed `Run evidence` block; curated sections and the
+existing investigation stamp are preserved. This is evidence gathering, not
+a completed quality assessment.
+
+Counts describe observed invocation attempts, not proven starts or lifetime runs.
+Tool-invoked skills and other harnesses are not yet covered. Historical outputs
+may be missing, current summary model labels may not establish each run's model,
+and same-name installed copies cannot be attributed. Goal achievement and
+verified changes stay unassessed until actual artifacts are checked.

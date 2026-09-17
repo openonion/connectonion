@@ -169,7 +169,8 @@ def make_wiki_app(factory):
     def investigate_page(ctx: typer.Context,
                          record: str = typer.Argument(..., help="The page, e.g. people/emma.md"),
                          handle: List[str] = typer.Option([], "--handle", help="Every spelling, address or alias (repeatable)"),
-                         days: int = typer.Option(150, "--days", min=1, help="How far back to search")):
+                         days: int = typer.Option(150, "--days", min=1, help="How far back to search"),
+                         eval_dir: List[Path] = typer.Option([], "--eval-dir", help="Skill run summary directory (repeatable; skills only)")):
         """Fill one page across sources, digesting large inputs before writing."""
         from ...wiki.files import Notebook
         from ...wiki.investigate import investigate
@@ -177,6 +178,12 @@ def make_wiki_app(factory):
 
         def run(root):
             notebook = Notebook(root)
+            if record.startswith("skills/"):
+                from ...wiki.skill_runs import investigate_skill_runs
+                result = investigate_skill_runs(root, record, eval_dir or [Path.home() / ".co/evals"])
+                return result, ["show", result["report"]]
+            if eval_dir:
+                raise typer.BadParameter("--eval-dir applies only to skills/catalog pages")
             text = notebook.read(record)
             title = next((l[2:].strip() for l in text.splitlines() if l.startswith("# ")), record)
             known = []
