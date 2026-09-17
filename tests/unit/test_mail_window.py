@@ -44,14 +44,20 @@ def test_until_defaults_to_now():
     assert (datetime.now(timezone.utc) - parse_until(None)) < timedelta(minutes=1)
 
 
-def test_the_window_is_walked_a_week_at_a_time():
-    """One call for a long span comes back silently truncated by the provider."""
+def test_the_window_is_walked_a_week_at_a_time_from_the_recent_end():
+    """One call for a long span comes back silently truncated by the provider.
+
+    Walked backwards, and the direction is not cosmetic: the walk stops as soon
+    as the cap is full, so whichever end it starts from is the end the caller
+    keeps. Starting at `since` answered "the last 30 days" with mail from a
+    month ago and nothing since.
+    """
     box = FakeMailbox()
     window_listing(box, "21d", None, last=100)
     assert len(box.calls) == 3
     starts = [call[0][:10] for call in box.calls]
-    assert starts == sorted(starts)                      # forward, oldest first
-    assert box.calls[0][1] == box.calls[1][0]            # contiguous, no gap
+    assert starts == sorted(starts, reverse=True)        # backwards, newest first
+    assert box.calls[0][0] == box.calls[1][1]            # contiguous, no gap
 
 
 def test_the_cap_is_honoured_and_stops_the_walk_early():
@@ -70,6 +76,74 @@ def test_a_backwards_window_is_refused_rather_than_returning_nothing():
     with pytest.raises(ValueError) as caught:
         window_listing(FakeMailbox(), "2026-09-01", "2026-06-01", last=10)
     assert "earlier" in str(caught.value)
+
+
+class BusyMailbox:
+    """A mailbox with one message an hour, which honours the newest-first flag.
+
+    The real failure needed a mailbox with more mail in the window than the cap,
+    which `FakeMailbox` never had: it answers a fixed two per call regardless of
+    what is actually there, so the wrong half was indistinguishable from the
+    right one.
+    """
+
+    def __init__(self):
+        self.asked_newest_first = []
+
+    def list_between(self, start, end, max_results, newest_first=False):
+        self.asked_newest_first.append(newest_first)
+        first, last_ = datetime.fromisoformat(start), datetime.fromisoformat(end)
+        hours, rows = [], []
+        moment = first.replace(minute=0, second=0, microsecond=0)
+        while moment < last_:
+            hours.append(moment)
+            moment += timedelta(hours=1)
+        kept = sorted(hours, reverse=True)[:max_results] if newest_first else hours[:max_results]
+        for moment in sorted(kept):
+            rows.append({"id": moment.isoformat(), "from": "a@b.c", "to": ["me@x.y"],
+                         "date": moment.isoformat(), "subject": "s", "unread": False})
+        return rows
+
+
+def test_a_capped_window_keeps_the_newest_not_the_oldest():
+    # The 1.8.6 bug, on a real mailbox: `--since 30d -n 10` answered with ten
+    # messages from a month ago, the newest of them three weeks stale, and
+    # nothing said the rest existed.
+    box = BusyMailbox()
+
+    rows = window_listing(box, "30d", None, last=10)
+
+    assert len(rows) == 10
+    newest = datetime.fromisoformat(rows[-1]["date"])
+    assert datetime.now(timezone.utc) - newest < timedelta(days=1), rows[-1]["date"]
+    assert all(box.asked_newest_first), box.asked_newest_first
+
+
+def test_a_window_that_had_to_be_cut_says_so_on_stderr(capsys):
+    # stdout stays exactly one JSON array for whoever is parsing it; the person
+    # and anything reading stderr still find out it is a partial answer.
+    window_listing(BusyMailbox(), "30d", None, last=10)
+
+    captured = capsys.readouterr()
+    assert "there are more" in captured.err
+    assert captured.out == ""
+
+
+def test_a_window_that_fit_says_nothing(capsys):
+    window_listing(BusyMailbox(), "2d", None, last=500)
+
+    assert capsys.readouterr().err == ""
+
+
+def test_a_provider_that_does_not_know_the_flag_still_works():
+    # FakeMailbox takes no newest_first; older callers of list_between do not
+    # pass one either, and neither should have to grow a parameter to be listed.
+    box = FakeMailbox()                       # its list_between takes three arguments
+
+    rows = window_listing(box, "21d", None, last=4)
+
+    assert len(rows) == 4
+    assert len(box.calls) == 2                # two chunks of two, then the cap
 
 
 def test_json_carries_the_listing_fields_and_not_the_body(capsys):
