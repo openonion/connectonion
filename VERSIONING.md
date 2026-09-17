@@ -315,9 +315,22 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.6a1
+## Current Version: 1.8.6a2
 
 ### Version History
+- 1.8.6a2 (**alpha: the bot answers where it was asked, and says so while it
+  works.** A WhatsApp @mention registers whichever id the group addresses the
+  account by, so a number WhatsApp has migrated to LID addressing is reachable
+  at all; a reply quotes the message it answers instead of arriving as a loose
+  line; and a message the bot will answer is marked as it is queued and re-marked
+  when the answer is on its way, so the minutes in between stop looking like a
+  bot that has crashed. Every message is readable on protobuf 7, `check` calls a
+  device linked only once a phone has confirmed it, and the extra names the
+  system library pip cannot supply. A mail date window keeps its *recent* end and
+  says when it had to cut. A listing number now carries which listing it came
+  from, so `co outlook cancel` can no longer resolve an inbox row and delete
+  correspondence nobody named. Errors go to stderr, and an unreachable local
+  model is diagnosed as a local model rather than as the user's internet.)
 - 1.8.6a1 (**alpha: a model on your own machine.** `model="ollama/…"` needs no
   key, no credits and no request leaving the laptop; any other local runtime —
   LM Studio, vLLM, an internal gateway — is reached with an explicit `base_url`,
