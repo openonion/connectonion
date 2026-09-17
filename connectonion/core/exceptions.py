@@ -151,6 +151,33 @@ class LLMConnectionError(LLMProviderError):
             f"Server:      {self.base_url}\n"
             f"Error:       {self.error_type}\n"
             f"\n"
+            f"{self._advice()}"
+            f"\n"
+            f"{'='*70}\n"
+        )
+
+    def _advice(self) -> str:
+        """What to try, addressed to the server that was actually unreachable.
+
+        A request to 127.0.0.1 does not involve the user's internet connection
+        and no VPN will fix it, so saying so sends someone to debug a working
+        network while `ollama serve` sits there not running. The local case is
+        both the more likely one for these addresses and the cheaper one to fix,
+        and it deserves its own words.
+        """
+        if self._is_local():
+            start = "   - ollama serve\n" if self._looks_like_ollama() else ""
+            return (
+                f"Possible causes:\n"
+                f"   - The server is not running\n"
+                f"   - It is listening on a different port\n"
+                f"\n"
+                f"Try:\n"
+                f"{start}"
+                f"   - Start the local server, then retry\n"
+                f"   - Check the server URL shown above directly\n"
+            )
+        return (
             f"Possible causes:\n"
             f"   - Proxy/VPN slowing down the connection\n"
             f"   - Network connectivity issue\n"
@@ -160,9 +187,16 @@ class LLMConnectionError(LLMProviderError):
             f"   - Check your internet connection\n"
             f"   - Disable proxy/VPN and retry\n"
             f"   - Check the server URL shown above directly\n"
-            f"\n"
-            f"{'='*70}\n"
         )
+
+    def _is_local(self) -> bool:
+        """Whether the unreachable server was on this machine."""
+        host = str(self.base_url or "").split("//")[-1].split("/")[0].split(":")[0].strip("[]")
+        return host in {"localhost", "127.0.0.1", "0.0.0.0", "::1"} or host.endswith(".local")
+
+    def _looks_like_ollama(self) -> bool:
+        """Ollama's own port, so the one command worth naming can be named."""
+        return ":11434" in str(self.base_url or "")
 
 
 class PaidModelRequiredError(LLMProviderError):

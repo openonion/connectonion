@@ -31,7 +31,12 @@ def microsoft_errors(next_command: str):
                 cause = "Invalid input or Microsoft request failed; check the command arguments."
             from ...environment import selected_command
             recovery = selected_command(recovery)
-            Console().print(f"Error: {cause}\nNext: {recovery}", markup=False, highlight=False, soft_wrap=True)
+            # stderr, because these handlers also print the answer. `co outlook
+            # inbox --json > mail.json` was collecting the failure into the file
+            # it was meant to fill, leaving a caller with a JSON parse error
+            # instead of the reason.
+            Console(stderr=True).print(f"Error: {cause}\nNext: {recovery}",
+                                       markup=False, highlight=False, soft_wrap=True)
             raise typer.Exit(1) from None
         return guarded
     return decorate

@@ -18,9 +18,14 @@ from .env_file import env_lock, write_env_unlocked
 class ProviderCredentialError(ValueError):
     """Sanitized classification and recovery, safe for both CLI and SDK callers."""
 
-    def __init__(self, code: str, message: str, next_command: str):
+    def __init__(self, code: str, message: str, next_command: str, status: int | None = None):
         self.code = code
         self.next_command = next_command
+        # The provider's HTTP status, when there was one. A caller that can say
+        # something better than the transport can needs to recognise *which*
+        # failure this is, and matching on "404" inside a rendered message is
+        # not recognising it.
+        self.status = status
         super().__init__(f"{message}\nNext: {next_command}")
 
 
