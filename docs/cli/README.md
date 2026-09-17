@@ -311,6 +311,7 @@ read a file can consume the directory. See [feishu.md](feishu.md).
 
 ```bash
 pip install 'connectonion[whatsapp]'
+brew install libmagic                  # also needed; apt install libmagic1 on Debian/Ubuntu
 co whatsapp listen                     # scan the QR once; every message → ~/.co/inbox/whatsapp/
 echo "on it" | co whatsapp reply 3EB0A1
 ```
