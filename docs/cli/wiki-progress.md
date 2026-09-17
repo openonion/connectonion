@@ -63,3 +63,5 @@ are additional work, so this is not a claim that only two tasks remain.
 | P1 | Connect Jira discovery/auth | Explicit source selection, successful authorized retrieval, visible partial/failure state. |
 | P1 | End-to-end initialization and daily lifecycle | Verify one authorized account through init, update, correction, scheduled continuation and stop; record elapsed time, usage and coverage. |
 | Release | Repair remaining gates and refresh acceptance | CI at the resulting commit, live Claude evidence if advertised, cost narrative, release metadata. |
+
+Project page templates now include `Architecture map` (evidence-backed ASCII module/data-flow diagrams) and `Latest issues` (dated symptoms, impact, status and evidence), separate from the broader action list. Mapping leaves these Unknown until investigated.

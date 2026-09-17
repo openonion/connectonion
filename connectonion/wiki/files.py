@@ -209,7 +209,7 @@ class Notebook:
         return self.write(record, "\n".join(lines))
 
     PROJECT_SECTIONS = ("What it is", "Why it exists", "Where it stands", "How it is built",
-                        "Open threads", "Uncertainties")
+                        "Latest issues", "Open threads", "Uncertainties")
 
     def stub_project(self, record: str, name: str, paths=(), **known) -> bool:
         """The project page, structure first, the same way as a person's.
@@ -220,7 +220,7 @@ class Notebook:
         """
         if self.path(record).is_file():
             return False
-        lines = [f"# {name}", "", "## Paths"]
+        lines = [f"# {name}", "", "## Architecture map", "- Unknown — not investigated yet", "", "## Paths"]
         lines += [f"- {path}" for path in paths] or ["- Unknown"]
         for label, value in known.items():
             if value:
