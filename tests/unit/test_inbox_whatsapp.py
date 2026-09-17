@@ -23,7 +23,27 @@ import pytest
 
 from connectonion.inbox import PROVIDERS, provider
 from connectonion.inbox.store import Inbox
+
 from connectonion.inbox.whatsapp import GROUP_SERVER, USER_SERVER, WhatsApp
+
+
+
+def link_a_device(path):
+    """A session database holding one paired device.
+
+    Not `write_bytes(b"linked")`: seven bytes named "linked" stood in for a
+    paired device, so the check that only asked whether the file existed
+    passed here too. The stand-in agreed with the bug. `linked()` now reads
+    `whatsmeow_device`, so the fixture has to be a database with a row in it.
+    """
+    import sqlite3
+
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE whatsmeow_device (jid TEXT PRIMARY KEY, registration_id INTEGER)")
+    conn.execute("INSERT INTO whatsmeow_device VALUES ('61412345678@s.whatsapp.net', 1)")
+    conn.commit()
+    conn.close()
+
 
 OWN = "12025550100"
 PEER = "447700900123"
@@ -187,7 +207,7 @@ def test_check_says_how_to_link_a_device_when_none_is(sdk, monkeypatch):
 
 def test_check_passes_once_a_device_is_linked(sdk, tmp_path, monkeypatch):
     monkeypatch.setenv("WHATSAPP_SESSION", str(tmp_path / "session.db"))
-    (tmp_path / "session.db").write_bytes(b"linked")
+    link_a_device(tmp_path / "session.db")
     monkeypatch.setattr(WhatsApp, "protocol_snapshot", lambda self: time.time())
 
     assert WhatsApp().check() == []
@@ -195,7 +215,7 @@ def test_check_passes_once_a_device_is_linked(sdk, tmp_path, monkeypatch):
 
 def test_an_old_protocol_snapshot_is_reported_before_it_fails_namelessly(sdk, tmp_path, monkeypatch):
     monkeypatch.setenv("WHATSAPP_SESSION", str(tmp_path / "session.db"))
-    (tmp_path / "session.db").write_bytes(b"linked")
+    link_a_device(tmp_path / "session.db")
     monkeypatch.setattr(WhatsApp, "protocol_snapshot", lambda self: time.time() - 400 * 86400)
 
     problems = WhatsApp().check()

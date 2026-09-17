@@ -158,15 +158,40 @@ class WhatsApp:
         return []
 
     def linked(self) -> list:
-        """Whether a device is linked, as a problem and its next action."""
-        if self.session_path.exists():
-            return []
-        return [
+        """Whether a device is linked, as a problem and its next action.
+
+        A row in `whatsmeow_device`, not the presence of the file. neonize
+        creates `session.db` when the client starts — before the QR is shown and
+        whether or not anyone scans it — so a pairing that timed out leaves a
+        160 KB database behind with an empty device table. Reading existence
+        answered "✓ whatsapp reachable" for exactly that state, which is the
+        moment the answer mattered most: the operator believed they were linked
+        and the tool agreed.
+
+        The row is also what the listener reads to reconnect without a new QR,
+        so "is there a row" and "can this reconnect" are one question.
+        """
+        advice = (
             f"No linked WhatsApp session at {self.session_path}. "
             "Next: co whatsapp listen — a QR code appears, scan it from the phone "
             "under Settings > Linked devices. Use a number dedicated to this, "
             "never a personal or an employee's main one."
-        ]
+        )
+        if not self.session_path.exists():
+            return [advice]
+
+        import sqlite3
+
+        try:
+            with sqlite3.connect(f"file:{self.session_path}?mode=ro", uri=True) as db:
+                devices = db.execute("SELECT COUNT(*) FROM whatsmeow_device").fetchone()[0]
+        except sqlite3.Error:
+            # No schema yet (the window between file creation and first write),
+            # or bytes that are not a database. Neither is evidence of a device,
+            # and guessing "linked" sends someone to debug a listener that can
+            # never connect.
+            return [advice]
+        return [] if devices else [advice]
 
     def listen_requirements(self) -> list:
         """What `listen` needs beyond the session: the SDK.
