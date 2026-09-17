@@ -21,9 +21,12 @@ from .mail_window import print_json_listing, window_listing
 from .microsoft_errors import microsoft_errors
 from .command_tips import print_tip
 
-from ...provider_credentials import resolve_provider_credentials
+from ...provider_credentials import ProviderCredentialError, resolve_provider_credentials
 
 console = Console()
+# Errors on stderr, so redirecting stdout to a file collects the answer and not
+# the failure. A caller piping `--json` gets one or the other, never both mixed.
+errors = Console(stderr=True)
 
 INBOX_CACHE = Path.home() / ".co" / "outlook_last_inbox.json"
 
@@ -75,8 +78,7 @@ def _when(iso: str) -> str:
 
 def _print_listing(outlook, emails: list, title: str):
     """Render emails as a numbered table (or plain ID-bearing text when piped) and cache the numbering for read/reply."""
-    INBOX_CACHE.parent.mkdir(exist_ok=True)
-    INBOX_CACHE.write_text(json.dumps({str(i): e["id"] for i, e in enumerate(emails, 1)}), encoding="utf-8")
+    _remember_listing("inbox", emails)
 
     if not console.is_terminal:
         # Scripts and agents get the untruncated format with full message ids —
@@ -212,11 +214,44 @@ def handle_outlook_inbox(last: int = 10, unread: bool = False,
     _print_listing(outlook, emails, f"📬 Outlook — {resolve_provider_credentials('microsoft').get('EMAIL') or ''}")
 
 
-def _resolve_email_id(outlook, email_id: str) -> str:
-    """Turn a listing number into a Graph message id; full ids pass through. Numbers mean the last listing shown."""
-    cached = json.loads(INBOX_CACHE.read_text(encoding="utf-8")) if INBOX_CACHE.exists() else {}
+def _remember_listing(kind: str, emails) -> None:
+    """Which messages the numbers just shown refer to, and which listing they came from.
+
+    The kind is not bookkeeping. `inbox` and `scheduled` both number from 1 into
+    the same file, so a number survives the listing that produced it: after
+    `co outlook inbox`, `co outlook cancel 1` resolved row 1 of the *inbox* and
+    deleted a received email, reporting "✓ Canceled scheduled email 1".
+    """
+    INBOX_CACHE.parent.mkdir(exist_ok=True)
+    INBOX_CACHE.write_text(json.dumps(
+        {"kind": kind, "rows": {str(i): e["id"] for i, e in enumerate(emails, 1)}}),
+        encoding="utf-8")
+
+
+def _last_listing() -> tuple:
+    """The remembered listing as (kind, rows). An older file is an inbox one."""
+    if not INBOX_CACHE.exists():
+        return "", {}
+    try:
+        cached = json.loads(INBOX_CACHE.read_text(encoding="utf-8"))
+    except ValueError:
+        return "", {}
+    if isinstance(cached, dict) and "rows" in cached:
+        return cached.get("kind", ""), cached.get("rows") or {}
+    return "inbox", cached if isinstance(cached, dict) else {}
+
+
+def _resolve_email_id(outlook, email_id: str, expect: str = "inbox") -> str:
+    """Turn a listing number into a Graph message id; full ids pass through.
+
+    Numbers mean the last listing shown **of the kind this verb reads**. A
+    number from a different listing resolves to nothing rather than to whatever
+    happens to sit at that row, because the two are not interchangeable and one
+    of the verbs deletes what it is given.
+    """
+    kind, cached = _last_listing()
     if email_id in cached:
-        return cached[email_id]
+        return cached[email_id] if kind == expect else ""
 
     if not (email_id.isascii() and email_id.isdigit() and len(email_id) < 5):
         return email_id  # full Graph message id
@@ -225,6 +260,12 @@ def _resolve_email_id(outlook, email_id: str) -> str:
         # The user is pointing at their last listing and that number wasn't in
         # it — fetching a fresh (differently numbered) list would silently open
         # the wrong email.
+        return ""
+
+    if expect != "inbox":
+        # With no listing to resolve against, the fallback below would answer a
+        # scheduled-mail number with a row of the inbox — which is how a cancel
+        # deleted received mail. Nothing is the right answer.
         return ""
 
     emails = outlook.list_inbox(last=int(email_id))
@@ -412,12 +453,15 @@ def handle_outlook_scheduled():
     outlook = _outlook()
     scheduled = outlook.get_scheduled()
     if not scheduled:
+        # Recorded even when empty. Returning early used to leave the previous
+        # listing in place, so `cancel 1` still resolved — to the inbox row that
+        # had been sitting there since before anything was scheduled.
+        _remember_listing("scheduled", [])
         console.print("\n[cyan]No scheduled emails.[/cyan]\n")
         print_tip('Next: co outlook send <to> "<subject>" "<message>" --at +2h')
         return
 
-    INBOX_CACHE.parent.mkdir(exist_ok=True)
-    INBOX_CACHE.write_text(json.dumps({str(i): e["id"] for i, e in enumerate(scheduled, 1)}), encoding="utf-8")
+    _remember_listing("scheduled", scheduled)
 
     if not console.is_terminal:
         # Scripts and agents get one plain line per email with the full id —
@@ -446,11 +490,27 @@ def handle_outlook_scheduled():
 def handle_outlook_cancel(email_id: str):
     """Cancel a scheduled email before Exchange sends it."""
     outlook = _outlook()
-    resolved = _resolve_email_id(outlook, email_id)
+    resolved = _resolve_email_id(outlook, email_id, expect="scheduled")
     if not resolved:
-        print_tip(f"\n[yellow]No email #{email_id} in your last listing — run co outlook scheduled, then co outlook cancel <#>.[/yellow]\n")
+        errors.print(f"\n[yellow]No scheduled email #{email_id} — numbers come from the last "
+                     f"co outlook scheduled listing, and cancel only ever acts on that one.[/yellow]\n")
+        print_tip("Next: co outlook scheduled")
         raise typer.Exit(1)
 
-    outlook.cancel_scheduled(resolved)
+    try:
+        outlook.cancel_scheduled(resolved)
+    except ProviderCredentialError as error:
+        if error.status != 404:
+            raise
+        # The transport says 404; what the person needs is which of the two
+        # things happened, and this is the only place that knows. The numbering
+        # is a row in the last listing, so anything since — including the
+        # scheduled mail firing on time — can move it out from under a number
+        # that still looks valid.
+        errors.print(
+            f"\n[yellow]Scheduled email #{email_id} is not there any more — it may have "
+            f"already gone out, or this number is from an earlier listing.[/yellow]")
+        print_tip("Next: co outlook scheduled")
+        raise typer.Exit(1) from None
     console.print(f"\n[green]✓ Canceled[/green] scheduled email {email_id}")
     print_tip("Next: co outlook scheduled")

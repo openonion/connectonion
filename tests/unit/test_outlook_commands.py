@@ -215,7 +215,8 @@ class TestHandleOutlookInbox:
             with patch.object(outlook_commands, "_outlook", return_value=outlook):
                 handle_outlook_inbox(last=2)
 
-        assert json.loads(cache.read_text()) == {"1": "msg-1", "2": "msg-2"}
+        assert json.loads(cache.read_text()) == {
+            "kind": "inbox", "rows": {"1": "msg-1", "2": "msg-2"}}
         output = capsys.readouterr().out
         assert "Subject 1" in output
         assert "co outlook read" in output
@@ -234,7 +235,8 @@ class TestHandleOutlookInbox:
             with patch.object(outlook_commands, "_outlook", return_value=outlook):
                 handle_outlook_inbox(last=2)
 
-        assert json.loads(cache.read_text()) == {"1": "msg-1", "2": "msg-2"}
+        assert json.loads(cache.read_text()) == {
+            "kind": "inbox", "rows": {"1": "msg-1", "2": "msg-2"}}
         assert "Found 2 email(s) with full ids" in capsys.readouterr().out
 
     def test_empty_inbox_prints_message_without_cache(self, tmp_path, monkeypatch, capsys):
@@ -541,6 +543,156 @@ class TestHandleOutlookContacts:
             "yifei", max_results=25
         )
         assert "no contacts matching" in capsys.readouterr().out
+
+
+class TestCancelCannotReachTheInbox:
+    """A number from one listing must not act on another listing's messages.
+
+    Measured on a real mailbox: after `co outlook inbox`, `co outlook cancel 1`
+    resolved row 1 of the *inbox* and deleted a received email, printing
+    "✓ Canceled scheduled email 1" and exiting 0. Both listings numbered from 1
+    into one cache file, and an empty `scheduled` returned without touching it,
+    so the inbox numbering was still sitting there.
+    """
+
+    def test_an_inbox_number_is_not_a_scheduled_number(self, tmp_path, monkeypatch):
+        cache = tmp_path / "outlook_last_inbox.json"
+        monkeypatch.setattr(outlook_commands, "INBOX_CACHE", cache)
+        outlook_commands._remember_listing("inbox", sample_emails(3))
+
+        assert _resolve_email_id(MagicMock(), "1", expect="scheduled") == ""
+        assert _resolve_email_id(MagicMock(), "1", expect="inbox") == "msg-1"
+
+    def test_cancel_refuses_rather_than_deleting_whatever_is_at_that_row(
+            self, tmp_path, monkeypatch, capsys):
+        cache = tmp_path / "outlook_last_inbox.json"
+        monkeypatch.setattr(outlook_commands, "INBOX_CACHE", cache)
+        outlook_commands._remember_listing("inbox", sample_emails(3))
+        outlook = MagicMock()
+        monkeypatch.setattr(outlook_commands, "_outlook", lambda: outlook)
+
+        with pytest.raises(typer.Exit) as exit_:
+            outlook_commands.handle_outlook_cancel("1")
+
+        assert exit_.value.exit_code == 1
+        outlook.cancel_scheduled.assert_not_called()      # the whole point
+        assert "co outlook scheduled" in capsys.readouterr().out
+
+    def test_an_empty_scheduled_listing_clears_the_numbering(self, tmp_path, monkeypatch, capsys):
+        # The early return used to leave the previous listing in place, which is
+        # how a stale inbox number survived into `cancel`.
+        cache = tmp_path / "outlook_last_inbox.json"
+        monkeypatch.setattr(outlook_commands, "INBOX_CACHE", cache)
+        outlook_commands._remember_listing("inbox", sample_emails(3))
+        outlook = MagicMock()
+        outlook.get_scheduled.return_value = []
+        monkeypatch.setattr(outlook_commands, "_outlook", lambda: outlook)
+
+        outlook_commands.handle_outlook_scheduled()
+
+        assert json.loads(cache.read_text()) == {"kind": "scheduled", "rows": {}}
+        assert _resolve_email_id(MagicMock(), "1", expect="scheduled") == ""
+
+    def test_a_scheduled_listing_numbers_its_own_rows(self, tmp_path, monkeypatch, capsys):
+        cache = tmp_path / "outlook_last_inbox.json"
+        monkeypatch.setattr(outlook_commands, "INBOX_CACHE", cache)
+        outlook = MagicMock()
+        outlook.get_scheduled.return_value = [
+            {"id": "draft-a", "to": "x@y.z", "subject": "s", "send_at": "2026-09-17T06:00:00Z"}]
+        monkeypatch.setattr(outlook_commands, "_outlook", lambda: outlook)
+
+        outlook_commands.handle_outlook_scheduled()
+
+        assert _resolve_email_id(MagicMock(), "1", expect="scheduled") == "draft-a"
+
+    def test_a_cache_from_an_older_version_is_read_as_an_inbox_one(self, tmp_path, monkeypatch):
+        # Upgrading must not turn every existing number into a scheduled one.
+        cache = tmp_path / "outlook_last_inbox.json"
+        cache.write_text(json.dumps({"1": "msg-old"}))
+        monkeypatch.setattr(outlook_commands, "INBOX_CACHE", cache)
+
+        assert _resolve_email_id(MagicMock(), "1", expect="inbox") == "msg-old"
+        assert _resolve_email_id(MagicMock(), "1", expect="scheduled") == ""
+
+    def test_with_no_listing_at_all_cancel_does_not_fall_back_to_the_inbox(
+            self, tmp_path, monkeypatch):
+        # The no-cache fallback fetches the inbox. For a scheduled number that
+        # is the same data-loss path by another route.
+        monkeypatch.setattr(outlook_commands, "INBOX_CACHE", tmp_path / "missing.json")
+        outlook = MagicMock()
+        outlook.list_inbox.return_value = sample_emails(3)
+
+        assert _resolve_email_id(outlook, "1", expect="scheduled") == ""
+        outlook.list_inbox.assert_not_called()
+
+
+class TestCancelSaysWhatWentWrong:
+    """A cancel that finds nothing explains itself instead of quoting HTTP."""
+
+    @staticmethod
+    def _gone(monkeypatch, outlook):
+        from connectonion.provider_credentials import ProviderCredentialError
+
+        def raise_404(_message_id):
+            raise ProviderCredentialError(
+                "provider_unavailable", "Microsoft Graph API error (HTTP 404).",
+                "co outlook inbox", status=404)
+
+        outlook.cancel_scheduled.side_effect = raise_404
+        monkeypatch.setattr(outlook_commands, "_outlook", lambda: outlook)
+        monkeypatch.setattr(outlook_commands, "_resolve_email_id",
+                            lambda _o, i, expect="inbox": f"graph-id-{i}")
+
+    def test_a_scheduled_email_that_is_gone_says_so_and_points_at_the_listing(
+            self, monkeypatch, capsys):
+        # Found on a real mailbox: `cancel 1` against a stale listing answered
+        # "Microsoft Graph API error (HTTP 404). Next: co outlook inbox" — the
+        # transport's word for it, and a next step with nothing to do with it.
+        outlook = MagicMock()
+        self._gone(monkeypatch, outlook)
+
+        with pytest.raises(typer.Exit) as exit_:
+            outlook_commands.handle_outlook_cancel("1")
+
+        assert exit_.value.exit_code == 1
+        captured = capsys.readouterr()
+        said = captured.out + captured.err
+        assert "already gone out" in said and "earlier listing" in said
+        assert "HTTP 404" not in said
+        assert "co outlook scheduled" in said
+
+    def test_the_failure_is_on_stderr(self, monkeypatch, capsys):
+        # Someone redirecting stdout to a file must collect the answer, not the
+        # failure — the other verbs already keep that separation.
+        outlook = MagicMock()
+        self._gone(monkeypatch, outlook)
+
+        with pytest.raises(typer.Exit):
+            outlook_commands.handle_outlook_cancel("1")
+
+        assert "not there any more" in capsys.readouterr().err
+
+    def test_another_failure_is_not_dressed_up_as_a_missing_email(
+            self, monkeypatch, capsys):
+        # Only 404 means "gone". A 500 keeps its own words rather than being
+        # explained away as a stale number — it falls through to the shared
+        # handler, which reports it as itself.
+        from connectonion.provider_credentials import ProviderCredentialError
+
+        outlook = MagicMock()
+        outlook.cancel_scheduled.side_effect = ProviderCredentialError(
+            "provider_unavailable", "Microsoft Graph API error (HTTP 500).",
+            "co outlook inbox", status=500)
+        monkeypatch.setattr(outlook_commands, "_outlook", lambda: outlook)
+        monkeypatch.setattr(outlook_commands, "_resolve_email_id",
+                            lambda _o, i, expect="inbox": "graph-id")
+
+        with pytest.raises(typer.Exit):
+            outlook_commands.handle_outlook_cancel("1")
+
+        said = capsys.readouterr()
+        assert "HTTP 500" in said.err
+        assert "already gone out" not in (said.out + said.err)
 
 
 class TestContactPipedOutput:

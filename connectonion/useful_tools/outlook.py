@@ -201,7 +201,8 @@ class Outlook:
                 self._credentials.auth_command)
         if response.status_code not in [200, 201, 202, 204]:
             raise ProviderCredentialError("provider_unavailable",
-                f"Microsoft Graph API error (HTTP {response.status_code}).", "co outlook inbox")
+                f"Microsoft Graph API error (HTTP {response.status_code}).", "co outlook inbox",
+                status=response.status_code)
 
         # 202 (sendMail) and 204 come back with an empty body
         if response.status_code == 204 or not response.text:
