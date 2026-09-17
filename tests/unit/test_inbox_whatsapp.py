@@ -23,7 +23,7 @@ import pytest
 
 from connectonion.inbox import PROVIDERS, provider
 from connectonion.inbox.store import Inbox
-from connectonion.inbox.whatsapp import GROUP_SERVER, USER_SERVER, WhatsApp
+from connectonion.inbox.whatsapp import GROUP_SERVER, USER_SERVER, WhatsApp, _context_info
 
 OWN = "12025550100"
 PEER = "447700900123"
@@ -159,6 +159,30 @@ def test_a_message_with_no_context_info_is_still_read(sdk):
     assert bot.to_message(raw).text == "plain"
 
 
+def test_a_mention_is_read_from_a_descriptor_shaped_like_protobuf_7(sdk):
+    # protobuf 7 removed FieldDescriptor.label; is_repeated is what is left. The
+    # fake above carries `label`, which is why these tests stayed green while a
+    # real install on protobuf 7 dropped every message as "event not understood".
+    bot = linked(WhatsApp())
+    raw = event(text=f"@{OWN} ship it", mentioned=[f"{OWN}@{USER_SERVER}"])
+    (_, variant), = raw.Message.ListFields()
+    modern = SimpleNamespace(is_repeated=False, type=11, TYPE_MESSAGE=11)
+    raw.Message.ListFields = lambda: [(modern, variant)]
+
+    assert bot.to_message(raw).mentioned is True
+
+
+def test_real_protobuf_descriptors_are_read_on_whichever_major_version_is_installed():
+    # No neonize needed: protobuf itself is a core dependency. A message with a
+    # singular message field and a repeated field walks both branches.
+    from google.protobuf import descriptor_pb2
+
+    message = descriptor_pb2.FileDescriptorProto(name="x.proto", dependency=["y.proto"])
+    message.options.java_package = "x"
+
+    assert _context_info(message) is None
+
+
 # ---- setup -----------------------------------------------------------------
 
 def test_the_first_listen_is_not_told_to_run_listen():
@@ -185,17 +209,49 @@ def test_check_says_how_to_link_a_device_when_none_is(sdk, monkeypatch):
     assert "Linked devices" in problems[0]
 
 
+def session_db(path, *, devices):
+    """A session file shaped like whatsmeow's: the device table, with a row
+    only once a phone has confirmed the link."""
+    import sqlite3
+
+    with sqlite3.connect(path) as db:
+        db.execute("create table whatsmeow_device (jid text primary key)")
+        for n in range(devices):
+            db.execute("insert into whatsmeow_device values (?)", (f"{OWN}.0:{n}@{USER_SERVER}",))
+    return path
+
+
 def test_check_passes_once_a_device_is_linked(sdk, tmp_path, monkeypatch):
-    monkeypatch.setenv("WHATSAPP_SESSION", str(tmp_path / "session.db"))
-    (tmp_path / "session.db").write_bytes(b"linked")
+    monkeypatch.setenv("WHATSAPP_SESSION", str(session_db(tmp_path / "session.db", devices=1)))
     monkeypatch.setattr(WhatsApp, "protocol_snapshot", lambda self: time.time())
 
     assert WhatsApp().check() == []
 
 
-def test_an_old_protocol_snapshot_is_reported_before_it_fails_namelessly(sdk, tmp_path, monkeypatch):
+def test_a_session_whose_qr_was_never_scanned_is_not_a_linked_device(sdk, tmp_path, monkeypatch):
+    # What a failed or abandoned scan leaves: listen created the file for the QR,
+    # no phone confirmed. check used to pass here, so a user whose scan had
+    # failed was told everything was ready. Reproduced live on 1.8.6a1.
+    monkeypatch.setenv("WHATSAPP_SESSION", str(session_db(tmp_path / "session.db", devices=0)))
+    monkeypatch.setattr(WhatsApp, "protocol_snapshot", lambda self: time.time())
+
+    problems = WhatsApp().check()
+
+    assert len(problems) == 1
+    assert "never linked" in problems[0]
+    assert "co whatsapp listen" in problems[0]
+
+
+def test_a_session_file_that_is_not_a_database_is_not_a_linked_device(sdk, tmp_path, monkeypatch):
     monkeypatch.setenv("WHATSAPP_SESSION", str(tmp_path / "session.db"))
-    (tmp_path / "session.db").write_bytes(b"linked")
+    (tmp_path / "session.db").write_bytes(b"not sqlite")
+    monkeypatch.setattr(WhatsApp, "protocol_snapshot", lambda self: time.time())
+
+    assert "never linked" in WhatsApp().check()[0]
+
+
+def test_an_old_protocol_snapshot_is_reported_before_it_fails_namelessly(sdk, tmp_path, monkeypatch):
+    monkeypatch.setenv("WHATSAPP_SESSION", str(session_db(tmp_path / "session.db", devices=1)))
     monkeypatch.setattr(WhatsApp, "protocol_snapshot", lambda self: time.time() - 400 * 86400)
 
     problems = WhatsApp().check()
