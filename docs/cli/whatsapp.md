@@ -7,6 +7,7 @@ it. The same nine verbs as `co feishu`, against a different platform.
 
 ```bash
 pip install 'connectonion[whatsapp]'
+brew install libmagic                  # a system library pip cannot supply; see Setup
 co whatsapp listen                     # scan the QR once; every message → ~/.co/inbox/whatsapp/
 co whatsapp receive                    # next message as one JSON line
 echo "on it" | co whatsapp reply 3EB0A1
@@ -49,8 +50,21 @@ notifications, anything you would ship to your own users.
 
 ```bash
 pip install 'connectonion[whatsapp]'
+
+# …and libmagic, which the extra cannot install for you:
+brew install libmagic        # macOS
+apt install libmagic1        # Debian/Ubuntu
+dnf install file-libs        # Fedora/RHEL
+pip install python-magic-bin # Windows (this one does bundle the library)
+
 co whatsapp listen
 ```
+
+The extra installs neonize, which imports `python-magic` — a *binding* to the
+system library `libmagic`. pip installs the binding; the library it binds to
+comes from the OS. So `pip install 'connectonion[whatsapp]'` succeeds and the
+first `co whatsapp listen` still stops, with libmagic named and the command for
+your platform. Install it once and it does not come back.
 
 A QR code appears in the terminal. On the phone, **Settings → Linked devices →
 Link a device**, and scan it. The pairing is stored at

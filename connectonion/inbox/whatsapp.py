@@ -18,6 +18,7 @@ and says so when it is not.
 
 import json
 import os
+import sys
 import threading
 import time
 import uuid
@@ -29,6 +30,15 @@ from .store import Inbox, Message, default_home, iso_utc
 SDK_MISSING = (
     "The WhatsApp library is not installed. Run: pip install 'connectonion[whatsapp]'"
 )
+
+# neonize imports python-magic, which is a binding: the library it binds to is
+# an OS package, so `pip install 'connectonion[whatsapp]'` completes and the
+# import still fails. These are the package names that supply it.
+LIBMAGIC_INSTALL = {
+    "darwin": "brew install libmagic",
+    "linux": "apt install libmagic1  (on Fedora/RHEL: dnf install file-libs)",
+    "win32": "pip install python-magic-bin",
+}
 
 # WhatsApp's own JID suffixes. The server half says what kind of conversation a
 # JID names, and the group one is the only one this treats as a group.
@@ -44,8 +54,33 @@ def _sdk():
     try:
         import neonize  # noqa: F401
     except ImportError as exc:
-        raise RuntimeError(SDK_MISSING) from exc
+        if getattr(exc, "name", None) == "neonize":
+            raise RuntimeError(SDK_MISSING) from exc
+        # The package is there and importing it failed anyway. Answering with
+        # the extra here sends someone to rerun a pip command that already
+        # succeeded and cannot help, which costs more than saying nothing.
+        raise RuntimeError(_sdk_will_not_load(exc)) from exc
     return neonize
+
+
+def _sdk_will_not_load(exc: ImportError) -> str:
+    """Why an installed neonize would not import, and what to run about it.
+
+    Only libmagic is recognised by name, because it is the one we have actually
+    seen and can therefore give a real command for. Anything else keeps its own
+    message: an error someone can paste into a search beats a fix we guessed.
+    """
+    detail = str(exc) or type(exc).__name__
+    if "libmagic" in detail:
+        fix = LIBMAGIC_INSTALL.get(sys.platform) or "install libmagic with your system package manager"
+        return (
+            "The WhatsApp library is installed but will not load: it needs libmagic, "
+            f"which the whatsapp extra does not install. Next: {fix}"
+        )
+    return (
+        f"The WhatsApp library is installed but will not load: {detail}. "
+        "Next: python -c 'import neonize' for the full traceback."
+    )
 
 
 def _jid_str(jid) -> str:

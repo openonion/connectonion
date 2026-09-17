@@ -199,6 +199,62 @@ def test_check_names_the_extra_when_the_library_is_absent(monkeypatch):
     assert "pip install 'connectonion[whatsapp]'" in problems[0]
 
 
+def neonize_import_raises(monkeypatch, exc):
+    """neonize installed, and importing it failing the way the OS made it fail.
+
+    Not `sys.modules[...] = None`, which is how the test above stages an absent
+    package: the distinction being tested is precisely between "pip has not run"
+    and "pip ran and the import still fails", so the two have to be staged
+    differently."""
+    import builtins
+
+    real = builtins.__import__
+
+    def fake(name, *args, **kwargs):
+        if name == "neonize":
+            raise exc
+        return real(name, *args, **kwargs)
+
+    monkeypatch.delitem(sys.modules, "neonize", raising=False)
+    monkeypatch.setattr(builtins, "__import__", fake)
+
+
+def test_a_missing_system_library_is_not_reported_as_a_missing_pip_package(monkeypatch):
+    # neonize imports python-magic, which binds to libmagic — a system library
+    # pip cannot install. Answering with the extra sends someone to rerun a pip
+    # command that already succeeded, and that will succeed again, and that will
+    # never fix this.
+    neonize_import_raises(monkeypatch, ImportError("failed to find libmagic.  Check your installation"))
+    monkeypatch.setattr(sys, "platform", "darwin")
+
+    problems = WhatsApp().check()
+
+    assert len(problems) == 1
+    assert "pip install" not in problems[0]
+    assert "brew install libmagic" in problems[0]
+
+
+def test_the_system_library_is_named_for_the_platform_in_hand(monkeypatch):
+    neonize_import_raises(monkeypatch, ImportError("failed to find libmagic.  Check your installation"))
+    monkeypatch.setattr(sys, "platform", "linux")
+
+    problems = WhatsApp().check()
+
+    assert "apt install libmagic1" in problems[0]
+    assert "brew" not in problems[0]
+
+
+def test_an_import_failure_we_cannot_name_still_carries_its_own_message(monkeypatch):
+    # Guessing a fix for an error we do not recognise is how the libmagic
+    # answer got written; the real message is what someone can search.
+    neonize_import_raises(monkeypatch, ImportError("libz.so.1: cannot open shared object file"))
+
+    problems = WhatsApp().check()
+
+    assert "libz.so.1: cannot open shared object file" in problems[0]
+    assert "pip install" not in problems[0]
+
+
 def test_check_says_how_to_link_a_device_when_none_is(sdk, monkeypatch):
     monkeypatch.setattr(WhatsApp, "protocol_snapshot", lambda self: None)
 
