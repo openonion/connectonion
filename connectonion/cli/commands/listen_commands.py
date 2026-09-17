@@ -19,7 +19,7 @@ from typing import List, Optional
 
 from rich.console import Console
 
-from ...inbox import Inbox, provider
+from ...inbox import ANSWERING, Inbox, provider, reactions_enabled
 from .command_tips import print_tip
 
 console = Console()
@@ -177,6 +177,29 @@ def handle_send(name: str, chat: str, text: Optional[str] = None, reply_to: Opti
     print(sent)
 
 
+def _mark_answering(p, inbox, message) -> None:
+    """Change the queued message's mark from "seen" to "being answered".
+
+    The last thing before the answer goes out, so it reports work that is
+    actually starting rather than work that was planned. The listener put the
+    first mark on as the message was queued; platforms replace a sender's
+    previous reaction rather than stacking them, so this reads as one status
+    changing.
+
+    Never fatal. A mark that did not go out costs a receipt; a reply that did
+    not go out because a receipt failed costs the answer.
+    """
+    react = getattr(p, "react", None)
+    if react is None or not reactions_enabled() or not getattr(message, "mentioned", False):
+        return
+    try:
+        sent = react(message.chat, message.id, ANSWERING, sender=message.sender)
+    except Exception as exc:
+        inbox.log(f"{ANSWERING} on {message.id} not sent: {exc}")
+        return
+    inbox.log(f"{ANSWERING} on {message.id} sent as {sent or 'no id'}")
+
+
 def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: bool = False) -> None:
     """Reply to a received message where it was asked. Prints the new id."""
     p = _configured(name)
@@ -189,6 +212,7 @@ def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: 
         errors.print(f"already replied to {message_id}; pass --again to reply once more", style="yellow")
         sys.exit(1)
     body = _text_from(text)
+    _mark_answering(p, inbox, original)
     try:
         sent = p.send(original.chat, body, reply_to=message_id, fresh=again)
     except Exception as exc:
@@ -313,6 +337,12 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
             CO_CHAT_DIR=str(inbox.root / "chats" / message.chat),
         )
         os.makedirs(env["CO_CHAT_DIR"], exist_ok=True)
+        # Before the command, not before the send. Here the command *is* the
+        # answering — a model can think for minutes — and that interval is the
+        # one the chat cannot currently distinguish from the bot being down.
+        # Marking after it would light up for the millisecond before the reply
+        # lands, which is the same as not marking at all.
+        _mark_answering(p, inbox, message)
         run = subprocess.run(command, input=message.to_json() + "\n",
                              capture_output=True, text=True, env=env)
         # Returning finishes the message; raising leaves it in cur/ for the

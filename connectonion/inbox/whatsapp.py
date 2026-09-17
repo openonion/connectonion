@@ -25,6 +25,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
+from . import ANSWERING, SEEN, reactions_enabled
 from .store import Inbox, Message, default_home, iso_utc
 
 SDK_MISSING = (
@@ -341,10 +342,7 @@ class WhatsApp:
                     message.raw = {"info": str(event.Info), "message": str(event.Message)}
                 except Exception as exc:
                     inbox.log(f"raw payload of {message.id} not kept: {exc}")
-            if inbox.deliver(message, raw=raw):
-                inbox.log(f"received {message.id} chat={message.chat} sender={message.sender}")
-            else:
-                inbox.log(f"duplicate {message.id} dropped")
+            self.take(inbox, message, raw=raw)
 
         stop = threading.Event()
         sender = threading.Thread(target=self._drain_outbox, args=(inbox, stop), daemon=True)
@@ -434,7 +432,50 @@ class WhatsApp:
                 return True
         return any(one in (text or "") for one in own)
 
+    def take(self, inbox: Inbox, message: Message, *, raw: bool = False) -> bool:
+        """Put a message in the queue, and mark it as seen where it was asked.
+
+        Delivering and marking belong together: the mark has to follow the same
+        "was this new" answer the queue gave, or a message WhatsApp retried gets
+        a second receipt for work nobody is doing twice.
+        """
+        if not inbox.deliver(message, raw=raw):
+            inbox.log(f"duplicate {message.id} dropped")
+            return False
+        inbox.log(f"received {message.id} chat={message.chat} sender={message.sender}")
+        self._mark(inbox, message, SEEN)
+        return True
+
+    def _mark(self, inbox: Inbox, message: Message, emoji: str) -> None:
+        """React on a queued message, on our own connection, never raising.
+
+        This runs inside the MessageEv handler, where an exception is a Go-side
+        panic that ends the listener. A receipt is never worth the process, and
+        a mark that did not go out is a log line — the message is already
+        safely in the queue by the time we get here.
+        """
+        if not reactions_enabled() or not message.mentioned:
+            return
+        try:
+            sent = self._react_now(message.chat, message.id, emoji, message.sender)
+        except Exception as exc:
+            inbox.log(f"{emoji} on {message.id} not sent: {exc}")
+            return
+        # Logged on success as well as failure, and with the id the platform
+        # gave back. Silence here would mean "sent" and "never attempted" look
+        # the same in the log, which is the failure mode this whole release has
+        # been about — and a receipt nobody can verify is not a receipt.
+        inbox.log(f"{emoji} on {message.id} sent as {sent or 'no id'}")
+
     # ---- outbound ----------------------------------------------------------
+
+    def react(self, chat: str, message_id: str, emoji: str, *, sender: str = "") -> str:
+        """Put our reaction on a message, replacing whichever we left before.
+
+        Queued like a send, because the caller is usually `reply` in another
+        process and the listener owns the only socket."""
+        return self._queue({"kind": "reaction", "chat": chat,
+                            "message_id": message_id, "emoji": emoji, "sender": sender})
 
     def send(self, chat: str, text: str, *, reply_to: Optional[str] = None, fresh: bool = False) -> str:
         """Send text to a chat. Returns the new message id.
@@ -443,13 +484,17 @@ class WhatsApp:
         waits for its answer. `fresh` is `reply --again`; WhatsApp does not
         dedupe on its side, so it changes nothing here and is accepted so every
         provider takes the same arguments."""
+        return self._queue({"chat": chat, "text": text, "reply_to": reply_to})
+
+    def _queue(self, payload: dict) -> str:
+        """Hand one outbound request to the listener and wait for its answer."""
         inbox = Inbox(self.name)
         spool = inbox.root / "outbox"
         spool.mkdir(parents=True, exist_ok=True)
         ticket = f"{int(time.time() * 1000)}-{uuid.uuid4().hex}"
         request = spool / f"{ticket}.json"
         answer = spool / f"{ticket}.result"
-        _publish(request, {"chat": chat, "text": text, "reply_to": reply_to})
+        _publish(request, payload)
 
         deadline = time.monotonic() + SEND_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
@@ -482,12 +527,35 @@ class WhatsApp:
                     continue
                 answer = request.with_suffix(".result")
                 try:
-                    _publish(answer, {"id": self._send_now(
-                        payload["chat"], payload["text"], payload.get("reply_to"))})
+                    _publish(answer, {"id": self._perform(payload)})
                 except Exception as exc:
                     _publish(answer, {"error": str(exc)})
                     inbox.log(f"send to {payload.get('chat')} failed: {exc}")
             stop.wait(_SEND_POLL)
+
+    def _perform(self, payload: dict) -> str:
+        """One queued request, on the listener's own connection.
+
+        A request with no kind is a send: the spool carried nothing but sends
+        before reactions existed, and a listener that has not been restarted
+        yet may still be draining one."""
+        if payload.get("kind") == "reaction":
+            return self._react_now(payload["chat"], payload["message_id"],
+                                   payload["emoji"], payload.get("sender", ""))
+        return self._send_now(payload["chat"], payload["text"], payload.get("reply_to"))
+
+    def _react_now(self, chat: str, message_id: str, emoji: str, sender: str) -> str:
+        """The actual reaction, on the listener's own connection.
+
+        `sender` is whoever sent the message being reacted to — WhatsApp needs
+        it to address the reaction, and in a direct chat it is the chat itself.
+        """
+        if self._client is None:
+            raise RuntimeError("not connected")
+        to = _build_jid(chat)
+        reaction = self._client.build_reaction(to, _build_jid(sender or chat), message_id, emoji)
+        result = self._client.send_message(to, reaction)
+        return str(getattr(result, "ID", "") or "")
 
     def _send_now(self, chat: str, text: str, reply_to: Optional[str] = None) -> str:
         """The actual send, on the listener's own connection."""
