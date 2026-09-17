@@ -22,7 +22,7 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from connectonion.inbox import PROVIDERS, provider
-from connectonion.inbox.store import Inbox
+from connectonion.inbox.store import Inbox, Message
 from connectonion.inbox.whatsapp import GROUP_SERVER, USER_SERVER, WhatsApp, _context_info
 
 OWN = "12025550100"
@@ -51,9 +51,28 @@ def sdk(monkeypatch):
     message_utils.extract_text = lambda message: getattr(message, "text", "")
     jid_utils = ModuleType("neonize.utils.jid")
     jid_utils.build_jid = lambda user, server: SimpleNamespace(User=user, Server=server)
+    # The protobuf types `_quoted` rebuilds a quoted message from. Only the
+    # fields it sets are modelled; `test_a_quote_built_from_the_record_is_one_the
+    # _sdk_accepts` runs the same code against the real ones, because a stand-in
+    # agreeing with us proves nothing on its own.
+    proto = ModuleType("neonize.proto")
+    events = ModuleType("neonize.proto.Neonize_pb2")
+    events.Message = lambda Info=None, Message=None: SimpleNamespace(Info=Info, Message=Message)
+    events.MessageInfo = lambda ID="", MessageSource=None: SimpleNamespace(ID=ID, MessageSource=MessageSource)
+    events.MessageSource = lambda Chat=None, Sender=None, IsGroup=False: SimpleNamespace(
+        Chat=Chat, Sender=Sender, IsGroup=IsGroup)
+    wa = ModuleType("neonize.proto.waE2E")
+    e2e = ModuleType("neonize.proto.waE2E.WAWebProtobufsE2E_pb2")
+    e2e.Message = lambda conversation="": SimpleNamespace(conversation=conversation)
+    proto.Neonize_pb2 = events
+    proto.waE2E = wa
+    wa.WAWebProtobufsE2E_pb2 = e2e
+    package.proto = proto
     for name, module in [
         ("neonize", package), ("neonize.utils", utils),
         ("neonize.utils.message", message_utils), ("neonize.utils.jid", jid_utils),
+        ("neonize.proto", proto), ("neonize.proto.Neonize_pb2", events),
+        ("neonize.proto.waE2E", wa), ("neonize.proto.waE2E.WAWebProtobufsE2E_pb2", e2e),
     ]:
         monkeypatch.setitem(sys.modules, name, module)
     return package
@@ -433,6 +452,71 @@ def test_send_hands_the_text_to_the_listener_and_returns_its_id(sdk):
     # Request, answer and both staging files are consumed: a spool that grows
     # by two files per reply would fill a disk over a long-running listener.
     assert list((inbox.root / "outbox").iterdir()) == []
+
+
+def test_a_reply_quotes_the_message_it_answers(sdk):
+    # `reply` recorded reply_to in sent.jsonl while the message that left was a
+    # loose one: the spool carried the id and the far end read only chat and
+    # text. In a busy group the answer then has no visible link to the question,
+    # and the ledger says it does.
+    bot = WhatsApp()
+    quoted_with = {}
+    bot._client = SimpleNamespace(
+        send_message=lambda to, message: SimpleNamespace(ID="3EB0SENT"),
+        build_reply_message=lambda text, quoted: quoted_with.update(
+            text=text, id=quoted.Info.ID, sender=quoted.Info.MessageSource.Sender.User,
+            quoted_text=quoted.Message.conversation) or "built",
+    )
+    inbox = Inbox("whatsapp")
+    inbox.deliver(Message(id="AC8191", chat=f"1203630000000@{GROUP_SERVER}",
+                          sender=f"{PEER}@{USER_SERVER}", text="那个价格表还是不对",
+                          mentioned=True, at="2026-09-17T04:27:57Z", thread=None))
+    stop, thread = drain_once(bot, inbox)
+    try:
+        assert bot.send(f"1203630000000@{GROUP_SERVER}", "on it", reply_to="AC8191") == "3EB0SENT"
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert quoted_with == {"text": "on it", "id": "AC8191", "sender": PEER,
+                           "quoted_text": "那个价格表还是不对"}
+
+
+def test_a_plain_send_does_not_quote_anything(sdk):
+    bot = WhatsApp()
+    calls = []
+    bot._client = SimpleNamespace(
+        send_message=lambda to, message: SimpleNamespace(ID="3EB0SENT"),
+        build_reply_message=lambda text, quoted: calls.append(text) or "built",
+    )
+    inbox = Inbox("whatsapp")
+    stop, thread = drain_once(bot, inbox)
+    try:
+        bot.send(f"1203630000000@{GROUP_SERVER}", "on it")
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert calls == []
+
+
+def test_a_reply_to_a_message_we_no_longer_have_still_goes_out(sdk):
+    # The quote is reconstructed from the stored record. A message that aged out
+    # of received.jsonl must not cost the person their answer — the reply lands
+    # in the right chat, unquoted, rather than failing.
+    bot = WhatsApp()
+    bot._client = SimpleNamespace(
+        send_message=lambda to, message: SimpleNamespace(ID="3EB0SENT"),
+        build_reply_message=lambda text, quoted: (_ for _ in ()).throw(
+            AssertionError("nothing to quote; should not have been called")),
+    )
+    inbox = Inbox("whatsapp")
+    stop, thread = drain_once(bot, inbox)
+    try:
+        assert bot.send(f"1203630000000@{GROUP_SERVER}", "on it", reply_to="GONE") == "3EB0SENT"
+    finally:
+        stop.set()
+        thread.join(timeout=5)
 
 
 def test_an_answer_that_is_not_there_yet_is_waited_for_not_read(sdk, monkeypatch):

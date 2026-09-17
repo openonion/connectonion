@@ -355,3 +355,54 @@ def test_in_a_group_only_a_message_naming_the_number_is_mentioned(bot, driver):
     assert plain["chat"] == group and named["chat"] == group
     assert plain["mentioned"] is False
     assert named["mentioned"] is True
+
+
+QUOTE_PROBE = '''
+import json, os
+from connectonion.inbox.store import Inbox, Message
+from connectonion.inbox.whatsapp import WhatsApp
+from neonize.client import NewClient
+
+Inbox("whatsapp").deliver(Message(
+    id="AC8191", chat="1203630000000@g.us", sender="447700900123@s.whatsapp.net",
+    text="\\u90a3\\u4e2a\\u4ef7\\u683c\\u8868\\u8fd8\\u662f\\u4e0d\\u5bf9",
+    mentioned=True, at="2026-09-17T04:27:57Z", thread=None))
+
+quoted = WhatsApp()._quoted("AC8191")
+ctx = NewClient._make_quoted_message(NewClient.__new__(NewClient), quoted)
+print(json.dumps({"stanzaID": ctx.stanzaID, "participant": ctx.participant,
+                  "quoted_text": ctx.quotedMessage.conversation}), flush=True)
+# os._exit, because neonize's worker thread keeps the interpreter alive; the
+# flush above is not optional with it, since _exit skips buffer flushing.
+os._exit(0)
+'''
+
+
+def test_a_quote_built_from_the_record_is_one_the_sdk_accepts(tmp_path):
+    """`_quoted` against the real protobuf types and neonize's own quote builder.
+
+    WhatsApp puts the quote inside the outgoing message, so replying means
+    handing the original back to the SDK — and we do not keep the raw event, we
+    rebuild it from `received.jsonl`. The unit tests model only the fields we
+    set, which proves we call `build_reply_message`, not that WhatsApp would
+    understand the result. This reads the three things a quote actually is back
+    out of neonize's own `_make_quoted_message`.
+
+    Needs the extra; needs no account and no network. It runs in a subprocess
+    like everything else in this file, because importing neonize starts a worker
+    thread that the suite's leaked-thread check correctly refuses to let a test
+    leave behind.
+    """
+    env = dict(os.environ, CO_INBOX_HOME=str(tmp_path / "inbox"), NO_COLOR="1")
+    env.pop("WHATSAPP_SESSION", None)
+    run = subprocess.run([sys.executable, "-c", QUOTE_PROBE],
+                         capture_output=True, text=True, env=env, timeout=120)
+    if "ModuleNotFoundError" in run.stderr and "neonize" in run.stderr:
+        pytest.skip("the whatsapp extra is not installed here")
+    assert run.returncode == 0, run.stderr[-2000:]
+
+    assert json.loads(run.stdout.strip().splitlines()[-1]) == {
+        "stanzaID": "AC8191",
+        "participant": "447700900123@s.whatsapp.net",
+        "quoted_text": "那个价格表还是不对",
+    }

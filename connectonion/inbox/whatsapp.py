@@ -482,18 +482,53 @@ class WhatsApp:
                     continue
                 answer = request.with_suffix(".result")
                 try:
-                    _publish(answer, {"id": self._send_now(payload["chat"], payload["text"])})
+                    _publish(answer, {"id": self._send_now(
+                        payload["chat"], payload["text"], payload.get("reply_to"))})
                 except Exception as exc:
                     _publish(answer, {"error": str(exc)})
                     inbox.log(f"send to {payload.get('chat')} failed: {exc}")
             stop.wait(_SEND_POLL)
 
-    def _send_now(self, chat: str, text: str) -> str:
+    def _send_now(self, chat: str, text: str, reply_to: Optional[str] = None) -> str:
         """The actual send, on the listener's own connection."""
         if self._client is None:
             raise RuntimeError("not connected")
-        result = self._client.send_message(_build_jid(chat), text)
+        quoted = self._quoted(reply_to) if reply_to else None
+        body = text if quoted is None else self._client.build_reply_message(text, quoted)
+        result = self._client.send_message(_build_jid(chat), body)
         return str(getattr(result, "ID", "") or "")
+
+    def _quoted(self, message_id: str):
+        """The message being answered, shaped as the SDK's quoted message.
+
+        Feishu replies to a message id and the platform works out the rest;
+        WhatsApp puts the quote in the outgoing message, so the original has to
+        be handed back to it. We do not keep the raw event, and we do not need
+        to: a quote is the original's id, who sent it, and its text, and all
+        three are in `received.jsonl`. Rebuilding from the record also means a
+        reply still quotes correctly after the listener has been restarted.
+
+        None when the original is not in the record any more. An answer that
+        reaches the right chat unquoted is worth more to the person waiting than
+        an exception, so this degrades rather than fails.
+        """
+        original = Inbox(self.name).lookup(message_id)
+        if original is None:
+            return None
+        from neonize.proto import Neonize_pb2 as events
+        from neonize.proto.waE2E import WAWebProtobufsE2E_pb2 as e2e
+
+        return events.Message(
+            Info=events.MessageInfo(
+                ID=original.id,
+                MessageSource=events.MessageSource(
+                    Chat=_build_jid(original.chat),
+                    Sender=_build_jid(original.sender),
+                    IsGroup=original.chat.endswith(f"@{GROUP_SERVER}"),
+                ),
+            ),
+            Message=e2e.Message(conversation=original.text or ""),
+        )
 
 
 def _iso(timestamp) -> str:
