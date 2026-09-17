@@ -208,8 +208,11 @@ class Notebook:
                   f"Investigation: mapped {_today()} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))
 
-    PROJECT_SECTIONS = ("What it is", "Why it exists", "Where it stands", "How it is built",
-                        "Latest issues", "Open threads", "Uncertainties")
+    PROJECT_SECTIONS = (
+        "What it is", "Overview", "Try it", "Where it stands", "Latest issues",
+        "People and ownership", "Getting started", "Why it exists", "Key decisions",
+        "How it is built", "Architecture map", "Paths", "Open threads", "Uncertainties",
+    )
 
     def stub_project(self, record: str, name: str, paths=(), **known) -> bool:
         """The project page, structure first, the same way as a person's.
@@ -220,13 +223,15 @@ class Notebook:
         """
         if self.path(record).is_file():
             return False
-        lines = [f"# {name}", "", "## Architecture map", "- Unknown — not investigated yet", "", "## Paths"]
-        lines += [f"- {path}" for path in paths] or ["- Unknown"]
-        for label, value in known.items():
-            if value:
-                lines.append(f"- {label.replace('_', ' ').capitalize()}: {value}")
+        lines = [f"# {name}"]
         for section in self.PROJECT_SECTIONS:
-            lines += ["", f"## {section}", "- Unknown — not investigated yet"]
+            lines += ["", f"## {section}"]
+            if section == "Paths":
+                lines += [f"- {path}" for path in paths] or ["- Unknown"]
+                lines += [f"- {label.replace('_', ' ').capitalize()}: {value}"
+                          for label, value in known.items() if value]
+            else:
+                lines += ["- Unknown — not investigated yet"]
         lines += ["", "## Sources", "- (none yet)", "",
                   f"Investigation: mapped {_today()} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))

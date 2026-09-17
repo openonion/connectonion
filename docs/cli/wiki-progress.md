@@ -65,3 +65,5 @@ are additional work, so this is not a claim that only two tasks remain.
 | Release | Repair remaining gates and refresh acceptance | CI at the resulting commit, live Claude evidence if advertised, cost narrative, release metadata. |
 
 Project page templates now include `Architecture map` (evidence-backed ASCII module/data-flow diagrams) and `Latest issues` (dated symptoms, impact, status and evidence), separate from the broader action list. Mapping leaves these Unknown until investigated.
+
+Project pages now lead with one plain-language purpose sentence, an ASCII user-flow overview and a try-it entry point. Ownership, role-specific getting-started links and dated decision rationale follow the current status/issues; technical architecture and paths live farther down. Both map skeletons and investigation use this same template. Existing pages are preserved by mapping and upgraded when investigated.

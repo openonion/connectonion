@@ -152,3 +152,22 @@ See [Wiki acceptance tests](../testing/wiki-acceptance.md). Tests and user-facin
 contracts precede additional implementation. Each claimed behavior needs
 observable evidence; a mock that hardcodes a good note does not validate the
 maintenance Skill's reasoning. No release is claimed by this document.
+
+## Project page reading order (2026-09-17)
+
+The artifact remains a project page. Use a new colleague's first encounter as a
+design test, not as the page's name or a separate onboarding product. Someone
+from design, engineering or another role should grasp the purpose without
+already knowing the company, project vocabulary or codebase.
+
+Lead with one plain-language purpose sentence, one compact ASCII user-flow
+overview, and one real entry point or example. Keep this opening short even
+when the full page is long. Put current goals and issues next, then ownership,
+role-relevant starting links, rationale, important decisions and technical
+detail. A technical architecture diagram belongs in the detailed section; it
+does not substitute for a user-facing flow overview.
+
+Mapping and investigation share the canonical wiki-page-project template.
+Mapping establishes identity and observed metadata, leaving unsupported sections
+Unknown. Investigation fills the structure from evidence. Neither stage should
+invent a demo, owner, diagram or completion claim to make a page appear complete.
