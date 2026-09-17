@@ -240,12 +240,18 @@ class Notebook:
         """Document an installed skill without copying or modifying executable instructions."""
         if self.path(record).is_file():
             return False
-        lines = [f"# {name}", "", "## Source", f"- File: {source}", f"- Discovery: {location}",
-                 "- Status: mapped from metadata; behavior not verified", "", "## What it does",
+        lines = [f"# {name}", "", "## What it does",
                  description or "Unknown — description not provided"]
-        for section in ("When to use", "How to use", "Inputs and outputs", "Related projects",
-                        "Usage history", "Open threads", "Uncertainties"):
-            lines += ["", f"## {section}", "Unknown — not investigated yet"]
+        for section in ("When to use", "Current status", "Example result", "How to use",
+                        "Inputs and outputs", "Usage history", "Performance",
+                        "Limitations", "Maintenance", "Related projects", "Open threads",
+                        "Uncertainties"):
+            value = ("Unknown — not verified; no run evidence reviewed"
+                     if section in ("Current status", "Performance")
+                     else "Unknown — not investigated yet")
+            lines += ["", f"## {section}", value]
+        lines += ["", "## Source", f"- File: {source}", f"- Discovery: {location}",
+                  "- Status: mapped from metadata; behavior not verified"]
         lines += ["", "## Sources", f"- Skill metadata: {source}", "",
                   f"Investigation: mapped {_today()} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))

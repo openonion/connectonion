@@ -67,3 +67,5 @@ are additional work, so this is not a claim that only two tasks remain.
 Project page templates now include `Architecture map` (evidence-backed ASCII module/data-flow diagrams) and `Latest issues` (dated symptoms, impact, status and evidence), separate from the broader action list. Mapping leaves these Unknown until investigated.
 
 Project pages now lead with one plain-language purpose sentence, an ASCII user-flow overview and a try-it entry point. Ownership, role-specific getting-started links and dated decision rationale follow the current status/issues; technical architecture and paths live farther down. Both map skeletons and investigation use this same template. Existing pages are preserved by mapping and upgraded when investigated.
+
+Skill catalog templates now prioritize usefulness, latest observed status, example outputs and minimal invocation. Detailed history/statistics distinguish process exit, task completion and reviewed quality, with sample counts and coverage. Run-log collection remains unimplemented; metadata-only maps leave these sections unverified.

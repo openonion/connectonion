@@ -171,3 +171,17 @@ Mapping and investigation share the canonical wiki-page-project template.
 Mapping establishes identity and observed metadata, leaving unsupported sections
 Unknown. Investigation fills the structure from evidence. Neither stage should
 invent a demo, owner, diagram or completion claim to make a page appear complete.
+
+## Skill pages describe utility and observed operation (2026-09-17)
+
+A skill page helps readers decide whether to use a capability, whether it has
+worked on comparable tasks, and how to start. Keep purpose, suitability, latest
+observed status, a real result and minimal invocation near the top; link the
+executable source near the end. Detailed run history, limitations and maintenance
+follow. This is a skill page, evaluated through a first-time reader's eyes.
+
+Distinguish process exit, task completion and reviewed output quality. Statistics
+must identify the time window, sample size, denominator and missing coverage;
+compare equivalent versions, models and tasks. Missing telemetry is Unknown,
+not zero or success. Templates and metadata skeletons do not imply that automatic
+run-log collection or skill investigation is implemented.
