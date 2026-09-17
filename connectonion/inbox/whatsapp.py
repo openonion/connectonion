@@ -79,7 +79,14 @@ def _context_info(message):
     except AttributeError:
         return None
     for descriptor, value in fields:
-        if descriptor.label == descriptor.LABEL_REPEATED:
+        # protobuf 7 removed FieldDescriptor.label (6.x added is_repeated in its
+        # place). Reading .label raised AttributeError on the first field of every
+        # message, so with the protobuf a fresh install resolves, every message
+        # was logged as "event not understood" and none reached the inbox.
+        repeated = getattr(descriptor, "is_repeated", None)
+        if repeated is None:
+            repeated = descriptor.label == descriptor.LABEL_REPEATED
+        if repeated:
             continue
         if descriptor.type != descriptor.TYPE_MESSAGE:
             continue
@@ -158,15 +165,33 @@ class WhatsApp:
         return []
 
     def linked(self) -> list:
-        """Whether a device is linked, as a problem and its next action."""
-        if self.session_path.exists():
-            return []
-        return [
-            f"No linked WhatsApp session at {self.session_path}. "
-            "Next: co whatsapp listen — a QR code appears, scan it from the phone "
-            "under Settings > Linked devices. Use a number dedicated to this, "
-            "never a personal or an employee's main one."
-        ]
+        """Whether a device is linked, as a problem and its next action.
+
+        The session file exists from the moment `listen` shows its first QR
+        code, before any phone has scanned it. A scan that failed or was never
+        made leaves exactly that file, so its presence proved nothing and
+        `check` reported a device that did not exist. whatsmeow writes one row
+        to `whatsmeow_device` when the phone confirms the link; that row is the
+        link."""
+        how = ("Next: co whatsapp listen — a QR code appears, scan it from the phone "
+               "under Settings > Linked devices. Use a number dedicated to this, "
+               "never a personal or an employee's main one.")
+        if not self.session_path.exists():
+            return [f"No linked WhatsApp session at {self.session_path}. {how}"]
+        if not self._device_confirmed():
+            return [f"The WhatsApp session at {self.session_path} was never linked: a QR code "
+                    f"was shown but no phone confirmed it. {how}"]
+        return []
+
+    def _device_confirmed(self) -> bool:
+        import sqlite3
+
+        try:
+            with sqlite3.connect(f"file:{self.session_path}?mode=ro", uri=True) as db:
+                return db.execute("select count(*) from whatsmeow_device").fetchone()[0] > 0
+        except sqlite3.Error:
+            # Not whatsmeow's database at all, or not one yet: not a linked device.
+            return False
 
     def listen_requirements(self) -> list:
         """What `listen` needs beyond the session: the SDK.
