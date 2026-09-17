@@ -205,10 +205,11 @@ class WhatsApp:
         """Whether a device is linked, as a problem and its next action.
 
         The session file exists from the moment `listen` shows its first QR
-        code, before any phone has scanned it. A scan that failed or was never
-        made leaves exactly that file, so its presence proved nothing and
-        `check` reported a device that did not exist. whatsmeow writes one row
-        to `whatsmeow_device` when the phone confirms the link; that row is the
+        code, before any phone has scanned it, and it stays after WhatsApp
+        removes the device: whatsmeow deletes the device row on a "device
+        removed" stream error but leaves the file. Both states left `check`
+        reporting a device that did not exist. whatsmeow writes one row to
+        `whatsmeow_device` when the phone confirms the link; that row is the
         link."""
         how = ("Next: co whatsapp listen — a QR code appears, scan it from the phone "
                "under Settings > Linked devices. Use a number dedicated to this, "
@@ -216,8 +217,9 @@ class WhatsApp:
         if not self.session_path.exists():
             return [f"No linked WhatsApp session at {self.session_path}. {how}"]
         if not self._device_confirmed():
-            return [f"The WhatsApp session at {self.session_path} was never linked: a QR code "
-                    f"was shown but no phone confirmed it. {how}"]
+            return [f"The WhatsApp session at {self.session_path} has no linked device: either "
+                    f"its QR code was never confirmed on a phone, or the device was removed "
+                    f"(from the phone's Linked devices, or by WhatsApp). {how}"]
         return []
 
     def _device_confirmed(self) -> bool:
