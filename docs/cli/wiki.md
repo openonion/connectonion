@@ -3,6 +3,9 @@
 Updated 2026-09-15. This documents the Wiki development branch, not a claim
 that it has been released.
 
+See the [2026-09-17 progress review](wiki-progress.md) for the feature inventory,
+current CI blockers and remaining work.
+
 ## One execution path
 
 ```text

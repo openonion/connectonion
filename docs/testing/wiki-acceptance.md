@@ -1,5 +1,31 @@
 # Wiki milestone 1: acceptance before implementation
 
+## Branch progress review — 2026-09-17
+
+Reviewed local and remote head `85315404` / draft PR #1454. Current inventory
+and open work: [progress review](../cli/wiki-progress.md).
+
+- Initial focused run: **242 passed in 3.46 s**.
+- The two stale `co ai` CLI expected-call assertions from the Python 3.10 CI
+  log reproduced locally (**2 failed, 4 passed**). Both omitted the newly
+  forwarded default `timeout=600`; corrected the expectations.
+- Final Wiki/CLI/shared-harness/default-Skill regression: **248 passed in
+  13.24 s**, using the existing Python 3.14 environment. Command:
+
+  ```bash
+  python -m pytest tests/unit/test_wiki_*.py \
+    tests/e2e/cli/test_wiki_commands.py tests/e2e/cli/test_wiki_failures.py \
+    tests/unit/test_co_ai_harness.py \
+    tests/unit/test_default_skills_are_for_customers.py \
+    tests/e2e/cli/test_cli_ai.py -q
+  ```
+
+No fresh paid inference, mailbox ingestion, UI/browser acceptance or full-suite
+run was performed for this documentation and expected-call correction. The
+remote CI checks still describe the preceding commit; release metadata and
+blog-gate failures remain open. Historical cost measurements below retain
+their original date and scope.
+
 ## COAI execution refactor — 2026-09-15
 
 The native-isolation experiments below are historical. Current execution is
