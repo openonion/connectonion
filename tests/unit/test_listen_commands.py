@@ -20,13 +20,18 @@ import sys
 import pytest
 
 from connectonion.cli.commands import listen_commands
-from connectonion.inbox import Inbox, Message
+from connectonion.inbox import ANSWERING, Inbox, Message
 
 
 class FakeProvider:
     def __init__(self, problems=()):
         self.problems = list(problems)
         self.sent = []
+        self.reacted = []
+        # What happened, in order. Whether the mark lands before or after the
+        # work is the whole point of it, so ordering has to be observable.
+        self.order = []
+        self.reaction_fails = False
 
     def missing(self):
         return self.problems
@@ -36,7 +41,15 @@ class FakeProvider:
 
     def send(self, chat, text, *, reply_to=None, fresh=False):
         self.sent.append((chat, text, reply_to))
+        self.order.append("send")
         return f"om_sent{len(self.sent)}"
+
+    def react(self, chat, message_id, emoji, *, sender=""):
+        if self.reaction_fails:
+            raise RuntimeError("rate limited")
+        self.reacted.append((chat, message_id, emoji, sender))
+        self.order.append("react")
+        return f"om_react{len(self.reacted)}"
 
 
 @pytest.fixture
@@ -133,6 +146,51 @@ def test_reply_finds_the_chat_from_the_log_and_forgets_the_taken_message(box, fa
     assert box.already_replied("om_q")
 
 
+def test_a_reply_marks_the_message_as_being_answered_before_it_sends(box, fake, capsys):
+    # The listener marks a message "seen" as it queues it; this is the other
+    # half — the mark changes the moment an answer is actually on its way, so
+    # the chat can tell "queued" from "being worked on".
+    deliver(box, i="om_q", chat="oc_ops")
+
+    listen_commands.handle_reply("feishu", "om_q", "fixed")
+
+    assert fake.order == ["react", "send"]
+    assert fake.reacted == [("oc_ops", "om_q", ANSWERING, "on_x")]
+
+
+def test_a_mark_that_fails_does_not_cost_the_reply(box, fake, capsys):
+    # A receipt is worth less than the answer it was announcing.
+    fake.reaction_fails = True
+    deliver(box, i="om_q", chat="oc_ops")
+
+    listen_commands.handle_reply("feishu", "om_q", "fixed")
+
+    assert fake.sent == [("oc_ops", "fixed", "om_q")]
+    assert "rate limited" in (box.root / "log").read_text(encoding="utf-8")
+
+
+def test_a_message_that_was_not_addressed_to_us_is_not_marked(box, fake, capsys):
+    # Someone can reply by hand to anything in the log. Marking a message the
+    # bot was never asked about puts our emoji on a stranger's conversation.
+    box.deliver(Message(id="om_chatter", chat="oc_ops", sender="on_x", text="hi",
+                        at="2026-09-02T10:00:00Z", thread=None, mentioned=False))
+
+    listen_commands.handle_reply("feishu", "om_chatter", "fixed")
+
+    assert fake.reacted == []
+    assert fake.sent == [("oc_ops", "fixed", "om_chatter")]
+
+
+def test_marking_can_be_turned_off(box, fake, capsys, monkeypatch):
+    monkeypatch.setenv("CO_INBOX_REACT", "0")
+    deliver(box, i="om_q", chat="oc_ops")
+
+    listen_commands.handle_reply("feishu", "om_q", "fixed")
+
+    assert fake.reacted == []
+    assert fake.sent == [("oc_ops", "fixed", "om_q")]
+
+
 def test_reply_refuses_a_second_answer_unless_asked_again(box, fake, capsys):
     deliver(box, i="om_q")
     listen_commands.handle_reply("feishu", "om_q", "first")
@@ -166,6 +224,29 @@ def test_consume_pipes_the_message_through_a_command_and_replies_with_its_stdout
     assert fake.sent == [("oc_s", "you asked what is 2+2 in oc_s msg om_s", "om_s")]
     assert list(box.cur.iterdir()) == []
     assert (box.root / "chats" / "oc_s").is_dir()
+
+
+def test_consume_marks_before_running_the_command_not_after(box, fake, monkeypatch):
+    # In `consume` the command *is* the answering, and it can take minutes.
+    # Marking after it would light up for the instant before the reply lands,
+    # which is the same as not marking at all — and that interval is precisely
+    # what the chat cannot otherwise tell apart from the bot being down.
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
+    deliver(box, i="om_s", chat="oc_s", text="what is 2+2")
+    marks = []
+    command = [sys.executable, "-c", "import sys; sys.stdin.read(); print('4')"]
+    original = listen_commands._mark_answering
+
+    def record(p, inbox, message):
+        marks.append(list(p.order))
+        return original(p, inbox, message)
+
+    monkeypatch.setattr(listen_commands, "_mark_answering", record)
+    listen_commands.handle_consume("feishu", command, once=True)
+
+    assert marks == [[]]                      # nothing had happened yet
+    assert fake.order == ["react", "send"]
+    assert fake.reacted == [("oc_s", "om_s", ANSWERING, "on_x")]
 
 
 def _taken(box):
