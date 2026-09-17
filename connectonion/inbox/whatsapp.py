@@ -182,7 +182,8 @@ class WhatsApp:
         configured = os.environ.get("WHATSAPP_SESSION", "")
         self.session_path = Path(configured) if configured else default_home("whatsapp") / "session.db"
         self._client = None
-        self._own_user = ""
+        self._own_user = ""       # the phone number, for the log line
+        self._own_ids = frozenset()  # every id that means us: the number and the LID
 
     # ---- setup -------------------------------------------------------------
 
@@ -312,8 +313,12 @@ class WhatsApp:
 
         @client.event(ConnectedEv)
         def _on_connected(_client, _event) -> None:
-            self._own_user = self._read_own_user(_client)
-            inbox.log(f"connected as {self._own_user or 'unknown'}")
+            self._own_user, self._own_ids = self._read_identity(_client)
+            # Both ids in the log: which id a group addresses us by is exactly
+            # what you need to know when a mention did not register.
+            others = sorted(self._own_ids - {self._own_user})
+            also = f" (also {', '.join(others)})" if others else ""
+            inbox.log(f"connected as {self._own_user or 'unknown'}{also}")
 
         @client.event(PairStatusEv)
         def _on_paired(_client, event) -> None:
@@ -350,11 +355,28 @@ class WhatsApp:
             stop.set()
 
     @staticmethod
-    def _read_own_user(client) -> str:
+    def _read_identity(client) -> tuple:
+        """Our phone number, and every id that means us.
+
+        WhatsApp is migrating accounts to LID addressing (`…@lid`), and a LID
+        shares no digits with the phone number it belongs to — the linked device
+        this was found on holds `61410724095@s.whatsapp.net` and
+        `132754033377342@lid` for the same account. In a migrated group an
+        @mention carries the LID, so reading only `Device.JID` made a real
+        mention arrive as `mentioned: False`: the bot sat silent while the
+        person who addressed it watched nothing happen, which is the failure
+        that costs the most because it looks like nothing went wrong.
+
+        Both ids stay live. Groups migrate at different times and older ones
+        still carry the number, so this is a set, not a replacement.
+        """
         try:
-            return _user_of(_jid_str(client.get_me().JID))
+            me = client.get_me()
         except Exception:
-            return ""
+            return "", frozenset()
+        phone = _user_of(_jid_str(getattr(me, "JID", None)))
+        lid = _user_of(_jid_str(getattr(me, "LID", None)))
+        return phone, frozenset(i for i in (phone, lid) if i)
 
     def to_message(self, event, *, raw: bool = False) -> Optional[Message]:
         """A MessageEv as a Message, or None for an event that is not someone
@@ -394,19 +416,23 @@ class WhatsApp:
         other group gateway settled on: a real @mention, a reply to something we
         said, and our own number written in the text.
 
-        With no known own number — before the connection is up — nothing counts
-        as addressed. A group channel with mention_only stays quiet, which is
-        the failure that costs nothing."""
-        own = self._own_user
+        Each of the three is checked against every id the account answers to —
+        its phone number and its LID — because which one a group uses is the
+        group's choice, not ours.
+
+        With no known ids — before the connection is up — nothing counts as
+        addressed. A group channel with mention_only stays quiet, which is the
+        failure that costs nothing."""
+        own = self._own_ids
+        if not own:
+            return False
         if context is not None:
             for mentioned_jid in getattr(context, "mentionedJID", None) or []:
-                if own and _user_of(mentioned_jid) == own:
+                if _user_of(mentioned_jid) in own:
                     return True
-            if own and _user_of(getattr(context, "participant", "")) == own:
+            if _user_of(getattr(context, "participant", "")) in own:
                 return True
-        if own and own in (text or ""):
-            return True
-        return False
+        return any(one in (text or "") for one in own)
 
     # ---- outbound ----------------------------------------------------------
 
