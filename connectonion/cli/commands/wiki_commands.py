@@ -58,15 +58,26 @@ def make_wiki_app(factory):
 
     @wiki.command("init")
     def init_wiki(ctx: typer.Context):
-        """Run the initialization Skill: discover sources, build the map, investigate the owner."""
+        """Run the initialization Skill: discover sources and build the map for later investigation."""
         from ...wiki.config import prepare, read_config
         from ...wiki.files import Notebook
         from ...wiki.runner import run_stage
+        from ...wiki.skill_map import map_skills
 
         def run(root):
             prepare(root)
+            map_skills(Notebook(root))
             return run_stage(Notebook(root), [], read_config(root), stage="init"), ["unfinished"]
         _handle(ctx, run, ["status"])
+
+    @wiki.command("map-skills")
+    def map_skill_pages(ctx: typer.Context,
+                        skills_dir: List[Path] = typer.Option([], "--skills-dir", help="Explicit skill roots instead of defaults (repeatable)")):
+        """Build the installed-Skill map and missing page skeletons; no model, no execution."""
+        from ...wiki.files import Notebook
+        from ...wiki.skill_map import map_skills
+        _handle(ctx, lambda root: (map_skills(Notebook(root), skills_dir or None),
+                                  ["show", "skills/catalog/index.md"]), ["status"])
 
     @wiki.command("people")
     def list_people(ctx: typer.Context):

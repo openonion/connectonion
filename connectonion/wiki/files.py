@@ -126,8 +126,8 @@ class Notebook:
         if writing and (path.name.lower() in ("agents.md", "skill.md", "claude.md")
                         or parts[:2] == ("skills", "approved")):
             raise WikiError("Runtime instructions and approved Skills are not writable notebook targets")
-        if parts[0] == "skills" and (len(parts) < 3 or parts[1] not in ("candidates", "approved")):
-            raise WikiError("Skill notes belong in skills/candidates")
+        if parts[0] == "skills" and (len(parts) < 3 or parts[1] not in ("catalog", "candidates", "approved")):
+            raise WikiError("Skill notes belong in skills/catalog or skills/candidates")
         if path.is_file() and path.stat().st_nlink != 1:
             raise WikiError("Hardlinked files are not supported notebook content")
         return path
@@ -228,6 +228,20 @@ class Notebook:
         for section in self.PROJECT_SECTIONS:
             lines += ["", f"## {section}", "- Unknown — not investigated yet"]
         lines += ["", "## Sources", "- (none yet)", "",
+                  f"Investigation: mapped {_today()} · not investigated yet", ""]
+        return self.write(record, "\n".join(lines))
+
+    def stub_skill(self, record: str, name: str, source: str, description: str = "", location: str = "") -> bool:
+        """Document an installed skill without copying or modifying executable instructions."""
+        if self.path(record).is_file():
+            return False
+        lines = [f"# {name}", "", "## Source", f"- File: {source}", f"- Discovery: {location}",
+                 "- Status: mapped from metadata; behavior not verified", "", "## What it does",
+                 description or "Unknown — description not provided"]
+        for section in ("When to use", "How to use", "Inputs and outputs", "Related projects",
+                        "Usage history", "Open threads", "Uncertainties"):
+            lines += ["", f"## {section}", "Unknown — not investigated yet"]
+        lines += ["", "## Sources", f"- Skill metadata: {source}", "",
                   f"Investigation: mapped {_today()} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))
 

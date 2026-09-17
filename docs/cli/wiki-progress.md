@@ -9,8 +9,8 @@ is a local, single-owner Markdown notebook.
 
 | Capability | Entry point | Evidence / limitation |
 |---|---|---|
-| Initial source discovery and ranked People/Project map | `co wiki init` | Skill workflow exists; complete live-account initialization still needs acceptance. Stops after owner/map by default. |
-| Deterministic discovery and page skeletons | `scan people`, `scan projects`, `stub person`, `stub project` | Implemented and covered by offline tests. |
+| Initial source discovery and ranked People/Project/Skills map | `co wiki init` | Installed-skill skeletons are created before the model stage. People/project ranking remains a Skill workflow; init now hands off to a separate investigation stage; full live-account initialization still needs acceptance. |
+| Deterministic discovery and page skeletons | `map-skills`, `scan people`, `scan projects`, `stub person`, `stub project` | `map-skills` creates source-linked installed-skill pages without executing or copying runtime skills; reruns preserve page prose. Explicit skill roots are supported. |
 | Existing-person investigation | `people`, `investigate people/alice.md` | Collects mail/session evidence, digests large inputs, updates the existing page; earlier live owner run is recorded in acceptance evidence. |
 | Incremental updates and corrections | `subscribe`, `sync`, `unsubscribe` | Checkpoints, no-op handling, failure accounting and writer locking exist. |
 | Derived decisions and principles | `abstract` | Command and Skill exist; whole lifecycle acceptance remains incomplete. |

@@ -126,22 +126,19 @@ income is A$0 because the agreement is unsigned" was all present in the page --
 spread across three other sections, so it read as background rather than as the
 thing to act on. Each entry names who owes what, and since when.
 
-For a **project**, the same discipline in its own shape:
-
-```markdown
-# ConnectOnion
-
-## What it is
-## Paths            every directory, repo and alias it has been called
-## Why it exists    the problem, in the user's own framing
-## Where it stands  the current state, with a date
-## How it is built  the shape a newcomer needs before touching it
-## Open threads     who owes what, and since when
-## Uncertainties    what was checked and not found
-Sources
-```
+For a **project**, follow `wiki-page-project`, appended by the runner. When
+invoked directly through `co ai`, read `../wiki-page-project/SKILL.md` before
+writing. Preserve the existing skeleton headings exactly. Installed-skill
+catalog pages have their own `wiki-page-skill` template; the person/project
+investigation collector must not be used to investigate skill files.
 
 ## Supplement sources through their own tools
+
+Read [the Wiki CLI reference](../wiki-init/CLI.md) relative to this Skill's
+directory before supplementing sources. It documents real command forms and
+their limits. Run `co ...` through the shell tool. A command's presence does not
+prove that its account is authorized or its service is reachable; verify output
+and record failures in coverage. Never guess an email ID, file path or flag.
 
 The supplied material lists exactly which sources the collector searched. Check
 that coverage before claiming a complete investigation. Use the existing CLIs
@@ -180,9 +177,19 @@ what the mailbox genuinely does not hold.
 | Handles | the company site's "team" page, a public GitHub |
 
 ```
-co browser go_to "https://<domain>"       # the site itself, first
-co browser get_text                        # read it; do not guess from the URL
+CO_WHO=wiki-investigate co browser status
+CO_WHO=wiki-investigate co browser tab ls
+CO_WHO=wiki-investigate co browser tab open wiki-subject --for "Wiki subject lookup" --needs 10m
+CO_WHO=wiki-investigate co browser -t wiki-subject go_to "https://<domain>"
+CO_WHO=wiki-investigate co browser -t wiki-subject get_text
+CO_WHO=wiki-investigate co browser tab close wiki-subject
 ```
+
+Use an unused task-specific tab name instead of `wiki-subject` if it is already
+claimed. Keep the same `CO_WHO` and `-t` on every browsing command. Inspect each
+result before the next command; an exit code alone does not prove navigation
+succeeded. Close only your own tab, never the shared browser. These direct
+commands do not need the model-driven `co browser do` command.
 
 `co browser` is a shell command and it is the browser here: run it the way you
 run any other command. Do not reach for a computer-use or `cua_repl` plugin

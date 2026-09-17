@@ -95,7 +95,7 @@ def prepare(root: Path) -> None:
     """Prepare only missing paths; caller holds the root lock when concurrent."""
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     state_path(root, "maintenance.lock").parent.mkdir(exist_ok=True, mode=0o700)
-    for name in (*CATEGORIES, "skills/candidates", "skills/approved"):
+    for name in (*CATEGORIES, "skills/catalog", "skills/candidates", "skills/approved"):
         safe_path(root, name).mkdir(parents=True, exist_ok=True, mode=0o700)
     path = safe_path(root, "config.yaml")
     if not path.exists():

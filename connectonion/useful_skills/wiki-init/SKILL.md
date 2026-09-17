@@ -1,6 +1,6 @@
 ---
 name: wiki-init
-description: The first run of a notebook. Connect the sources, enumerate what they already list, build every page with its structure in place, rank who and what matters, and investigate the most important subject first — the account's owner. Drives `co wiki` and the mail CLIs; does the programmatic steps by command and the judgement steps itself.
+description: The first run of a notebook. Map installed skills, people and projects with page skeletons, connect sources, rank what matters, and leave an investigation queue. Drives co wiki and the mail CLIs.
 ---
 
 # Initialise the notebook
@@ -12,7 +12,57 @@ command already does. The task supplies the notebook root: include
 Read existing pages and `co wiki people` before creating another identity.
 Do not call `co wiki init` recursively or install a background schedule here.
 
-## 1. Connect the sources
+Before using the source CLIs, read [CLI.md](CLI.md), beside this file. It gives
+the exact mail, browser and Wiki command forms, ID handling, pagination and
+failure recovery. Resolve that path from this Skill's directory, not the task's
+working directory. Run commands through the shell tool; do not invent tool names
+or assume that Gmail, Outlook and `co email` share an inbox or query syntax.
+Use the supplied absolute notebook root in every Wiki command; examples below
+abbreviate it for readability. Replace placeholders with observed values.
+
+## 1. Map installed skills, then connect the sources
+
+`co wiki init` has already created the installed-Skill map before starting this
+model stage. Read `skills/catalog/index.md` and keep its existing pages. When
+invoked directly as `/wiki-init`, build that map first:
+
+```bash
+co wiki --root '<absolute-notebook-root>' map-skills
+```
+
+This deterministic command scans known co/Claude/agent/Codex skill directories
+and co ai's bundled defaults. It writes a generated index and one inert Markdown
+skeleton per distinct source under `skills/catalog/`. Names, descriptions and
+source paths come from metadata; usage, inputs/outputs, related projects and
+history remain Unknown until supported. It never copies executable `SKILL.md`
+files into the notebook or activates them. Same-name skills from different files
+remain distinct; symlink aliases to the same source are one page. Reruns preserve
+existing page content and do not delete notes for missing sources.
+
+Check the index's coverage: this is not a recursive scan of every plugin cache or
+remote catalog. To inventory a known additional root, run `map-skills --skills-dir
+'<actual-skill-directory>'` (repeat the flag for multiple roots); explicit roots
+replace the default scan. Never guess a directory from a model-generated path.
+The index describes the latest scan; existing pages remain available via `list skills`.
+
+Directory responsibilities:
+
+| Directory | What belongs here |
+|---|---|
+| `people/` | Person pages and their relationships, sources and open threads |
+| `projects/` | Project pages: purpose, status, architecture and open threads |
+| `skills/catalog/` | Map and expandable documentation of installed skills |
+| `skills/candidates/` | New reusable procedures learned from work; inert proposals |
+| `skills/approved/` | Reserved; Wiki cannot write executable/approved skills |
+| `knowledge/`, `decisions/`, `principles/` | Supported knowledge and later abstractions; do not invent entries to fill folders |
+| `works/` | Descriptions and locations of reusable artifacts |
+| `notes/` | Init ranking, coverage gaps and other supported notes |
+| `.state/` | Runner-owned progress and task files; never hand-edit as Wiki content |
+
+`agenda/` and `opportunities/` exist for compatibility, but investigation and
+abstraction derive these views from entity state rather than duplicate entries.
+A Codex task's `outputs/` is its delivery directory, not automatically the Wiki
+root. Keep one authoritative notebook; label any copies exported to `outputs/`.
 
 ```
 co outlook inbox -n 1          # authorised?  if not: co auth microsoft
@@ -90,38 +140,21 @@ and address fields now, with references; unknown fields remain unknown.
 The person page template is the single canonical `wiki-page-person` Skill.
 Reuse an existing page when address, aliases and context identify the same person.
 
-## 5. Investigate the owner first — from what they wrote, not what mentions them
+## 5. Hand off to investigation
 
-The owner's address is on every mail in the mailbox, so searching by their
-handles can gather the whole mailbox. Keep their names and addresses on the
-page: the command reads those handles back automatically. Build their profile
-from what they said in sessions, what they sent and to whom, and which projects
-they ran. Being the recipient of a notice does not establish a personal fact.
+Init ends with the map. Create the account owner's skeleton and verified
+address aliases, but do not call `co wiki investigate` during init. List the
+owner first in the suggested investigation queue. Investigate is a separate,
+explicit follow-up which reads evidence and fills the same page structure.
+A mapped page is not an investigated page.
 
-When the gathered material exceeds one input, `investigate` summarises it in
-bounded chunks, oldest first, then supplies the digests and existing page to
-the writing pass. Long attachments are split too. Check the coverage and
-per-stage usage; do not claim that the oldest material was discarded or that
-one investigation necessarily costs one model call.
-
-The first subject is **the person whose account this is** — the sender of the
-mail, the author of the sessions. Their page anchors everything else: every
-other person's relationship is a relationship to them.
-
-```
-co wiki stub person "<Owner>" --email <primary-address> --handle <other-address> --handle <their-name>
-co wiki investigate people/<owner>.md
-```
-
-Stop after the owner's first investigation and the ranked map unless the user
-explicitly requested more subjects. Do not invent a monetary or subscription
-meter: `co wiki status` reports attempts and known tokens, not percent of the
-Codex weekly pool. A 2% / 1% / dollar budget requires an actual provider meter;
-if it is unavailable, report that it was not enforced. Never infer a percentage
-from tokens. Record where to continue with `co wiki unfinished`.
+People follow `wiki-page-person`; projects follow `wiki-page-project`; installed
+skill documentation follows `wiki-page-skill`. The runner appends these page
+Skills. For direct `/wiki-init` use, read their sibling `SKILL.md` files before
+writing. Preserve existing pages, exact headings and runner-owned status lines.
 
 ## 6. Report
 
-End with: how many correspondents and projects were found, how many pages were
-built, who was investigated and how much it cost, what was dropped and why,
+End with: how many installed skills, correspondents and projects were found, how many pages were
+built, what remains uninvestigated, mapping usage, what was dropped and why,
 and the first three entries of `co wiki unfinished` — that is tomorrow's work.

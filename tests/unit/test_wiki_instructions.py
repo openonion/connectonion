@@ -68,3 +68,21 @@ def test_no_stage_carries_its_own_second_copy_of_the_person_shape():
               if any(line.rstrip() == "# A person's page"
                      for line in p.read_text(encoding="utf-8").splitlines())]
     assert owners == ["wiki-page-person"], owners
+
+
+def test_project_and_skill_templates_match_created_skeletons(tmp_path):
+    """A model must receive the same exact headings that mapping created."""
+    import re
+    from connectonion.wiki.files import Notebook
+    from connectonion.skills_catalog import useful_skills_dir
+
+    notebook = Notebook(tmp_path)
+    notebook.stub_project('projects/example.md', 'Example', paths=['/example'])
+    notebook.stub_skill('skills/catalog/example.md', 'Example', '/example/SKILL.md')
+    for kind, record in [('project', 'projects/example.md'),
+                         ('skill', 'skills/catalog/example.md')]:
+        template = (useful_skills_dir() / f'wiki-page-{kind}/SKILL.md').read_text()
+        headings = re.findall(r'^## .+$', template, re.MULTILINE)
+        assert headings == re.findall(r'^## .+$', notebook.read(record), re.MULTILINE)
+        for stage in ('init', 'maintain', 'investigate'):
+            assert template in instructions(stage)

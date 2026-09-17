@@ -1,10 +1,38 @@
 # Personal Wiki — current branch contract
 
-Updated 2026-09-15. This documents the Wiki development branch, not a claim
+Updated 2026-09-17. This documents the Wiki development branch, not a claim
 that it has been released.
 
 See the [2026-09-17 progress review](wiki-progress.md) for the feature inventory,
 current CI blockers and remaining work.
+
+## Installed-skill skeletons at initialization
+
+`co wiki init` first creates the installed-skill map without an LLM, then runs
+the initialization Skill for people/projects and the owner's investigation.
+The map can also be run independently:
+
+```bash
+co wiki --root /private/path/to/wiki map-skills
+co wiki --root /private/path/to/wiki map-skills --skills-dir /known/project/.co/skills
+```
+
+The generated `skills/catalog/index.md` links to one documentation skeleton per
+distinct source file. Metadata seeds the name, description and original path;
+usage, inputs/outputs, related projects and history await evidence. Same-name
+files remain distinct; aliases resolving to the same source are deduplicated.
+Reruns preserve page content and retain pages whose source disappeared. Only the
+generated index is refreshed. Executable `SKILL.md` files are not copied, changed
+or run, and `skills/approved/` remains write-protected.
+
+Defaults cover the co/Claude skill search roots, conventional agent/Codex skill
+roots, and co ai's bundled default allowlist. This is a shallow inventory, not
+an exhaustive plugin-cache or remote-catalog scan. Repeat `--skills-dir` for
+explicit roots; supplying it replaces defaults for that scan. Coverage and
+unreadable files are reported in the index and command result.
+
+The [Wiki CLI reference](../../connectonion/useful_skills/wiki-init/CLI.md) explains
+mail IDs, browser tabs, source/working/output directories and failure recovery.
 
 ## One execution path
 
@@ -47,7 +75,7 @@ Every command returns a next command, including in JSON and through a pipe.
 
 | Command | Behavior |
 |---|---|
-| `co wiki init` | Run wiki-init: discover accounts/local sources, build and rank People/Project pages, investigate the owner first. |
+| `co wiki init` | Run wiki-init: discover accounts/local sources, build and rank People/Project/Skills pages; investigation is a separate follow-up. |
 | `co wiki scan people --days 150 --min-mails 1` | Enumerate correspondent signals from Gmail/Outlook; no model. Repeat `--mine <address>` for own addresses. |
 | `co wiki scan orgs --days 180 --min-people 2` | List work domains that two or more people write from — where an organisation page earns its place. No model. |
 | `co wiki scan projects --days 150` | Enumerate session working directories and local Git repository identities; no model. |
