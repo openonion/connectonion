@@ -21,7 +21,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from connectonion.inbox import PROVIDERS, provider
+from connectonion.inbox import ANSWERING, PROVIDERS, SEEN, provider
 from connectonion.inbox.store import Inbox, Message
 from connectonion.inbox.whatsapp import GROUP_SERVER, USER_SERVER, WhatsApp, _context_info
 
@@ -436,6 +436,115 @@ def drain_once(bot, inbox):
     thread = threading.Thread(target=bot._drain_outbox, args=(inbox, stop), daemon=True)
     thread.start()
     return stop, thread
+
+
+# ---- reactions: the queue, made visible from inside the chat ----------------
+
+def reacting_bot(reactions):
+    """A connected bot whose reactions are recorded instead of sent."""
+    bot = linked(WhatsApp(), ids=(OWN, OWN_LID))
+    bot._react_now = lambda chat, message_id, emoji, sender: (
+        reactions.append((chat, message_id, emoji, sender)) or "3EB0REACT")
+    return bot
+
+
+def addressed(message_id="AC8191", mentioned=True):
+    return Message(id=message_id, chat=f"1203630000000@{GROUP_SERVER}",
+                   sender=f"{PEER}@{USER_SERVER}", text="那个价格表还是不对",
+                   mentioned=mentioned, at="2026-09-17T04:27:57Z", thread=None)
+
+
+def test_a_message_we_would_answer_is_reacted_to_as_it_is_queued(sdk):
+    # From the group's side, the gap between "asked" and "answered" is currently
+    # indistinguishable from the bot being down. The reaction is the receipt.
+    reactions = []
+    bot = reacting_bot(reactions)
+    inbox = Inbox("whatsapp")
+
+    bot.take(inbox, addressed())
+
+    assert reactions == [(f"1203630000000@{GROUP_SERVER}", "AC8191", SEEN, f"{PEER}@{USER_SERVER}")]
+    assert [m.id for m in inbox.list_messages()] == ["AC8191"]
+
+
+def test_a_group_message_not_addressed_to_us_is_not_reacted_to(sdk):
+    # It is still recorded — context is kept — but the bot has no business
+    # marking messages nobody asked it about.
+    reactions = []
+    bot = reacting_bot(reactions)
+    inbox = Inbox("whatsapp")
+
+    bot.take(inbox, addressed(mentioned=False))
+
+    assert reactions == []
+    assert [m.id for m in inbox.list_messages()] == ["AC8191"]
+
+
+def test_a_duplicate_is_not_reacted_to_a_second_time(sdk):
+    reactions = []
+    bot = reacting_bot(reactions)
+    inbox = Inbox("whatsapp")
+
+    bot.take(inbox, addressed())
+    bot.take(inbox, addressed())
+
+    assert len(reactions) == 1
+
+
+def test_a_reaction_that_fails_is_a_log_line_not_a_dead_listener(sdk):
+    # This runs inside the MessageEv handler, where an exception is a Go-side
+    # panic that takes the listener down. A receipt is never worth the process.
+    def explode(*_args):
+        raise RuntimeError("rate limited")
+
+    bot = linked(WhatsApp(), ids=(OWN, OWN_LID))
+    bot._react_now = explode
+    inbox = Inbox("whatsapp")
+
+    bot.take(inbox, addressed())
+
+    assert [m.id for m in inbox.list_messages()] == ["AC8191"]
+    assert "rate limited" in (inbox.root / "log").read_text(encoding="utf-8")
+
+
+def test_reactions_can_be_turned_off(sdk, monkeypatch):
+    # A visible action in someone else's group needs a way to stop.
+    monkeypatch.setenv("CO_INBOX_REACT", "0")
+    reactions = []
+    bot = reacting_bot(reactions)
+
+    bot.take(Inbox("whatsapp"), addressed())
+
+    assert reactions == []
+
+
+def test_a_reaction_reaches_the_listener_through_the_spool(sdk):
+    # `react` is called from `reply`, which is a different process: WhatsApp
+    # allows one socket per device, so it queues like every other outbound.
+    built = {}
+    bot = WhatsApp()
+    bot._client = SimpleNamespace(
+        send_message=lambda to, message: SimpleNamespace(ID="3EB0REACT"),
+        build_reaction=lambda chat, sender, message_id, reaction: built.update(
+            chat=chat.User, sender=sender.User, message_id=message_id, reaction=reaction) or "built",
+    )
+    inbox = Inbox("whatsapp")
+    stop, thread = drain_once(bot, inbox)
+    try:
+        assert bot.react(f"1203630000000@{GROUP_SERVER}", "AC8191", ANSWERING,
+                         sender=f"{PEER}@{USER_SERVER}") == "3EB0REACT"
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert built == {"chat": "1203630000000", "sender": PEER,
+                     "message_id": "AC8191", "reaction": ANSWERING}
+
+
+def test_the_two_reactions_are_different(sdk):
+    # The pair is the point: one marker that never changes says nothing about
+    # whether anything is happening.
+    assert SEEN != ANSWERING
 
 
 def test_send_hands_the_text_to_the_listener_and_returns_its_id(sdk):
