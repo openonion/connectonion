@@ -26,7 +26,12 @@ from connectonion.inbox.store import Inbox
 from connectonion.inbox.whatsapp import GROUP_SERVER, USER_SERVER, WhatsApp, _context_info
 
 OWN = "12025550100"
+# The same account's LID. WhatsApp is migrating accounts to LID addressing, and
+# a LID shares no digits with the phone number it belongs to — which is the
+# whole reason matching one of them is not matching the account.
+OWN_LID = "132754033377342"
 PEER = "447700900123"
+LID_SERVER = "lid"
 
 
 @pytest.fixture(autouse=True)
@@ -80,8 +85,13 @@ def event(*, text="ship it", group=True, from_me=False, mentioned=(), participan
     )
 
 
-def linked(bot):
+def linked(bot, *, ids=(OWN,)):
+    """A connected bot, and the ids the account answers to.
+
+    Default is the phone number alone — what a pre-LID account looks like — so
+    the migrated case has to say so explicitly and cannot pass by accident."""
     bot._own_user = OWN
+    bot._own_ids = frozenset(ids)
     return bot
 
 
@@ -181,6 +191,66 @@ def test_real_protobuf_descriptors_are_read_on_whichever_major_version_is_instal
     message.options.java_package = "x"
 
     assert _context_info(message) is None
+
+
+def test_an_at_mention_of_our_lid_is_addressed_to_us(sdk):
+    # The exact shape from the 1.8.6 acceptance: WhatsApp had migrated the bot
+    # number to LID addressing, so the @mention the owner typed arrived as the
+    # account's LID. Matching only the phone number made it `mentioned: False`
+    # and the bot sat silent in the group while being addressed.
+    bot = linked(WhatsApp(), ids=(OWN, OWN_LID))
+
+    message = bot.to_message(event(text=f"@{OWN_LID} 测试",
+                                   mentioned=[f"{OWN_LID}@{LID_SERVER}"]))
+
+    assert message.mentioned is True
+
+
+def test_someone_elses_lid_is_not_us(sdk):
+    bot = linked(WhatsApp(), ids=(OWN, OWN_LID))
+
+    assert bot.to_message(event(text="@999888777666 ship it",
+                                mentioned=[f"999888777666@{LID_SERVER}"])).mentioned is False
+
+
+def test_a_reply_to_something_we_said_under_our_lid_counts(sdk):
+    bot = linked(WhatsApp(), ids=(OWN, OWN_LID))
+
+    assert bot.to_message(event(participant=f"{OWN_LID}@{LID_SERVER}")).mentioned is True
+
+
+def test_the_phone_number_still_addresses_a_migrated_account(sdk):
+    # Both ids stay live: groups migrate at different times, and older ones
+    # still carry the number.
+    bot = linked(WhatsApp(), ids=(OWN, OWN_LID))
+
+    assert bot.to_message(event(text=f"@{OWN} ship it",
+                                mentioned=[f"{OWN}@{USER_SERVER}"])).mentioned is True
+
+
+def test_the_identity_read_at_connect_carries_both_the_number_and_the_lid():
+    # `Device` has carried both fields all along; only JID was being read.
+    device = SimpleNamespace(
+        JID=SimpleNamespace(User=OWN, Server=USER_SERVER, Device=2),
+        LID=SimpleNamespace(User=OWN_LID, Server=LID_SERVER, Device=2),
+    )
+
+    phone, ids = WhatsApp._read_identity(SimpleNamespace(get_me=lambda: device))
+
+    assert phone == OWN
+    assert ids == frozenset({OWN, OWN_LID})
+
+
+def test_an_account_with_no_lid_yet_is_still_itself():
+    device = SimpleNamespace(
+        JID=SimpleNamespace(User=OWN, Server=USER_SERVER, Device=2),
+        LID=SimpleNamespace(User="", Server="", Device=0),
+    )
+
+    phone, ids = WhatsApp._read_identity(SimpleNamespace(get_me=lambda: device))
+
+    assert phone == OWN
+    assert ids == frozenset({OWN})
 
 
 # ---- setup -----------------------------------------------------------------

@@ -326,6 +326,21 @@ def test_a_message_sent_while_the_listener_is_down_arrives_exactly_once(bot, dri
 
 
 def test_in_a_group_only_a_message_naming_the_number_is_mentioned(bot, driver):
+    """KNOWN GAP: this sends the *text* `@<number>`, not a real mention.
+
+    `_addressed_in_group` has three paths — a `mentionedJID` entry, a reply to
+    us, and our id written in the text — and a message composed by `send`
+    exercises only the third. In September 2026 that let a real bug through:
+    WhatsApp had migrated the bot account to LID addressing, a mention tapped
+    out of the app's picker arrived as the account's LID rather than its phone
+    number, and it was recorded `mentioned: False` while this test stayed green.
+
+    Producing a genuine `mentionedJID` means picking the name from WhatsApp's
+    own mention picker, which is the manual step this suite exists to remove, so
+    the first path is covered in `tests/unit/test_inbox_whatsapp.py` against the
+    real shape instead. Read a pass here as "the text path works", not as "being
+    @-mentioned works".
+    """
     group = os.environ.get("WHATSAPP_E2E_GROUP", "").strip()
     if not group:
         pytest.skip("Set WHATSAPP_E2E_GROUP to a group JID containing both numbers")
