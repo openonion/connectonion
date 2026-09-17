@@ -70,6 +70,38 @@ def _send_updates(invited) -> str:
     return 'all' if invited else 'none'
 
 
+def _kept_attendees(existing, attendees) -> list:
+    """The new attendee list, carrying over what Google already knows.
+
+    The list of addresses is authoritative for *who* is on the event. What it
+    must not decide is what those people already said.
+
+    Rebuilding every entry as a bare `{'email': …}` dropped `responseStatus`,
+    and Google reads its absence as `needsAction` — so adding one person
+    un-answered everybody. Since `sendUpdates='all'` (#1548) that also emails a
+    fresh invitation to people who had already accepted, which is the version
+    anyone notices. The whole entry is reused, not just the status: `organizer`,
+    `optional`, `comment` and `displayName` live on it too.
+
+    Addresses are matched case-insensitively, because a mail system considers
+    Aaron@Example.com and aaron@example.com the same person and re-typing the
+    address with different capitals must not reset them.
+    """
+    known = {}
+    for entry in existing or []:
+        email = (entry.get('email') or '').strip().lower()
+        if email:
+            known[email] = entry
+
+    result = []
+    for email in _addresses(attendees):
+        entry = known.get(email.lower())
+        # The address as typed this time, so a corrected display form sticks;
+        # everything else Google told us about them is carried over.
+        result.append({**entry, 'email': email} if entry else {'email': email})
+    return result
+
+
 def _invited_line(invited) -> str:
     """Who was told, so the operator can check it from the output.
 
@@ -496,8 +528,7 @@ class GoogleCalendar:
                 'timeZone': 'UTC',
             }
         if attendees:
-            attendee_list = [{'email': email} for email in _addresses(attendees)]
-            event['attendees'] = attendee_list
+            event['attendees'] = _kept_attendees(event.get('attendees'), attendees)
 
         # 'all' unconditionally, unlike create: the people to tell are the ones
         # already on the event, and this call does not know who they are. An
