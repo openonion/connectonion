@@ -315,9 +315,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.6a4
+## Current Version: 1.8.6a5
 
 ### Version History
+- 1.8.6a5 (**alpha: you can find a conversation and read it back.** `chats`
+  lists what the inbox has seen — id, group or direct, how many messages, how
+  many were for the bot, who spoke last — so the chat id that `send` and `reply`
+  both need finally comes from a command rather than from grepping a log. `log`
+  takes `--chat`, `--sender`, `--since` and `-n`, and keeps the messages that
+  never named the bot, because `mention_only` decides when it speaks and not
+  what it may read back. The gap between a conversation's two counts is the
+  context there is to ask for.)
 - 1.8.6a4 (**alpha: the bot knows who is talking, what they mean, and when it
   has stopped listening.** A sender arrives with a name instead of an opaque
   `…@lid`, read from contacts already on disk. `--context N` hands a consumer
