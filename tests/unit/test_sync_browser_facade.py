@@ -83,6 +83,8 @@ def test_public_surface_and_signatures_stay_identical():
         "engine_status",   # engine resolution arrived with the daemon
         "list_pages",      # pages the site opened for itself
         "switch_page",     # and reaching one of them
+        "requests",        # the network log; the oracle sees no traffic at all
+        "request",
     }
 
     assert set(public) == set(legacy) | ASYNC_ONLY
