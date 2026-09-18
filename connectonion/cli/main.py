@@ -1234,13 +1234,13 @@ def gmail_inbox(
 ):
     """List recent inbox emails, numbered for read/reply."""
     if json_output or cursor:
-        if since or until:
-            # Better a refusal than a window silently dropped: the envelope path
-            # pages through a Gmail query and does not take one yet.
-            raise typer.BadParameter("--since/--until do not work with --json yet; "
-                                     "run without --json, or see issue #1521")
+        # The window composes by narrowing the query the envelope already pages
+        # through, so the cursor, the cap and `complete` keep the meanings they
+        # had: a cursor is bound to its query, and a different window is a
+        # different query.
         from .commands.gmail_mailbox_commands import handle_mailbox
-        return handle_mailbox("inbox", json_output=json_output, last=last, unread=unread, cursor=cursor)
+        return handle_mailbox("inbox", json_output=json_output, last=last, unread=unread,
+                              cursor=cursor, since=since, until=until)
     from .commands.gmail_commands import handle_gmail_inbox
     handle_gmail_inbox(last=last, unread=unread, since=since, until=until)
 

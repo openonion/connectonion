@@ -118,6 +118,13 @@ class Message:
     thread: Optional[str] = None
     mentioned: bool = True
     raw: Optional[dict] = None
+    # What the platform actually sent. "text" for anything a consumer can read
+    # as words; otherwise the platform's own name for it — image, sticker,
+    # audio, document. Without this a photo and an empty message are the same
+    # input, so a consumer either answers noise or ignores real messages, and
+    # cannot say "I can't read images yet" because it does not know that it is
+    # one.
+    kind: str = "text"
 
     def to_dict(self, *, raw: bool = False) -> dict:
         record = {
@@ -126,6 +133,7 @@ class Message:
             "thread": self.thread,
             "sender": self.sender,
             "text": self.text,
+            "kind": self.kind,
             "mentioned": self.mentioned,
             "at": self.at,
         }
@@ -151,6 +159,9 @@ class Message:
             thread=record.get("thread"),
             mentioned=bool(record.get("mentioned", True)),
             raw=record.get("raw"),
+            # A queue file written before this field existed is text: that is
+            # what the listener could deliver at the time.
+            kind=str(record.get("kind") or "text"),
         )
 
 

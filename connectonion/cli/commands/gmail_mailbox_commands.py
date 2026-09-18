@@ -15,6 +15,37 @@ from ...useful_tools.gmail_mailbox import MailboxError
 from .gmail_listings import ListingError, save_listing
 
 
+def _window_clause(since, until) -> str:
+    """A date window as the two terms Gmail's own search already understands.
+
+    Composing this way rather than paging a window ourselves is what keeps the
+    envelope's promises intact: the cursor is derived from the query, so a
+    different window is a different query and an old cursor stops matching on
+    its own; `complete` still comes from Gmail's page token; and the cap still
+    means what it meant. Nothing here needed a second notion of completeness.
+
+    `after:`/`before:` take epoch seconds and bound the window the same way
+    `Gmail.list_between` already does for the text listing.
+    """
+    if not since and not until:
+        return ''
+    from .mail_window import parse_since, parse_until
+
+    try:
+        start = parse_since(since) if since else None
+        end = parse_until(until) if until else None
+    except ValueError as error:
+        raise MailboxError('invalid_window', str(error)) from None
+    if start and end and start >= end:
+        raise MailboxError('invalid_window', '--since has to be earlier than --until')
+    terms = []
+    if start:
+        terms.append(f'after:{int(start.timestamp())}')
+    if end:
+        terms.append(f'before:{int(end.timestamp())}')
+    return ' ' + ' '.join(terms)
+
+
 def _perform(client, operation: str, args: dict) -> tuple[dict, str]:
     from . import gmail_commands as gm
     if operation in {'inbox', 'sent', 'search', 'unanswered'}:
@@ -23,6 +54,7 @@ def _perform(client, operation: str, args: dict) -> tuple[dict, str]:
         else:
             query = {'inbox': 'is:unread in:inbox' if args.pop('unread', False) else 'in:inbox',
                      'sent': 'in:sent', 'search': args.pop('query', '')}[operation]
+            query = (query + _window_clause(args.pop('since', None), args.pop('until', None))).strip()
             data = client.message_page(query, **args)
         data['listing_id'] = save_listing(gm.INBOX_CACHE.parent / 'gmail-listings', client.get_account_email(),
                                           'messages', [row['id'] for row in data['items']])
