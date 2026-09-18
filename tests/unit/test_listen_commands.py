@@ -146,6 +146,106 @@ def test_reply_finds_the_chat_from_the_log_and_forgets_the_taken_message(box, fa
     assert box.already_replied("om_q")
 
 
+class TestFindingAConversation:
+    """The chat id is what send and reply need, and nothing printed it."""
+
+    @staticmethod
+    def _traffic(box):
+        deliver(box, i="g1", chat="oc_ops", text="deploy is red")
+        deliver(box, i="g2", chat="oc_ops", text="@bot look at it")
+        box.deliver(Message(id="g3", chat="oc_ops", sender="on_y", sender_name="Eric Fu",
+                            text="never mind", at="2026-09-02T11:00:00Z",
+                            thread=None, mentioned=False))
+        deliver(box, i="d1", chat="on_x", text="hello")
+
+    def test_chats_lists_every_conversation_with_what_tells_them_apart(self, box, fake, capsys):
+        self._traffic(box)
+
+        listen_commands.handle_chats("feishu")
+
+        rows = [line.split("\t") for line in capsys.readouterr().out.splitlines()
+                if "\t" in line]
+        by_chat = {row[0]: row for row in rows}
+        assert set(by_chat) == {"oc_ops", "on_x"}
+        assert by_chat["oc_ops"][2] == "3"          # messages
+        assert by_chat["oc_ops"][5] == "Eric Fu"    # the last speaker, by name
+
+    def test_the_rows_are_really_tab_separated(self, box, fake, capsys, monkeypatch):
+        """`cut -f1` must give the chat id, which is the point of this verb.
+
+        Rich expands \\t into spaces, so a row printed through it looks right on
+        a terminal and cannot be cut. The contact listing learned this the same
+        way; a row pinned by a width is the only way it stays true.
+        """
+        from rich.console import Console
+
+        monkeypatch.setattr(listen_commands, "console", Console(force_terminal=False, width=200))
+        self._traffic(box)
+
+        listen_commands.handle_chats("feishu")
+
+        first = capsys.readouterr().out.splitlines()[0]
+        assert first.split("\t")[0] == "on_x"
+        assert len(first.split("\t")) == 7
+
+    def test_an_empty_inbox_says_so_instead_of_printing_nothing(self, box, fake, capsys):
+        listen_commands.handle_chats("feishu")
+
+        assert "no conversations yet" in capsys.readouterr().err
+
+    def test_log_narrows_to_one_conversation(self, box, fake, capsys):
+        self._traffic(box)
+
+        listen_commands.handle_log("feishu", chat="oc_ops")
+
+        chats = {json.loads(line)["chat"] for line in capsys.readouterr().out.splitlines()}
+        assert chats == {"oc_ops"}
+
+    def test_log_keeps_messages_nobody_addressed_to_the_bot(self, box, fake, capsys):
+        # The whole point of asking for a conversation: `mention_only` decides
+        # when the bot speaks, not what it may read back.
+        self._traffic(box)
+
+        listen_commands.handle_log("feishu", chat="oc_ops")
+
+        texts = [json.loads(line)["text"] for line in capsys.readouterr().out.splitlines()]
+        assert "deploy is red" in texts and "never mind" in texts
+
+    def test_a_sender_can_be_named_by_id_or_by_name(self, box, fake, capsys):
+        self._traffic(box)
+
+        listen_commands.handle_log("feishu", sender="Eric Fu")
+        by_name = capsys.readouterr().out.splitlines()
+        listen_commands.handle_log("feishu", sender="on_y")
+        by_id = capsys.readouterr().out.splitlines()
+
+        assert len(by_name) == 1 and by_name == by_id
+
+    def test_the_cap_keeps_the_most_recent(self, box, fake, capsys):
+        # A conversation is read backwards from its last turn. Getting this end
+        # wrong is what #1571 was.
+        self._traffic(box)
+
+        listen_commands.handle_log("feishu", chat="oc_ops", last=1)
+
+        assert json.loads(capsys.readouterr().out)["text"] == "never mind"
+
+    def test_an_unreadable_window_is_a_usage_error_not_a_traceback(self, box, fake, capsys):
+        with pytest.raises(SystemExit) as exit_:
+            listen_commands.handle_log("feishu", since="last week")
+
+        assert exit_.value.code == 2
+        assert "30d" in capsys.readouterr().err
+
+    def test_an_unfiltered_log_is_what_it_always_was(self, box, fake, capsys):
+        # No filter means the tail, including the `handled by` preamble.
+        self._traffic(box)
+
+        listen_commands.handle_log("feishu")
+
+        assert len(capsys.readouterr().out.splitlines()) >= 4
+
+
 class TestTheConversationAroundAMessage:
     """A group asks things across several messages; a consumer got only the last."""
 
