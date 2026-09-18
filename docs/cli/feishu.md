@@ -109,9 +109,12 @@ The file in `new/` and the line in `received.jsonl` are the same bytes:
 
 ```json
 {"id":"om_9f8e","chat":"oc_a1b2","thread":null,"sender":"on_7c6d",
- "text":"@OpsAgent look at today's failed deploys","kind":"text","quoted":null,
- "mentioned":true,"at":"2026-09-02T10:31:07Z"}
+ "sender_name":"Eric Fu","text":"@OpsAgent look at today's failed deploys",
+ "kind":"text","quoted":null,"mentioned":true,"at":"2026-09-02T10:31:07Z"}
 ```
+
+`sender_name` is who that id belongs to, empty when the platform has no name for
+them. `sender` is still the key: a name is not unique and can change.
 
 `quoted` carries the message a reply is answering — `{"id", "sender", "text",
 "kind", "from_me"}` — and is `null` otherwise. `from_me` separates a reply to

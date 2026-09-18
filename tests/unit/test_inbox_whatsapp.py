@@ -140,7 +140,7 @@ def test_a_group_mention_becomes_a_message_addressed_to_us(sdk):
 
     assert message.to_dict() == {
         "id": "3EB0A1", "chat": f"1203630000000@{GROUP_SERVER}", "thread": None,
-        "sender": f"{PEER}@{USER_SERVER}", "text": f"@{OWN} ship it",
+        "sender": f"{PEER}@{USER_SERVER}", "sender_name": "", "text": f"@{OWN} ship it",
         "kind": "text", "quoted": None, "mentioned": True, "at": "2025-09-02T10:17:47Z",
     }
 
@@ -538,6 +538,90 @@ def test_a_failure_we_do_not_recognise_keeps_its_own_words(sdk):
         thread.join(timeout=5)
 
     assert "close 1006" in str(failed.value)
+
+
+def contacts_db(path, rows=(), lid_map=()):
+    """A whatsmeow contacts store, in the two tables the names actually live in."""
+    import sqlite3
+
+    db = sqlite3.connect(path)
+    db.execute("create table whatsmeow_contacts (our_jid text, their_jid text, "
+               "first_name text, full_name text, push_name text, business_name text, "
+               "redacted_phone text)")
+    db.execute("create table whatsmeow_lid_map (lid text, pn text)")
+    db.executemany("insert into whatsmeow_contacts values ('me', ?, ?, ?, ?, ?, null)", rows)
+    db.executemany("insert into whatsmeow_lid_map values (?, ?)", lid_map)
+    db.commit()
+    db.close()
+
+
+def test_a_sender_arrives_with_a_name_a_person_would_recognise(sdk, tmp_path, monkeypatch):
+    # `126121882435737@lid` tells nobody who spoke, and every consumer was
+    # otherwise going to build the same cache.
+    session = tmp_path / "session.db"
+    contacts_db(session, rows=[("61493527594@s.whatsapp.net", "Eric", "Eric Fu", None, None)])
+    monkeypatch.setenv("WHATSAPP_SESSION", str(session))
+
+    assert WhatsApp().name_of("61493527594@s.whatsapp.net") == "Eric Fu"
+
+
+def test_a_lid_sender_is_named_through_its_own_contact_row(sdk, tmp_path, monkeypatch):
+    # Most of them have one: 857 of the 2020 rows on a real store are @lid.
+    session = tmp_path / "session.db"
+    contacts_db(session, rows=[("126121882435737@lid", None, None, "aaronplus1996", None)])
+    monkeypatch.setenv("WHATSAPP_SESSION", str(session))
+
+    assert WhatsApp().name_of("126121882435737@lid") == "aaronplus1996"
+
+
+def test_a_lid_with_no_row_is_named_through_the_number_it_belongs_to(sdk, tmp_path, monkeypatch):
+    session = tmp_path / "session.db"
+    contacts_db(session,
+                rows=[("61493527594@s.whatsapp.net", "Eric", "Eric Fu", None, None)],
+                lid_map=[("76978749202493", "61493527594")])
+    monkeypatch.setenv("WHATSAPP_SESSION", str(session))
+
+    assert WhatsApp().name_of("76978749202493@lid") == "Eric Fu"
+
+
+def test_a_stranger_has_no_name_rather_than_a_wrong_one(sdk, tmp_path, monkeypatch):
+    session = tmp_path / "session.db"
+    contacts_db(session)
+    monkeypatch.setenv("WHATSAPP_SESSION", str(session))
+
+    assert WhatsApp().name_of("447700900123@s.whatsapp.net") == ""
+
+
+def test_a_name_lookup_never_costs_the_message(sdk, tmp_path, monkeypatch):
+    # A session file that is not whatsmeow's, mid-write, or absent. The message
+    # is the thing that matters; a missing name is a missing name.
+    broken = tmp_path / "session.db"
+    broken.write_bytes(b"not a database")
+    monkeypatch.setenv("WHATSAPP_SESSION", str(broken))
+
+    assert WhatsApp().name_of("447700900123@s.whatsapp.net") == ""
+    monkeypatch.setenv("WHATSAPP_SESSION", str(tmp_path / "absent.db"))
+    assert WhatsApp().name_of("447700900123@s.whatsapp.net") == ""
+
+
+def test_the_full_name_wins_over_the_push_name(sdk, tmp_path, monkeypatch):
+    # A push name is whatever somebody typed into their own phone; a full name
+    # is what this account recorded about them.
+    session = tmp_path / "session.db"
+    contacts_db(session, rows=[("61434145075@s.whatsapp.net", "", "John Smith", "jsmith99", None)])
+    monkeypatch.setenv("WHATSAPP_SESSION", str(session))
+
+    assert WhatsApp().name_of("61434145075@s.whatsapp.net") == "John Smith"
+
+
+def test_the_string_None_is_not_a_name(sdk, tmp_path, monkeypatch):
+    # whatsmeow writes the four-character text "None" into these columns, which
+    # a naive truthiness check reports as somebody's name.
+    session = tmp_path / "session.db"
+    contacts_db(session, rows=[("1@s.whatsapp.net", "None", "None", "Real Name", "None")])
+    monkeypatch.setenv("WHATSAPP_SESSION", str(session))
+
+    assert WhatsApp().name_of("1@s.whatsapp.net") == "Real Name"
 
 
 class Socket:

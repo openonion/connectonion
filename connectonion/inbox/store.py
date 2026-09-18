@@ -131,6 +131,11 @@ class Message:
     # different events, and a consumer implementing "answer when addressed"
     # cannot tell them apart without it. None when this is not a reply.
     quoted: Optional[dict] = None
+    # Who the sender is, in the words they are known by — "Eric Fu" rather than
+    # `126121882435737@lid`. Empty when the platform has no name for them, which
+    # is different from an empty name: an id nobody can read is the state this
+    # replaces, and every consumer was otherwise building the same lookup.
+    sender_name: str = ""
 
     def to_dict(self, *, raw: bool = False) -> dict:
         record = {
@@ -138,6 +143,7 @@ class Message:
             "chat": self.chat,
             "thread": self.thread,
             "sender": self.sender,
+            "sender_name": self.sender_name,
             "text": self.text,
             "kind": self.kind,
             "quoted": self.quoted,
@@ -170,6 +176,7 @@ class Message:
             # what the listener could deliver at the time.
             kind=str(record.get("kind") or "text"),
             quoted=record.get("quoted") if isinstance(record.get("quoted"), dict) else None,
+            sender_name=str(record.get("sender_name") or ""),
         )
 
 
@@ -452,6 +459,39 @@ class Inbox:
         except FileNotFoundError:
             return []
         return [line for line in lines if line.strip()][-count:]
+
+    def context(self, chat: str, count: int, before: Optional[str] = None) -> list[dict]:
+        """The conversation around a message: what was said in `chat` before it.
+
+        A group asks things across several messages — "the price sheet is
+        wrong", "it's missing the cleaning column", "@bot recompute" — and a
+        consumer handed only the third cannot act on it. `mention_only` decides
+        *when the bot speaks*; without this it was also deciding *what the bot
+        is allowed to know*, and those are not the same switch.
+
+        Our own replies are included, read from `sent.jsonl` and merged by time.
+        A transcript in which the bot's answers are missing reads as though it
+        never responded, and a model given that will apologise for ignoring
+        someone it already helped.
+
+        Oldest first, at most `count`, and never the message being handed over.
+        """
+        if count <= 0:
+            return []
+        turns = []
+        for record in self._records(self.received):
+            if record.get("chat") == chat and record.get("id") != before:
+                turns.append({"at": record.get("at", ""), "from": "them",
+                              "sender": record.get("sender", ""),
+                              "text": record.get("text", ""),
+                              "kind": record.get("kind") or "text"})
+        for record in self._records(self.sent):
+            if record.get("chat") == chat and record.get("ok", True):
+                turns.append({"at": record.get("at", ""), "from": "us",
+                              "sender": "", "text": record.get("text", ""),
+                              "kind": "text"})
+        turns.sort(key=lambda turn: str(turn.get("at", "")))
+        return turns[max(0, len(turns) - count):]
 
     def recent_records(self, path: Path, count: int = 5) -> list[dict]:
         """The last `count` well-formed records from a JSONL file. A missing

@@ -75,7 +75,7 @@ def test_receive_prints_one_json_line_and_takes_the_message(box, fake, capsys):
     listen_commands.handle_receive("feishu", timeout=0, start=False)
 
     out = capsys.readouterr().out
-    assert json.loads(out) == {"id": "om_1", "chat": "oc_a", "thread": None, "sender": "on_x",
+    assert json.loads(out) == {"id": "om_1", "chat": "oc_a", "thread": None, "sender": "on_x", "sender_name": "",
                                "text": "hi", "kind": "text", "quoted": None, "mentioned": True, "at": "2026-09-02T10:00:00Z"}
     assert box.unread() == []
 
@@ -144,6 +144,93 @@ def test_reply_finds_the_chat_from_the_log_and_forgets_the_taken_message(box, fa
     assert capsys.readouterr().out.strip() == "om_sent1"
     assert list(box.cur.iterdir()) == []
     assert box.already_replied("om_q")
+
+
+class TestTheConversationAroundAMessage:
+    """A group asks things across several messages; a consumer got only the last."""
+
+    @staticmethod
+    def _conversation(box, fake, capsys=None):
+        """Three earlier turns and our answer, then the message that asks for it.
+
+        The earlier ones are taken off the queue first, because `receive`
+        returns the oldest and the point of the test is the *last* message
+        arriving with the conversation behind it.
+        """
+        deliver(box, i="om_1", chat="oc_ops", text="the price sheet is wrong")
+        deliver(box, i="om_2", chat="oc_ops", text="it's missing the cleaning column")
+        deliver(box, i="om_other", chat="oc_else", text="unrelated chatter")
+        for _ in range(3):
+            listen_commands.handle_receive("feishu", timeout=0, start=False)
+        box.record_sent(chat="oc_ops", text="looking now", provider_id="om_s1", by="reply")
+        deliver(box, i="om_3", chat="oc_ops", text="@bot recompute")
+        if capsys is not None:
+            capsys.readouterr()
+
+    def test_without_the_flag_the_line_is_what_it_always_was(self, box, fake, capsys):
+        # Opt-in: anyone parsing this today must see the same bytes.
+        self._conversation(box, fake, capsys)
+
+        listen_commands.handle_receive("feishu", timeout=0, start=False)
+
+        assert "context" not in json.loads(capsys.readouterr().out)
+
+    def test_the_turns_before_it_come_along(self, box, fake, capsys):
+        self._conversation(box, fake, capsys)
+
+        listen_commands.handle_receive("feishu", timeout=0, start=False, context=10)
+
+        record = json.loads(capsys.readouterr().out)
+        assert [turn["text"] for turn in record["context"]] == [
+            "the price sheet is wrong", "it's missing the cleaning column", "looking now"]
+
+    def test_our_own_replies_are_in_it(self, box, fake, capsys):
+        # A transcript with the bot's answers missing reads as though it never
+        # responded, and a model given that apologises for ignoring someone it
+        # already helped.
+        self._conversation(box, fake, capsys)
+
+        listen_commands.handle_receive("feishu", timeout=0, start=False, context=10)
+
+        turns = json.loads(capsys.readouterr().out)["context"]
+        assert [turn["from"] for turn in turns] == ["them", "them", "us"]
+
+    def test_another_chat_does_not_leak_in(self, box, fake, capsys):
+        self._conversation(box, fake, capsys)
+
+        listen_commands.handle_receive("feishu", timeout=0, start=False, context=10)
+
+        texts = [turn["text"] for turn in json.loads(capsys.readouterr().out)["context"]]
+        assert "unrelated chatter" not in texts
+
+    def test_the_message_itself_is_not_repeated_in_its_own_context(self, box, fake, capsys):
+        self._conversation(box, fake, capsys)
+
+        listen_commands.handle_receive("feishu", timeout=0, start=False, context=10)
+
+        record = json.loads(capsys.readouterr().out)
+        assert record["text"] not in [turn["text"] for turn in record["context"]]
+
+    def test_the_count_keeps_the_most_recent_turns(self, box, fake, capsys):
+        # The cap has to fall on the older end: a conversation is understood
+        # from its last few turns, not its first.
+        self._conversation(box, fake, capsys)
+
+        listen_commands.handle_receive("feishu", timeout=0, start=False, context=1)
+
+        turns = json.loads(capsys.readouterr().out)["context"]
+        assert [turn["text"] for turn in turns] == ["looking now"]
+
+    def test_consume_hands_the_context_to_the_command(self, box, fake, monkeypatch):
+        monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
+        self._conversation(box, fake)
+        command = [sys.executable, "-c",
+                   "import json,sys; m=json.load(sys.stdin); "
+                   "print(len(m.get('context', [])), 'turns before it')"]
+
+        listen_commands.handle_consume("feishu", command, once=True, context=10)
+
+        assert fake.sent[-1][1] == "3 turns before it"
 
 
 def test_a_reply_marks_the_message_as_being_answered_before_it_sends(box, fake, capsys):

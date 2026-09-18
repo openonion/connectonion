@@ -548,6 +548,59 @@ class WhatsApp:
         except Exception as exc:
             inbox.log(f"disconnect after stopping failed: {exc}")
 
+    def name_of(self, jid: str) -> str:
+        """What this sender is called, from the contacts whatsmeow already synced.
+
+        `126121882435737@lid` tells nobody who spoke, and every consumer was
+        otherwise going to build the same cache — we already maintain one for
+        Lark, for the same reason, and it is a recurring source of "who said
+        this?".
+
+        Entirely local: `whatsmeow_contacts` holds ~2000 rows after history
+        sync, keyed by both `@s.whatsapp.net` and `@lid`, and
+        `whatsmeow_lid_map` bridges the two when only one side is present. No
+        API call, so a name costs a point lookup on a file we already have open
+        rather than a round trip on the path every message takes.
+
+        Read per message rather than cached: names change, and a stale name is
+        worse than an opaque id because it reads as authoritative. SQLite point
+        lookups at this size are not worth a staleness bug.
+        """
+        user = _user_of(jid)
+        if not user or not self.session_path.exists():
+            return ""
+        import sqlite3
+
+        try:
+            with sqlite3.connect(f"file:{self.session_path}?mode=ro", uri=True) as db:
+                name = self._name_row(db, user)
+                if name:
+                    return name
+                # A LID with no contact row of its own: the phone number it
+                # belongs to may have one.
+                for (other,) in db.execute(
+                        "select pn from whatsmeow_lid_map where lid = ? limit 1", (user,)):
+                    return self._name_row(db, str(other))
+                for (other,) in db.execute(
+                        "select lid from whatsmeow_lid_map where pn = ? limit 1", (user,)):
+                    return self._name_row(db, str(other))
+        except sqlite3.Error:
+            # Not whatsmeow's database, or mid-write. A missing name is a
+            # missing name; it must never cost the message.
+            return ""
+        return ""
+
+    @staticmethod
+    def _name_row(db, user: str) -> str:
+        """The best name on a contact row: the one a person would recognise."""
+        for (full, first, push, business) in db.execute(
+                "select full_name, first_name, push_name, business_name "
+                "from whatsmeow_contacts where their_jid like ? limit 1", (f"{user}@%",)):
+            for candidate in (full, business, first, push):
+                if candidate and str(candidate).strip() and str(candidate) != "None":
+                    return str(candidate).strip()
+        return ""
+
     @staticmethod
     def _read_identity(client) -> tuple:
         """Our phone number, and every id that means us.
@@ -609,6 +662,7 @@ class WhatsApp:
             text=text,
             kind=kind,
             quoted=quoted,
+            sender_name=self.name_of(sender),
             mentioned=mentioned,
             at=_iso(getattr(event.Info, "Timestamp", None)),
             thread=None,
