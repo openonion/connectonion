@@ -56,7 +56,7 @@
   .brand { display: flex; align-items: baseline; gap: 10px; color: var(--ink); }
   .brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--moss); transform: translateY(-1px); }
   .brand .name { font: 500 22px/1 var(--display); letter-spacing: 0.01em; }
-  .brand .sub { font-size: 12px; color: var(--ink-3); }
+  .brand .sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink-3); }
   .search { position: relative; }
   .search input { width: 100%; padding: 9px 12px 9px 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font: 14px var(--body); }
   .search input::placeholder { color: var(--ink-3); }
@@ -73,7 +73,7 @@
   .rail .foot code { font-size: 11px; color: var(--ink-2); }
 
   /* ---- main ---- */
-  main { padding: 44px 56px 96px; max-width: 900px; }
+  main { min-width: 0; width: 100%; overflow-wrap: anywhere; padding: 44px 56px 96px; max-width: 900px; }
   .eyebrow { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--moss); margin-bottom: 10px; display: flex; gap: 10px; align-items: center; }
   .eyebrow .sep { color: var(--ink-3); letter-spacing: 0; }
   .eyebrow .when { color: var(--ink-3); letter-spacing: 0.02em; text-transform: none; font-variant-numeric: tabular-nums; }
@@ -108,22 +108,24 @@
   .note h2 { font: 500 21px/1.25 var(--display); margin: 1.7em 0 0.5em; }
   .note h3 { font: 500 17.5px/1.3 var(--display); margin: 1.4em 0 0.4em; }
   .note ul, .note ol { padding-left: 1.3em; margin: 0 0 1em; }
+  .note li > p { margin-bottom: 0.25em; }
+  .note li > ul, .note li > ol { margin-bottom: 0.5em; }
   .note li { margin: 0.25em 0; }
   .note li::marker { color: var(--ink-3); }
   .note pre { background: var(--paper-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
   .note code { background: var(--paper-2); padding: 1px 5px; border-radius: 4px; }
-  .note pre code { background: none; padding: 0; }
+  .note pre code { background: none; padding: 0; font: inherit; white-space: pre; overflow-wrap: normal; }
   .note blockquote { margin: 0 0 1em; padding: 4px 16px; border-left: 3px solid var(--moss-line); color: var(--ink-2); }
   .note table { border-collapse: collapse; margin: 0 0 1.2em; font-size: 15px; }
   .note th, .note td { border: 1px solid var(--line); padding: 6px 12px; text-align: left; vertical-align: top; }
   .note th { background: var(--paper-2); font-weight: 500; }
   .note hr { border: 0; border-top: 1px solid var(--line); margin: 1.6em 0; }
   .note strong { font-weight: 600; }
-  .aside { max-width: 66ch; margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 96px 1fr; gap: 10px 18px; font-size: 14px; }
+  .aside { max-width: 66ch; margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px 18px; font-size: 14px; }
   .aside .k { font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); padding-top: 3px; }
   .aside .related a { display: inline-block; margin: 0 14px 6px 0; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chip { font: 12px var(--mono); color: var(--ink-2); background: var(--paper-2); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; white-space: nowrap; }
+  .chip { font: 12px var(--mono); color: var(--ink-2); background: var(--paper-2); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   .chip .d { color: var(--ink-3); margin-left: 6px; }
 
   /* lists of pages, search */
@@ -138,17 +140,39 @@
   mark { background: var(--mark); color: inherit; padding: 0 2px; border-radius: 2px; }
   .empty { color: var(--ink-3); padding: 34px 0; font-size: 15px; max-width: 60ch; }
 
+  .table-scroll { max-width: 100%; overflow-x: auto; margin-bottom: 1.2em; }
+  .table-scroll table { margin-bottom: 0; min-width: 100%; }
+  .table-scroll th, .table-scroll td { min-width: 120px; }
+  .note pre { max-width: 100%; tab-size: 4; }
+  .eyebrow { flex-wrap: wrap; }
+  .note :is(h2,h3,h4,h5,h6) { scroll-margin-top: 24px; }
+  .nav-toggle { display: none; }
+  .skip { position: absolute; left: 16px; top: -80px; z-index: 2; background: var(--paper); padding: 10px; }
+  .skip:focus { top: 8px; }
+  :focus-visible { outline: 2px solid var(--moss); outline-offset: 3px; }
   @media (max-width: 820px) {
-    .app { grid-template-columns: 1fr; }
-    .rail { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+    .app { grid-template-columns: 1fr; align-content: start; }
+    .rail { padding: 18px 22px; gap: 14px; position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
     main { padding: 28px 22px 64px; }
     .toc { columns: 1; }
+    .rail .foot { display: none; }
+    .nav-toggle { display: block; padding: 9px 12px; text-align: left; color: var(--moss-ink); background: var(--moss-soft); border: 1px solid var(--moss-line); border-radius: 8px; font: 14px var(--body); }
+    #nav { display: none; }
+    .rail[data-open="true"] #nav { display: flex; }
+    nav a { min-height: 44px; align-items: center; }
+    .search input { font-size: 16px; }
+    h1 { font-size: 30px; }
+    h2.section { display: block; }
+    h2.section .n { display: block; text-align: left; margin-top: 6px; line-height: 1.5; }
+    .maint { padding: 18px; }
+    .maint .row { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
     .aside { grid-template-columns: 1fr; }
   }
   @media (prefers-reduced-motion: no-preference) { a { transition: color 120ms ease; } }
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <div class="app">
   <aside class="rail">
     <a class="brand" href="#"><span class="dot"></span><span class="name">Wiki</span><span class="sub" id="brand-sub"></span></a>
@@ -156,10 +180,11 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
       <input id="q" type="search" placeholder="Search the notebook" autocomplete="off" aria-label="Search the notebook">
     </div>
+    <button class="nav-toggle" aria-expanded="false" aria-controls="nav" type="button">Browse notebook</button>
     <nav id="nav" aria-label="Categories"></nav>
     <div class="foot" id="foot"></div>
   </aside>
-  <main id="main"></main>
+  <main id="main" tabindex="-1"></main>
 </div>
 <script>
 "use strict";
@@ -215,7 +240,7 @@ function safeHref(from, raw) {
   if (href.startsWith("#")) return { href: "#r=" + encodeURIComponent(from) + "&h=" + encodeURIComponent(href.slice(1)), external: false };
   if (/\.md(#.*)?$/i.test(href) && !/^[a-z]+:/i.test(href)) {
     const target = resolve(from, href.split("#")[0]);
-    if (byPath(target)) return { href: "#r=" + encodeURIComponent(target), external: false };
+    if (byPath(target)) return { href: "#r=" + encodeURIComponent(target) + (href.includes("#") ? "&h=" + encodeURIComponent(href.split("#")[1]) : ""), external: false };
   }
   return null;
 }
@@ -238,6 +263,35 @@ function inline(text, from) {
   s = s.replace(/\u0001(\d+)\u0001/g, (m, i) => "<code>" + codes[i] + "</code>");
   return s;
 }
+// Each item's indented body is parsed recursively, preserving nested steps.
+function markdownList(lines, start, from) {
+  const marker = /^( *)([-*+]|\d+[.)])\s+(.*)$/;
+  const first = marker.exec(lines[start]);
+  const indent = first[1].length, ordered = /^\d/.test(first[2]);
+  const tag = ordered ? "ol" : "ul", items = [];
+  let i = start;
+  while (i < lines.length) {
+    const item = marker.exec(lines[i]);
+    if (!item || item[1].length !== indent || /^\d/.test(item[2]) !== ordered) break;
+    const contentIndent = lines[i].length - item[3].length;
+    const body = [item[3]];
+    i++;
+    while (i < lines.length) {
+      if (!lines[i].trim()) {
+        let next = i + 1;
+        while (next < lines.length && !lines[next].trim()) next++;
+        if (next === lines.length || lines[next].search(/\S/) <= indent) break;
+        body.push(""); i++; continue;
+      }
+      const spaces = lines[i].search(/\S/);
+      if (spaces <= indent) break;
+      body.push(lines[i].slice(Math.min(spaces, contentIndent))); i++;
+    }
+    items.push("<li>" + markdown(body.join("\n"), from) + "</li>");
+  }
+  const startAt = ordered ? ' start="' + parseInt(first[2], 10) + '"' : "";
+  return { html: "<" + tag + startAt + ">" + items.join("") + "</" + tag + ">", next: i };
+}
 function markdown(text, from) {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   const out = [];
@@ -247,13 +301,14 @@ function markdown(text, from) {
   while (i < lines.length) {
     const line = lines[i];
     let m;
-    if (/^```/.test(line)) {
+    if ((m = /^\s{0,3}(`{3,}|~{3,})/.exec(line))) {
       flush();
       const code = [];
+      const close = new RegExp("^\\s{0,3}" + m[1][0] + "{" + m[1].length + ",}\\s*$");
       i++;
-      while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++]);
+      while (i < lines.length && !close.test(lines[i])) code.push(lines[i++]);
       i++;
-      out.push("<pre><code>" + esc(code.join("\n")) + "</code></pre>");
+      out.push('<pre tabindex="0" aria-label="Code block"><code>' + esc(code.join("\n")) + "</code></pre>");
       continue;
     }
     if ((m = /^(#{1,6})\s+(.*)$/.exec(line))) {
@@ -270,17 +325,10 @@ function markdown(text, from) {
       out.push("<blockquote>" + markdown(quote.join("\n"), from) + "</blockquote>");
       continue;
     }
-    if (/^\s*[-*+]\s+/.test(line) || /^\s*\d+[.)]\s+/.test(line)) {
+    if (/^ *([-*+]|\d+[.)])\s+/.test(line)) {
       flush();
-      const ordered = /^\s*\d+[.)]\s+/.test(line);
-      const items = [];
-      const re = ordered ? /^\s*\d+[.)]\s+/ : /^\s*[-*+]\s+/;
-      while (i < lines.length && (re.test(lines[i]) || (/^\s{2,}\S/.test(lines[i]) && items.length))) {
-        if (re.test(lines[i])) items.push(lines[i].replace(re, ""));
-        else items[items.length - 1] += " " + lines[i].trim();
-        i++;
-      }
-      out.push((ordered ? "<ol>" : "<ul>") + items.map(t => "<li>" + inline(t, from) + "</li>").join("") + (ordered ? "</ol>" : "</ul>"));
+      const list = markdownList(lines, i, from);
+      out.push(list.html); i = list.next;
       continue;
     }
     if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])) {
@@ -290,8 +338,8 @@ function markdown(text, from) {
       i += 2;
       const rows = [];
       while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(cells(lines[i++]));
-      out.push("<table><thead><tr>" + head.map(c => "<th>" + c + "</th>").join("") + "</tr></thead><tbody>" +
-        rows.map(r => "<tr>" + r.map(c => "<td>" + c + "</td>").join("") + "</tr>").join("") + "</tbody></table>");
+      out.push('<div class="table-scroll" role="region" aria-label="Table" tabindex="0"><table><thead><tr>' + head.map(c => "<th>" + c + "</th>").join("") + "</tr></thead><tbody>" +
+        rows.map(r => "<tr>" + r.map(c => "<td>" + c + "</td>").join("") + "</tr>").join("") + "</tbody></table></div>");
       continue;
     }
     if (line.trim() === "") { flush(); i++; continue; }
@@ -307,13 +355,22 @@ function markdown(text, from) {
 function splitTrailers(text) {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   const body = [], related = [], sources = [];
+  let fence = null;
   for (const line of lines) {
     const t = line.trim();
+    // List-contained fences may be indented further than top-level Markdown.
+    const marker = /^[ \t]*(`{3,}|~{3,})/.exec(line);
+    if (marker) {
+      if (!fence) fence = marker[1];
+      else if (new RegExp("^" + fence[0] + "{" + fence.length + ",}\\s*$").test(t)) fence = null;
+      body.push(line); continue;
+    }
+    if (fence) { body.push(line); continue; }
     if (/^(related|相关|相关页面|相关链接|相关项目|相关人物|相关决定|相关待办)[:：]/i.test(t)) related.push(t.replace(/^[^:：]+[:：]\s*/, ""));
     else if (/^(sources?|来源)[:：]/i.test(t)) sources.push(t.replace(/^[^:：]+[:：]\s*/, ""));
     else body.push(line);
   }
-  return { body: body.join("\n").replace(/\n{3,}/g, "\n\n"), related: related.join(", "), sources: sources.join(", ") };
+  return { body: body.join("\n"), related: related.join(", "), sources: sources.join(", ") };
 }
 function sourceChips(text) {
   const chips = [];
@@ -400,7 +457,7 @@ function overview() {
       table.appendChild(el("tr", {}, [fmtTime(run.started_at), run.outcome, String(run.items ?? ""), String((run.changed || []).length),
         num(u.input_tokens), num(u.output_tokens), run.seconds == null ? "—" : String(run.seconds)].map(t => el("td", { text: t }))));
     }
-    maint.appendChild(table);
+    maint.appendChild(el("div", { class: "table-scroll", role: "region", "aria-label": "Recent runs", tabindex: "0" }, [table]));
   }
   main.appendChild(maint);
 }
@@ -471,8 +528,16 @@ function record(path, heading) {
     }
     main.appendChild(aside);
   }
+  const headings = [...main.querySelectorAll(".note h2,.note h3,.note h4,.note h5,.note h6")];
+  const ids = new Set();
+  for (const h of headings) {
+    const base = h.textContent.trim().toLowerCase().replace(/[^\p{L}\p{N}_\s-]/gu, "").replace(/\s+/g, "-") || "section";
+    let id = base, n = 1;
+    while (ids.has(id)) id = base + "-" + n++;
+    ids.add(id); h.id = id;
+  }
   if (heading) {
-    const target = [...main.querySelectorAll("h2,h3,h4,h5,h6")].find(h => h.textContent.trim().toLowerCase().replace(/\s+/g, "-") === heading.toLowerCase());
+    const target = headings.find(h => h.id === heading.toLowerCase());
     if (target) target.scrollIntoView();
   }
 }
@@ -516,16 +581,35 @@ function render() {
   const { record: r, category: c, query, heading } = route();
   renderRail(c || (r ? r.split("/")[0] : (query ? "search" : null)));
   const box = document.getElementById("q");
-  if (query != null && box.value !== query) box.value = query;
+  if (box.value !== (query || "")) box.value = query || "";
+  window.scrollTo(0, 0);
   if (query) search(query);
   else if (r) record(r, heading);
   else if (c) category(c);
   else overview();
-  window.scrollTo(0, 0);
+  document.title = (r ? (byPath(r)?.title || "Missing page") : query ? "Search: " + query : c ? label(c) : "Contents") + " · Wiki";
+  for (const link of document.querySelectorAll("#nav a.active")) link.setAttribute("aria-current", "page");
 }
 document.getElementById("q").addEventListener("input", e => {
   const q = e.target.value.trim();
   location.hash = q ? "q=" + encodeURIComponent(q) : "";
+});
+const rail = document.querySelector(".rail");
+const toggle = document.querySelector(".nav-toggle");
+function closeNav() { rail.dataset.open = "false"; toggle.setAttribute("aria-expanded", "false"); }
+toggle.addEventListener("click", () => {
+  const open = toggle.getAttribute("aria-expanded") !== "true";
+  rail.dataset.open = String(open); toggle.setAttribute("aria-expanded", String(open));
+});
+document.querySelector(".skip").addEventListener("click", e => { e.preventDefault(); document.getElementById("main").focus(); });
+document.getElementById("nav").addEventListener("click", e => {
+  if (e.target.closest("a")) { closeNav(); document.getElementById("main").focus(); }
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") { closeNav(); if (document.activeElement.closest("#nav")) toggle.focus(); }
+  if (e.key === "/" && !e.ctrlKey && !e.metaKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
+    e.preventDefault(); document.getElementById("q").focus();
+  }
 });
 window.addEventListener("hashchange", render);
 render();
