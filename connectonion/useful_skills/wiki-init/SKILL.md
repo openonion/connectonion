@@ -59,10 +59,25 @@ why, what was dropped and why. The next run reads it before re-judging.
 
 ## 4. Build the frame
 
-For every person and project you kept:
+Ask the mail which organisations are real before stubbing people, because a
+person's `Company` should link to a page where one exists:
+
+```
+co wiki scan orgs --days <same window>
+```
+
+It lists only work domains two or more people write from — the point at which
+institutional facts would otherwise be copied onto every one of their pages.
+It proposes; you judge. Add a one-person domain yourself when something was
+agreed with the entity rather than the person (a signed contract, recurring
+money, a programme that outlives this contact). A mailbox provider is never an
+organisation.
+
+For every person, organisation and project you kept:
 
 ```
 co wiki stub person  "<Name>"  --email <address> --handle <name> --handle <address> --handle <any other spelling>
+co wiki stub org     "<Name>"  --domain <domain> --domain <any other domain> --person people/<slug>.md
 co wiki stub project "<Name>"  --path <cwd> --path <every worktree of it>
 ```
 

@@ -73,6 +73,27 @@ the rest.
 
 - **Mail gives identity and commitment** — the signature, the address, the
   legal entity, what was actually agreed and when.
+- **Read the signature block before you look anywhere else.** It is the one
+  place people write down who they are, and it is already in the material:
+  title, organisation, department, office address, direct line, booking link,
+  the language they work in. Parse it into `Contact` field by field —
+  `Role: UNSW Global Program Manager` and
+  `Company: UNSW Founders + Office of Global Affairs, L1 Hilmer Building,
+  Kensington` came out of four lines under "Thank you," and cost nothing.
+  A signature that changes between mails is a promotion or a move, and both
+  belong on the page with their dates.
+- **The domain of their address already names their employer.** `@unsw.edu.au`
+  is UNSW; 168 of 182 real correspondents over 180 days wrote from a work
+  domain, so this is the most reliable free fact in the mailbox. Take it here,
+  at the source stage — not from the web, and not only when a field is already
+  `Unknown`. Two things it does not tell you: which part of the organisation
+  (the signature does), and a person's role (never infer a title from a
+  domain). A mailbox provider — gmail, outlook, qq, 163 — names no employer;
+  leave `Company: Unknown` rather than writing "Gmail".
+- **If an organisation page exists for that domain, link `Company:` to it** and
+  leave the institutional detail there. If two or more people write from the
+  domain and no page exists yet, say so in `Uncertainties`: that is what
+  `co wiki scan orgs` and `co wiki stub org` are for.
 - **Attachments are where the terms are.** A `[attachment]` item is the text
   of a file someone sent — a contract, a deck, a spreadsheet — read out of the
   PDF or document. The mail says "please see attached"; the attachment says
@@ -146,9 +167,13 @@ for additional searches; do not invent a second mail client or credentials flow.
 When every source is read and a field still says `Unknown`, some of what is
 left the web holds. Take **only** these, and only where they read `Unknown`:
 
+The domain and the signature are **not** in this table: they are free facts in
+the material and were taken at the source stage above. Spend page loads on
+what the mailbox genuinely does not hold.
+
 | Field | Where to look |
 |---|---|
-| Company | the domain of their address (`@unsw.edu.au` → unsw.edu.au), then that site |
+| Company | only what the domain could not say — which part of the organisation, what it actually does — on that domain's own site |
 | Role | the employer's own site, a conference page, a public bio |
 | Phone | the company's contact page — a switchboard is a finding; a mobile is not yours to find |
 | Signing entity | a company register (ABN lookup for Australia), the site's footer |

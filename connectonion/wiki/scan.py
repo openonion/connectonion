@@ -14,13 +14,23 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import WikiError
-from .mail import AUTOMATED_SENDER, _address, _addresses, correspondent
+from .mail import _address, correspondent
 from .source import KINDS, source_files
 
 # Rings a bell on its own; the Skill still decides. Matched anywhere before the
 # @, because "no-reply.products@" slipped past a pattern anchored to the @.
 AUTOMATED_HINT = re.compile(r"no-?reply|noreply|notification|newsletter|mailer|calendar|invitation|"
                             r"digest|alerts?|updates?|marketing|express@|automated", re.IGNORECASE)
+
+# Mailbox providers, not employers. A domain here says where someone keeps their
+# mail; every other domain says who they answer to, which is why 168 of 182 real
+# correspondents over 180 days carried one.
+PERSONAL_MAILBOX = frozenset({
+    "gmail.com", "googlemail.com", "outlook.com", "outlook.com.au", "hotmail.com", "hotmail.com.au",
+    "hotmail.co.uk", "live.com", "live.com.au", "msn.com", "yahoo.com", "yahoo.com.au", "yahoo.co.jp",
+    "icloud.com", "me.com", "mac.com", "aol.com", "protonmail.com", "proton.me", "gmx.com",
+    "qq.com", "163.com", "126.com", "foxmail.com", "sina.com", "bigpond.com", "optusnet.com.au",
+})
 
 
 def _display_name(row: dict, address: str) -> str:
@@ -152,3 +162,39 @@ def _repo_identity(path: Path) -> dict:
         return {"toplevel": toplevel, "origin": origin.stdout.strip() if origin.returncode == 0 else ""}
     except (OSError, subprocess.TimeoutExpired):
         return {}
+
+
+def scan_orgs(people: list[dict], min_people: int = 2) -> list[dict]:
+    """The domains several people write from, which is where an organisation page earns
+    its place.
+
+    A company is not a person, and the difference is not that it has a different shape:
+    it is that its facts belong to it rather than to whoever happened to send the mail.
+    Over 180 real days one domain held 24 correspondents, and every institutional fact
+    about it -- the programme, the agreement, who handles contracts and who handles
+    dates -- would otherwise be copied onto 24 pages and drift 24 ways.
+
+    The threshold is what keeps this from becoming the one-line-person failure at
+    company scale: 111 of the 122 work domains in that window held exactly one person,
+    and a page each would have doubled the notebook with empty pages. One person on a
+    work domain stays a `Company:` field. `min_people=1` lowers it deliberately, for
+    the one-person client who signed a contract.
+    """
+    domains = collections.defaultdict(lambda: {"rows": [], "mails": 0, "last": ""})
+    for person in people:
+        domain = str(person.get("address", "")).rsplit("@", 1)[-1].lower()
+        if not domain or domain in PERSONAL_MAILBOX:
+            continue
+        entry = domains[domain]
+        entry["rows"].append(person)
+        entry["mails"] += person.get("mails", 0)
+        entry["last"] = max(entry["last"], str(person.get("last") or ""))
+    out = []
+    for domain, entry in domains.items():
+        if len(entry["rows"]) < min_people:
+            continue
+        rows = sorted(entry["rows"], key=lambda p: (-p.get("mails", 0), p.get("address", "")))
+        out.append({"domain": domain, "people": len(rows), "mails": entry["mails"], "last": entry["last"],
+                    "addresses": [r["address"] for r in rows],
+                    "names": [r["name"] for r in rows if r.get("name")]})
+    return sorted(out, key=lambda o: (-o["people"], -o["mails"], o["domain"]))

@@ -18,7 +18,7 @@ CONTACT_LABELS = ALIAS_LABELS + EMAIL_LABELS + (
     "phone:", "company:", "role:", "handles:", "language:", "signing entity:",
     "电话:", "电话：", "公司:", "公司：")
 
-CATEGORIES = ("people", "projects", "skills", "knowledge", "opportunities",
+CATEGORIES = ("people", "orgs", "projects", "skills", "knowledge", "opportunities",
               "decisions", "principles", "works", "agenda", "notes")
 MAX_NOTE_BYTES = 1_000_000
 # The maintainer has a read-only shell and this is its only write path; a key it
@@ -176,6 +176,34 @@ class Notebook:
         lines += [f"- {label}: {seeded.get(label) or 'Unknown'}" for label in self.PERSON_CONTACT]
         for section in self.PERSON_SECTIONS:
             lines += ["", f"## {section}", "- Unknown — not investigated yet"]
+        lines += ["", "## Sources", "- (none yet)", "",
+                  f"Investigation: mapped {_today()} · not investigated yet", ""]
+        return self.write(record, "\n".join(lines))
+
+    ORG_SECTIONS = ("Who they are", "Our relationship", "People here", "Terms",
+                    "Open threads", "Uncertainties")
+
+    def stub_org(self, record: str, name: str, domains=(), people=(), **known) -> bool:
+        """An organisation page, structure first, the same way as a person's.
+
+        An organisation is discovered by a domain several people write from, so the
+        domains are the fact the free stage has. `People here` holds links, never
+        copies: the point of the page is that institutional facts live in one place
+        instead of being repeated on every contact's page and drifting.
+        """
+        if self.path(record).is_file():
+            return False
+        lines = [f"# {name}", "", "## Domains"]
+        lines += [f"- {domain}" for domain in domains] or ["- Unknown"]
+        for label, value in known.items():
+            if value:
+                lines.append(f"- {label.replace('_', ' ').capitalize()}: {value}")
+        for section in self.ORG_SECTIONS:
+            lines += ["", f"## {section}"]
+            if section == "People here" and people:
+                lines += [f"- [{Path(p).stem}](../{p})" for p in people]
+            else:
+                lines += ["- Unknown — not investigated yet"]
         lines += ["", "## Sources", "- (none yet)", "",
                   f"Investigation: mapped {_today()} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))

@@ -198,3 +198,31 @@ def test_the_roster_reads_a_page_that_has_only_been_mapped(tmp_path):
     entry = notebook.people()[0]
     assert entry["title"] == "Ody Zhou"
     assert "odi" in entry["aliases"] and "周泽凯" in entry["aliases"]
+
+
+def test_an_organisation_page_has_its_own_shape_settled_when_it_is_created(tmp_path):
+    """A company is not a person with different headings: what it holds is the deal,
+    the people inside it, and the terms — none of which belong to any one contact."""
+    from connectonion.wiki.files import Notebook
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    assert notebook.stub_org("orgs/unsw.md", "UNSW", ["unsw.edu.au", "student.unsw.edu.au"],
+                             people=["people/vern-chan.md", "people/karen-da-lapa-soares.md"])
+    page = notebook.read("orgs/unsw.md")
+    assert page.startswith("# UNSW\n")
+    for section in ("## Domains", "## Who they are", "## Our relationship", "## People here",
+                    "## Terms", "## Open threads", "## Uncertainties", "## Sources"):
+        assert section in page, section
+    assert "- unsw.edu.au" in page and "- student.unsw.edu.au" in page
+    assert "[vern-chan](../people/vern-chan.md)" in page   # the people are links, not copies
+    assert page.count("Unknown — not investigated yet") >= 4
+    assert notebook.stub_org("orgs/unsw.md", "UNSW", ["unsw.edu.au"]) is False   # never overwrites
+    assert "orgs/unsw.md" in notebook.list() and "orgs/unsw.md" in notebook.list("orgs")
+
+
+def test_an_organisation_page_joins_the_work_list_like_any_other(tmp_path):
+    from connectonion.wiki.files import Notebook
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_org("orgs/unsw.md", "UNSW", ["unsw.edu.au"])
+    assert [p["path"] for p in notebook.unfinished()] == ["orgs/unsw.md"]

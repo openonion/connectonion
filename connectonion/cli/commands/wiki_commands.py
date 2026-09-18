@@ -91,31 +91,40 @@ def make_wiki_app(factory):
 
     @wiki.command("scan")
     def scan_sources(ctx: typer.Context,
-                     what: str = typer.Argument("people", help="people or projects"),
+                     what: str = typer.Argument("people", help="people, orgs or projects"),
                      days: int = typer.Option(150, "--days", min=1, help="How far back to look"),
                      min_mails: int = typer.Option(3, "--min-mails", help="people: fewer than this is not listed"),
+                     min_people: int = typer.Option(2, "--min-people",
+                                                    help="orgs: a work domain fewer people write from stays a "
+                                                         "Company field on their own page"),
                      mine: List[str] = typer.Option([], "--mine", help="An address that is yours (repeatable)")):
-        """Enumerate correspondents or projects from the sources, with counts and dates. No model."""
-        from ...wiki.scan import scan_people, scan_projects
+        """Enumerate correspondents, organisations or projects from the sources. No model."""
+        from ...wiki.scan import scan_orgs, scan_people, scan_projects
         from ...wiki.service import mail_client, subscriptions
 
         def run(root):
             if what == "projects":
                 return scan_projects(subscriptions(root), days), ["stub", "project", "<name>", "--path", "<cwd>"]
-            if what != "people":
-                raise WikiError("scan takes people or projects")
+            if what not in ("people", "orgs"):
+                raise WikiError("scan takes people, orgs or projects")
             clients = {k: mail_client(k) for k in ("outlook", "gmail")}
             rows = [p for p in scan_people(clients, days, set(mine)) if p["mails"] >= min_mails]
+            if what == "orgs":
+                return (scan_orgs(rows, min_people=min_people),
+                        ["stub", "org", "<name>", "--domain", "<domain>"])
             return rows, ["stub", "person", "<name>", "--handle", "<address>"]
         from ...wiki.files import WikiError
         _handle(ctx, run, ["status"])
 
     @wiki.command("stub")
     def stub_page(ctx: typer.Context,
-                  kind: str = typer.Argument(..., help="person or project"),
+                  kind: str = typer.Argument(..., help="person, org or project"),
                   name: str = typer.Argument(..., help="The page title"),
                   handle: List[str] = typer.Option([], "--handle", help="A spelling, address or alias (repeatable)"),
                   path: List[str] = typer.Option([], "--path", help="project: a directory it lives at (repeatable)"),
+                  domain: List[str] = typer.Option([], "--domain", help="org: a mail domain it owns (repeatable)"),
+                  person: List[str] = typer.Option([], "--person",
+                                                   help="org: a person page that belongs to it (repeatable)"),
                   email: str = typer.Option("", "--email", help="person: the address it was found by")):
         """Create a page with its structure already in place; every unknown section says so. No model."""
         import re
@@ -130,8 +139,11 @@ def make_wiki_app(factory):
             elif kind == "project":
                 record = f"projects/{slug}.md"
                 made = notebook.stub_project(record, name, path)
+            elif kind == "org":
+                record = f"orgs/{slug}.md"
+                made = notebook.stub_org(record, name, domain, people=person)
             else:
-                raise WikiError("stub takes person or project")
+                raise WikiError("stub takes person, org or project")
             return {"record": record, "created": made}, ["investigate", record, *sum((["--handle", h] for h in handle), [])]
         _handle(ctx, run, ["unfinished"])
 

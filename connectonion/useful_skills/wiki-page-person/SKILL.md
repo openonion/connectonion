@@ -128,6 +128,14 @@ Rules that make this page work, and that a thin page always breaks:
 - **`Contact` is fields, not prose.** A phone number inside a sentence cannot
   be found, and `Unknown` is the only way the user learns that the mailbox
   never carried one. Never write a contact detail into the summary instead.
+- **`Company` comes from the address domain and the signature block**, both of
+  which are already in the material — `@unsw.edu.au` is UNSW, and the four
+  lines under "Thank you," give the department, the office and the direct
+  line. A mailbox provider (gmail, outlook, qq) is not a company: that is
+  `Unknown`. Where an organisation page exists, `Company` links to it —
+  `- Company: [UNSW](../orgs/unsw.md)` — and the institutional facts live
+  there, not repeated here. What stays on this page is what is theirs: their
+  role inside it, how they write, what they owe the user.
 - **`Why they are here` is not `Who they are`.** Identity is what they do;
   this is how they entered the user's world — who approached whom, and what
   each side wants out of it. It is the section most often missing and the one

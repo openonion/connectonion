@@ -164,3 +164,45 @@ def test_under_coai_the_page_is_read_back_from_disk(tmp_path, monkeypatch):
     assert "outlook" in status
     material = next((root / ".state/tasks").glob("*/material.json"))
     assert __import__("json").loads(material.read_text())[0]["role"] == "page"
+
+
+def test_an_organisation_is_only_proposed_where_two_people_share_a_work_domain():
+    """Measured over 180 real days: 182 correspondents, 168 of them on a work domain,
+    but 111 of those domains hold exactly one person. A page for each would repeat the
+    one-line-person failure at company scale. What earns a page is a domain several
+    people write from -- unsw.edu.au alone holds 24 -- because then the same
+    institutional facts are otherwise copied onto every one of their pages."""
+    from connectonion.wiki.scan import scan_orgs
+    people = [
+        {"address": "vern.chan@unsw.edu.au", "name": "Vern Chan", "mails": 7, "last": "2026-09-10"},
+        {"address": "k.dalapa@unsw.edu.au", "name": "Karen da Lapa-Soares", "mails": 6, "last": "2026-09-12"},
+        {"address": "tamara@unsw.edu.au", "name": "Tamara Berryman", "mails": 15, "last": "2026-09-01"},
+        {"address": "solo@dataquaranteed.com", "name": "Siraj Deen", "mails": 4, "last": "2026-09-09"},
+        {"address": "ody@gmail.com", "name": "Ody", "mails": 30, "last": "2026-09-14"},
+        {"address": "someone.else@gmail.com", "name": "Else", "mails": 9, "last": "2026-09-14"},
+    ]
+    orgs = scan_orgs(people)
+    assert [o["domain"] for o in orgs] == ["unsw.edu.au"]          # the only domain two people share
+    assert orgs[0]["people"] == 3 and orgs[0]["mails"] == 28
+    assert orgs[0]["addresses"][0] == "tamara@unsw.edu.au"          # busiest first
+    assert "Vern Chan" in orgs[0]["names"]
+    assert orgs[0]["last"] == "2026-09-12"
+
+
+def test_a_personal_mailbox_is_never_an_organisation():
+    """gmail.com is not a company however many people write from it."""
+    from connectonion.wiki.scan import scan_orgs
+    people = [{"address": f"p{i}@gmail.com", "name": f"P{i}", "mails": 5, "last": "2026-09-10"} for i in range(4)]
+    people += [{"address": "a@hotmail.com", "name": "A", "mails": 5, "last": "2026-09-10"},
+               {"address": "b@hotmail.com", "name": "B", "mails": 5, "last": "2026-09-10"}]
+    assert scan_orgs(people) == []
+
+
+def test_a_single_person_on_a_work_domain_stays_a_field_unless_asked_for():
+    """One person with a work address is a `Company:` field on their own page. The
+    threshold can be lowered deliberately, which is how a one-person client that
+    signed a contract gets a page."""
+    from connectonion.wiki.scan import scan_orgs
+    people = [{"address": "solo@dataquaranteed.com", "name": "Siraj", "mails": 4, "last": "2026-09-09"}]
+    assert scan_orgs(people) == []
+    assert [o["domain"] for o in scan_orgs(people, min_people=1)] == ["dataquaranteed.com"]
