@@ -593,8 +593,25 @@ def test_a_session_whose_qr_was_never_scanned_is_not_a_linked_device(sdk, tmp_pa
     problems = WhatsApp().check()
 
     assert len(problems) == 1
-    assert "never linked" in problems[0]
+    assert "has no linked device" in problems[0]
     assert "co whatsapp listen" in problems[0]
+
+
+def test_a_session_whatsapp_logged_out_is_not_a_linked_device(sdk, tmp_path, monkeypatch):
+    # 17 September, live: "Got device removed stream error, sending LoggedOut event
+    # and deleting session". whatsmeow deleted the device row and kept the 850 KB
+    # file, and 1.8.6a1's check printed "✓ whatsapp reachable" and exited 0.
+    session = session_db(tmp_path / "session.db", devices=1)
+    import sqlite3
+    with sqlite3.connect(session) as db:
+        db.execute("delete from whatsmeow_device")
+    monkeypatch.setenv("WHATSAPP_SESSION", str(session))
+    monkeypatch.setattr(WhatsApp, "protocol_snapshot", lambda self: time.time())
+
+    problems = WhatsApp().check()
+
+    assert len(problems) == 1
+    assert "device was removed" in problems[0]
 
 
 def test_a_session_file_that_is_not_a_database_is_not_a_linked_device(sdk, tmp_path, monkeypatch):
@@ -602,7 +619,7 @@ def test_a_session_file_that_is_not_a_database_is_not_a_linked_device(sdk, tmp_p
     (tmp_path / "session.db").write_bytes(b"not sqlite")
     monkeypatch.setattr(WhatsApp, "protocol_snapshot", lambda self: time.time())
 
-    assert "never linked" in WhatsApp().check()[0]
+    assert "has no linked device" in WhatsApp().check()[0]
 
 
 def test_an_old_protocol_snapshot_is_reported_before_it_fails_namelessly(sdk, tmp_path, monkeypatch):
