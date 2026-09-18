@@ -180,21 +180,29 @@ def scan_orgs(people: list[dict], min_people: int = 2) -> list[dict]:
     work domain stays a `Company:` field. `min_people=1` lowers it deliberately, for
     the one-person client who signed a contract.
     """
-    domains = collections.defaultdict(lambda: {"rows": [], "mails": 0, "last": ""})
+    domains = collections.defaultdict(lambda: {"people": [], "notices": [], "mails": 0, "last": ""})
     for person in people:
         domain = str(person.get("address", "")).rsplit("@", 1)[-1].lower()
         if not domain or domain in PERSONAL_MAILBOX:
             continue
         entry = domains[domain]
-        entry["rows"].append(person)
+        # A notice sender is not someone we deal with. Run over 180 real days the
+        # first version proposed 53 organisations led by google.com (29 "people":
+        # Google Analytics, Google Play), an event platform's per-event senders and
+        # the user's own agent domain -- all one-way. Only correspondents decide the
+        # threshold; the notices stay on the row, because a domain holds both and a
+        # university's alert sender does not make the university less real.
+        which = "notices" if person.get("automated_hint") and person.get("one_way") else "people"
+        entry[which].append(person)
         entry["mails"] += person.get("mails", 0)
         entry["last"] = max(entry["last"], str(person.get("last") or ""))
     out = []
     for domain, entry in domains.items():
-        if len(entry["rows"]) < min_people:
+        if len(entry["people"]) < min_people:
             continue
-        rows = sorted(entry["rows"], key=lambda p: (-p.get("mails", 0), p.get("address", "")))
-        out.append({"domain": domain, "people": len(rows), "mails": entry["mails"], "last": entry["last"],
+        rows = sorted(entry["people"], key=lambda p: (-p.get("mails", 0), p.get("address", "")))
+        out.append({"domain": domain, "people": len(rows), "notices": len(entry["notices"]),
+                    "mails": entry["mails"], "last": entry["last"],
                     "addresses": [r["address"] for r in rows],
                     "names": [r["name"] for r in rows if r.get("name")]})
     return sorted(out, key=lambda o: (-o["people"], -o["mails"], o["domain"]))

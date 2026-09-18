@@ -33,9 +33,18 @@ provider is never an organisation: `gmail.com` is where someone keeps their
 mail, not who they answer to.
 
 `co wiki scan orgs --days 180` lists the domains that pass the first test, with
-how many people and how much mail each holds. It proposes; you judge. A domain
-that is really two unrelated tenants (a university's staff and its students, a
-shared agency address) is two pages or one, and the mail says which.
+how many people and how much mail each holds. It proposes; you judge.
+
+Two things to judge, because the count alone will mislead you:
+
+- **A notice sender is not a relationship.** Only correspondents — people who
+  write to the user and are written back to — are counted toward the
+  threshold; each row also carries `notices`, the one-way automated senders on
+  that domain. A domain whose `people` are few and whose `notices` are many is
+  a service, not a counterparty, and belongs on the page of whatever it serves.
+- **One domain can be two tenants.** A university's staff and its students, an
+  agency's shared address: that is two pages or one, and the mail says which.
+  Say which you chose in `Uncertainties`.
 
 ## The shape
 

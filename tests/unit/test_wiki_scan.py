@@ -206,3 +206,28 @@ def test_a_single_person_on_a_work_domain_stays_a_field_unless_asked_for():
     people = [{"address": "solo@dataquaranteed.com", "name": "Siraj", "mails": 4, "last": "2026-09-09"}]
     assert scan_orgs(people) == []
     assert [o["domain"] for o in scan_orgs(people, min_people=1)] == ["dataquaranteed.com"]
+
+
+def test_a_domain_that_only_sends_notices_is_not_an_organisation_we_deal_with():
+    """Run against 180 real days, the first version proposed 53 organisations and the
+    top of the list was google.com (29 "people": Google Analytics, Google Play),
+    mail.anthropic.com, an event platform's per-event senders, and the user's own
+    agent domain. None is a relationship; all are one-way notices. What makes a
+    domain an organisation is that people there write *to* the user and are written
+    back to, so only those count toward the threshold -- the rest stay visible on the
+    row, because a domain can hold both."""
+    from connectonion.wiki.scan import scan_orgs
+    notices = [{"address": f"noreply+{i}@google.com", "name": "Google Play", "mails": 4, "last": "2026-09-10",
+                "automated_hint": True, "one_way": True} for i in range(29)]
+    real = [{"address": "vern@unsw.edu.au", "name": "Vern", "mails": 7, "last": "2026-09-10",
+             "automated_hint": False, "one_way": False},
+            {"address": "karen@unsw.edu.au", "name": "Karen", "mails": 6, "last": "2026-09-12",
+             "automated_hint": False, "one_way": False},
+            {"address": "no-reply@unsw.edu.au", "name": "UNSW Alerts", "mails": 40, "last": "2026-09-12",
+             "automated_hint": True, "one_way": True}]
+    orgs = scan_orgs(notices + real)
+    assert [o["domain"] for o in orgs] == ["unsw.edu.au"]
+    org = orgs[0]
+    assert org["people"] == 2          # the two who correspond decide the threshold
+    assert org["notices"] == 1         # the alert sender is still reported, not hidden
+    assert org["addresses"][0] == "vern@unsw.edu.au"   # ranked among the people, not the notices
