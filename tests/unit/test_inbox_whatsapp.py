@@ -21,7 +21,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from connectonion.inbox import ANSWERING, PROVIDERS, SEEN, provider
+from connectonion.inbox import ANSWERING, PROVIDERS, SEEN, ListenerStopped, provider
 from connectonion.inbox.store import Inbox, Message
 from connectonion.inbox.whatsapp import GROUP_SERVER, USER_SERVER, WhatsApp, _context_info
 
@@ -68,11 +68,25 @@ def sdk(monkeypatch):
     proto.waE2E = wa
     wa.WAWebProtobufsE2E_pb2 = e2e
     package.proto = proto
+    # The connection's own events. Production imports these names from
+    # neonize.events and registers handlers keyed on the class object, so the
+    # sentinels here are the same objects a test fires — which is the whole
+    # reason a stand-in can exercise the listener at all.
+    connection = ModuleType("neonize.events")
+    for name in ("ConnectedEv", "ConnectFailureEv", "DisconnectedEv", "KeepAliveRestoredEv",
+                 "KeepAliveTimeoutEv", "LoggedOutEv", "MessageEv", "PairStatusEv",
+                 "StreamReplacedEv", "TemporaryBanEv"):
+        setattr(connection, name, type(name, (), {}))
+    client_module = ModuleType("neonize.client")
+    client_module.NewClient = lambda path: None      # each test replaces this
+    package.events = connection
+    package.client = client_module
     for name, module in [
         ("neonize", package), ("neonize.utils", utils),
         ("neonize.utils.message", message_utils), ("neonize.utils.jid", jid_utils),
         ("neonize.proto", proto), ("neonize.proto.Neonize_pb2", events),
         ("neonize.proto.waE2E", wa), ("neonize.proto.waE2E.WAWebProtobufsE2E_pb2", e2e),
+        ("neonize.events", connection), ("neonize.client", client_module),
     ]:
         monkeypatch.setitem(sys.modules, name, module)
     return package
@@ -482,6 +496,175 @@ def test_real_protobuf_variants_are_named_on_the_installed_version():
     assert _kind(message) == "options"          # the field's own name, lowercased
 
 
+def test_sending_from_an_unlinked_device_says_what_to_do(sdk):
+    # whatsmeow says "the store doesn't contain a device JID" — true, and it
+    # names an internal structure rather than what happened.
+    bot = WhatsApp()
+
+    def refuse(*_args, **_kwargs):
+        raise RuntimeError("the store doesn't contain a device JID")
+
+    bot._client = SimpleNamespace(send_message=refuse, build_reply_message=refuse)
+    inbox = Inbox("whatsapp")
+    stop, thread = drain_once(bot, inbox)
+    try:
+        with pytest.raises(RuntimeError) as failed:
+            bot.send(f"1203630000000@{GROUP_SERVER}", "on it")
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert "not linked any more" in str(failed.value)
+    assert "co whatsapp listen" in str(failed.value)
+    assert "device JID" not in str(failed.value)
+
+
+def test_a_failure_we_do_not_recognise_keeps_its_own_words(sdk):
+    # Guessing a fix for an error we have not seen is how the wrong advice gets
+    # written; the real message is what somebody can search for.
+    bot = WhatsApp()
+
+    def refuse(*_args, **_kwargs):
+        raise RuntimeError("websocket: close 1006 (abnormal closure)")
+
+    bot._client = SimpleNamespace(send_message=refuse, build_reply_message=refuse)
+    inbox = Inbox("whatsapp")
+    stop, thread = drain_once(bot, inbox)
+    try:
+        with pytest.raises(RuntimeError) as failed:
+            bot.send(f"1203630000000@{GROUP_SERVER}", "on it")
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert "close 1006" in str(failed.value)
+
+
+class Socket:
+    """A neonize client that hands the listener whichever events we name.
+
+    `connect()` fires them and returns, which is what the real one does when
+    the connection ends — the difference the listener has to notice is whether
+    it can ever come back.
+    """
+
+    def __init__(self, *events):
+        self.events, self.handlers = events, {}
+        self.disconnected = False
+
+    def event(self, kind):
+        def register(handler):
+            self.handlers[kind] = handler
+            return handler
+        return register
+
+    def connect(self):
+        for kind, payload in self.events:
+            handler = self.handlers.get(kind)
+            if handler:
+                handler(self, payload)
+
+    def disconnect(self):
+        self.disconnected = True
+
+    def get_me(self):
+        return SimpleNamespace(JID=SimpleNamespace(User=OWN, Server=USER_SERVER, Device=1),
+                               LID=SimpleNamespace(User=OWN_LID, Server=LID_SERVER, Device=1))
+
+
+def listen_through(monkeypatch, inbox, *events):
+    """Run the listener over a socket that fires `events`, and return the bot."""
+    import neonize.events as ev
+
+    bot = WhatsApp()
+    monkeypatch.setattr("neonize.client.NewClient", lambda path: Socket(*events))
+    bot.run(inbox)
+    return bot
+
+
+def test_being_unlinked_stops_the_listener_instead_of_leaving_it_running(sdk, monkeypatch):
+    # The production failure: the phone unlinks the device, the process keeps
+    # its socket, prints nothing more, and receives nothing ever again — so
+    # "nobody has messaged us" and "we were logged out yesterday" look the same.
+    import neonize.events as ev
+
+    inbox = Inbox("whatsapp")
+
+    with pytest.raises(ListenerStopped) as stopped:
+        listen_through(monkeypatch, inbox, (ev.LoggedOutEv, SimpleNamespace(Reason="401")))
+
+    assert "logged out" in str(stopped.value)
+    assert "co whatsapp listen" in str(stopped.value)       # names the way back
+    assert "logged out" in (inbox.root / "log").read_text(encoding="utf-8")
+
+
+def test_another_client_taking_the_session_stops_this_one(sdk, monkeypatch):
+    # WhatsApp allows one socket per linked device, so a second listener
+    # silently displaces the first.
+    import neonize.events as ev
+
+    inbox = Inbox("whatsapp")
+
+    with pytest.raises(ListenerStopped) as stopped:
+        listen_through(monkeypatch, inbox, (ev.StreamReplacedEv, SimpleNamespace()))
+
+    assert "took this session over" in str(stopped.value)
+
+
+def test_a_temporary_ban_stops_the_listener_and_says_when(sdk, monkeypatch):
+    import neonize.events as ev
+
+    inbox = Inbox("whatsapp")
+
+    with pytest.raises(ListenerStopped) as stopped:
+        listen_through(monkeypatch, inbox,
+                       (ev.TemporaryBanEv, SimpleNamespace(Code=402, Expire=3600)))
+
+    assert "402" in str(stopped.value) and "3600" in str(stopped.value)
+
+
+def test_an_ordinary_disconnection_is_logged_and_survived(sdk, monkeypatch):
+    # The SDK reconnects from these. Logging them is what makes a later gap
+    # visible; stopping on them would take the listener down every time a
+    # laptop's wifi blinked.
+    import neonize.events as ev
+
+    inbox = Inbox("whatsapp")
+
+    listen_through(monkeypatch, inbox,
+                   (ev.DisconnectedEv, SimpleNamespace(status=0)),
+                   (ev.KeepAliveTimeoutEv, SimpleNamespace(ErrorCount=2, LastSuccess=0)),
+                   (ev.KeepAliveRestoredEv, SimpleNamespace()))
+
+    log = (inbox.root / "log").read_text(encoding="utf-8")
+    assert "disconnected" in log and "keepalive timed out" in log and "keepalive restored" in log
+
+
+def test_a_fatal_event_asks_the_socket_to_close(sdk, monkeypatch):
+    # Not just a flag: the connection has to actually be told to stop, or the
+    # process keeps the socket it can no longer use.
+    import neonize.events as ev
+
+    sockets = []
+    monkeypatch.setattr("neonize.client.NewClient",
+                        lambda path: sockets.append(Socket((ev.LoggedOutEv, SimpleNamespace(Reason="401"))))
+                        or sockets[-1])
+    with pytest.raises(ListenerStopped):
+        WhatsApp().run(Inbox("whatsapp"))
+
+    assert sockets[0].disconnected is True
+
+
+def test_a_healthy_connection_raises_nothing(sdk, monkeypatch):
+    import neonize.events as ev
+
+    inbox = Inbox("whatsapp")
+
+    listen_through(monkeypatch, inbox, (ev.ConnectedEv, SimpleNamespace()))
+
+    assert "connected as" in (inbox.root / "log").read_text(encoding="utf-8")
+
+
 # ---- setup -----------------------------------------------------------------
 
 def test_the_first_listen_is_not_told_to_run_listen():
@@ -593,7 +776,9 @@ def test_a_session_whose_qr_was_never_scanned_is_not_a_linked_device(sdk, tmp_pa
     problems = WhatsApp().check()
 
     assert len(problems) == 1
-    assert "never linked" in problems[0]
+    # Both stories, because the file cannot tell them apart.
+    assert "No linked device" in problems[0]
+    assert "logged out from the phone" in problems[0]
     assert "co whatsapp listen" in problems[0]
 
 
@@ -602,7 +787,7 @@ def test_a_session_file_that_is_not_a_database_is_not_a_linked_device(sdk, tmp_p
     (tmp_path / "session.db").write_bytes(b"not sqlite")
     monkeypatch.setattr(WhatsApp, "protocol_snapshot", lambda self: time.time())
 
-    assert "never linked" in WhatsApp().check()[0]
+    assert "No linked device" in WhatsApp().check()[0]
 
 
 def test_an_old_protocol_snapshot_is_reported_before_it_fails_namelessly(sdk, tmp_path, monkeypatch):
