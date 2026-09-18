@@ -190,6 +190,47 @@ def _kind(message) -> str:
     return "text"
 
 
+def _quoted_reference(context, own_ids) -> Optional[dict]:
+    """The message a reply is answering, from the contextInfo we already read.
+
+    All of it has been arriving in every reply since the beginning — stanzaID,
+    participant and the quoted message itself — and none of it was carried out
+    of the parser. Someone quoting the bot's own line and writing "this one is
+    wrong" produced a record with the new text and no trace of what "this one"
+    was, so a consumer could neither answer the question nor tell that it had
+    been addressed.
+
+    `from_me` is the field that decides behaviour. Replying to the bot and
+    replying to another person in the same group are different events, and the
+    documented trigger policy — direct message, @mention, or reply to us —
+    cannot be implemented without separating them.
+    """
+    if context is None:
+        return None
+    stanza = str(getattr(context, "stanzaID", "") or "")
+    if not stanza:
+        return None
+    sender = str(getattr(context, "participant", "") or "")
+    quoted = getattr(context, "quotedMessage", None)
+    text = ""
+    if quoted is not None:
+        try:
+            from neonize.utils.message import extract_text
+
+            text = extract_text(quoted) or ""
+        except Exception:
+            # A quoted body we cannot read is worth less than the reference to
+            # it; the id and the sender are what a consumer needs most.
+            text = ""
+    return {
+        "id": stanza,
+        "sender": sender,
+        "text": text,
+        "kind": _kind(quoted) if quoted is not None else "text",
+        "from_me": bool(own_ids) and _user_of(sender) in own_ids,
+    }
+
+
 def _user_of(jid_text: str) -> str:
     """The user half of a JID string, without device or server."""
     return str(jid_text or "").split("@", 1)[0].split(":", 1)[0]
@@ -446,6 +487,7 @@ class WhatsApp:
         text = extract_text(event.Message) or ""
         context = _context_info(event.Message)
         kind = _kind(event.Message)
+        quoted = _quoted_reference(context, self._own_ids)
         chat = _jid_str(source.Chat)
         sender = _jid_str(source.Sender)
 
@@ -456,7 +498,7 @@ class WhatsApp:
             # us and a mention_only channel never wakes a consumer for it.
             mentioned = False
         elif source.IsGroup:
-            mentioned = self._addressed_in_group(text, context)
+            mentioned = self._addressed_in_group(text, context, quoted)
         else:
             # A direct message is addressed to us by existing.
             mentioned = True
@@ -467,13 +509,14 @@ class WhatsApp:
             sender=sender,
             text=text,
             kind=kind,
+            quoted=quoted,
             mentioned=mentioned,
             at=_iso(getattr(event.Info, "Timestamp", None)),
             thread=None,
             raw=None,
         )
 
-    def _addressed_in_group(self, text: str, context) -> bool:
+    def _addressed_in_group(self, text: str, context, quoted=None) -> bool:
         """Whether a group message is for us. Three ways, the same three every
         other group gateway settled on: a real @mention, a reply to something we
         said, and our own number written in the text.
@@ -482,16 +525,29 @@ class WhatsApp:
         its phone number and its LID — because which one a group uses is the
         group's choice, not ours.
 
+        The reply arm reads `quoted["from_me"]`, the same value the record
+        carries, rather than recomputing it. Two copies of "was this addressed
+        to us" can disagree, and when they do the record says one thing and the
+        behaviour does another — which is precisely the state that made a
+        `mentioned: false` on a reply impossible to argue with either way.
+
         With no known ids — before the connection is up — nothing counts as
         addressed. A group channel with mention_only stays quiet, which is the
         failure that costs nothing."""
         own = self._own_ids
         if not own:
             return False
+        if quoted and quoted.get("from_me"):
+            return True
         if context is not None:
             for mentioned_jid in getattr(context, "mentionedJID", None) or []:
                 if _user_of(mentioned_jid) in own:
                     return True
+            # The same signal read straight from the context. A quoted reference
+            # needs a stanzaID to be worth carrying, and this does not: a reply
+            # whose contextInfo is shaped in some way we did not expect still
+            # counts as one, rather than being silently downgraded to "not for
+            # us" because one field was missing.
             if _user_of(getattr(context, "participant", "")) in own:
                 return True
         return any(one in (text or "") for one in own)

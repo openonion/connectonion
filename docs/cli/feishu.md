@@ -109,9 +109,14 @@ The file in `new/` and the line in `received.jsonl` are the same bytes:
 
 ```json
 {"id":"om_9f8e","chat":"oc_a1b2","thread":null,"sender":"on_7c6d",
- "text":"@OpsAgent look at today's failed deploys","kind":"text","mentioned":true,
- "at":"2026-09-02T10:31:07Z"}
+ "text":"@OpsAgent look at today's failed deploys","kind":"text","quoted":null,
+ "mentioned":true,"at":"2026-09-02T10:31:07Z"}
 ```
+
+`quoted` carries the message a reply is answering — `{"id", "sender", "text",
+"kind", "from_me"}` — and is `null` otherwise. `from_me` separates a reply to
+the bot from a reply to somebody else in the same group, which are different
+events; `mentioned` reads the same value.
 
 `kind` says what arrived: `text` for anything readable as words, otherwise the
 platform's own word for it — `image`, `sticker`, `audio` and the rest come

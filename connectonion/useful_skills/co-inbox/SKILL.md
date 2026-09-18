@@ -56,12 +56,12 @@ co feishu consume -- ./answer.sh
 
 ## The message
 
-Eight fields, identical on every provider:
+Nine fields, identical on every provider:
 
 ```json
 {"id":"om_9f8e","chat":"oc_a1b2","thread":null,"sender":"on_7c6d",
- "text":"look at today's failed deploys","kind":"text","mentioned":true,
- "at":"2026-09-02T10:31:07Z"}
+ "text":"look at today's failed deploys","kind":"text","quoted":null,
+ "mentioned":true,"at":"2026-09-02T10:31:07Z"}
 ```
 
 `chat` is where a reply goes. `id` is all `reply` needs — it looks up the chat
@@ -88,6 +88,27 @@ esac
 A `kind` this list does not name is still the platform's name for it, lowercased
 — new message types appear faster than releases do, and arriving as something
 beats arriving as nothing.
+
+**`quoted` is what the message is replying to**, and `null` when it is not a
+reply. Somebody quoting a line and writing "this one is wrong" gives you three
+words and a pronoun; the quote is the noun.
+
+```json
+"quoted": {"id":"om_7a1c","sender":"on_9d4e","text":"deploy 41 is live",
+           "kind":"text","from_me":true}
+```
+
+`from_me` is the field that changes what you do. **Replying to the bot and
+replying to somebody else in the same group are different events**, and
+"answer when addressed" cannot be implemented without telling them apart — a
+reply to another person is group chatter you should stay out of. `mentioned`
+already reads this same value, so the two never disagree; use `quoted.from_me`
+when you need the reason rather than the verdict.
+
+```bash
+QUOTED=$(jq -r '.quoted.text // empty' <<<"$MESSAGE")
+[ -n "$QUOTED" ] && PROMPT="They are replying to: $QUOTED"$'\n'"$PROMPT"
+```
 
 ## Gotchas that change what you report
 
