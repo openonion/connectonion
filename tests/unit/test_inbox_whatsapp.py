@@ -83,8 +83,11 @@ def jid(user, server=USER_SERVER, device=7):
     return SimpleNamespace(User=user, Server=server, Device=device)
 
 
-def context(mentioned=(), participant=""):
-    descriptor = SimpleNamespace(label=1, LABEL_REPEATED=3, type=11, TYPE_MESSAGE=11)
+def context(mentioned=(), participant="", name="extendedTextMessage"):
+    # `name` is the protobuf field name, which is what says whether this is
+    # text, an image or a reaction — the fake carries it because the real
+    # descriptor does.
+    descriptor = SimpleNamespace(name=name, label=1, LABEL_REPEATED=3, type=11, TYPE_MESSAGE=11)
     info = SimpleNamespace(mentionedJID=list(mentioned), participant=participant)
     variant = SimpleNamespace(contextInfo=info, HasField=lambda field: True)
     return descriptor, variant
@@ -124,7 +127,7 @@ def test_a_group_mention_becomes_a_message_addressed_to_us(sdk):
     assert message.to_dict() == {
         "id": "3EB0A1", "chat": f"1203630000000@{GROUP_SERVER}", "thread": None,
         "sender": f"{PEER}@{USER_SERVER}", "text": f"@{OWN} ship it",
-        "mentioned": True, "at": "2025-09-02T10:17:47Z",
+        "kind": "text", "mentioned": True, "at": "2025-09-02T10:17:47Z",
     }
 
 
@@ -270,6 +273,102 @@ def test_an_account_with_no_lid_yet_is_still_itself():
 
     assert phone == OWN
     assert ids == frozenset({OWN})
+
+
+def variant(name, text=""):
+    """An event carrying one named message variant, the way the SDK hands it over."""
+    raw = event(text=text)
+    descriptor = SimpleNamespace(name=name, label=1, LABEL_REPEATED=3, type=11, TYPE_MESSAGE=11)
+    value = SimpleNamespace(contextInfo=SimpleNamespace(mentionedJID=[], participant=""),
+                            HasField=lambda field: True)
+    raw.Message = SimpleNamespace(text=text, ListFields=lambda: [(descriptor, value)])
+    return raw
+
+
+def test_a_photo_is_not_the_same_input_as_an_empty_message(sdk):
+    # Both arrive with no text. Without a kind beside it a consumer can neither
+    # say "I can't read images yet" nor correctly ignore it, because it cannot
+    # tell which one happened.
+    bot = linked(WhatsApp(), ids=(OWN, OWN_LID))
+
+    photo = bot.to_message(variant("imageMessage"))
+    nothing = bot.to_message(variant("conversation"))
+
+    assert (photo.kind, photo.text) == ("image", "")
+    assert (nothing.kind, nothing.text) == ("text", "")
+
+
+@pytest.mark.parametrize("field,kind", [
+    ("conversation", "text"), ("extendedTextMessage", "text"),
+    ("imageMessage", "image"), ("videoMessage", "video"), ("ptvMessage", "video"),
+    ("audioMessage", "audio"), ("documentMessage", "document"),
+    ("stickerMessage", "sticker"), ("locationMessage", "location"),
+    ("contactMessage", "contact"), ("reactionMessage", "reaction"),
+])
+def test_each_variant_is_named_in_words_a_person_would_use(sdk, field, kind):
+    assert linked(WhatsApp(), ids=(OWN,)).to_message(variant(field)).kind == kind
+
+
+def test_a_variant_we_have_never_seen_still_arrives_as_something(sdk):
+    # WhatsApp has 107 of these and adds more. An unknown one keeps the
+    # protobuf's own name rather than being flattened into "text".
+    assert linked(WhatsApp(), ids=(OWN,)).to_message(variant("pollCreationMessageV9")).kind \
+        == "pollcreationv9"
+
+
+def test_a_reaction_is_recorded_but_never_addressed_to_us(sdk):
+    # Reactions come back over the same socket, including the ones this bot puts
+    # on its own queue. They are worth having in the log and are not questions.
+    bot = linked(WhatsApp(), ids=(OWN, OWN_LID))
+
+    direct = variant("reactionMessage")
+    direct.Info.MessageSource.IsGroup = False
+
+    assert bot.to_message(variant("reactionMessage")).mentioned is False
+    assert bot.to_message(direct).mentioned is False    # even one-to-one
+
+
+def test_a_kind_survives_the_queue_file(sdk):
+    inbox = Inbox("whatsapp")
+    inbox.deliver(Message(id="A1", chat=f"1203630000000@{GROUP_SERVER}", sender=PEER,
+                          text="", kind="image", mentioned=True, at="2026-09-18T00:00:00Z",
+                          thread=None))
+
+    assert [m.kind for m in inbox.list_messages()] == ["image"]
+
+
+def test_a_queue_file_written_before_kinds_existed_reads_as_text():
+    # Upgrading with messages already in new/ must not invent a kind for them.
+    assert Message.from_dict({"id": "A1", "chat": "c", "text": "hi"}).kind == "text"
+
+
+def test_a_descriptor_with_no_readable_name_costs_nothing(sdk):
+    # Reading an attribute a protobuf release had removed is exactly how every
+    # message stopped being delivered in 1.8.6a1. A kind we cannot read is not
+    # worth a message.
+    bot = linked(WhatsApp(), ids=(OWN,))
+    raw = event(text="still here")
+    nameless = SimpleNamespace(label=1, LABEL_REPEATED=3, type=11, TYPE_MESSAGE=11)
+    value = SimpleNamespace(contextInfo=SimpleNamespace(mentionedJID=[], participant=""),
+                            HasField=lambda field: True)
+    raw.Message = SimpleNamespace(text="still here", ListFields=lambda: [(nameless, value)])
+
+    message = bot.to_message(raw)
+
+    assert message.text == "still here" and message.kind == "text"
+
+
+def test_real_protobuf_variants_are_named_on_the_installed_version():
+    # The fakes carry the fields we chose to model. This reads the name off a
+    # real descriptor, so a protobuf that renames or removes it fails here
+    # rather than in somebody's group.
+    from google.protobuf import descriptor_pb2
+    from connectonion.inbox.whatsapp import _kind
+
+    message = descriptor_pb2.FileDescriptorProto(name="x.proto")
+    message.options.java_package = "x"          # a singular message field is set
+
+    assert _kind(message) == "options"          # the field's own name, lowercased
 
 
 # ---- setup -----------------------------------------------------------------

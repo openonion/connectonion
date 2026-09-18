@@ -134,6 +134,62 @@ def _context_info(message):
     return None
 
 
+# What the variant is called, in the words a person would use. Anything not
+# here keeps the protobuf's own name minus the Message suffix, so a variant
+# WhatsApp adds tomorrow still arrives as something rather than as nothing.
+KINDS = {
+    "conversation": "text",
+    "extendedTextMessage": "text",
+    "imageMessage": "image",
+    "videoMessage": "video",
+    "ptvMessage": "video",
+    "audioMessage": "audio",
+    "documentMessage": "document",
+    "documentWithCaptionMessage": "document",
+    "stickerMessage": "sticker",
+    "lottieStickerMessage": "sticker",
+    "locationMessage": "location",
+    "liveLocationMessage": "location",
+    "contactMessage": "contact",
+    "contactsArrayMessage": "contact",
+    "reactionMessage": "reaction",
+    "encReactionMessage": "reaction",
+}
+
+
+def _kind(message) -> str:
+    """Which of WhatsApp's 107 message variants this is.
+
+    The same walk `_context_info` does. A message whose body we cannot read is
+    delivered with an empty `text` either way; without a kind beside it, that
+    is indistinguishable from someone sending nothing, and a consumer can
+    neither answer "I can't read images yet" nor correctly ignore it.
+    """
+    try:
+        fields = message.ListFields()
+    except AttributeError:
+        return "text"
+    for descriptor, _ in fields:
+        repeated = getattr(descriptor, "is_repeated", None)
+        if repeated is None:
+            repeated = descriptor.label == descriptor.LABEL_REPEATED
+        if repeated or descriptor.type != descriptor.TYPE_MESSAGE:
+            continue
+        # getattr, not attribute access: reading a descriptor attribute that a
+        # protobuf release had removed is precisely how every message stopped
+        # being delivered in 1.8.6a1. A kind we cannot read is worth nothing
+        # and must cost nothing.
+        name = getattr(descriptor, "name", "") or ""
+        if name in KINDS:
+            return KINDS[name]
+        if name:
+            # "Message" sits in the middle as often as at the end —
+            # `pollCreationMessageV3`, `documentWithCaptionMessage` — so it is
+            # removed wherever it is rather than stripped as a suffix.
+            return name.replace("Message", "").lower() or "text"
+    return "text"
+
+
 def _user_of(jid_text: str) -> str:
     """The user half of a JID string, without device or server."""
     return str(jid_text or "").split("@", 1)[0].split(":", 1)[0]
@@ -389,10 +445,17 @@ class WhatsApp:
 
         text = extract_text(event.Message) or ""
         context = _context_info(event.Message)
+        kind = _kind(event.Message)
         chat = _jid_str(source.Chat)
         sender = _jid_str(source.Sender)
 
-        if source.IsGroup:
+        if kind == "reaction":
+            # Somebody put an emoji on a message — including the ones this bot
+            # puts on its own queue, which come back over the same socket. It is
+            # worth recording and is not a question, so it is never addressed to
+            # us and a mention_only channel never wakes a consumer for it.
+            mentioned = False
+        elif source.IsGroup:
             mentioned = self._addressed_in_group(text, context)
         else:
             # A direct message is addressed to us by existing.
@@ -403,6 +466,7 @@ class WhatsApp:
             chat=chat,
             sender=sender,
             text=text,
+            kind=kind,
             mentioned=mentioned,
             at=_iso(getattr(event.Info, "Timestamp", None)),
             thread=None,

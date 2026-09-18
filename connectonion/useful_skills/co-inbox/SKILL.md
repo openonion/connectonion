@@ -56,17 +56,38 @@ co feishu consume -- ./answer.sh
 
 ## The message
 
-Seven fields, identical on every provider:
+Eight fields, identical on every provider:
 
 ```json
 {"id":"om_9f8e","chat":"oc_a1b2","thread":null,"sender":"on_7c6d",
- "text":"look at today's failed deploys","mentioned":true,"at":"2026-09-02T10:31:07Z"}
+ "text":"look at today's failed deploys","kind":"text","mentioned":true,
+ "at":"2026-09-02T10:31:07Z"}
 ```
 
 `chat` is where a reply goes. `id` is all `reply` needs — it looks up the chat
 and thread itself. The provider's own payload is not included unless the
 listener was started with `--raw`, so contact names and group titles never
 reach a prompt by accident.
+
+**`kind` is how you tell a photo from an empty message.** `text` is anything you
+can read as words; otherwise it is the platform's own word for what arrived —
+`image`, `video`, `audio`, `document`, `sticker`, `location`, `contact`. Those
+come through with `text` empty, because the body is not text, and without
+`kind` they are indistinguishable from someone sending nothing at all. Answer
+them by saying what you cannot read yet rather than by guessing at silence:
+
+```bash
+case "$(jq -r .kind <<<"$MESSAGE")" in
+  text)  ;;                     # the normal path
+  image|video|audio|document)
+    echo "I can see you sent a $(jq -r .kind <<<"$MESSAGE"), but I can't read one yet." ;;
+  *) exit 0 ;;                  # nothing to say
+esac
+```
+
+A `kind` this list does not name is still the platform's name for it, lowercased
+— new message types appear faster than releases do, and arriving as something
+beats arriving as nothing.
 
 ## Gotchas that change what you report
 

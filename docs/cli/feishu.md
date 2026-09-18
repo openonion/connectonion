@@ -109,8 +109,14 @@ The file in `new/` and the line in `received.jsonl` are the same bytes:
 
 ```json
 {"id":"om_9f8e","chat":"oc_a1b2","thread":null,"sender":"on_7c6d",
- "text":"@OpsAgent look at today's failed deploys","mentioned":true,"at":"2026-09-02T10:31:07Z"}
+ "text":"@OpsAgent look at today's failed deploys","kind":"text","mentioned":true,
+ "at":"2026-09-02T10:31:07Z"}
 ```
+
+`kind` says what arrived: `text` for anything readable as words, otherwise the
+platform's own word for it — `image`, `sticker`, `audio` and the rest come
+through with an empty `text`, and without `kind` they look exactly like a
+message with nothing in it.
 
 `chat` is where it came from; reply there and the answer lands beside the
 question. `sender` is the person's `union_id`. `mentioned` is whether the bot

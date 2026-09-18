@@ -234,11 +234,25 @@ def test_default_home_is_under_dot_co_unless_overridden(monkeypatch, tmp_path):
     assert inbox_root() == tmp_path / "ops-bot"
 
 
-def test_message_json_has_the_same_seven_keys_in_order(tmp_path):
+def test_message_json_has_the_same_eight_keys_in_order(tmp_path):
+    """`kind` joined the seven in 1.8.6, and where it sits is part of the shape.
+
+    It is beside `text` because that is the field it qualifies: an empty `text`
+    means nothing on its own, and a consumer reading them together can tell a
+    photo it cannot render from a message with no content.
+    """
     record = json.loads(msg(thread=None, mentioned=False).to_json())
 
-    assert list(record) == ["id", "chat", "thread", "sender", "text", "mentioned", "at"]
+    assert list(record) == ["id", "chat", "thread", "sender", "text", "kind", "mentioned", "at"]
     assert Message.from_dict(record) == msg(thread=None, mentioned=False)
+
+
+def test_a_record_written_before_kinds_existed_still_loads(tmp_path):
+    # Queue files outlive an upgrade; one written yesterday has no kind and is
+    # text, which is all the listener could deliver when it wrote it.
+    older = {"id": "m1", "chat": "c1", "sender": "s", "text": "hi", "at": "2026-09-01T00:00:00Z"}
+
+    assert Message.from_dict(older).kind == "text"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="mode bits are a posix thing")
