@@ -49,8 +49,10 @@ Every command returns a next command, including in JSON and through a pipe.
 |---|---|
 | `co wiki init` | Run wiki-init: discover accounts/local sources, build and rank People/Project pages, investigate the owner first. |
 | `co wiki scan people --days 150 --min-mails 1` | Enumerate correspondent signals from Gmail/Outlook; no model. Repeat `--mine <address>` for own addresses. |
+| `co wiki scan orgs --days 180 --min-people 2` | List work domains that two or more people write from — where an organisation page earns its place. No model. |
 | `co wiki scan projects --days 150` | Enumerate session working directories and local Git repository identities; no model. |
 | `co wiki stub person "Alice" --email alice@example.org --handle 艾丽丝` | Create the canonical person skeleton if absent. |
+| `co wiki stub org "UNSW" --domain unsw.edu.au --person people/vern-chan.md` | Create an organisation skeleton; `People here` holds links, not copies. |
 | `co wiki stub project "Aurora" --path /path/to/repo` | Create a project skeleton. |
 | `co wiki people` | Existing identity roster: page, title, aliases, addresses, relationship summary. |
 | `co wiki investigate people/alice.md` | Read the existing page, gather sources, digest oversized material, fill that same page through the Skill. |
