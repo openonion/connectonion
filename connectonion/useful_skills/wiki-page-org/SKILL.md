@@ -35,13 +35,33 @@ mail, not who they answer to.
 `co wiki scan orgs --days 180` lists the domains that pass the first test, with
 how many people and how much mail each holds. It proposes; you judge.
 
-Two things to judge, because the count alone will mislead you:
+Each row carries `people`, `two_way`, `notices` and `mails`. **`two_way` is
+the one that separates a counterparty from a vendor**: it counts the people at
+that domain who both wrote to the user and were written back to. Read it
+against the names, and the real list separates cleanly:
 
-- **A notice sender is not a relationship.** Only correspondents — people who
-  write to the user and are written back to — are counted toward the
-  threshold; each row also carries `notices`, the one-way automated senders on
-  that domain. A domain whose `people` are few and whose `notices` are many is
-  a service, not a counterparty, and belongs on the page of whatever it serves.
+```
+ppl 2way notice  domain                    who
+ 26   11      1  unsw.edu.au               Tamara Berryman, Vern Chan, …   → a page
+  3    0      0  cubpbc.com                Tara Sassine, Gemma Ingles      → a page: people, named
+  2    0      0  corp.town.com             Jean-Denis Greze, Tony Vincent  → a page
+ 22    0      0  user.luma-mail.com        one sender per event            → no: a platform
+  6    0      1  substack.com              FounderCoHo, a16z speedrun      → no: newsletters
+  3    0      0  email.apple.com           Apple Developer, Apple Support  → no: a vendor's
+  2    0     12  mail.anthropic.com        Anthropic, PBC ×2                  product mail
+```
+
+- **Brand names that only ever send are a vendor**, whatever the headcount.
+  `Apple Developer`, `MongoDB Cloud`, `Xero Support`, `Neon Changelog` are
+  mailboxes, not colleagues. Their mail belongs on the page of the thing it is
+  about — the project that uses the service — not on a page of their own.
+- **`two_way` of zero does not settle it.** A reply sent from the user's other
+  mailbox leaves it at zero, so a real client can read one-way. Human names
+  and a subject line about the user's own work outweigh it; a brand name does
+  not.
+- **The user's own domain is not a counterparty.** Their own company and their
+  own agent addresses are the owner's profile, not an organisation they deal
+  with. Pass every own address to the scan with `--mine` so it drops out.
 - **One domain can be two tenants.** A university's staff and its students, an
   agency's shared address: that is two pages or one, and the mail says which.
   Say which you chose in `Uncertainties`.

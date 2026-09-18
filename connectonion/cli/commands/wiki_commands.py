@@ -110,7 +110,8 @@ def make_wiki_app(factory):
             clients = {k: mail_client(k) for k in ("outlook", "gmail")}
             rows = [p for p in scan_people(clients, days, set(mine)) if p["mails"] >= min_mails]
             if what == "orgs":
-                return (scan_orgs(rows, min_people=min_people),
+                own = set(mine) | {a for c in clients.values() for a in c.my_addresses()}
+                return (scan_orgs(rows, min_people=min_people, own_addresses=own),
                         ["stub", "org", "<name>", "--domain", "<domain>"])
             return rows, ["stub", "person", "<name>", "--handle", "<address>"]
         from ...wiki.files import WikiError

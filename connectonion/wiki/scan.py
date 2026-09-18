@@ -164,7 +164,7 @@ def _repo_identity(path: Path) -> dict:
         return {}
 
 
-def scan_orgs(people: list[dict], min_people: int = 2) -> list[dict]:
+def scan_orgs(people: list[dict], min_people: int = 2, own_addresses=()) -> list[dict]:
     """The domains several people write from, which is where an organisation page earns
     its place.
 
@@ -180,10 +180,13 @@ def scan_orgs(people: list[dict], min_people: int = 2) -> list[dict]:
     work domain stays a `Company:` field. `min_people=1` lowers it deliberately, for
     the one-person client who signed a contract.
     """
+    # A domain the user sends from is the user, not a counterparty: on the real
+    # census `mail.openonion.ai` came third with 18 of their own agent addresses.
+    own = {str(a).rsplit("@", 1)[-1].lower() for a in own_addresses if "@" in str(a)}
     domains = collections.defaultdict(lambda: {"people": [], "notices": [], "mails": 0, "last": ""})
     for person in people:
         domain = str(person.get("address", "")).rsplit("@", 1)[-1].lower()
-        if not domain or domain in PERSONAL_MAILBOX:
+        if not domain or domain in PERSONAL_MAILBOX or domain in own:
             continue
         entry = domains[domain]
         # A notice sender is not someone we deal with. Run over 180 real days the
@@ -201,8 +204,15 @@ def scan_orgs(people: list[dict], min_people: int = 2) -> list[dict]:
         if len(entry["people"]) < min_people:
             continue
         rows = sorted(entry["people"], key=lambda p: (-p.get("mails", 0), p.get("address", "")))
+        # Two-way correspondence is the strongest sign of a counterparty, and it is
+        # not a filter: a reply sent from the user's other mailbox leaves `sent` at
+        # zero, so a real client can read one-way. Both numbers go over; the Skill
+        # judges. Brand names that only ever send are a vendor.
         out.append({"domain": domain, "people": len(rows), "notices": len(entry["notices"]),
+                    "two_way": sum(1 for r in rows if not r.get("one_way")),
                     "mails": entry["mails"], "last": entry["last"],
                     "addresses": [r["address"] for r in rows],
                     "names": [r["name"] for r in rows if r.get("name")]})
-    return sorted(out, key=lambda o: (-o["people"], -o["mails"], o["domain"]))
+    # Counterparties first. Sorting by headcount alone put an event platform's 22
+    # per-event senders above the university the user actually works with.
+    return sorted(out, key=lambda o: (-o["two_way"], -o["people"], -o["mails"], o["domain"]))

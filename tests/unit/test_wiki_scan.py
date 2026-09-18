@@ -231,3 +231,31 @@ def test_a_domain_that_only_sends_notices_is_not_an_organisation_we_deal_with():
     assert org["people"] == 2          # the two who correspond decide the threshold
     assert org["notices"] == 1         # the alert sender is still reported, not hidden
     assert org["addresses"][0] == "vern@unsw.edu.au"   # ranked among the people, not the notices
+
+
+def test_the_users_own_domain_is_not_an_organisation_they_deal_with():
+    """On the real census `mail.openonion.ai` came third with 18 correspondents: the
+    user's own agent addresses. A domain the user sends from is the user."""
+    from connectonion.wiki.scan import scan_orgs
+    rows = [{"address": f"agent{i}@mail.openonion.ai", "name": f"0x{i}", "mails": 3, "last": "2026-09-10",
+             "automated_hint": False, "one_way": False} for i in range(4)]
+    rows += [{"address": "vern@unsw.edu.au", "name": "Vern", "mails": 7, "last": "2026-09-10",
+              "automated_hint": False, "one_way": False},
+             {"address": "karen@unsw.edu.au", "name": "Karen", "mails": 6, "last": "2026-09-12",
+              "automated_hint": False, "one_way": True}]
+    orgs = scan_orgs(rows, own_addresses={"aaron@mail.openonion.ai", "me@x.y"})
+    assert [o["domain"] for o in orgs] == ["unsw.edu.au"]
+
+
+def test_the_row_carries_how_many_of_them_wrote_back():
+    """Neither count decides it alone. Two-way correspondence is the strongest signal
+    a domain is a counterparty, but a reply sent from the user's other mailbox leaves
+    `sent` at zero, so a real client can look one-way. Both numbers go on the row and
+    the Skill judges: brand names all one-way is a vendor, human names are people."""
+    from connectonion.wiki.scan import scan_orgs
+    rows = [{"address": "tara@cubpbc.com", "name": "Tara Sassine", "mails": 3, "last": "2026-09-10",
+             "automated_hint": False, "one_way": True},
+            {"address": "gemma@cubpbc.com", "name": "Gemma Ingles", "mails": 2, "last": "2026-09-11",
+             "automated_hint": False, "one_way": False}]
+    org = scan_orgs(rows)[0]
+    assert org["people"] == 2 and org["two_way"] == 1
