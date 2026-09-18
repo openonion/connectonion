@@ -315,9 +315,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.6a3
+## Current Version: 1.8.6a4
 
 ### Version History
+- 1.8.6a4 (**alpha: the bot knows who is talking, what they mean, and when it
+  has stopped listening.** A sender arrives with a name instead of an opaque
+  `…@lid`, read from contacts already on disk. `--context N` hands a consumer
+  the turns before a message, our own replies included — `mention_only` had been
+  deciding *what the bot may know* under a name about *when it speaks*. And a
+  listener whose phone unlinked it, whose session another client took, or whose
+  number was banned now stops with a reason and exit 3 instead of holding a
+  socket that will never deliver again: we were handling three of neonize's 37
+  events, and "nobody has messaged us" was indistinguishable from "we were
+  logged out yesterday".)
 - 1.8.6a3 (**alpha: a message says what it is and what it answers.** A reply
   carries `quoted` — the id, sender, text and kind of the message it answers,
   and `from_me`, which separates a reply to the bot from two colleagues talking.
