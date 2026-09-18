@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional
 
 from . import _async_element_finder as element_finder
 from . import _async_humanize as humanize
+from . import _async_network as network_log
 from . import _async_scroll as async_scroll
 from . import _async_terminal as terminal
 from . import engine as browser_engine
@@ -385,6 +386,7 @@ class AsyncBrowserCore:
         self._page_used: Dict[Optional[str], float] = {}
         self._page_url: Dict[Optional[str], str] = {}
         self._tab_meta: Dict[Optional[str], Dict[str, Any]] = {}
+        self._network = network_log.NetworkLog()
         self._tab_idle_ttl = tab_idle_ttl
         self._max_tabs = max_tabs
         self._max_url_memory = 200
@@ -505,6 +507,9 @@ class AsyncBrowserCore:
                     page = await self.browser.new_page()
                 page.set_default_navigation_timeout(60000)
                 await page.set_viewport_size({"width": 1920, "height": 1200})
+                # Attach before the restore navigation below, so a tab that
+                # comes back to life records the request that revived it.
+                self._network.attach(page, key)
                 restore_url = self._page_url.get(key)
                 if restore_url:
                     try:
@@ -559,6 +564,10 @@ class AsyncBrowserCore:
         self._page_used.pop(key, None)
         self._page_url.pop(key, None)
         self._tab_meta.pop(key, None)
+        # A released tab's traffic goes with it: _release_tab already forgets
+        # everything else about the tab, and a long-lived daemon that kept
+        # five hundred records per dead tab would grow without a bound.
+        self._network.forget(key)
         if page is None:
             return None
         try:
@@ -2008,6 +2017,53 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
                 f"- URL: {page.url}\n"
                 f"- Elements: {len(element_dicts)}"
             )
+
+    async def requests(
+        self,
+        url_contains: str = "",
+        method: str = "",
+        kind: str = "",
+        status: int = 0,
+        n: int = 30,
+        since: float = 0.0,
+        as_json: bool = False,
+        clear: bool = False,
+    ) -> str:
+        """List what this tab sent and what came back. `clear` forgets them first.
+
+        Bodies are not in this view — it is the index. `request <n>` opens one.
+        Run with clear=True before an action to see only that action's requests.
+        """
+        key = self._bound_session_key()
+        if clear:
+            dropped = self._network.clear(key)
+            return f"cleared {dropped} recorded request(s)"
+        records = self._network.select(
+            key,
+            url_contains=url_contains,
+            method=method,
+            kind=kind,
+            status=status,
+            since=since,
+            limit=n,
+        )
+        return network_log.render_list(records, as_json=as_json)
+
+    async def request(self, index: int, raw: bool = False) -> str:
+        """Show one recorded request in full: headers and bodies, both ways.
+
+        Header values are shaped rather than printed unless raw=True, so a skill
+        can learn that an endpoint wants an `x-sign` of 32 hex characters without
+        the session cookie reaching a prompt.
+        """
+        key = self._bound_session_key()
+        record = self._network.find(key, index)
+        if record is None:
+            return (
+                f"no request #{index} on this tab. "
+                "Run 'co browser requests' for the ones there are."
+            )
+        return network_log.render_one(record, raw=raw)
 
     async def set_viewport(self, width: int, height: int) -> str:
         async with self._tab_operation():

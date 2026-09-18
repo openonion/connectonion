@@ -165,6 +165,58 @@ Function arguments follow the shell: positional args in order, options as
 `--flag=value` (e.g. `take_screenshot --full-page=true`). Calling a function with
 the wrong arguments returns its usage line so a script (or agent) can self-correct.
 
+### Seeing what the page sent
+
+A page is two things: the DOM you can see, and the requests it made. The DOM
+side is `get_text` / `save_page_context`; this is the other side.
+
+```bash
+co browser requests                            # what this tab has sent
+co browser requests --url-contains=/api/       # narrow it
+co browser requests --method=POST --kind=fetch
+co browser requests --as-json=true             # for a skill to read
+co browser request 7                           # one request, in full
+```
+
+`requests` is the index — method, status, kind, size, duration, URL, newest
+last, id first so `cut -f1` feeds the other verb. `request <n>` opens one:
+request headers, request body, response headers, response body.
+
+To see what **one action** did, clear first:
+
+```bash
+co browser requests --clear=true
+co browser click_element_by_selector "#search"
+co browser requests
+```
+
+Indexes are never reused after a clear, so an id you wrote down cannot come to
+mean a different request later.
+
+**Header values are shaped, not printed.** The consumer of this is usually a
+skill, and a skill feeds an LLM, so a session cookie must not arrive in a prompt
+by accident:
+
+```
+x-sign: <32 hex>
+authorization: Bearer <48 chars>
+set-cookie: <2 pairs, 28 bytes>
+content-type: application/json
+```
+
+The shape is the reusable part — that an endpoint wants a 32-character hex
+signature is the answer; the digits are just somebody's session. Headers that
+let you rebuild the call (`content-type`, `origin`, `referer`, `user-agent`) are
+printed whole. Add `--raw=true` for the values.
+
+Bodies are read only for `xhr`, `fetch` and `document` responses with a textual
+content type. Images, fonts, media and video segments are listed — they are part
+of what the page did — but never downloaded twice, which is what keeps this free
+on a page full of them. A body over 64 KiB goes to a file under
+`~/.co/browser_network/` and the record names it.
+
+The log is per tab, holds the last 500 requests, and goes away with the tab.
+
 ### `do` — natural language
 
 `do` hands the same live browser to an AI agent that sees the page and works out
