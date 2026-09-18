@@ -124,6 +124,22 @@ A `kind` this list does not name is still the platform's name for it, lowercased
 — new message types appear faster than releases do, and arriving as something
 beats arriving as nothing.
 
+**Not everything with a `kind` is somebody typing.** These join the record so a
+conversation reads back correctly, and only the ones actually about the bot set
+`mentioned`:
+
+| `kind` | what happened | wakes a consumer |
+|---|---|---|
+| `edit` | they changed a message they already sent | like any message |
+| `reaction` | somebody put an emoji on one | never |
+| `undecryptable` | a message arrived that could not be decrypted | direct only |
+| `joined` | **the bot was added to a group** | yes |
+| `group-info` | the group was renamed or reconfigured | never |
+
+`undecryptable` is the one worth handling: the message exists and cannot be
+read, which is different from nothing arriving. `joined` is the bot's first
+sight of a room — usually the moment to introduce itself.
+
 **`quoted` is what the message is replying to**, and `null` when it is not a
 reply. Somebody quoting a line and writing "this one is wrong" gives you three
 words and a pronoun; the quote is the noun.

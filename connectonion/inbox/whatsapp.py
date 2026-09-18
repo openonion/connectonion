@@ -426,9 +426,10 @@ class WhatsApp:
         _sdk()
         from neonize.client import NewClient
         from neonize.events import (ConnectedEv, ConnectFailureEv, DisconnectedEv,
-                                    KeepAliveRestoredEv, KeepAliveTimeoutEv, LoggedOutEv,
-                                    MessageEv, PairStatusEv, StreamReplacedEv,
-                                    TemporaryBanEv)
+                                    GroupInfoEv, JoinedGroupEv, KeepAliveRestoredEv,
+                                    KeepAliveTimeoutEv, LoggedOutEv, MessageEv,
+                                    PairStatusEv, StreamReplacedEv, TemporaryBanEv,
+                                    UndecryptableMessageEv)
 
         self.session_path.parent.mkdir(parents=True, exist_ok=True)
         client = NewClient(str(self.session_path))
@@ -517,6 +518,45 @@ class WhatsApp:
                     inbox.log(f"raw payload of {message.id} not kept: {exc}")
             self.take(inbox, message, raw=raw)
 
+        # Things that happen to this account which are not somebody typing. They
+        # become records with their own `kind` rather than log lines, because a
+        # consumer reading a conversation back needs them — "he deleted that" and
+        # "she was added" are part of what was said — and because the ones that
+        # were only ever logged were invisible to everything except a person with
+        # ssh. Only the ones actually about us raise `mentioned`.
+
+        @client.event(UndecryptableMessageEv)
+        def _on_undecryptable(_client, event) -> None:
+            # Somebody sent something and we could not read it. This was the
+            # worst silence left: the message exists, we know who and when, and
+            # a consumer never learned it happened at all. An empty body is at
+            # least a record; this was nothing.
+            self._note(inbox, event, "undecryptable",
+                       f"could not be decrypted ({getattr(event, 'DecryptFailMode', '')})".strip())
+
+        @client.event(JoinedGroupEv)
+        def _on_joined(_client, event) -> None:
+            # The issue that asked for this called it the moment a consumer most
+            # wants to know, and it is right: it is the bot's first sight of a
+            # room. Addressed to us by definition — nobody else was added.
+            info = getattr(event, "GroupInfo", None)
+            chat = _jid_str(getattr(info, "JID", None))
+            name = str(getattr(info, "GroupName", None) or getattr(info, "Name", "") or "")
+            self.take(inbox, Message(
+                id=f"joined-{chat}-{int(time.time())}", chat=chat, sender="", sender_name="",
+                text=f"added to {name}".strip(), kind="joined", quoted=None,
+                mentioned=True, at=iso_utc(), thread=None))
+
+        @client.event(GroupInfoEv)
+        def _on_group_info(_client, event) -> None:
+            chat = _jid_str(getattr(event, "JID", None))
+            what = "renamed" if str(getattr(event, "Name", "") or "") else "changed"
+            self.take(inbox, Message(
+                id=f"group-{chat}-{int(time.time())}", chat=chat,
+                sender=_jid_str(getattr(event, "Sender", None)), sender_name="",
+                text=f"group {what}", kind="group-info", quoted=None,
+                mentioned=False, at=iso_utc(), thread=None))
+
         sender = threading.Thread(target=self._drain_outbox, args=(inbox, stop), daemon=True)
         sender.start()
         try:
@@ -525,6 +565,28 @@ class WhatsApp:
             stop.set()
         if self._fatal_reason:
             raise ListenerStopped(self._fatal_reason)
+
+    def _note(self, inbox: Inbox, event, kind: str, text: str) -> None:
+        """Record something that carries a MessageInfo but is not a message body.
+
+        Never raises: this runs inside an SDK callback, where an exception is a
+        Go-side panic that ends the listener. A note we could not write is a log
+        line; it must not cost the connection.
+        """
+        try:
+            source = event.Info.MessageSource
+            if source.IsFromMe:
+                return
+            chat, sender = _jid_str(source.Chat), _jid_str(source.Sender)
+            self.take(inbox, Message(
+                id=str(event.Info.ID), chat=chat, sender=sender,
+                sender_name=self.name_of(sender), text=text, kind=kind, quoted=None,
+                # A direct one is for us by existing; in a group, nothing in it
+                # says it was addressed to us, so it joins the record quietly.
+                mentioned=not source.IsGroup,
+                at=_iso(getattr(event.Info, "Timestamp", None)), thread=None))
+        except Exception as exc:
+            inbox.log(f"{kind} event not recorded ({type(exc).__name__}: {exc})")
 
     def _fatal(self, inbox: Inbox, stop: threading.Event, reason: str) -> None:
         """Record why this listener can never receive again, and wind it down.
@@ -639,6 +701,12 @@ class WhatsApp:
         text = extract_text(event.Message) or ""
         context = _context_info(event.Message)
         kind = _kind(event.Message)
+        # An edit arrives as a whole message with a flag on the envelope rather
+        # than as its own event. A consumer that treats it as new text answers
+        # the correction as though it were a fresh question; one that can see it
+        # is an edit can go and look at what it replaced.
+        if getattr(event, "IsEdit", False):
+            kind = "edit"
         quoted = _quoted_reference(context, self._own_ids)
         chat = _jid_str(source.Chat)
         sender = _jid_str(source.Sender)

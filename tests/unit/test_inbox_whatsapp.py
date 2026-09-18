@@ -73,9 +73,10 @@ def sdk(monkeypatch):
     # sentinels here are the same objects a test fires — which is the whole
     # reason a stand-in can exercise the listener at all.
     connection = ModuleType("neonize.events")
-    for name in ("ConnectedEv", "ConnectFailureEv", "DisconnectedEv", "KeepAliveRestoredEv",
-                 "KeepAliveTimeoutEv", "LoggedOutEv", "MessageEv", "PairStatusEv",
-                 "StreamReplacedEv", "TemporaryBanEv"):
+    for name in ("ConnectedEv", "ConnectFailureEv", "DisconnectedEv", "GroupInfoEv",
+                 "JoinedGroupEv", "KeepAliveRestoredEv", "KeepAliveTimeoutEv",
+                 "LoggedOutEv", "MessageEv", "PairStatusEv", "StreamReplacedEv",
+                 "TemporaryBanEv", "UndecryptableMessageEv"):
         setattr(connection, name, type(name, (), {}))
     client_module = ModuleType("neonize.client")
     client_module.NewClient = lambda path: None      # each test replaces this
@@ -664,6 +665,110 @@ def listen_through(monkeypatch, inbox, *events):
     monkeypatch.setattr("neonize.client.NewClient", lambda path: Socket(*events))
     bot.run(inbox)
     return bot
+
+
+def info_event(message_id="ACX", group=True, from_me=False):
+    """An event carrying only a MessageInfo — no body to read."""
+    chat = jid("1203630000000", GROUP_SERVER) if group else jid(PEER)
+    return SimpleNamespace(
+        Info=SimpleNamespace(ID=message_id, Timestamp=SimpleNamespace(seconds=1756808267),
+                             MessageSource=SimpleNamespace(Chat=chat, Sender=jid(PEER),
+                                                           IsFromMe=from_me, IsGroup=group)),
+        DecryptFailMode="SHOW")
+
+
+def test_a_message_we_cannot_decrypt_is_recorded_rather_than_vanishing(sdk, monkeypatch):
+    # The worst silence left: the message exists, we know who sent it and when,
+    # and a consumer never learned it happened at all.
+    import neonize.events as ev
+
+    inbox = Inbox("whatsapp")
+
+    listen_through(monkeypatch, inbox,
+                   (ev.UndecryptableMessageEv, info_event("ACUNDEC")))
+
+    recorded = inbox.list_messages()
+    assert [m.kind for m in recorded] == ["undecryptable"]
+    assert recorded[0].id == "ACUNDEC"
+    assert "could not be decrypted" in recorded[0].text
+
+
+def test_an_undecryptable_direct_message_is_for_us_and_a_group_one_is_not(sdk, monkeypatch):
+    # Nothing in a group event says it was addressed to us, so it joins the
+    # record quietly rather than waking a consumer.
+    import neonize.events as ev
+
+    inbox = Inbox("whatsapp")
+
+    listen_through(monkeypatch, inbox,
+                   (ev.UndecryptableMessageEv, info_event("ACG", group=True)),
+                   (ev.UndecryptableMessageEv, info_event("ACD", group=False)))
+
+    by_id = {m.id: m.mentioned for m in inbox.list_messages()}
+    assert by_id == {"ACG": False, "ACD": True}
+
+
+def test_our_own_undecryptable_echo_is_not_recorded(sdk, monkeypatch):
+    import neonize.events as ev
+
+    inbox = Inbox("whatsapp")
+
+    listen_through(monkeypatch, inbox,
+                   (ev.UndecryptableMessageEv, info_event("ACME", from_me=True)))
+
+    assert inbox.list_messages() == []
+
+
+def test_being_added_to_a_group_is_a_record_addressed_to_us(sdk, monkeypatch):
+    # The report that asked for this called it the moment a consumer most wants
+    # to know — it is the bot's first sight of a room, and nobody else was added.
+    import neonize.events as ev
+
+    inbox = Inbox("whatsapp")
+    joined = SimpleNamespace(Reason="invite", GroupInfo=SimpleNamespace(
+        JID=jid("1203630000999", GROUP_SERVER), GroupName="co185 acceptance"))
+
+    listen_through(monkeypatch, inbox, (ev.JoinedGroupEv, joined))
+
+    recorded = inbox.list_messages()
+    assert [(m.kind, m.mentioned) for m in recorded] == [("joined", True)]
+    assert "co185 acceptance" in recorded[0].text
+    assert recorded[0].chat == f"1203630000999@{GROUP_SERVER}"
+
+
+def test_a_group_being_renamed_is_recorded_but_wakes_nobody(sdk, monkeypatch):
+    import neonize.events as ev
+
+    inbox = Inbox("whatsapp")
+    changed = SimpleNamespace(JID=jid("1203630000000", GROUP_SERVER),
+                              Sender=jid(PEER), Name="new name")
+
+    listen_through(monkeypatch, inbox, (ev.GroupInfoEv, changed))
+
+    assert [(m.kind, m.mentioned) for m in inbox.list_messages()] == [("group-info", False)]
+
+
+def test_an_edit_says_it_is_an_edit(sdk):
+    # An edit arrives as a whole message with a flag on the envelope. A consumer
+    # that reads it as new text answers the correction as a fresh question.
+    bot = linked(WhatsApp(), ids=(OWN, OWN_LID))
+    raw = event(text="the price sheet is right actually")
+    raw.IsEdit = True
+
+    assert bot.to_message(raw).kind == "edit"
+
+
+def test_a_note_that_cannot_be_written_never_costs_the_connection(sdk, monkeypatch):
+    # Inside an SDK callback an exception is a Go-side panic that ends the
+    # listener. A record we failed to write is a log line.
+    import neonize.events as ev
+
+    inbox = Inbox("whatsapp")
+    broken = SimpleNamespace(Info=None, DecryptFailMode="SHOW")
+
+    listen_through(monkeypatch, inbox, (ev.UndecryptableMessageEv, broken))
+
+    assert "not recorded" in (inbox.root / "log").read_text(encoding="utf-8")
 
 
 def test_being_unlinked_stops_the_listener_instead_of_leaving_it_running(sdk, monkeypatch):
