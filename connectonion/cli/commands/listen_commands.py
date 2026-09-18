@@ -8,6 +8,7 @@ LLM-Note:
   Errors: a missing credential prints the item and the next action and exits 3 | a provider refusal prints its own words and exits 1 | nothing is printed on the success path of listen (Rule of Silence); the log has it
 """
 
+import json
 import re
 import os
 import shutil
@@ -153,7 +154,23 @@ def _receive(inbox: Inbox, timeout: Optional[float], watch: bool):
         _listener_or_exit(inbox)
 
 
-def handle_receive(name: str, timeout: Optional[float] = None, start: bool = True) -> None:
+def _with_context(inbox: Inbox, message, count: int) -> str:
+    """The message as JSON, with the conversation around it when asked for.
+
+    Opt-in and zero by default. Context is real cost — tokens for a model, and
+    in a busy group it is also other people's messages leaving the machine — so
+    it is asked for rather than assumed, and the line is byte-identical to
+    before when it is not.
+    """
+    if count <= 0:
+        return message.to_json()
+    record = message.to_dict()
+    record["context"] = inbox.context(message.chat, count, before=message.id)
+    return json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+
+
+def handle_receive(name: str, timeout: Optional[float] = None, start: bool = True,
+                   context: int = 0) -> None:
     """Print the next message as one JSON line. Exit 124 if none arrived."""
     inbox = Inbox(name)
     if start:
@@ -167,7 +184,7 @@ def handle_receive(name: str, timeout: Optional[float] = None, start: bool = Tru
         errors.print(f"no message within the timeout (exit {EXIT_TIMEOUT}). "
                      f"Next: co {name} ls", style="dim")
         sys.exit(EXIT_TIMEOUT)
-    print(message.to_json())
+    print(_with_context(inbox, message, context))
 
 
 def handle_send(name: str, chat: str, text: Optional[str] = None, reply_to: Optional[str] = None) -> None:
@@ -320,7 +337,8 @@ def handle_log(name: str, follow: bool = False) -> None:
             time.sleep(0.5)
 
 
-def handle_consume(name: str, command: List[str], once: bool = False, workers: int = 1) -> None:
+def handle_consume(name: str, command: List[str], once: bool = False, workers: int = 1,
+                   context: int = 0) -> None:
     """For each message: run COMMAND with the message on stdin, send its
     stdout back as the reply. Empty stdout or a non-zero exit sends nothing."""
     p = _configured(name)
@@ -351,7 +369,7 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
         # Marking after it would light up for the millisecond before the reply
         # lands, which is the same as not marking at all.
         _mark_answering(p, inbox, message)
-        run = subprocess.run(command, input=message.to_json() + "\n",
+        run = subprocess.run(command, input=_with_context(inbox, message, context) + "\n",
                              capture_output=True, text=True, env=env)
         # Returning finishes the message; raising leaves it in cur/ for the
         # sweep to offer again in an hour. So a command that failed, or a

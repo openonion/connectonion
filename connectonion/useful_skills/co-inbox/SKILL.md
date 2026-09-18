@@ -110,6 +110,35 @@ QUOTED=$(jq -r '.quoted.text // empty' <<<"$MESSAGE")
 [ -n "$QUOTED" ] && PROMPT="They are replying to: $QUOTED"$'\n'"$PROMPT"
 ```
 
+## The conversation around it
+
+A group asks things across several messages — *"the price sheet is wrong"*,
+*"it's missing the cleaning column"*, *"@bot recompute"* — and the bot is handed
+only the third. `--context N` adds the N turns before it in that chat:
+
+```bash
+co whatsapp receive --context 20
+co whatsapp consume --context 20 -- claude -p
+```
+
+```json
+"context": [
+  {"at":"…","from":"them","sender":"on_7c6d","text":"the price sheet is wrong","kind":"text"},
+  {"at":"…","from":"them","sender":"on_7c6d","text":"it's missing the cleaning column","kind":"text"},
+  {"at":"…","from":"us","sender":"","text":"looking now","kind":"text"}
+]
+```
+
+Your own replies are in it (`from: "us"`), because a transcript where the bot's
+answers are missing reads as though it never responded — a model given that will
+apologise for ignoring someone it already helped.
+
+**Opt-in, and zero by default.** Without the flag the line is byte-identical to
+before. Context costs tokens, and in a busy group it is also other people's
+messages leaving the machine, so it is asked for rather than assumed. Messages
+that never named the bot are in it: `mention_only` decides *when you speak*, not
+what you are allowed to know.
+
 ## Gotchas that change what you report
 
 - **Taking a message is a claim, and claims expire.** `receive` moves the file

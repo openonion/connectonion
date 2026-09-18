@@ -1126,10 +1126,12 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
     def _receive(
         timeout: Optional[float] = typer.Option(None, "--timeout", "-t", help="Seconds to wait; 0 looks once. Exit 124 if none."),
         no_start: bool = typer.Option(False, "--no-start", help="Do not start a background listener"),
+        context: int = typer.Option(0, "--context", min=0, max=200, metavar="N",
+                                    help="Also include the N turns before it in that chat"),
     ):
         """Print the next message as one JSON line, taking it from the queue."""
         from .commands.listen_commands import handle_receive
-        handle_receive(name, timeout=timeout, start=not no_start)
+        handle_receive(name, timeout=timeout, start=not no_start, context=context)
 
     @group.command("send")
     def _send(
@@ -1185,10 +1187,12 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
         once: bool = typer.Option(False, "--once", help="Handle one message and exit"),
         workers: int = typer.Option(1, "--workers", min=1,
                                     help="Conversations to answer at once (default 1, one after another)"),
+        context: int = typer.Option(0, "--context", min=0, max=200, metavar="N",
+                                    help="Also give the command the N turns before each message"),
     ):
         """Loop: receive, run COMMAND with the message on stdin, reply with its stdout."""
         from .commands.listen_commands import handle_consume
-        handle_consume(name, command, once=once, workers=workers)
+        handle_consume(name, command, once=once, workers=workers, context=context)
 
     return group
 
