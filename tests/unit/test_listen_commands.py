@@ -75,7 +75,7 @@ def test_receive_prints_one_json_line_and_takes_the_message(box, fake, capsys):
     listen_commands.handle_receive("feishu", timeout=0, start=False)
 
     out = capsys.readouterr().out
-    assert json.loads(out) == {"id": "om_1", "chat": "oc_a", "thread": None, "sender": "on_x",
+    assert json.loads(out) == {"id": "om_1", "chat": "oc_a", "thread": None, "sender": "on_x", "sender_name": "",
                                "text": "hi", "kind": "text", "quoted": None, "mentioned": True, "at": "2026-09-02T10:00:00Z"}
     assert box.unread() == []
 

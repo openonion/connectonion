@@ -234,7 +234,7 @@ def test_default_home_is_under_dot_co_unless_overridden(monkeypatch, tmp_path):
     assert inbox_root() == tmp_path / "ops-bot"
 
 
-def test_message_json_has_the_same_nine_keys_in_order(tmp_path):
+def test_message_json_has_the_same_ten_keys_in_order(tmp_path):
     """`kind` joined the seven in 1.8.6, and where it sits is part of the shape.
 
     It is beside `text` because that is the field it qualifies: an empty `text`
@@ -243,8 +243,8 @@ def test_message_json_has_the_same_nine_keys_in_order(tmp_path):
     """
     record = json.loads(msg(thread=None, mentioned=False).to_json())
 
-    assert list(record) == ["id", "chat", "thread", "sender", "text", "kind",
-                            "quoted", "mentioned", "at"]
+    assert list(record) == ["id", "chat", "thread", "sender", "sender_name", "text",
+                            "kind", "quoted", "mentioned", "at"]
     assert Message.from_dict(record) == msg(thread=None, mentioned=False)
 
 

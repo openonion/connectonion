@@ -131,6 +131,11 @@ class Message:
     # different events, and a consumer implementing "answer when addressed"
     # cannot tell them apart without it. None when this is not a reply.
     quoted: Optional[dict] = None
+    # Who the sender is, in the words they are known by — "Eric Fu" rather than
+    # `126121882435737@lid`. Empty when the platform has no name for them, which
+    # is different from an empty name: an id nobody can read is the state this
+    # replaces, and every consumer was otherwise building the same lookup.
+    sender_name: str = ""
 
     def to_dict(self, *, raw: bool = False) -> dict:
         record = {
@@ -138,6 +143,7 @@ class Message:
             "chat": self.chat,
             "thread": self.thread,
             "sender": self.sender,
+            "sender_name": self.sender_name,
             "text": self.text,
             "kind": self.kind,
             "quoted": self.quoted,
@@ -170,6 +176,7 @@ class Message:
             # what the listener could deliver at the time.
             kind=str(record.get("kind") or "text"),
             quoted=record.get("quoted") if isinstance(record.get("quoted"), dict) else None,
+            sender_name=str(record.get("sender_name") or ""),
         )
 
 

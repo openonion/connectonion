@@ -56,13 +56,18 @@ co feishu consume -- ./answer.sh
 
 ## The message
 
-Nine fields, identical on every provider:
+Ten fields, identical on every provider:
 
 ```json
 {"id":"om_9f8e","chat":"oc_a1b2","thread":null,"sender":"on_7c6d",
- "text":"look at today's failed deploys","kind":"text","quoted":null,
- "mentioned":true,"at":"2026-09-02T10:31:07Z"}
+ "sender_name":"Eric Fu","text":"look at today's failed deploys","kind":"text",
+ "quoted":null,"mentioned":true,"at":"2026-09-02T10:31:07Z"}
 ```
+
+`sender_name` is who that id belongs to — WhatsApp senders arrive as
+`126121882435737@lid`, which tells nobody who spoke. Empty when the platform has
+no name for them; **use `sender` as the key and `sender_name` only to address
+somebody**, because a name is not unique and can change.
 
 `chat` is where a reply goes. `id` is all `reply` needs — it looks up the chat
 and thread itself. The provider's own payload is not included unless the
