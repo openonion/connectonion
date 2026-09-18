@@ -19,7 +19,7 @@ from typing import List, Optional
 
 from rich.console import Console
 
-from ...inbox import ANSWERING, Inbox, provider, reactions_enabled
+from ...inbox import ANSWERING, Inbox, ListenerStopped, provider, reactions_enabled
 from .command_tips import print_tip
 
 console = Console()
@@ -115,6 +115,14 @@ def handle_listen(name: str, raw: bool = False) -> None:
         p.run(inbox, raw=raw)
     except KeyboardInterrupt:
         inbox.log("stopped by Ctrl-C")
+    except ListenerStopped as exc:
+        # Exit 3, the same code as a missing credential, because it is the same
+        # kind of problem: a person has to do something before any amount of
+        # restarting helps. A supervisor that retries on 1 and stops on 3 then
+        # does the right thing without being told which failure this was.
+        errors.print(str(exc), style="red")
+        errors.print(f"details: {inbox.logfile}", style="dim")
+        sys.exit(EXIT_CONFIG)
     except Exception as exc:
         # The platform's own sentence ("app_id is invalid"), once, and exit 1.
         # A forty-line traceback through Typer told the operator nothing the

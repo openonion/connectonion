@@ -25,7 +25,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from . import ANSWERING, SEEN, reactions_enabled
+from . import ANSWERING, SEEN, ListenerStopped, reactions_enabled
 from .store import Inbox, Message, default_home, iso_utc
 
 SDK_MISSING = (
@@ -82,6 +82,22 @@ def _sdk_will_not_load(exc: ImportError) -> str:
         f"The WhatsApp library is installed but will not load: {detail}. "
         "Next: python -c 'import neonize' for the full traceback."
     )
+
+
+def _sending_failed(exc: Exception) -> str:
+    """Why a send did not go out, in words the person can act on.
+
+    whatsmeow says `the store doesn't contain a device JID` when the session has
+    no registration — true, and it names an internal structure rather than the
+    thing that happened, which is that this device is no longer linked. Only
+    that one is translated; anything else keeps its own words, because a message
+    somebody can search beats a fix we guessed at.
+    """
+    detail = str(exc) or type(exc).__name__
+    if "device JID" in detail or "not logged in" in detail.lower():
+        return ("this device is not linked any more — the phone unlinked it, or the QR was "
+                "never scanned. Next: co whatsapp listen and scan the QR again")
+    return detail
 
 
 def _jid_str(jid) -> str:
@@ -280,6 +296,7 @@ class WhatsApp:
         configured = os.environ.get("WHATSAPP_SESSION", "")
         self.session_path = Path(configured) if configured else default_home("whatsapp") / "session.db"
         self._client = None
+        self._fatal_reason = ""   # why this listener can never receive again
         self._own_user = ""       # the phone number, for the log line
         self._own_ids = frozenset()  # every id that means us: the number and the LID
 
@@ -313,8 +330,13 @@ class WhatsApp:
         if not self.session_path.exists():
             return [f"No linked WhatsApp session at {self.session_path}. {how}"]
         if not self._device_confirmed():
-            return [f"The WhatsApp session at {self.session_path} was never linked: a QR code "
-                    f"was shown but no phone confirmed it. {how}"]
+            # Two stories, one file. whatsmeow clears device, identity_keys and
+            # sessions together on logout, so a pairing that never completed and
+            # a device the phone unlinked leave byte-identical evidence. Saying
+            # "the QR was never scanned" to somebody who watched it work for a
+            # week sends them looking for a scan that did happen.
+            return [f"No linked device in {self.session_path} — either the QR was never "
+                    f"scanned, or this device was logged out from the phone. {how}"]
         return []
 
     def _device_confirmed(self) -> bool:
@@ -403,11 +425,15 @@ class WhatsApp:
         Also drains the outbox, because this process owns the only socket."""
         _sdk()
         from neonize.client import NewClient
-        from neonize.events import ConnectedEv, MessageEv, PairStatusEv
+        from neonize.events import (ConnectedEv, ConnectFailureEv, DisconnectedEv,
+                                    KeepAliveRestoredEv, KeepAliveTimeoutEv, LoggedOutEv,
+                                    MessageEv, PairStatusEv, StreamReplacedEv,
+                                    TemporaryBanEv)
 
         self.session_path.parent.mkdir(parents=True, exist_ok=True)
         client = NewClient(str(self.session_path))
         self._client = client
+        stop = threading.Event()
 
         @client.event(ConnectedEv)
         def _on_connected(_client, _event) -> None:
@@ -421,6 +447,56 @@ class WhatsApp:
         @client.event(PairStatusEv)
         def _on_paired(_client, event) -> None:
             inbox.log(f"paired {_jid_str(getattr(event, 'ID', None))}")
+
+        # The socket has more ways to stop working than to work, and none of
+        # them used to say anything. A listener whose phone unlinked it keeps
+        # its process, prints nothing further, and receives nothing ever again
+        # — so "nobody has messaged us" and "we were logged out yesterday"
+        # produced identical evidence, which is the state this whole release
+        # has been about.
+
+        @client.event(LoggedOutEv)
+        def _on_logged_out(_client, event) -> None:
+            self._fatal(
+                inbox, stop,
+                f"logged out by the phone (reason {getattr(event, 'Reason', 'unknown')}). "
+                "This device was unlinked under Settings > Linked devices. "
+                "Next: co whatsapp listen — scan the QR again")
+
+        @client.event(StreamReplacedEv)
+        def _on_replaced(_client, _event) -> None:
+            # WhatsApp allows one socket per linked device, so a second listener
+            # on the same session silently takes this one's place.
+            self._fatal(
+                inbox, stop,
+                "another client took this session over: WhatsApp allows one connection per "
+                "linked device. Next: stop the other listener, then co whatsapp listen")
+
+        @client.event(TemporaryBanEv)
+        def _on_banned(_client, event) -> None:
+            self._fatal(
+                inbox, stop,
+                f"temporarily banned by WhatsApp (code {getattr(event, 'Code', '?')}, "
+                f"expires {getattr(event, 'Expire', '?')}). Nothing will arrive until it lifts.")
+
+        @client.event(ConnectFailureEv)
+        def _on_connect_failure(_client, event) -> None:
+            inbox.log(f"connect failed: {getattr(event, 'Reason', '?')} "
+                      f"{getattr(event, 'Message', '')}".strip())
+
+        @client.event(DisconnectedEv)
+        def _on_disconnected(_client, _event) -> None:
+            # Not fatal: the SDK reconnects. Logged because a gap is exactly
+            # what a later "did we miss anything" question needs to see.
+            inbox.log("disconnected; waiting for the socket to come back")
+
+        @client.event(KeepAliveTimeoutEv)
+        def _on_keepalive_timeout(_client, event) -> None:
+            inbox.log(f"keepalive timed out ({getattr(event, 'ErrorCount', '?')} in a row)")
+
+        @client.event(KeepAliveRestoredEv)
+        def _on_keepalive_restored(_client, _event) -> None:
+            inbox.log("keepalive restored")
 
         @client.event(MessageEv)
         def _on_message(_client, event) -> None:
@@ -441,13 +517,36 @@ class WhatsApp:
                     inbox.log(f"raw payload of {message.id} not kept: {exc}")
             self.take(inbox, message, raw=raw)
 
-        stop = threading.Event()
         sender = threading.Thread(target=self._drain_outbox, args=(inbox, stop), daemon=True)
         sender.start()
         try:
             client.connect()
         finally:
             stop.set()
+        if self._fatal_reason:
+            raise ListenerStopped(self._fatal_reason)
+
+    def _fatal(self, inbox: Inbox, stop: threading.Event, reason: str) -> None:
+        """Record why this listener can never receive again, and wind it down.
+
+        Not every disconnection is fatal — the SDK reconnects from most of them,
+        and those are log lines. These three are not: being unlinked, having the
+        session taken by another client, and being banned all leave a process
+        that holds a socket, prints nothing, and will never see another message.
+        Staying up in that state is what made "nobody has messaged us"
+        indistinguishable from "we were logged out yesterday".
+
+        Never raises: this runs inside an SDK callback, where an exception is a
+        Go-side panic. It records the reason, asks the connection to stop, and
+        `run` raises on the way out where a caller can act on it.
+        """
+        inbox.log(f"listener stopped: {reason}")
+        self._fatal_reason = reason
+        stop.set()
+        try:
+            self._client.disconnect()
+        except Exception as exc:
+            inbox.log(f"disconnect after stopping failed: {exc}")
 
     @staticmethod
     def _read_identity(client) -> tuple:
@@ -659,10 +758,13 @@ class WhatsApp:
         A request with no kind is a send: the spool carried nothing but sends
         before reactions existed, and a listener that has not been restarted
         yet may still be draining one."""
-        if payload.get("kind") == "reaction":
-            return self._react_now(payload["chat"], payload["message_id"],
-                                   payload["emoji"], payload.get("sender", ""))
-        return self._send_now(payload["chat"], payload["text"], payload.get("reply_to"))
+        try:
+            if payload.get("kind") == "reaction":
+                return self._react_now(payload["chat"], payload["message_id"],
+                                       payload["emoji"], payload.get("sender", ""))
+            return self._send_now(payload["chat"], payload["text"], payload.get("reply_to"))
+        except Exception as exc:
+            raise RuntimeError(_sending_failed(exc)) from exc
 
     def _react_now(self, chat: str, message_id: str, emoji: str, sender: str) -> str:
         """The actual reaction, on the listener's own connection.

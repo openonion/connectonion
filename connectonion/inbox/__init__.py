@@ -27,6 +27,21 @@ SEEN = "👀"
 ANSWERING = "✍️"
 
 
+class ListenerStopped(RuntimeError):
+    """The connection ended in a way no amount of waiting will recover from.
+
+    Separate from every other listener failure because the answer is different:
+    being unlinked, having the session taken by another client, or being banned
+    all need a person, and no restart helps. Every other disconnection is
+    transient and the provider reconnects from it.
+
+    Lives here rather than in a provider because the distinction is not
+    WhatsApp's — any platform can end a session for good — and because the
+    command layer has to catch it without importing a provider it may not have
+    the SDK for.
+    """
+
+
 def reactions_enabled() -> bool:
     """Whether to mark messages at all.
 
@@ -61,4 +76,4 @@ def provider(name: str):
 
 
 __all__ = ["Inbox", "Message", "provider", "PROVIDERS",
-           "SEEN", "ANSWERING", "reactions_enabled"]
+           "SEEN", "ANSWERING", "reactions_enabled", "ListenerStopped"]
