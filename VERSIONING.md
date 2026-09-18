@@ -315,9 +315,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.6a5
+## Current Version: 1.8.6a6
 
 ### Version History
+- 1.8.6a6 (**alpha: things that happen to the account stop being silence.** A
+  message that arrives and cannot be decrypted is recorded instead of
+  discarded — the sender saw it delivered, and until now nothing anywhere said
+  it had existed. Being added to a group is a record addressed to the bot, an
+  edit says it is an edit, and a rename joins the record without waking
+  anybody: recording and waking are different questions, and only what is about
+  the bot interrupts. No new fields — the record stays at ten after three
+  releases of shape changes. Also takes anyio 4.15.1, where two advisories
+  against 4.12.0 are fixed.)
 - 1.8.6a5 (**alpha: you can find a conversation and read it back.** `chats`
   lists what the inbox has seen — id, group or direct, how many messages, how
   many were for the bot, who spoke last — so the chat id that `send` and `reply`
