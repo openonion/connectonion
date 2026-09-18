@@ -25,11 +25,41 @@ stderr while continuing.
 | decide not to answer one | `co feishu done <id>` |
 | send without being asked | `co feishu send <chat> "text"` |
 | see what is waiting | `co feishu ls` |
+| **find out which conversations exist** | `co feishu chats` |
+| **read one conversation back** | `co feishu log --chat <id>` |
 | watch it work | `co feishu log -f` |
 | hold the connection yourself | `co feishu listen` |
 
-`co lark …` is the same nine verbs against Lark. Pick by where your bot lives;
-the credentials are separate (`FEISHU_APP_*` and `LARK_APP_*`).
+`co lark …` is the same verbs against Lark. Pick by where your bot lives; the
+credentials are separate (`FEISHU_APP_*` and `LARK_APP_*`).
+
+### Finding a conversation
+
+`send` and `reply` need a chat id, and until you have one there is nothing to
+paste. `chats` is where ids come from — one tab-separated row per conversation,
+id first, so `cut -f1` gives you exactly the thing the other verbs take:
+
+```bash
+$ co whatsapp chats
+126121882435737@lid       direct  4  4  2026-09-17T04:59:17Z  Eric Fu  你好
+120363410170505910@g.us   group   7  2  2026-09-17T05:00:24Z  Eric Fu  @bot 开始
+#  id                     kind    messages  for-us  last activity  who  what
+```
+
+`for-us` is how many of them were addressed to the bot — the gap between the two
+counts is the conversation happening around it.
+
+Then read one back, including everything that never named the bot:
+
+```bash
+co whatsapp log --chat 120363410170505910@g.us -n 50
+co whatsapp log --chat 120363410170505910@g.us --since 7d
+co whatsapp log --sender "Eric Fu"          # by name or by id
+```
+
+A filtered `log` answers from the record and stops; `-f` tails the whole inbox.
+`-n` keeps the **most recent** N, because a conversation is read backwards from
+its last turn.
 
 ## The 80%
 

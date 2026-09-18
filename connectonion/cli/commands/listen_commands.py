@@ -319,9 +319,55 @@ def _handled_lines(inbox: Inbox) -> List[str]:
     return lines
 
 
-def handle_log(name: str, follow: bool = False) -> None:
+def _since_to_iso(value: Optional[str]) -> Optional[str]:
+    """`30d`, `2w`, or a date, as the timestamp the records are written with.
+
+    The mail CLIs already parse exactly this spelling, and a second grammar for
+    the same idea is how `7d` comes to mean two different things in one tool.
+    """
+    if not value:
+        return None
+    from .mail_window import parse_since
+
+    try:
+        return parse_since(value).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as error:
+        errors.print(str(error), style="red")
+        sys.exit(2)
+
+
+def handle_chats(name: str) -> None:
+    """The conversations this inbox has seen, busiest last."""
+    inbox = Inbox(name)
+    rows = inbox.chats()
+    if not rows:
+        errors.print("no conversations yet — nothing has arrived in this inbox.", style="dim")
+        print_tip(f"Next: co {name} listen")
+        return
+    for row in rows:
+        who = row["last_sender_name"] or row["last_sender"]
+        text = " ".join(str(row["last_text"]).split())[:60]
+        # Plain print, not Rich: Rich expands \t into spaces, and `cut -f1` has
+        # to give the chat id — the one thing every other verb needs and nothing
+        # else prints. The same reason `ls` writes its rows this way.
+        print(f"{row['chat']}\t{'group' if row['group'] else 'direct'}\t"
+              f"{row['messages']}\t{row['mentioned']}\t{row['last_at']}\t{who}\t{text}")
+    print_tip(f"Next: co {name} log --chat <id>")
+
+
+def handle_log(name: str, follow: bool = False, chat: Optional[str] = None,
+               sender: Optional[str] = None, since: Optional[str] = None,
+               last: Optional[int] = None) -> None:
     """Every message ever received; -f keeps printing new ones."""
     inbox = Inbox(name)
+    if chat or sender or since or last is not None:
+        # A filtered read is a query, not a tail: it answers from the record and
+        # stops, so `--follow` with a filter would mean two different things at
+        # once.
+        window = _since_to_iso(since)
+        for record in inbox.history(chat=chat, sender=sender, since=window, last=last):
+            print(json.dumps(record, ensure_ascii=False, separators=(",", ":")))
+        return
     for line in _handled_lines(inbox):
         print(line)
     inbox.received.touch()

@@ -1171,11 +1171,25 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
         from .commands.listen_commands import handle_ls
         handle_ls(name)
 
+    @group.command("chats")
+    def _chats():
+        """Conversations seen: chat id, kind, messages, for-us, last activity."""
+        from .commands.listen_commands import handle_chats
+        handle_chats(name)
+
     @group.command("log")
-    def _log(follow: bool = typer.Option(False, "--follow", "-f", help="Keep printing new messages")):
+    def _log(
+        follow: bool = typer.Option(False, "--follow", "-f", help="Keep printing new messages"),
+        chat: Optional[str] = typer.Option(None, "--chat", help="Only this conversation; ids come from `chats`"),
+        sender: Optional[str] = typer.Option(None, "--sender", help="Only this sender, by id or name"),
+        since: Optional[str] = typer.Option(None, "--since", metavar="30d|2026-06-01",
+                                            help="Only what arrived in this window"),
+        last: Optional[int] = typer.Option(None, "--last", "-n", min=1,
+                                           help="Keep only the most recent N"),
+    ):
         """Every message ever received, one JSON line each."""
         from .commands.listen_commands import handle_log
-        handle_log(name, follow=follow)
+        handle_log(name, follow=follow, chat=chat, sender=sender, since=since, last=last)
 
     # `consume`, not `serve`. Nothing here serves anything — it takes messages
     # off a queue and hands each to a command, which is what DD-063 calls a

@@ -493,6 +493,59 @@ class Inbox:
         turns.sort(key=lambda turn: str(turn.get("at", "")))
         return turns[max(0, len(turns) - count):]
 
+    def chats(self) -> list[dict]:
+        """Every conversation this inbox has seen, busiest last.
+
+        The chat id is the one thing `send` and `reply` cannot work without, and
+        the only way to find one used to be grepping `received.jsonl` — so the
+        first thing anybody did with a new inbox was write this query. Each row
+        carries what you need to pick the right conversation out of a list of
+        ids that all look alike: how many messages, how many were for us, who
+        was last heard from, and when.
+        """
+        seen = {}
+        for record in self._records(self.received):
+            chat = record.get("chat")
+            if not chat:
+                continue
+            row = seen.setdefault(chat, {
+                "chat": chat, "messages": 0, "mentioned": 0,
+                "last_sender": "", "last_sender_name": "", "last_text": "", "last_at": "",
+                "group": str(chat).endswith("@g.us") or str(chat).startswith("oc_"),
+            })
+            row["messages"] += 1
+            if record.get("mentioned"):
+                row["mentioned"] += 1
+            at = str(record.get("at", ""))
+            if at >= row["last_at"]:
+                row.update(last_at=at,
+                           last_sender=record.get("sender", ""),
+                           last_sender_name=record.get("sender_name", "") or "",
+                           last_text=record.get("text", "") or "")
+        return sorted(seen.values(), key=lambda row: row["last_at"])
+
+    def history(self, chat: Optional[str] = None, sender: Optional[str] = None,
+                since: Optional[str] = None, last: Optional[int] = None) -> list[dict]:
+        """Received records, narrowed. Oldest first; `last` keeps the recent end.
+
+        Which end a cap keeps is not a detail — a conversation is read backwards
+        from its most recent turn, and the first twenty messages of a long thread
+        are the least useful twenty available.
+        """
+        rows = []
+        for record in self._records(self.received):
+            if chat and record.get("chat") != chat:
+                continue
+            if sender and sender not in (record.get("sender", ""),
+                                         record.get("sender_name", "")):
+                continue
+            if since and str(record.get("at", "")) < since:
+                continue
+            rows.append(record)
+        if last is not None and last >= 0:
+            rows = rows[max(0, len(rows) - last):]
+        return rows
+
     def recent_records(self, path: Path, count: int = 5) -> list[dict]:
         """The last `count` well-formed records from a JSONL file. A missing
         file reads as no records; records written before `by` existed read
