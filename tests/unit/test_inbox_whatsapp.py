@@ -127,7 +127,7 @@ def test_a_group_mention_becomes_a_message_addressed_to_us(sdk):
     assert message.to_dict() == {
         "id": "3EB0A1", "chat": f"1203630000000@{GROUP_SERVER}", "thread": None,
         "sender": f"{PEER}@{USER_SERVER}", "text": f"@{OWN} ship it",
-        "kind": "text", "mentioned": True, "at": "2025-09-02T10:17:47Z",
+        "kind": "text", "quoted": None, "mentioned": True, "at": "2025-09-02T10:17:47Z",
     }
 
 
@@ -273,6 +273,117 @@ def test_an_account_with_no_lid_yet_is_still_itself():
 
     assert phone == OWN
     assert ids == frozenset({OWN})
+
+
+def reply_to(participant, *, quoted_text="the price sheet is wrong", text="fix this",
+             stanza="3EB0QUOTED", quoted_kind="extendedTextMessage"):
+    """A group message that quotes an earlier one, the way WhatsApp sends it."""
+    quoted_descriptor = SimpleNamespace(name=quoted_kind, label=1, LABEL_REPEATED=3,
+                                        type=11, TYPE_MESSAGE=11)
+    quoted_body = SimpleNamespace(text=quoted_text,
+                                  ListFields=lambda: [(quoted_descriptor, SimpleNamespace())])
+    info = SimpleNamespace(mentionedJID=[], participant=participant,
+                           stanzaID=stanza, quotedMessage=quoted_body)
+    descriptor = SimpleNamespace(name="extendedTextMessage", label=1, LABEL_REPEATED=3,
+                                 type=11, TYPE_MESSAGE=11)
+    value = SimpleNamespace(contextInfo=info, HasField=lambda field: True)
+    raw = event(text=text)
+    raw.Message = SimpleNamespace(text=text, ListFields=lambda: [(descriptor, value)])
+    return raw
+
+
+def test_a_reply_carries_what_it_replied_to(sdk):
+    # Someone quotes a line and writes "fix this". Without the quote the record
+    # is the two new words and no trace of what "this" was, so a consumer can
+    # neither answer it nor tell it was addressed.
+    bot = linked(WhatsApp(), ids=(OWN, OWN_LID))
+
+    message = bot.to_message(reply_to(f"{OWN_LID}@{LID_SERVER}"))
+
+    assert message.quoted == {
+        "id": "3EB0QUOTED",
+        "sender": f"{OWN_LID}@{LID_SERVER}",
+        "text": "the price sheet is wrong",
+        "kind": "text",
+        "from_me": True,
+    }
+
+
+def test_replying_to_us_and_replying_to_someone_else_are_different_events(sdk):
+    # The distinction the whole field exists for: a trigger policy of
+    # "direct message, @mention, or reply to us" cannot be implemented without
+    # separating these two.
+    bot = linked(WhatsApp(), ids=(OWN, OWN_LID))
+
+    to_us = bot.to_message(reply_to(f"{OWN_LID}@{LID_SERVER}"))
+    to_someone_else = bot.to_message(reply_to(f"{PEER}@{USER_SERVER}"))
+
+    assert (to_us.quoted["from_me"], to_us.mentioned) == (True, True)
+    assert (to_someone_else.quoted["from_me"], to_someone_else.mentioned) == (False, False)
+
+
+def test_a_reply_to_us_by_phone_number_counts_too(sdk):
+    # Groups migrate to LID at different times; the older ones still quote by
+    # number, and both are us.
+    bot = linked(WhatsApp(), ids=(OWN, OWN_LID))
+
+    assert bot.to_message(reply_to(f"{OWN}@{USER_SERVER}")).quoted["from_me"] is True
+
+
+def test_the_record_and_the_gate_cannot_disagree(sdk):
+    # `mentioned` reads the same from_me the record carries, rather than
+    # recomputing it. Two copies of "was this addressed to us" can drift, and
+    # when they do a `mentioned: false` on a reply is impossible to argue with
+    # in either direction.
+    bot = linked(WhatsApp(), ids=(OWN, OWN_LID))
+
+    for participant in (f"{OWN_LID}@{LID_SERVER}", f"{PEER}@{USER_SERVER}"):
+        message = bot.to_message(reply_to(participant))
+        assert message.mentioned == message.quoted["from_me"]
+
+
+def test_a_quoted_photo_says_it_was_a_photo(sdk):
+    bot = linked(WhatsApp(), ids=(OWN, OWN_LID))
+
+    quoted = bot.to_message(reply_to(f"{PEER}@{USER_SERVER}", quoted_kind="imageMessage",
+                                     quoted_text="")).quoted
+
+    assert quoted["kind"] == "image" and quoted["text"] == ""
+
+
+def test_a_message_that_is_not_a_reply_has_no_quote(sdk):
+    bot = linked(WhatsApp(), ids=(OWN, OWN_LID))
+
+    assert bot.to_message(event(text="just talking")).quoted is None
+
+
+def test_a_context_with_no_stanza_id_is_not_a_quote_but_still_reaches_us(sdk):
+    # A reply always carries a stanzaID in practice. If one ever does not, the
+    # reference is not worth carrying — and the message must still be seen as
+    # addressed to us rather than silently downgraded because a field was
+    # missing.
+    bot = linked(WhatsApp(), ids=(OWN, OWN_LID))
+    raw = reply_to(f"{OWN_LID}@{LID_SERVER}", stanza="")
+
+    message = bot.to_message(raw)
+
+    assert message.quoted is None
+    assert message.mentioned is True
+
+
+def test_a_quote_survives_the_queue_file(sdk):
+    inbox = Inbox("whatsapp")
+    reference = {"id": "3EB0Q", "sender": "x@s.whatsapp.net", "text": "earlier",
+                 "kind": "text", "from_me": True}
+    inbox.deliver(Message(id="A1", chat=f"1203630000000@{GROUP_SERVER}", sender=PEER,
+                          text="fix this", kind="text", quoted=reference,
+                          mentioned=True, at="2026-09-18T00:00:00Z", thread=None))
+
+    assert [m.quoted for m in inbox.list_messages()] == [reference]
+
+
+def test_a_record_written_before_quotes_existed_has_none():
+    assert Message.from_dict({"id": "A1", "chat": "c", "text": "hi"}).quoted is None
 
 
 def variant(name, text=""):

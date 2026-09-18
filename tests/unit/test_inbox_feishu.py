@@ -66,7 +66,7 @@ def test_a_group_mention_becomes_a_message_with_the_name_put_back(creds):
 
     assert message.to_dict() == {
         "id": "om_9f8e", "chat": "oc_a1b2", "thread": None, "sender": "on_7c6d",
-        "text": "@OpsAgent look at the deploy", "kind": "text", "mentioned": True, "at": "2025-09-02T10:17:47Z",
+        "text": "@OpsAgent look at the deploy", "kind": "text", "quoted": None, "mentioned": True, "at": "2025-09-02T10:17:47Z",
     }
 
 

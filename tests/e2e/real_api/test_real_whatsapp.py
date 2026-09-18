@@ -357,6 +357,53 @@ def test_in_a_group_only_a_message_naming_the_number_is_mentioned(bot, driver):
     assert named["mentioned"] is True
 
 
+QUOTED_REFERENCE_PROBE = '''
+import json, os
+from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import (
+    Message, ExtendedTextMessage, ContextInfo)
+from connectonion.inbox.whatsapp import _quoted_reference, _context_info
+
+# A reply exactly as WhatsApp builds one: the new text, and a contextInfo
+# carrying the id, the participant and the whole quoted message.
+reply = Message()
+reply.extendedTextMessage.CopyFrom(ExtendedTextMessage(
+    text="fix this",
+    contextInfo=ContextInfo(
+        stanzaID="3EB0QUOTED",
+        participant="132754033377342@lid",
+        quotedMessage=Message(conversation="the price sheet is wrong"))))
+
+print(json.dumps(_quoted_reference(_context_info(reply), frozenset({"132754033377342"}))),
+      flush=True)
+# flush above is not optional with os._exit, which skips buffer flushing.
+os._exit(0)
+'''
+
+
+def test_a_quoted_reference_is_read_off_a_real_reply(tmp_path):
+    """`_quoted_reference` against protobuf's own ContextInfo, not a fake one.
+
+    The unit tests build a contextInfo out of SimpleNamespace with the fields we
+    chose to model, which proves we read the ones we thought of and nothing
+    about whether a real reply carries them under those names. This builds the
+    reply with the generated classes and reads the reference back out.
+    """
+    run = subprocess.run([sys.executable, "-c", QUOTED_REFERENCE_PROBE],
+                         capture_output=True, text=True,
+                         env=dict(os.environ, NO_COLOR="1"), timeout=120)
+    if "ModuleNotFoundError" in run.stderr and "neonize" in run.stderr:
+        pytest.skip("the whatsapp extra is not installed here")
+    assert run.returncode == 0, run.stderr[-2000:]
+
+    assert json.loads(run.stdout.strip().splitlines()[-1]) == {
+        "id": "3EB0QUOTED",
+        "sender": "132754033377342@lid",
+        "text": "the price sheet is wrong",
+        "kind": "text",
+        "from_me": True,
+    }
+
+
 QUOTE_PROBE = '''
 import json, os
 from connectonion.inbox.store import Inbox, Message

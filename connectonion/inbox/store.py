@@ -125,6 +125,12 @@ class Message:
     # cannot say "I can't read images yet" because it does not know that it is
     # one.
     kind: str = "text"
+    # The message this one is answering, when it is a reply: id, sender, text,
+    # kind, and `from_me`. `from_me` is the one that decides behaviour —
+    # "replied to the bot" and "replied to somebody else in the group" are
+    # different events, and a consumer implementing "answer when addressed"
+    # cannot tell them apart without it. None when this is not a reply.
+    quoted: Optional[dict] = None
 
     def to_dict(self, *, raw: bool = False) -> dict:
         record = {
@@ -134,6 +140,7 @@ class Message:
             "sender": self.sender,
             "text": self.text,
             "kind": self.kind,
+            "quoted": self.quoted,
             "mentioned": self.mentioned,
             "at": self.at,
         }
@@ -162,6 +169,7 @@ class Message:
             # A queue file written before this field existed is text: that is
             # what the listener could deliver at the time.
             kind=str(record.get("kind") or "text"),
+            quoted=record.get("quoted") if isinstance(record.get("quoted"), dict) else None,
         )
 
 
