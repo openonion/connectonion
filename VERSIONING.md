@@ -315,9 +315,21 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.6a2
+## Current Version: 1.8.6a3
 
 ### Version History
+- 1.8.6a3 (**alpha: a message says what it is and what it answers.** A reply
+  carries `quoted` — the id, sender, text and kind of the message it answers,
+  and `from_me`, which separates a reply to the bot from two colleagues talking.
+  All of it had been arriving in every reply since the first version of this
+  provider and was being dropped one field after `mentionedJID`. A message
+  carries `kind`, so a photo, a sticker and a message with nothing in it stop
+  being the same input; captions ride along in `text`, and a variant we have
+  never seen keeps the platform's own name rather than arriving as nothing.
+  `co gmail inbox --since 30d --json` composes at last — the window narrows the
+  query the envelope already pages through, so the cursor, the cap and
+  `complete` keep the meanings they had. The calendar's full journey is verified
+  against a real account with every notification confirmed in a real mailbox.)
 - 1.8.6a2 (**alpha: the bot answers where it was asked, and says so while it
   works.** A WhatsApp @mention registers whichever id the group addresses the
   account by, so a number WhatsApp has migrated to LID addressing is reachable
