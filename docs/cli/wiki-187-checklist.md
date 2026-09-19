@@ -36,3 +36,6 @@ Reader fixes from #1587 are included in the main PR. No release or merge is perf
 Read the map tests and candidate rejection tests first, then the single-project
 acceptance and browser checks. A mapped page, successful model process, accepted
 structure, and factually reviewed result are four separate claims.
+
+Detailed commands, actual Atlas output, usage, failed-attempt diagnosis and full
+suite limits: [consolidated acceptance](../testing/wiki-187-integration.md).
