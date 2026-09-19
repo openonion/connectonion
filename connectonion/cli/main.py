@@ -1138,20 +1138,38 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
         chat: str = typer.Argument(..., help="Chat id"),
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
         reply_to: Optional[str] = typer.Option(None, "--reply-to", help="Message id to reply to"),
+        plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
     ):
         """Send text to a chat. Prints the new message id."""
         from .commands.listen_commands import handle_send
-        handle_send(name, chat, text, reply_to=reply_to)
+        handle_send(name, chat, text, reply_to=reply_to, plain=plain)
 
     @group.command("reply")
     def _reply(
         message_id: str = typer.Argument(..., help="Id of a received message"),
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
         again: bool = typer.Option(False, "--again", help="Reply even if this message was already answered"),
+        plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
     ):
         """Reply where a received message was asked. Prints the new id."""
         from .commands.listen_commands import handle_reply
-        handle_reply(name, message_id, text, again=again)
+        handle_reply(name, message_id, text, again=again, plain=plain)
+
+    @group.command("edit")
+    def _edit(
+        message_id: str = typer.Argument(..., help="Id of a message this account sent"),
+        text: Optional[str] = typer.Argument(None, help="The new text; omitted means stdin"),
+        plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
+    ):
+        """Replace the text of a message this account sent. Prints the edit's id."""
+        from .commands.listen_commands import handle_edit
+        handle_edit(name, message_id, text, plain=plain)
+
+    @group.command("delete")
+    def _delete(message_id: str = typer.Argument(..., help="Id of a message to delete for everyone")):
+        """Delete a message for everyone. Prints the deletion's id."""
+        from .commands.listen_commands import handle_delete
+        handle_delete(name, message_id)
 
     @group.command("done")
     def _done(message_id: str = typer.Argument(..., help="Id of a taken message")):

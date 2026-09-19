@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import ANSWERING, SEEN, ListenerStopped, reactions_enabled
+from .formatting import to_whatsapp
 from .store import Inbox, Message, default_home, iso_utc
 
 SDK_MISSING = (
@@ -822,14 +823,53 @@ class WhatsApp:
         return self._queue({"kind": "reaction", "chat": chat,
                             "message_id": message_id, "emoji": emoji, "sender": sender})
 
-    def send(self, chat: str, text: str, *, reply_to: Optional[str] = None, fresh: bool = False) -> str:
+    def send(self, chat: str, text: str, *, reply_to: Optional[str] = None, fresh: bool = False,
+             plain: bool = False) -> str:
         """Send text to a chat. Returns the new message id.
 
         The listener owns the connection, so this hands the request over and
         waits for its answer. `fresh` is `reply --again`; WhatsApp does not
         dedupe on its side, so it changes nothing here and is accepted so every
-        provider takes the same arguments."""
-        return self._queue({"chat": chat, "text": text, "reply_to": reply_to})
+        provider takes the same arguments.
+
+        The text is read as Markdown unless `plain`, because the thing writing
+        it is usually a model and a model writes Markdown. Sending it through
+        untranslated is how `**ready**` reaches somebody's phone with the
+        asterisks still on it.
+        """
+        return self._queue({"chat": chat, "text": text if plain else to_whatsapp(text),
+                            "reply_to": reply_to})
+
+    def render(self, text: str) -> str:
+        """The exact characters WhatsApp will receive, given Markdown.
+
+        Exposed so a caller can write the same string into `sent.jsonl` that
+        went over the wire. It is not idempotent — `*bold*` is Markdown italic
+        and would move to `_bold_` on a second pass — so whoever renders must
+        then send with `plain=True`.
+        """
+        return to_whatsapp(text)
+
+    def edit(self, chat: str, message_id: str, text: str, *, plain: bool = False) -> str:
+        """Replace the text of a message we sent. Returns the edit's own id.
+
+        WhatsApp only lets an account edit its own messages — `build_edit`
+        stamps `fromMe=True` and the server checks it — so this cannot be used
+        to rewrite what somebody else said.
+        """
+        return self._queue({"kind": "edit", "chat": chat, "message_id": message_id,
+                            "text": text if plain else to_whatsapp(text)})
+
+    def revoke(self, chat: str, message_id: str, *, sender: str = "") -> str:
+        """Delete a message for everyone. Returns the revocation's own id.
+
+        `sender` is who sent the message being deleted, which is what decides
+        whether this is "delete mine" or an admin deleting someone else's: an
+        empty sender means us. WhatsApp settles the second case on its side and
+        answers with an error when the account is not an admin of that group.
+        """
+        return self._queue({"kind": "revoke", "chat": chat, "message_id": message_id,
+                            "sender": sender})
 
     def _queue(self, payload: dict) -> str:
         """Hand one outbound request to the listener and wait for its answer."""
@@ -885,9 +925,15 @@ class WhatsApp:
         before reactions existed, and a listener that has not been restarted
         yet may still be draining one."""
         try:
-            if payload.get("kind") == "reaction":
+            kind = payload.get("kind")
+            if kind == "reaction":
                 return self._react_now(payload["chat"], payload["message_id"],
                                        payload["emoji"], payload.get("sender", ""))
+            if kind == "edit":
+                return self._edit_now(payload["chat"], payload["message_id"], payload["text"])
+            if kind == "revoke":
+                return self._revoke_now(payload["chat"], payload["message_id"],
+                                        payload.get("sender", ""))
             return self._send_now(payload["chat"], payload["text"], payload.get("reply_to"))
         except Exception as exc:
             raise RuntimeError(_sending_failed(exc)) from exc
@@ -912,6 +958,31 @@ class WhatsApp:
         quoted = self._quoted(reply_to) if reply_to else None
         body = text if quoted is None else self._client.build_reply_message(text, quoted)
         result = self._client.send_message(_build_jid(chat), body)
+        return str(getattr(result, "ID", "") or "")
+
+    def _edit_now(self, chat: str, message_id: str, text: str) -> str:
+        """The actual edit, on the listener's own connection."""
+        if self._client is None:
+            raise RuntimeError("not connected")
+        from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import Message as WAMessage
+
+        result = self._client.edit_message(_build_jid(chat), message_id,
+                                           WAMessage(conversation=text))
+        return str(getattr(result, "ID", "") or "")
+
+    def _revoke_now(self, chat: str, message_id: str, sender: str) -> str:
+        """The actual deletion, on the listener's own connection.
+
+        An empty `sender` means the message is ours, and our own JID is what
+        makes `build_revoke` stamp `fromMe`. Reading it off the client rather
+        than off the session row matters for an account that has migrated to a
+        LID: the two identities share no digits, and the wrong one turns
+        "delete mine" into "delete somebody else's", which the server refuses.
+        """
+        if self._client is None:
+            raise RuntimeError("not connected")
+        whose = _build_jid(sender) if sender else self._client.get_me().JID
+        result = self._client.revoke_message(_build_jid(chat), whose, message_id)
         return str(getattr(result, "ID", "") or "")
 
     def _quoted(self, message_id: str):

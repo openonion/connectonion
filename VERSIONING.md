@@ -315,9 +315,21 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.6a7
+## Current Version: 1.8.6a8
 
 ### Version History
+- 1.8.6a8 (**alpha: you can take back what the bot said, and it stops looking
+  machine-generated.** `edit` replaces the text of a message this account sent
+  and `delete` removes one for everyone, both from the id `send` already
+  prints — until now the only repair for a wrong answer in a group was a second
+  message leaving the wrong one above it. Text is read as Markdown and
+  translated into WhatsApp's own marks, because the thing writing it is a model
+  and `**ready**` was arriving with the asterisks still on. Two defects found
+  by using a7 after publishing it: `check` printed its next step twice, and
+  exited 0 while reporting that nothing was arriving. A third found while
+  verifying on the real account: `sent.jsonl` held the Markdown that was typed
+  rather than the text that was sent, so `log` showed a message nobody in the
+  chat had seen.)
 - 1.8.6a7 (**alpha: the diagnostic stops claiming the network.** `check` printed
   "reachable" from four facts that are not the network — a package being
   importable, a row in SQLite, a timestamp in a shared library, a pid in a lock
