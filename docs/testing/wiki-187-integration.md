@@ -62,7 +62,7 @@ PYTHONPATH="$PWD" python scripts/validation/wiki_project_acceptance.py --run-mod
 ## Regression and reader
 
 Focused Wiki/COAI/default-Skill/mail-window checks after merging current main:
-**357 passed, 8 opt-in browser skips**. Command:
+**358 passed, 8 opt-in browser skips**. Command:
 
 ```bash
 PYTHONPATH="$PWD" python -m pytest tests/unit/test_co_ai_harness.py tests/unit/test_codex_tool.py tests/unit/test_default_skills_are_for_customers.py tests/unit/test_wiki* tests/unit/test_mail_window.py tests/e2e/cli/test_wiki* -q

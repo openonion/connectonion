@@ -22,6 +22,10 @@ Reader fixes from #1587 are included in the main PR. No release or merge is perf
 
 ## Current boundaries and remaining work
 
+- #1610 tracks question/correctable-hypothesis-driven investigation, staged deterministic/small/strong-model work and method review. It is follow-up design and implementation, not delivered here.
+- #1611 tracks user corrections and agent reflection through one update mechanism: current notes + new material + relevant reflection, with layered compression preserving reasons, sources, time and uncertainty. Parameters remain undecided; no destructive source deletion or executable-Skill rewriting is introduced.
+
+
 - #1580 is a discussion, not approval to implement a homepage redesign, sharing interaction, ongoing feed, or diary. Those remain outside this implementation.
 - Init enumerates every correspondent without claiming they are a human; classification and importance ranking remain an explicit Skill step. It does not discard automated addresses by regex. Disabled mail sources remain disabled; missing sources are disclosed.
 - Retained `.co/evals` YAML slash-command turns cover only a subset of skill calls. Deleted history and outputs cannot be reconstructed. No lifetime count, global success rate, or per-installation runtime total is claimed.
