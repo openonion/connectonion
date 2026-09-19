@@ -566,6 +566,37 @@ class Inbox:
     # message delivered twice), and after a reboot a live pid of someone
     # else's process blocked every `receive` forever.
 
+    @property
+    def connection(self) -> Path:
+        """Where the listener records whether its socket is actually up."""
+        return self.root / "connection.json"
+
+    def record_connection(self, state: str, **detail) -> None:
+        """The listener saying what its connection is doing, for another process.
+
+        `check` runs in a different process from the listener and so cannot ask
+        the client object anything. Without this it was inferring "reachable"
+        from a package being importable, a row in SQLite and a pid holding a
+        lock — none of which is the network. A connection that had quietly
+        stopped still reported a green tick.
+
+        Written on every transition rather than on a timer: a heartbeat says
+        "something ran recently", and what is wanted is "the socket is up, and
+        here is when it last changed".
+        """
+        payload = {"state": state, "at": _now_iso(), "pid": os.getpid(), **detail}
+        staged = self.connection.with_suffix(".json.partial")
+        staged.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        staged.replace(self.connection)
+
+    def connection_state(self) -> dict:
+        """What the listener last said, or {} when it has never said anything."""
+        try:
+            state = json.loads(self.connection.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return state if isinstance(state, dict) else {}
+
     def listener_pid(self) -> Optional[int]:
         """The pid in listen.lock if a process holds the lock, else None."""
         try:
