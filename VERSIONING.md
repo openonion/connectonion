@@ -315,9 +315,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.6a8
+## Current Version: 1.8.6a9
 
 ### Version History
+- 1.8.6a9 (**alpha: nothing is not a message.** `co whatsapp send <chat>` with
+  no text read stdin, reached EOF and delivered an empty bubble — an id
+  printed, exit 0, and a row in `sent.jsonl` saying it worked, so every habit
+  that catches a bad send reported success, because it *was* a successful send
+  of nothing. Two of them reached real groups that way, one a customer's, where
+  the only remaining move is to delete a message somebody has already read.
+  Empty and whitespace-only text is now a usage error on `send`, `reply` and
+  `edit`: nothing is sent, nothing is logged, and a refused `reply` neither
+  marks the question answered nor puts the answering reaction on it.)
 - 1.8.6a8 (**alpha: you can take back what the bot said, and it stops looking
   machine-generated.** `edit` replaces the text of a message this account sent
   and `delete` removes one for everyone, both from the id `send` already
