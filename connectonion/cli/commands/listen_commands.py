@@ -54,13 +54,31 @@ def _configured(name: str):
 
 
 def _text_from(argument: Optional[str]) -> str:
-    """The argument if given, else stdin, like mail(1)."""
-    if argument is not None:
-        return argument
-    if sys.stdin.isatty():
-        errors.print("nothing to send: pass the text as an argument or on stdin", style="red")
+    """The argument if given, else stdin, like mail(1). Never nothing.
+
+    An empty message is not a message, and WhatsApp's own app disables the
+    send button for one. Until #1602 this path read stdin, got EOF and
+    delivered a blank bubble: an id was printed, the exit code was 0, and
+    `sent.jsonl` got a row saying it worked — so every habit that catches a bad
+    send reported success, because it *was* a successful send of nothing. Two
+    of them reached real groups that way, one a client's, where the only
+    remaining option is to delete a message a customer has already seen.
+
+    Refusing costs a caller one retry and removes the class.
+    """
+    text = argument
+    if text is None:
+        if sys.stdin.isatty():
+            errors.print("nothing to send: pass the text as an argument or on stdin", style="red")
+            sys.exit(2)
+        text = sys.stdin.read()
+    if not text.strip():
+        # Exit 2, the same usage error as a terminal with nothing on it: from
+        # the caller's side these are one mistake, not two.
+        errors.print("nothing to send: the text was empty. Pass it as an argument or on stdin",
+                     style="red")
         sys.exit(2)
-    return sys.stdin.read().rstrip("\n")
+    return text.rstrip("\n")
 
 
 def _wire(p, text: str, plain: bool) -> str:
