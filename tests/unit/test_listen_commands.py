@@ -530,7 +530,78 @@ def test_check_reports_listener_and_unread_when_configured(box, fake, capsys):
     listen_commands.handle_check("feishu")
 
     out = capsys.readouterr().out
-    assert "feishu reachable" in out and "no listener running" in out and "1 unread" in out
+    assert "feishu configured" in out and "no listener running" in out and "1 unread" in out
+
+
+class TestCheckDoesNotClaimTheNetwork:
+    """"reachable" was inferred from an import, a SQLite row and a pid."""
+
+    def test_configured_is_not_the_same_word_as_connected(self, box, fake, capsys):
+        # The old line said "reachable" without touching the network, so a
+        # connection that had quietly stopped still got a green tick — the
+        # failure this release is about, inside the command people run to look
+        # for it.
+        listen_commands.handle_check("feishu")
+
+        captured = capsys.readouterr()
+        assert "reachable" not in captured.out
+        assert "no listener is running" in captured.err
+
+    def test_a_running_listener_that_says_it_is_connected_is_reported_as_connected(
+            self, box, fake, capsys, monkeypatch):
+        monkeypatch.setattr(Inbox, "listener_pid", lambda self: 4242)
+        box.record_connection("connected", account="61410724095", ids=["61410724095"])
+        import json as _json
+        state = _json.loads(box.connection.read_text())
+        state["pid"] = 4242
+        box.connection.write_text(_json.dumps(state))
+
+        listen_commands.handle_check("feishu")
+
+        assert "connected as 61410724095" in capsys.readouterr().out
+
+    def test_a_disconnected_listener_is_not_a_green_tick(self, box, fake, capsys, monkeypatch):
+        monkeypatch.setattr(Inbox, "listener_pid", lambda self: 4242)
+        import json as _json
+        box.record_connection("disconnected")
+        state = _json.loads(box.connection.read_text())
+        state["pid"] = 4242
+        box.connection.write_text(_json.dumps(state))
+
+        listen_commands.handle_check("feishu")
+
+        assert "disconnected" in capsys.readouterr().err
+
+    def test_another_listeners_record_is_not_read_as_this_ones(
+            self, box, fake, capsys, monkeypatch):
+        # A `connected` left by a process that has since exited says what was
+        # true once. Reading it as current is how a stale file becomes a
+        # confident wrong answer.
+        monkeypatch.setattr(Inbox, "listener_pid", lambda self: 4242)
+        box.record_connection("connected", account="61410724095")   # records os.getpid()
+
+        listen_commands.handle_check("feishu")
+
+        captured = capsys.readouterr()
+        assert "connected as" not in captured.out
+        assert "has not said whether its socket is up" in captured.err
+
+    def test_a_stopped_listener_says_why(self, box, fake, capsys, monkeypatch):
+        monkeypatch.setattr(Inbox, "listener_pid", lambda self: 4242)
+        import json as _json
+        box.record_connection("stopped", reason="logged out by the phone")
+        state = _json.loads(box.connection.read_text())
+        state["pid"] = 4242
+        box.connection.write_text(_json.dumps(state))
+
+        listen_commands.handle_check("feishu")
+
+        # Unwrapped: Rich folds at the console width, so the sentence is broken
+        # across lines and a literal substring is not in the output at all —
+        # the same shape that made a `--since` assertion pass locally and fail
+        # on every CI job.
+        said = " ".join(capsys.readouterr().err.split())
+        assert "logged out by the phone" in said
 
 
 def test_ls_lists_the_queue_one_line_each(box, fake, capsys):

@@ -444,6 +444,8 @@ class WhatsApp:
             others = sorted(self._own_ids - {self._own_user})
             also = f" (also {', '.join(others)})" if others else ""
             inbox.log(f"connected as {self._own_user or 'unknown'}{also}")
+            inbox.record_connection("connected", account=self._own_user,
+                                    ids=sorted(self._own_ids))
 
         @client.event(PairStatusEv)
         def _on_paired(_client, event) -> None:
@@ -490,6 +492,7 @@ class WhatsApp:
             # Not fatal: the SDK reconnects. Logged because a gap is exactly
             # what a later "did we miss anything" question needs to see.
             inbox.log("disconnected; waiting for the socket to come back")
+            inbox.record_connection("disconnected")
 
         @client.event(KeepAliveTimeoutEv)
         def _on_keepalive_timeout(_client, event) -> None:
@@ -603,6 +606,7 @@ class WhatsApp:
         `run` raises on the way out where a caller can act on it.
         """
         inbox.log(f"listener stopped: {reason}")
+        inbox.record_connection("stopped", reason=reason)
         self._fatal_reason = reason
         stop.set()
         try:

@@ -293,7 +293,45 @@ def handle_check(name: str) -> None:
         sys.exit(1)
     pid = inbox.listener_pid()
     listener = f"listener pid {pid}" if pid else "no listener running (receive starts one)"
-    console.print(f"[green]✓[/green] {name} reachable · {listener} · {len(inbox.unread())} unread · {inbox.root}")
+    console.print(f"[green]✓[/green] {name} configured · {listener} · "
+                  f"{len(inbox.unread())} unread · {inbox.root}")
+    _report_connection(name, inbox, pid)
+
+
+def _report_connection(name: str, inbox: Inbox, pid) -> None:
+    """What the listener says about its socket, which is the only thing that knows.
+
+    This line used to read "reachable", inferred from a package being
+    importable, a row in SQLite and a pid holding a lock — none of which is the
+    network. A connection that had quietly stopped still got a green tick, which
+    is the failure this whole release has been about, sitting inside the command
+    people run to check for it.
+
+    The listener's own record is only worth reading while that listener is
+    alive: a `connected` left behind by a process that has since exited says
+    what was true once, and reading it as current is how a stale file becomes a
+    confident wrong answer.
+    """
+    if not pid:
+        errors.print("not connected: no listener is running, so nothing is arriving.",
+                     style="yellow")
+        print_tip(f"Next: co {name} listen")
+        return
+    state = inbox.connection_state()
+    if not state or state.get("pid") != pid:
+        # An older listener's record, or one from before this was written. Say
+        # that rather than guessing in either direction.
+        errors.print(f"listener {pid} is running; it has not said whether its socket is up. "
+                     f"Next: co {name} log", style="dim")
+        return
+    if state.get("state") == "connected":
+        account = state.get("account") or "unknown"
+        console.print(f"[green]✓[/green] connected as {account} since {state.get('at', '?')}")
+        return
+    errors.print(f"listener {pid} is running but {state.get('state', 'not connected')} "
+                 f"since {state.get('at', '?')}"
+                 + (f": {state['reason']}" if state.get("reason") else ""), style="yellow")
+    print_tip(f"Next: co {name} log")
 
 
 def handle_ls(name: str) -> None:
