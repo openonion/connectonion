@@ -43,7 +43,45 @@ The published stable line is 1.8.x. Maintenance fixes for `release/1.7`
 must still be forward-ported to `main`. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
-## Stable release: 1.8.5
+## Stable release: 1.8.6
+
+WhatsApp as an inbox, on a number a person already uses. `co whatsapp` links a
+device, sees the groups that number is in, and answers only where it was
+addressed — a plain `@` in a group, or a reply quoting something the bot said.
+Nine verbs became twelve: `edit` replaces what the bot already put in a room and
+`delete` takes it back for everyone, which is what turns a wrong answer in front
+of a customer from permanent into a mistake. Text is read as Markdown and
+translated into WhatsApp's own marks, because the thing writing it is a model
+and `**ready**` was arriving with the asterisks still attached.
+
+Local models are a first-class target: `ollama/…` does text, structured output
+and tool calling, and points at nothing else when the local server is down.
+Mail listings take `--since` and `--until` and compose with `--json` rather than
+dropping one of the two. Calendar invitations actually notify their attendees.
+
+**The gate was #1555's requirement that WhatsApp be accepted against a real
+account** — not a mock, not a fixture. It closed on 19 September: a linked
+number, real group traffic with mention gating checked case by case, two
+unattended reconnects, and the new verbs used to delete messages the bot had
+already sent into a customer's group. The record is
+[docs/acceptance/1.8.6/release-candidate-2026-09-19.md](docs/acceptance/1.8.6/release-candidate-2026-09-19.md),
+written against the package installed from PyPI rather than this checkout.
+
+Nine previews (1.8.6a1 through a9) fed this release, and the shape of the cycle
+is the thing worth recording: the offline suite grew to 10,431 tests and
+reported **none** of the twelve defects that were fixed. Eleven were found by
+somebody using the software — `mentioned: false` on a real mention, `✓ reachable`
+from four facts that are not the network, a `cancel` that deleted a different
+message, a listener that printed nothing after being unlinked, a log that showed
+a message nobody had seen, and a `send` with no text that delivered an empty
+bubble and exited 0. Two of those were found in a build published an hour
+earlier.
+
+See [1.8.6 notes](docs/releases/1.8.6.md) for the known limits: `edit` and
+`delete` are WhatsApp-only — Feishu and Lark name the endpoints and say nobody
+has wired them up — and there is still no sender allowlist until 1.9.
+
+### Superseded: 1.8.5 (stable, published)
 
 A Feishu or Lark bot as a directory of files — nine verbs, an atomic take, and a
 message sent while the listener was down read back on reconnect and queued
@@ -315,9 +353,15 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.6a9
+## Current Version: 1.8.6
 
 ### Version History
+- 1.8.6 (**stable: WhatsApp as an inbox, with an undo.** A linked device sees
+  the groups the number is in and answers only where it was addressed; `edit`
+  and `delete` make a wrong answer in front of a customer recoverable; text is
+  read as Markdown and arrives as formatting. Local models do text, structured
+  output and tools, and fail loudly rather than falling back. Accepted against
+  a real account on 19 September, which was #1555's gate.)
 - 1.8.6a9 (**alpha: nothing is not a message.** `co whatsapp send <chat>` with
   no text read stdin, reached EOF and delivered an empty bubble — an id
   printed, exit 0, and a row in `sent.jsonl` saying it worked, so every habit
