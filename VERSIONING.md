@@ -315,9 +315,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.6a6
+## Current Version: 1.8.6a7
 
 ### Version History
+- 1.8.6a7 (**alpha: the diagnostic stops claiming the network.** `check` printed
+  "reachable" from four facts that are not the network — a package being
+  importable, a row in SQLite, a timestamp in a shared library, a pid in a lock
+  file — so a listener whose socket had quietly stopped still got a green tick,
+  which is this release's own failure sitting inside the command people run to
+  find it. The listener now records its connection on every transition and
+  `check` says two separate things: configured, and connected as whom since
+  when. When the record belongs to a process that is no longer the listener it
+  says it cannot tell, which was not previously expressible.)
 - 1.8.6a6 (**alpha: things that happen to the account stop being silence.** A
   message that arrives and cannot be decrypted is recorded instead of
   discarded — the sender saw it delivered, and until now nothing anywhere said
