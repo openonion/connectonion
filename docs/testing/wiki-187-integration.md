@@ -93,4 +93,8 @@ WebSocket ping, tool-executor and Wiki-runner group produced 61 passes and the
 same 3 socket permission failures. That reproduces those three, not all 577;
 some asynchronous tests passed in isolation. The full suite is not green.
 
-The post-main-merge full-run result is recorded below when it finishes.
+Post-main-merge full run: **10,146 passed, 604 failed, 28 skipped, 21 errors**
+(213 deselected), 313.10 seconds, in the same Python 3.14.7/sandbox environment.
+Its failure summary also has no Wiki failures. This does not classify or excuse
+all failures: the complete suite remains non-green. The final owner-alias
+addition was separately verified in the 358-pass focused run.
