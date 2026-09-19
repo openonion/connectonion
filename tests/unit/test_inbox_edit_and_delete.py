@@ -25,6 +25,14 @@ class FakeProvider:
     def check(self):
         return []
 
+    def render(self, text):
+        # The real WhatsApp provider's own renderer, not a stand-in: a fake
+        # that "renders" by returning the input would let a handler that never
+        # calls it pass.
+        from connectonion.inbox.formatting import to_whatsapp
+
+        return to_whatsapp(text)
+
     def send(self, chat, text, *, reply_to=None, fresh=False, plain=False):
         return "om_sent"
 
@@ -93,20 +101,26 @@ class TestEdit:
         with pytest.raises(SystemExit):
             listen_commands.handle_edit("whatsapp", "om_1", "y")
 
-    def test_the_plain_flag_reaches_the_provider(self, box, fake, monkeypatch):
-        # The conversion itself lives in the provider, because `consume` sends
-        # without passing through this handler. All the handler owes is the
-        # flag — so that is what this asserts, rather than a translation it
-        # does not perform.
-        seen = []
-        monkeypatch.setattr(fake, "edit",
-                            lambda chat, mid, text, *, plain=False: seen.append(plain) or "om_e")
+    def test_the_text_is_rendered_before_it_is_handed_over(self, box, fake):
+        # Rendered once, in the handler, so the string that reaches the
+        # platform is the string written to sent.jsonl. `--plain` is the only
+        # way to get the characters through untouched.
         box.record_sent(chat="oc_ops", text="x", provider_id="om_1", by="send")
 
         listen_commands.handle_edit("whatsapp", "om_1", "**done**")
         listen_commands.handle_edit("whatsapp", "om_1", "**done**", plain=True)
 
-        assert seen == [False, True]
+        assert [text for _, _, text in fake.edited] == ["*done*", "**done**"]
+
+    def test_the_record_says_what_was_sent_not_what_was_typed(self, box, fake):
+        # `log` showing Markdown that nobody in the chat ever saw is the same
+        # defect as a `check` that reports a network it never touched.
+        box.record_sent(chat="oc_ops", text="x", provider_id="om_1", by="send")
+
+        listen_commands.handle_edit("whatsapp", "om_1", "**done**")
+
+        last = [json.loads(line) for line in box.sent.read_text().splitlines()][-1]
+        assert last["text"] == "*done*"
 
     def test_a_refusal_from_the_platform_exits_1(self, box, fake, capsys):
         box.record_sent(chat="oc_ops", text="x", provider_id="om_1", by="send")

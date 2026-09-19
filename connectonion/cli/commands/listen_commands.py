@@ -63,6 +63,25 @@ def _text_from(argument: Optional[str]) -> str:
     return sys.stdin.read().rstrip("\n")
 
 
+def _wire(p, text: str, plain: bool) -> str:
+    """The characters the platform will actually receive.
+
+    Rendered here, not inside `send`, so the same string can go into
+    `sent.jsonl`. Recording the Markdown a caller typed while sending its
+    translation means `log` shows a message nobody in the chat ever saw — the
+    record and the thing it records disagreeing, which is the whole shape this
+    release has been chasing.
+
+    Rendering is not idempotent, so every caller of this sends with
+    `plain=True`: `*bold*` is Markdown italic and a second pass moves it to
+    `_bold_`.
+    """
+    render = getattr(p, "render", None)
+    if plain or render is None:
+        return text
+    return render(text)
+
+
 def _listener_or_exit(inbox: Inbox) -> None:
     """Make sure a listener is running, or say why one could not start."""
     if inbox.ensure_listener() is None:
@@ -192,9 +211,9 @@ def handle_send(name: str, chat: str, text: Optional[str] = None, reply_to: Opti
     """Send text to a chat. Prints the new message id."""
     p = _configured(name)
     inbox = Inbox(name)
-    body = _text_from(text)
+    body = _wire(p, _text_from(text), plain)
     try:
-        sent = p.send(chat, body, reply_to=reply_to, plain=plain)
+        sent = p.send(chat, body, reply_to=reply_to, plain=True)
     except Exception as exc:
         inbox.record_sent(chat=chat, text=body, reply_to=reply_to, error=str(exc), by="send")
         errors.print(str(exc), style="red")
@@ -238,10 +257,10 @@ def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: 
     if inbox.already_replied(message_id) and not again:
         errors.print(f"already replied to {message_id}; pass --again to reply once more", style="yellow")
         sys.exit(1)
-    body = _text_from(text)
+    body = _wire(p, _text_from(text), plain)
     _mark_answering(p, inbox, original)
     try:
-        sent = p.send(original.chat, body, reply_to=message_id, fresh=again, plain=plain)
+        sent = p.send(original.chat, body, reply_to=message_id, fresh=again, plain=True)
     except Exception as exc:
         inbox.record_sent(chat=original.chat, text=body, reply_to=message_id,
                           error=str(exc), by="reply")
@@ -284,9 +303,9 @@ def handle_edit(name: str, message_id: str, text: Optional[str] = None,
         errors.print(f"{name} has no record of sending {message_id}. Only messages this account "
                      f"sent can be edited. Next: co {name} log", style="red")
         sys.exit(1)
-    body = _text_from(text)
+    body = _wire(p, _text_from(text), plain)
     try:
-        sent = p.edit(original["chat"], message_id, body, plain=plain)
+        sent = p.edit(original["chat"], message_id, body, plain=True)
     except Exception as exc:
         errors.print(str(exc), style="red")
         sys.exit(1)
@@ -544,7 +563,7 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
             return
         reply = run.stdout.rstrip("\n")
         try:
-            sent = p.send(message.chat, reply, reply_to=message.id)
+            sent = p.send(message.chat, _wire(p, reply, False), reply_to=message.id, plain=True)
         except Exception as exc:
             inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id,
                               error=str(exc), by=consumer)

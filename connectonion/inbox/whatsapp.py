@@ -840,6 +840,16 @@ class WhatsApp:
         return self._queue({"chat": chat, "text": text if plain else to_whatsapp(text),
                             "reply_to": reply_to})
 
+    def render(self, text: str) -> str:
+        """The exact characters WhatsApp will receive, given Markdown.
+
+        Exposed so a caller can write the same string into `sent.jsonl` that
+        went over the wire. It is not idempotent — `*bold*` is Markdown italic
+        and would move to `_bold_` on a second pass — so whoever renders must
+        then send with `plain=True`.
+        """
+        return to_whatsapp(text)
+
     def edit(self, chat: str, message_id: str, text: str, *, plain: bool = False) -> str:
         """Replace the text of a message we sent. Returns the edit's own id.
 
