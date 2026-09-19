@@ -93,3 +93,49 @@ def test_local_reference_keeps_spaces_and_annotated_project_paths(tmp_path):
     source = directory / 'Read Me.md'
     source.write_text('source')
     assert _local_reference(f'`{source}` — inspected', f'## Paths\n- `{directory}` — source [1]', [])
+
+
+def test_project_task_loads_only_its_page_shape(tmp_path):
+    from connectonion.wiki.runner import instructions
+    task_prompt(tmp_path, [{'role': 'page', 'record': 'projects/atlas.md', 'text': '# Atlas'}], 'investigate')
+    selected = (tmp_path / 'instructions.md').read_text()
+    assert "# A project's page" in selected
+    assert "# A person's page" not in selected
+    assert 'name: wiki-page-skill' not in selected
+    assert len(selected) < len(instructions('investigate'))
+
+
+@pytest.mark.parametrize('action', ['wrong_target', 'concurrent_update'])
+def test_investigation_cannot_overwrite_live_page_on_failure(tmp_path, monkeypatch, action):
+    prepare(tmp_path)
+    nb = Notebook(tmp_path)
+    record = 'projects/atlas.md'
+    nb.stub_project(record, 'Atlas')
+    original = nb.read(record)
+    def run(directory, prompt, config, stage):
+        assert directory != nb.root
+        assert (directory / record).read_text() == original
+        assert 'Write notebook Markdown pages directly' not in prompt
+        if action == 'wrong_target':
+            (directory / record).write_text('# Accidental direct edit')
+        else:
+            nb.write(record, original + '\nConcurrent user correction.\n')
+            Path(re.search(r'NEW file (.+?candidate.md)', prompt)[1]).write_text(original)
+        return {'usage': {'input_tokens': 5}}
+    monkeypatch.setattr('connectonion.wiki.runner.run_task', run)
+    with pytest.raises(RunFailed):
+        run_stage(nb, [{'role': 'page', 'record': record, 'text': original}], default_config(), stage='investigate')
+    assert nb.read(record) == original + ('\nConcurrent user correction.\n' if action == 'concurrent_update' else '')
+    result = json.loads(next((tmp_path / '.state/tasks').glob('*/result.json')).read_text())
+    assert result['status'] == 'failed' and result['usage']['input_tokens'] == 5
+    assert result['duration_seconds'] >= 0
+    assert result['instructions_chars'] > 0 and result['material_chars'] > 0
+
+
+def test_prior_page_citation_is_identifiable_only_as_supplied_context():
+    from connectonion.wiki.page_review import prior_context_reference
+    items = [{'role': 'page', 'record': 'projects/atlas.md', 'text': 'Sessions: 1'}]
+    assert prior_context_reference('Existing page `projects/atlas.md`, recorded metadata', 'projects/atlas.md', items)
+    assert not prior_context_reference('Existing page `projects/other.md`', 'projects/atlas.md', items)
+    assert not prior_context_reference('Independent proof `projects/atlas.md`', 'projects/atlas.md', items)
+    assert not prior_context_reference('Existing page `projects/atlas.md`', 'projects/atlas.md', [])

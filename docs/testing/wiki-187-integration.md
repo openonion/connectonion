@@ -98,3 +98,28 @@ Post-main-merge full run: **10,146 passed, 604 failed, 28 skipped, 21 errors**
 Its failure summary also has no Wiki failures. This does not classify or excuse
 all failures: the complete suite remains non-green. The final owner-alias
 addition was separately verified in the 358-pass focused run.
+
+## Next implementation batch: safe writes and measured quality
+
+Single-page investigation now starts in a disposable notebook containing the
+target page, writes a separate candidate, then compares the live page snapshot
+and promotes under the same maintenance lock as sync. Accidental relative writes
+stay in the copy; concurrent changes cause rejection. This is not OS isolation
+from a harness with broader filesystem permissions. Final investigation status
+updates also use the maintenance lock.
+
+Only the relevant person/project/Skill template is composed for single-page
+investigation. Source CLI documentation is available on demand through an
+absolute link. Shared evidence rules stay in the investigation Skill. Per-stage
+metrics retain input sizes, duration, model/harness, usage and failures.
+
+Latest focused command above: **363 passed, 8 opt-in browser skips**. Wheel build
+and `git diff --check` pass. The previous 14 real Chrome checks cover unchanged
+reader code. The full-suite limitations above remain unresolved; no full-suite
+rerun or release is claimed for this batch.
+
+[Retained quality comparison](artifacts/wiki187-next/README.md) includes a rejected
+shorter candidate, a corrected candidate, deterministic revalidation, blinded
+GPT-5.5 evaluation and original execution evidence. See the
+[quality protocol](wiki-quality-protocol.md) for repeatable goals, concise
+evidence-based scoring, reviewer verification, costs and follow-up decisions.

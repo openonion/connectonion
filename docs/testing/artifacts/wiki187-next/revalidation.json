@@ -1,0 +1,9 @@
+{
+  "status": "retained_candidate_revalidated",
+  "model_called": false,
+  "original_attempt": "/tmp/wiki187-quality-next/.state/tasks/investigate-env9cyxk",
+  "changed": [
+    "projects/atlas-9453282673.md"
+  ],
+  "quality": "independent review pending"
+}

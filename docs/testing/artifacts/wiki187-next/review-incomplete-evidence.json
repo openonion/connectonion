@@ -1,0 +1,70 @@
+{
+  "criteria": {
+    "goal_achievement": {
+      "A_score": 1,
+      "B_score": 1,
+      "reasons": {
+        "A": "Explains the local counter, includes ASCII flow and command/sample result, and preserves the hosted website as unimplemented. However, it claims a local rerun/execution source not supplied by the evidence, which violates the execution-proof constraint. Pointers: A Try it; A Sources [6].",
+        "B": "Meets the main content goals with a concise flow, command, sample result, and unimplemented hosted-site status. It also claims an observed command execution not supplied by the evidence, which blocks acceptance. Pointers: B Try it; B Sources [6]."
+      }
+    },
+    "factual_support": {
+      "A_score": 1,
+      "B_score": 1,
+      "reasons": {
+        "A": "Most Atlas behavior is supported by README.md, count.py, draft.txt, and output.txt. Unsupported/materially false claim: 'execution:/tmp/wiki187-e2e/atlas python3 count.py draft.txt — rerun locally' because no execution proof is supplied. Pointers: A Sources [6]; request project_files output.txt only records '3'.",
+        "B": "Most behavior is supported by the supplied files. Unsupported/materially false claim: 'Command `python3 count.py draft.txt` run...' because the supplied evidence contains output.txt, not independent execution proof. Pointer: B Sources [6]."
+      }
+    },
+    "coverage": {
+      "A_score": 2,
+      "B_score": 2,
+      "reasons": {
+        "A": "Covers purpose, user flow, runnable command, sample output, unimplemented hosted website, ownership limits, limited testing, and temporal scope. Pointers: A What it is, Try it, Open threads, Uncertainties.",
+        "B": "Covers the same requested areas and more explicitly labels the single-sample limitation and missing owner/test/deployment evidence. Pointers: B Where it stands, Latest issues, Open threads, Uncertainties."
+      }
+    },
+    "source_traceability": {
+      "A_score": 1,
+      "B_score": 1,
+      "reasons": {
+        "A": "Uses numbered sources and generally traces claims, but invents [6] as an execution source and treats it as high-confidence evidence. It also cites the existing page mainly as coverage/context, which is acceptable. Pointers: A Sources [6], [7].",
+        "B": "Uses numbered sources and distinguishes page metadata as [8], but invents [6] as execution evidence. Existing-page metadata is limited to sessions/dates, which is appropriately derived context. Pointers: B Paths; B Sources [6], [8]."
+      }
+    },
+    "uncertainty_time": {
+      "A_score": 2,
+      "B_score": 2,
+      "reasons": {
+        "A": "Preserves 2026-09-19 scope, unknown owner/test/deployment areas, and limited coverage. Pointer: A Uncertainties.",
+        "B": "Strongly preserves temporal scope and uncertainty, including no named owner, no tests, no deployment config, and single-message coverage. Pointers: B Latest issues; B Uncertainties."
+      }
+    },
+    "readability": {
+      "A_score": 2,
+      "B_score": 2,
+      "reasons": {
+        "A": "Clear, readable Wiki-style structure with useful ASCII diagrams and short sections.",
+        "B": "Clear and concise structure; wording is careful and reader-friendly."
+      }
+    }
+  },
+  "blocking_errors": [
+    {
+      "output": "A",
+      "error": "Fabricated execution proof/source: A claims 'execution:/tmp/wiki187-e2e/atlas python3 count.py draft.txt — rerun locally' and uses it to support the sample result. The supplied evidence includes output.txt with '3' but no proof that the command was rerun.",
+      "pointers": ["A Try it", "A Where it stands", "A Sources [6]"]
+    },
+    {
+      "output": "B",
+      "error": "Fabricated execution proof/source: B claims 'Command `python3 count.py draft.txt` run from `/tmp/wiki187-e2e/atlas` on 2026-09-19'. The supplied evidence includes output.txt with '3' but no independent execution record.",
+      "pointers": ["B Try it", "B Where it stands", "B Sources [6]"]
+    }
+  ],
+  "preferred": "insufficient evidence",
+  "required_followups": [
+    "Remove or downgrade the claimed execution source in both outputs unless an actual execution log is supplied.",
+    "Support the sample result from README.md/output.txt/draft.txt/count.py only, or explicitly label any command as a documented runnable command rather than observed execution.",
+    "Keep the hosted website request as unimplemented and avoid adding owners, tests, deployment proof, or broader repository verification not present in the supplied evidence."
+  ]
+}

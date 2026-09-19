@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import read_config
-from .files import Notebook, WikiError
+from .files import Notebook, WikiError, maintenance_lock
 from .mail import _address, correspondent, strip_noise, strip_quoted
 from .source import KINDS, collect
 
@@ -253,7 +253,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # was reached is the Skill's to report, on the page: a real run (2026-09-14)
     # had `co browser` fail inside the thread while this line still said "web".
     searched = [c.split(" (")[0].split(":")[0] for c in coverage if not c.startswith(("budget", "digest"))]
-    notebook.note_investigation(record, ", ".join(dict.fromkeys(searched)))
+    with maintenance_lock(root):
+        notebook.note_investigation(record, ", ".join(dict.fromkeys(searched)))
     return {"record": record, "items": len(items), "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,

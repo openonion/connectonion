@@ -54,7 +54,7 @@ def test_runner_codex_is_co_ai_delegating_to_codex_with_the_full_access_sandbox(
                          "--model", read_config(root)["model"]]
     # The Skill is told the page's real path, extension included: an earlier
     # version cut the record at its first "." and pointed it at people/vern.
-    assert argv[-1].startswith("/wiki-investigate ") and str(root / "people/vern.md") in argv[-1]
+    assert argv[-1].startswith("/wiki-investigate ") and "/notebook/people/vern.md" in argv[-1]
 
 
 def test_runner_coai_is_co_ai_on_our_own_loop_and_its_own_default_model(tmp_path, co_ai):

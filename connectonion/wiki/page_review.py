@@ -73,6 +73,13 @@ def _local_reference(value: str, original: str, items: list[dict]) -> bool:
     return False
 
 
+def prior_context_reference(value: str, record: str, items: list[dict]) -> bool:
+    """A retained page is identifiable context, never independent corroboration."""
+    supplied = any(item.get('role') == 'page' and item.get('record') == record for item in items)
+    label = re.search(r'\b(existing|prior|derived|mapped)\b', value, re.I)
+    return bool(supplied and label and (f'`{record}`' in value or 'investigation:page' in value))
+
+
 def validate(record: str, candidate: str, original: str, items: list[dict]) -> list[str]:
     """Structural checks only; citation existence does not prove factual entailment."""
     body = prose(candidate)
@@ -95,7 +102,8 @@ def validate(record: str, candidate: str, original: str, items: list[dict]) -> l
         if key not in refs:
             errors.append(f'Unused citation: {key}')
         if not (any(source in value for source in known) or value.strip() in old_sources
-                or re.search(r'https?://\S+', value) or _local_reference(value, original, items)):
+                or re.search(r'https?://\S+', value) or _local_reference(value, original, items)
+                or prior_context_reference(value, record, items)):
             errors.append(f'Citation has no identifiable source: {key}')
     if candidate != original and not refs:
         errors.append('Changed page has no numbered evidence references')

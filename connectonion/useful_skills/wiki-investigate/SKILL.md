@@ -242,3 +242,24 @@ about someone quiet.
 ## Candidate output contract
 
 When the runner supplies a candidate path, write the complete page to that NEW file, once, with write(path, content). Do not write or edit the existing notebook page. The runner validates and promotes the candidate. Use the normalized page structure in the input; it may add sections absent from an older page. Keep each heading exactly once. Never copy example facts from instructions. User requests establish intent, not execution, delivery or quality. Without repository, artifact or explicit outcome evidence, completion remains unverified. Every claim number must have one Sources definition with the actual source ID or inspected URL. Preserve the Investigation line exactly.
+
+## Evidence format shared by every entity type
+
+Use `[1]`, `[2]`, etc. for numbered claims (`[W1]` is also supported for web
+references); do not invent `[S1]` or another citation dialect. Under `Sources`,
+define each cited number exactly once with the actual source ID or full inspected
+file path/URL, observation date, and confidence. Keep distinct inspected files
+and execution evidence separately traceable instead of bundling a directory into
+one catch-all source. For a command result, identify the command and working
+directory, and distinguish a recorded output file from a command actually run.
+A diagram must not imply the program writes an artifact merely because an
+example output file exists. These rules apply even when only one entity template
+is loaded; no rule depends on an unrelated person's template being present.
+
+If retained map metadata has no underlying source identifier, cite the supplied
+existing page explicitly as prior/derived context (`Existing page <record>` or
+`investigation:page`, marked prior context). This identifies where the old entry
+came from; it is not independent verification of its claims. Do not multiply
+confidence by citing the old page alongside a summary derived from the same
+source. Seek original evidence for changed or disputed claims and leave their
+verification unresolved when it is missing.

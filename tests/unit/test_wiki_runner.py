@@ -52,7 +52,11 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
                         "ours" if harness == "coai" else harness]
     assert argv[-1].startswith(f"/wiki-{stage} ")
     assert len(argv[-1]) < 8000  # Large material must not go through argv.
-    assert options["cwd"] == str(notebook.root)
+    if stage == "investigate":
+        assert Path(options["cwd"]).name == "notebook"
+        assert Path(options["cwd"]) != notebook.root
+    else:
+        assert options["cwd"] == str(notebook.root)
     seconds = config["limits"]["timeout_seconds"]
     assert options["timeout"] == seconds + (0 if harness == "coai" else 15)
     if harness != "coai":

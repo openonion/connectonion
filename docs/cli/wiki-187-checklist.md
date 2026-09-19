@@ -43,3 +43,20 @@ structure, and factually reviewed result are four separate claims.
 
 Detailed commands, actual Atlas output, usage, failed-attempt diagnosis and full
 suite limits: [consolidated acceptance](../testing/wiki-187-integration.md).
+
+## Next-batch implementation and quality evidence
+
+- [x] Disposable single-page working copy; candidate validation and promotion
+  under the sync lock with stale-snapshot rejection.
+- [x] Relevant entity template only, with shared citation rules and CLI reference
+  on demand; stage input-size, duration, usage and failure records.
+- [x] Same-material comparison tool and explicit independent quality-review
+  protocol; retain failed outputs and verify evaluator findings.
+- [x] Synthetic project comparison reviewed after supplying complete original
+  execution evidence; 363 focused tests pass.
+- [ ] Repeat quality comparisons for people and installed Skills.
+- [ ] Resolve corrections/layered updates and budget/round contracts before
+  treating those follow-up designs as implemented release requirements.
+
+Evidence and limitations: [comparison](../testing/artifacts/wiki187-next/README.md),
+[protocol](../testing/wiki-quality-protocol.md). This does not authorize release.
