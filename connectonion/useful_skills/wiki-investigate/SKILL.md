@@ -24,8 +24,7 @@ need three different treatments:
 | A value the material now contradicts | Say so in `Uncertainties`, naming both. Do not silently pick one. |
 
 An `Unknown` you looked for and did not find **stays `Unknown`, and the search
-goes in `Uncertainties`**: "Searched Gmail and Outlook over 150 days for
-szh526 and 艾玛; no signing entity or ABN appears." That sentence is what stops
+goes in `Uncertainties`**: "Searched the configured sources and window; no supporting record found." That sentence is what stops
 the next run from spending another pass on the same dead end, and it is the
 difference between "we do not know" and "nobody has looked".
 
@@ -239,3 +238,7 @@ about someone quiet.
 - **Do not extract decisions or principles here.** Note what was decided as
   part of the subject's story; lifting it into `decisions/` is
   `wiki-abstract`'s pass, and doing it twice produces two versions.
+
+## Candidate output contract
+
+When the runner supplies a candidate path, write the complete page to that NEW file, once, with write(path, content). Do not write or edit the existing notebook page. The runner validates and promotes the candidate. Use the normalized page structure in the input; it may add sections absent from an older page. Keep each heading exactly once. Never copy example facts from instructions. User requests establish intent, not execution, delivery or quality. Without repository, artifact or explicit outcome evidence, completion remains unverified. Every claim number must have one Sources definition with the actual source ID or inspected URL. Preserve the Investigation line exactly.

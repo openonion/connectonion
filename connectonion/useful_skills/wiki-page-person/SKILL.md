@@ -19,108 +19,50 @@ page is exactly what that produces.
 `Sources` list at the foot. A sentence you cannot number is a sentence you
 cannot keep.
 
+The following is structure only. Placeholders are never evidence. Use only supplied or actually inspected sources.
+
 ```markdown
-# Emma (飘啊飘)
+# <observed name>
 
 ## Contact
-- Email: szh526@gmail.com [2]
+- Email: Unknown
 - Phone: Unknown
-- Company: Independent Sydney Airbnb host / short-stay operator [1]
-- Role: Property owner-operator; the user's STR pricing-agent client and
-  online co-hosting counterparty [1][3]
-- Signing entity: ZEHAO SHEN — ABN 37 387 221 177, 6007/117 Bathurst St,
-  Sydney NSW 2000 [2]
-- Handles: "飘啊飘" (Gmail display name) [2]
-- Also known as: Emma, 飘啊飘, Emma Shen — every spelling any source has used
-  for her, including ones that were wrong; this line is how the next batch
-  recognises her
-- Language: Mandarin for pricing and operations; English for contract
-  redlines [6][8]
+- Company: Unknown
+- Role: Unknown
+- Signing entity: Unknown
+- Handles: Unknown
+- Language: Unknown
+- Also known as: Unknown
 
 ## Who they are
-- Sydney short-term-rental host; the user's first and still active client for
-  the AI pricing agent, onboarded around July 2026. [1]
-- Runs a multi-property portfolio — 7 property types across 3 buildings
-  confirmed 2026-07-10. [9]
-- Legally careful counterparty: her redlines use precise clause drafting
-  (indemnity carve-outs, service-fee-on-cessation, interim-provider rights).
-  *Inferred from their precision; not confirmed that a lawyer drafted them.* [5]
+- Unknown — not investigated yet
 
 ## Why they are here
-She came in as a pricing customer and the relationship widened from there: the
-user pitched automated Mandarin pricing recommendations for her Airbnb
-portfolio, and by August the same relationship had become a co-hosting
-collaboration. She is here for revenue per property, and she reads every
-contract before she signs it. [1][3][5]
+- Unknown — not investigated yet
 
 ## Our relationship
-Two relationships at once: an operating pricing client, and a contract
-counterparty on the Technology & Online Operations Collaboration Agreement. [1][3]
-
-**Where it stands:** signed by both parties 2026-08-07 [12]. Deal shape: 8% of
-Net Booking Revenue with cleaning fees excluded from the base; per-property
-90-day commercial review; either party may remove a property on 14 days'
-notice with no exit fee beyond accrued fees. All 7 of her requested changes
-were adopted. [11][12]
-
-**How she plays it:** negotiated hard on liability and exit, accepted the
-cleaning-fee concession, then signed the same day. Businesslike and durable —
-she pushes, but she closes. [4][5][12]
+- Unknown — not investigated yet
 
 ## History
-- 2026-07-10 — Confirmed pricing scope: 7 property types, 3 buildings
-  (38 York St / QVB, 243 Pyrmont St, 1 Brushbox St). [9]
-- 2026-08-06 — The user sent v9 with a section-by-section Mandarin explainer;
-  she replied ~1.5h later in English with 7 clause-change requests. [4][5]
-- 2026-08-06 — Ody sent v10 adopting all 7, compressed to 10 core sections. [11]
-- 2026-08-07 — The user signed; she returned the signed document 8:43 PM AEST. [12]
+- Unknown — not investigated yet
 
 ## Open threads
-- **"线上运营合作合同 — 清洁费已调整，新版请过目"** (t1.MTlmZDVhOTE0NjFiYTlhYQ) —
-  closed. Contract executed 2026-08-07; no action owed by either side. [12]
-- **Nothing open as of 2026-08-07.** Next contact will be operational:
-  pricing recommendations and onboarding the sourced properties.
+- Unknown — not investigated yet
 
 ## How they communicate
-Register-switching: English for legal matters — numbered, precise, "Regards,
-Emma" — and brief practical Mandarin for operations ("收到"). Organised and
-itemised; sends her own structured lists. Fast turnaround, and comfortable
-proposing exact contract language rather than describing a concern loosely. [5][8]
-> "Please see attached signed document." (2026-08-07) [12]
+- Unknown — not investigated yet
 
 ## How the user writes to them
-Opens "Emma，你好，", signs just "Aaron". Long contract mails are sectioned
-`== N. 标题 ==` with every clause translated into what it means for her.
-Leads with the reassuring conclusion, then the math ("先说清楚这不是涨价").
-Flags anything that could be misread before it happens, invites pushback
-explicitly, and routes clause detail to Ody. [4][6][7]
+- Unknown — not investigated yet
 
 ## Cadence
-Near-daily, same-day replies through the 2026-08-05→07 contract sprint, on top
-of the ongoing pricing relationship since ~July 2026. Expect it to settle back
-to operational pace now that the contract is signed. [3][5][12]
+- Unknown — not investigated yet
 
 ## Uncertainties
-- Property count: 7 confirmed 2026-07-10; other notes reference ~12 as of
-  August — not verified here.
-- No phone number on file.
-- Whether her redlines were lawyer-drafted is inferred, not confirmed.
-- The signed document itself was not opened; signature is confirmed from the
-  thread only.
-
-Related: [LaneStay pricing](../projects/lanestay-pricing.md), [Ody Zhou](./ody-zhou.md)
+- Unknown — not investigated yet
 
 ## Sources
-- [1] First and active STR pricing-agent client, onboarded ~July 2026 —
-  high — observed 2026-07-10 — outlook:9f2c1a4b7e30
-- [2] Signing entity ZEHAO SHEN, ABN 37 387 221 177 —
-  high — observed 2026-08-06 — outlook:1adf5a91461b
-- [4] v9 terms and the plain-language Mandarin explainer —
-  high — observed 2026-08-06 — outlook:7c8e2d10a4f5
-- [5] Her 7 English clause-change requests —
-  high — observed 2026-08-06 — outlook:bf2cd2898fb3
-- [11] v10 adopting all 7 requests — high — observed 2026-08-06 — outlook:4032690ac32e
-- [12] Both signatures; contract executed — high — observed 2026-08-07 — outlook:92634a3a8c50
+- Unknown — not investigated yet
 ```
 
 Rules that make this page work, and that a thin page always breaks:

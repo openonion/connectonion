@@ -71,3 +71,14 @@ Project pages now lead with one plain-language purpose sentence, an ASCII user-f
 Skill catalog templates now prioritize usefulness, latest observed status, example outputs and minimal invocation. Detailed history/statistics distinguish process exit, task completion and reviewed quality, with sample counts and coverage. Run-log collection remains unimplemented; metadata-only maps leave these sections unverified.
 
 Skill run evidence collection now dispatches from `co wiki investigate skills/catalog/...`: it reads retained co eval slash-command summaries, counts unique run/turn attempts, and links per-run inputs, outputs and evaluations. No mail/model is invoked. Tool-based invocation, other harness logs, installed-version attribution and automatic goal/artifact review remain unsupported.
+
+## 1.8.7 consolidated integration — 2026-09-19
+
+#1454 now consolidates installed-skill mapping, project and skill page templates,
+retained skill-run evidence, and the #1587 reader repairs. Deterministic init
+builds all three maps; investigation is separate. Its new candidate path removes
+the write-existing-file loop, retains exact input in a readable representation,
+normalizes legacy headings, and rejects structural/citation errors before replacement.
+Concrete person-template facts were removed. See `wiki-187-checklist.md` for the
+requirement map, acceptance evidence and remaining decisions. Historical queue
+failure remains failure: no batch was restarted or accepted retroactively.

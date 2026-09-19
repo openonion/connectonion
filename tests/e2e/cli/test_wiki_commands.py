@@ -264,7 +264,7 @@ def test_usage_command_shows_where_tokens_went(tmp_path):
     assert empty.exit_code == 0 and "0" in empty.output
 
 
-@pytest.mark.parametrize("stage", ["init", "abstract"])
+@pytest.mark.parametrize("stage", ["abstract"])
 def test_skill_entry_points_delegate_and_return_a_next_command(tmp_path, monkeypatch, stage):
     calls = []
 
@@ -289,3 +289,16 @@ def test_people_roster_returns_identity_and_existing_path(tmp_path):
     assert "ody@example.org" in str(output["data"])
     assert "people/ody.md" in str(output["data"]) and "odi" in str(output["data"])
     assert output["next"].endswith("list people")
+
+
+def test_init_builds_all_maps_without_model_or_investigation(tmp_path, monkeypatch):
+    monkeypatch.setattr('connectonion.wiki.service.subscriptions', lambda root: {})
+    monkeypatch.setattr('connectonion.wiki.runner.run_stage', lambda *a, **kw: pytest.fail('init must not start a model'))
+    empty = tmp_path / 'empty-skills'
+    empty.mkdir()
+    result = invoke(tmp_path, '--json', 'init', '--skills-dir', str(empty))
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)['data']
+    assert data['phase'] == 'mapped' and data['investigation'] == 'not started'
+    for record in ('notes/people-map.md', 'notes/projects-map.md', 'skills/catalog/index.md'):
+        assert (tmp_path / record).is_file()

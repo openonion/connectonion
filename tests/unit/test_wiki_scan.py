@@ -150,7 +150,11 @@ def test_under_coai_the_page_is_read_back_from_disk(tmp_path, monkeypatch):
 
     def fake_co_ai(argv, cwd, capture_output, text, timeout):
         page = root / "people/vern.md"
-        page.write_text(page.read_text().replace("- Phone: Unknown", "- Phone: +61 2 9385 1000 [W1]"))
+        import re
+        from pathlib import Path
+        candidate = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
+        candidate.write_text(page.read_text().replace("- Phone: Unknown", "- Phone: +61 2 9385 1000 [W1]").replace(
+            '- (none yet)', '- [W1] https://example.org/contact — observed 2026-09-19'))
         import json, types
         return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "filled", "usage": {"cost": 0.01}}),
                                      stderr="", returncode=0)

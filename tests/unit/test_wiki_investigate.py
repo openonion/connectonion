@@ -22,6 +22,10 @@ def co_ai(monkeypatch):
 
     def fake_run(argv, cwd, capture_output, text, timeout):
         calls.append(argv)
+        import re
+        from pathlib import Path
+        path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
+        path.write_text((Path(cwd) / 'people/vern.md').read_text())
         return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
                                      stderr="", returncode=0)
 

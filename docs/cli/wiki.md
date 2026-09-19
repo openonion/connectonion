@@ -217,3 +217,23 @@ Tool-invoked skills and other harnesses are not yet covered. Historical outputs
 may be missing, current summary model labels may not establish each run's model,
 and same-name installed copies cannot be attributed. Goal achievement and
 verified changes stay unassessed until actual artifacts are checked.
+
+### 1.8.7 integration update
+
+`co wiki --root '<root>' init --days 150` now builds people, projects and installed
+skill maps deterministically. It invokes no model and performs no investigation.
+Only enabled mail sources are read. Use `subscriptions` and explicit `subscribe`
+commands to select sources first. The map records counts, dates and coverage in
+`.state/map.json` and writes people/project indexes under `notes/`; it leaves
+classification unassessed. The `wiki-init` Skill can subsequently rank that map.
+Run `investigate <record>` explicitly for one page.
+
+Investigation reads a normalized skeleton and writes a new candidate under
+`.state/tasks/`. Only a candidate with valid structure and reference definitions
+replaces the page. Failed candidates remain for diagnosis. This check cannot
+establish factual correctness. Full source JSON is retained; a readable copy uses
+reversible text chunks so line-limited tools can read all of it.
+
+The requirement-to-code/test checklist and remaining decisions are in
+[wiki-187-checklist.md](wiki-187-checklist.md). This update supersedes earlier
+references to init launching a model or investigating the owner in the same run.

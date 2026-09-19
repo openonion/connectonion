@@ -79,7 +79,7 @@ a loaded model; the model's advertised maximum is not the current setting. A
 --model` changes Ollama context size. For direct skill execution, invoke
 `co ai --model 'ollama/<installed-model-name>' '<task-with-absolute-paths>'`.
 
-For file tools, read existing pages before changing them. `write(path, content)`
+For investigation, write the complete revised page to the NEW candidate path supplied by the runner. Do not edit the existing page. The runner validates before replacement. For other file-tool tasks, read existing pages before changing them. `write(path, content)`
 creates a new file and refuses an existing one; use `edit(file_path, old_string,
 new_string)` with all required arguments to update it. The agent's `list()` tool
 lists todos, not directories: inspect directories with shell `ls`, and supply the

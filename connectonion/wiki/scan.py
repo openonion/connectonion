@@ -108,7 +108,7 @@ def scan_projects(subscriptions: dict, days: int) -> list[dict]:
     projects = collections.defaultdict(lambda: {"sessions": 0, "first": "", "last": "", "tools": set()})
     for name, sub in subscriptions.items():
         kind = sub.get("kind")
-        if kind not in KINDS or not Path(sub.get("root", "")).is_dir():
+        if sub.get("enabled") is False or kind not in KINDS or not Path(sub.get("root", "")).is_dir():
             continue
         for path in source_files(sub):
             stamp = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
@@ -121,6 +121,8 @@ def scan_projects(subscriptions: dict, days: int) -> list[dict]:
             except (ValueError, UnicodeError, WikiError):
                 continue
             cwd = (meta or {}).get("cwd") or ""
+            if sub.get("project") and cwd != sub["project"]:
+                continue
             if not cwd or meta.get("skip"):
                 continue
             entry = projects[cwd]
@@ -158,7 +160,7 @@ def _repo_identity(path: Path) -> dict:
         # A linked worktree's common dir is the main checkout's .git; that is the project.
         toplevel = top.stdout.strip()
         if common.returncode == 0 and common.stdout.strip() not in (".git", f"{toplevel}/.git"):
-            toplevel = str(Path(common.stdout.strip()).resolve().parent)
+            toplevel = str((path / common.stdout.strip()).resolve().parent)
         return {"toplevel": toplevel, "origin": origin.stdout.strip() if origin.returncode == 0 else ""}
     except (OSError, subprocess.TimeoutExpired):
         return {}

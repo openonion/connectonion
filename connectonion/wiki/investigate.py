@@ -228,10 +228,12 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         coverage.append(f"digest: {gathered_chars:,} chars gathered (~{gathered_chars // 4:,} tokens), over the "
                         f"{room:,}-char room for one turn; summarised in {len(items)} chunk(s) first")
     now = datetime.now(timezone.utc).isoformat()
+    from .page_review import normalize
+    current_page = normalize(record, notebook.read(record))
     prompt_items = [
         {"role": "page", "record": record,
          "text": f"The page as it stands, at {record}. Fill its Unknowns, update what "
-                 f"has moved, keep what is right:\n\n{notebook.read(record)}",
+                 f"has moved, keep what is right:\n\n{current_page}",
          "timestamp": now, "source": "investigation:page"},
         {"role": "coverage", "text": "Sources searched for handles " + ", ".join(handles) + ":\n"
                                      + "\n".join(coverage), "timestamp": now, "source": "investigation:coverage"},

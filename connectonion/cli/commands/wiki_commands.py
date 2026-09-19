@@ -57,18 +57,23 @@ def make_wiki_app(factory):
         _handle(ctx, lambda root: (status(root), ["logs"]), ["config"])
 
     @wiki.command("init")
-    def init_wiki(ctx: typer.Context):
-        """Run the initialization Skill: discover sources and build the map for later investigation."""
-        from ...wiki.config import prepare, read_config
-        from ...wiki.files import Notebook
-        from ...wiki.runner import run_stage
-        from ...wiki.skill_map import map_skills
+    def init_wiki(ctx: typer.Context,
+                  days: int = typer.Option(150, "--days", min=1),
+                  skills_dir: List[Path] = typer.Option([], "--skills-dir"),
+                  mine: List[str] = typer.Option([], "--mine")):
+        """Build people, project and skill maps deterministically; no model or investigation."""
+        from ...wiki.config import prepare
+        from ...wiki.map import build_map
+        from ...wiki.service import mail_client, subscriptions
 
         def run(root):
             prepare(root)
-            map_skills(Notebook(root))
-            return run_stage(Notebook(root), [], read_config(root), stage="init"), ["unfinished"]
-        _handle(ctx, run, ["status"])
+            sources = subscriptions(root)
+            clients = {sub["kind"]: mail_client(sub["kind"]) for sub in sources.values()
+                       if sub.get("kind") in ("gmail", "outlook") and sub.get("enabled")}
+            return build_map(root, sources, clients, days=days,
+                             skill_directories=skills_dir or None, mine=mine), ["unfinished"]
+        _handle(ctx, run, ["subscriptions"])
 
     @wiki.command("map-skills")
     def map_skill_pages(ctx: typer.Context,
@@ -195,7 +200,9 @@ def make_wiki_app(factory):
                 if low.startswith(("also known as:", "email:", "handles:")) and ":" in line:
                     known += [h.strip() for h in line.split(":", 1)[1].replace("、", ",").split(",") if h.strip() and h.strip() != "Unknown"]
             handles = list(dict.fromkeys([*handle, *known, title.split(" (")[0]]))
-            clients = {k: mail_client(k, attachments=True) for k in ("outlook", "gmail")}
+            sources = subscriptions(root)
+            clients = {sub["kind"]: mail_client(sub["kind"], attachments=True) for sub in sources.values()
+                       if sub.get("kind") in ("outlook", "gmail") and sub.get("enabled")}
             result = investigate(root, record, title, handles, days=days, clients=clients,
                                  subscriptions=subscriptions(root),
                                  progress=lambda k, stop, n: typer.echo(f"  {k}: to {stop:%Y-%m-%d}, {n} mails", err=True))

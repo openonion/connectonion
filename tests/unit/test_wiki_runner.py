@@ -28,6 +28,10 @@ def delegate(monkeypatch):
 
     def run(argv, **kw):
         calls.append((argv, kw))
+        if argv[-1].startswith('/wiki-investigate'):
+            import re
+            path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
+            path.write_text((Path(kw['cwd']) / 'notes/old.md').read_text())
         return SimpleNamespace(returncode=0, stdout=json.dumps({
             "outcome": "natural", "result": "done", "usage": {"input_tokens": 13}}), stderr="")
 
