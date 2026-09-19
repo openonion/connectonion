@@ -307,6 +307,21 @@ Uses your own self-built Feishu application over the official long connection:
 no public address, no OpenOnion credential, nothing billed. Anything that can
 read a file can consume the directory. See [feishu.md](feishu.md).
 
+#### `co whatsapp` - A WhatsApp Number as a Directory of Files
+
+```bash
+pip install 'connectonion[whatsapp]'
+brew install libmagic                  # also needed; apt install libmagic1 on Debian/Ubuntu
+co whatsapp listen                     # scan the QR once; every message → ~/.co/inbox/whatsapp/
+echo "on it" | co whatsapp reply 3EB0A1
+```
+
+The same nine verbs, against a linked companion device — which is the only way
+to answer in a group a person created, since the official Cloud API has no
+endpoint for joining one. Use a number you have dedicated to this: a linked
+device sees every chat the number is in, and automating the consumer client is
+against WhatsApp's terms. See [whatsapp.md](whatsapp.md).
+
 ---
 
 #### `co gmail` - Send & Read Gmail

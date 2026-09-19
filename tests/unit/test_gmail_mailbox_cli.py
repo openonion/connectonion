@@ -90,6 +90,48 @@ def test_inbox_json_exposes_pagination_and_full_ids(client):
     assert data['next_command'] == 'co gmail read full-very-long-message-id'
 
 
+def test_a_window_narrows_the_query_the_cursor_is_bound_to(client):
+    # Composing this way is what keeps the envelope's promises: the cursor is
+    # derived from the query, so a different window is a different query and an
+    # old one stops matching without a second rule for it.
+    result = CliRunner().invoke(app, ['gmail','inbox','--since','2026-06-01','--until','2026-07-01','--json'])
+    assert result.exit_code == 0, result.output
+    query = client.message_page.call_args.args[0]
+    assert query == 'in:inbox after:1780272000 before:1782864000'
+
+
+def test_a_window_composes_with_unread_rather_than_replacing_it(client):
+    CliRunner().invoke(app, ['gmail','inbox','--unread','--since','2026-06-01','--json'])
+
+    assert client.message_page.call_args.args[0] == 'is:unread in:inbox after:1780272000'
+
+
+def test_no_window_leaves_the_query_exactly_as_it_was(client):
+    # The flag is opt-in; a caller who never passes it must see the same bytes
+    # as before.
+    CliRunner().invoke(app, ['gmail','inbox','--json'])
+
+    assert client.message_page.call_args.args[0] == 'in:inbox'
+
+
+def test_an_unreadable_window_is_a_typed_error_not_a_traceback(client):
+    result = CliRunner().invoke(app, ['gmail','inbox','--since','last week','--json'])
+
+    data = json.loads(result.stdout)
+    assert data['status'] == 'error' and data['error']['code'] == 'invalid_window'
+    assert '30d' in data['error']['message']
+    client.message_page.assert_not_called()
+
+
+def test_a_backwards_window_is_refused_inside_the_envelope(client):
+    result = CliRunner().invoke(app, ['gmail','inbox','--since','2026-09-01','--until','2026-06-01','--json'])
+
+    data = json.loads(result.stdout)
+    assert data['error']['code'] == 'invalid_window'
+    assert 'earlier' in data['error']['message']
+    client.message_page.assert_not_called()
+
+
 def test_cursor_is_forwarded_with_original_search(client):
     result = CliRunner().invoke(app, ['gmail','search','in:sent','--last','4','--cursor','cursor', '--json'])
     assert result.exit_code == 0, result.output

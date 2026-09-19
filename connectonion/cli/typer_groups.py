@@ -72,8 +72,40 @@ class _OneSuggestion(typer.core.TyperGroup):
             # inert in exactly the version where CI runs. Catching broadly is safe
             # because this always re-raises and only touches an object carrying
             # both of the attributes it is about to use.
-            if getattr(error, "possibilities", None) and hasattr(error, "message"):
-                error.message = _SUGGESTION_RE.sub("", error.message).rstrip()
+            # Keep the first candidate for `main` below. Click names it in the
+            # message it is about to render ("Did you mean 'lark'?"), and the
+            # next-step line underneath used to throw that away and say
+            # `co --help` — telling the reader the answer and then pointing at a
+            # flag. It is stashed rather than passed because Click prints and
+            # exits between here and there.
+            global _LAST_GUESS
+            guessed = None
+            possibilities = getattr(error, "possibilities", None)
+            if possibilities:
+                guessed = possibilities[0]
+                if hasattr(error, "message"):
+                    error.message = _SUGGESTION_RE.sub("", error.message).rstrip()
+            else:
+                # typer 0.27 vendors its own Click and leaves `possibilities`
+                # empty, having already written the clause into the text — which
+                # is the same version split this class was written for. So the
+                # guess is read back out of the message rather than assumed
+                # absent; otherwise the tip silently degrades to "co commands"
+                # on exactly the version CI runs.
+                named = _GUESS_RE.search(getattr(error, "message", "") or "")
+                if named:
+                    guessed = named.group(1)
+
+            if guessed:
+                # The whole command, not the bare word. `main` below runs on the
+                # ROOT group even when the typo was a subcommand, so a guess
+                # stashed without its group renders `co receive` for a mistyped
+                # `co lark recieve` — a command that does not exist.
+                names, here = [], ctx
+                while here.parent is not None:
+                    names.append(here.info_name)
+                    here = here.parent
+                _LAST_GUESS = " ".join(["co", *reversed(names), guessed])
             raise
 
     def main(self, *args, **kwargs):
@@ -88,8 +120,19 @@ class _OneSuggestion(typer.core.TyperGroup):
         try:
             return super().main(*args, **kwargs)
         except SystemExit as exiting:
-            if exiting.code == 2:
+            from .commands.command_tips import next_step_already_named
+
+            # Exit 2 is both Click's usage error and what a handler raises when
+            # it refuses on purpose. Only the first kind arrives here having told
+            # the caller nothing; the second has already named a precise command,
+            # and adding a generic one on top makes two tips — a fork the agent
+            # resolves by guessing, and it reads the worse one first because
+            # stderr is what most callers merge in front.
+            if exiting.code == 2 and not next_step_already_named():
                 import sys
+
+                global _LAST_GUESS
+                guess, _LAST_GUESS = _LAST_GUESS, None
 
                 # `co`, not argv[0]: the root's name is whatever invoked it,
                 # and for the root group self.name is that same word — so it
@@ -98,7 +141,19 @@ class _OneSuggestion(typer.core.TyperGroup):
                 if group in ("co", "connectonion", "root"):
                     group = ""
                 path = f"co {group}".strip()
-                print(f"Next: {path} --help", file=sys.stderr)
+
+                if guess:
+                    # Already the full command, group included — Click just named
+                    # the word, and resolve_command put it back in context.
+                    tip = guess
+                elif group:
+                    tip = f"{path} --help"
+                else:
+                    # Nothing close enough to guess. `co --help` is a boxed screen
+                    # of groups; `co commands` is every command, one per line with
+                    # its summary — the shape something reading this can use.
+                    tip = "co commands"
+                print(f"Next: {tip}", file=sys.stderr)
             raise
 
     def invoke(self, ctx):
@@ -132,3 +187,11 @@ class _OneSuggestion(typer.core.TyperGroup):
 
 
 _SUGGESTION_RE = re.compile(r"\s*Did you mean [^?]*\?")
+
+# The last near-miss Click offered, handed from resolve_command to main.
+# Module-level because Click prints its own error and exits in between.
+_LAST_GUESS = None
+
+# The first name inside "Did you mean 'x', 'y'?", for the version that puts
+# the clause in the text instead of in .possibilities.
+_GUESS_RE = re.compile(r"Did you mean '([^']+)'")

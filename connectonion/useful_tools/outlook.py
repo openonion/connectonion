@@ -201,7 +201,8 @@ class Outlook:
                 self._credentials.auth_command)
         if response.status_code not in [200, 201, 202, 204]:
             raise ProviderCredentialError("provider_unavailable",
-                f"Microsoft Graph API error (HTTP {response.status_code}).", "co outlook inbox")
+                f"Microsoft Graph API error (HTTP {response.status_code}).", "co outlook inbox",
+                status=response.status_code)
 
         # 202 (sendMail) and 204 come back with an empty body
         if response.status_code == 204 or not response.text:
@@ -938,15 +939,24 @@ class Outlook:
 
         return f"You have {count} unread email(s) in your inbox."
 
-    def list_between(self, start: str, end: str, max_results: int = 200) -> list:
+    def list_between(self, start: str, end: str, max_results: int = 200,
+                     newest_first: bool = False) -> list:
         """Messages received in [start, end), oldest first; the shape list_inbox returns.
 
         The wiki importer walks a mailbox forward from a cursor, so it needs an
-        ascending, date-bounded listing rather than a newest-first search.
+        ascending, date-bounded listing rather than a newest-first search — that
+        is the default and why it is the default.
+
+        `newest_first` changes only which end `max_results` keeps, not the order
+        of the result. Graph applies `$top` after `$orderby`, so ascending plus a
+        cap returns the *oldest* matches: `--since 30d -n 10` answered with ten
+        messages from a month ago and nothing since, with no sign that the rest
+        existed. A window is asked about its recent end, so the listing asks for
+        that end and still hands back ascending rows.
         """
         params = {
             "$filter": f"receivedDateTime ge {start} and receivedDateTime lt {end}",
-            "$orderby": "receivedDateTime asc",
+            "$orderby": f"receivedDateTime {'desc' if newest_first else 'asc'}",
             "$top": max_results,
             "$select": "id,from,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
         }
@@ -957,7 +967,9 @@ class Outlook:
         for row, msg in zip(rows, result.get('value', [])):
             row['to'] = [r.get('emailAddress', {}).get('address', '') for r in msg.get('toRecipients', [])]
             row['cc'] = [r.get('emailAddress', {}).get('address', '') for r in msg.get('ccRecipients', [])]
-        return rows
+        # Ascending either way: the flag chose which messages, not their order,
+        # and every caller including the wiki importer reads them oldest first.
+        return sorted(rows, key=lambda row: str(row.get('date', '')))
 
     def my_addresses(self) -> set:
         """The addresses that count as the user's own, lower-cased."""

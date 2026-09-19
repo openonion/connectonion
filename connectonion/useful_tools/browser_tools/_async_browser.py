@@ -48,11 +48,55 @@ except ImportError:
     ASYNC_BROWSER_AVAILABLE = False
 
 
+# `wait` is the one verb whose argument can buy an unbounded hold on a shared
+# tab, and its unit is guessable: every *other* settle knob in this codebase is
+# named in milliseconds (`wait_ms`, `timeout_ms`), so `wait 2500` reads as 2.5s
+# to a caller and means 41 minutes here. The cap exists to bound that mistake,
+# not to ration waiting — nothing that needs more than a minute of stillness
+# should be a blocking sleep on a tab other agents may be queued behind.
+MAX_WAIT_SECONDS = 60
+
+# "No session drives this page." A distinct object because None is already the
+# main tab's session key, and conflating the two would offer the shared main tab
+# to a second agent as though it were free.
+NOBODY = object()
+
+
+def wait_argument_error(seconds: float) -> ValueError:
+    """Refuse an over-long wait in the terms the caller most likely meant."""
+    guess = (
+        f"  Did you mean `wait {seconds / 1000:g}`?\n"
+        if seconds >= 1000 and seconds / 1000 <= MAX_WAIT_SECONDS
+        else ""
+    )
+    return ValueError(
+        f"wait takes seconds, not milliseconds: {seconds:g} seconds is "
+        f"{seconds / 60:.0f} minutes, over the {MAX_WAIT_SECONDS}s limit.\n"
+        f"{guess}"
+        "  A wait holds the tab, so anything longer belongs in a condition, not a "
+        "sleep:  wait_for_element(<description>)  ·  wait_for_text(<text>)"
+    )
+
+
 class PaidSessionEndedError(RuntimeError):
-    """A paid session ended upstream; its browser must not keep serving."""
+    """A paid session ended upstream; its browser must not keep serving.
+
+    The reason alone ("browser_exited") reads as a diagnostic to a human and as
+    a dead end to an agent, which is what it was in #1510: the tabs are gone
+    with the session, so the next command fails on the missing tab instead, and
+    nothing in either message says how to get back to work. Name the way out.
+    """
 
     def __init__(self, reason: str):
-        super().__init__(f"paid browser session ended: {reason}")
+        super().__init__(
+            f"paid browser session ended: {reason}\n\n"
+            f"The session is over and its tabs went with it. Start a new one:\n"
+            f"  co browser close\n"
+            f"  co browser tab open <name> --for \"<what you are doing>\"\n\n"
+            f"If this task does not need anti-detection, the free engine keeps "
+            f"your logins and costs nothing:\n"
+            f"  co browser --engine system tab open <name> --for \"<what you are doing>\""
+        )
         self.reason = reason
 
 
@@ -939,7 +983,126 @@ class AsyncBrowserCore:
                 if note:
                     line += f"\n      {note}"
                 lines.append(line)
+            # A page the site opened for itself is registered nowhere, so this
+            # board is exactly where someone looks for it and does not find it.
+            # Nobody reads the help for a verb they do not know exists.
+            unclaimed = sum(
+                1 for page in self._live_pages() if self._driver_of(page) is NOBODY
+            )
+            if unclaimed:
+                noun = "page" if unclaimed == 1 else "pages"
+                lines.append("")
+                lines.append(
+                    f"{unclaimed} open {noun} no session is driving — the site "
+                    f"opened {'it' if unclaimed == 1 else 'them'} itself.\n"
+                    f"  co browser list_pages"
+                )
             return "\n".join(lines)
+
+    def _live_pages(self) -> List[Any]:
+        """The browser's real pages, closed ones dropped.
+
+        `_pages` maps a session to the page it drives. This is the other list:
+        what the browser actually has open, including pages a site opened for
+        itself with target=_blank or window.open, which no session registered
+        and which therefore appear nowhere on the tab board.
+        """
+        live = []
+        for page in list(getattr(self.browser, "pages", []) or []):
+            try:
+                if page.is_closed():
+                    continue
+            except Exception:
+                continue
+            live.append(page)
+        return live
+
+    def _driver_of(self, page):
+        """Which session drives this page, or NOBODY.
+
+        Not `None` for "nobody": None is the main tab's own key, so returning it
+        would make the shared main tab read as unclaimed — and then `switch_page`
+        would happily hand it to a second agent.
+        """
+        for key, claimed in self._pages.items():
+            if claimed is page:
+                return key
+        return NOBODY
+
+    async def list_pages(self) -> str:
+        """List every page the browser has open, including ones a site opened."""
+        async with self._tab_operation(ensure_page=False):
+            if self.browser is None:
+                return "Browser not open"
+            pages = self._live_pages()
+            if not pages:
+                return "No pages open"
+            active = self._bound_session_key()
+            lines = [f"Pages ({len(pages)}):"]
+            for index, page in enumerate(pages):
+                driver = self._driver_of(page)
+                if driver is NOBODY:
+                    owner = "unclaimed — no session is driving it"
+                    marker = " "
+                else:
+                    name = "main" if driver is None else driver
+                    owner = f"[{name}]"
+                    marker = "*" if driver == active else " "
+                try:
+                    title = await page.title()
+                except Exception:
+                    title = ""
+                line = f"  {marker}{index}: {page.url}  {owner}"
+                if title:
+                    line += f"  {title!r}"
+                lines.append(line)
+            lines.append("")
+            lines.append("Work in one:  co browser [-t TAB] switch_page <index>")
+            return "\n".join(lines)
+
+    async def switch_page(self, index: int) -> str:
+        """Point this session at one of the browser's pages.
+
+        Not the `use`/`switch` that 1.8 removed: that was a server-side cursor
+        deciding which *session* a bare command meant, and targeting stays per
+        command with -t. This chooses which page the targeted session drives,
+        which is the only way to reach a tab the site opened for itself.
+        """
+        async with self._tab_operation(ensure_page=False):
+            if self.browser is None:
+                return "Browser not open"
+            pages = self._live_pages()
+            if not pages:
+                return "No pages open"
+            try:
+                index = int(index)
+            except (TypeError, ValueError):
+                return f"page index must be a number, not {index!r}"
+            if not 0 <= index < len(pages):
+                listing = "\n".join(
+                    f"  {n}: {page.url}" for n, page in enumerate(pages)
+                )
+                return (
+                    f"no page {index}; the browser has {len(pages)}:\n{listing}\n\n"
+                    "see them with owners:  co browser list_pages"
+                )
+
+            page = pages[index]
+            key = self._bound_session_key()
+            driver = self._driver_of(page)
+            if driver is not NOBODY and driver != key:
+                name = "main" if driver is None else driver
+                return (
+                    f"page {index} is being driven by [{name}] — two agents "
+                    f"cannot share one page.\n\n"
+                    f"Open your own:  co browser tab open <name>\n"
+                    f"See the board:  co browser tab ls"
+                )
+
+            self._pages[key] = page
+            self._page_url[key] = page.url
+            self._page_used[key] = time.monotonic()
+            return f"Now driving page {index}: {page.url}"
 
     async def close_tab(self, key: Optional[str] = None) -> str:
         if key is None:
@@ -1897,6 +2060,10 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             return f"Found text: '{text}'"
 
     async def wait(self, seconds: float) -> str:
+        # Before the tab lock, deliberately: the whole cost of #1509 was that a
+        # bad argument was admitted first and only found out 41 minutes later.
+        if seconds > MAX_WAIT_SECONDS:
+            raise wait_argument_error(seconds)
         async with self._tab_operation():
             if self.page is None:
                 return "Browser not open"

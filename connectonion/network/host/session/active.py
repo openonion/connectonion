@@ -134,17 +134,17 @@ class CleanupJob(threading.Thread):
         super().__init__(daemon=True, name="registry-cleanup")
         self._registry = registry
         self._interval = interval
-        self._stop = threading.Event()
+        self._stop_event = threading.Event()
 
     def run(self) -> None:
-        while not self._stop.wait(self._interval):
+        while not self._stop_event.wait(self._interval):
             removed = self._registry.cleanup_expired()
             if removed > 0:
                 print(f"[Registry] Cleaned up {removed} expired sessions")
 
     def stop(self, timeout: float = 5.0) -> None:
         """Ask the loop to exit and wait for it. Safe to call twice."""
-        self._stop.set()
+        self._stop_event.set()
         if self.is_alive() and threading.current_thread() is not self:
             self.join(timeout)
 

@@ -1,0 +1,53 @@
+version: v1.8.6a2
+# Terminal captures, produced by scripts/capture_186a2_release_cli.py. Two of
+# them replay the live acceptance against the owner's own WhatsApp number and
+# Outlook mailbox, verbatim from the logs that run wrote; the local-model error
+# is rendered by the real exception class rather than typed out. Nothing here is
+# a mock-up, so the picture cannot drift from the behaviour — 1.8.6a1 shipped
+# without a WhatsApp capture for exactly that reason, and this release is the
+# one that earned it.
+images:
+- file: a-mention-registers-and-is-acknowledged.png
+  alt: A WhatsApp inbox log showing both account ids at connect, a group message
+    received, and two reactions sent; then the message itself with mentioned true.
+  caption: An @mention registers whichever id the group uses, and the queue is marked
+    where the people in the chat can see it.
+  scenario: Live acceptance on the owner's linked number 61410724095, 2026-09-17
+    04:26–05:06 UTC, in a real group. The log lines and reaction ids are the ones
+    that run produced; before this release the same message recorded mentioned false
+    because the account had migrated to LID addressing.
+  viewport: 1040x~270 terminal capture, 2x
+  commit: b4a73c0f
+  source_run: docs/acceptance/1.8.6/whatsapp-live-2026-09-17.md
+- file: a-window-keeps-its-recent-end.png
+  alt: Two summaries of the same 30-day window, the first ending three weeks stale,
+    the second ending today and warning that there is more.
+  caption: A date window keeps its recent end, and says when it had to cut.
+  scenario: The same real Outlook mailbox before and after issue 1571, 2026-09-17. The
+    before row is what 1.8.6a1 returned — the oldest ten in the window, with nothing
+    saying the other four weeks existed.
+  viewport: 1040x~200 terminal capture, 2x
+  commit: b4a73c0f
+  source_run: https://github.com/openonion/connectonion/issues/1571
+- file: a-number-belongs-to-one-listing.png
+  alt: co outlook cancel 1 refusing after an inbox listing, exiting 1, with cancel_scheduled
+    never called.
+  caption: A listing number carries which listing it came from, so cancel can no longer
+    delete a received email.
+  scenario: Reproduced and then re-run on the real mailbox, 2026-09-17. Before issue 1577
+    this same sequence printed a green tick, exited 0, and deleted the message at
+    inbox row 1.
+  viewport: 1040x~190 terminal capture, 2x
+  commit: b4a73c0f
+  source_run: https://github.com/openonion/connectonion/issues/1577
+- file: a-local-model-is-diagnosed-locally.png
+  alt: A connection failure for a localhost model naming the server, saying it is not
+    running, and offering ollama serve.
+  caption: An unreachable local model is diagnosed as a local model, not as the user's
+    internet connection.
+  scenario: Rendered by the real LLMConnectionError for http://localhost:11434/v1.
+    Before issue 1570 the same failure advised checking the internet connection and
+    disabling a VPN, for a request to the loopback address.
+  viewport: 1040x~230 terminal capture, 2x
+  commit: b4a73c0f
+  source_run: https://github.com/openonion/connectonion/issues/1570

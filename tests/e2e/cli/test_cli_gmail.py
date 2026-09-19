@@ -1,5 +1,6 @@
 """CLI routing tests for `co gmail`."""
 
+import re
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -22,7 +23,7 @@ def test_gmail_inbox_routes_flags():
         result = runner.invoke(app, ["gmail", "inbox", "--last", "25", "--unread"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with(last=25, unread=True)
+    handler.assert_called_once_with(last=25, unread=True, since=None, until=None)
 
 
 def test_gmail_inbox_defaults():
@@ -30,7 +31,7 @@ def test_gmail_inbox_defaults():
         result = runner.invoke(app, ["gmail", "inbox"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with(last=10, unread=False)
+    handler.assert_called_once_with(last=10, unread=False, since=None, until=None)
 
 
 def test_gmail_inbox_short_flags():
@@ -38,7 +39,7 @@ def test_gmail_inbox_short_flags():
         result = runner.invoke(app, ["gmail", "inbox", "-n", "3", "-u"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with(last=3, unread=True)
+    handler.assert_called_once_with(last=3, unread=True, since=None, until=None)
 
 
 def test_gmail_read_routes_id():
@@ -232,3 +233,28 @@ def test_unknown_gmail_subcommand_fails():
     result = runner.invoke(app, ["gmail", "archive", "3"])
 
     assert result.exit_code != 0
+
+
+def test_gmail_inbox_forwards_a_window():
+    with patch("connectonion.cli.commands.gmail_commands.handle_gmail_inbox") as handler:
+        result = runner.invoke(app, ["gmail", "inbox", "--since", "30d", "--until", "2026-09-01"])
+    assert result.exit_code == 0
+    handler.assert_called_once_with(last=10, unread=False, since="30d", until="2026-09-01")
+
+
+def test_gmail_inbox_composes_a_window_with_the_envelope():
+    """A window narrows the query the envelope already pages through.
+
+    This used to be a refusal — better than silently returning the last ten and
+    looking like it worked — on the grounds that composing meant deciding how a
+    window interacts with cursor paging and completeness. It did not: the cursor
+    is derived from the query, so a different window is a different query and an
+    old cursor stops matching on its own, and `complete` still comes from
+    Gmail's page token. Outlook composed the same two flags all along, which is
+    what made the refusal look like a gap rather than a design.
+    """
+    with patch("connectonion.cli.commands.gmail_mailbox_commands.handle_mailbox") as handler:
+        result = runner.invoke(app, ["gmail", "inbox", "--since", "30d", "--json"])
+    assert result.exit_code == 0, result.output
+    handler.assert_called_once_with("inbox", json_output=True, last=10, unread=False,
+                                    cursor=None, since="30d", until=None)

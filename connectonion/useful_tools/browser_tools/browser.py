@@ -52,6 +52,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from . import element_finder, humanize
+# The wait limit is defined with the async core because that is the path where a
+# long wait blocks OTHER agents' commands. Both spellings of the verb share it so
+# `co browser wait` and a direct library call cannot disagree about the unit.
+from ._async_browser import MAX_WAIT_SECONDS, wait_argument_error
 from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 from .chrome_finder import find_system_chrome
 
@@ -2187,6 +2191,8 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
 
     def wait(self, seconds: float) -> str:
         """Wait for a specified number of seconds."""
+        if seconds > MAX_WAIT_SECONDS:
+            raise wait_argument_error(seconds)
         if not self.page:
             return "Browser not open"
         self.page.wait_for_timeout(seconds * 1000)

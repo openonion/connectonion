@@ -553,5 +553,44 @@ class TestCoModelRouting:
                     assert not llm.model.startswith("co/")  # Prefix should be stripped
 
 
+class TestUnreachableServerAdvice:
+    """A connection failure is diagnosed against the server that failed."""
+
+    @staticmethod
+    def advice(base_url):
+        from connectonion.core.exceptions import LLMConnectionError
+        return str(LLMConnectionError(ConnectionError("boom"), model="m", base_url=base_url))
+
+    def test_a_local_server_is_not_blamed_on_the_users_internet(self):
+        # Nothing about a request to 127.0.0.1 involves their connection, and no
+        # VPN will fix it. Sending someone to debug a working network while
+        # `ollama serve` is simply not running costs more than saying nothing.
+        text = self.advice("http://127.0.0.1:11434/v1")
+
+        assert "internet connection" not in text
+        assert "VPN" not in text
+        assert "The server is not running" in text
+
+    def test_ollamas_own_port_names_the_command_that_starts_it(self):
+        assert "ollama serve" in self.advice("http://localhost:11434/v1")
+
+    def test_another_local_port_does_not_guess_which_server_it_is(self):
+        text = self.advice("http://localhost:1/v1")
+
+        assert "ollama serve" not in text
+        assert "Start the local server" in text
+
+    def test_a_remote_server_keeps_the_network_advice(self):
+        text = self.advice("https://api.openai.com/v1")
+
+        assert "internet connection" in text
+        assert "The server is not running" not in text
+
+    def test_the_server_that_failed_is_always_named(self):
+        # The one line that made this diagnosable at all; it stays in both shapes.
+        for url in ("http://127.0.0.1:11434/v1", "https://api.openai.com/v1"):
+            assert url in self.advice(url)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

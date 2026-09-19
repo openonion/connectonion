@@ -26,7 +26,6 @@ that reads them.
 import threading
 import uuid
 from pathlib import Path
-from typing import Optional
 
 # One session per conversation, stable across restarts: the same chat and
 # thread must name the same session tomorrow, or every reconnect starts the
@@ -45,7 +44,8 @@ def create_inbox_lifespan(co_dir: Path, create_agent, storage, result_ttl: int,
     Returns (on_startup, on_shutdown), the same pair shape the relay and the
     schedule use, so server.py can compose them.
     """
-    from ...inbox import Inbox, provider as provider_for
+    from ...inbox import Inbox
+    from ...inbox import provider as provider_for
     from ...inbox.settings import configured_channels
 
     stop = threading.Event()
@@ -82,9 +82,11 @@ def create_inbox_lifespan(co_dir: Path, create_agent, storage, result_ttl: int,
             try:
                 sent = provider.send(message.chat, reply, reply_to=message.id)
             except Exception as exc:
-                inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id, error=str(exc))
+                inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id,
+                                  error=str(exc), by="host")
                 raise RuntimeError(f"reply failed: {exc}") from exc
-            inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id, provider_id=sent)
+            inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id,
+                              provider_id=sent, by="host")
 
         return answer
 
@@ -110,7 +112,7 @@ def create_inbox_lifespan(co_dir: Path, create_agent, storage, result_ttl: int,
                 continue
             thread = threading.Thread(
                 target=inbox.serve, args=(_handler(channel, inbox, provider),),
-                kwargs={"workers": 1, "should_stop": stop},
+                kwargs={"workers": 1, "should_stop": stop, "by": "host"},
                 name=f"inbox-{channel.provider}", daemon=True)
             thread.start()
             threads.append(thread)

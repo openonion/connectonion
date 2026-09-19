@@ -25,9 +25,38 @@ def selected_tip(message: str) -> str:
     return re.sub(r"(?<![\w-])co (?!\-\-env-file\b)", lambda _: prefix, message)
 
 
+# Whether anything in this process has already told the caller what to run.
+#
+# `_OneSuggestion.main` adds `Next: co <group> --help` to a bare exit 2, because
+# Click's own usage errors never reach a handler and "Try --help" names a flag
+# rather than a command. But exit 2 is also what a handler raises when it refuses
+# on purpose, and those have already named something far better — so the net was
+# firing on top of a good tip and printing two. An agent reading `2>&1` sees the
+# generic one first and resolves the fork by guessing.
+_NEXT_STEP_NAMED = False
+
+# "Next:" is the whole contract — a message without one has named no command, so
+# the net must still fire for it.
+_NAMES_A_NEXT_STEP = re.compile(r"(?m)^\s*Next:|(?<=[.\s])Next: ")
+
+
+def next_step_already_named() -> bool:
+    """True once something in this run has printed a `Next:` line."""
+    return _NEXT_STEP_NAMED
+
+
+def forget_next_step_named() -> None:
+    """Reset the flag. For tests, which run many commands in one process."""
+    global _NEXT_STEP_NAMED
+    _NEXT_STEP_NAMED = False
+
+
 def print_tip(message: str) -> None:
     """Print a plain, unwrapped tip; markup in a user-supplied path stays literal."""
+    global _NEXT_STEP_NAMED
     message = re.sub(r"\[/?(?:bold|dim|yellow|cyan|red|green)(?: [a-z]+)?\]", "", message)
+    if _NAMES_A_NEXT_STEP.search(message):
+        _NEXT_STEP_NAMED = True
     print(selected_tip(message))
 
 
@@ -90,8 +119,11 @@ NEXT = {
     "co feishu send": "co feishu receive --timeout 0",
     "co feishu reply": "co feishu receive --timeout 0",
     "co feishu done": "co feishu receive --timeout 0",
-    "co feishu check": "co feishu listen",
+    "co feishu edit": "co feishu log",
+    "co feishu delete": "co feishu log",
+    "co feishu check": HANDLER,  # every branch of _report_connection names its own
     "co feishu ls": "co feishu receive --timeout 0",
+    "co feishu chats": HANDLER,
     "co feishu log": "co feishu ls",
     "co feishu consume": "co feishu ls",
     "co lark listen": "co lark receive --timeout 0",
@@ -99,10 +131,25 @@ NEXT = {
     "co lark send": "co lark receive --timeout 0",
     "co lark reply": "co lark receive --timeout 0",
     "co lark done": "co lark receive --timeout 0",
-    "co lark check": "co lark listen",
+    "co lark edit": "co lark log",
+    "co lark delete": "co lark log",
+    "co lark check": HANDLER,  # every branch of _report_connection names its own
     "co lark ls": "co lark receive --timeout 0",
+    "co lark chats": HANDLER,
     "co lark log": "co lark ls",
     "co lark consume": "co lark ls",
+    "co whatsapp listen": "co whatsapp receive --timeout 0",
+    "co whatsapp receive": "co whatsapp reply <message-id>",
+    "co whatsapp send": "co whatsapp receive --timeout 0",
+    "co whatsapp reply": "co whatsapp receive --timeout 0",
+    "co whatsapp done": "co whatsapp receive --timeout 0",
+    "co whatsapp edit": "co whatsapp log",
+    "co whatsapp delete": "co whatsapp log",
+    "co whatsapp check": HANDLER,  # every branch of _report_connection names its own
+    "co whatsapp ls": "co whatsapp receive --timeout 0",
+    "co whatsapp chats": HANDLER,
+    "co whatsapp log": "co whatsapp ls",
+    "co whatsapp consume": "co whatsapp ls",
     "co email send": HANDLER,
     "co email inbox": HANDLER,
     "co email read": 'Reply from this address:  co email send <sender> "<subject>" "<body>"',

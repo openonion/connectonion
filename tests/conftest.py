@@ -364,7 +364,9 @@ def relay_url():
 
 
 def _needs_environment_api_key(item):
-    return "real_api" in item.keywords and "provider_cli" not in item.keywords
+    return ("real_api" in item.keywords
+            and "provider_cli" not in item.keywords
+            and "local_api" not in item.keywords)
 
 
 def pytest_collection_modifyitems(config, items):

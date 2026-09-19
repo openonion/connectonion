@@ -47,13 +47,26 @@ that lists the ones you own. To use an existing one, configure it by hand:
 1. At <https://open.feishu.cn/app> (Lark: <https://open.larksuite.com/app>),
    enable the **bot** capability.
 2. Under *Permissions* add `im:message.group_at_msg:readonly` (group messages
-   that @ the bot) and `im:message:send_as_bot` (reply). Add
-   `im:message.p2p_msg:readonly` if people will message the bot directly.
+   that @ the bot), `im:message:send_as_bot` (reply), and
+   **`im:message.group_msg`** — that last one is what lets the listener read
+   back a gap after a disconnect, and without it recovery cannot run at all.
+   It is a sensitive scope: it lets the application read every message in the
+   groups it is in. Add `im:message.p2p_msg:readonly` if people will message
+   the bot directly.
 3. Under *Events*, choose **long connection** and subscribe to
    `im.message.receive_v1`. No request URL is needed.
 4. Publish it to your tenant, then write its credentials into
-   `~/.co/keys.env` with an editor — `co env set` refuses these two names,
-   because a hand-typed app secret came from somewhere it cannot check:
+   `~/.co/keys.env` — `co env set` refuses these two names by default, because
+   a hand-typed app secret came from somewhere it cannot check, so say where
+   they came from:
+
+   ```bash
+   co env set FEISHU_APP_ID cli_xxx --from-console
+   co env set FEISHU_APP_SECRET xxx --from-console --secret
+   ```
+
+   `--secret` encrypts the value rather than leaving it in the file. Or write
+   them with an editor:
 
    ```dotenv
    FEISHU_APP_ID=cli_xxx
@@ -96,8 +109,22 @@ The file in `new/` and the line in `received.jsonl` are the same bytes:
 
 ```json
 {"id":"om_9f8e","chat":"oc_a1b2","thread":null,"sender":"on_7c6d",
- "text":"@OpsAgent look at today's failed deploys","mentioned":true,"at":"2026-09-02T10:31:07Z"}
+ "sender_name":"Eric Fu","text":"@OpsAgent look at today's failed deploys",
+ "kind":"text","quoted":null,"mentioned":true,"at":"2026-09-02T10:31:07Z"}
 ```
+
+`sender_name` is who that id belongs to, empty when the platform has no name for
+them. `sender` is still the key: a name is not unique and can change.
+
+`quoted` carries the message a reply is answering — `{"id", "sender", "text",
+"kind", "from_me"}` — and is `null` otherwise. `from_me` separates a reply to
+the bot from a reply to somebody else in the same group, which are different
+events; `mentioned` reads the same value.
+
+`kind` says what arrived: `text` for anything readable as words, otherwise the
+platform's own word for it — `image`, `sticker`, `audio` and the rest come
+through with an empty `text`, and without `kind` they look exactly like a
+message with nothing in it.
 
 `chat` is where it came from; reply there and the answer lands beside the
 question. `sender` is the person's `union_id`. `mentioned` is whether the bot
@@ -130,6 +157,8 @@ co feishu send oc_a1b2 "all green"
 echo "all green" | co feishu send oc_a1b2          # text from stdin, like mail
 co feishu reply om_9f8e "fixed"                     # back to the chat and thread that message came from
 co feishu done om_9f8e           # took it, decided not to answer; do not bring it back
+co whatsapp edit om_9f8e "the corrected text"   # replace a message this account sent
+co whatsapp delete om_9f8e       # delete a message for everyone
 co feishu check                  # credentials, connectivity, listener, unread; exit 3 on a problem
 co feishu ls                     # unread: id, chat, sender, text
 co feishu log -f                 # the tool's log, following
@@ -167,6 +196,48 @@ that re-runs cannot double-post. A taken message that is neither replied to
 nor marked `done` comes back to `new/` after an hour, on the assumption that
 its consumer died; `done` is how a consumer says it chose silence. `send` and `reply` print the id Feishu gave
 the new message and exit 1 with Feishu's own reason if it was refused.
+
+### Changing a message after it has gone out
+
+`edit` replaces the text of a message this account sent; `delete` removes one
+for everyone. Both take the id `send` or `reply` printed.
+
+```bash
+ID=$(co whatsapp send 61400000000@s.whatsapp.net "deploy finished at **14:02**")
+co whatsapp edit "$ID" "deploy finished at **14:20**"
+co whatsapp delete "$ID"
+```
+
+WhatsApp stamps an edit as coming from you and checks it, so **only your own
+messages can be edited** — asking to edit a message you received says so
+rather than reporting a bad id. `delete` also covers somebody else's message
+when this account is an admin of that group; WhatsApp decides that and gives
+its own reason when it refuses.
+
+**WhatsApp only, for now.** `co feishu edit` and `co lark edit` print the
+endpoints that exist for it (`PUT` and `DELETE` on `/im/v1/messages/<id>`) and
+say nobody has wired them up, so a missing feature never reads as a bad id.
+
+### Markdown, not plain text
+
+`send`, `reply` and `edit` read their text as Markdown and translate it into
+WhatsApp's own marks, because the thing writing the text is usually a model and
+a model writes Markdown. Untranslated, `**ready**` arrives with the asterisks
+still on it.
+
+| you write | it arrives as |
+|---|---|
+| `**ready**` | *ready* in bold |
+| `*maybe*` | _maybe_ in italic |
+| `~~dropped~~` | ~dropped~ struck through |
+| `# Deploy failed` | *Deploy failed* in bold |
+| `- one` | • one |
+| `[the run](https://…)` | the run: https://… |
+
+Nothing inside a fenced block or `` `backticks` `` is converted. `--plain`
+sends the characters exactly as typed. Feishu's `text` message has no inline
+formatting to translate into, so it accepts `--plain` and changes nothing;
+rich text there is a different message type.
 
 ## Your own agent, no flags
 
@@ -377,13 +448,27 @@ retried after 60 seconds. `co lark check` reports an outstanding recovery failur
 This work runs outside the WebSocket callback so fetching history does not delay
 live-event acknowledgements.
 
-Recovery requires the bot's message-history read permissions and access to each
-known conversation. Group recovery admits only messages that mention this bot;
+Recovery needs the bot scope **`im:message.group_msg`** and access to each known
+conversation. Without it every pass fails with `230027 … need scope:
+im:message.group_msg`, the checkpoint is held rather than advanced, and
+`co <provider> check` prints a link that grants it — one click, no Developer
+Console. An application created by `co auth` asks for it up front.
+
+Group recovery admits only messages that mention this bot;
 it does not turn unrelated group discussion into agent work. Known direct chats
 retain their direct-message semantics. Known threads and threads discovered in
 history are paginated separately. Messages in conversations the inbox has never
 seen, deleted messages, and history the provider no longer exposes cannot be
 promised recoverable. These limits also apply to `co feishu`.
 
-This repair is awaiting a repeat of the live gap test. The earlier observed loss
-remains an open release gate until that run passes.
+Measured on a live Lark tenant, 15 September 2026: listener killed, a message
+posted during a 90-second gap, listener restarted — `history recovery complete:
+1 new message(s)`, the message queued exactly once, and no WebSocket `received`
+line for it, so recovery is what delivered it rather than platform redelivery.
+The 8 September loss that opened this gate is explained by the missing scope
+above, which no setup route granted at the time. See
+[the run](../acceptance/1.8.5/lark-live-2026-09-15.md).
+
+Not claimed: that run reproduced a killed listener and a frozen one, not a
+transport aborted with its reconnects rejected. What it shows is that when the
+platform does not redeliver, recovery does.

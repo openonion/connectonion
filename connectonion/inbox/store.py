@@ -14,17 +14,17 @@ raw filesystem consumer still owns its claim lifetime; use receive/done for
 the coordinated lease and durable completion behavior. DD-063 has the interface.
 """
 
-import json
 import hashlib
-from contextlib import contextmanager
-from functools import wraps
+import json
 import os
 import re
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
 from typing import Optional
 
@@ -118,6 +118,24 @@ class Message:
     thread: Optional[str] = None
     mentioned: bool = True
     raw: Optional[dict] = None
+    # What the platform actually sent. "text" for anything a consumer can read
+    # as words; otherwise the platform's own name for it — image, sticker,
+    # audio, document. Without this a photo and an empty message are the same
+    # input, so a consumer either answers noise or ignores real messages, and
+    # cannot say "I can't read images yet" because it does not know that it is
+    # one.
+    kind: str = "text"
+    # The message this one is answering, when it is a reply: id, sender, text,
+    # kind, and `from_me`. `from_me` is the one that decides behaviour —
+    # "replied to the bot" and "replied to somebody else in the group" are
+    # different events, and a consumer implementing "answer when addressed"
+    # cannot tell them apart without it. None when this is not a reply.
+    quoted: Optional[dict] = None
+    # Who the sender is, in the words they are known by — "Eric Fu" rather than
+    # `126121882435737@lid`. Empty when the platform has no name for them, which
+    # is different from an empty name: an id nobody can read is the state this
+    # replaces, and every consumer was otherwise building the same lookup.
+    sender_name: str = ""
 
     def to_dict(self, *, raw: bool = False) -> dict:
         record = {
@@ -125,7 +143,10 @@ class Message:
             "chat": self.chat,
             "thread": self.thread,
             "sender": self.sender,
+            "sender_name": self.sender_name,
             "text": self.text,
+            "kind": self.kind,
+            "quoted": self.quoted,
             "mentioned": self.mentioned,
             "at": self.at,
         }
@@ -151,6 +172,11 @@ class Message:
             thread=record.get("thread"),
             mentioned=bool(record.get("mentioned", True)),
             raw=record.get("raw"),
+            # A queue file written before this field existed is text: that is
+            # what the listener could deliver at the time.
+            kind=str(record.get("kind") or "text"),
+            quoted=record.get("quoted") if isinstance(record.get("quoted"), dict) else None,
+            sender_name=str(record.get("sender_name") or ""),
         )
 
 
@@ -301,13 +327,21 @@ class Inbox:
                 if (message := self._read_queue_file(path)) is not None]
 
     @_serialized
-    def done(self, message_id: str) -> None:
+    def done(self, message_id: str, *, by: Optional[str] = None) -> None:
         """Forget a message: the reply went out, or the consumer decided there
         is nothing to say. Clears the queue as well as cur/, so a reply made
         straight from `ls` without a `receive` does not leave the message
-        waiting to be handed out again."""
+        waiting to be handed out again.
+
+        `by` names the consumer that handled the message (host, co-ai,
+        receive, reply, done, consume:<cmd>). It is a descriptive label only:
+        nothing reads it to decide anything, and it is omitted when None so
+        records written before it existed still read."""
         # Persist completion before removal; silence is an outcome, not a send.
-        self._append(self.completed, json.dumps({"id": message_id, "at": _now_iso()}))
+        record = {"id": message_id, "at": _now_iso()}
+        if by is not None:
+            record["by"] = by
+        self._append(self.completed, json.dumps(record))
         wanted = _safe(message_id)
         for directory in (self.cur, self.new):
             for path in directory.iterdir():
@@ -381,7 +415,11 @@ class Inbox:
         reply_to: Optional[str] = None,
         provider_id: Optional[str] = None,
         error: Optional[str] = None,
+        by: Optional[str] = None,
     ) -> None:
+        """One line in sent.jsonl. `by` names the consumer that sent it; it is
+        a descriptive label only and is omitted when None so older records
+        still read."""
         record = {
             "at": _now_iso(),
             "chat": chat,
@@ -391,6 +429,8 @@ class Inbox:
             "ok": error is None,
             "error": error,
         }
+        if by is not None:
+            record["by"] = by
         self._append(self.sent, json.dumps(record, ensure_ascii=False, separators=(",", ":")))
 
     def already_replied(self, message_id: str) -> bool:
@@ -398,6 +438,19 @@ class Inbox:
             if record.get("reply_to") == message_id and record.get("ok"):
                 return True
         return False
+
+    def lookup_sent(self, message_id: str) -> Optional[dict]:
+        """The record of a message we sent, so `edit` and `delete` can find its
+        chat from the id alone — the id is the only string the caller kept.
+
+        Only a send that succeeded: a failed one has no id on the platform, and
+        answering with its record would send an edit into nothing.
+        """
+        found = None
+        for record in self._records(self.sent):
+            if record.get("id") == message_id and record.get("ok"):
+                found = record
+        return found
 
     def lookup(self, message_id: str) -> Optional[Message]:
         """The message with this id, from the log. Lets `reply ID` find the
@@ -420,6 +473,99 @@ class Inbox:
             return []
         return [line for line in lines if line.strip()][-count:]
 
+    def context(self, chat: str, count: int, before: Optional[str] = None) -> list[dict]:
+        """The conversation around a message: what was said in `chat` before it.
+
+        A group asks things across several messages — "the price sheet is
+        wrong", "it's missing the cleaning column", "@bot recompute" — and a
+        consumer handed only the third cannot act on it. `mention_only` decides
+        *when the bot speaks*; without this it was also deciding *what the bot
+        is allowed to know*, and those are not the same switch.
+
+        Our own replies are included, read from `sent.jsonl` and merged by time.
+        A transcript in which the bot's answers are missing reads as though it
+        never responded, and a model given that will apologise for ignoring
+        someone it already helped.
+
+        Oldest first, at most `count`, and never the message being handed over.
+        """
+        if count <= 0:
+            return []
+        turns = []
+        for record in self._records(self.received):
+            if record.get("chat") == chat and record.get("id") != before:
+                turns.append({"at": record.get("at", ""), "from": "them",
+                              "sender": record.get("sender", ""),
+                              "text": record.get("text", ""),
+                              "kind": record.get("kind") or "text"})
+        for record in self._records(self.sent):
+            if record.get("chat") == chat and record.get("ok", True):
+                turns.append({"at": record.get("at", ""), "from": "us",
+                              "sender": "", "text": record.get("text", ""),
+                              "kind": "text"})
+        turns.sort(key=lambda turn: str(turn.get("at", "")))
+        return turns[max(0, len(turns) - count):]
+
+    def chats(self) -> list[dict]:
+        """Every conversation this inbox has seen, busiest last.
+
+        The chat id is the one thing `send` and `reply` cannot work without, and
+        the only way to find one used to be grepping `received.jsonl` — so the
+        first thing anybody did with a new inbox was write this query. Each row
+        carries what you need to pick the right conversation out of a list of
+        ids that all look alike: how many messages, how many were for us, who
+        was last heard from, and when.
+        """
+        seen = {}
+        for record in self._records(self.received):
+            chat = record.get("chat")
+            if not chat:
+                continue
+            row = seen.setdefault(chat, {
+                "chat": chat, "messages": 0, "mentioned": 0,
+                "last_sender": "", "last_sender_name": "", "last_text": "", "last_at": "",
+                "group": str(chat).endswith("@g.us") or str(chat).startswith("oc_"),
+            })
+            row["messages"] += 1
+            if record.get("mentioned"):
+                row["mentioned"] += 1
+            at = str(record.get("at", ""))
+            if at >= row["last_at"]:
+                row.update(last_at=at,
+                           last_sender=record.get("sender", ""),
+                           last_sender_name=record.get("sender_name", "") or "",
+                           last_text=record.get("text", "") or "")
+        return sorted(seen.values(), key=lambda row: row["last_at"])
+
+    def history(self, chat: Optional[str] = None, sender: Optional[str] = None,
+                since: Optional[str] = None, last: Optional[int] = None) -> list[dict]:
+        """Received records, narrowed. Oldest first; `last` keeps the recent end.
+
+        Which end a cap keeps is not a detail — a conversation is read backwards
+        from its most recent turn, and the first twenty messages of a long thread
+        are the least useful twenty available.
+        """
+        rows = []
+        for record in self._records(self.received):
+            if chat and record.get("chat") != chat:
+                continue
+            if sender and sender not in (record.get("sender", ""),
+                                         record.get("sender_name", "")):
+                continue
+            if since and str(record.get("at", "")) < since:
+                continue
+            rows.append(record)
+        if last is not None and last >= 0:
+            rows = rows[max(0, len(rows) - last):]
+        return rows
+
+    def recent_records(self, path: Path, count: int = 5) -> list[dict]:
+        """The last `count` well-formed records from a JSONL file. A missing
+        file reads as no records; records written before `by` existed read
+        with no `by` key."""
+        records = list(self._records(path))
+        return records[max(0, len(records) - count):]
+
     # ---- the listener lock -----------------------------------------------------
     #
     # The kernel holds the lock, not the file. flock(2) (msvcrt.locking on
@@ -432,6 +578,37 @@ class Inbox:
     # starter read "" and unlinked the winner's lock (two listeners, every
     # message delivered twice), and after a reboot a live pid of someone
     # else's process blocked every `receive` forever.
+
+    @property
+    def connection(self) -> Path:
+        """Where the listener records whether its socket is actually up."""
+        return self.root / "connection.json"
+
+    def record_connection(self, state: str, **detail) -> None:
+        """The listener saying what its connection is doing, for another process.
+
+        `check` runs in a different process from the listener and so cannot ask
+        the client object anything. Without this it was inferring "reachable"
+        from a package being importable, a row in SQLite and a pid holding a
+        lock — none of which is the network. A connection that had quietly
+        stopped still reported a green tick.
+
+        Written on every transition rather than on a timer: a heartbeat says
+        "something ran recently", and what is wanted is "the socket is up, and
+        here is when it last changed".
+        """
+        payload = {"state": state, "at": _now_iso(), "pid": os.getpid(), **detail}
+        staged = self.connection.with_suffix(".json.partial")
+        staged.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        staged.replace(self.connection)
+
+    def connection_state(self) -> dict:
+        """What the listener last said, or {} when it has never said anything."""
+        try:
+            state = json.loads(self.connection.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return state if isinstance(state, dict) else {}
 
     def listener_pid(self) -> Optional[int]:
         """The pid in listen.lock if a process holds the lock, else None."""

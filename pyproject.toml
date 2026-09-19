@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "1.8.5b2"
+version = "1.8.6"
 description = "A simple Python framework for creating AI agents with behavior tracking"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -25,7 +25,7 @@ keywords = [
     "xray",
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
@@ -87,10 +87,27 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The paid browser's driver. An extra rather than a dependency: most people run
+# the free engine, and installing a commercial client for all of them to serve
+# the few would be the wrong default. `co browser --engine wtf` installs it on
+# demand too, so this is for anyone who would rather pin it in their own
+# requirements than have a command reach for pip.
+wtf = [
+    "onionwright>=0.0.14",
+]
 synology = [
     "keyring>=25,<26",
     "pysnmp>=7.1,<8",
     "paramiko>=4,<5",
+]
+# WhatsApp as an inbox. An extra because the cost is not shared: neonize is a
+# 21MB compiled Go library (whatsmeow) plus pillow, python-magic and four more
+# packages, and python-magic needs libmagic from the system. Nobody who only
+# uses Feishu should pay for that. Pinned exactly rather than `>=`: the wheel
+# carries a snapshot of whatsmeow's WhatsApp protocol implementation, so a
+# version bump is a protocol change and deserves to be a deliberate one.
+whatsapp = [
+    "neonize==0.4.3.post0",
 ]
 dev = [
     "pytest>=9.0.3",

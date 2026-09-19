@@ -1,0 +1,27 @@
+version: v1.8.6a3
+# Both records are produced by running the release's own parser over a real
+# protobuf message — a reply built with the generated ContextInfo, and an
+# ImageMessage with no caption — rather than typed out. The generator is
+# scripts/capture_186a3_release_cli.py, which reuses a2's renderer.
+images:
+- file: a-reply-carries-what-it-answers.png
+  alt: A received WhatsApp record whose quoted block carries the id, sender, text and
+    kind of the message being replied to, with from_me true and mentioned true.
+  caption: A reply carries what it replied to, and from_me separates a reply to the
+    bot from two colleagues talking.
+  scenario: The release parser over a reply built with protobuf's own ContextInfo.
+    Before this, the record was the four new words and no trace of what they answered;
+    mentioned reads the same from_me the record carries, so the two cannot disagree.
+  viewport: 1040x~380 terminal capture, 2x
+  commit: 8c93b4e1
+  source_run: https://github.com/openonion/connectonion/issues/1583
+- file: a-photo-is-not-an-empty-message.png
+  alt: A received record for an image with no caption, with kind image and text empty.
+  caption: A photo, a sticker and a message with nothing in it stop being the same
+    input.
+  scenario: The release parser over an ImageMessage with no caption. All three used
+    to arrive with an empty text and nothing to tell them apart, so a consumer either
+    answered noise or silently dropped real messages.
+  viewport: 1040x~250 terminal capture, 2x
+  commit: 8c93b4e1
+  source_run: https://github.com/openonion/connectonion/issues/1566

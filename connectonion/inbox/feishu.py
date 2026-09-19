@@ -242,10 +242,16 @@ class Feishu:
 
     # ---- outbound ----------------------------------------------------------
 
-    def send(self, chat: str, text: str, *, reply_to: Optional[str] = None, fresh: bool = False) -> str:
+    def send(self, chat: str, text: str, *, reply_to: Optional[str] = None, fresh: bool = False,
+             plain: bool = False) -> str:
         """Send text to a chat, or as a reply to a message. Returns the new
         message id. `fresh` is `reply --again`: a deliberate second post,
-        even of the same words."""
+        even of the same words.
+
+        `plain` is accepted and does nothing here, so every provider takes the
+        same arguments. Feishu's `text` message type has no inline formatting
+        to translate Markdown into — rich text is a different message type
+        (`post`), which is a larger change than a flag."""
         content = json.dumps({"text": text}, ensure_ascii=False)
         if reply_to:
             # Same message, same text: a retry, and Feishu drops the second

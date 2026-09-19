@@ -43,7 +43,73 @@ The published stable line is 1.8.x. Maintenance fixes for `release/1.7`
 must still be forward-ported to `main`. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
-## Stable release: 1.8.4
+## Stable release: 1.8.6
+
+WhatsApp as an inbox, on a number a person already uses. `co whatsapp` links a
+device, sees the groups that number is in, and answers only where it was
+addressed — a plain `@` in a group, or a reply quoting something the bot said.
+Nine verbs became twelve: `edit` replaces what the bot already put in a room and
+`delete` takes it back for everyone, which is what turns a wrong answer in front
+of a customer from permanent into a mistake. Text is read as Markdown and
+translated into WhatsApp's own marks, because the thing writing it is a model
+and `**ready**` was arriving with the asterisks still attached.
+
+Local models are a first-class target: `ollama/…` does text, structured output
+and tool calling, and points at nothing else when the local server is down.
+Mail listings take `--since` and `--until` and compose with `--json` rather than
+dropping one of the two. Calendar invitations actually notify their attendees.
+
+**The gate was #1555's requirement that WhatsApp be accepted against a real
+account** — not a mock, not a fixture. It closed on 19 September: a linked
+number, real group traffic with mention gating checked case by case, two
+unattended reconnects, and the new verbs used to delete messages the bot had
+already sent into a customer's group. The record is
+[docs/acceptance/1.8.6/release-candidate-2026-09-19.md](docs/acceptance/1.8.6/release-candidate-2026-09-19.md),
+written against the package installed from PyPI rather than this checkout.
+
+Nine previews (1.8.6a1 through a9) fed this release, and the shape of the cycle
+is the thing worth recording: the offline suite grew to 10,431 tests and
+reported **none** of the twelve defects that were fixed. Eleven were found by
+somebody using the software — `mentioned: false` on a real mention, `✓ reachable`
+from four facts that are not the network, a `cancel` that deleted a different
+message, a listener that printed nothing after being unlinked, a log that showed
+a message nobody had seen, and a `send` with no text that delivered an empty
+bubble and exited 0. Two of those were found in a build published an hour
+earlier.
+
+See [1.8.6 notes](docs/releases/1.8.6.md) for the known limits: `edit` and
+`delete` are WhatsApp-only — Feishu and Lark name the endpoints and say nobody
+has wired them up — and there is still no sender allowlist until 1.9.
+
+### Superseded: 1.8.5 (stable, published)
+
+A Feishu or Lark bot as a directory of files — nine verbs, an atomic take, and a
+message sent while the listener was down read back on reconnect and queued
+exactly once. That last property was the release gate, open since 8 September,
+and it closed on a live tenant on the 15th: history recovery delivered the
+during-gap message with no WebSocket line for it. What had blocked it was not a
+defect in the recovery code but a bot permission that neither setup route
+granted, so the path had never once been allowed to run.
+
+The command line's own contract is audited rather than asserted now: a refusal
+names one next step instead of two, a typo ends at a runnable command rather than
+`--help`, and `co commands` lists all 199. `co gcalendar` invitations reach their
+attendees — `sendUpdates` was never passed, so an event with `--attendees`
+notified nobody, and the confirmation read the same whether three people were
+invited or none.
+
+Eleven previews (1.8.5a1 through b11) fed this release. The offline suite passes
+9,491 tests; the live acceptance record is
+[docs/acceptance/1.8.5/lark-live-2026-09-15.md](docs/acceptance/1.8.5/lark-live-2026-09-15.md).
+See [1.8.5 notes](docs/releases/1.8.5.md) for the known limits — no sender
+allowlist until 1.9, and the reconnect run reproduced a killed and a frozen
+listener rather than an aborted transport.
+
+`co env pull` (#1476) and `co browser import` (#1477) were planned for this line
+and are not in it; both moved to 1.8.6 rather than being left as labels that
+disagree with the release.
+
+### Superseded: 1.8.4 (stable, published)
 
 This release promotes the reviewed global configuration, Gmail and Synology work,
 and includes `co env`, Outlook credential diagnostics and calendar commands.
@@ -58,7 +124,144 @@ See [1.8.4 notes](docs/releases/1.8.4.md) for migration and acceptance limits.
 The planned 1.8.4b1 was not published separately; its reviewed changes are included
 in 1.8.4. Publication is performed and verified by the immutable-tag workflow.
 
-## Release candidate: 1.8.5b2 (beta)
+## Release candidate: 1.8.6a1 (alpha)
+
+A model that runs on your own machine: `model="ollama/…"` needs no key and no
+credits, and any other local runtime is reached with an explicit `base_url`. That
+address is checked before any name inference, which is a safety rule rather than
+a preference — a model called `gpt-4` in LM Studio would otherwise route on its
+name and hand `OPENAI_API_KEY` to whatever is listening on that port. Existing
+routing is unchanged, including an unknown name still being an error.
+
+WhatsApp joins Feishu and Lark as an inbox provider behind an optional extra,
+connecting as a linked companion device because the Cloud API has no way to join
+a group a human created. Mail listings take `--since` / `--until`, Outlook gains
+`--json`, and `co gmail inbox --since --json` refuses rather than silently
+dropping the window. `done.jsonl` and `sent.jsonl` now name the consumer that
+handled each message, closing a 1.8.5 known limit.
+
+Stable remains 1.8.5. **WhatsApp has not been accepted against a real account** —
+no device linked, no message sent or received — and #1555 requires that before
+1.8.6 is stable.
+See [1.8.6a1 notes](docs/releases/1.8.6a1.md).
+
+### Superseded: 1.8.5b11 (beta, published)
+
+The command line says what to run next, and calendar invitations reach people.
+`co gcalendar` never passed Google's `sendUpdates`, so an event with attendees
+invited nobody — and `Event created` read the same whether three people were
+invited or none, which is why it survived until a client's guest said they got
+nothing; update and delete were worse, never telling anyone a meeting had moved.
+Audited against `useful_skills/cli-skill-design`: every deliberate refusal
+printed two next steps, a typo ended at `--help` even when Click had worked out
+the answer, two failures named no command at all, and the `co env` skill had
+never learned about b9. A missing bot permission is now a link away rather than
+a Developer Console visit. #1462's reconnect gate passed — history recovery had
+never been allowed to run, and once it was, a message posted during a 90-second
+gap came back exactly once. Stable remains 1.8.4: cutting `X.Y.0` is a
+deliberate decision, not a consequence of a green checklist.
+See [1.8.5b11 notes](docs/releases/1.8.5b11.md).
+
+### Superseded: 1.8.5b10 (beta, published)
+
+`co auth lark` creates an application and returns its secret, which b9 said it
+could not. The failure was never the tenant or the region: we printed the URL the
+SDK hands over, `<open-host>/page/launcher?user_code=…`, and that page renders
+"Link expired" whenever its own ack call fails — for a code the server reports as
+pending in the same second. `lark-cli` discards that URL and builds
+`<open-host>/page/cli?user_code=…`; pointed there, the same tenant produced the
+creation form, an application and a 32-character secret. b9's warning, which sent
+people to the Developer Console, is deleted, and b8's accounts-domain override is
+removed because brand selects the verification host rather than where the
+protocol begins. `--app-id` reuse works too — b9 said otherwise, having only
+tested it against the launcher. Stable remains 1.8.4: the reconnect-gap gate in
+#1462 has not passed.
+See [1.8.5b10 notes](docs/releases/1.8.5b10.md).
+
+### Superseded: 1.8.5b9 (beta, published)
+
+An app secret can be stored encrypted. `co env set --secret` writes ciphertext
+under a key derived at a SLIP-0013 path and kept nowhere, and `co env rotate`
+moves it to the next index; the root is `.co/keys/agent.key`, not the optional
+`recovery.txt`, so deleting a written-down recovery phrase cannot orphan a
+secret — and the twelve words still reach it, because the agent key is itself
+derived from them. Alongside it, `co env set --from-console` accepts the one app
+credential a person can legitimately type, and `co auth lark` reports the
+server's real link lifetime and explains the "Link expired" page that some
+data-residency tenants render over a live code (#1537 — WRONG CAUSE, corrected in b10). Stable
+remains 1.8.4: the reconnect-gap gate in #1462 has not passed.
+See [1.8.5b9 notes](docs/releases/1.8.5b9.md).
+
+### Superseded: 1.8.5b8 (beta, published)
+
+`co auth lark` begins on the Lark accounts domain and says Lark throughout.
+It used to print an open.feishu.cn link — the SDK starts on Feishu whichever
+brand you ask for and only switches after the scan — and its remedies told a
+Lark user to run `co auth feishu`. `brand` decided the env prefix and nothing
+else; now it decides everything beside it, and the reuse command offered from
+lark-cli's config takes its verb from the application's recorded brand. Stable
+remains 1.8.4: the reconnect-gap gate in #1462 has not passed.
+See [1.8.5b8 notes](docs/releases/1.8.5b8.md).
+
+### Superseded: 1.8.5b7 (beta, published)
+
+A page the site opens for itself — a payment popup, a `target="_blank"` link —
+can be reached now. `list_pages` shows the browser's real pages with the session
+driving each, `switch_page <index>` points a session at one, and `tab ls` counts
+what it cannot show and names the verb. Not the `use`/`switch` removed in 1.8:
+that chose which *session* a bare command meant; this chooses which *page* a
+session drives. Stable remains 1.8.4: the reconnect-gap gate in #1462 is the
+Feishu inbox and has not passed.
+See [1.8.5b7 notes](docs/releases/1.8.5b7.md).
+
+### Superseded: 1.8.5b6 (beta, published)
+
+`onionwright` is published to PyPI now, so ConnectOnion installs the paid
+browser's driver from there instead of through a signed-manifest download —
+289 lines of authenticate/verify/fetch/hash replaced by one requirement string,
+and `pip install 'connectonion[wtf]'` works. The browser binary stays
+licence-gated and the runtime licence is still checked at launch; a test asserts
+it. Stable remains 1.8.4: the reconnect-gap gate in #1462 is the Feishu inbox
+and has not passed.
+See [1.8.5b6 notes](docs/releases/1.8.5b6.md).
+
+### Superseded: 1.8.5b5 (beta, published)
+
+Asking for the paid engine now fetches the private client it runs on, instead of
+returning an instruction to run a second command that, on an externally-managed
+interpreter, failed too. Importing ConnectOnion and taking the free engine still
+never mutate a Python environment: only a typed `--engine wtf` fetches anything.
+Separately, the paid browser now runs on Intel Macs — its object had been staged
+since 2026-09-04 and unpromoted because that day's native gate failed; the re-run
+passed on real Intel hardware on 2026-09-13 and the catalogue entry shipped in
+oo-api v0.1.17. Stable remains 1.8.4: the reconnect-gap gate in #1462 is the
+Feishu inbox and has not passed.
+See [1.8.5b5 notes](docs/releases/1.8.5b5.md).
+
+### Superseded: 1.8.5b4 (beta, published)
+
+`co browser install-onion` reported `pip could not install Onionwright (exit 1)`
+when pip had in fact declined by policy — PEP 668's externally-managed marker,
+the default on Homebrew and most distro Pythons — and had named the override
+itself. pip's output is now captured so a refusal can be told from a failure,
+printed back either way, and a policy refusal names the interpreter and both
+routes out. `--break-system-packages` is new and opt-in. Stable remains 1.8.4:
+the reconnect-gap gate in #1462 has not passed.
+See [1.8.5b4 notes](docs/releases/1.8.5b4.md).
+
+### Superseded: 1.8.5b3 (beta, published)
+
+Two fixes an unattended agent paid for before we found them. `co browser wait`
+takes seconds while every neighbouring knob is named in milliseconds, so
+`wait 2500` meant forty-one minutes holding a tab's lock — capped at 60s and
+refused before the lock. And a daemon pinned to an engine refused every bare
+command, `close` included, while telling you to run `close`: `auto` is no
+preference now, page-less verbs are never gated, and a refusal names only
+commands that daemon would accept. Stable remains 1.8.4: the reconnect-gap gate
+in #1462 has not passed.
+See [1.8.5b3 notes](docs/releases/1.8.5b3.md).
+
+### Superseded: 1.8.5b2 (beta, published)
 
 Four things `b1` made you type or guess: `co browser config` sets a default
 engine so `--engine` is an override rather than the only way in; the paid
@@ -150,9 +353,201 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.5b2
+## Current Version: 1.8.6
 
 ### Version History
+- 1.8.6 (**stable: WhatsApp as an inbox, with an undo.** A linked device sees
+  the groups the number is in and answers only where it was addressed; `edit`
+  and `delete` make a wrong answer in front of a customer recoverable; text is
+  read as Markdown and arrives as formatting. Local models do text, structured
+  output and tools, and fail loudly rather than falling back. Accepted against
+  a real account on 19 September, which was #1555's gate.)
+- 1.8.6a9 (**alpha: nothing is not a message.** `co whatsapp send <chat>` with
+  no text read stdin, reached EOF and delivered an empty bubble — an id
+  printed, exit 0, and a row in `sent.jsonl` saying it worked, so every habit
+  that catches a bad send reported success, because it *was* a successful send
+  of nothing. Two of them reached real groups that way, one a customer's, where
+  the only remaining move is to delete a message somebody has already read.
+  Empty and whitespace-only text is now a usage error on `send`, `reply` and
+  `edit`: nothing is sent, nothing is logged, and a refused `reply` neither
+  marks the question answered nor puts the answering reaction on it.)
+- 1.8.6a8 (**alpha: you can take back what the bot said, and it stops looking
+  machine-generated.** `edit` replaces the text of a message this account sent
+  and `delete` removes one for everyone, both from the id `send` already
+  prints — until now the only repair for a wrong answer in a group was a second
+  message leaving the wrong one above it. Text is read as Markdown and
+  translated into WhatsApp's own marks, because the thing writing it is a model
+  and `**ready**` was arriving with the asterisks still on. Two defects found
+  by using a7 after publishing it: `check` printed its next step twice, and
+  exited 0 while reporting that nothing was arriving. A third found while
+  verifying on the real account: `sent.jsonl` held the Markdown that was typed
+  rather than the text that was sent, so `log` showed a message nobody in the
+  chat had seen.)
+- 1.8.6a7 (**alpha: the diagnostic stops claiming the network.** `check` printed
+  "reachable" from four facts that are not the network — a package being
+  importable, a row in SQLite, a timestamp in a shared library, a pid in a lock
+  file — so a listener whose socket had quietly stopped still got a green tick,
+  which is this release's own failure sitting inside the command people run to
+  find it. The listener now records its connection on every transition and
+  `check` says two separate things: configured, and connected as whom since
+  when. When the record belongs to a process that is no longer the listener it
+  says it cannot tell, which was not previously expressible.)
+- 1.8.6a6 (**alpha: things that happen to the account stop being silence.** A
+  message that arrives and cannot be decrypted is recorded instead of
+  discarded — the sender saw it delivered, and until now nothing anywhere said
+  it had existed. Being added to a group is a record addressed to the bot, an
+  edit says it is an edit, and a rename joins the record without waking
+  anybody: recording and waking are different questions, and only what is about
+  the bot interrupts. No new fields — the record stays at ten after three
+  releases of shape changes. Also takes anyio 4.15.1, where two advisories
+  against 4.12.0 are fixed.)
+- 1.8.6a5 (**alpha: you can find a conversation and read it back.** `chats`
+  lists what the inbox has seen — id, group or direct, how many messages, how
+  many were for the bot, who spoke last — so the chat id that `send` and `reply`
+  both need finally comes from a command rather than from grepping a log. `log`
+  takes `--chat`, `--sender`, `--since` and `-n`, and keeps the messages that
+  never named the bot, because `mention_only` decides when it speaks and not
+  what it may read back. The gap between a conversation's two counts is the
+  context there is to ask for.)
+- 1.8.6a4 (**alpha: the bot knows who is talking, what they mean, and when it
+  has stopped listening.** A sender arrives with a name instead of an opaque
+  `…@lid`, read from contacts already on disk. `--context N` hands a consumer
+  the turns before a message, our own replies included — `mention_only` had been
+  deciding *what the bot may know* under a name about *when it speaks*. And a
+  listener whose phone unlinked it, whose session another client took, or whose
+  number was banned now stops with a reason and exit 3 instead of holding a
+  socket that will never deliver again: we were handling three of neonize's 37
+  events, and "nobody has messaged us" was indistinguishable from "we were
+  logged out yesterday".)
+- 1.8.6a3 (**alpha: a message says what it is and what it answers.** A reply
+  carries `quoted` — the id, sender, text and kind of the message it answers,
+  and `from_me`, which separates a reply to the bot from two colleagues talking.
+  All of it had been arriving in every reply since the first version of this
+  provider and was being dropped one field after `mentionedJID`. A message
+  carries `kind`, so a photo, a sticker and a message with nothing in it stop
+  being the same input; captions ride along in `text`, and a variant we have
+  never seen keeps the platform's own name rather than arriving as nothing.
+  `co gmail inbox --since 30d --json` composes at last — the window narrows the
+  query the envelope already pages through, so the cursor, the cap and
+  `complete` keep the meanings they had. The calendar's full journey is verified
+  against a real account with every notification confirmed in a real mailbox.)
+- 1.8.6a2 (**alpha: the bot answers where it was asked, and says so while it
+  works.** A WhatsApp @mention registers whichever id the group addresses the
+  account by, so a number WhatsApp has migrated to LID addressing is reachable
+  at all; a reply quotes the message it answers instead of arriving as a loose
+  line; and a message the bot will answer is marked as it is queued and re-marked
+  when the answer is on its way, so the minutes in between stop looking like a
+  bot that has crashed. Every message is readable on protobuf 7, `check` calls a
+  device linked only once a phone has confirmed it, and the extra names the
+  system library pip cannot supply. A mail date window keeps its *recent* end and
+  says when it had to cut. A listing number now carries which listing it came
+  from, so `co outlook cancel` can no longer resolve an inbox row and delete
+  correspondence nobody named. Errors go to stderr, and an unreachable local
+  model is diagnosed as a local model rather than as the user's internet.)
+- 1.8.6a1 (**alpha: a model on your own machine.** `model="ollama/…"` needs no
+  key, no credits and no request leaving the laptop; any other local runtime —
+  LM Studio, vLLM, an internal gateway — is reached with an explicit `base_url`,
+  which is checked *before* name inference so a locally named `gpt-4` cannot
+  capture your cloud key. Existing routing is untouched, unknown names still
+  error rather than falling back locally. WhatsApp joins Feishu and Lark as an
+  inbox provider behind an optional extra, as a linked companion device because
+  the Cloud API cannot join a group a human made. Mail takes `--since`/`--until`,
+  Outlook gains `--json`, and Gmail refuses the one combination not yet composed
+  rather than dropping the window. `done.jsonl` names the consumer, closing a
+  1.8.5 known limit. Stable remains 1.8.5; WhatsApp is **not** accepted against a
+  real account.)
+- 1.8.5 (**stable: a chat bot is a directory of files.** `co feishu` / `co lark`
+  turn a bot into `~/.co/inbox/<provider>/` — nine verbs, an atomic take so two
+  consumers never get one message, and a message sent while the listener was
+  down read back on reconnect and queued exactly once. That last property was
+  the gate, open since 8 September and closed on a live tenant on the 15th; what
+  had blocked it was a bot permission neither setup route granted, not the
+  recovery code. The CLI's next-step contract is audited rather than asserted:
+  one next step per refusal, a typo ending at a runnable command, `co commands`
+  listing all 199. `co gcalendar` invitations reach their attendees. Secrets can
+  be encrypted under a key derived from the agent's own key with no keychain to
+  be unreachable. Promotes eleven previews; 9,491 offline tests pass. Known
+  limits: no sender allowlist until 1.9, and #1503, #1513, #1525.)
+- 1.8.5b11 (**beta: the CLI names a next command, and invitations arrive.**
+  `co gcalendar` never passed Google's `sendUpdates`, so an event with attendees
+  notified nobody — and the confirmation read identically whether three people
+  were invited or none, so the silent failure looked like success until a
+  client's guest mentioned it. Update and delete were worse: an attendee was
+  never told a meeting moved. A time entered as `16:30+10:00` also confirmed as
+  `06:30 AM` with no zone, and is now echoed in the zone it was written in. The
+  `cli-skill-design` audit found every deliberate
+  refusal printing two next steps, typos ending at `--help` even when the answer
+  was known, two failures naming no command, and the `co env` skill missing
+  everything b9 shipped. A missing bot scope now prints a link that grants it.
+  #1462's reconnect gate passed, recovery having never been permitted to run
+  before. Stable remains 1.8.4.)
+- 1.8.5b10 (**beta: `co auth lark` creates an application and returns its
+  secret** — correcting b9, which shipped a warning saying it could not. The
+  cause was one path segment: we printed the SDK's
+  `<open-host>/page/launcher?user_code=…`, and that page renders "Link expired"
+  when its own ack call fails, for a code the server reports as pending in the
+  same second. `lark-cli` never uses that URL; it builds
+  `<open-host>/page/cli?user_code=…`. Pointed there, the same tenant produced the
+  creation form, an application and a 32-character secret, verified end to end
+  through the real command and `co lark check`. b8's accounts-domain override is
+  removed — brand selects the verification host, not where the protocol begins.
+  `--app-id` reuse works; b9 claimed otherwise from a launcher-only test. Stable
+  remains 1.8.4.)
+- 1.8.5b9 (**beta: an app secret can be encrypted.** `co env set --secret`
+  writes ciphertext under a key derived at a SLIP-0013 path and stored nowhere,
+  and `co env rotate` moves it to the next index — no master key, so no keychain
+  to be unreachable on a machine with no logged-in human. The root is
+  `.co/keys/agent.key`, not the optional `recovery.txt`: writing the twelve
+  words down and deleting that file is correct, and must not orphan a secret.
+  Those words still reach it, because the agent key is derived from them.
+  Alongside it, `co env set --from-console` accepts the one app credential a
+  person can legitimately type, and `co auth lark` reports the server's real
+  link lifetime — it had been quoting the SDK's fallback. It also shipped a
+  warning about a "Link expired" page on data-residency tenants; **that named
+  the wrong cause and is corrected in b10** (#1537). Stable remains 1.8.4.)
+- 1.8.5b8 (**beta: `co auth lark` begins on Lark.** It printed a Feishu link
+  and told Lark users to run `co auth feishu`; `brand` decided the env prefix
+  and nothing else. Now the accounts domain, every sentence, and the reuse
+  command offered from lark-cli's config follow the brand — the last from the
+  application's recorded brand, not the word typed. Stable remains 1.8.4.)
+- 1.8.5b7 (**beta: the tab the site opened is reachable.** A page arriving
+  without a session appeared on no board, so every `-t` command kept running in
+  the page before it. `list_pages` and `switch_page` fix that, and `tab ls`
+  names them when a page is unclaimed. A page another session drives is still
+  refused by name. Server side, the preview catalogue stopped advertising an
+  Intel build whose bytes were never uploaded — its digest disagreed with the
+  object at that key, so preview callers saw a checksum mismatch. Stable
+  remains 1.8.4.)
+- 1.8.5b6 (**beta: the driver comes from PyPI.** `onionwright` held only a name
+  reservation there while the real client travelled a licence-gated endpoint;
+  it is published normally now, so the installer is 289 lines shorter and
+  `pip install 'connectonion[wtf]'` works. The version is a floor, not a pin —
+  oo-api enforces `minimum_client_version` per artifact. The browser binary is
+  still licence-gated. Stable remains 1.8.4.)
+- 1.8.5b5 (**beta: asking for the paid engine gets you the paid engine.** The
+  route to the WTF Browser was three commands and you learned the second by
+  failing; the first asked the caller to decide nothing, because the engine
+  cannot run without its client. An explicit `--engine wtf` now fetches it,
+  while `auto`, `system` and even `--engine wtf help` still install nothing.
+  The paid browser also runs on Intel Macs now: the object had been staged and
+  unpromoted since a gate failure on 2026-09-04, and its re-run passed on real
+  Intel hardware. Stable remains 1.8.4.)
+- 1.8.5b4 (**beta: pip declined, and we reported an exit code.**
+  `co browser install-onion` ended on `pip could not install Onionwright
+  (exit 1)` where pip had refused by PEP 668 policy and named the override
+  itself — the ordinary case on Homebrew and distro Pythons, and the documented
+  route to the paid engine. pip's output is captured and printed back; a policy
+  refusal names the interpreter and both ways past it. `--break-system-packages`
+  is opt-in and never re-offered after it was used. Stable remains 1.8.4.)
+- 1.8.5b3 (**beta: two ways a browser could waste an afternoon.** `wait` takes
+  seconds while everything around it is named in milliseconds, so `wait 2500`
+  held a tab for 41 minutes and every command behind it timed out while
+  `status` kept answering — capped at 60s and refused before the lock, naming
+  the value you meant. And an engine-pinned daemon refused every bare command
+  including the `close` its own error told you to run: `auto` is no preference
+  now, page-less verbs are never gated, and a refusal names only commands that
+  daemon would accept. A dead paid session names its recovery, and the paid
+  engine says it bills before it spends. Stable remains 1.8.4.)
 - 1.8.5b2 (**beta: the settings b1 made you repeat.** `co browser config`
   gives the browser engine a default so `--engine` becomes an override; the
   paid engine is `wtf`, not `onion`; `co <provider> serve` is `consume`;

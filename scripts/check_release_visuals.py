@@ -14,6 +14,7 @@ whether a release has user-visible changes is a human judgement this script
 checks the *recording* of, not one it can make itself.
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -39,7 +40,19 @@ def check(version: str, root: Path = None) -> None:
              f"visual evidence — a backend-only patch records "
              f"no_visual_change with a reviewed reason instead.")
 
-    manifest = yaml.safe_load(manifest_path.read_text()) or {}
+    text = manifest_path.read_text()
+    try:
+        manifest = yaml.safe_load(text) or {}
+    except yaml.YAMLError as error:
+        # Three manifests in a row died on this one: a bare ` #1581` inside an
+        # unquoted value starts a YAML comment, the scalar ends early, and the
+        # continuation line becomes a parse error pointing at the wrong place.
+        culprits = [line.strip() for line in text.splitlines()
+                    if re.search(r"(?<!^)(?<![\"'])\s#\d", line)]
+        hint = ("\n\nProbable cause: a bare '#' inside an unquoted value starts a comment. "
+                f"Quote the value or write 'issue N'.\n  " + "\n  ".join(culprits[:3])
+                if culprits else "")
+        fail(f"{manifest_path} is not valid YAML: {error}{hint}")
 
     if manifest.get("version") != version:
         fail(f"manifest says version {manifest.get('version')!r}, "

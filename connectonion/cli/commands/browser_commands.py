@@ -2,8 +2,8 @@
 Purpose: Thin CLI handler for `co browser` — parses -t/--tab targeting, forwards one command to the persistent browser daemon, and serves self-describing help.
 LLM-Note:
   Dependencies: imports from [sys, shlex, browser_agent.client.send | lazy: command_tips.rotating_tip for the success tip, browser_agent.daemon.list_functions for help] | imported by [cli/main.py via browser()] | tested by [tests/e2e/cli/test_browser_daemon.py]
-  Data flow: receives args: list[str] (+ headless and engine_mode) from CLI → validates auto/system/onion → exact `install-onion` runs the signed private-client bootstrap and returns before daemon contact → `help`/`--list` printed locally by introspecting BrowserAutomation (no browser launched) → else _extract_tab() pulls the LEADING -t/--tab NAME run (stops at the verb, so a -t that is a function's own arg passes through; empty --tab= is a usage error) → shlex.join(remaining args) + tab + engine mode → client.send() → a mode-pinned daemon runs it → payload/exit code surfaced by the client
-  State/Effects: `install-onion` explicitly installs a signature/checksum-verified wheel into the current Python environment | otherwise no local state except a best-effort rotating-tip index at ~/.co/.browser_tip (a garbled index resets to the first tip) | the success tip is printed to STDERR (stdout stays pure data) | `help` introspects the class only | direct verbs delegate to the daemon; `do` runs its model loop in this CLI process and delegates each tool call
+  Data flow: receives args: list[str] (+ headless and engine_mode) from CLI → validates auto/system/onion → `install-onion` (alone or with --break-system-packages) runs the signed private-client bootstrap and returns before daemon contact → `help`/`--list` printed locally by introspecting BrowserAutomation (no browser launched) → else _extract_tab() pulls the LEADING -t/--tab NAME run (stops at the verb, so a -t that is a function's own arg passes through; empty --tab= is a usage error) → shlex.join(remaining args) + tab + engine mode → client.send() → a mode-pinned daemon runs it → payload/exit code surfaced by the client
+  State/Effects: `install-onion` explicitly installs onionwright from PyPI into the current Python environment, and on an externally-managed interpreter says so and names the opt-in flag rather than reporting an exit code | otherwise no local state except a best-effort rotating-tip index at ~/.co/.browser_tip (a garbled index resets to the first tip) | a session-starting verb on the paid engine prints a billing notice to STDERR BEFORE the command is sent | an explicit --engine wtf whose private client is missing fetches it first, so the free engine and a bare import still never mutate the environment | the success tip is printed to STDERR (stdout stays pure data) | `help` introspects the class only | direct verbs delegate to the daemon; `do` runs its model loop in this CLI process and delegates each tool call
   Integration: exposes _extract_tab(args) -> (tab|None, remaining|None), _next_tip(), handle_browser(args, headless=False, engine_mode="auto") -> int | called from main.py browser command | USAGE/TIPS document the tab lifecycle, engine modes, and exit-code contract
   Performance: direct verbs do not import the browser-owning daemon, Agent, or Playwright; `help` lazily imports the schema (no socket, no Chrome) | other verbs: one socket round-trip, first call spawns the daemon
   Errors: no-args / bad -t → prints usage to stderr, exit 2 | daemon errors come back as ERR[ <code>] → stderr + the mirrored exit code (0 ok · 1 failure · 2 usage · 3 unknown tab · 4 tab busy)
@@ -25,7 +25,7 @@ USAGE = (
     "  co browser tab ls [--json]               the board: every tab, who runs it, last command\n"
     "  co browser tab close <NAME>              release your tab when the task is done\n"
     "  co browser close                         close the browser and stop the daemon\n"
-    "  co browser install-onion                  install the signed private Onionwright client\n"
+    "  co browser install-onion                  install the onionwright driver (--engine wtf does this for you)\n"
     "  co browser help                          list every browser function\n"
     "  printf secret | co browser fill_text_by_selector '#field' --stdin\n"
     "\n"
@@ -51,6 +51,42 @@ TIPS = [
     "Run without a visible window:  co browser --headless <function>",
     "The browser stays open between commands, one shared session, until you run:  co browser close",
 ]
+
+
+def _starts_a_session(args: list) -> bool:
+    """True for the verbs that open a browser, i.e. that begin a paid interval."""
+    return args[0] in ("newtab", "open_browser") or args[:2] == ["tab", "open"]
+
+
+def _ensure_paid_client() -> str | None:
+    """Fetch the private client the paid engine runs on. None when it is ready.
+
+    Asking for the paid engine is asking for the driver it needs, so answering
+    with an instruction to run a second command was never a real answer — and on
+    an externally-managed interpreter that second command failed too, which left
+    the documented route to the paid engine ending in a dead end (#1516).
+
+    Only an explicit `--engine wtf` reaches here. That keeps the rule this
+    module has always followed: importing ConnectOnion or taking the free engine
+    never mutates a Python environment.
+    """
+    from .onionwright_install import paid_client_is_ready
+
+    if paid_client_is_ready():
+        return None
+
+    from .onionwright_install import OnionwrightInstallError, install_onionwright
+
+    print(
+        "The WTF Browser needs its driver. Installing onionwright…",
+        file=sys.stderr,
+    )
+    try:
+        result = install_onionwright()
+    except OnionwrightInstallError as exc:
+        return f"Could not install Onionwright: {exc}"
+    print(f"Installed Onionwright {result.version}.", file=sys.stderr)
+    return None
 
 
 def _next_tip():
@@ -99,22 +135,28 @@ def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> i
         print(USAGE, file=sys.stderr)
         return 2
     if args[0] == "install-onion":
-        if args != ["install-onion"]:
-            print("usage: co browser install-onion", file=sys.stderr)
+        # The flag is opt-in and named after pip's own, because it overrides a
+        # policy the OS set on its interpreter. The failure message is where a
+        # caller learns it exists; nothing chooses it for them.
+        rest = args[1:]
+        override = rest == ["--break-system-packages"]
+        if rest and not override:
+            print(
+                "usage: co browser install-onion [--break-system-packages]",
+                file=sys.stderr,
+            )
             return 2
-        from connectonion.credentials import AmbientCredentialError
-
         from .onionwright_install import OnionwrightInstallError, install_onionwright
 
         try:
-            result = install_onionwright()
-        except (OnionwrightInstallError, AmbientCredentialError) as exc:
+            result = install_onionwright(break_system_packages=override)
+        except OnionwrightInstallError as exc:
             print(f"Could not install Onionwright: {exc}", file=sys.stderr)
             return 1
         if result.already_installed:
             print(f"Onionwright {result.version} is already installed.")
         else:
-            print(f"Installed Onionwright {result.version} from the signed OpenOnion release.")
+            print(f"Installed Onionwright {result.version} from PyPI.")
         print("Use it:  co browser --engine wtf <function> [args]", file=sys.stderr)
         return 0
     tab, args = _extract_tab(args)
@@ -137,6 +179,22 @@ def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> i
             print("--stdin needs piped or redirected text", file=sys.stderr)
             return 2
         args = [*args[:-1], sys.stdin.read()]
+    if engine_mode == "onion" and _starts_a_session(args):
+        # Before the spend, not in the receipt. The Airbnb round of 2026-09-12
+        # ran an authenticated host dashboard on the paid engine for 40 minutes,
+        # then finished the same work on the free one with the logins intact —
+        # nothing anywhere had said which engine was about to bill (#1510).
+        print(
+            "⏱  The WTF Browser bills for the session this starts.\n"
+            "   A site you are already logged into rarely needs it:  "
+            "co browser --engine system <verb>",
+            file=sys.stderr,
+        )
+    if engine_mode == "onion":
+        failure = _ensure_paid_client()
+        if failure is not None:
+            print(failure, file=sys.stderr)
+            return 1
     code = send(shlex.join(args), headless=headless, tab=tab, engine_mode=engine_mode)
     from .command_tips import tips_enabled
     if code == 0 and tips_enabled():

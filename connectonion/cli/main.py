@@ -594,10 +594,27 @@ def env_get(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_K
 
 @env_app.command("set")
 def env_set(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_KEY"),
-            value: str = typer.Argument(..., help="Value; quote it if it has spaces")):
+            value: str = typer.Argument(..., help="Value; quote it if it has spaces"),
+            from_console: bool = typer.Option(
+                False, "--from-console",
+                help="For FEISHU_/LARK_ app credentials copied from the Developer Console, "
+                     "when co auth cannot create the application for your tenant",
+            ),
+            secret: bool = typer.Option(
+                False, "--secret",
+                help="Encrypt it instead of writing it in plain text. The key is derived "
+                     "from this agent's own key and stored nowhere; rotate with co env rotate",
+            )):
     """Save one setting to the selected file, keeping every other line as it is."""
     from .commands.env_commands import handle_env_set
-    handle_env_set(key, value)
+    handle_env_set(key, value, from_console=from_console, secret=secret)
+
+
+@env_app.command("rotate")
+def env_rotate(key: str = typer.Argument(..., help="An encrypted setting, e.g. LARK_APP_SECRET")):
+    """Re-encrypt one stored secret at the next derivation index."""
+    from .commands.env_commands import handle_env_rotate
+    handle_env_rotate(key)
 
 
 @env_app.command("unset")
@@ -1118,7 +1135,7 @@ def telegram_send(
     handle_telegram_send(chat, message)
 
 
-# Inbox providers: feishu, lark. One directory per provider under
+# Inbox providers: feishu, lark, whatsapp. One directory per provider under
 # ~/.co/inbox/, the same nine verbs on each. The tool knows nothing about
 # agents; anything that can read a file consumes it (DD-063).
 def _inbox_group(name: str, help_text: str) -> typer.Typer:
@@ -1134,30 +1151,50 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
     def _receive(
         timeout: Optional[float] = typer.Option(None, "--timeout", "-t", help="Seconds to wait; 0 looks once. Exit 124 if none."),
         no_start: bool = typer.Option(False, "--no-start", help="Do not start a background listener"),
+        context: int = typer.Option(0, "--context", min=0, max=200, metavar="N",
+                                    help="Also include the N turns before it in that chat"),
     ):
         """Print the next message as one JSON line, taking it from the queue."""
         from .commands.listen_commands import handle_receive
-        handle_receive(name, timeout=timeout, start=not no_start)
+        handle_receive(name, timeout=timeout, start=not no_start, context=context)
 
     @group.command("send")
     def _send(
         chat: str = typer.Argument(..., help="Chat id"),
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
         reply_to: Optional[str] = typer.Option(None, "--reply-to", help="Message id to reply to"),
+        plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
     ):
         """Send text to a chat. Prints the new message id."""
         from .commands.listen_commands import handle_send
-        handle_send(name, chat, text, reply_to=reply_to)
+        handle_send(name, chat, text, reply_to=reply_to, plain=plain)
 
     @group.command("reply")
     def _reply(
         message_id: str = typer.Argument(..., help="Id of a received message"),
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
         again: bool = typer.Option(False, "--again", help="Reply even if this message was already answered"),
+        plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
     ):
         """Reply where a received message was asked. Prints the new id."""
         from .commands.listen_commands import handle_reply
-        handle_reply(name, message_id, text, again=again)
+        handle_reply(name, message_id, text, again=again, plain=plain)
+
+    @group.command("edit")
+    def _edit(
+        message_id: str = typer.Argument(..., help="Id of a message this account sent"),
+        text: Optional[str] = typer.Argument(None, help="The new text; omitted means stdin"),
+        plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
+    ):
+        """Replace the text of a message this account sent. Prints the edit's id."""
+        from .commands.listen_commands import handle_edit
+        handle_edit(name, message_id, text, plain=plain)
+
+    @group.command("delete")
+    def _delete(message_id: str = typer.Argument(..., help="Id of a message to delete for everyone")):
+        """Delete a message for everyone. Prints the deletion's id."""
+        from .commands.listen_commands import handle_delete
+        handle_delete(name, message_id)
 
     @group.command("done")
     def _done(message_id: str = typer.Argument(..., help="Id of a taken message")):
@@ -1177,11 +1214,25 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
         from .commands.listen_commands import handle_ls
         handle_ls(name)
 
+    @group.command("chats")
+    def _chats():
+        """Conversations seen: chat id, kind, messages, for-us, last activity."""
+        from .commands.listen_commands import handle_chats
+        handle_chats(name)
+
     @group.command("log")
-    def _log(follow: bool = typer.Option(False, "--follow", "-f", help="Keep printing new messages")):
+    def _log(
+        follow: bool = typer.Option(False, "--follow", "-f", help="Keep printing new messages"),
+        chat: Optional[str] = typer.Option(None, "--chat", help="Only this conversation; ids come from `chats`"),
+        sender: Optional[str] = typer.Option(None, "--sender", help="Only this sender, by id or name"),
+        since: Optional[str] = typer.Option(None, "--since", metavar="30d|2026-06-01",
+                                            help="Only what arrived in this window"),
+        last: Optional[int] = typer.Option(None, "--last", "-n", min=1,
+                                           help="Keep only the most recent N"),
+    ):
         """Every message ever received, one JSON line each."""
         from .commands.listen_commands import handle_log
-        handle_log(name, follow=follow)
+        handle_log(name, follow=follow, chat=chat, sender=sender, since=since, last=last)
 
     # `consume`, not `serve`. Nothing here serves anything — it takes messages
     # off a queue and hands each to a command, which is what DD-063 calls a
@@ -1193,16 +1244,19 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
         once: bool = typer.Option(False, "--once", help="Handle one message and exit"),
         workers: int = typer.Option(1, "--workers", min=1,
                                     help="Conversations to answer at once (default 1, one after another)"),
+        context: int = typer.Option(0, "--context", min=0, max=200, metavar="N",
+                                    help="Also give the command the N turns before each message"),
     ):
         """Loop: receive, run COMMAND with the message on stdin, reply with its stdout."""
         from .commands.listen_commands import handle_consume
-        handle_consume(name, command, once=once, workers=workers)
+        handle_consume(name, command, once=once, workers=workers, context=context)
 
     return group
 
 
 app.add_typer(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, send, reply."), name="feishu")
 app.add_typer(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply."), name="lark")
+app.add_typer(_inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply."), name="whatsapp")
 
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.
@@ -1233,13 +1287,23 @@ def gmail_inbox(
     unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
     json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
     cursor: Optional[str] = typer.Option(None, "--cursor", help="Continuation from the same account, query and limit (15 minute expiry)"),
+    since: str = typer.Option(
+        None, "--since", metavar="30d|2026-06-01",
+        help="Everything in a window instead of the last -n. Nd/Nw/Nm/Ny or a date.",
+    ),
+    until: str = typer.Option(None, "--until", help="End of the window; defaults to now"),
 ):
     """List recent inbox emails, numbered for read/reply."""
     if json_output or cursor:
+        # The window composes by narrowing the query the envelope already pages
+        # through, so the cursor, the cap and `complete` keep the meanings they
+        # had: a cursor is bound to its query, and a different window is a
+        # different query.
         from .commands.gmail_mailbox_commands import handle_mailbox
-        return handle_mailbox("inbox", json_output=json_output, last=last, unread=unread, cursor=cursor)
+        return handle_mailbox("inbox", json_output=json_output, last=last, unread=unread,
+                              cursor=cursor, since=since, until=until)
     from .commands.gmail_commands import handle_gmail_inbox
-    handle_gmail_inbox(last=last, unread=unread)
+    handle_gmail_inbox(last=last, unread=unread, since=since, until=until)
 
 
 @gmail_app.command("read", cls=MailboxCommand)
@@ -1670,10 +1734,19 @@ def outlook_send(
 def outlook_inbox(
     last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
     unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
+    since: str = typer.Option(
+        None, "--since", metavar="30d|2026-06-01",
+        help="Everything in a window instead of the last -n. Nd/Nw/Nm/Ny or a date.",
+    ),
+    until: str = typer.Option(None, "--until", help="End of the window; defaults to now"),
+    json_output: bool = typer.Option(
+        False, "--json", help="One JSON array of the provider's own fields, for a caller to parse",
+    ),
 ):
     """List recent emails in your Outlook inbox."""
     from .commands.outlook_commands import handle_outlook_inbox
-    handle_outlook_inbox(last=last, unread=unread)
+    handle_outlook_inbox(last=last, unread=unread, since=since, until=until,
+                         json_output=json_output)
 
 
 @outlook_app.command("read", rich_help_panel="Mail")
@@ -1740,7 +1813,9 @@ def outlook_sent(last: int = typer.Option(10, "--last", "-n", help="How many ema
 
 @outlook_app.command("search", rich_help_panel="Mail")
 def outlook_search(
-    query: str = typer.Argument(..., help="Search query (matches subject and body)"),
+    query: str = typer.Argument(..., help="Search query: words match subject and body; "
+                                        "from:<address>, to:<address> and participants:<address> "
+                                        "narrow by who (measured to work on Graph $search)"),
     last: int = typer.Option(10, "--last", "-n", help="How many results to show"),
 ):
     """Search your Outlook emails."""

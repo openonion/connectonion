@@ -8,13 +8,58 @@ LLM-Note:
   Errors: provider() raises ValueError for a name it does not know
 """
 
+import os
+
 from .store import Inbox, Message
 
+# The queue, drawn where the people in the chat can see it. A message the bot
+# would answer is marked as it is queued and re-marked the moment a reply is
+# actually being sent, and the platforms replace a sender's previous reaction
+# rather than stacking them, so the pair reads as one changing status.
+#
+# Two, not one: the interval between them is where a consumer is running or a
+# model is thinking, and one marker that never changes cannot say whether
+# anything is happening — which from the group's side is indistinguishable from
+# the bot being down. It doubles as the cheapest debugger there is. Nothing
+# means the message never arrived; SEEN alone means nothing picked it up;
+# ANSWERING with no answer means the reply path failed.
+SEEN = "👀"
+ANSWERING = "✍️"
+
+
+class ListenerStopped(RuntimeError):
+    """The connection ended in a way no amount of waiting will recover from.
+
+    Separate from every other listener failure because the answer is different:
+    being unlinked, having the session taken by another client, or being banned
+    all need a person, and no restart helps. Every other disconnection is
+    transient and the provider reconnects from it.
+
+    Lives here rather than in a provider because the distinction is not
+    WhatsApp's — any platform can end a session for good — and because the
+    command layer has to catch it without importing a provider it may not have
+    the SDK for.
+    """
+
+
+def reactions_enabled() -> bool:
+    """Whether to mark messages at all.
+
+    On by default, because the feedback is the point and the bot only ever
+    marks messages addressed to it. `CO_INBOX_REACT=0` turns it off, because it
+    is a visible action in somebody else's group and that deserves a switch.
+    """
+    return os.environ.get("CO_INBOX_REACT", "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
 # name → (module, class, constructor kwargs). Lark is Feishu with a different
-# domain and its own credentials, not a second implementation.
+# domain and its own credentials, not a second implementation. WhatsApp needs
+# an extra (`pip install 'connectonion[whatsapp]'`), which costs nothing here:
+# the module is imported by name only when someone asks for that provider.
 PROVIDERS = {
     "feishu": ("connectonion.inbox.feishu", "Feishu", {"domain": "feishu"}),
     "lark": ("connectonion.inbox.feishu", "Feishu", {"domain": "lark"}),
+    "whatsapp": ("connectonion.inbox.whatsapp", "WhatsApp", {}),
 }
 
 
@@ -30,4 +75,5 @@ def provider(name: str):
     return getattr(module, class_name)(**kwargs)
 
 
-__all__ = ["Inbox", "Message", "provider", "PROVIDERS"]
+__all__ = ["Inbox", "Message", "provider", "PROVIDERS",
+           "SEEN", "ANSWERING", "reactions_enabled", "ListenerStopped"]

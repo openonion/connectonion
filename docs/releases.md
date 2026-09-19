@@ -10,37 +10,167 @@ Preview releases never replace the stable recommendation. Install one with
 
 ## Current release
 
-Stable **1.8.4** brings explicit global configuration, `co env`, reviewed Gmail
-operations, verified Synology sharing and Outlook calendar commands. See
-[1.8.4 release notes](releases/1.8.4.md) for migration and acceptance limits.
+Stable **1.8.5** turns a Feishu or Lark bot into a directory of files. One
+process holds the connection and writes every message into
+`~/.co/inbox/<provider>/`; anything that can read a file can answer it. Taking a
+message is an atomic rename, so two consumers never get the same one, and a
+message sent while the listener was down is read back on reconnect and queued
+exactly once — the property that was this release's gate, closed on a live
+tenant on 15 September.
+
+The command line also names what to run next, and that contract is now audited
+rather than asserted: one next step per refusal instead of two, a typo ending at
+a runnable command rather than `--help`, and `co commands` listing all 199. And
+`co gcalendar` invitations reach their attendees — `sendUpdates` was never
+passed, so an event created with `--attendees` had been notifying nobody.
+
+See [1.8.5 release notes](releases/1.8.5.md) for the known limits, and
+[the live acceptance record](acceptance/1.8.5/lark-live-2026-09-15.md) for what
+was measured.
 
 ```bash
-python -m pip install --upgrade connectonion==1.8.4
+python -m pip install --upgrade connectonion==1.8.5
 co --version
-co env
+co lark check
 ```
 
 ## Current preview
 
-Beta **1.8.5b2** adds the settings `b1` made you repeat. `co browser config`
-gives the browser engine a default, so `--engine` is an override rather than
-the only way in, and the paid engine is called `wtf` — its product name — where
-the flag used to say `onion`. `co <provider> serve` is now `consume`, and
-`co auth feishu --app-id` authorizes a bot already in your groups instead of
-creating one that is in none. Every exit on the inbox surface names a command
-to run next.
+Alpha **1.8.6a1** runs a model on your own machine. `model="ollama/qwen2.5:0.5b"`
+needs no API key, no credits and sends nothing off the laptop — text, structured
+output validated by Pydantic, and real tool calls. Any other local runtime is
+reached with an explicit `base_url`, and that address is checked **before** the
+model name, which is what stops a model you happened to call `gpt-4` in LM Studio
+from routing on its name and handing your `OPENAI_API_KEY` to whatever is
+listening on that port. Existing routing is unchanged.
 
-It is a beta because the no-loss-across-a-reconnect gate has not passed: the
-repair is offline-tested and has not been run against a real group. The release
-notes list what else to decide before putting it on a machine other people use.
-See [1.8.5b2 release notes](releases/1.8.5b2.md).
+It also adds **WhatsApp** as a third inbox provider behind an optional extra —
+the same nine verbs as `co feishu` and `co lark`, connecting as a linked
+companion device because the Cloud API has no endpoint for joining a group a
+human created. **It has not been accepted against a real account yet**; see the
+notes.
+
+Mail listings take `--since` / `--until`, Outlook gains `--json`, and
+`co gmail inbox --since --json` refuses rather than silently dropping the window.
+And `done.jsonl` finally names the consumer that handled each message, closing a
+1.8.5 known limit.
 
 ```bash
-python -m pip install --pre connectonion==1.8.5b2
+python -m pip install --pre connectonion==1.8.6a1
 co --version
 ```
 
-The 1.8.5a1, 1.8.5a2 and 1.8.5b1 previews are superseded; 1.8.4a1 and 1.8.4a2
+See [1.8.6a1 release notes](releases/1.8.6a1.md).
+
+<details>
+<summary>The preview line that became 1.8.5</summary>
+
+Beta **1.8.5b11** made the command line name what to run next, and made
+calendar invitations actually arrive. `co gcalendar` never passed Google's
+`sendUpdates`, so an event with attendees invited nobody — and `Event created`
+read the same whether three people were invited or none, so the silent failure
+was indistinguishable from success until a client's guest said they got nothing.
+Moving or cancelling a meeting told its attendees nothing either, which is worse.
+The confirmation now names who was invited, and echoes the time in the zone it
+was written in: `16:30+10:00` used to be confirmed as `06:30 AM`.
+
+An audit against `useful_skills/cli-skill-design` fixed four things in the CLI
+itself. Every deliberate refusal printed two next steps, one of them useless and
+read first by anyone merging streams. A typo ended at `co --help` even when
+Click had already worked out the answer — `co larc` now says `Next: co lark`,
+and `co like`, which nothing matches, says `Next: co commands` rather than
+pointing at a boxed screen of groups. Two failures named no command at all. And
+the `co env` skill had never learned about `rotate`, `--secret` or
+`--from-console`.
+
+A missing bot permission is now one link away instead of a Developer Console
+visit, and #1462's reconnect gate passed: history recovery had never once been
+allowed to run, and once it was, a message posted during a 90-second gap came
+back exactly once.
+
+It carries `b10`, which makes `co auth lark` create an application and return its
+secret — **correcting b9, which shipped a warning saying it could not.** The
+cause was one path segment. We printed the URL the SDK hands over,
+`<open-host>/page/launcher?user_code=…`, and that page renders "Link expired"
+whenever its own acknowledgement call fails, for a code the server reports as
+pending in the same second. `lark-cli` discards that URL and builds
+`<open-host>/page/cli?user_code=…`; pointed there, the same tenant produced the
+creation form, an application, and its secret. Nothing about a tenant, a region,
+or a code's lifetime was ever involved. `--app-id` reuse works too.
+
+It carries `b9`, which lets an app secret be stored encrypted. `co env set --secret`
+writes ciphertext under a key derived at a SLIP-0013 path and kept nowhere, and
+`co env rotate` moves it to the next index. There is no master key, so there is
+no keychain to be blocked by a sandbox or a machine with no logged-in human; the
+root is `.co/keys/agent.key`, not the optional `recovery.txt`, so writing your
+twelve words down and deleting that file cannot orphan a secret — and those
+words still reach it, because the agent key is derived from them.
+
+It also carries `co env set --from-console`, which accepts an app credential
+copied from the Developer Console — still the right route when you already keep
+an application there, though no longer the only way out of a tenant `co auth`
+could not serve. And `co auth lark` reports the server's real link lifetime
+instead of the SDK's fallback of 600, which is how "it expired after two
+minutes" was investigated as a timeout that never existed.
+
+It carries `b8`, which makes `co auth lark` begin on Lark. It used to print an
+`open.feishu.cn` link and, on failure, tell a Lark user to run `co auth feishu`;
+the accounts domain, the wording, and the reuse command offered from lark-cli's
+config all follow the brand now.
+
+It carries `b7`, which lets an agent reach a tab the site opened for itself — a
+payment popup, a "view invoice" button, any `target="_blank"` link. Those pages
+belong to no session, so they appeared on no board and every `-t` command kept
+running in the page before them. `co browser list_pages` shows the browser's
+real pages with the session driving each, `switch_page <index>` points a session
+at one, and `tab ls` counts what it cannot show and names the verb.
+
+It carries `b6`, which installs the paid browser's driver from PyPI. `onionwright`
+held only a name reservation there — one file and a version string — while the
+real client travelled a licence-gated endpoint; it is published normally now, so
+`pip install 'connectonion[wtf]'` works and the installer is 289 lines shorter.
+The browser binary stays licence-gated and the runtime licence is still checked
+at launch.
+
+It carries `b5`, which makes asking for the paid engine enough. The route to the WTF
+Browser was three commands, and the first one asked the caller to decide nothing —
+the engine cannot run without its client. An explicit `--engine wtf` now fetches
+it; `auto`, `system` and `--engine wtf help` still install nothing, because
+importing ConnectOnion or taking the free engine must never mutate a Python
+environment. The paid browser also runs on **Intel Macs** now: its object had
+been staged and unpromoted since a gate failure on 2026-09-04, and the re-run
+passed on real Intel hardware on 2026-09-13.
+
+It carries `b4`, which fixes what `b3` could not install. `co browser install-onion`
+reported `pip could not install Onionwright (exit 1)` when pip had declined by
+policy — PEP 668's externally-managed marker, the default on Homebrew and most
+distro Pythons — and had named the override itself. pip's output is captured now
+so a refusal can be told from a failure, and a policy refusal names the
+interpreter and both routes out. The new `--break-system-packages` is opt-in.
+
+It carries everything from `b3`, which fixes two ways the browser could waste an afternoon, both
+found by an unattended agent. `co browser wait` takes seconds while every
+neighbouring knob is named in milliseconds, so `wait 2500` meant forty-one
+minutes holding a tab's lock — every command behind it timed out while
+`status` kept answering, so nothing looked broken. It is capped at 60 seconds
+now and refuses before taking the lock, naming the value you meant. And a
+daemon pinned to an engine refused every bare command, `close` included, while
+its own error told you to run `close`: `auto` is no preference now, verbs that
+touch no page are never gated, and a refusal names only commands that daemon
+would accept. A dead paid session names its recovery, and the paid engine says
+it bills before it spends.
+
+It carries everything from `b2`: `co browser config`, the paid engine called
+`wtf`, `consume`, and `co auth feishu --app-id`.
+
+The no-loss-across-a-reconnect gate passed on 15 September, against a real
+group — the last thing between this line and stable.
+See [1.8.5b11 release notes](releases/1.8.5b11.md).
+
+</details>
+
+All eleven 1.8.5 previews (a1 through b11) are superseded by stable 1.8.5;
+1.8.4a1 and 1.8.4a2
 are historical, and the planned 1.8.4b1 was folded into the stable release. The
 tag workflow builds and verifies the public package before documentation is
 deployed. Google authorization from 1.8.3 is retained; TikTok remains deferred.

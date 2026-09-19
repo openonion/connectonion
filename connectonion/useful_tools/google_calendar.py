@@ -53,6 +53,67 @@ from ..credentials import require_ambient_api_key
 from ..provider_credentials import resolve_provider_credentials, refresh_credentials, token_expiry
 
 
+def _addresses(attendees) -> list:
+    """The comma-separated list as clean addresses, empty when there are none."""
+    if not attendees:
+        return []
+    return [email.strip() for email in attendees.split(',') if email.strip()]
+
+
+def _send_updates(invited) -> str:
+    """Google defaults this to 'none', which is why invitations reached nobody.
+
+    'all' whenever there is somebody to tell. 'none' for a solo event, because
+    asking Google to mail an empty list is a pointless round trip and it makes
+    "who was notified" unanswerable by always being "everyone".
+    """
+    return 'all' if invited else 'none'
+
+
+def _kept_attendees(existing, attendees) -> list:
+    """The new attendee list, carrying over what Google already knows.
+
+    The list of addresses is authoritative for *who* is on the event. What it
+    must not decide is what those people already said.
+
+    Rebuilding every entry as a bare `{'email': …}` dropped `responseStatus`,
+    and Google reads its absence as `needsAction` — so adding one person
+    un-answered everybody. Since `sendUpdates='all'` (#1548) that also emails a
+    fresh invitation to people who had already accepted, which is the version
+    anyone notices. The whole entry is reused, not just the status: `organizer`,
+    `optional`, `comment` and `displayName` live on it too.
+
+    Addresses are matched case-insensitively, because a mail system considers
+    Aaron@Example.com and aaron@example.com the same person and re-typing the
+    address with different capitals must not reset them.
+    """
+    known = {}
+    for entry in existing or []:
+        email = (entry.get('email') or '').strip().lower()
+        if email:
+            known[email] = entry
+
+    result = []
+    for email in _addresses(attendees):
+        entry = known.get(email.lower())
+        # The address as typed this time, so a corrected display form sticks;
+        # everything else Google told us about them is carried over.
+        result.append({**entry, 'email': email} if entry else {'email': email})
+    return result
+
+
+def _invited_line(invited) -> str:
+    """Who was told, so the operator can check it from the output.
+
+    "Event created" read identically whether three people were invited or
+    nobody was, so a silent failure looked exactly like a success — which is
+    how this went unnoticed until an attendee said they got nothing.
+    """
+    if not invited:
+        return ""
+    return f"Invitations sent: {', '.join(invited)}\n"
+
+
 class GoogleCalendar:
     """Google Calendar tool for managing events and meetings."""
 
@@ -125,10 +186,47 @@ class GoogleCalendar:
         return refresh_credentials(self._credentials, backend=backend_url(),
                                    api_key=api_key)
 
+    def _confirmed_time(self, typed: str, converted: datetime) -> str:
+        """The time as the caller wrote it, when they said which zone they meant.
+
+        `_parse_time` converts to UTC and drops the offset, so confirming the
+        converted value answered "16:30 in Sydney?" with "06:30 AM UTC". True,
+        unambiguous since the zone is labelled — and still a subtraction the
+        reader has to do to check their own meeting.
+
+        So when the input carried an offset, confirm in that offset: the line
+        can then be compared with what was typed, character for character,
+        which is the whole job of a confirmation. A naive input has no zone to
+        preserve and falls back to the converted value, labelled UTC.
+        """
+        try:
+            original = datetime.fromisoformat(str(typed).replace('Z', '+00:00'))
+        except (TypeError, ValueError):
+            return self._format_datetime(converted.isoformat())
+        if original.tzinfo is None:
+            return self._format_datetime(converted.isoformat())
+        return self._format_datetime(original.isoformat())
+
     def _format_datetime(self, dt_str: str) -> str:
-        """Format datetime string to readable format."""
+        """A readable time that says which zone it is in.
+
+        Without the zone this sentence is a trap. `_parse_time` converts an
+        offset to UTC, so a meeting entered as 16:30+10:00 was confirmed as
+        "2026-09-15 06:30 AM" — the right instant, described in a way no reader
+        interprets correctly. The event was fine; the sentence about it was not.
+
+        A value carrying its own offset keeps it, because relabelling that as
+        UTC would be the same bug pointed the other way.
+        """
         dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
-        return dt.strftime('%Y-%m-%d %I:%M %p')
+        shown = dt.strftime('%Y-%m-%d %I:%M %p')
+        if dt.tzinfo is None:
+            # Naive here always means UTC: it is what _parse_time produces and
+            # what the event body is labelled with.
+            return f"{shown} UTC"
+        if dt.utcoffset() == timedelta(0):
+            return f"{shown} UTC"
+        return f"{shown} {dt.strftime('%z')[:3]}:{dt.strftime('%z')[3:]}"
 
     # === Reading Events ===
 
@@ -310,16 +408,21 @@ class GoogleCalendar:
         if location:
             event['location'] = location
 
-        if attendees:
-            attendee_list = [{'email': email.strip()} for email in attendees.split(',')]
-            event['attendees'] = attendee_list
+        invited = _addresses(attendees)
+        if invited:
+            event['attendees'] = [{'email': email} for email in invited]
 
         created_event = service.events().insert(
             calendarId='primary',
-            body=event
+            body=event,
+            sendUpdates=_send_updates(invited),
         ).execute()
 
-        return f"Event created: {title}\nStart: {self._format_datetime(start_dt.isoformat())}\nEvent ID: {created_event['id']}\nLink: {created_event.get('htmlLink', '')}"
+        return (f"Event created: {title}\n"
+                f"Start: {self._confirmed_time(start_time, start_dt)}\n"
+                f"{_invited_line(invited)}"
+                f"Event ID: {created_event['id']}\n"
+                f"Link: {created_event.get('htmlLink', '')}")
 
     def create_meet(self, title: str, start_time: str, end_time: str,
                     attendees: str, description: str = None) -> str:
@@ -341,7 +444,7 @@ class GoogleCalendar:
         start_dt = self._parse_time(start_time)
         end_dt = self._parse_time(end_time)
 
-        attendee_list = [{'email': email.strip()} for email in attendees.split(',')]
+        attendee_list = [{'email': email} for email in _addresses(attendees)]
 
         event = {
             'summary': title,
@@ -368,12 +471,17 @@ class GoogleCalendar:
         created_event = service.events().insert(
             calendarId='primary',
             body=event,
-            conferenceDataVersion=1
+            conferenceDataVersion=1,
+            sendUpdates=_send_updates(attendee_list),
         ).execute()
 
         meet_link = created_event.get('hangoutLink', 'No Meet link generated')
 
-        return f"Meeting created: {title}\nStart: {self._format_datetime(start_dt.isoformat())}\nMeet link: {meet_link}\nEvent ID: {created_event['id']}"
+        return (f"Meeting created: {title}\n"
+                f"Start: {self._confirmed_time(start_time, start_dt)}\n"
+                f"Meet link: {meet_link}\n"
+                f"{_invited_line([a['email'] for a in attendee_list])}"
+                f"Event ID: {created_event['id']}")
 
     def update_event(self, event_id: str, title: str = None, start_time: str = None,
                      end_time: str = None, description: str = None,
@@ -420,13 +528,17 @@ class GoogleCalendar:
                 'timeZone': 'UTC',
             }
         if attendees:
-            attendee_list = [{'email': email.strip()} for email in attendees.split(',')]
-            event['attendees'] = attendee_list
+            event['attendees'] = _kept_attendees(event.get('attendees'), attendees)
 
+        # 'all' unconditionally, unlike create: the people to tell are the ones
+        # already on the event, and this call does not know who they are. An
+        # attendee who is never told a meeting moved is worse off than one who
+        # was never invited — they hold the old slot and arrive at nothing.
         updated_event = service.events().update(
             calendarId='primary',
             eventId=event_id,
-            body=event
+            body=event,
+            sendUpdates='all',
         ).execute()
 
         return f"Event updated: {updated_event['summary']}\nEvent ID: {event_id}"
@@ -444,7 +556,8 @@ class GoogleCalendar:
 
         service.events().delete(
             calendarId='primary',
-            eventId=event_id
+            eventId=event_id,
+            sendUpdates='all',
         ).execute()
 
         return f"Event deleted: {event_id}"
