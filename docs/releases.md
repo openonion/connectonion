@@ -10,57 +10,41 @@ Preview releases never replace the stable recommendation. Install one with
 
 ## Current release
 
-Stable **1.8.5** turns a Feishu or Lark bot into a directory of files. One
-process holds the connection and writes every message into
-`~/.co/inbox/<provider>/`; anything that can read a file can answer it. Taking a
-message is an atomic rename, so two consumers never get the same one, and a
-message sent while the listener was down is read back on reconnect and queued
-exactly once — the property that was this release's gate, closed on a live
-tenant on 15 September.
+Stable **1.8.6** makes WhatsApp an inbox on a number a person already uses. A
+linked device sees the groups that number is in, writes every message into
+`~/.co/inbox/whatsapp/`, and answers only where it was addressed — an `@`, or a
+reply quoting something the bot said, which is the case with no `@` in it
+anywhere.
 
-The command line also names what to run next, and that contract is now audited
-rather than asserted: one next step per refusal instead of two, a typo ending at
-a runnable command rather than `--help`, and `co commands` listing all 199. And
-`co gcalendar` invitations reach their attendees — `sendUpdates` was never
-passed, so an event created with `--attendees` had been notifying nobody.
+Twelve verbs, and the two newest are what make a bot safe to put in somebody
+else's group: `edit` replaces what it already said and `delete` takes it back
+for everyone. Before them a wrong answer in front of a customer was permanent,
+because the only repair was a second message leaving the first one above it.
 
-See [1.8.5 release notes](releases/1.8.5.md) for the known limits, and
-[the live acceptance record](acceptance/1.8.5/lark-live-2026-09-15.md) for what
-was measured.
+Text is read as Markdown and arrives as formatting, because the thing writing it
+is usually a model and `**ready**` had been arriving with the asterisks still
+attached. Local models through `ollama/…` do text, structured output and tool
+calls, and fail loudly rather than quietly becoming a paid model. Mail listings
+take `--since` / `--until` and compose with `--json`. Calendar invitations reach
+their attendees.
+
+The gate for this release was #1555's requirement that WhatsApp be accepted
+**against a real account** rather than a mock. It closed on 19 September.
+
+See [1.8.6 release notes](releases/1.8.6.md) for the known limits, and
+[the release-candidate acceptance record](acceptance/1.8.6/release-candidate-2026-09-19.md)
+for what was measured — run against the package installed from PyPI, not a
+checkout.
 
 ```bash
-python -m pip install --upgrade connectonion==1.8.5
+python -m pip install --upgrade connectonion==1.8.6
 co --version
-co lark check
+co whatsapp check
 ```
 
 ## Current preview
 
-Alpha **1.8.6a1** runs a model on your own machine. `model="ollama/qwen2.5:0.5b"`
-needs no API key, no credits and sends nothing off the laptop — text, structured
-output validated by Pydantic, and real tool calls. Any other local runtime is
-reached with an explicit `base_url`, and that address is checked **before** the
-model name, which is what stops a model you happened to call `gpt-4` in LM Studio
-from routing on its name and handing your `OPENAI_API_KEY` to whatever is
-listening on that port. Existing routing is unchanged.
-
-It also adds **WhatsApp** as a third inbox provider behind an optional extra —
-the same nine verbs as `co feishu` and `co lark`, connecting as a linked
-companion device because the Cloud API has no endpoint for joining a group a
-human created. **It has not been accepted against a real account yet**; see the
-notes.
-
-Mail listings take `--since` / `--until`, Outlook gains `--json`, and
-`co gmail inbox --since --json` refuses rather than silently dropping the window.
-And `done.jsonl` finally names the consumer that handled each message, closing a
-1.8.5 known limit.
-
-```bash
-python -m pip install --pre connectonion==1.8.6a1
-co --version
-```
-
-See [1.8.6a1 release notes](releases/1.8.6a1.md).
+None. 1.8.6a9 was the last preview of this line and it became 1.8.6.
 
 <details>
 <summary>The preview line that became 1.8.5</summary>
