@@ -28,6 +28,8 @@ class FakeProvider:
         self.problems = list(problems)
         self.sent = []
         self.reacted = []
+        self.edited = []
+        self.revoked = []
         # What happened, in order. Whether the mark lands before or after the
         # work is the whole point of it, so ordering has to be observable.
         self.order = []
@@ -39,10 +41,24 @@ class FakeProvider:
     def check(self):
         return self.problems
 
-    def send(self, chat, text, *, reply_to=None, fresh=False):
+    def send(self, chat, text, *, reply_to=None, fresh=False, plain=False):
+        # `plain` is in the signature because the real providers have it: a
+        # fake that accepts fewer arguments than the thing it stands in for
+        # passes every test right up to the one that would have caught the
+        # mismatch.
         self.sent.append((chat, text, reply_to))
         self.order.append("send")
         return f"om_sent{len(self.sent)}"
+
+    def edit(self, chat, message_id, text, *, plain=False):
+        self.edited.append((chat, message_id, text))
+        self.order.append("edit")
+        return f"om_edit{len(self.edited)}"
+
+    def revoke(self, chat, message_id, *, sender=""):
+        self.revoked.append((chat, message_id, sender))
+        self.order.append("revoke")
+        return f"om_revoke{len(self.revoked)}"
 
     def react(self, chat, message_id, emoji, *, sender=""):
         if self.reaction_fails:
@@ -120,7 +136,7 @@ def test_send_with_nothing_on_a_terminal_is_a_usage_error(box, fake, monkeypatch
 
 
 def test_a_refused_send_is_recorded_and_exits_1(box, fake, monkeypatch, capsys):
-    def refuse(chat, text, *, reply_to=None):
+    def refuse(chat, text, *, reply_to=None, fresh=False, plain=False):
         raise RuntimeError("Feishu error 230002: Bot has NOT been added to the chat")
 
     monkeypatch.setattr(fake, "send", refuse)
@@ -462,7 +478,7 @@ def test_consume_sends_nothing_for_a_failing_or_silent_command(box, fake, monkey
 def test_consume_keeps_a_message_whose_reply_the_platform_refused(box, fake, monkeypatch):
     monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
 
-    def refuse(chat, text, *, reply_to=None):
+    def refuse(chat, text, *, reply_to=None, fresh=False, plain=False):
         raise RuntimeError("Feishu error 99991400: too many requests")
 
     fake.send = refuse
@@ -527,8 +543,13 @@ def test_check_exits_3_and_names_each_problem(box, monkeypatch, capsys):
 def test_check_reports_listener_and_unread_when_configured(box, fake, capsys):
     deliver(box)
 
-    listen_commands.handle_check("feishu")
+    with pytest.raises(SystemExit) as exit_:
+        listen_commands.handle_check("feishu")
 
+    # Exit 3, because the docstring on this command promises "exit 3 on a
+    # problem" and "nothing is arriving" is one. It used to exit 0 while saying
+    # so, which let `co feishu check && …` run the next step on a dead listener.
+    assert exit_.value.code == 3
     out = capsys.readouterr().out
     assert "feishu configured" in out and "no listener running" in out and "1 unread" in out
 
@@ -541,8 +562,10 @@ class TestCheckDoesNotClaimTheNetwork:
         # connection that had quietly stopped still got a green tick — the
         # failure this release is about, inside the command people run to look
         # for it.
-        listen_commands.handle_check("feishu")
+        with pytest.raises(SystemExit) as exit_:
+            listen_commands.handle_check("feishu")
 
+        assert exit_.value.code == 3
         captured = capsys.readouterr()
         assert "reachable" not in captured.out
         assert "no listener is running" in captured.err
@@ -568,8 +591,10 @@ class TestCheckDoesNotClaimTheNetwork:
         state["pid"] = 4242
         box.connection.write_text(_json.dumps(state))
 
-        listen_commands.handle_check("feishu")
+        with pytest.raises(SystemExit) as exit_:
+            listen_commands.handle_check("feishu")
 
+        assert exit_.value.code == 3
         assert "disconnected" in capsys.readouterr().err
 
     def test_another_listeners_record_is_not_read_as_this_ones(
@@ -594,8 +619,10 @@ class TestCheckDoesNotClaimTheNetwork:
         state["pid"] = 4242
         box.connection.write_text(_json.dumps(state))
 
-        listen_commands.handle_check("feishu")
+        with pytest.raises(SystemExit) as exit_:
+            listen_commands.handle_check("feishu")
 
+        assert exit_.value.code == 3
         # Unwrapped: Rich folds at the console width, so the sentence is broken
         # across lines and a literal substring is not in the output at all —
         # the same shape that made a `--since` assertion pass locally and fail

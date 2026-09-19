@@ -439,6 +439,19 @@ class Inbox:
                 return True
         return False
 
+    def lookup_sent(self, message_id: str) -> Optional[dict]:
+        """The record of a message we sent, so `edit` and `delete` can find its
+        chat from the id alone — the id is the only string the caller kept.
+
+        Only a send that succeeded: a failed one has no id on the platform, and
+        answering with its record would send an edit into nothing.
+        """
+        found = None
+        for record in self._records(self.sent):
+            if record.get("id") == message_id and record.get("ok"):
+                found = record
+        return found
+
     def lookup(self, message_id: str) -> Optional[Message]:
         """The message with this id, from the log. Lets `reply ID` find the
         chat and thread so an agent only has to carry one string."""

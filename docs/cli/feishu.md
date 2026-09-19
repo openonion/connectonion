@@ -157,6 +157,8 @@ co feishu send oc_a1b2 "all green"
 echo "all green" | co feishu send oc_a1b2          # text from stdin, like mail
 co feishu reply om_9f8e "fixed"                     # back to the chat and thread that message came from
 co feishu done om_9f8e           # took it, decided not to answer; do not bring it back
+co whatsapp edit om_9f8e "the corrected text"   # replace a message this account sent
+co whatsapp delete om_9f8e       # delete a message for everyone
 co feishu check                  # credentials, connectivity, listener, unread; exit 3 on a problem
 co feishu ls                     # unread: id, chat, sender, text
 co feishu log -f                 # the tool's log, following
@@ -194,6 +196,48 @@ that re-runs cannot double-post. A taken message that is neither replied to
 nor marked `done` comes back to `new/` after an hour, on the assumption that
 its consumer died; `done` is how a consumer says it chose silence. `send` and `reply` print the id Feishu gave
 the new message and exit 1 with Feishu's own reason if it was refused.
+
+### Changing a message after it has gone out
+
+`edit` replaces the text of a message this account sent; `delete` removes one
+for everyone. Both take the id `send` or `reply` printed.
+
+```bash
+ID=$(co whatsapp send 61400000000@s.whatsapp.net "deploy finished at **14:02**")
+co whatsapp edit "$ID" "deploy finished at **14:20**"
+co whatsapp delete "$ID"
+```
+
+WhatsApp stamps an edit as coming from you and checks it, so **only your own
+messages can be edited** — asking to edit a message you received says so
+rather than reporting a bad id. `delete` also covers somebody else's message
+when this account is an admin of that group; WhatsApp decides that and gives
+its own reason when it refuses.
+
+**WhatsApp only, for now.** `co feishu edit` and `co lark edit` print the
+endpoints that exist for it (`PUT` and `DELETE` on `/im/v1/messages/<id>`) and
+say nobody has wired them up, so a missing feature never reads as a bad id.
+
+### Markdown, not plain text
+
+`send`, `reply` and `edit` read their text as Markdown and translate it into
+WhatsApp's own marks, because the thing writing the text is usually a model and
+a model writes Markdown. Untranslated, `**ready**` arrives with the asterisks
+still on it.
+
+| you write | it arrives as |
+|---|---|
+| `**ready**` | *ready* in bold |
+| `*maybe*` | _maybe_ in italic |
+| `~~dropped~~` | ~dropped~ struck through |
+| `# Deploy failed` | *Deploy failed* in bold |
+| `- one` | • one |
+| `[the run](https://…)` | the run: https://… |
+
+Nothing inside a fenced block or `` `backticks` `` is converted. `--plain`
+sends the characters exactly as typed. Feishu's `text` message has no inline
+formatting to translate into, so it accepts `--plain` and changes nothing;
+rich text there is a different message type.
 
 ## Your own agent, no flags
 

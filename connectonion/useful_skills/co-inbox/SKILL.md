@@ -24,6 +24,8 @@ stderr while continuing.
 | answer a message you took | `co feishu reply <id> "text"` |
 | decide not to answer one | `co feishu done <id>` |
 | send without being asked | `co feishu send <chat> "text"` |
+| **fix something you already said** | `co feishu edit <id> "text"` |
+| **take back something you said** | `co feishu delete <id>` |
 | see what is waiting | `co feishu ls` |
 | **find out which conversations exist** | `co feishu chats` |
 | **read one conversation back** | `co feishu log --chat <id>` |
@@ -160,6 +162,50 @@ when you need the reason rather than the verdict.
 QUOTED=$(jq -r '.quoted.text // empty' <<<"$MESSAGE")
 [ -n "$QUOTED" ] && PROMPT="They are replying to: $QUOTED"$'\n'"$PROMPT"
 ```
+
+## Fixing what you already said
+
+You answered in a group and got it wrong. A follow-up leaves the wrong answer
+sitting above the correction forever, where the next reader finds it first.
+
+```bash
+ID=$(co whatsapp send oc_ops "deploy finished at **14:02**")
+co whatsapp edit "$ID" "deploy finished at **14:20**"   # same message, new text
+co whatsapp delete "$ID"                                # gone for everyone
+```
+
+Both take the id `send` and `reply` printed — that is the only string you need
+to keep.
+
+- **`edit` is yours only.** WhatsApp stamps the edit as coming from you and the
+  server checks it, so you cannot rewrite what somebody else said. Asking to
+  edit a message you received says exactly that rather than "no such id".
+- **`delete` reaches further.** Your own message always. Somebody else's only
+  if this account is an admin of that group — WhatsApp decides, and answers
+  with why when it refuses.
+- **Both are WhatsApp only right now.** `co feishu edit` and `co lark edit`
+  name the endpoints that exist and say nobody has wired them up, so a failure
+  never looks like a bad id.
+
+### Your text is read as Markdown
+
+WhatsApp has its own marks, and they are not Markdown's. `**bold**` sent
+untranslated arrives with the asterisks still on it, which is how an answer
+ends up looking machine-generated. `send`, `reply` and `edit` translate:
+
+| you write | it arrives as |
+|---|---|
+| `**ready**` | *ready* in bold |
+| `*maybe*` | _maybe_ in italic |
+| `~~dropped~~` | ~dropped~ struck through |
+| `# Deploy failed` | *Deploy failed* in bold |
+| `- one` | • one |
+| `[the run](https://…)` | the run: https://… |
+| ```` ```python ```` fenced block | a monospace block |
+
+Nothing inside a fence or `` `backticks` `` is touched — a code block is
+literal, which is the whole point of one. Pass `--plain` to send the characters
+exactly as typed.
 
 ## The conversation around it
 

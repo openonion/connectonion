@@ -187,13 +187,14 @@ def handle_receive(name: str, timeout: Optional[float] = None, start: bool = Tru
     print(_with_context(inbox, message, context))
 
 
-def handle_send(name: str, chat: str, text: Optional[str] = None, reply_to: Optional[str] = None) -> None:
+def handle_send(name: str, chat: str, text: Optional[str] = None, reply_to: Optional[str] = None,
+                plain: bool = False) -> None:
     """Send text to a chat. Prints the new message id."""
     p = _configured(name)
     inbox = Inbox(name)
     body = _text_from(text)
     try:
-        sent = p.send(chat, body, reply_to=reply_to)
+        sent = p.send(chat, body, reply_to=reply_to, plain=plain)
     except Exception as exc:
         inbox.record_sent(chat=chat, text=body, reply_to=reply_to, error=str(exc), by="send")
         errors.print(str(exc), style="red")
@@ -225,7 +226,8 @@ def _mark_answering(p, inbox, message) -> None:
     inbox.log(f"{ANSWERING} on {message.id} sent as {sent or 'no id'}")
 
 
-def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: bool = False) -> None:
+def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: bool = False,
+                 plain: bool = False) -> None:
     """Reply to a received message where it was asked. Prints the new id."""
     p = _configured(name)
     inbox = Inbox(name)
@@ -239,7 +241,7 @@ def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: 
     body = _text_from(text)
     _mark_answering(p, inbox, original)
     try:
-        sent = p.send(original.chat, body, reply_to=message_id, fresh=again)
+        sent = p.send(original.chat, body, reply_to=message_id, fresh=again, plain=plain)
     except Exception as exc:
         inbox.record_sent(chat=original.chat, text=body, reply_to=message_id,
                           error=str(exc), by="reply")
@@ -248,6 +250,75 @@ def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: 
     inbox.record_sent(chat=original.chat, text=body, reply_to=message_id, provider_id=sent,
                       by="reply")
     inbox.done(message_id, by="reply")
+    print(sent)
+
+
+def _unsupported(name: str, verb: str) -> None:
+    """Say which provider cannot do this and what it would take, not "error".
+
+    A verb that exists on `co whatsapp` and not on `co lark` has to say so in
+    the terms the reader is in — otherwise the obvious reading of a bare
+    failure is that the message id was wrong.
+    """
+    errors.print(
+        f"co {name} {verb} is not implemented. WhatsApp is the only provider with it so far; "
+        f"Feishu and Lark have the endpoints for it (PUT and DELETE on /im/v1/messages/<id>) "
+        f"and nobody has wired them up. Next: co {name} send",
+        style="red")
+    sys.exit(1)
+
+
+def handle_edit(name: str, message_id: str, text: Optional[str] = None,
+                plain: bool = False) -> None:
+    """Replace the text of a message we sent. Prints the edit's id."""
+    p = _configured(name)
+    inbox = Inbox(name)
+    if getattr(p, "edit", None) is None:
+        _unsupported(name, "edit")
+    original = inbox.lookup_sent(message_id)
+    if original is None:
+        # Deliberately not "no such message": we can only edit our own, so the
+        # thing that is missing is a record of US sending it. Someone trying to
+        # edit a message they received should be told that, not told to check
+        # the id they read correctly off `log`.
+        errors.print(f"{name} has no record of sending {message_id}. Only messages this account "
+                     f"sent can be edited. Next: co {name} log", style="red")
+        sys.exit(1)
+    body = _text_from(text)
+    try:
+        sent = p.edit(original["chat"], message_id, body, plain=plain)
+    except Exception as exc:
+        errors.print(str(exc), style="red")
+        sys.exit(1)
+    inbox.record_sent(chat=original["chat"], text=body, reply_to=original.get("reply_to"),
+                      provider_id=sent, by=f"edit of {message_id}")
+    print(sent)
+
+
+def handle_delete(name: str, message_id: str) -> None:
+    """Delete a message for everyone. Prints the deletion's id."""
+    p = _configured(name)
+    inbox = Inbox(name)
+    if getattr(p, "revoke", None) is None:
+        _unsupported(name, "delete")
+    ours = inbox.lookup_sent(message_id)
+    if ours is not None:
+        chat, sender = ours["chat"], ""
+    else:
+        # Not ours: deleting somebody else's message is a group-admin action,
+        # and WhatsApp needs to be told whose message it was.
+        received = inbox.lookup(message_id)
+        if received is None:
+            errors.print(f"no message {message_id} in {inbox.received} or {inbox.sent}. "
+                         f"Next: co {name} log", style="red")
+            sys.exit(1)
+        chat, sender = received.chat, received.sender
+    try:
+        sent = p.revoke(chat, message_id, sender=sender)
+    except Exception as exc:
+        errors.print(str(exc), style="red")
+        sys.exit(1)
+    inbox.log(f"deleted {message_id} in {chat} as {sent or 'no id'}")
     print(sent)
 
 
@@ -316,22 +387,27 @@ def _report_connection(name: str, inbox: Inbox, pid) -> None:
         errors.print("not connected: no listener is running, so nothing is arriving.",
                      style="yellow")
         print_tip(f"Next: co {name} listen")
-        return
+        sys.exit(EXIT_CONFIG)
     state = inbox.connection_state()
     if not state or state.get("pid") != pid:
         # An older listener's record, or one from before this was written. Say
-        # that rather than guessing in either direction.
-        errors.print(f"listener {pid} is running; it has not said whether its socket is up. "
-                     f"Next: co {name} log", style="dim")
+        # that rather than guessing in either direction — and do not exit 3:
+        # "I cannot tell" is not "it is broken", and a caller that stops on it
+        # stops on a listener that may be perfectly healthy.
+        errors.print(f"listener {pid} is running; it has not said whether its socket is up.",
+                     style="dim")
+        print_tip(f"Next: co {name} log")
         return
     if state.get("state") == "connected":
         account = state.get("account") or "unknown"
         console.print(f"[green]✓[/green] connected as {account} since {state.get('at', '?')}")
+        print_tip(f"Next: co {name} receive")
         return
     errors.print(f"listener {pid} is running but {state.get('state', 'not connected')} "
                  f"since {state.get('at', '?')}"
                  + (f": {state['reason']}" if state.get("reason") else ""), style="yellow")
     print_tip(f"Next: co {name} log")
+    sys.exit(EXIT_CONFIG)
 
 
 def handle_ls(name: str) -> None:

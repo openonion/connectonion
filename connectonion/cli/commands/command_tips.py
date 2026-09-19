@@ -119,7 +119,9 @@ NEXT = {
     "co feishu send": "co feishu receive --timeout 0",
     "co feishu reply": "co feishu receive --timeout 0",
     "co feishu done": "co feishu receive --timeout 0",
-    "co feishu check": "co feishu listen",
+    "co feishu edit": "co feishu log",
+    "co feishu delete": "co feishu log",
+    "co feishu check": HANDLER,  # every branch of _report_connection names its own
     "co feishu ls": "co feishu receive --timeout 0",
     "co feishu chats": HANDLER,
     "co feishu log": "co feishu ls",
@@ -129,7 +131,9 @@ NEXT = {
     "co lark send": "co lark receive --timeout 0",
     "co lark reply": "co lark receive --timeout 0",
     "co lark done": "co lark receive --timeout 0",
-    "co lark check": "co lark listen",
+    "co lark edit": "co lark log",
+    "co lark delete": "co lark log",
+    "co lark check": HANDLER,  # every branch of _report_connection names its own
     "co lark ls": "co lark receive --timeout 0",
     "co lark chats": HANDLER,
     "co lark log": "co lark ls",
@@ -139,7 +143,9 @@ NEXT = {
     "co whatsapp send": "co whatsapp receive --timeout 0",
     "co whatsapp reply": "co whatsapp receive --timeout 0",
     "co whatsapp done": "co whatsapp receive --timeout 0",
-    "co whatsapp check": "co whatsapp listen",
+    "co whatsapp edit": "co whatsapp log",
+    "co whatsapp delete": "co whatsapp log",
+    "co whatsapp check": HANDLER,  # every branch of _report_connection names its own
     "co whatsapp ls": "co whatsapp receive --timeout 0",
     "co whatsapp chats": HANDLER,
     "co whatsapp log": "co whatsapp ls",
