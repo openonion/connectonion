@@ -16,7 +16,7 @@ def _record(category: str, name: str, identity: str) -> str:
     return f'{category}/{slug}-{hashlib.sha256(identity.encode()).hexdigest()[:10]}.md'
 
 
-def _mail_rows(clients: dict, days: int, mine, coverage: list) -> list[dict]:
+def _mail_rows(clients: dict, days: int, mine, coverage: list) -> tuple[list[dict], set]:
     own, available, merged = set(mine), {}, {}
     for kind, client in clients.items():
         try:
@@ -42,7 +42,7 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list) -> list[dict]:
                 row['name'] = row['name'] or old['name']
                 row['one_way'] = row['sent'] == 0 or row['received'] == 0
             merged[row['address']] = row
-    return sorted(merged.values(), key=lambda row: (-row['mails'], row['address']))
+    return sorted(merged.values(), key=lambda row: (-row['mails'], row['address'])), own
 
 
 def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150,
@@ -58,8 +58,16 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
     save()
     report['skills'] = map_skills(notebook, skill_directories)
     save()
-    people = _mail_rows(clients, days, mine, report['coverage'])
+    people, own = _mail_rows(clients, days, mine, report['coverage'])
     roster = notebook.people()
+    if own:
+        aliases = sorted({address.casefold() for address in own})
+        existing = next((p['path'] for p in roster if set(aliases).intersection(p['emails'])), None)
+        owner_record = existing or _record('people', 'Account owner', aliases[0])
+        if notebook.stub_person(owner_record, 'Account owner', aliases, email=', '.join(aliases)):
+            report['created'].append(owner_record)
+        report['owner'] = {'record': owner_record, 'addresses': aliases}
+        report['people'].append({'record': owner_record, 'classification': 'account owner'})
     for row in people:
         existing = next((p['path'] for p in roster if row['address'].casefold() in p['emails']), None)
         record = existing or _record('people', row['name'] or row['address'], row['address'])

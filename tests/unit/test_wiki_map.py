@@ -11,7 +11,7 @@ def test_map_groups_project_worktrees_preserves_pages_and_keeps_noise(tmp_path, 
     source.write_text('---\nname: demo\ndescription: Synthetic demo\n---\nDo something.')
     original = source.read_bytes()
     people = [{'name': 'Notices', 'address': 'noreply@example.org', 'mails': 2}]
-    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: people)
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: (people, set()))
     monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [
         {'name': 'Atlas', 'repo': '/repo/atlas', 'origin': 'https://example.org/atlas',
          'path': path, 'sessions': 2, 'first': '2026-09-18', 'last': '2026-09-19'}
@@ -55,3 +55,19 @@ def test_unavailable_mail_does_not_stop_other_maps(tmp_path):
     assert result['phase'] == 'mapped'
     assert 'gmail: unavailable (RuntimeError); not searched' in result['coverage']
     assert 'private provider detail' not in str(result)
+
+
+def test_map_creates_owner_from_verified_account_aliases(tmp_path):
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    class Mail:
+        def my_addresses(self):
+            return {'owner@example.org'}
+        def list_between(self, start, end, limit):
+            return []
+    result = build_map(tmp_path, {}, {'gmail': Mail()}, skill_directories=[skills])
+    owner = result['owner']['record']
+    assert 'owner@example.org' in Notebook(tmp_path).read(owner)
+    assert 'not investigated yet' in Notebook(tmp_path).read(owner)
+    assert build_map(tmp_path, {}, {'gmail': Mail()}, skill_directories=[skills])['owner']['record'] == owner
