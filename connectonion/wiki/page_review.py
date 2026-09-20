@@ -97,6 +97,7 @@ def validate(record: str, candidate: str, original: str, items: list[dict]) -> l
     defined = Counter(key for key, _ in definitions)
     errors += [f'Missing or duplicate citation: {key}' for key in refs if defined[key] != 1]
     known = {i['source'] for i in items if i.get('source') and i['source'] != 'investigation:page'}
+    known.update(source for i in items if i.get("role") == "reflection-summary" for source in i.get("sources", []))
     old_sources = original.partition('\n## Sources\n')[2]
     for key, value in definitions:
         if key not in refs:

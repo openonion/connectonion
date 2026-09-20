@@ -28,6 +28,7 @@ TRUNCATION_NOTE = "\n[truncated by co wiki: {dropped} more characters in the sou
 # preambles was not typed by anyone.
 INJECTED_BLOCK = re.compile(
     r"\s*(?:<[a-z_-]+(?:\s[^<>]{0,400})?>"
+    r"|/wiki-(?:init|extract|maintain|investigate|abstract) (?:<co_wiki_task>|Read the composed stage)"
     r"|#\s*AGENTS\.md\b"
     r"|The following is the Codex agent history"
     r"|>>> TRANSCRIPT START"

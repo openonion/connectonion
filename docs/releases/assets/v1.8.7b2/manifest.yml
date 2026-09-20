@@ -1,0 +1,16 @@
+version: v1.8.7b2
+images:
+  - file: reviews-desktop.png
+    alt: Wiki review candidates with evidence and explicit terminal decision commands
+    caption: Proposed links remain pending until a user records a decision.
+    scenario: Synthetic question and link review with inert quoted HTML
+    viewport: 1440x1000, light
+    commit: 86bb680d
+    source_run: test_review_candidates_are_readable_and_inert
+  - file: reviews-mobile.png
+    alt: Wiki questions and connections at mobile width
+    caption: Long commands scroll within their containers and can be copied.
+    scenario: Same synthetic review at mobile width
+    viewport: 375x812, light
+    commit: 86bb680d
+    source_run: test_review_candidates_are_readable_and_inert

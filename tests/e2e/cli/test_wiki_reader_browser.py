@@ -243,3 +243,29 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
         command=page.locator('#main .empty').inner_text().split('Run ',1)[1].split(' (or ',1)[0]
         assert shlex.split(command)==['co','wiki','--root',str(root),'init','--mail','outlook']
         browser.close()
+
+
+def test_review_candidates_are_readable_and_inert(reader_page, tmp_path):
+    page, _, _ = reader_page
+    import json
+    from connectonion.wiki.reader import TEMPLATE, PLACEHOLDER
+    data = {"root": "/synthetic/owner's wiki", "as_of": "2026-09-20", "categories": [], "records": [],
+            "reviews": [{"id": "abc123", "kind": "link", "subjects": ["projects/layout.md", "decisions/storage.md"],
+                         "question": "Do these constraints share a cause?", "basis": "Two sourced decisions; connection remains unverified.", "status": "pending"},
+                        {"id": "def456", "kind": "question", "subjects": ["projects/layout.md"],
+                         "question": "<img src=x onerror=alert(1)>", "basis": "A literal quoted question", "status": "answered", "author": "User", "response": "Different scope"}]}
+    path = tmp_path / "reviews.html"
+    path.write_text(TEMPLATE.read_text().replace(PLACEHOLDER, json.dumps(data).replace("<", "\\u003c")))
+    page.goto(path.as_uri() + "#reviews=1")
+    page.get_by_role('heading', name='Questions & connections', exact=True).wait_for()
+    assert page.locator('#main img').count() == 0
+    command = page.locator('#main code').first.inner_text()
+    import shlex
+    assert shlex.split(command)[3] == "/synthetic/owner's wiki"
+    assert '--verdict yes' in command
+    shots = Path(os.environ.get('CO_WIKI_SHOTS', '/tmp/wiki-review-shots'))
+    shots.mkdir(parents=True, exist_ok=True)
+    page.screenshot(path=str(shots / 'reviews-desktop.png'), full_page=True)
+    page.set_viewport_size({'width': 375, 'height': 812})
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    page.screenshot(path=str(shots / 'reviews-mobile.png'), full_page=True)

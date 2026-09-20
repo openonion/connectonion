@@ -172,7 +172,7 @@ def _split_item(item: dict, limit_chars: int):
         remaining = remaining[low:]
 
 
-def digest_in_chunks(items: list[dict], config: dict, extractor=None) -> tuple[list[dict], dict]:
+def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, max_calls=None) -> tuple[list[dict], dict]:
     """Oldest first, each chunk within the extract limits, one digest item per chunk."""
     from .extract import NOTHING, extraction_item, run_extract
     limits = config["limits"]
@@ -189,6 +189,8 @@ def digest_in_chunks(items: list[dict], config: dict, extractor=None) -> tuple[l
             current.append(part)
     if current:
         chunks.append(current)
+    if max_calls is not None and len(chunks) > max_calls:
+        raise WikiError("Extraction exceeds remaining call budget; page preserved")
     digests, usage = [], {}
     for chunk in chunks:
         kinds = {i["source"].split(":")[0] for i in chunk}
@@ -202,7 +204,7 @@ def digest_in_chunks(items: list[dict], config: dict, extractor=None) -> tuple[l
 
 
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
-                clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None) -> dict:
+                clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None) -> dict:
     """Fill the page's gaps from everything gathered; the page itself is the first input."""
     notebook = Notebook(root)
     if not notebook.path(record).is_file():
@@ -210,6 +212,13 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     items, coverage = gather(subject, handles, days=days, clients=clients, subscriptions=subscriptions,
                              progress=progress, attachments_dir=root / ".state" / "attachments")
     config = read_config(root)
+    from .inquiry import routing, stage_config
+    original_material = None
+    if routing(root):
+        import uuid
+        from .files import state_path, write_json
+        original_material = state_path(root, f"evidence/{uuid.uuid4().hex}.json")
+        write_json(original_material, items)
     # Room for the material after the page, the coverage and the Skill itself.
     from .runner import instructions, run_stage
     overhead = len(instructions("investigate")) + len(notebook.read(record)) + 4000
@@ -218,12 +227,16 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         raise WikiError("Configured input limit cannot fit the current page and investigation Skill")
     gathered_chars = sum(len(json.dumps(i, ensure_ascii=False)) for i in items)
     usage_by_stage = {}
+    synthesis_calls = 3 if routing(root) else 1
+    if max_calls is not None and max_calls < synthesis_calls:
+        raise WikiError("Insufficient call budget for investigation; page preserved")
     if gathered_chars > room:
         # Too much for one turn. Not "keep the newest and drop the rest": the
         # oldest mail is where a relationship's terms were set. Digest it in
         # order, through the extraction Skill, and let the one investigate turn read the
         # digests -- the same two-pass shape the timeline mode already runs.
-        items, digest_usage = digest_in_chunks(items, config, extractor)
+        items, digest_usage = digest_in_chunks(items, stage_config(root, config, "extract"), extractor,
+                                                     max_calls=None if max_calls is None else max_calls - synthesis_calls)
         usage_by_stage["extract"] = digest_usage
         coverage.append(f"digest: {gathered_chars:,} chars gathered (~{gathered_chars // 4:,} tokens), over the "
                         f"{room:,}-char room for one turn; summarised in {len(items)} chunk(s) first")
@@ -238,6 +251,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         {"role": "coverage", "text": "Sources searched for handles " + ", ".join(handles) + ":\n"
                                      + "\n".join(coverage), "timestamp": now, "source": "investigation:coverage"},
     ] + items
+    if original_material:
+        prompt_items.append({"role": "original_evidence", "source": "investigation:original-evidence",
+                             "text": f"Original uncompressed evidence is retained at {original_material}. Read it to check summaries and counterevidence.",
+                             "file": str(original_material), "timestamp": now})
     # Both runners are `co ai`: it is the orchestrator, and the runner setting
     # only picks which harness answers the Skill -- our own loop, or Codex
     # delegated through `co ai --harness codex`. Either one can reach the web.
@@ -254,6 +271,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # had `co browser` fail inside the thread while this line still said "web".
     searched = [c.split(" (")[0].split(":")[0] for c in coverage if not c.startswith(("budget", "digest"))]
     with maintenance_lock(root):
+        from .reviews import ingest
+        ingest(root, result.get("review_candidates", []))
         notebook.note_investigation(record, ", ".join(dict.fromkeys(searched)))
     return {"record": record, "items": len(items), "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,

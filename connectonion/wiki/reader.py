@@ -31,6 +31,7 @@ def _title(record: str, text: str) -> str:
 
 def snapshot(root: Path) -> dict:
     """Everything the page shows, read once; no model, no writes into the notebook."""
+    from .reviews import listing
     notebook = Notebook(root)
     records = []
     for record in notebook.list():
@@ -54,7 +55,7 @@ def snapshot(root: Path) -> dict:
     return {"as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "categories": list(CATEGORIES), "records": records,
             "status": status(root), "subscriptions": subscriptions(root),
-            "logs": run_logs(root)[:20]}
+            "logs": run_logs(root)[:20], "reviews": listing(root)}
 
 
 def render(root: Path) -> str:

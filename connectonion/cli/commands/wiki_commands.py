@@ -50,6 +50,92 @@ def make_wiki_app(factory):
         if ctx.invoked_subcommand is None:
             inspect_status(ctx)
 
+    @wiki.command("daily")
+    def daily_round(ctx: typer.Context, days: int = typer.Option(30, "--days", min=1)):
+        """Maintain current material, then investigate at most one unfinished page."""
+        from ...wiki.daily import run_daily
+        def operation(root):
+            result = run_daily(root, days=days)
+            if result["outcome"] == "partial":
+                _emit(ctx, result, ["logs"], failed=True)
+            return result, ["logs"]
+        _handle(ctx, operation, ["status"])
+
+    @wiki.command("capture")
+    def capture_session(ctx: typer.Context, transcript: Path,
+                        source: str = typer.Option(..., "--source")):
+        """Capture local user messages into a durable queue; no model or sync."""
+        from ...wiki.capture import capture
+        _handle(ctx, lambda root: (capture(root, transcript.expanduser().resolve(), source), ["sync"]), ["status"])
+
+    @wiki.command("reflect")
+    def reflect(ctx: typer.Context, subject: str, statement: str,
+                author: str = typer.Option(..., "--author"),
+                basis: str = typer.Option(..., "--basis"),
+                previous: str = typer.Option("", "--previous"),
+                applies: str = typer.Option("", "--applies"),
+                kind: str = typer.Option("reflection", "--kind"),
+                source: List[str] = typer.Option([], "--source"),
+                supersedes: List[str] = typer.Option([], "--supersedes")):
+        """Retain an attributed reflection, correction or real-world change."""
+        from ...wiki.reflections import add
+        _handle(ctx, lambda root: (add(root, subject, statement, author=author, basis=basis,
+                 previous=previous, applies=applies, kind=kind, sources=source, supersedes=supersedes),
+                 ["reflections", subject]), ["list"])
+
+    @wiki.command("reflections")
+    def reflection_records(ctx: typer.Context, subject: str = typer.Argument(""),
+                           compact: bool = typer.Option(False, "--compact")):
+        """Read retained reflections or write a lossless compact view; no deletion."""
+        from ...wiki.reflections import records, compress
+        _handle(ctx, lambda root: (compress(root, subject) if compact else records(root, subject),
+                                  ["list"]), ["list"])
+
+    @wiki.command("propose")
+    def propose_review(ctx: typer.Context, kind: str, subject: str, question: str,
+                       basis: str = typer.Option(..., "--basis"),
+                       related: str = typer.Option("", "--related")):
+        """Save an evidence-linked question or candidate connection for review."""
+        from ...wiki.reviews import propose
+        _handle(ctx, lambda root: (propose(root, kind, [subject, related] if related else [subject],
+                                         question, basis), ["review"]), ["list"])
+
+    @wiki.command("review")
+    def review_candidates(ctx: typer.Context, review_id: str = typer.Argument(""),
+                          verdict: str = typer.Option("", "--verdict"),
+                          author: str = typer.Option("", "--author"),
+                          response: str = typer.Option("", "--response"),
+                          audio: Optional[Path] = typer.Option(None, "--audio"),
+                          local_model: Optional[Path] = typer.Option(None, "--local-model")):
+        """List questions/links, or explicitly answer/accept/reject a candidate."""
+        from ...wiki.reviews import listing, decide
+        def operation(root):
+            from ...wiki.files import WikiError
+            text = response
+            if audio:
+                if not review_id or not local_model or response:
+                    raise WikiError("Audio response needs a review ID and --local-model; do not also pass --response")
+                from ...wiki.voice import transcribe
+                text = transcribe(audio, local_model)
+            return (decide(root, review_id, verdict, author=author, response=text)
+                    if review_id else listing(root)), ["review"]
+        _handle(ctx, operation, ["review"])
+
+    @wiki.command("route")
+    def route_stage(ctx: typer.Context, stage: str = typer.Argument(""),
+                    runner: str = typer.Option("", "--runner"),
+                    model: str = typer.Option("", "--model"),
+                    clear: bool = typer.Option(False, "--clear")):
+        """Inspect or explicitly choose a stage model; enables planned investigation."""
+        from ...wiki.inquiry import routing, set_route, clear_route
+        def operation(root):
+            from ...wiki.files import WikiError
+            if clear and (runner or model):
+                raise WikiError("Do not combine --clear with --runner or --model")
+            value = clear_route(root, stage) if clear else set_route(root, stage, runner, model) if stage else routing(root)
+            return value, ["route"]
+        _handle(ctx, operation, ["route"])
+
     @wiki.command("status")
     def inspect_status(ctx: typer.Context):
         """Show local run counts, known usage, and background readiness."""

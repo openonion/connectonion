@@ -274,7 +274,7 @@ def status(root: Path) -> dict:
             "date": str(today), "timezone": saved_zone or "Unknown (UTC reporting fallback only)",
             "schedule_times": config.get("schedule", {}).get("times", []), "next_run": slot,
             "worker": worker_state(root),
-            "batches_today": len(recent), "runner_attempts_today": len(attempted),
+            "batches_today": len(recent), "runner_attempts_today": sum(record.get("runner_attempts", 0) for record in attempted),
             "usage_today": usage, "usage_coverage": coverage,
             "last_run": logs[0] if logs else None}
 
@@ -426,7 +426,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         if not isinstance(progress, dict):
             raise WikiError("Invalid source progress; preserve it for diagnosis")
         return _sync_locked(root, selected, progress, config, runner, extractor,
-                            uncapped=_uncapped, with_person=with_person)
+                            uncapped=_uncapped, with_person=with_person, include_local=not source)
 
 
 @contextmanager
@@ -454,7 +454,7 @@ def _terminate_as_interrupt():
 
 
 def _sync_locked(root, selected, progress, config, runner, extractor=None, *, uncapped=False,
-                 with_person=""):
+                 with_person="", include_local=True):
     from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
     from .runner import maintenance_instructions, run_stage
 
@@ -473,7 +473,26 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
     widest = max(len(extraction_instructions(k)) for k in ("", *KINDS, *MAIL_KINDS))
     remaining = max(limits["extract_chars_per_batch"] - widest - 1000, maintain_room * 2 // 3)
     max_items = limits["extract_items_per_batch"]
+    from .reflections import context as reflection_context
+    from .capture import pending as captured_pending
+    processed = progress.get("wiki_local_material", [])
+    from .reviews import context as review_context
+    local = reflection_context(root) + review_context(root) + captured_pending(root, list(set(processed) | set(progress.get("wiki_seen_source_ids", []))), max_items, remaining)
+    local = [item for item in local if item["source"] not in processed]
+    if not with_person and include_local:
+        for item in local:
+            size = len(json.dumps(item, ensure_ascii=False))
+            if len(items) >= max_items or size > remaining:
+                break
+            items.append(item)
+            seen.add(item["source"])
+            remaining -= size
+        if items:
+            counts["local_material"] = len(items)
+            updated["wiki_local_material"] = sorted(set(processed) | seen)
     for name, subscription in selected.items():
+        if items:
+            break
         if len(items) >= max_items or remaining <= 0:
             break
         if subscription.get("kind") in MAIL_KINDS:
@@ -500,6 +519,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
         if items:
             kind = subscription.get("kind", name)
             break
+    if seen:
+        updated["wiki_seen_source_ids"] = sorted(set(progress.get("wiki_seen_source_ids", [])) | seen)
     record = {"id": "run_" + uuid.uuid4().hex, "started_at": now().isoformat(),
               "model": config["model"], "sources": list(selected), "items": len(items),
               "runner_attempts": 0, "outcome": "no_change", "usage": None, "changed": [], "refused": 0,
@@ -551,6 +572,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
                 usage[key] = usage.get(key, 0) + value
         else:
             result = {"changed": [], "report": NOTHING}
+        from .reviews import ingest
+        ingest(root, result.get("review_candidates", []))
         record.update(outcome="completed", usage=usage or None, changed=result.get("changed", []),
                       refused=result.get("refused", 0), refusals=result.get("refusals", []),
                       report=result.get("report", ""))
