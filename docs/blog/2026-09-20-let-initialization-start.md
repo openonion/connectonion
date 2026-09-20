@@ -8,4 +8,6 @@ The revised default discovers connected mailboxes and maps their correspondent m
 
 We kept a distinction that matters when this runs unattended: disconnected is different from failed. A connected or explicitly selected mailbox that fails still produces a partial-failure result, with completed maps preserved. Otherwise a network failure could look like a successful search that found no people.
 
-The regression suite checks that neither startup path calls the confirmation function, that disconnected mail is not read, and that setup commands preserve notebook paths containing spaces and apostrophes. All 243 Wiki unit tests and 10,794 offline tests passed. Those checks establish the command contract; they do not establish that a user's remote mailbox is reachable.
+While checking the new flow, we found another small trap: a setup tip could send someone back to the default notebook instead of the one they had just initialized. Carrying the selected directory into the suggested command makes the tip a continuation of their work. It should not quietly begin a different task.
+
+The feedback changed where setup belongs. The map can already provide value before every source is available. Showing that partial result first gives the person a reason to connect another source, and the remaining setup becomes a next step rather than an entrance exam. The command still has to tell the truth about what it could not read. Starting promptly and reporting incomplete evidence are compatible choices.
