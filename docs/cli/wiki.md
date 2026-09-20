@@ -8,8 +8,10 @@ current CI blockers and remaining work.
 
 ## Installed-skill skeletons at initialization
 
-`co wiki init` first creates the installed-skill map without an LLM, then runs
-the initialization Skill for people/projects and the owner's investigation.
+`co wiki init` deterministically builds People, Projects and Skills pages from
+their canonical templates and available source metadata before any model
+investigation. Unknown fields remain explicit; investigation is a separate step.
+See the [initialization interaction contract](wiki-init-contract.md).
 The map can also be run independently:
 
 ```bash
