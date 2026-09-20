@@ -100,20 +100,40 @@ def test_reader_groups_installations_without_discarding_notes(tmp_path):
     assert before == {p: nb.read(p) for p in nb.list()}
 
 
-def test_init_mail_is_explicit_metadata_only(tmp_path, monkeypatch):
+def test_init_uses_connected_mail_without_prompts(tmp_path, monkeypatch):
     import connectonion.wiki.service as service
     import connectonion.wiki.map as mapping
     monkeypatch.setattr(service, 'mail_available', lambda kind: True)
+    monkeypatch.setattr('typer.confirm', lambda *a, **kw: pytest.fail('init must not prompt'))
     calls = []
     monkeypatch.setattr(service, 'mail_client', lambda kind: calls.append(kind) or object())
     monkeypatch.setattr(mapping, 'build_map', lambda root, sources, clients, **kw: {'mail_sources': sorted(clients)})
     runner = CliRunner()
     plain = runner.invoke(app, ['wiki', '--root', str(tmp_path), 'init'])
     assert plain.exit_code == 0, plain.output
-    assert 'people_setup' in plain.output and not calls
+    assert calls == ['gmail', 'outlook']
+    assert 'people_setup' not in plain.output
+    calls.clear()
     selected = runner.invoke(app, ['wiki', '--root', str(tmp_path), 'init', '--mail', 'outlook'])
     assert selected.exit_code == 0, selected.output
     assert calls == ['outlook']
     assert not service.subscriptions(tmp_path)['outlook']['enabled']
     invalid = runner.invoke(app, ['wiki', '--root', str(tmp_path), 'init', '--mail', 'invalid'])
     assert invalid.exit_code == 1
+
+
+def test_init_disconnected_mail_shows_auth_tips_after_mapping(tmp_path, monkeypatch):
+    import connectonion.wiki.service as service
+    import connectonion.wiki.map as mapping
+    monkeypatch.setattr(service, 'mail_available', lambda kind: False)
+    monkeypatch.setattr('typer.confirm', lambda *a, **kw: pytest.fail('init must not prompt'))
+    monkeypatch.setattr(service, 'mail_client', lambda kind: pytest.fail('disconnected mailbox read'))
+    mapped = []
+    monkeypatch.setattr(mapping, 'build_map', lambda root, sources, clients, **kw: mapped.append(root) or {'created': []})
+    result = CliRunner().invoke(app, ['wiki', '--root', str(tmp_path), '--json', 'init'])
+    assert result.exit_code == 0, result.output
+    assert mapped
+    assert 'co auth google' in result.output
+    assert 'co auth microsoft' in result.output
+    assert str(tmp_path) in result.output
+    assert not service.subscriptions(tmp_path)['gmail']['enabled']

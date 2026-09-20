@@ -28,12 +28,12 @@ def test_selected_mail_failures_report_partial_and_preserve_maps(tmp_path):
 
 def test_setup_commands_keep_custom_root(tmp_path):
     root=tmp_path/"someone's notes"
-    with patch('connectonion.wiki.map.build_map',return_value={}):
+    with patch('connectonion.wiki.map.build_map',return_value={}), patch('connectonion.wiki.service.mail_available', return_value=False):
         result=CliRunner().invoke(app,['wiki','--root',str(root),'--json','init'])
     import shlex
-    text=json.loads(result.stdout)['data']['people_setup']
-    command=text.split('Run ',1)[1].split(' (or ',1)[0]
-    assert shlex.split(command)==['co','wiki','--root',str(root),'init','--mail','outlook']
+    text=json.loads(result.stdout)['data']['tips'][0]
+    command=text.split('then run ',1)[1].removesuffix('.')
+    assert shlex.split(command)==['co','wiki','--root',str(root),'init']
 
 
 def test_equivalent_remotes_and_metadata_refresh_preserve_prose(tmp_path):
