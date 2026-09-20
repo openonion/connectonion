@@ -80,3 +80,40 @@ def test_cli_map_and_init_seed_skills_before_model_stage(tmp_path, monkeypatch):
     monkeypatch.setattr(stage_runner, "run_stage", run_stage)
     result = runner.invoke(app, ["wiki", "--root", str(fresh), "init"])
     assert result.exit_code == 0, result.output
+
+
+def test_reader_groups_installations_without_discarding_notes(tmp_path):
+    from connectonion.wiki.reader import snapshot
+    source = tmp_path / 'installed'
+    skill(source, 'one')
+    skill(source, 'two', description='A different implementation')
+    nb = Notebook(tmp_path / 'wiki')
+    result = map_skills(nb, [source])
+    nb.write(result['created'][1], nb.read(result['created'][1]) + '\nKeep my notes.\n')
+    before = {p: nb.read(p) for p in nb.list()}
+    data = snapshot(nb.root)
+    copies = [r for r in data['records'] if r.get('installation')]
+    assert len(copies) == 2
+    primary = next(r for r in copies if not r.get('catalog_parent'))
+    assert len(primary['installations']) == 2
+    assert any('Keep my notes.' in r['text'] for r in copies)
+    assert before == {p: nb.read(p) for p in nb.list()}
+
+
+def test_init_mail_is_explicit_metadata_only(tmp_path, monkeypatch):
+    import connectonion.wiki.service as service
+    import connectonion.wiki.map as mapping
+    monkeypatch.setattr(service, 'mail_available', lambda kind: True)
+    calls = []
+    monkeypatch.setattr(service, 'mail_client', lambda kind: calls.append(kind) or object())
+    monkeypatch.setattr(mapping, 'build_map', lambda root, sources, clients, **kw: {'mail_sources': sorted(clients)})
+    runner = CliRunner()
+    plain = runner.invoke(app, ['wiki', '--root', str(tmp_path), 'init'])
+    assert plain.exit_code == 0, plain.output
+    assert 'people_setup' in plain.output and not calls
+    selected = runner.invoke(app, ['wiki', '--root', str(tmp_path), 'init', '--mail', 'outlook'])
+    assert selected.exit_code == 0, selected.output
+    assert calls == ['outlook']
+    assert not service.subscriptions(tmp_path)['outlook']['enabled']
+    invalid = runner.invoke(app, ['wiki', '--root', str(tmp_path), 'init', '--mail', 'invalid'])
+    assert invalid.exit_code == 1

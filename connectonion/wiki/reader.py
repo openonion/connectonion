@@ -9,6 +9,7 @@ served site later would hand it the same object over HTTP instead.
 import hashlib
 import json
 import os
+import re
 import tempfile
 import webbrowser
 from datetime import datetime, timezone
@@ -38,6 +39,18 @@ def snapshot(root: Path) -> dict:
         records.append({"path": record, "category": record.split("/")[0],
                         "title": _title(record, text), "text": text,
                         "updated": updated.isoformat(timespec="seconds")})
+    groups = {}
+    for record in records:
+        if record["path"].startswith("skills/catalog/") and record["path"] != "skills/catalog/index.md":
+            source = re.search(r"^- File: (.+)$", record["text"], re.MULTILINE)
+            if source:
+                record["installation"] = source.group(1)
+                groups.setdefault(record["title"].casefold(), []).append(record)
+    for group in groups.values():
+        first = group[0]
+        first["installations"] = [{"path": r["path"], "source": r["installation"]} for r in group]
+        for other in group[1:]:
+            other["catalog_parent"] = first["path"]
     return {"as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "categories": list(CATEGORIES), "records": records,
             "status": status(root), "subscriptions": subscriptions(root),

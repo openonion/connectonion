@@ -60,19 +60,34 @@ def make_wiki_app(factory):
     def init_wiki(ctx: typer.Context,
                   days: int = typer.Option(150, "--days", min=1),
                   skills_dir: List[Path] = typer.Option([], "--skills-dir"),
-                  mine: List[str] = typer.Option([], "--mine")):
+                  mine: List[str] = typer.Option([], "--mine"),
+                  mail: List[str] = typer.Option([], "--mail", help="Mail metadata to map: gmail or outlook (repeatable); no background schedule")):
         """Build people, project and skill maps deterministically; no model or investigation."""
         from ...wiki.config import prepare
         from ...wiki.map import build_map
         from ...wiki.service import mail_client, subscriptions
+        import sys
 
         def run(root):
             prepare(root)
             sources = subscriptions(root)
-            clients = {sub["kind"]: mail_client(sub["kind"]) for sub in sources.values()
-                       if sub.get("kind") in ("gmail", "outlook") and sub.get("enabled")}
-            return build_map(root, sources, clients, days=days,
-                             skill_directories=skills_dir or None, mine=mine), ["unfinished"]
+            from ...wiki.files import WikiError
+            selected = set(mail)
+            if selected - {"gmail", "outlook"}:
+                raise WikiError("--mail must be gmail or outlook")
+            selected.update(sub["kind"] for sub in sources.values()
+                            if sub.get("kind") in ("gmail", "outlook") and sub.get("enabled"))
+            if not selected and sys.stdin.isatty():
+                for kind in ("gmail", "outlook"):
+                    if sources[kind].get("adapter") == "available" and typer.confirm(
+                            f"Read {kind} correspondent metadata from the last {days} days to build People?"):
+                        selected.add(kind)
+            clients = {kind: mail_client(kind) for kind in sorted(selected)}
+            result = build_map(root, sources, clients, days=days,
+                               skill_directories=skills_dir or None, mine=mine)
+            if not selected:
+                result["people_setup"] = "People needs a mail source. Run co wiki init --mail outlook or --mail gmail; this reads metadata only and does not enable background jobs."
+            return result, ["unfinished"]
         _handle(ctx, run, ["subscriptions"])
 
     @wiki.command("map-skills")

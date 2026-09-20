@@ -102,6 +102,16 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None) -> 
     return sorted(out, key=lambda p: (-p["mails"], p["address"]))
 
 
+def project_exclusion(path: Path) -> str:
+    """Ignore execution sandboxes, not legitimate projects sharing a display name."""
+    normalized = str(path.resolve())
+    if normalized.startswith(("/private/tmp/", "/tmp/", "/private/var/folders/", "/var/folders/")):
+        return "temporary execution directory"
+    if not path.is_dir() and "/.codex/worktrees/" in normalized:
+        return "removed Codex worktree"
+    return ""
+
+
 def scan_projects(subscriptions: dict, days: int) -> list[dict]:
     """Every `cwd` a coding session ran in, with how often and how recently."""
     since = datetime.now(timezone.utc) - timedelta(days=days)
@@ -123,7 +133,7 @@ def scan_projects(subscriptions: dict, days: int) -> list[dict]:
             cwd = (meta or {}).get("cwd") or ""
             if sub.get("project") and cwd != sub["project"]:
                 continue
-            if not cwd or meta.get("skip"):
+            if not cwd or meta.get("skip") or project_exclusion(Path(cwd)):
                 continue
             entry = projects[cwd]
             entry["sessions"] += 1
