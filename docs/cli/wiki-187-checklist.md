@@ -76,6 +76,9 @@ See [initialization contract](wiki-init-contract.md). This map does not claim ve
 organization membership or complete mailbox-provider classification.
 
 Organization-init verification: `PYTHONPATH="$PWD" python -m pytest
-tests/unit/test_wiki* tests/e2e/cli/test_wiki* -q` — 280 passed, 10 opt-in
+tests/unit/test_wiki* tests/e2e/cli/test_wiki* -q` — 281 passed, 10 opt-in
 browser skips. `python -m build --wheel --no-isolation` and `git diff --check`
 passed. No model call, real-mail acceptance or release is claimed for this change.
+
+The organization map is a post-`v1.8.7b3` PR change; the existing b3 tag is unchanged.
+The count above includes the merged prompt-free initialization changes.
