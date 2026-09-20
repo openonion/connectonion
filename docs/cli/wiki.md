@@ -8,7 +8,7 @@ current CI blockers and remaining work.
 
 ## Installed-skill skeletons at initialization
 
-`co wiki init` deterministically builds People, Projects and Skills pages from
+`co wiki init` deterministically builds People, Organizations, Projects and Skills pages from
 their canonical templates and available source metadata before any model
 investigation. Unknown fields remain explicit; investigation is a separate step.
 See the [initialization interaction contract](wiki-init-contract.md).

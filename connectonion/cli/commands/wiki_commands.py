@@ -148,7 +148,7 @@ def make_wiki_app(factory):
                   skills_dir: List[Path] = typer.Option([], "--skills-dir"),
                   mine: List[str] = typer.Option([], "--mine"),
                   mail: List[str] = typer.Option([], "--mail", help="Mail metadata to map: gmail or outlook (repeatable); no background schedule")):
-        """Build people, project and skill maps deterministically; no model or investigation."""
+        """Build people, organization, project and skill maps; no model or investigation."""
         from ...wiki.config import prepare
         from ...wiki.map import build_map
         from ...wiki.service import mail_client, subscriptions

@@ -60,3 +60,22 @@ suite limits: [consolidated acceptance](../testing/wiki-187-integration.md).
 
 Evidence and limitations: [comparison](../testing/artifacts/wiki187-next/README.md),
 [protocol](../testing/wiki-quality-protocol.md). This does not authorize release.
+
+## Organization map at initialization
+
+- [x] First-stage init builds organization candidates from exact correspondent domains,
+  including single contacts and notice-only domains, without model calls.
+- [x] Known public mailbox domains excluded; candidate identity and employment remain
+  unverified; no inferred company names or subdomain/domain merges.
+- [x] Canonical org pages link to People; matching existing org pages and user edits
+  remain intact. `notes/orgs-map.md` and `.state/map.json` retain the observed map.
+- [x] Regression cases cover domain grouping, public mailboxes, invalid addresses,
+  single contacts, notice-only subdomains, existing pages and repeat initialization.
+
+See [initialization contract](wiki-init-contract.md). This map does not claim verified
+organization membership or complete mailbox-provider classification.
+
+Organization-init verification: `PYTHONPATH="$PWD" python -m pytest
+tests/unit/test_wiki* tests/e2e/cli/test_wiki* -q` — 280 passed, 10 opt-in
+browser skips. `python -m build --wheel --no-isolation` and `git diff --check`
+passed. No model call, real-mail acceptance or release is claimed for this change.

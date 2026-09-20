@@ -9,6 +9,7 @@ from pathlib import Path
 from .files import Notebook, atomic_write
 from .scan import scan_people, scan_projects, canonical_origin, AUTOMATED_HINT
 from .skill_map import map_skills
+from .org_map import map_orgs
 
 
 def _record(category: str, name: str, identity: str) -> str:
@@ -52,7 +53,7 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
     """Map observed identities; correspondent classification remains unassessed."""
     notebook = Notebook(root)
     report = {'phase': 'mapping', 'started': datetime.now(timezone.utc).isoformat(),
-              'days': days, 'coverage': [], 'people': [], 'projects': [], 'created': [],
+              'days': days, 'coverage': [], 'people': [], 'projects': [], 'orgs': [], 'created': [],
               'errors': list(source_errors or []), 'automated_correspondents': []}
     state = root / '.state' / 'map.json'
     state.parent.mkdir(parents=True, exist_ok=True)
@@ -93,6 +94,11 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
             notebook.write(record, page)
             report['created'].append(record)
     report['coverage'] += [f'{kind}: not configured or disabled; not searched' for kind in ('gmail', 'outlook') if kind not in clients]
+    report['orgs'], created_orgs = map_orgs(notebook, report['people'], report['started'], days, _record)
+    report['created'] += created_orgs
+    report['coverage'].append('Organizations: exact observed mail domains, including single contacts and notices; '
+                              'known public mailbox domains excluded; mailbox-provider list is not exhaustive; '
+                              'organization identity unverified; existing organization pages preserved')
     save()
     groups = {}
     for row in scan_projects(subscriptions, days):
@@ -132,7 +138,7 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
     report.update(phase='partial' if report['errors'] else 'mapped', finished=datetime.now(timezone.utc).isoformat(),
                   investigation='not started', classification='unassessed; no correspondents filtered')
     save()
-    for category in ('people', 'projects'):
+    for category in ('people', 'projects', 'orgs'):
         lines = [f'# {category.capitalize()} map', '', 'Generated enumeration; not an investigation or importance ranking.', '']
         lines += [f'- [{Path(row["record"]).stem}](../{row["record"]})' for row in report[category]]
         notebook.write(f'notes/{category}-map.md', '\n'.join(lines) + '\n')

@@ -71,3 +71,52 @@ def test_map_creates_owner_from_verified_account_aliases(tmp_path):
     assert 'owner@example.org' in Notebook(tmp_path).read(owner)
     assert 'not investigated yet' in Notebook(tmp_path).read(owner)
     assert build_map(tmp_path, {}, {'gmail': Mail()}, skill_directories=[skills])['owner']['record'] == owner
+
+
+def test_init_maps_domain_candidates_without_claiming_employment(tmp_path, monkeypatch):
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    people = [{'name': address, 'address': address, 'mails': 1} for address in (
+        'a@EXAMPLE.org', 'b@example.org', 'solo@school.edu.au',
+        'noreply@notices.example.org', 'personal@gmail.com', 'invalid-address')]
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: (people, set()))
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    orgs = {row['domain']: row for row in result['orgs']}
+    assert set(orgs) == {'example.org', 'school.edu.au', 'notices.example.org'}
+    assert len(orgs['example.org']['people']) == 2
+    nb = Notebook(tmp_path)
+    for row in orgs.values():
+        page = nb.read(row['record'])
+        assert 'Domain candidate; organization identity unverified' in page
+        assert 'not evidence of employment' in page
+        assert 'not investigated yet' in page and '.state/map.json' in page
+        for person in row['people']:
+            assert f'../{person}' in page
+            assert nb.path(person).is_file()
+        assert row['record'] in result['created']
+    assert 'mailbox-provider list is not exhaustive' in ' '.join(result['coverage'])
+    assert nb.path('notes/orgs-map.md').is_file()
+    record = orgs['example.org']['record']
+    curated = nb.read(record).replace('not investigated yet', 'reviewed by user') + '\nUser correction.\n'
+    nb.write(record, curated)
+    repeated = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    assert nb.read(record) == curated
+    assert not repeated['created']
+
+
+def test_init_reuses_existing_org_with_matching_domain(tmp_path, monkeypatch):
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    nb = Notebook(tmp_path)
+    nb.stub_org('orgs/existing.md', 'Known organization', ['EXAMPLE.ORG'])
+    old = nb.read('orgs/existing.md')
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: (
+        [{'name': 'Person', 'address': 'person@example.org', 'mails': 1}], set()))
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    assert result['orgs'][0]['record'] == 'orgs/existing.md'
+    assert nb.list('orgs') == ['orgs/existing.md']
+    assert nb.read('orgs/existing.md') == old
