@@ -353,7 +353,11 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.6
+## Current Version: 1.8.7b1
+
+- 1.8.7b1 (Wiki beta preview: partial source failures, refreshed map metadata, consistent skill search, remote identity normalization, automated correspondent labels and accurate reader/doctor states; offline and Chrome acceptance passed)
+
+- 1.8.7a3 (Wiki initialization preview: explicit People metadata selection, grouped skill installations, temporary project exclusion; local acceptance recorded in PR #1613)
 
 ### Version History
 - 1.8.6 (**stable: WhatsApp as an inbox, with an undo.** A linked device sees

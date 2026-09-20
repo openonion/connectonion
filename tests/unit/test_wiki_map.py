@@ -22,7 +22,7 @@ def test_map_groups_project_worktrees_preserves_pages_and_keeps_noise(tmp_path, 
     nb = Notebook(tmp_path)
     assert first['projects'][0]['sessions'] == 4
     assert '/worktree/atlas' in nb.read(record)
-    assert first['people'][0]['classification'] == 'unassessed'
+    assert first['people'][0]['classification'] == 'automated candidate'
     nb.write(record, nb.read(record).replace('## What it is\n', '## What it is\nCurated purpose.\n'))
     second = build_map(tmp_path, {}, {}, skill_directories=[skills])
     assert not second['created']
@@ -52,7 +52,7 @@ def test_unavailable_mail_does_not_stop_other_maps(tmp_path):
         def my_addresses(self):
             raise RuntimeError('private provider detail')
     result = build_map(tmp_path, {}, {'gmail': Unavailable()}, skill_directories=[skills])
-    assert result['phase'] == 'mapped'
+    assert result['phase'] == 'partial'
     assert 'gmail: unavailable (RuntimeError); not searched' in result['coverage']
     assert 'private provider detail' not in str(result)
 

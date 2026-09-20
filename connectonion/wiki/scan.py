@@ -102,6 +102,35 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None) -> 
     return sorted(out, key=lambda p: (-p["mails"], p["address"]))
 
 
+def canonical_origin(origin: str) -> str:
+    """Normalize transport spelling, retaining case-sensitive repository paths."""
+    from urllib.parse import urlsplit
+    if not origin:
+        return ""
+    if "://" in origin:
+        parts = urlsplit(origin)
+        if parts.hostname and parts.scheme in ("http", "https", "ssh", "git"):
+            host = parts.hostname.lower()
+            port = parts.port
+            if port and port not in ({"https": 443, "http": 80, "ssh": 22, "git": 9418}[parts.scheme],):
+                host += f":{port}"
+            return host + "/" + parts.path.strip("/").removesuffix(".git")
+    match = re.fullmatch(r"(?:[^/@:]+@)?([^/:]+):(.+)", origin)
+    if match:
+        return match[1].lower() + "/" + match[2].strip("/").removesuffix(".git")
+    return origin
+
+
+def project_exclusion(path: Path) -> str:
+    """Ignore execution sandboxes, not legitimate projects sharing a display name."""
+    normalized = str(path.resolve())
+    if normalized.startswith(("/private/tmp/", "/tmp/", "/private/var/folders/", "/var/folders/")):
+        return "temporary execution directory"
+    if not path.is_dir() and "/.codex/worktrees/" in normalized:
+        return "removed Codex worktree"
+    return ""
+
+
 def scan_projects(subscriptions: dict, days: int) -> list[dict]:
     """Every `cwd` a coding session ran in, with how often and how recently."""
     since = datetime.now(timezone.utc) - timedelta(days=days)
@@ -123,7 +152,7 @@ def scan_projects(subscriptions: dict, days: int) -> list[dict]:
             cwd = (meta or {}).get("cwd") or ""
             if sub.get("project") and cwd != sub["project"]:
                 continue
-            if not cwd or meta.get("skip"):
+            if not cwd or meta.get("skip") or project_exclusion(Path(cwd)):
                 continue
             entry = projects[cwd]
             entry["sessions"] += 1

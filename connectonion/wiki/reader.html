@@ -214,7 +214,9 @@ const CATEGORY_ASK = { people: "who is this, and where did we leave off?", proje
   agenda: "promises, waiting on others, dates that matter", notes: "everything durable that fits nowhere else" };
 function label(c) { return CATEGORY_LABEL[c] || c; }
 function byPath(path) { return WIKI.records.find(r => r.path === path); }
-function inCategory(category) { return WIKI.records.filter(r => r.category === category); }
+function listedRecords() { return WIKI.records.filter(r => !r.catalog_parent && r.path !== "skills/catalog/index.md"); }
+function inCategory(category) { return listedRecords().filter(r => r.category === category); }
+function initCommand() { return "co wiki --root '" + String(WIKI.root).replace(/'/g, "'\\''") + "' init --mail outlook"; }
 function fmtDate(iso) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -393,7 +395,7 @@ function renderRail(active) {
   const nav = document.getElementById("nav");
   nav.textContent = "";
   nav.appendChild(el("div", { class: "label", text: "Notebook" }));
-  nav.appendChild(el("a", { href: "#", class: active === null ? "active" : "" }, [el("span", { text: "Contents" }), el("span", { class: "n", text: String(WIKI.records.length) })]));
+  nav.appendChild(el("a", { href: "#", class: active === null ? "active" : "" }, [el("span", { text: "Contents" }), el("span", { class: "n", text: String(listedRecords().length) })]));
   for (const c of WIKI.categories) {
     const n = inCategory(c).length;
     nav.appendChild(el("a", { href: "#c=" + c, class: active === c ? "active" : "" },
@@ -413,9 +415,9 @@ function overview() {
   main.textContent = "";
   main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "Contents" }), el("span", { class: "sep", text: "·" }), el("span", { class: "when", text: fmtDate(WIKI.as_of) })]));
   main.appendChild(el("h1", { text: "What your assistant knows" }));
-  const n = WIKI.records.length;
+  const n = listedRecords().length;
   main.appendChild(el("p", { class: "lede", text: n === 0 ? "Nothing written yet. The first maintenance pass fills this in." :
-    n + (n === 1 ? " page" : " pages") + " your assistant wrote and keeps current, from the sessions and mail you authorized. Every page names its sources." }));
+    n + (n === 1 ? " page" : " pages") + " in this snapshot. Some are mapped skeletons; check each page for investigation status and sources." }));
   for (const c of WIKI.categories) {
     const items = inCategory(c);
     if (!items.length) continue;
@@ -468,7 +470,7 @@ function category(c) {
   main.appendChild(el("h1", { text: label(c) }));
   main.appendChild(el("p", { class: "lede", text: (CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase()) }));
   const items = inCategory(c);
-  if (!items.length) { main.appendChild(el("div", { class: "empty", text: "Nothing here yet. An empty category is not an error; the notebook fills what the sources support." })); return; }
+  if (!items.length) { main.appendChild(el("div", { class: "empty", text: c === "people" ? "No people mapped yet. Run " + initCommand() + " (or select gmail) to read correspondent metadata. No background schedule is started." : "Nothing here yet. The notebook fills what the sources support." })); return; }
   const ul = el("ul", { class: "hits" });
   for (const r of items) {
     const text = splitTrailers(r.text).body.replace(/^#[^\n]*\n?/, "");
@@ -477,6 +479,7 @@ function category(c) {
       el("div", { class: "hit", text: lead.length > 220 ? lead.slice(0, 217) + "…" : lead })]);
     const open = /\n##\s*(?:Open|Where we left off|待办|未决)[^\n]*\n+([^\n#]+)/i.exec(text);
     if (open) li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: "Open · " }), open[1].trim()]));
+    if (r.installations && r.installations.length > 1) li.appendChild(el("div", { class: "hit", text: r.installations.length + " installed copies — open to compare sources" }));
     ul.appendChild(li);
   }
   main.appendChild(ul);
@@ -490,6 +493,12 @@ function record(path, heading) {
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#c=" + r.category, text: label(r.category) }),
     el("span", { class: "sep", text: "·" }), el("span", { class: "when", text: "updated " + fmtDate(r.updated) })]));
   main.appendChild(el("h1", { text: r.title }));
+  const catalog = r.catalog_parent ? byPath(r.catalog_parent) : r;
+  if (catalog.installations && catalog.installations.length > 1) {
+    const copies = el("details", {}, [el("summary", { text: catalog.installations.length + " installed copies (may differ)" })]);
+    for (const copy of catalog.installations) copies.appendChild(el("p", {}, [el("a", { href: "#r=" + encodeURIComponent(copy.path), text: copy.source })]));
+    main.appendChild(copies);
+  }
   let body = parts.body.replace(/^#[^\n]*\n?/, "");
   const contacts = r.category === "people" ? [...new Set((r.text.match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) || []))] : [];
   if (r.category === "people") {
@@ -557,11 +566,19 @@ function search(q) {
   main.textContent = "";
   const needle = q.toLowerCase();
   const hits = [];
+  const grouped = new Map();
   const plain = l => l.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*`>]/g, "");
   for (const r of WIKI.records) {
+    if (r.path === "skills/catalog/index.md") continue;
     const lines = splitTrailers(r.text).body.split("\n").map(plain)
       .filter(l => l.toLowerCase().includes(needle)).slice(0, 3);
-    if (lines.length || r.title.toLowerCase().includes(needle)) hits.push({ r, lines });
+    if (lines.length || r.title.toLowerCase().includes(needle)) {
+      const primary = r.catalog_parent ? byPath(r.catalog_parent) : r;
+      if (!grouped.has(primary.path)) { const hit = { r: primary, lines: [] }; grouped.set(primary.path, hit); hits.push(hit); }
+      const hit = grouped.get(primary.path);
+      hit.lines.push(...lines);
+      hit.lines = [...new Set(hit.lines)].slice(0, 3);
+    }
   }
   main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "Search" })]));
   main.appendChild(el("h1", { text: "“" + q + "”" }));
