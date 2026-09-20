@@ -353,7 +353,9 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.7a1
+## Current Version: 1.8.7a2
+
+- 1.8.7a2 (local preview: exclude temporary execution directories and removed Codex worktrees from project discovery)
 
 - 1.8.7a1 (local Wiki preview: deterministic maps, investigation candidates, skill run evidence, and HTML reader; not published to PyPI; full-suite release validation remains incomplete)
 

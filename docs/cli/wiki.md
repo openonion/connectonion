@@ -237,3 +237,5 @@ reversible text chunks so line-limited tools can read all of it.
 The requirement-to-code/test checklist and remaining decisions are in
 [wiki-187-checklist.md](wiki-187-checklist.md). This update supersedes earlier
 references to init launching a model or investigating the owner in the same run.
+
+Project discovery excludes system temporary directories and removed Codex worktrees. Same-named projects are not merged without repository identity evidence. Existing authored pages are preserved.

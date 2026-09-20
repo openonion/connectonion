@@ -71,3 +71,19 @@ def test_map_creates_owner_from_verified_account_aliases(tmp_path):
     assert 'owner@example.org' in Notebook(tmp_path).read(owner)
     assert 'not investigated yet' in Notebook(tmp_path).read(owner)
     assert build_map(tmp_path, {}, {'gmail': Mail()}, skill_directories=[skills])['owner']['record'] == owner
+
+
+def test_project_scan_excludes_sandboxes_and_removed_worktrees(tmp_path):
+    import json
+    from connectonion.wiki.scan import scan_projects
+    sessions = tmp_path / 'sessions'
+    sessions.mkdir()
+    paths = ['/private/tmp/wiki187/notebook', '/tmp/co-wiki-extract-demo',
+             '/private/var/folders/xx/session/T/pytest-123/wiki',
+             '/Users/fictional/.codex/worktrees/1234/browser',
+             '/projects/team-a/browser', '/projects/team-b/browser']
+    for i, cwd in enumerate(paths):
+        (sessions / f'rollout-{i}.jsonl').write_text(json.dumps({
+            'type': 'session_meta', 'payload': {'id': str(i), 'cwd': cwd}}) + '\n')
+    rows = scan_projects({'local': {'kind': 'codex', 'root': str(sessions)}}, 1)
+    assert {r['path'] for r in rows} == set(paths[-2:])
