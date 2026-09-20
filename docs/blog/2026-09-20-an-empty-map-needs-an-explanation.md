@@ -1,13 +1,13 @@
 # An empty map needs an explanation
 
-The first Wiki preview opened with hundreds of skills and no people. The user had connected mail, but Wiki subscriptions defaulted to disabled. Initialization quietly respected that setting and then presented an empty directory as if there were nobody to discover.
+The user ran Wiki initialization, opened the reader, and found no people. They had already connected their mailbox. From their side, the work was done: there was an account, a command, and a page that ought to show the result.
 
-A silent success was the wrong interface. Initialization now offers connected mailboxes in a terminal and accepts explicit metadata-only selection in scripts. It explains the missing input without enabling background collection. A live 30-day Outlook check produced 158 mapped entries; those are correspondent skeletons, not completed biographies.
+The command had returned successfully. Inside the program, that meant the selected sources had been processed. Mail was disabled by default, so there was no selected mailbox to process. The program had respected a boundary the page never explained.
 
-The crowded skill directory had the opposite problem. It counted each installation path as something new. Keeping those paths is necessary: two copies may differ, and either can carry notes. Presenting every copy as an indistinguishable row is not necessary. The reader groups by name while preserving links to every source page. It does not pretend that matching names prove matching implementations.
+Our first correction made that boundary visible. Initialization would offer a connected mailbox, and a script could select one explicitly. A live run over thirty days of Outlook metadata produced 158 entries. We could have stopped there: the empty page had filled up.
 
-The regression checks preserve both boundaries: an unselected mailbox stays unread, and grouping copies cannot discard annotations. A map must explain what it has not seen as clearly as it presents what it has.
+Then we made the mailbox fail. The people list was empty again, but the command still returned success. The report contained an unavailable-source message farther down; its headline said the map was complete. We had repaired the happy path while leaving the original ambiguity intact. A person could not tell whether nobody had been found, nobody had been searched for, or the search had failed.
 
-The second audit found that making a map visible was not enough. A failed mailbox still returned success, and running initialization twice left the first run's counts on the page. The fix now separates a partial map from a successful one and refreshes generated observations without replacing the person's written explanation. Search follows the same grouping rules as navigation. Repeated mapping no longer makes unchanged notes look newly edited.
+That changed what we considered the result of initialization. A map is accompanied by an account of its coverage. If a selected mailbox cannot be read, initialization now reports a partial failure and keeps whatever other maps it completed. If no mailbox was selected, it explains the choice and gives a command that targets the same notebook. Neither condition earns a claim that the requested work is complete.
 
-The complete offline suite passed 10,756 tests; the nine opt-in Chrome reader checks passed separately. Those results establish the offline flows, not the truth of model-generated investigations or the availability of every external mailbox.
+The remaining limit matters too: a mapped correspondent is not an investigated person. Finding an address tells us where to begin. The lesson from the empty page was to make those boundaries visible before making the page look reassuring.
