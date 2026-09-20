@@ -274,3 +274,14 @@ def test_compact_context_is_used_only_when_lossless_current_and_smaller(root):
     reflections.compress(root, 'projects/a.md')
     reflections.add(root, 'projects/a.md', 'Later', author='agent', basis='New evidence')
     assert len(reflections.context(root, 'projects/a.md')) == 16
+
+
+def test_regenerated_summary_has_a_new_queue_identity(root):
+    for n in range(15):
+        reflections.add(root, 'projects/a.md', str(n), author='user', basis='Observed')
+    reflections.compress(root, 'projects/a.md')
+    before = reflections.context(root)[0]['source']
+    reflections.add(root, 'projects/a.md', 'New fact', author='user', basis='New evidence')
+    reflections.compress(root, 'projects/a.md')
+    after = reflections.context(root)[0]['source']
+    assert after != before

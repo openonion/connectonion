@@ -56,7 +56,8 @@ def context(root: Path, subject: str = "") -> list[dict]:
             restored = [dict(zip(fields, row)) for row in values] if valid else []
             # A stale or modified summary is never preferred over retained evidence.
             if restored == group and len(json.dumps(compact)) < len(json.dumps(raw)):
-                result.append({"role": "reflection-summary", "source": "reflection-summary:" + key,
+                revision = hashlib.sha256(json.dumps(group, sort_keys=True).encode()).hexdigest()
+                result.append({"role": "reflection-summary", "source": "reflection-summary:" + key + ":" + revision,
                                "sources": [r["source"] for r in raw], "record": name,
                                "timestamp": group[-1]["recorded_at"], "derived": True,
                                "text": json.dumps({"fields": fields, "rows": values, "derived": True,
