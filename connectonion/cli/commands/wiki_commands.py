@@ -124,11 +124,17 @@ def make_wiki_app(factory):
     @wiki.command("route")
     def route_stage(ctx: typer.Context, stage: str = typer.Argument(""),
                     runner: str = typer.Option("", "--runner"),
-                    model: str = typer.Option("", "--model")):
+                    model: str = typer.Option("", "--model"),
+                    clear: bool = typer.Option(False, "--clear")):
         """Inspect or explicitly choose a stage model; enables planned investigation."""
-        from ...wiki.inquiry import routing, set_route
-        _handle(ctx, lambda root: (set_route(root, stage, runner, model) if stage else routing(root),
-                                  ["route"]), ["route"])
+        from ...wiki.inquiry import routing, set_route, clear_route
+        def operation(root):
+            from ...wiki.files import WikiError
+            if clear and (runner or model):
+                raise WikiError("Do not combine --clear with --runner or --model")
+            value = clear_route(root, stage) if clear else set_route(root, stage, runner, model) if stage else routing(root)
+            return value, ["route"]
+        _handle(ctx, operation, ["route"])
 
     @wiki.command("status")
     def inspect_status(ctx: typer.Context):

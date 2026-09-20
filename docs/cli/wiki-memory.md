@@ -38,7 +38,9 @@ Extraction runs when material exceeds the existing input budget, using its own
 configured route. Unconfigured stages inherit the notebook's existing runner/model.
 Inspect `co wiki route` and `co wiki config` before choosing destinations: explicitly
 routing a stage to a cloud harness permits that stage to read the supplied evidence.
-There is no automatic provider escalation or retry loop.
+There is no automatic provider escalation or retry loop. Run `co wiki route --clear`
+to remove all overrides and return to single-pass investigation; `route STAGE --clear`
+removes only that stage override.
 
 Plans and findings live alongside task artifacts under `.state/tasks/`. Findings
 retain before/after judgments, source IDs, unresolved alternatives, and concise

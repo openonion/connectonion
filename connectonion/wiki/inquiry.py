@@ -118,3 +118,17 @@ def run(root: Path, directory: Path, items: list[dict], config: dict, execute) -
         last = value
     write_json(directory / 'method-review.json', {'status': 'candidate_only', **last['method_review']})
     return {'usage': total or None, 'stages': metrics}
+
+
+def clear_route(root: Path, stage: str = "") -> dict:
+    """Clear one override, or all overrides to return to single-pass investigation."""
+    if stage and stage not in STAGES:
+        raise WikiError('Unknown investigation stage')
+    with maintenance_lock(root):
+        routes = routing(root)
+        if stage:
+            routes.pop(stage, None)
+        else:
+            routes = {}
+        write_json(state_path(root, 'routing.json'), routes)
+    return routes

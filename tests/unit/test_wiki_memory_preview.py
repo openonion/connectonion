@@ -112,6 +112,7 @@ def test_cli_reflection_review_and_routing(root):
         ['propose', 'link', 'projects/a.md', 'Shared constraint?', '--related', 'projects/b.md', '--basis', 'Costs'],
         ['review'],
         ['route', 'plan', '--runner', 'coai', '--model', 'ollama/local'],
+        ['route', '--clear'],
     ]
     for args in commands:
         result = runner.invoke(app, prefix + args)
@@ -296,3 +297,12 @@ def test_generated_wiki_tasks_are_not_reimported_as_user_knowledge():
         row = {'type': 'response_item', 'timestamp': '2026-09-20T00:00:00Z',
                'payload': {'type': 'message', 'role': 'user', 'content': [{'type': 'input_text', 'text': text}]}}
         assert _codex_message(row, datetime.min.replace(tzinfo=timezone.utc)) is SKIPPED
+
+
+def test_routes_can_be_disabled_without_erasing_evidence(root):
+    inquiry.set_route(root, 'plan', 'coai', 'ollama/local')
+    inquiry.set_route(root, 'render', 'codex', 'default')
+    assert set(inquiry.clear_route(root, 'plan')) == {'render'}
+    assert inquiry.clear_route(root) == {}
+    assert not inquiry.routing(root)
+    assert Notebook(root).read('projects/a.md') == '# A\n'
