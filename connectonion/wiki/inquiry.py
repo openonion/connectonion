@@ -48,7 +48,7 @@ def validate_plan(value: dict) -> None:
             raise WikiError("Each question needs a provisional hypothesis, alternative and counterevidence criterion")
 
 
-def validate_findings(value: dict, sources: set[str]) -> None:
+def validate_findings(value: dict, sources: set[str], derived_sources=()) -> None:
     if not isinstance(value, dict) or not isinstance(value.get('findings'), list) or not value['findings']:
         raise WikiError("Investigation synthesis needs findings")
     for row in value['findings']:
@@ -59,7 +59,7 @@ def validate_findings(value: dict, sources: set[str]) -> None:
         refs = row.get('sources')
         if not isinstance(refs, list) or any(not isinstance(s, str) or s not in sources for s in refs):
             raise WikiError("Finding cites unknown sources")
-        if row['status'] != 'unresolved' and not refs:
+        if row['status'] != 'unresolved' and not set(refs).difference(derived_sources):
             raise WikiError("Resolved findings require source evidence")
     if not isinstance(value.get('method_review'), dict):
         raise WikiError("A separate method review is required")
@@ -68,7 +68,8 @@ def validate_findings(value: dict, sources: set[str]) -> None:
 def run(root: Path, directory: Path, items: list[dict], config: dict, execute) -> dict:
     """Two calls, no automatic retry or provider escalation; originals stay accessible."""
     material = directory / 'material.json'
-    known = {i['source'] for i in items if i.get('source') and i.get('role') != 'page'}
+    known = {i['source'] for i in items if i.get('source')}
+    derived = {i['source'] for i in items if i.get('source') and i.get('role') in ('page', 'coverage')}
     for item in items:
         if item.get('role') == 'original_evidence' and item.get('file'):
             originals = read_json(Path(item['file']), [])
@@ -87,6 +88,8 @@ def run(root: Path, directory: Path, items: list[dict], config: dict, execute) -
                   'Use clear revisable questions, not template completion. Facts need verification, not invented motives. '
                   'Distinguish observations from interpretations of people. Preserve conflicts and missing evidence. '
                   'Do not browse, edit accepted pages, or rewrite skills. Do not disclose hidden reasoning; record concise evidence-backed decisions. ')
+        from .reflections import POLICY
+        prompt += POLICY + " Valid source IDs: " + json.dumps(sorted(known)) + ". Existing-page citations describe prior context, not independent proof."
         if stage == 'synthesize':
             prompt += f'Read the plan at {directory / "plan.json"}. Inspect original evidence as well as summaries. '
         started = time.monotonic()
@@ -94,7 +97,7 @@ def run(root: Path, directory: Path, items: list[dict], config: dict, execute) -
         try:
             result = execute(directory, prompt, cfg, 'investigate')
             value = read_json(destination, None)
-            validate_plan(value) if stage == 'plan' else validate_findings(value, known)
+            validate_plan(value) if stage == 'plan' else validate_findings(value, known, derived)
         except Exception as error:
             metrics.append({'stage': stage, 'runner': cfg['runner'], 'model': cfg['model'],
                             'status': 'failed', 'usage': getattr(error, 'usage', None) or result.get('usage')})

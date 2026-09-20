@@ -182,3 +182,13 @@ def test_extraction_budget_refuses_before_any_model_call():
     items = [{'text': 'One', 'source': 'a'}, {'text': 'Two', 'source': 'b'}]
     with pytest.raises(WikiError, match='budget'):
         digest_in_chunks(items, cfg, lambda *a: pytest.fail('Model invoked'), max_calls=1)
+
+
+def test_prior_page_is_citable_context_but_not_independent_proof():
+    finding = {'status': 'supported', 'question': 'Q', 'before': 'Old', 'after': 'New',
+               'reason': 'New record corrects old page', 'sources': ['investigation:page', 'mail:1']}
+    value = {'findings': [finding], 'method_review': {}}
+    inquiry.validate_findings(value, {'investigation:page', 'mail:1'}, {'investigation:page'})
+    finding['sources'] = ['investigation:page']
+    with pytest.raises(WikiError):
+        inquiry.validate_findings(value, {'investigation:page', 'mail:1'}, {'investigation:page'})

@@ -57,8 +57,9 @@ def capture(root: Path, transcript: Path, kind: str, *, seconds: float = .5) -> 
 
 def pending(root: Path, processed: list[str], max_items: int, max_chars: int) -> list[dict]:
     result, used = [], 0
-    for path in sorted(state_path(root, 'capture-queue').glob('*.json')):
-        row = read_json(state_path(root, f'capture-queue/{path.name}'), {})
+    rows = [read_json(state_path(root, f'capture-queue/{path.name}'), {})
+            for path in state_path(root, 'capture-queue').glob('*.json')]
+    for row in sorted(rows, key=lambda r: (r['timestamp'], r['source'])):
         if row['source'] in processed:
             continue
         size = len(json.dumps(row, ensure_ascii=False))

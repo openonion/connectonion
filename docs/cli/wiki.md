@@ -264,3 +264,8 @@ Project discovery excludes system temporary directories and removed Codex worktr
 Initialization reports partial failure with a nonzero exit if a selected mail source cannot be initialized or read. Completed maps remain available; provider error text is not exposed. Recovery commands retain the notebook root. Automated-looking correspondents are explicitly labelled candidates, not silently certified as people.
 
 Repeated mapping refreshes generated project counts, dates and paths while preserving written notes. Skill pages retain authored descriptions and show current installed metadata in a separate managed section. Unchanged content is not rewritten. Equivalent SSH/HTTPS Git remotes share an identity; distinct case-sensitive repository paths remain distinct. Search groups skill installations just like the catalog, and the homepage labels its content as a snapshot rather than claiming every skeleton is maintained.
+
+## Reflections, review and staged investigation
+
+See [Wiki memory workflows](wiki-memory.md) for `reflect`, `review`, `capture`,
+`route` and `daily`, including provider, retention and budget limits.

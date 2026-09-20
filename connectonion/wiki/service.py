@@ -426,7 +426,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         if not isinstance(progress, dict):
             raise WikiError("Invalid source progress; preserve it for diagnosis")
         return _sync_locked(root, selected, progress, config, runner, extractor,
-                            uncapped=_uncapped, with_person=with_person)
+                            uncapped=_uncapped, with_person=with_person, include_local=not source)
 
 
 @contextmanager
@@ -454,7 +454,7 @@ def _terminate_as_interrupt():
 
 
 def _sync_locked(root, selected, progress, config, runner, extractor=None, *, uncapped=False,
-                 with_person=""):
+                 with_person="", include_local=True):
     from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
     from .runner import maintenance_instructions, run_stage
 
@@ -477,9 +477,9 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
     from .capture import pending as captured_pending
     processed = progress.get("wiki_local_material", [])
     from .reviews import context as review_context
-    local = reflection_context(root) + review_context(root) + captured_pending(root, processed, max_items, remaining)
+    local = reflection_context(root) + review_context(root) + captured_pending(root, list(set(processed) | set(progress.get("wiki_seen_source_ids", []))), max_items, remaining)
     local = [item for item in local if item["source"] not in processed]
-    if not with_person:
+    if not with_person and include_local:
         for item in local:
             size = len(json.dumps(item, ensure_ascii=False))
             if len(items) >= max_items or size > remaining:
@@ -505,7 +505,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
         if getattr(batch, "unreadable", False):
             unrecognised[name] = batch.unrecognised
         for item in batch.items:
-            if item["source"] not in seen and item["source"] not in processed:
+            if item["source"] not in seen:
                 items.append(item)
                 seen.add(item["source"])
                 counts[name] = counts.get(name, 0) + 1
@@ -520,7 +520,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
             kind = subscription.get("kind", name)
             break
     if seen:
-        updated["wiki_local_material"] = sorted(set(processed) | seen)
+        updated["wiki_seen_source_ids"] = sorted(set(progress.get("wiki_seen_source_ids", [])) | seen)
     record = {"id": "run_" + uuid.uuid4().hex, "started_at": now().isoformat(),
               "model": config["model"], "sources": list(selected), "items": len(items),
               "runner_attempts": 0, "outcome": "no_change", "usage": None, "changed": [], "refused": 0,

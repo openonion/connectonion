@@ -13,7 +13,8 @@ def records(root: Path, subject: str = "") -> list[dict]:
     directory = state_path(root, "reflections")
     result = [read_json(state_path(root, f"reflections/{p.name}"), {})
               for p in sorted(directory.glob("*.json"))]
-    return [r for r in result if not subject or r["subject"] == subject]
+    return sorted((r for r in result if not subject or r["subject"] == subject),
+                  key=lambda r: (r["recorded_at"], r["id"]))
 
 
 def add(root: Path, subject: str, statement: str, *, author: str, basis: str,
