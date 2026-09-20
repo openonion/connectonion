@@ -273,3 +273,9 @@ retained original evidence. Preserve overturned hypotheses and unresolved questi
 source-ID checks do not prove truth. Method improvements are candidates only: never
 rewrite executable skills automatically. The configured provider is the destination;
 there is no automatic escalation to a different provider when a stage fails.
+
+Do not transfer properties of the evidence container to the subject: an offline
+fixture does not imply an offline product. Do not invent dependencies or deadlines
+from adjacent facts; an unresolved review and an unknown launch date do not establish
+that launch must follow that review. Describe only the sources actually supplied or
+searched, not a standard claim that every configured source was searched.

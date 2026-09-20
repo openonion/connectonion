@@ -192,3 +192,68 @@ def test_prior_page_is_citable_context_but_not_independent_proof():
     finding['sources'] = ['investigation:page']
     with pytest.raises(WikiError):
         inquiry.validate_findings(value, {'investigation:page', 'mail:1'}, {'investigation:page'})
+
+
+def test_local_voice_never_falls_back_to_network(root, monkeypatch):
+    from connectonion.wiki.voice import transcribe
+    monkeypatch.setattr('connectonion.wiki.voice.shutil.which', lambda _: None)
+    monkeypatch.setattr('subprocess.run', lambda *a, **k: pytest.fail('Started a fallback'))
+    with pytest.raises(WikiError, match='whisper-cli'):
+        transcribe(root / 'audio.wav', root / 'model.bin')
+
+
+def test_local_voice_reads_only_successful_local_output(root, monkeypatch):
+    from connectonion.wiki.voice import transcribe
+    from types import SimpleNamespace
+    from pathlib import Path
+    audio, model = root / 'audio.wav', root / 'model.bin'
+    audio.write_bytes(b'test'); model.write_bytes(b'test')
+    monkeypatch.setattr('connectonion.wiki.voice.shutil.which', lambda _: '/local/whisper-cli')
+    def execute(argv, **kw):
+        assert argv[:3] == ['/local/whisper-cli', '-m', str(model)]
+        Path(argv[-1]).with_suffix('.txt').write_text('The budget changed.')
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr('connectonion.wiki.voice.subprocess.run', execute)
+    assert transcribe(audio, model) == 'The budget changed.'
+
+
+def test_invalid_routes_do_not_select_another_provider(root):
+    write_json(root / '.state/routing.json', {'plan': {'runner': 'unavailable', 'model': 'x'}})
+    with pytest.raises(WikiError, match='route'):
+        inquiry.stage_config(root, {'runner': 'coai', 'model': 'local'}, 'plan')
+
+
+def test_candidate_batch_is_atomic_and_bound(root):
+    candidates = [{'kind': 'question', 'subjects': ['projects/a.md'], 'question': 'Why?', 'basis': 'A decision'},
+                  {'kind': 'link', 'subjects': ['projects/a.md', 'projects/missing.md'], 'question': 'Related?', 'basis': 'A source'}]
+    with pytest.raises(WikiError):
+        reviews.ingest(root, candidates)
+    assert reviews.listing(root) == []
+    with pytest.raises(WikiError):
+        reviews.ingest(root, [candidates[0]] * 3)
+
+
+def test_capture_detects_changed_prefix(root):
+    from connectonion.wiki.capture import capture
+    path = root / 'session.jsonl'
+    path.write_text(json.dumps({'type': 'session_meta', 'payload': {'id': 'abc'}}) + '\n')
+    capture(root, path, 'codex')
+    path.write_text(path.read_text().replace('abc', 'xyz'))
+    with pytest.raises(WikiError, match='prefix changed'):
+        capture(root, path, 'codex')
+
+
+def test_inquiry_second_stage_failure_reports_both_usages(root):
+    from connectonion.wiki.runner import RunFailed
+    task = root / 'task'; task.mkdir()
+    calls = []
+    def execute(*args):
+        calls.append(1)
+        if len(calls) == 2:
+            raise RunFailed('Model unavailable', {'input_tokens': 7})
+        write_json(task / 'plan.json', {'questions': [{'question': 'Q', 'hypothesis': 'H', 'alternative': 'A', 'would_change': 'C'}]})
+        return {'usage': {'input_tokens': 11}}
+    with pytest.raises(RunFailed) as caught:
+        inquiry.run(root, task, [], {'runner': 'coai', 'model': 'local'}, execute)
+    assert caught.value.usage['input_tokens'] == 18
+    assert len(calls) == 2
