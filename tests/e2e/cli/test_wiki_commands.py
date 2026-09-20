@@ -36,7 +36,7 @@ def test_help_lists_only_implemented_commands_and_no_fake_start(tmp_path):
     for name in ("status", "config", "subscriptions", "list", "show", "search", "logs", "doctor", "init", "people", "abstract"):
         assert name in result.output
     for name in ("approve", "reject", "template"):
-        assert name not in result.output.split("Commands")[1]
+        assert not __import__("re").search(r"│\s+" + name + r"\s{2,}", result.output.split("Commands")[1])
 
 
 def test_file_listing_show_and_literal_search(tmp_path):

@@ -389,7 +389,7 @@ function sourceChips(text) {
 // ---------- views ----------
 function route() {
   const params = new URLSearchParams(location.hash.replace(/^#/, ""));
-  return { record: params.get("r"), category: params.get("c"), query: params.get("q"), heading: params.get("h") };
+  return { record: params.get("r"), category: params.get("c"), query: params.get("q"), heading: params.get("h"), reviews: params.has("reviews") };
 }
 function renderRail(active) {
   const nav = document.getElementById("nav");
@@ -401,6 +401,8 @@ function renderRail(active) {
     nav.appendChild(el("a", { href: "#c=" + c, class: active === c ? "active" : "" },
       [el("span", { text: label(c) }), el("span", { class: "n" + (n ? "" : " zero"), text: String(n) })]));
   }
+  nav.appendChild(el("a", { href: "#reviews=1", class: active === "reviews" ? "active" : "" },
+    [el("span", { text: "Questions & connections" }), el("span", { class: "n", text: String((WIKI.reviews || []).filter(r => r.status === "pending").length) })]));
   const s = WIKI.status || {};
   const foot = document.getElementById("foot");
   foot.textContent = "";
@@ -593,18 +595,46 @@ function search(q) {
   }
   main.appendChild(ul);
 }
+function reviewPage() {
+  const main = document.getElementById("main");
+  main.textContent = "";
+  main.appendChild(el("h1", { text: "Questions & connections" }));
+  main.appendChild(el("p", { text: "Evidence-linked suggestions, not established facts. This snapshot is read-only; use the terminal command to record your decision, then run co wiki open again." }));
+  const quote = value => "'" + String(value).replace(/'/g, "'\\''") + "'";
+  for (const row of WIKI.reviews || []) {
+    main.appendChild(el("h2", { text: row.question }));
+    main.appendChild(el("p", { text: row.status + " · " + row.basis }));
+    for (const path of row.subjects) main.appendChild(el("p", {}, [el("a", {href: "#r=" + encodeURIComponent(path), text: byPath(path)?.title || path})]));
+    if (row.response) main.appendChild(el("p", { text: row.author + ": " + row.response }));
+    if (row.status === "pending") {
+      const command = "co wiki --root " + quote(WIKI.root) + " review " + quote(row.id);
+      const verdicts = row.kind === "link" ? ["yes", "no"] : ["answer"];
+      for (const verdict of verdicts) {
+        const text = command + " --verdict " + verdict + " --author 'your name' --response 'your reason or answer'";
+        const button = el("button", { type: "button", text: "Copy " + verdict + " command" });
+        button.addEventListener("click", async () => {
+          try { await navigator.clipboard.writeText(text); button.textContent = "Copied — edit your name and response"; }
+          catch (_) { button.textContent = "Select and copy the command below"; }
+        });
+        main.appendChild(el("div", { class: "note" }, [button, el("pre", {}, [el("code", { text })])]));
+      }
+    }
+  }
+  if (!(WIKI.reviews || []).length) main.appendChild(el("p", { text: "No review candidates yet. No new connection is better than an invented one." }));
+}
 function render() {
   if (!WIKI) return;
-  const { record: r, category: c, query, heading } = route();
-  renderRail(c || (r ? r.split("/")[0] : (query ? "search" : null)));
+  const { record: r, category: c, query, heading, reviews } = route();
+  renderRail(reviews ? "reviews" : c || (r ? r.split("/")[0] : (query ? "search" : null)));
   const box = document.getElementById("q");
   if (box.value !== (query || "")) box.value = query || "";
   window.scrollTo(0, 0);
-  if (query) search(query);
+  if (reviews) reviewPage();
+  else if (query) search(query);
   else if (r) record(r, heading);
   else if (c) category(c);
   else overview();
-  document.title = (r ? (byPath(r)?.title || "Missing page") : query ? "Search: " + query : c ? label(c) : "Contents") + " · Wiki";
+  document.title = (reviews ? "Questions & connections" : r ? (byPath(r)?.title || "Missing page") : query ? "Search: " + query : c ? label(c) : "Contents") + " · Wiki";
   for (const link of document.querySelectorAll("#nav a.active")) link.setAttribute("aria-current", "page");
 }
 document.getElementById("q").addEventListener("input", e => {

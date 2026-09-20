@@ -263,3 +263,13 @@ came from; it is not independent verification of its claims. Do not multiply
 confidence by citing the old page alongside a summary derived from the same
 source. Seek original evidence for changed or disputed claims and leave their
 verification unresolved when it is missing.
+
+## Question-driven execution and model routing
+
+Templates govern presentation, not which conclusions must be reached. With explicit
+`co wiki route` settings, the runner saves plan.json, synthesize.json and a separate
+method-review.json before rendering a candidate. Read those concise decisions and
+retained original evidence. Preserve overturned hypotheses and unresolved questions;
+source-ID checks do not prove truth. Method improvements are candidates only: never
+rewrite executable skills automatically. The configured provider is the destination;
+there is no automatic escalation to a different provider when a stage fails.
