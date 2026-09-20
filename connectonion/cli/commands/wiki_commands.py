@@ -147,12 +147,11 @@ def make_wiki_app(factory):
                   days: int = typer.Option(150, "--days", min=1),
                   skills_dir: List[Path] = typer.Option([], "--skills-dir"),
                   mine: List[str] = typer.Option([], "--mine"),
-                  mail: List[str] = typer.Option([], "--mail", help="Mail metadata to map: gmail or outlook (repeatable); no background schedule")):
+                  mail: List[str] = typer.Option([], "--mail", help="Only map these mailboxes: gmail or outlook (repeatable); default: connected mailboxes")):
         """Build people, project and skill maps deterministically; no model or investigation."""
         from ...wiki.config import prepare
         from ...wiki.map import build_map
-        from ...wiki.service import mail_client, subscriptions
-        import sys
+        from ...wiki.service import mail_available, mail_client, subscriptions
 
         def run(root):
             prepare(root)
@@ -161,13 +160,11 @@ def make_wiki_app(factory):
             selected = set(mail)
             if selected - {"gmail", "outlook"}:
                 raise WikiError("--mail must be gmail or outlook")
-            selected.update(sub["kind"] for sub in sources.values()
-                            if sub.get("kind") in ("gmail", "outlook") and sub.get("enabled"))
-            if not selected and sys.stdin.isatty():
-                for kind in ("gmail", "outlook"):
-                    if sources[kind].get("adapter") == "available" and typer.confirm(
-                            f"Read {kind} correspondent metadata from the last {days} days to build People?"):
-                        selected.add(kind)
+            available = {kind for kind in ("gmail", "outlook") if mail_available(kind)}
+            if not mail:
+                selected.update(available)
+                selected.update(sub["kind"] for sub in sources.values()
+                                if sub.get("kind") in ("gmail", "outlook") and sub.get("enabled"))
             clients, errors = {}, []
             for kind in sorted(selected):
                 try:
@@ -176,8 +173,15 @@ def make_wiki_app(factory):
                     errors.append({"source": kind, "stage": "client", "error": type(error).__name__})
             result = build_map(root, sources, clients, days=days,
                                skill_directories=skills_dir or None, mine=mine, source_errors=errors)
+            tips = []
+            for kind, provider in (("gmail", "google"), ("outlook", "microsoft")):
+                if kind not in available:
+                    tips.append(f"Connect {provider.title()} for People: co auth {provider}; then run "
+                                + _next(ctx, ["init"]) + ".")
+            if tips:
+                result["tips"] = tips
             if not selected:
-                result["people_setup"] = "People needs a mail source. Run " + _next(ctx, ["init", "--mail", "outlook"]) + " (or select gmail); metadata only, no background jobs."
+                result["people_setup"] = "No connected mail source. Local maps are ready; connect mail to add People."
             if result.get("errors"):
                 result["recovery"] = "Check mailbox access with co auth status; retry init with --mail after resolving access. Completed maps are preserved."
                 _emit(ctx, result, ["init", "--mail", sorted(selected)[0]], failed=True)

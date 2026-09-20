@@ -353,8 +353,9 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.7b2
+## Current Version: 1.8.7b3
 
+- 1.8.7b3 (Noninteractive Wiki initialization with connected mailbox discovery and deferred authentication tips)
 - 1.8.7b2 (Wiki memory workflow preview: attributed reflections, explicit inquiry model stages, durable local capture, reviewable connections and bounded daily investigation; design acceptance remains tracked separately)
 - 1.8.7b1 (Wiki beta preview: partial source failures, refreshed map metadata, consistent skill search, remote identity normalization, automated correspondent labels and accurate reader/doctor states; offline and Chrome acceptance passed)
 
