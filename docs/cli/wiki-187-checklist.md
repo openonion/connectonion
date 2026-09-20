@@ -82,3 +82,16 @@ passed. No model call, real-mail acceptance or release is claimed for this chang
 
 The organization map is a post-`v1.8.7b3` PR change; the existing b3 tag is unchanged.
 The count above includes the merged prompt-free initialization changes.
+
+## Skill original-source snapshots at initialization
+
+- Catalog pages embed the original source as inert fenced Markdown near the
+  overview, with file path, snapshot timestamp and SHA-256. No model is called.
+- Generated blocks refresh without replacing authored notes; unchanged sources
+  remain byte-stable on repeat mapping, and missing sources retain old snapshots.
+- Nested fences and marker text cannot split the generated block; oversized or
+  secret-shaped snapshots are reported as unavailable, not silently truncated.
+- Wiki unit/CLI checks: 284 passed, 10 opt-in skips. Existing real Chrome reader
+  checks (including nested code/fences): 16 passed. Wheel build and diff check pass.
+
+This is a post-b3 PR change; no package release or original Skill modification.

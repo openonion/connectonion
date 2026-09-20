@@ -24,8 +24,13 @@ distinct source file. Metadata seeds the name, description and original path;
 usage, inputs/outputs, related projects and history await evidence. Same-name
 files remain distinct; aliases resolving to the same source are deduplicated.
 Reruns preserve page content and retain pages whose source disappeared. Only the
-generated index is refreshed. Executable `SKILL.md` files are not copied, changed
-or run, and `skills/approved/` remains write-protected.
+generated index is refreshed. Original `SKILL.md` files are not changed or run, and `skills/approved/` remains
+write-protected. Catalog pages now include a fenced, verbatim source snapshot
+after the overview, with the original path, snapshot time and SHA-256. Rebuilding
+refreshes only the generated snapshot/metadata block and preserves authored notes.
+Unchanged snapshots keep their timestamp; missing sources retain the last snapshot.
+Snapshots that exceed the page limit or trigger existing secret-shaped-content
+protection are explicitly reported as unavailable, never silently truncated.
 
 Defaults cover the co/Claude skill search roots, conventional agent/Codex skill
 roots, and co ai's bundled default allowlist. This is a shallow inventory, not

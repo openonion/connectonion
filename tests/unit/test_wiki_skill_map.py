@@ -26,7 +26,7 @@ def test_mapping_preserves_prose_and_distinguishes_same_name_sources(tmp_path):
     page = result["created"][0]
     text = notebook.read(page)
     assert "## How to use" in text and "Unknown" in text
-    assert "Do not execute this body" not in text
+    assert "Do not execute this body" in text
     notebook.write(page, text + "\nHuman usage notes.\n")
     again = map_skills(notebook, [source])
     assert again["created"] == [] and len(again["preserved"]) == 2
@@ -64,7 +64,7 @@ def test_cli_map_and_init_seed_skills_before_model_stage(tmp_path, monkeypatch):
     source = tmp_path / "installed"
     skill(source, "one")
     real_scan = mapping.scan_skills
-    monkeypatch.setattr(mapping, "scan_skills", lambda directories=None: real_scan([source]))
+    monkeypatch.setattr(mapping, "scan_skills", lambda directories=None, **kwargs: real_scan([source], **kwargs))
     root = tmp_path / "wiki"
     runner = CliRunner()
     result = runner.invoke(app, ["wiki", "--root", str(root), "map-skills", "--skills-dir", str(source)])
@@ -137,3 +137,42 @@ def test_init_disconnected_mail_shows_auth_tips_after_mapping(tmp_path, monkeypa
     assert 'co auth microsoft' in result.output
     assert str(tmp_path) in result.output
     assert not service.subscriptions(tmp_path)['gmail']['enabled']
+
+
+def test_skill_snapshot_refreshes_only_generated_block(tmp_path):
+    from connectonion.wiki.page_review import prose
+    source = tmp_path / 'installed'
+    path = skill(source, 'one')
+    body = path.read_text() + '\n```python\nprint("example")\n```\n<!-- /wiki-source-metadata -->\n'
+    path.write_text(body)
+    nb = Notebook(tmp_path / 'wiki')
+    record = map_skills(nb, [source])['created'][0]
+    first = nb.read(record)
+    assert body in first
+    assert 'Snapshot SHA-256:' in first and 'Snapshot observed:' in first
+    assert 'print("example")' not in prose(first)
+    nb.write(record, first + '\nHuman notes stay.\n')
+    changed = body.replace('print("example")', 'print("updated")')
+    path.write_text(changed)
+    map_skills(nb, [source])
+    page = nb.read(record)
+    assert changed in page and body not in page
+    assert page.count('## Original Skill source') == 1
+    assert 'Human notes stay.' in page
+    assert path.read_text() == changed
+    path.unlink()
+    map_skills(nb, [source])
+    assert nb.read(record) == page
+
+
+@pytest.mark.parametrize("reason", ["large", "secret_shape"])
+def test_snapshot_rejected_by_notebook_policy_keeps_metadata_and_reports(tmp_path, reason):
+    source = tmp_path / 'installed'
+    path = skill(source, 'large')
+    body = 'x' * 999_000 if reason == 'large' else 'sk-' + 'x' * 25
+    path.write_text(path.read_text() + body)
+    nb = Notebook(tmp_path / 'wiki')
+    result = map_skills(nb, [source])
+    assert result['errors']
+    assert 'Source snapshot unavailable' in nb.read(result['created'][0])
+    assert '_content' not in str(result)
