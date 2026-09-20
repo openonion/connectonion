@@ -39,9 +39,31 @@ def add(root: Path, subject: str, statement: str, *, author: str, basis: str,
 
 
 def context(root: Path, subject: str = "") -> list[dict]:
-    return [{"role": "reflection", "source": f"reflection:{r['id']}",
-             "record": r["subject"], "timestamp": r["recorded_at"],
-             "text": json.dumps(r, ensure_ascii=False)} for r in records(root, subject)]
+    rows = records(root, subject)
+    result = []
+    for name in sorted({r["subject"] for r in rows}):
+        group = [r for r in rows if r["subject"] == name]
+        key = hashlib.sha256(name.encode()).hexdigest()
+        compact = read_json(state_path(root, f"reflection-summaries/{key}.json"), {})
+        raw = [{"role": "reflection", "source": f"reflection:{r['id']}",
+                "record": name, "timestamp": r["recorded_at"],
+                "text": json.dumps(r, ensure_ascii=False)} for r in group]
+        if compact:
+            fields, values = compact.get("fields"), compact.get("rows")
+            valid = (isinstance(fields, list) and all(isinstance(k, str) for k in fields)
+                     and len(fields) == len(set(fields)) and isinstance(values, list)
+                     and all(isinstance(row, list) and len(row) == len(fields) for row in values))
+            restored = [dict(zip(fields, row)) for row in values] if valid else []
+            # A stale or modified summary is never preferred over retained evidence.
+            if restored == group and len(json.dumps(compact)) < len(json.dumps(raw)):
+                result.append({"role": "reflection-summary", "source": "reflection-summary:" + key,
+                               "sources": [r["source"] for r in raw], "record": name,
+                               "timestamp": group[-1]["recorded_at"], "derived": True,
+                               "text": json.dumps({"fields": fields, "rows": values, "derived": True,
+                                                   "sources": [r["source"] for r in raw]}, ensure_ascii=False)})
+                continue
+        result.extend(raw)
+    return result
 
 
 def compress(root: Path, subject: str) -> dict:

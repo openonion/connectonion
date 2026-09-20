@@ -257,3 +257,20 @@ def test_inquiry_second_stage_failure_reports_both_usages(root):
         inquiry.run(root, task, [], {'runner': 'coai', 'model': 'local'}, execute)
     assert caught.value.usage['input_tokens'] == 18
     assert len(calls) == 2
+
+
+def test_compact_context_is_used_only_when_lossless_current_and_smaller(root):
+    for n in range(15):
+        reflections.add(root, 'projects/a.md', f'Change {n}', author='user', basis='Observed', applies='September')
+    original = reflections.context(root, 'projects/a.md')
+    compact = reflections.compress(root, 'projects/a.md')
+    current = reflections.context(root, 'projects/a.md')
+    assert len(current) == 1 and current[0]['role'] == 'reflection-summary'
+    assert current[0]['sources'] == [r['source'] for r in original]
+    path = next((root / '.state/reflection-summaries').glob('*.json'))
+    compact['rows'][0][compact['fields'].index('statement')] = 'Tampered'
+    write_json(path, compact)
+    assert reflections.context(root, 'projects/a.md') == original
+    reflections.compress(root, 'projects/a.md')
+    reflections.add(root, 'projects/a.md', 'Later', author='agent', basis='New evidence')
+    assert len(reflections.context(root, 'projects/a.md')) == 16

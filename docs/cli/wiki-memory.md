@@ -18,8 +18,10 @@ Both humans and agents supply their identity and basis. Records remain immutable
 under `.state/reflections/`; supersession uses repeatable `--supersedes ID`.
 A correction is not automatically true because it is newer or human-authored.
 `--compact` creates a lossless columnar view under `.state/reflection-summaries/`;
-it does not delete originals or claim semantic compression. Updates still read
-original records and stop if the context budget cannot fit them.
+it does not delete originals or claim semantic compression. Updates use a compact
+view only when it reconstructs the retained records exactly and reduces serialized
+context size; stale or altered views fall back to the originals. A task stops if
+the resulting context still exceeds the budget.
 
 ## Investigate questions with explicit stage models
 

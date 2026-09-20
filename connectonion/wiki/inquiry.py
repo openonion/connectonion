@@ -69,8 +69,10 @@ def run(root: Path, directory: Path, items: list[dict], config: dict, execute) -
     """Two calls, no automatic retry or provider escalation; originals stay accessible."""
     material = directory / 'material.json'
     known = {i['source'] for i in items if i.get('source')}
-    derived = {i['source'] for i in items if i.get('source') and i.get('role') in ('page', 'coverage')}
+    derived = {i['source'] for i in items if i.get('source') and i.get('role') in ('page', 'coverage', 'reflection-summary')}
     for item in items:
+        if item.get('role') == 'reflection-summary':
+            known.update(item.get('sources', []))
         if item.get('role') == 'original_evidence' and item.get('file'):
             originals = read_json(Path(item['file']), [])
             known.update(i['source'] for i in originals if i.get('source'))
