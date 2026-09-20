@@ -353,7 +353,9 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.7a2
+## Current Version: 1.8.7a3
+
+- 1.8.7a3 (local preview: top 10 UI enhancements to `co wiki open` offline reader including green-and-white theme polish, theme switcher, search clear & keyboard shortcuts, in-page TOC jump navigation, copy path & markdown buttons, muted uninvestigated boilerplate, code copy buttons, heading anchor links, mobile back navigation, and organisations category support)
 
 - 1.8.7a2 (local preview: exclude temporary execution directories and removed Codex worktrees from project discovery)
 
