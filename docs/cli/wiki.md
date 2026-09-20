@@ -242,8 +242,10 @@ references to init launching a model or investigating the owner in the same run.
 
 ### First-run People and installed Skills
 
-`co wiki init` offers connected mailboxes in an interactive terminal when no mail
-source is enabled. For scripts, select a mailbox explicitly:
+`co wiki init` runs without questions in terminals and scripts. It uses connected
+mailboxes automatically and prints `co auth google` / `co auth microsoft` tips for
+disconnected sources after building the local maps. Authenticate and rerun init
+to add People. To restrict mapping to a specific mailbox:
 
 ```sh
 co wiki init --mail outlook
@@ -252,8 +254,8 @@ co wiki open
 ```
 
 This reads correspondent metadata for the initialization window, not mail bodies,
-and does not install a schedule or enable ongoing mail collection. An unselected
-mailbox is not read. Missing or failed sources appear in the mapping coverage;
+and does not install a schedule or enable ongoing mail collection. With `--mail`, only explicitly selected
+mailboxes are read. Missing or failed sources appear in the mapping coverage;
 without a selected mailbox the command explains why People is empty.
 
 Skills lists one catalog entry per name. Open it to inspect each installed copy

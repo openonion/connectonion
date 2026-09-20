@@ -150,8 +150,9 @@ requested; omit that flag for Wiki work.
 
 Interactive connection commands are `co auth google`, `co auth microsoft`, and
 `co auth` for OpenOnion. A Wiki task does not authorize changing accounts or scopes.
-If setup is needed during an interactive initialization, tell the user which
-source needs connection and let them complete sign-in; never enter credentials.
+Initialization never prompts or starts sign-in. It maps connected mailboxes and
+prints setup tips for disconnected sources after building local maps. The user
+can authenticate separately and rerun init; never enter credentials for them.
 During an unattended run, record an unavailable source and continue authorized
 working sources. An auth/network error is not an empty mailbox. Never read or
 print token files or environment secrets to diagnose it.
