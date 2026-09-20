@@ -216,6 +216,7 @@ function label(c) { return CATEGORY_LABEL[c] || c; }
 function byPath(path) { return WIKI.records.find(r => r.path === path); }
 function listedRecords() { return WIKI.records.filter(r => !r.catalog_parent && r.path !== "skills/catalog/index.md"); }
 function inCategory(category) { return listedRecords().filter(r => r.category === category); }
+function initCommand() { return "co wiki --root '" + String(WIKI.root).replace(/'/g, "'\\''") + "' init --mail outlook"; }
 function fmtDate(iso) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -416,7 +417,7 @@ function overview() {
   main.appendChild(el("h1", { text: "What your assistant knows" }));
   const n = listedRecords().length;
   main.appendChild(el("p", { class: "lede", text: n === 0 ? "Nothing written yet. The first maintenance pass fills this in." :
-    n + (n === 1 ? " page" : " pages") + " your assistant wrote and keeps current, from the sessions and mail you authorized. Every page names its sources." }));
+    n + (n === 1 ? " page" : " pages") + " in this snapshot. Some are mapped skeletons; check each page for investigation status and sources." }));
   for (const c of WIKI.categories) {
     const items = inCategory(c);
     if (!items.length) continue;
@@ -469,7 +470,7 @@ function category(c) {
   main.appendChild(el("h1", { text: label(c) }));
   main.appendChild(el("p", { class: "lede", text: (CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase()) }));
   const items = inCategory(c);
-  if (!items.length) { main.appendChild(el("div", { class: "empty", text: c === "people" ? "No people mapped yet. Run co wiki init --mail outlook or co wiki init --mail gmail to read correspondent metadata from a connected mailbox. No background schedule is started." : "Nothing here yet. The notebook fills what the sources support." })); return; }
+  if (!items.length) { main.appendChild(el("div", { class: "empty", text: c === "people" ? "No people mapped yet. Run " + initCommand() + " (or select gmail) to read correspondent metadata. No background schedule is started." : "Nothing here yet. The notebook fills what the sources support." })); return; }
   const ul = el("ul", { class: "hits" });
   for (const r of items) {
     const text = splitTrailers(r.text).body.replace(/^#[^\n]*\n?/, "");
@@ -565,11 +566,19 @@ function search(q) {
   main.textContent = "";
   const needle = q.toLowerCase();
   const hits = [];
+  const grouped = new Map();
   const plain = l => l.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*`>]/g, "");
   for (const r of WIKI.records) {
+    if (r.path === "skills/catalog/index.md") continue;
     const lines = splitTrailers(r.text).body.split("\n").map(plain)
       .filter(l => l.toLowerCase().includes(needle)).slice(0, 3);
-    if (lines.length || r.title.toLowerCase().includes(needle)) hits.push({ r, lines });
+    if (lines.length || r.title.toLowerCase().includes(needle)) {
+      const primary = r.catalog_parent ? byPath(r.catalog_parent) : r;
+      if (!grouped.has(primary.path)) { const hit = { r: primary, lines: [] }; grouped.set(primary.path, hit); hits.push(hit); }
+      const hit = grouped.get(primary.path);
+      hit.lines.push(...lines);
+      hit.lines = [...new Set(hit.lines)].slice(0, 3);
+    }
   }
   main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "Search" })]));
   main.appendChild(el("h1", { text: "“" + q + "”" }));

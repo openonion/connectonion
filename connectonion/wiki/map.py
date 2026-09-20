@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .files import Notebook, atomic_write
-from .scan import scan_people, scan_projects
+from .scan import scan_people, scan_projects, canonical_origin, AUTOMATED_HINT
 from .skill_map import map_skills
 
 
@@ -16,7 +16,7 @@ def _record(category: str, name: str, identity: str) -> str:
     return f'{category}/{slug}-{hashlib.sha256(identity.encode()).hexdigest()[:10]}.md'
 
 
-def _mail_rows(clients: dict, days: int, mine, coverage: list) -> tuple[list[dict], set]:
+def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None) -> tuple[list[dict], set]:
     own, available, merged = set(mine), {}, {}
     for kind, client in clients.items():
         try:
@@ -24,11 +24,13 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list) -> tuple[list[dic
             available[kind] = client
         except Exception as error:  # Provider failures must not block other maps.
             coverage.append(f'{kind}: unavailable ({type(error).__name__}); not searched')
+            if errors is not None: errors.append({'source': kind, 'stage': 'account', 'error': type(error).__name__})
     for kind, client in available.items():
         try:
             rows = scan_people({kind: client}, days, own)
         except Exception as error:
             coverage.append(f'{kind}: metadata scan failed ({type(error).__name__}); incomplete')
+            if errors is not None: errors.append({'source': kind, 'stage': 'metadata', 'error': type(error).__name__})
             continue
         coverage.append(f'{kind}: metadata only, {days} days, at most 200 messages per seven-day window')
         for row in rows:
@@ -46,11 +48,12 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list) -> tuple[list[dic
 
 
 def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150,
-              skill_directories=None, mine=()) -> dict:
+              skill_directories=None, mine=(), source_errors=None) -> dict:
     """Map observed identities; correspondent classification remains unassessed."""
     notebook = Notebook(root)
     report = {'phase': 'mapping', 'started': datetime.now(timezone.utc).isoformat(),
-              'days': days, 'coverage': [], 'people': [], 'projects': [], 'created': []}
+              'days': days, 'coverage': [], 'people': [], 'projects': [], 'created': [],
+              'errors': list(source_errors or []), 'automated_correspondents': []}
     state = root / '.state' / 'map.json'
     state.parent.mkdir(parents=True, exist_ok=True)
     def save():
@@ -58,7 +61,7 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
     save()
     report['skills'] = map_skills(notebook, skill_directories)
     save()
-    people, own = _mail_rows(clients, days, mine, report['coverage'])
+    people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'])
     roster = notebook.people()
     if own:
         aliases = sorted({address.casefold() for address in own})
@@ -69,10 +72,18 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
         report['owner'] = {'record': owner_record, 'addresses': aliases}
         report['people'].append({'record': owner_record, 'classification': 'account owner'})
     for row in people:
+        automated = bool(AUTOMATED_HINT.search(row['address']))
+        if automated:
+            report['automated_correspondents'].append(row)
         existing = next((p['path'] for p in roster if row['address'].casefold() in p['emails']), None)
         record = existing or _record('people', row['name'] or row['address'], row['address'])
         made = notebook.stub_person(record, row['name'] or row['address'], [row['address']], email=row['address'])
-        report['people'].append({**row, 'record': record, 'classification': 'unassessed'})
+        report['people'].append({**row, 'record': record, 'classification': 'automated candidate' if automated else 'unassessed'})
+        if automated:
+            page = notebook.read(record)
+            marker = '- Correspondent classification: automated candidate; not verified as a person.'
+            if marker not in page:
+                notebook.write(record, page.replace('## Uncertainties\n', '## Uncertainties\n' + marker + '\n'))
         if made:
             notebook.write(record, notebook.read(record).replace('## Uncertainties\n', '## Uncertainties\n- Correspondent classification unassessed; mapping does not establish a person or employer.\n'))
             page = notebook.read(record)
@@ -85,7 +96,7 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
     save()
     groups = {}
     for row in scan_projects(subscriptions, days):
-        identity = row['origin'] or row['repo'] or row['path']
+        identity = canonical_origin(row['origin']) or row['repo'] or row['path']
         group = groups.setdefault(identity, {'name': Path(row['repo'] or row['path']).name,
                                             'paths': [], 'sessions': 0, 'first': row['first'], 'last': row['last']})
         group['paths'].append(row['path'])
@@ -101,11 +112,24 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
         if notebook.stub_project(record, row['name'], row['paths'], sessions=row['sessions'],
                                  first_seen=row['first'], last_seen=row['last']):
             report['created'].append(record)
+        # Refresh only deterministic numeric/date fields inside Paths; retain prose.
+        page = notebook.read(record)
+        section = re.search(r'(?ms)^## Paths\n(.*?)(?=^## |\Z)', page)
+        if section:
+            body = section.group(1)
+            for label, value in (('Sessions', row['sessions']), ('First seen', row['first']), ('Last seen', row['last'])):
+                body = re.sub(r'^- ' + label + r': (?:[0-9-]+)$', '- ' + label + ': ' + str(value), body, flags=re.M)
+            for path in row['paths']:
+                if '- ' + path not in body.splitlines():
+                    body = '- ' + path + '\n' + body
+            updated = page[:section.start(1)] + body + page[section.end(1):]
+            if updated != page:
+                notebook.write(record, updated)
         report['projects'].append({**row, 'record': record})
     report['coverage'] += [f'{name}: {sub.get("root", "")} — ' +
                            ('scanned' if sub.get('enabled', True) and Path(sub.get('root', '')).is_dir() else 'unavailable or disabled')
-                           for name, sub in subscriptions.items()]
-    report.update(phase='mapped', finished=datetime.now(timezone.utc).isoformat(),
+                           for name, sub in subscriptions.items() if sub.get('kind') in ('codex', 'claude-code')]
+    report.update(phase='partial' if report['errors'] else 'mapped', finished=datetime.now(timezone.utc).isoformat(),
                   investigation='not started', classification='unassessed; no correspondents filtered')
     save()
     for category in ('people', 'projects'):

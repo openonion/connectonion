@@ -80,6 +80,14 @@ def map_skills(notebook: Notebook, directories: list[Path] | None = None) -> dic
             suffix = hashlib.sha256(row["path"].encode()).hexdigest()[:12]
             record = f"skills/catalog/{slug}-{suffix}.md"
             made = notebook.stub_skill(record, row["name"], row["path"], row["description"], row["location"])
+            if not made:
+                page = notebook.read(record)
+                start, end = "<!-- wiki-source-metadata -->", "<!-- /wiki-source-metadata -->"
+                block = start + "\n## Current installed metadata\n" + row['description'] + "\n\nSource: " + row['path'] + "\n" + end
+                pattern = re.compile(re.escape(start) + r".*?" + re.escape(end), re.S)
+                updated = pattern.sub(lambda _: block, page) if start in page and end in page else page.rstrip() + "\n\n" + block + "\n"
+                if updated != page:
+                    notebook.write(record, updated)
             (created if made else preserved).append(record)
             label = row["name"].replace("[", "\\[").replace("]", "\\]")
             links.append(f"- [{label}](./{Path(record).name}) — {row['location']}")

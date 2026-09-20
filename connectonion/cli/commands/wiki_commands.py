@@ -82,11 +82,20 @@ def make_wiki_app(factory):
                     if sources[kind].get("adapter") == "available" and typer.confirm(
                             f"Read {kind} correspondent metadata from the last {days} days to build People?"):
                         selected.add(kind)
-            clients = {kind: mail_client(kind) for kind in sorted(selected)}
+            clients, errors = {}, []
+            for kind in sorted(selected):
+                try:
+                    clients[kind] = mail_client(kind)
+                except Exception as error:
+                    errors.append({"source": kind, "stage": "client", "error": type(error).__name__})
             result = build_map(root, sources, clients, days=days,
-                               skill_directories=skills_dir or None, mine=mine)
+                               skill_directories=skills_dir or None, mine=mine, source_errors=errors)
             if not selected:
-                result["people_setup"] = "People needs a mail source. Run co wiki init --mail outlook or --mail gmail; this reads metadata only and does not enable background jobs."
+                result["people_setup"] = "People needs a mail source. Run " + _next(ctx, ["init", "--mail", "outlook"]) + " (or select gmail); metadata only, no background jobs."
+            if result.get("errors"):
+                result["recovery"] = "Check mailbox access with co auth status; retry init with --mail after resolving access. Completed maps are preserved."
+                _emit(ctx, result, ["init", "--mail", sorted(selected)[0]], failed=True)
+                raise typer.Exit(1)
             return result, ["unfinished"]
         _handle(ctx, run, ["subscriptions"])
 
@@ -411,7 +420,8 @@ def make_wiki_app(factory):
             validate(read_config(root))
             return {"codex_binary_found": bool(shutil.which("codex")),
                     "native_isolation": "not verified by this read-only check",
-                    "collection_cli": "not shipped", "background": "not shipped"}, ["status"]
+                    "collection_cli": "available: co wiki sync",
+                    "background": "available on macOS via co wiki start"}, ["status"]
         _handle(ctx, operation, ["config"])
 
     return wiki

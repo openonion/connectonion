@@ -37,7 +37,7 @@ def snapshot(root: Path) -> dict:
         text = notebook.read(record)
         updated = datetime.fromtimestamp(notebook.path(record).stat().st_mtime, timezone.utc)
         records.append({"path": record, "category": record.split("/")[0],
-                        "title": _title(record, text), "text": text,
+                        "title": _title(record, text) + (" (automated candidate)" if "- Correspondent classification: automated candidate;" in text else ""), "text": text,
                         "updated": updated.isoformat(timespec="seconds")})
     groups = {}
     for record in records:

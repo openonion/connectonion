@@ -30,7 +30,7 @@ def test_mapping_preserves_prose_and_distinguishes_same_name_sources(tmp_path):
     notebook.write(page, text + "\nHuman usage notes.\n")
     again = map_skills(notebook, [source])
     assert again["created"] == [] and len(again["preserved"]) == 2
-    assert notebook.read(page).endswith("Human usage notes.\n")
+    assert "Human usage notes.\n" in notebook.read(page)
     assert one.read_text().endswith("Do not execute this body.\n")
     one.unlink()
     map_skills(notebook, [source])

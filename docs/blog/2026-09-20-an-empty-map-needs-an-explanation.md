@@ -7,3 +7,7 @@ A silent success was the wrong interface. Initialization now offers connected ma
 The crowded skill directory had the opposite problem. It counted each installation path as something new. Keeping those paths is necessary: two copies may differ, and either can carry notes. Presenting every copy as an indistinguishable row is not necessary. The reader groups by name while preserving links to every source page. It does not pretend that matching names prove matching implementations.
 
 The regression checks preserve both boundaries: an unselected mailbox stays unread, and grouping copies cannot discard annotations. A map must explain what it has not seen as clearly as it presents what it has.
+
+The second audit found that making a map visible was not enough. A failed mailbox still returned success, and running initialization twice left the first run's counts on the page. The fix now separates a partial map from a successful one and refreshes generated observations without replacing the person's written explanation. Search follows the same grouping rules as navigation. Repeated mapping no longer makes unchanged notes look newly edited.
+
+The complete offline suite passed 10,756 tests; the nine opt-in Chrome reader checks passed separately. Those results establish the offline flows, not the truth of model-generated investigations or the availability of every external mailbox.
