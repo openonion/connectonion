@@ -322,22 +322,23 @@ def test_installed_mailbox_receive_and_completion_need_no_provider_connection(in
     assert replay.returncode == 0, replay.stderr
     assert replay.stdout.strip() == 'False'
 
-    def test_wiki_reflection_and_review_work_from_installed_package(self, installed, tmp_path):
-        import json
-        _, bin_dir, elsewhere, _ = installed
-        co = bin_dir / ("co.exe" if os.name == "nt" else "co")
-        root = tmp_path / 'notebook'
-        (root / 'projects').mkdir(parents=True)
-        (root / 'projects/example.md').write_text('# Example\n')
-        prefix = [str(co), 'wiki', '--root', str(root), '--json']
-        for arguments in [
-            ['reflect', 'projects/example.md', 'Prototype', '--author', 'tester', '--basis', 'Fixture'],
-            ['reflections', 'projects/example.md', '--compact'],
-            ['propose', 'question', 'projects/example.md', 'What changed?', '--basis', 'Fixture'],
-            ['review'],
-            ['route', 'plan', '--runner', 'coai', '--model', 'ollama/local'],
-        ]:
-            result = subprocess.run(prefix + arguments, cwd=elsewhere, env=_runtime_env(),
-                                    capture_output=True, text=True, timeout=30)
-            assert result.returncode == 0, result.stderr
-            assert json.loads(result.stdout)['ok']
+
+def test_wiki_reflection_and_review_work_from_installed_package(installed, tmp_path):
+    import json
+    _, bin_dir, elsewhere, _ = installed
+    co = bin_dir / ("co.exe" if os.name == "nt" else "co")
+    root = tmp_path / 'notebook'
+    (root / 'projects').mkdir(parents=True)
+    (root / 'projects/example.md').write_text('# Example\n')
+    prefix = [str(co), 'wiki', '--root', str(root), '--json']
+    for arguments in [
+        ['reflect', 'projects/example.md', 'Prototype', '--author', 'tester', '--basis', 'Fixture'],
+        ['reflections', 'projects/example.md', '--compact'],
+        ['propose', 'question', 'projects/example.md', 'What changed?', '--basis', 'Fixture'],
+        ['review'],
+        ['route', 'plan', '--runner', 'coai', '--model', 'ollama/local'],
+    ]:
+        result = subprocess.run(prefix + arguments, cwd=elsewhere, env=_runtime_env(),
+                                capture_output=True, text=True, timeout=30)
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout)['ok']

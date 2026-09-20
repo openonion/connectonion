@@ -285,3 +285,14 @@ def test_regenerated_summary_has_a_new_queue_identity(root):
     reflections.compress(root, 'projects/a.md')
     after = reflections.context(root)[0]['source']
     assert after != before
+
+
+def test_generated_wiki_tasks_are_not_reimported_as_user_knowledge():
+    from connectonion.wiki.source import _codex_message, SKIPPED
+    from datetime import datetime, timezone
+    for text in ['<co_wiki_task> Read evidence from a task',
+                 '/wiki-investigate <co_wiki_task> Read the composed stage',
+                 '/wiki-maintain Read the composed stage, source and page instructions']:
+        row = {'type': 'response_item', 'timestamp': '2026-09-20T00:00:00Z',
+               'payload': {'type': 'message', 'role': 'user', 'content': [{'type': 'input_text', 'text': text}]}}
+        assert _codex_message(row, datetime.min.replace(tzinfo=timezone.utc)) is SKIPPED
