@@ -367,6 +367,7 @@ Published 1.8.7b1–b4 Wiki previews remain immutable historical artifacts.
 - 1.8.7a3 (Wiki initialization preview: explicit People metadata selection, grouped skill installations, temporary project exclusion; local acceptance recorded in PR #1613)
 
 ### Version History
+- 1.8.7: Control Center accepts 128 MiB HTML snapshots with a 256 MiB transport envelope. Oversized/unreadable pages show a visible error; failed sends can retry. Stable patch from 1.8.6; Personal Wiki targets 1.8.8 (#1443).
 - 1.8.6 (**stable: WhatsApp as an inbox, with an undo.** A linked device sees
   the groups the number is in and answers only where it was addressed; `edit`
   and `delete` make a wrong answer in front of a customer recoverable; text is

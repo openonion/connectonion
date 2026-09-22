@@ -80,7 +80,7 @@ Declare the table sortable and the client makes its headers clickable:
   time, so it follows the agent as skills come and go. Writing the file replaces
   that for good: from then on it is yours, nothing regenerates it, and a skill you
   add later will not appear until you add its button.
-- Keep it under 2MB — the host won't send a larger file, and the Control Center pane goes blank. Inline images are base64, which is ~33% bigger than the source file, so compress screenshots before embedding them.
+- HTML may use up to 128 MiB of UTF-8 bytes. The transport budget is 256 MiB including JSON escaping and encrypted/base64 overhead. Self-hosted relays must match that receive budget. Loading failures show an error inside Control Center; do not remove useful page content merely to fit the old 2 MiB cap.
 - Keep the responsive layout and `prefers-color-scheme` dark mode intact.
 - **A media query here measures the Control Center pane, not the browser window.** The page renders inside its own iframe. The pane is resizable, roughly 320–900px, so design for the narrow end: a four-column table needs about 500px, and below that the column the table exists for ends up off the right edge behind a scrollbar. Give wide tables a stacked form for narrow panes.
 - Do not add `<script>` tags or inline `onclick` handlers — OChat strips all scripting. Interactivity comes from the declared tags (`data-ochat-skill`, `<co-filter>`, `<co-table>`), which the client renders for you.

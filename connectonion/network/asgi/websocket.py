@@ -44,7 +44,7 @@ async def handle_websocket(
     console.print(f"[dim]⚡ ws+[/dim] [green]{client_ip}[/green] [dim]({registry.count()} active)[/dim]")
 
     async def send_msg(data):
-        await send({"type": "websocket.send", "text": json.dumps(data, default=pydantic_json_encoder)})
+        await send({"type": "websocket.send", "text": json.dumps(data, default=pydantic_json_encoder, ensure_ascii=False)})
 
     async def recv_msg():
         while True:
