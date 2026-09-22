@@ -21,6 +21,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--model', default='co/gemini-3.7-flash')
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--help-only', action='store_true', help='Grade workflow choices using help text only')
     args = parser.parse_args()
     cases = []
     with tempfile.TemporaryDirectory(prefix='wiki-cli-tips-') as folder:
@@ -53,6 +54,22 @@ def main():
             (['reflections'], 'Browse existing pages.'),
         ]:
             capture(command, goal)
+    if args.help_only:
+        cases = []
+        for command, goal, expected in [
+            ([], 'Build the first map without starting any model or background work.', ['init']),
+            ([], 'The map exists. Discover actual pages to investigate without starting a model yet.', ['investigate']),
+            (['investigate'], 'Discover actual page paths instead of guessing a name.', ['investigate']),
+            (['init'], 'Initialization completed. Discover an actual page to investigate next.', ['investigate']),
+            (['sync'], 'Preview pending material without reading bodies or starting a model.', ['sync', '--dry-run']),
+            (['sync'], 'The last batch failed. Inspect its recorded failure before retrying.', ['logs']),
+            ([], 'Get machine-readable Wiki status for a script.', ['--json', 'status']),
+        ]:
+            result = CliRunner().invoke(app, ['wiki', *command, '--help'])
+            assert result.exit_code == 0, result.output
+            cases.append({'command': shlex.join(['co', 'wiki', *command, '--help']),
+                          'exit': 0, 'output': result.output, 'goal': goal,
+                          'next': shlex.join(['co', 'wiki', *expected])})
     def judge(case):
         reply = llm_do(
             f'You just ran a shell command. Its full output was:\n\n{case["output"]}\n\n'

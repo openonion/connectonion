@@ -1,10 +1,35 @@
-                                                                                
- Usage: python -m connectonion.cli.main wiki [OPTIONS] COMMAND [ARGS]...        
-                                                                                
- Start with co wiki init, then co wiki investigate to choose a real page.       
- Inspect results with co wiki open. Use --json before a command for             
- machine-readable output.                                                       
-                                                                                
+
+ Usage: python -m connectonion.cli.main wiki [OPTIONS] COMMAND [ARGS]...
+
+ Wiki — map first, investigate next
+
+ First run: Build the map with co wiki init. This creates People,
+ Organizations, Projects and Skills from templates and source metadata. It does
+ not investigate or start background work.
+
+ Choose a page: Run co wiki investigate without arguments to list your actual
+ pages; no model runs. Copy its Next command to investigate one page. Do not
+ invent page paths from examples. An exact title or email may select one unique
+ page; for multiple matches, use an exact path from the choices. An empty list
+ means initialize the map first.
+
+ Check the result: Follow the printed show command, or browse with co wiki
+ open. Review sources, Unknown sections and partial coverage. Command success
+ alone does not prove factual quality. Find remaining work with co wiki
+ unfinished.
+
+ Update later: Preview pending metadata with co wiki sync --dry-run, then use
+ co wiki sync once source access is authorized. Source access is authorized
+ through start, which also installs a background schedule; do not treat it as
+ an initialization step. Inspect outcomes and failures with co wiki logs.
+
+ Calling convention: Keep --root before the subcommand in every call. JSON is
+ opt-in: co wiki --json status. Read ok/data/next in JSON mode; otherwise
+ follow the printed Next command. Exit 1 reports an operation failure; exit 2
+ is an argument/command error. Append --help to any command to learn its
+ workflow and options; --help displays instructions and never executes the
+ task.
+
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
 │ --root        <path>  Notebook root (default ~/.co/wiki)                     │
 │ --json                Machine-readable output with next command              │
@@ -73,6 +98,3 @@
 │                repair.                                                       │
 │ config         Inspect or explicitly change Wiki configuration.              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
-
-
-Exit: 0

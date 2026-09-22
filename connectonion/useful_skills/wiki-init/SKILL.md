@@ -1,6 +1,6 @@
 ---
 name: wiki-init
-description: The first run of a notebook. Map installed skills, people and projects with page skeletons, connect sources, rank what matters, and leave an investigation queue. Drives co wiki and the mail CLIs.
+description: The first run of a notebook. Map installed skills, people, organizations and projects with page skeletons, connect sources, rank what matters, and leave an investigation queue. Drives co wiki and the mail CLIs.
 ---
 
 # Initialise the notebook
@@ -11,6 +11,12 @@ command already does. The task supplies the notebook root: include
 `co wiki --root "<root>"` in EVERY Wiki command below, including follow-ups.
 Read existing pages and `co wiki people` before creating another identity.
 Do not call `co wiki init` recursively or install a background schedule here.
+
+Treat `co wiki --help` as the executable workflow guide: it explains task
+selection, observed inputs, expected results, side effects and recovery. Read
+`co wiki investigate --help` before investigation and follow actual `Next:`
+commands. This Skill adds evidence judgment; it must not invent a second command
+syntax or turn example page names into assumed records.
 
 Before using the source CLIs, read [CLI.md](CLI.md), beside this file. It gives
 the exact mail, browser and Wiki command forms, ID handling, pagination and
@@ -23,15 +29,15 @@ abbreviate it for readability. Replace placeholders with observed values.
 ## 1. Build the frame without a model
 
 Run `co wiki --root '<absolute-notebook-root>' init --days 150`. This command
-creates all three maps and complete page skeletons before returning. It never
+creates all four maps and complete page skeletons before returning. It never
 starts a model or investigates a page. Do not invoke this Skill from that command.
-Only enabled mail sources are scanned; use `subscriptions` to inspect coverage.
+Connected mailboxes are mapped by default; `--mail` selects explicit mailboxes. Read the init coverage report.
 Use `--skills-dir` for known extra roots (explicit roots replace defaults).
 Existing skills remain at their source paths and existing pages are preserved.
 
 ## 2. Judge the recorded enumeration
 
-Read `.state/map.json`, `notes/people-map.md`, `notes/projects-map.md`, and
+Read `.state/map.json`, `notes/people-map.md`, `notes/orgs-map.md`, `notes/projects-map.md`, and
 `skills/catalog/index.md`. Counts describe the recorded window, not lifetime
 usage. All correspondents remain unclassified; automated hints never filter
 people by themselves. Classify people, company notices, opportunities and noise

@@ -77,21 +77,26 @@ def render(value, command: str, *, failed: bool = False) -> str:
 
 
 def guide(next_command) -> str:
-    """Commands that require a page are discovered through an actual listing."""
-    steps = [
-        ('Build the map (no model)', ['init']),
-        ('Choose a page to investigate (no model until you select one)', ['investigate']),
-        ('Browse the map in your browser', ['open']),
-        ('Preview pending updates (no model)', ['sync', '--dry-run']),
-        ('Update from pending material', ['sync']),
-        ('Inspect results and failures', ['logs']),
-        ('Discover all commands and options', ['--help']),
+    """One workflow shared by the overview and --help, with root-aware commands."""
+    paragraphs = [
+        "Wiki — map first, investigate next",
+        "First run: Build the map with " + next_command(["init"]) +
+        ". This creates People, Organizations, Projects and Skills from templates and source metadata. "
+        "It does not investigate or start background work.",
+        "Choose a page: Run " + next_command(["investigate"]) +
+        " without arguments to list your actual pages; no model runs. Copy its Next command to investigate one page. "
+        "Do not invent page paths from examples. An exact title or email may select one unique page; "
+        "for multiple matches, use an exact path from the choices. An empty list means initialize the map first.",
+        "Check the result: Follow the printed show command, or browse with " + next_command(["open"]) +
+        ". Review sources, Unknown sections and partial coverage. Command success alone does not prove factual quality. "
+        "Find remaining work with " + next_command(["unfinished"]) + ".",
+        "Update later: Preview pending metadata with " + next_command(["sync", "--dry-run"]) +
+        ", then use " + next_command(["sync"]) + " once source access is authorized. "
+        "Source access is authorized through start, which also installs a background schedule; "
+        "do not treat it as an initialization step. Inspect outcomes and failures with " + next_command(["logs"]) + ".",
+        "Calling convention: Keep --root before the subcommand in every call. JSON is opt-in: " +
+        next_command(["--json", "status"]) + ". Read ok/data/next in JSON mode; otherwise follow the printed Next command. "
+        "Exit 1 reports an operation failure; exit 2 is an argument/command error. "
+        "Append --help to any command to learn its workflow and options; --help displays instructions and never executes the task.",
     ]
-    lines = ['Wiki — map first, investigate next', '']
-    for description, arguments in steps:
-        lines.extend([description + ':', '  ' + next_command(arguments)])
-    lines.extend(['', 'init builds People, Organizations, Projects and Skills; it does not start investigation.',
-                  'investigate with no argument lists your pages and prints a concrete next command.',
-                  'investigate and sync may use the configured model. start explicitly enables background work.',
-                  'Tip: put --root and --json before the subcommand; add --help after any command.', ''])
-    return '\n'.join(lines)
+    return "\n\n".join(paragraphs) + "\n"

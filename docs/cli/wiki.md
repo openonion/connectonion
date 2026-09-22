@@ -32,8 +32,11 @@ co wiki logs                 # Inspect results, partial coverage and failures
 Normal output uses readable labels and plain page paths. Empty lists explain
 what is missing; unknown usage remains **Unknown**, never zero. Results end
 with a copyable `Next:` command, including the selected root and shell quoting.
-Use `co wiki --help` for the command groups; append `--help` to any command for
-its arguments. Root and JSON flags belong **before** the subcommand:
+Use `co wiki --help` as the workflow guide: it gives task selection,
+observed inputs, expected results, source/quality checks and recovery before
+the command inventory. `init --help`, `investigate --help` and `sync --help`
+explain their full workflow as well as options. The overview and group help
+share one implementation, so human and agent guidance cannot drift separately. Root and JSON flags belong **before** the subcommand:
 
 ```bash
 co wiki --root '/path/to/my wiki' investigate

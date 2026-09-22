@@ -67,7 +67,7 @@ def _resolve_page(notebook, selector):
 
 
 def make_wiki_app(factory):
-    wiki = factory(help="Start with co wiki init, then co wiki investigate to choose a real page. Inspect results with co wiki open. Use --json before a command for machine-readable output.",
+    wiki = factory(help=guide(lambda args: shlex.join(["co", "wiki", *args])),
                    no_args_is_help=False)
 
     @wiki.callback(invoke_without_command=True)
@@ -184,7 +184,20 @@ def make_wiki_app(factory):
                   skills_dir: List[Path] = typer.Option([], "--skills-dir"),
                   mine: List[str] = typer.Option([], "--mine"),
                   mail: List[str] = typer.Option([], "--mail", help="Only map these mailboxes: gmail or outlook (repeatable); default: connected mailboxes")):
-        """Build people, organization, project and skill maps; no model or investigation."""
+        """Build people, organization, project and skill maps; no model or investigation.
+
+        When to use: Run co wiki init for a new notebook or to refresh its map.
+        Existing authored pages are preserved. This reads available source metadata
+        and installed Skill text; it does not run a model or enable a schedule.
+
+        Expected result: Source coverage, created pages and an explicit not-started
+        investigation state. Then run co wiki investigate to choose a real page.
+        Mapped does not mean researched or verified.
+
+        If sources are missing: Read the coverage and setup tips. Run co auth status
+        to inspect mailbox access, then retry init after connecting the missing source.
+        --skills-dir replaces default Skill roots; repeat it to include multiple roots.
+        """
         from ...wiki.config import prepare
         from ...wiki.map import build_map
         from ...wiki.service import mail_available, mail_client, subscriptions
@@ -336,7 +349,23 @@ def make_wiki_app(factory):
                          eval_dir: List[Path] = typer.Option([], "--eval-dir", help="Skill run summary directory (repeatable; skills only)")):
         """Investigate one existing page; omit the argument to discover available pages.
 
-        Start with co wiki investigate, then copy the Next command it prints.
+        When to use: Fill an existing page from its available evidence.
+
+        Choose the input: Run co wiki investigate without arguments. It lists real
+        pages without running a model. Copy the printed Next command, or supply
+        one exact title or email from your notebook. Do not copy fictional paths
+        from examples. With no pages, run co wiki init first.
+
+        More than one match: Use an exact path from the reported choices. A missing
+        or ambiguous selection does not start a model. --handle adds known aliases;
+        --days limits the search window. Skill pages use retained run evidence;
+        --eval-dir selects that evidence directory, not the original Skill directory.
+
+        Check the result: Follow the printed show command and review sources,
+        Unknown sections and coverage. A completed command is not a factual-quality
+        verdict; incomplete evidence remains incomplete. Use co wiki unfinished
+        to find remaining gaps.
+
         Use --help only to read options; it never runs an investigation.
         """
         from ...wiki.files import Notebook
@@ -482,7 +511,26 @@ def make_wiki_app(factory):
                   all_pending: bool = typer.Option(False, "--all",
                                                    help="Backfill: batch after batch, oldest first, until nothing is "
                                                         "pending; not limited by the daily attempt cap")):
-        """Run one bounded incremental batch now (does not enable the background schedule)."""
+        """Run one bounded incremental batch now (does not enable the background schedule).
+
+        Before running: Use co wiki sync --dry-run to inspect pending metadata
+        without reading bodies or calling a model. Use co wiki subscriptions
+        to check which sources are enabled.
+
+        Source access must already be authorized. co wiki start reviews and confirms
+        access AND installs a background schedule; it is not required for map building
+        or page discovery. Do not run it just to dismiss an error without reviewing
+        the source/model/schedule summary.
+
+        Then run co wiki sync for one bounded batch. --all explicitly backfills all
+        pending batches and bypasses the daily attempt cap. --source selects a saved
+        subscription; --with limits mail to a correspondent.
+
+        Check co wiki logs, or the printed run-specific Next command, for changes,
+        failures and usage. A dry run or no_change result does not mean the Wiki
+        has been researched. Do not repeatedly retry a failed model run without
+        inspecting the failure.
+        """
         from ...wiki.files import WikiError
         from ...wiki.service import run_sync
 

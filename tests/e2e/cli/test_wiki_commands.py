@@ -454,3 +454,25 @@ def test_json_investigate_discovery_and_missing_selection(tmp_path):
     failed = json.loads(result.stdout)
     assert result.exit_code == 1 and not failed['ok']
     assert failed['next'].endswith(' investigate')
+
+
+def test_group_help_is_a_workflow_with_evidence_and_recovery(tmp_path):
+    output = invoke(tmp_path, '--help').output
+    output = ' '.join(output.split())
+    for phrase in ('First run:', 'Choose a page:', 'Check the result:', 'Update later:',
+                   'Do not invent page paths', 'partial coverage', 'co wiki investigate',
+                   'JSON', '--root'):
+        assert phrase in output, phrase
+    assert output.index('First run:') < output.index('1. Map and investigate')
+
+
+@pytest.mark.parametrize('command,phrases', [
+    ('init', ('When to use:', 'Expected result:', 'If sources are missing:', 'co auth status')),
+    ('investigate', ('When to use:', 'Choose the input:', 'Check the result:', 'More than one match:')),
+    ('sync', ('Before running:', 'co wiki sync --dry-run', 'Source access', 'background schedule', 'co wiki logs')),
+])
+def test_primary_command_help_teaches_the_workflow(tmp_path, command, phrases):
+    output = invoke(tmp_path, command, '--help').output
+    plain = ' '.join(output.split())
+    for phrase in phrases:
+        assert phrase in plain, phrase
