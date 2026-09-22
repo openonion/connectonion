@@ -216,6 +216,9 @@ class Inbox:
         self.root = Path(home) if home else default_home(provider)
         self.received = self.root / "received.jsonl"
         self.sent = self.root / "sent.jsonl"
+        # What the account owner typed in their own chats. A record, never a
+        # queue: nothing in new/ is written for it, so no consumer answers it.
+        self.own = self.root / "own.jsonl"
         self.completed = self.root / "done.jsonl"
         self.handouts = self.root / "attempts.jsonl"
         self.tmp = self.root / "tmp"
@@ -441,6 +444,13 @@ class Inbox:
         if by is not None:
             record["by"] = by
         self._append(self.sent, json.dumps(record, ensure_ascii=False, separators=(",", ":")))
+
+    def record_own(self, message: Message) -> None:
+        """One line in own.jsonl: a message the account owner sent themselves."""
+        self._append(self.own, message.to_json())
+
+    def own_records(self) -> list:
+        return list(self._records(self.own))
 
     def already_replied(self, message_id: str) -> bool:
         for record in self._records(self.sent):

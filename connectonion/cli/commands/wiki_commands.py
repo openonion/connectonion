@@ -564,7 +564,10 @@ def make_wiki_app(factory):
         _handle(ctx, operation, ["logs"])
 
     @wiki.command("subscribe", rich_help_panel="4. Sources and background")
-    def subscribe(ctx: typer.Context, name: str = typer.Argument(..., help="codex, claude-code, gmail, outlook"),
+    def subscribe(ctx: typer.Context, name: str = typer.Argument(..., help="codex, claude-code, gmail, outlook, whatsapp"),
+                  chat: List[str] = typer.Option([], "--chat",
+                                                 help="WhatsApp: a chat to read, group or direct, by the id "
+                                                      "`co whatsapp chats` prints (repeatable)"),
                   project: str = typer.Option("", "--project",
                                               help="Coding sources: a scope of its own for sessions run in this "
                                                    "directory"),
@@ -582,19 +585,30 @@ def make_wiki_app(factory):
 
         def operation(root):
             subscription = toggle_source(root, name, True, project=project, about=about,
-                                         since=since or "60d")
+                                         since=since or "60d", chats=chat)
             result = {"subscription": subscription, "enabled": True}
             if since and not (project or about):
                 result.update(set_window(root, subscription, since, narrow=only, force=force))
+            if chat:
+                # A new chat is not read until `start` has shown it and the user agreed.
+                result["chats"] = chat
+                return result, ["start"]
             return result, ["subscriptions"]
         _handle(ctx, operation, ["subscriptions"])
 
     @wiki.command("unsubscribe", rich_help_panel="4. Sources and background")
-    def unsubscribe(ctx: typer.Context, name: str = typer.Argument(..., help="Name from `co wiki subscriptions`")):
+    def unsubscribe(ctx: typer.Context, name: str = typer.Argument(..., help="Name from `co wiki subscriptions`"),
+                    chat: List[str] = typer.Option([], "--chat",
+                                                   help="WhatsApp: stop reading only this chat (repeatable)")):
         """Stop future reads from this source for good; existing notes stay."""
-        from ...wiki.service import toggle_source
-        _handle(ctx, lambda root: ({"subscription": toggle_source(root, name, False), "enabled": False},
-                                   ["subscriptions"]), ["subscriptions"])
+        from ...wiki.service import subscriptions, toggle_source
+
+        def operation(root):
+            toggle_source(root, name, False, chats=chat)
+            source = subscriptions(root)[name]
+            return {"subscription": name, "enabled": bool(source.get("enabled")),
+                    **({"chats": source.get("chats") or []} if chat else {})}, ["subscriptions"]
+        _handle(ctx, operation, ["subscriptions"])
 
     @wiki.command("usage", rich_help_panel="5. Settings and diagnostics")
     def usage(ctx: typer.Context, days: int = typer.Option(0, "--days", help="Only runs from the last N days")):

@@ -151,6 +151,7 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co wiki sync` | One incremental source batch, optionally extraction followed by maintenance. |
 | `co wiki sync --source codex --dry-run` | Pending metadata only; no model or source body reads. |
 | `co wiki subscribe codex --project /path/to/repo --since 30d` | Save a scoped source choice. |
+| `co wiki subscribe whatsapp --chat <id>` | Read one WhatsApp chat (group or person) from the files `co whatsapp listen` keeps; ids from `co whatsapp chats`. Repeat per chat; the next `co wiki start` shows it and asks before anything is read. `unsubscribe whatsapp --chat <id>` stops one chat. |
 | `co wiki unsubscribe codex` | Disable that source. |
 | `co wiki list people` / `show people/alice.md` / `search Alice` | Inspect Markdown without model calls. |
 | `co wiki status` / `subscriptions` / `config` / `logs` / `usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. |

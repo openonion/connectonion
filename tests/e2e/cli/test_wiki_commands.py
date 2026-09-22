@@ -489,3 +489,15 @@ def test_a_wrapper_can_put_its_own_name_on_every_next_step(tmp_path, monkeypatch
     default_root = Path.home() / ".co" / "wiki"   # the harness already isolates HOME per test
     result = runner.invoke(app, ["wiki", "--root", str(default_root), "status"])
     assert result.output.strip().endswith("Next: remi logs")  # the default root is not spelled out
+
+
+def test_subscribing_a_whatsapp_chat_points_at_start(tmp_path):
+    """Naming a chat is not permission to read it; the next command is the one
+    that shows the user what will be read and asks."""
+    result = invoke(tmp_path, '--json', 'subscribe', 'whatsapp', '--chat', '120363411567190840@g.us')
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload['data']['chats'] == ['120363411567190840@g.us']
+    assert payload['next'].endswith(' start')
+    refused = invoke(tmp_path / 'fresh', 'subscribe', 'whatsapp')   # no chat named yet
+    assert refused.exit_code == 1 and 'co whatsapp chats' in refused.output
