@@ -476,3 +476,16 @@ def test_primary_command_help_teaches_the_workflow(tmp_path, command, phrases):
     plain = ' '.join(output.split())
     for phrase in phrases:
         assert phrase in plain, phrase
+def test_a_wrapper_can_put_its_own_name_on_every_next_step(tmp_path, monkeypatch):
+    """A thin `remi` command that forwards to `co wiki` is only a product if the tips
+    agree with it: a user who typed `remi status` and is told `co wiki --root /long/path
+    logs` has been handed the wiring. The wrapper names itself in the environment and
+    every Next line follows; the root is omitted when it is the default one."""
+    monkeypatch.setenv("CO_WIKI_PROGRAM", "remi")
+    result = runner.invoke(app, ["wiki", "--root", str(tmp_path), "status"])
+    assert result.exit_code == 0, result.output
+    assert result.output.strip().endswith(f"Next: remi --root {tmp_path} logs")
+    from pathlib import Path
+    default_root = Path.home() / ".co" / "wiki"   # the harness already isolates HOME per test
+    result = runner.invoke(app, ["wiki", "--root", str(default_root), "status"])
+    assert result.output.strip().endswith("Next: remi logs")  # the default root is not spelled out
