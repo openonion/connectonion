@@ -95,8 +95,8 @@ def read_dashboard_snapshot(session_id=None):
         return frame
     try:
         size = path.stat().st_size
-    except OSError:
-        return None
+    except OSError as e:
+        return dashboard_error(f"Could not inspect dashboard.html: {e}", session_id)
     if size > MAX_DASHBOARD_BYTES:
         return dashboard_error(
             f"dashboard.html is {size:,} bytes; the limit is {MAX_DASHBOARD_BYTES:,} bytes (128 MiB).",
