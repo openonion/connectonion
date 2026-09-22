@@ -433,7 +433,7 @@ def test_ambiguous_investigation_shows_choices_without_starting(tmp_path, monkey
 def test_help_orders_first_steps_and_exposes_all_commands(tmp_path):
     from typer.main import get_command
     wiki = get_command(app).commands['wiki']
-    output = invoke(tmp_path, '--help').output
+    output = Text.from_ansi(invoke(tmp_path, '--help').output).plain
     assert output.index('1. Map and investigate') < output.index('2. Browse pages') < output.index('3. Update and review')
     for name in wiki.commands:
         assert __import__('re').search(r'│\s+' + __import__('re').escape(name) + r'\s{2,}', output), name
@@ -457,7 +457,7 @@ def test_json_investigate_discovery_and_missing_selection(tmp_path):
 
 
 def test_group_help_is_a_workflow_with_evidence_and_recovery(tmp_path):
-    output = invoke(tmp_path, '--help').output
+    output = Text.from_ansi(invoke(tmp_path, '--help').output).plain
     output = ' '.join(output.split())
     for phrase in ('First run:', 'Choose a page:', 'Check the result:', 'Update later:',
                    'Do not invent page paths', 'partial coverage', 'co wiki investigate',
@@ -472,7 +472,7 @@ def test_group_help_is_a_workflow_with_evidence_and_recovery(tmp_path):
     ('sync', ('Before running:', 'co wiki sync --dry-run', 'Source access', 'background schedule', 'co wiki logs')),
 ])
 def test_primary_command_help_teaches_the_workflow(tmp_path, command, phrases):
-    output = invoke(tmp_path, command, '--help').output
+    output = Text.from_ansi(invoke(tmp_path, command, '--help').output).plain
     plain = ' '.join(output.split())
     for phrase in phrases:
         assert phrase in plain, phrase
