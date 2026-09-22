@@ -139,3 +139,114 @@ def test_prior_page_citation_is_identifiable_only_as_supplied_context():
     assert not prior_context_reference('Existing page `projects/other.md`', 'projects/atlas.md', items)
     assert not prior_context_reference('Independent proof `projects/atlas.md`', 'projects/atlas.md', items)
     assert not prior_context_reference('Existing page `projects/atlas.md`', 'projects/atlas.md', [])
+
+
+@pytest.mark.parametrize('overview, rejected', [
+    ('Run the tool to count words. [1]', True),
+    ('```text\ndraft -> count.py -> stdout\n```\nObserved local flow. [1]', False),
+    ('```text\n```\nEmpty illustration. [1]', True),
+    ('Unknown — supplied evidence does not establish a user flow. [1]', False),
+    ('```text\ndraft -> count.py -> stdout\n', True),
+])
+def test_populated_project_overview_requires_closed_flow(tmp_path, overview, rejected):
+    nb = Notebook(tmp_path)
+    nb.stub_project('projects/atlas.md', 'Atlas')
+    old = nb.read('projects/atlas.md')
+    page = old.replace('## Overview\n- Unknown — not investigated yet', '## Overview\n' + overview)
+    page = page.replace('- (none yet)', '- [1] fixture:readme')
+    errors = validate('projects/atlas.md', page, old, [{'source': 'fixture:readme'}])
+    assert any('Overview' in error for error in errors) == rejected
+
+
+def test_local_files_require_distinct_numbered_sources(tmp_path):
+    nb = Notebook(tmp_path)
+    one, two = tmp_path / 'draft.txt', tmp_path / 'output.txt'
+    one.write_text('one two three')
+    two.write_text('3')
+    nb.stub_project('projects/atlas.md', 'Atlas', [str(tmp_path)])
+    old = nb.read('projects/atlas.md')
+    page = old.replace('## Try it\n- Unknown — not investigated yet', '## Try it\nInput and output. [1]')
+    page = page.replace('- (none yet)', f'- [1] `{one}` and `{two}`, inspected today')
+    assert 'Citation bundles multiple files: 1' in validate('projects/atlas.md', page, old, [])
+    split = page.replace('Input and output. [1]', 'Input and output. [1][2]').replace(
+        f'- [1] `{one}` and `{two}`, inspected today', f'- [1] `{one}`, inspected today\n- [2] `{two}`, inspected today')
+    assert validate('projects/atlas.md', split, old, []) == []
+
+
+def test_flow_rejection_preserves_live_page_and_failure_usage(tmp_path, monkeypatch):
+    nb = Notebook(tmp_path)
+    nb.stub_project('projects/atlas.md', 'Atlas')
+    old = nb.read('projects/atlas.md')
+    page = old.replace('## Overview\n- Unknown — not investigated yet', '## Overview\nRun a local word counter. [1]')
+    page = page.replace('- (none yet)', '- [1] fixture:readme')
+    def execute(directory, prompt, config, stage):
+        Path(re.search(r'NEW file (.+?candidate.md)', prompt)[1]).write_text(page)
+        return {'usage': {'input_tokens': 12}}
+    monkeypatch.setattr('connectonion.wiki.runner.run_task', execute)
+    with pytest.raises(RunFailed, match='Project Overview'):
+        run_stage(nb, [{'role': 'page', 'record': 'projects/atlas.md', 'text': old},
+                       {'source': 'fixture:readme', 'text': 'Local counter'}], default_config(), stage='investigate')
+    assert nb.read('projects/atlas.md') == old
+    result = json.loads(next((tmp_path / '.state/tasks').glob('*/result.json')).read_text())
+    assert result['status'] == 'failed' and result['usage']['input_tokens'] == 12
+
+
+def test_investigation_cannot_drop_scripted_project_metadata(tmp_path):
+    nb = Notebook(tmp_path)
+    nb.stub_project('projects/atlas.md', 'Atlas', sessions=3, first_seen='2026-09-01', last_seen='2026-09-22')
+    old = nb.read('projects/atlas.md')
+    bad = old.replace('- Sessions: 3\n', '')
+    assert any('Sessions' in e for e in validate('projects/atlas.md', bad, old, []))
+    assert validate('projects/atlas.md', old, old, []) == []
+
+
+def test_exact_supplied_file_uri_is_a_citable_source(tmp_path):
+    from connectonion.wiki.page_review import _local_reference
+    source = tmp_path / 'session file.jsonl'
+    source.write_text('synthetic')
+    neighbor = tmp_path / 'not-supplied.jsonl'
+    neighbor.write_text('not supplied')
+    items = [{'reference': source.as_uri()}]
+    assert _local_reference(f'`{source}`', '', items)
+    assert not _local_reference(f'`{neighbor}`', '', items)
+
+
+def test_malformed_maintenance_keeps_page_and_pending_correction(tmp_path, monkeypatch):
+    from connectonion.wiki import reflections
+    from connectonion.wiki.service import approve_sources, run_sync
+    from connectonion.wiki.files import write_json
+    prepare(tmp_path)
+    nb = Notebook(tmp_path)
+    nb.stub_project('projects/atlas.md', 'Atlas')
+    old = nb.read('projects/atlas.md')
+    write_json(tmp_path / '.state/subscriptions.json', {k: {'kind': k, 'enabled': False} for k in ('codex','claude-code','gmail','outlook')})
+    approve_sources(tmp_path)
+    correction = reflections.add(tmp_path, 'projects/atlas.md', 'Mira owns Atlas', author='user', basis='Synthetic correction')
+    def execute(directory, prompt, config, stage):
+        assert directory != nb.root
+        Notebook(directory).write('projects/atlas.md', '# Atlas\n\n## Ownership\nMira\n')
+        Notebook(directory).write('notes/new.md', '# New note\n')
+        return {'usage': {'input_tokens': 9}}
+    monkeypatch.setattr('connectonion.wiki.runner.run_task', execute)
+    result = run_sync(tmp_path)
+    assert result['outcome'] == 'failed'
+    assert result['usage']['input_tokens'] == 9
+    assert not nb.path('notes/new.md').exists()
+    assert nb.read('projects/atlas.md') == old
+    progress = json.loads((tmp_path / '.state/progress.json').read_text()) if (tmp_path / '.state/progress.json').exists() else {}
+    assert 'reflection:' + correction['id'] not in progress.get('wiki_local_material', [])
+
+
+def test_correction_exposes_exact_original_file_references(tmp_path):
+    from connectonion.wiki import reflections
+    from connectonion.wiki.page_review import _local_reference
+    nb = Notebook(tmp_path / 'wiki')
+    nb.stub_project('projects/a.md', 'A')
+    source = tmp_path / 'owner-decision.txt'
+    source.write_text('Mira chose a local pilot')
+    neighbor = tmp_path / 'unprovided.txt'
+    neighbor.write_text('Other material')
+    reflections.add(nb.root, 'projects/a.md', 'Mira owns A', author='user', basis='Source', sources=[str(source)])
+    items = reflections.context(nb.root)
+    assert _local_reference(f'`{source}`', '', items)
+    assert not _local_reference(f'`{neighbor}`', '', items)

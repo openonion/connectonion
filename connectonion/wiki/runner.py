@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from contextlib import nullcontext
 
 from ..skills_catalog import useful_skills_dir
 from .files import Notebook, WikiError, maintenance_lock, read_json, write_json
@@ -176,9 +177,33 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         notebook.write(record, text)
 
 
+def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held):
+    from .page_review import validate, headings
+    after = {record: working.read(record) for record in working.list()}
+    changed = sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
+    errors = []
+    for record in changed:
+        if record not in after:
+            errors.append(f'Maintenance must preserve existing page: {record}')
+        else:
+            working.write(record, after[record])  # Preflight path/size/secret policy for every page before promotion.
+            if headings(record):
+                errors.extend(f'{record}: {error}' for error in validate(record, after[record], before.get(record, ''), items))
+    # run_sync already holds this lock across collection and checkpoint commit.
+    with nullcontext() if lock_held else maintenance_lock(notebook.root):
+        if {r: notebook.read(r) for r in notebook.list()} != before:
+            errors.append('Notebook changed during maintenance; preserve current pages and retry')
+        write_json(directory / 'review.json', {'accepted': not errors, 'errors': errors,
+                   'factual_quality': 'not automatically assessed'})
+        if errors:
+            raise RunFailed('Maintenance rejected: ' + '; '.join(errors), usage)
+        for record in changed:
+            notebook.write(record, after[record])
+
+
 def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "",
-              *, stage: str = "maintain") -> dict:
-    """Run a stage; one-page investigation works on a disposable page copy."""
+              *, stage: str = "maintain", maintenance_lock_held: bool = False) -> dict:
+    """Run investigation and maintenance on disposable page copies before promotion."""
     workdir = notebook.root / ".state" / "tasks"
     workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
     directory = Path(tempfile.mkdtemp(prefix=f"{stage}-", dir=workdir))
@@ -204,9 +229,18 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
                    "Only write that candidate file using write(path, content). "
                    "The runner owns validation and replacement. Do not start nested Wiki jobs. ")
     else:
-        prompt += f"The notebook root is {notebook.root}. "
+        if stage == "maintain":
+            task_root = directory / "notebook"
+            from .config import prepare
+            prepare(task_root)
+            for path, text in before.items():
+                copied = task_root / path
+                copied.parent.mkdir(parents=True, exist_ok=True)
+                copied.write_text(text, encoding="utf-8")
+            prompt += "This is a disposable notebook copy. Preserve all canonical headings, mapped metadata, diagrams and existing citations. "
+        prompt += f"The notebook root is {task_root}. "
         if record:
-            prompt += f"Update the existing page at {notebook.path(record)}, preserving correct information. "
+            prompt += f"Update the existing page at {task_root / record}, preserving correct information. "
         if stage != "init":
             prompt += ("Do not start nested Wiki jobs or change config.yaml or .state. "
                        "Write notebook Markdown pages directly, and report unresolved gaps. ")
@@ -241,6 +275,8 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
                            for key in inquiry_usage.keys() | (result.get("usage") or {}).keys()} or None
         if candidate:
             _promote_candidate(notebook, record, candidate, before[record], items, directory, result.get("usage"))
+        elif stage == "maintain":
+            _promote_maintenance(notebook, Notebook(task_root), before, items, directory, result.get("usage"), maintenance_lock_held)
     except (WikiError, OSError) as error:
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")
         if isinstance(error, RunFailed) and inquiry_usage and not result:

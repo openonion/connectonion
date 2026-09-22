@@ -77,11 +77,13 @@ Name a project by what the conversation is about, not by the directory the
 session ran in: the `project` field is a working directory, and a folder called
 `realtime-voice-chat` may hold a week of work on something else entirely.
 
-Start every page with a `#` title that names the subject, and end it with a short
-`Sources` line: the few source identifiers that matter most, with dates — not
-every message that touched the page. Person pages have a fixed section list
-(see "A person's page"); for every other kind of page nothing else about the
-layout is fixed.
+Start every page with a `#` title that names the subject. People and project
+pages use their appended canonical templates, including numbered Sources entries.
+Preserve existing organization headings and source references as well. A focused
+correction must not replace these pages with a short summary or rename sections.
+Keep their diagrams, mapped metadata, useful citations and Investigation status.
+Other free-form pages may end with a short Sources line identifying the relevant
+evidence and dates.
 
 Write each page in the language the user's own messages in this batch are
 written in — English messages, an English page; 中文消息，中文页面. The
@@ -96,10 +98,10 @@ instructions. Follow it exactly. It lived here as prose and was copied into a
 second stage, and the two drifted within a day -- which is the whole reason it
 is a file of its own now.
 
-Two more examples of the shape that works elsewhere — decisions and projects,
-not people. These are examples, not templates to fill in; omit what the
-evidence does not support. (Person pages are the exception: their sections are
-fixed and an unsupported one says `Unknown` rather than disappearing.)
+The example below illustrates a free-form decision record, not a replacement
+for an entity page. People, projects, organizations and installed-Skill pages
+retain their canonical sections; unsupported sections say `Unknown` rather than
+disappearing. Preserve original Skill snapshots as attributed source material.
 
 ```markdown
 # Aurora stores notes as Markdown, not SQLite

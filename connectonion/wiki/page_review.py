@@ -3,6 +3,7 @@
 import re
 from collections import Counter
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from .files import Notebook, WikiError
 
@@ -65,10 +66,15 @@ def _local_reference(value: str, original: str, items: list[dict]) -> bool:
     roots += [Path(m[1]).resolve() for m in re.finditer(r'^- `(/[^`]+)`', original, re.M)]
     roots += [Path(i['project']).resolve() for i in items if i.get('project')]
     roots += [Path(i['file']).resolve().parent for i in items if i.get('file')]
+    supplied_files = {Path(unquote(urlparse(i['reference']).path)).resolve() for i in items
+                      if str(i.get('reference', '')).startswith('file:///')}
+    supplied_files.update(Path(unquote(urlparse(ref).path) if ref.startswith('file:///') else ref).resolve()
+                          for i in items for ref in i.get('references', [])
+                          if isinstance(ref, str) and (ref.startswith('/') or ref.startswith('file:///')))
     candidates = re.findall(r'`(/[^`]+)`', value) + re.findall(r'/[^\s`]+', value)
     for candidate in candidates:
         path = Path(candidate).resolve()
-        if any(path == root or root in path.parents for root in roots) and path.exists():
+        if (path in supplied_files or any(path == root or root in path.parents for root in roots)) and path.exists():
             return True
     return False
 
@@ -78,6 +84,24 @@ def prior_context_reference(value: str, record: str, items: list[dict]) -> bool:
     supplied = any(item.get('role') == 'page' and item.get('record') == record for item in items)
     label = re.search(r'\b(existing|prior|derived|mapped)\b', value, re.I)
     return bool(supplied and label and (f'`{record}`' in value or 'investigation:page' in value))
+
+
+def _project_overview_errors(candidate: str) -> list[str]:
+    """Require the template's flow shape, without inventing a flow when unknown."""
+    visible = prose(candidate)
+    heading = re.search(r'^## Overview[ \t]*$', visible, re.M)
+    if not heading:
+        return []  # The canonical-section check reports this separately.
+    following = re.search(r'^## ', visible[heading.end():], re.M)
+    end = heading.end() + following.start() if following else len(candidate)
+    section = candidate[heading.end():end].strip()
+    if re.fullmatch(r'(?:- )?(?:Unknown|未知|尚未确认)[^\n]*', section):
+        return []
+    blocks = re.finditer(r'(?m)^[ \t]*(`{3,}|~{3,})(?:text|ascii)?[ \t]*\n'
+                         r'([\s\S]*?)\n[ \t]*\1[ \t]*(?:\n|$)', section)
+    if any(re.search(r'->|--|\||^[ \t]*v[ \t]*$', block[2], re.M) for block in blocks):
+        return []
+    return ['Project Overview requires a closed fenced ASCII flow, or an explicit Unknown statement']
 
 
 def validate(record: str, candidate: str, original: str, items: list[dict]) -> list[str]:
@@ -98,8 +122,18 @@ def validate(record: str, candidate: str, original: str, items: list[dict]) -> l
     errors += [f'Missing or duplicate citation: {key}' for key in refs if defined[key] != 1]
     known = {i['source'] for i in items if i.get('source') and i['source'] != 'investigation:page'}
     known.update(source for i in items if i.get("role") == "reflection-summary" for source in i.get("sources", []))
+    if record.startswith('projects/'):
+        errors += _project_overview_errors(candidate)
+        for label in ('Sessions', 'First seen', 'Last seen'):
+            pattern = r'^- ' + re.escape(label) + r': [0-9-]+$'
+            previous = re.findall(pattern, prose(original), re.M)
+            if previous and re.findall(pattern, body, re.M) != previous:
+                errors.append(f'Preserve mapped project metadata: {label}')
     old_sources = original.partition('\n## Sources\n')[2]
     for key, value in definitions:
+        files = {path for path in re.findall(r'`(/[^`]+)`', value) if Path(path).is_file()}
+        if len(files) > 1:
+            errors.append(f'Citation bundles multiple files: {key}')
         if key not in refs:
             errors.append(f'Unused citation: {key}')
         if not (any(source in value for source in known) or value.strip() in old_sources

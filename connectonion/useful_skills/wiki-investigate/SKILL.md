@@ -279,3 +279,22 @@ fixture does not imply an offline product. Do not invent dependencies or deadlin
 from adjacent facts; an unresolved review and an unknown launch date do not establish
 that launch must follow that review. Describe only the sources actually supplied or
 searched, not a standard claim that every configured source was searched.
+
+## Check the candidate before writing
+
+For a project with an evidenced user flow, `Overview` must contain a short, closed
+`text` code fence with an ASCII flow. A prose description or inline arrow alone
+does not meet this page contract. If sources do not establish the flow, write
+`Unknown — <what evidence is missing>` instead of inventing a diagram.
+
+Use a separate numbered source entry for each inspected file, even for a sample
+input and its output. Cite both numbers next to claims that depend on both. A
+command observation is its own source, with the command, directory and result;
+a recorded output file does not establish that you ran the command.
+
+In `Key decisions`, distinguish an explicit recorded choice from what the code
+currently does. A local implementation does not by itself prove a decision to
+keep the product local. When no choice/rationale is recorded, state that it is
+unknown and keep current behavior in `Where it stands` / `How it is built`.
+When a source does record a dated decision, retain it and cite that source; do
+not erase supported decisions merely because some rationale is missing.

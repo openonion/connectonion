@@ -46,7 +46,7 @@ def context(root: Path, subject: str = "") -> list[dict]:
         key = hashlib.sha256(name.encode()).hexdigest()
         compact = read_json(state_path(root, f"reflection-summaries/{key}.json"), {})
         raw = [{"role": "reflection", "source": f"reflection:{r['id']}",
-                "record": name, "timestamp": r["recorded_at"],
+                "record": name, "timestamp": r["recorded_at"], "references": r.get("sources", []),
                 "text": json.dumps(r, ensure_ascii=False)} for r in group]
         if compact:
             fields, values = compact.get("fields"), compact.get("rows")
@@ -59,6 +59,7 @@ def context(root: Path, subject: str = "") -> list[dict]:
                 revision = hashlib.sha256(json.dumps(group, sort_keys=True).encode()).hexdigest()
                 result.append({"role": "reflection-summary", "source": "reflection-summary:" + key + ":" + revision,
                                "sources": [r["source"] for r in raw], "record": name,
+                               "references": sorted({ref for r in group for ref in r.get("sources", [])}),
                                "timestamp": group[-1]["recorded_at"], "derived": True,
                                "text": json.dumps({"fields": fields, "rows": values, "derived": True,
                                                    "sources": [r["source"] for r in raw]}, ensure_ascii=False)})

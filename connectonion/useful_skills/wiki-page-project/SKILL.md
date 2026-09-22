@@ -91,7 +91,13 @@ Unknown; a plausible diagram is not evidence.
   boundaries. Explain what the project contributes to the company when supported.
 - `Key decisions`: dated important product, design or technical choices, why
   they were made, meaningful tradeoffs and sources. Label proposals and superseded
-  choices; distinguish recorded rationale from your inference.
+  choices; distinguish recorded rationale from your inference. Current behavior
+  alone is not a recorded decision: if only implementation status is evidenced,
+  put it in `Where it stands` / `How it is built` and mark the decision rationale
+  unknown. A rationale caveat does not turn observed behavior into a recorded
+  choice. If no source explicitly records a choice, say that no recorded decision
+  was found; do not restate current behavior in this section. Retain explicit
+  sourced decisions even when some rationale is missing.
 - `How it is built`: explain the main components and responsibilities, using
   enough detail for someone to begin work. Link deeper documents rather than
   reproducing them all.
@@ -107,7 +113,8 @@ Unknown; a plausible diagram is not evidence.
   check next. Keep uncertainty explicit instead of making the page look complete.
 - `Sources`: numbered claim references, with source identifier, observation date
   and confidence. Every investigated factual claim needs a matching citation.
-  Mark inference explicitly. Never copy facts from examples.
+  Give each inspected file a separate numbered entry, including sample inputs
+  and outputs. Mark inference explicitly. Never copy facts from examples.
 
 **Two stages, one page**
 
@@ -122,3 +129,7 @@ When investigating an older page, add missing sections and reorder them to this
 shape while preserving supported content and identity. Do not reuse a technical
 architecture diagram as a user-flow overview. Mapping reruns preserve existing
 pages. Leave the runner-owned `Investigation:` line unchanged.
+
+Investigation must preserve script-mapped `Sessions`, `First seen`, and `Last seen`
+fields in `Paths` exactly. These window-scoped counts and dates belong to mapping;
+do not drop them when expanding the prose or substitute the investigation date.

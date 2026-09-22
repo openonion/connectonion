@@ -566,7 +566,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
             items = [] if notes == NOTHING else [extraction_item(notes, items)]
         if items:
             stage = "maintain"
-            result = runner(Notebook(root), items, config, kind=kind)
+            options = {"maintenance_lock_held": True} if runner is run_stage else {}
+            result = runner(Notebook(root), items, config, kind=kind, **options)
             record["usage_by_stage"]["maintain"] = result.get("usage")
             for key, value in (result.get("usage") or {}).items():
                 usage[key] = usage.get(key, 0) + value
