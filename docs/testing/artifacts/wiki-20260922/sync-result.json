@@ -1,0 +1,36 @@
+{
+  "id": "run_2b9db39d837b4348b9364b63ef897b58",
+  "started_at": "2026-09-22T01:28:52.898000+00:00",
+  "model": "gpt-5.6-luna",
+  "sources": [],
+  "items": 1,
+  "runner_attempts": 1,
+  "outcome": "completed",
+  "usage": {
+    "input_tokens": 329098,
+    "output_tokens": 2847,
+    "cached_input_tokens": 290560
+  },
+  "changed": [
+    "projects/atlas-58b543867f.md"
+  ],
+  "refused": 0,
+  "extracted": false,
+  "unrecognised": {},
+  "warning": "",
+  "usage_by_stage": {
+    "maintain": {
+      "input_tokens": 329098,
+      "output_tokens": 2847,
+      "cached_input_tokens": 290560
+    }
+  },
+  "items_by_source": {
+    "local_material": 1
+  },
+  "chars_in": 886,
+  "seconds": 66.0,
+  "refusals": [],
+  "report": "I’m applying the provided `wiki-maintain` procedure. I’ll first read its composed instructions and all paginated source material, then inspect the existing notebook with `co wiki` before making only the necessary Markdown updates.The required skill includes additional fixed schemas for people, organisations, and projects; I’ve read them. Next I’m doing the mandated notebook inventory and reading the source JSON in bounded chunks so no continued text or reflection record is skipped.The evidence resolves the only conflict: the project’s owner is Mira, and the earlier Leo attribution was explicitly corrected. The same evidence confirms Atlas remains a local prototype with no hosted release; I’m updating the existing project page in place and preserving the hosted-site idea as an uncompleted request.Updated [projects/atlas-58b543867f.md](/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/notebook/projects/atlas-58b543867f.md):\n\n- Corrected ownership from Leo to Mira, effecti",
+  "finished_at": "2026-09-22T01:29:58.914801+00:00"
+}
