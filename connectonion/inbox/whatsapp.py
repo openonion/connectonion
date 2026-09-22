@@ -533,6 +533,9 @@ class WhatsApp:
             # A raising handler would surface as a Go-side panic and take the
             # whole process down, listener and all. A payload we cannot read is
             # one log line.
+            if getattr(event.Info.MessageSource, "IsFromMe", False):
+                self.keep_own(inbox, event, _client)
+                return
             try:
                 message = self.to_message(event)
             except Exception as exc:
@@ -720,15 +723,16 @@ class WhatsApp:
         lid = _user_of(_jid_str(getattr(me, "LID", None)))
         return phone, frozenset(i for i in (phone, lid) if i)
 
-    def to_message(self, event, *, raw: bool = False) -> Optional[Message]:
+    def to_message(self, event, *, raw: bool = False, own: bool = False) -> Optional[Message]:
         """A MessageEv as a Message, or None for an event that is not someone
-        talking to us."""
+        talking to us. `own` builds one for the user's own message instead, for
+        `keep_own`; it is never delivered."""
         from neonize.utils.message import extract_text
 
         source = event.Info.MessageSource
         # Our own messages come back over the same socket. Delivering them would
         # answer ourselves, and the answer would arrive as another message.
-        if source.IsFromMe:
+        if bool(source.IsFromMe) != own:
             return None
 
         text = extract_text(event.Message) or ""
@@ -843,6 +847,30 @@ class WhatsApp:
             return
         message.media = {"path": str(target), "mime": _mime_of(event.Message, message.kind), "size": size}
         inbox.log(f"media of {message.id} saved to {target} ({size} bytes)")
+
+    def keep_own(self, inbox: Inbox, event, client) -> None:
+        """Record what the user typed on their own phone, without queueing it.
+
+        Every IsFromMe event used to be dropped, so the bot would never answer
+        itself -- and with it went everything the user said in their own chats,
+        which is the part a notebook built on the user's words needs most. It is
+        appended to own.jsonl, a record file no consumer reads, so nothing
+        answers it. The agent's own replies arrive here too; sent.jsonl names
+        them, and a reader that wants only the user leaves those ids out.
+
+        Never raises, for the same reason as `fetch_media`: this runs inside the
+        MessageEv handler.
+        """
+        try:
+            message = self.to_message(event, own=True)
+            if message is None:
+                return
+            if any(row.get("id") == message.id for row in inbox.own_records()):
+                return   # WhatsApp retries; the same message twice is one record
+            self.fetch_media(inbox, message, event, client)
+            inbox.record_own(message)
+        except Exception as exc:
+            inbox.log(f"own message not kept ({type(exc).__name__}: {exc})")
 
     def take(self, inbox: Inbox, message: Message, *, raw: bool = False) -> bool:
         """Put a message in the queue, and mark it as seen where it was asked.

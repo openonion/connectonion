@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from .config import prepare, read_config, validate
 from .files import Notebook, WikiError, maintenance_lock, read_json, state_path, write_json
 from .mail import collect_mail
+from .chat import CHAT_KINDS, chat_home, collect_chat
 from .source import KINDS, collect, pending_metadata, timestamp
 
 MAIL_KINDS = ("gmail", "outlook")
@@ -63,7 +64,9 @@ def claude_projects_root() -> Path:
 # coding sessions older than half a year describe work that has moved on, while
 # mail keeps its value for years (people, commitments, what was agreed).
 DEFAULT_LOOKBACK_DAYS = 60
-MAX_LOOKBACK_DAYS = {"codex": 180, "claude-code": 180, "gmail": 730, "outlook": 730}
+MAX_LOOKBACK_DAYS = {"codex": 180, "claude-code": 180, "gmail": 730, "outlook": 730, "whatsapp": 730}
+# Every kind a subscription can be consented for and read.
+READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS)
 
 
 def subscriptions(root: Path) -> dict:
@@ -84,6 +87,13 @@ def subscriptions(root: Path) -> dict:
         "outlook": {"id": "outlook", "kind": "outlook", "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["outlook"],
                     "exclude_automated": True, "enabled": False, "consented": False,
                     "adapter": "available" if mail_available("outlook") else "waiting for co auth microsoft"},
+        # Off until the user names a chat: a linked device sees every group the
+        # number is in, and nothing is read from a chat nobody chose.
+        "whatsapp": {"id": "whatsapp", "kind": "whatsapp", "root": str(chat_home("whatsapp")), "chats": [],
+                     "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["whatsapp"],
+                     "enabled": False, "consented": False,
+                     "adapter": "available" if (chat_home("whatsapp") / "received.jsonl").is_file()
+                     else "waiting for co whatsapp listen"},
     }
     defaults.update(saved)
     return defaults
@@ -96,14 +106,14 @@ def approve_sources(root: Path) -> None:
         validate(read_config(root))
         sources = subscriptions(root)
         for source in sources.values():
-            if (source.get("kind") in KINDS or source.get("kind") in MAIL_KINDS) and source.get("enabled"):
+            if source.get("kind") in READABLE and source.get("enabled"):
                 source["consented"] = True
         write_json(state_path(root, "subscriptions.json"), sources)
         write_json(state_path(root, "consent.json"), {"authorized_at": now().isoformat()})
 
 
 def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", about: str = "",
-                  since: str = "7d") -> str:
+                  since: str = "7d", chats=()) -> str:
     """Store a choice, not permission to read bodies or run the model.
 
     A scope -- one directory, or one subject -- is a subscription of its own with its
@@ -133,6 +143,19 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
                                  "since": (now() - timedelta(days=days)).isoformat()}
         if name not in sources:
             raise WikiError("Subscription not found; inspect subscriptions for exact names")
+        if chats:
+            if sources[name].get("kind") not in CHAT_KINDS:
+                raise WikiError(f"--chat names a chat in {', '.join(CHAT_KINDS)}, not in {name}")
+            current = set(sources[name].get("chats") or [])
+            chosen = current | set(chats) if enabled else current - set(chats)
+            if chosen - current:
+                # A new chat is material the user has not agreed to have read.
+                # The next `start` shows the summary again before anything is.
+                sources[name]["consented"] = False
+            sources[name]["chats"] = sorted(chosen)
+            enabled = bool(chosen)
+        elif enabled and sources[name].get("kind") in CHAT_KINDS and not sources[name].get("chats"):
+            raise WikiError("Name the chats to read: --chat <id>, from `co whatsapp chats`")
         sources[name]["enabled"] = enabled
         write_json(state_path(root, "subscriptions.json"), sources)
     return name
@@ -292,10 +315,16 @@ def consent_summary(root: Path) -> dict:
             state = "will be read" if Path(source["root"]).is_dir() else "directory missing"
         elif source.get("kind") in MAIL_KINDS:
             state = "will be read (automated senders skipped)" if source.get("adapter") == "available" else source["adapter"]
+        elif source.get("kind") in CHAT_KINDS:
+            chats = source.get("chats") or []
+            state = (f"will read {len(chats)} chat(s), both sides, the agent's own replies left out"
+                     if source.get("adapter") == "available" else source["adapter"])
         else:
             state = "waiting"
         sources[name] = {"state": state, "root": source.get("root"), "project": source.get("project"),
                          "since": source.get("since")}
+        if source.get("kind") in CHAT_KINDS:
+            sources[name]["chats"] = source.get("chats") or []
     return {"root": str(root), "sources": sources, "runner": config["runner"], "model": config["model"],
             "model_receives": "the new session messages plus the notebook pages it reads, "
                               "through your own Codex login (no API key, no OpenOnion server)",
@@ -315,7 +344,12 @@ def start(root: Path, *, confirm, scheduler, runner=None) -> dict:
         prepare(root)
         validate(read_config(root))
     first = not state_path(root, "consent.json").is_file()
-    if first:
+    # A source subscribed after the first start -- a mailbox, a WhatsApp chat --
+    # has not been agreed to. Asking only the first time meant it could never be
+    # read; asking again whenever one is waiting means it is read only once shown.
+    waiting = [name for name, source in subscriptions(root).items()
+               if source.get("enabled") and not source.get("consented") and source.get("kind") in READABLE]
+    if first or waiting:
         if not confirm(consent_summary(root)):
             return {"started": False, "consented": False, "first_batch": None}
         approve_sources(root)
@@ -362,7 +396,7 @@ def _selected_sources(root: Path, selector: str) -> dict:
         if sources[selector].get("adapter") == "deferred":
             raise WikiError("This source adapter is deferred to a later milestone")
     return {name: source for name, source in sources.items()
-            if source.get("enabled") and (source.get("kind") in KINDS or source.get("kind") in MAIL_KINDS)}
+            if source.get("enabled") and source.get("kind") in READABLE}
 
 
 def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bool = False,
@@ -385,7 +419,9 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         progress = read_json(state_path(root, "progress.json"), {})
         return {"dry_run": True, "sources": {
             name: (pending_metadata(sub, progress.get(name, {})) if sub.get("kind") in KINDS
-                   else {"candidate_files": None, "message_count": None, "body_reads": False,
+                   else {"chats": sub.get("chats") or [], "body_reads": False,
+                         "source_available": sub.get("adapter") == "available"}
+                   if sub.get("kind") in CHAT_KINDS else {"candidate_files": None, "message_count": None, "body_reads": False,
                          "source_available": mail_available(sub["kind"]),
                          "cursor": progress.get(name, {}).get("cursor") or sub.get("since")})
             for name, sub in _selected_sources(root, source).items()}}
@@ -466,12 +502,12 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
     # extraction pass reads it once. A batch that fits items_per_batch
     # is small enough for the maintainer to read directly and skips extraction.
     # The widest source Skill, so the budget holds whichever source this batch is.
-    widest_maintain = max(len(maintenance_instructions(k)) for k in ("", *KINDS, *MAIL_KINDS))
+    widest_maintain = max(len(maintenance_instructions(k)) for k in ("", *READABLE))
     maintain_room = limits["input_chars_per_batch"] - widest_maintain - 1000
     if maintain_room <= 0:
         raise WikiError("Configured input limit is too small for the maintenance Skill")
     # The largest source Skill, so the budget holds whichever source this batch turns out to be.
-    widest = max(len(extraction_instructions(k)) for k in ("", *KINDS, *MAIL_KINDS))
+    widest = max(len(extraction_instructions(k)) for k in ("", *READABLE))
     remaining = max(limits["extract_chars_per_batch"] - widest - 1000, maintain_room * 2 // 3)
     max_items = limits["extract_items_per_batch"]
     from .reflections import context as reflection_context
@@ -501,6 +537,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
                                  remaining, mail_client(subscription["kind"]), only=with_person)
         elif with_person:
             continue  # a person is a mail concept; a coding session has no correspondent
+        elif subscription.get("kind") in CHAT_KINDS:
+            batch = collect_chat(subscription, progress.get(name, {}), max_items - len(items), remaining)
         else:
             batch = collect(subscription, progress.get(name, {}), max_items - len(items), remaining)
         if getattr(batch, "unreadable", False):

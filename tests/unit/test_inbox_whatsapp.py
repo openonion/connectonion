@@ -1426,3 +1426,27 @@ def test_a_saved_media_path_survives_the_queue_file(tmp_path, sdk):
     back = Message.from_dict(json.loads(message.to_json()))
     assert back.media == message.media
     assert '"media"' in inbox.received.read_text()
+
+
+# ---- the user's own messages are kept for the notebook, not delivered (#1625) ----
+
+def test_what_the_user_types_on_their_phone_is_kept_but_never_queued(tmp_path, sdk):
+    """`to_message` drops every IsFromMe event so the bot never answers itself --
+    which also threw away everything the user typed on their phone, the part a
+    notebook built on the user's own words needs most. It is kept in own.jsonl,
+    a record file, and still never reaches new/ where a consumer would answer it."""
+    inbox = Inbox("whatsapp", tmp_path)
+
+    class Client:
+        def download_any(self, message, path=None):
+            raise AssertionError("a text message asked for a download")
+
+    provider = linked(WhatsApp())
+    mine = event(text="keep the price at 210", group=True, from_me=True, message_id="3EB0MINE")
+    assert provider.to_message(mine) is None                   # still never delivered
+    provider.keep_own(inbox, mine, Client())
+    rows = [json.loads(line) for line in (tmp_path / "own.jsonl").read_text().splitlines()]
+    assert [(r["id"], r["text"]) for r in rows] == [("3EB0MINE", "keep the price at 210")]
+    assert not any(inbox.new.iterdir())                        # nothing queued for a consumer
+    provider.keep_own(inbox, mine, Client())                   # the same event twice is kept once
+    assert len((tmp_path / "own.jsonl").read_text().splitlines()) == 1

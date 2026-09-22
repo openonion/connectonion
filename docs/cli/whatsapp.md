@@ -86,6 +86,7 @@ bundled protocol implementation old enough to start failing.
 ~/.co/inbox/whatsapp/
 ├── received.jsonl      every message ever received
 ├── sent.jsonl          every reply
+├── own.jsonl           what the account owner typed on their phone (a record, never queued)
 ├── new/                unread, one file each
 ├── cur/                taken by a consumer
 ├── outbox/             replies waiting for the listener (see below)

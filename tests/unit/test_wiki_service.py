@@ -617,3 +617,42 @@ def test_a_batch_is_drawn_from_one_source_and_names_it_to_the_extractor(tmp_path
     assert seen["prefixes"] == {"codex"}
     assert seen["kind"] == "codex"          # named, so the codex Skill is the one loaded
     assert list(record["items_by_source"]) == ["codex"]
+
+
+def test_whatsapp_is_a_source_chat_by_chat_and_a_new_chat_asks_again(tmp_path, monkeypatch):
+    """Subscribing a chat widens what is read, so it is consent the user has not
+    given yet: the next `start` shows the summary again instead of reading on the
+    strength of the first one. Before this, a repeated start never asked, and a
+    source added after the first start could never be read at all."""
+    from connectonion.wiki.service import start, subscriptions, toggle_source
+    inbox = tmp_path / "inbox" / "whatsapp"
+    inbox.mkdir(parents=True)
+    (inbox / "received.jsonl").write_text(json.dumps({
+        "id": "m1", "chat": "120363411567190840@g.us", "sender": "61400000001@s.whatsapp.net",
+        "sender_name": "John", "text": "the listing goes live on Friday", "kind": "text",
+        "at": "2026-09-06T01:00:00Z"}) + "\n")
+    monkeypatch.setenv("CO_INBOX_HOME", str(tmp_path / "inbox"))
+    monkeypatch.setattr("connectonion.wiki.service.codex_sessions_root", lambda: tmp_path / "none")
+    monkeypatch.setattr("connectonion.wiki.service.claude_projects_root", lambda: tmp_path / "none")
+    monkeypatch.setattr("connectonion.wiki.service.now", lambda: datetime(2026, 9, 7, 12, tzinfo=timezone.utc))
+    root = tmp_path / "wiki"
+    asked, seen = [], []
+    runner = lambda notebook, items, config, *a, **k: seen.extend(items) or {"usage": None, "changed": []}
+    scheduler = FakeScheduler()
+    start(root, confirm=lambda summary: asked.append(summary) or True, scheduler=scheduler, runner=runner)
+    assert subscriptions(root)["whatsapp"]["adapter"] == "available"
+    assert not subscriptions(root)["whatsapp"]["enabled"]           # off until a chat is named
+
+    toggle_source(root, "whatsapp", True, chats=["120363411567190840@g.us"])
+    assert subscriptions(root)["whatsapp"]["consented"] is False
+    start(root, confirm=lambda summary: asked.append(summary) or True, scheduler=scheduler, runner=runner)
+    assert len(asked) == 2
+    assert "120363411567190840@g.us" in json.dumps(asked[1]["sources"]["whatsapp"])
+    assert subscriptions(root)["whatsapp"]["consented"] is True
+
+    record = run_sync(root, source="whatsapp", runner=runner)
+    assert record["outcome"] == "completed"
+    assert [i["text"] for i in seen] == ["the listing goes live on Friday"]
+
+    toggle_source(root, "whatsapp", False, chats=["120363411567190840@g.us"])
+    assert subscriptions(root)["whatsapp"]["chats"] == []
