@@ -7,6 +7,8 @@ from typing import List, Optional
 
 import typer
 
+from .wiki_output import guide, render
+
 
 def _next(ctx, arguments):
     root = ctx.obj["root"]
@@ -18,8 +20,7 @@ def _emit(ctx, value, arguments, *, failed=False):
     if ctx.obj["json"]:
         typer.echo(json.dumps({"ok": not failed, "data": value, "next": command}, ensure_ascii=False))
     else:
-        text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, indent=2)
-        text = "".join(char for char in text if char in "\n\t" or (ord(char) >= 32 and not 127 <= ord(char) <= 159))
+        text = render(value, ctx.info_name or "status", failed=failed)
         typer.echo(text, err=failed)
         typer.echo(f"Next: {command}", err=failed)
     if failed:
@@ -38,8 +39,35 @@ def _handle(ctx, operation, recovery):
     _emit(ctx, value, arguments)
 
 
+def _investigation_pages(notebook):
+    return [path for path in notebook.list()
+            if path.startswith(("people/", "projects/", "orgs/", "skills/catalog/"))
+            and path != "skills/catalog/index.md"]
+
+
+def _resolve_page(notebook, selector):
+    from ...wiki.files import WikiError
+    pages = _investigation_pages(notebook)
+    if selector in notebook.list():
+        return selector
+    people = {person["path"]: person for person in notebook.people()}
+    matches = []
+    for path in pages:
+        title = next((line[2:].strip() for line in notebook.read(path).splitlines()
+                      if line.startswith("# ")), "")
+        person = people.get(path, {})
+        names = [title, Path(path).stem, *person.get("emails", []), *person.get("aliases", [])]
+        if selector.casefold() in [name.casefold() for name in names]:
+            matches.append(path)
+    if len(matches) == 1:
+        return matches[0]
+    if matches:
+        raise WikiError("More than one page matches. Use an exact path:\n" + "\n".join(matches))
+    raise WikiError("No page matches that name, email or path. Run investigate without arguments to see available pages.")
+
+
 def make_wiki_app(factory):
-    wiki = factory(help="A notebook your AI maintains from your Codex sessions: start, inspect, open, stop.",
+    wiki = factory(help="Start with co wiki init, then co wiki investigate to choose a real page. Inspect results with co wiki open. Use --json before a command for machine-readable output.",
                    no_args_is_help=False)
 
     @wiki.callback(invoke_without_command=True)
@@ -48,9 +76,17 @@ def make_wiki_app(factory):
                  json_out: bool = typer.Option(False, "--json", help="Machine-readable output with next command")):
         ctx.obj = {"root": (root or Path.home() / ".co/wiki").expanduser().resolve(), "json": json_out}
         if ctx.invoked_subcommand is None:
-            inspect_status(ctx)
+            if ctx.obj["json"]:
+                inspect_status(ctx)
+            else:
+                from ...wiki.service import status
+                typer.echo(guide(lambda args: _next(ctx, args)))
+                def operation(root):
+                    result = status(root)
+                    return result, ["unfinished"] if result["configured"] else ["init"]
+                _handle(ctx, operation, ["config"])
 
-    @wiki.command("daily")
+    @wiki.command("daily", rich_help_panel="3. Update and review")
     def daily_round(ctx: typer.Context, days: int = typer.Option(30, "--days", min=1)):
         """Maintain current material, then investigate at most one unfinished page."""
         from ...wiki.daily import run_daily
@@ -61,14 +97,14 @@ def make_wiki_app(factory):
             return result, ["logs"]
         _handle(ctx, operation, ["status"])
 
-    @wiki.command("capture")
+    @wiki.command("capture", rich_help_panel="3. Update and review")
     def capture_session(ctx: typer.Context, transcript: Path,
                         source: str = typer.Option(..., "--source")):
         """Capture local user messages into a durable queue; no model or sync."""
         from ...wiki.capture import capture
         _handle(ctx, lambda root: (capture(root, transcript.expanduser().resolve(), source), ["sync"]), ["status"])
 
-    @wiki.command("reflect")
+    @wiki.command("reflect", rich_help_panel="3. Update and review")
     def reflect(ctx: typer.Context, subject: str, statement: str,
                 author: str = typer.Option(..., "--author"),
                 basis: str = typer.Option(..., "--basis"),
@@ -83,7 +119,7 @@ def make_wiki_app(factory):
                  previous=previous, applies=applies, kind=kind, sources=source, supersedes=supersedes),
                  ["reflections", subject]), ["list"])
 
-    @wiki.command("reflections")
+    @wiki.command("reflections", rich_help_panel="3. Update and review")
     def reflection_records(ctx: typer.Context, subject: str = typer.Argument(""),
                            compact: bool = typer.Option(False, "--compact")):
         """Read retained reflections or write a lossless compact view; no deletion."""
@@ -91,7 +127,7 @@ def make_wiki_app(factory):
         _handle(ctx, lambda root: (compress(root, subject) if compact else records(root, subject),
                                   ["list"]), ["list"])
 
-    @wiki.command("propose")
+    @wiki.command("propose", rich_help_panel="3. Update and review")
     def propose_review(ctx: typer.Context, kind: str, subject: str, question: str,
                        basis: str = typer.Option(..., "--basis"),
                        related: str = typer.Option("", "--related")):
@@ -100,7 +136,7 @@ def make_wiki_app(factory):
         _handle(ctx, lambda root: (propose(root, kind, [subject, related] if related else [subject],
                                          question, basis), ["review"]), ["list"])
 
-    @wiki.command("review")
+    @wiki.command("review", rich_help_panel="3. Update and review")
     def review_candidates(ctx: typer.Context, review_id: str = typer.Argument(""),
                           verdict: str = typer.Option("", "--verdict"),
                           author: str = typer.Option("", "--author"),
@@ -121,7 +157,7 @@ def make_wiki_app(factory):
                     if review_id else listing(root)), ["review"]
         _handle(ctx, operation, ["review"])
 
-    @wiki.command("route")
+    @wiki.command("route", rich_help_panel="5. Settings and diagnostics")
     def route_stage(ctx: typer.Context, stage: str = typer.Argument(""),
                     runner: str = typer.Option("", "--runner"),
                     model: str = typer.Option("", "--model"),
@@ -136,13 +172,13 @@ def make_wiki_app(factory):
             return value, ["route"]
         _handle(ctx, operation, ["route"])
 
-    @wiki.command("status")
+    @wiki.command("status", rich_help_panel="2. Browse pages")
     def inspect_status(ctx: typer.Context):
         """Show local run counts, known usage, and background readiness."""
         from ...wiki.service import status
         _handle(ctx, lambda root: (status(root), ["logs"]), ["config"])
 
-    @wiki.command("init")
+    @wiki.command("init", rich_help_panel="Commands — 1. Map and investigate")
     def init_wiki(ctx: typer.Context,
                   days: int = typer.Option(150, "--days", min=1),
                   skills_dir: List[Path] = typer.Option([], "--skills-dir"),
@@ -189,7 +225,7 @@ def make_wiki_app(factory):
             return result, ["unfinished"]
         _handle(ctx, run, ["subscriptions"])
 
-    @wiki.command("map-skills")
+    @wiki.command("map-skills", rich_help_panel="Commands — 1. Map and investigate")
     def map_skill_pages(ctx: typer.Context,
                         skills_dir: List[Path] = typer.Option([], "--skills-dir", help="Explicit skill roots instead of defaults (repeatable)")):
         """Build the installed-Skill map and missing page skeletons; no model, no execution."""
@@ -198,13 +234,13 @@ def make_wiki_app(factory):
         _handle(ctx, lambda root: (map_skills(Notebook(root), skills_dir or None),
                                   ["show", "skills/catalog/index.md"]), ["status"])
 
-    @wiki.command("people")
+    @wiki.command("people", rich_help_panel="2. Browse pages")
     def list_people(ctx: typer.Context):
         """List known identities, aliases and contact addresses; no source reads."""
         from ...wiki.files import Notebook
         _handle(ctx, lambda root: (Notebook(root).people(), ["list", "people"]), ["list", "people"])
 
-    @wiki.command("abstract")
+    @wiki.command("abstract", rich_help_panel="3. Update and review")
     def abstract_pages(ctx: typer.Context):
         """Run the abstraction Skill on existing pages and their evidence."""
         from ...wiki.config import read_config
@@ -213,13 +249,13 @@ def make_wiki_app(factory):
         _handle(ctx, lambda root: (
             run_stage(Notebook(root), [], read_config(root), stage="abstract"), ["list"]), ["status"])
 
-    @wiki.command("subscriptions")
+    @wiki.command("subscriptions", rich_help_panel="4. Sources and background")
     def inspect_subscriptions(ctx: typer.Context):
         """Show saved source choices or unsaved defaults; no body reads."""
         from ...wiki.service import subscriptions
         _handle(ctx, lambda root: (subscriptions(root), ["status"]), ["config"])
 
-    @wiki.command("scan")
+    @wiki.command("scan", rich_help_panel="Commands — 1. Map and investigate")
     def scan_sources(ctx: typer.Context,
                      what: str = typer.Argument("people", help="people, orgs or projects"),
                      days: int = typer.Option(150, "--days", min=1, help="How far back to look"),
@@ -234,20 +270,25 @@ def make_wiki_app(factory):
 
         def run(root):
             if what == "projects":
-                return scan_projects(subscriptions(root), days), ["stub", "project", "<name>", "--path", "<cwd>"]
+                rows = scan_projects(subscriptions(root), days)
+                return rows, (["stub", "project", rows[0]["name"], "--path", rows[0]["path"]]
+                              if rows else ["subscriptions"])
             if what not in ("people", "orgs"):
                 raise WikiError("scan takes people, orgs or projects")
             clients = {k: mail_client(k) for k in ("outlook", "gmail")}
             rows = [p for p in scan_people(clients, days, set(mine)) if p["mails"] >= min_mails]
             if what == "orgs":
                 own = set(mine) | {a for c in clients.values() for a in c.my_addresses()}
-                return (scan_orgs(rows, min_people=min_people, own_addresses=own),
-                        ["stub", "org", "<name>", "--domain", "<domain>"])
-            return rows, ["stub", "person", "<name>", "--handle", "<address>"]
+                orgs = scan_orgs(rows, min_people=min_people, own_addresses=own)
+                return orgs, (["stub", "org", orgs[0]["domain"], "--domain", orgs[0]["domain"]]
+                              if orgs else ["subscriptions"])
+            return rows, (["stub", "person", rows[0]["name"] or rows[0]["address"],
+                           "--email", rows[0]["address"], "--handle", rows[0]["address"]]
+                          if rows else ["subscriptions"])
         from ...wiki.files import WikiError
         _handle(ctx, run, ["status"])
 
-    @wiki.command("stub")
+    @wiki.command("stub", rich_help_panel="Commands — 1. Map and investigate")
     def stub_page(ctx: typer.Context,
                   kind: str = typer.Argument(..., help="person, org or project"),
                   name: str = typer.Argument(..., help="The page title"),
@@ -278,25 +319,39 @@ def make_wiki_app(factory):
             return {"record": record, "created": made}, ["investigate", record, *sum((["--handle", h] for h in handle), [])]
         _handle(ctx, run, ["unfinished"])
 
-    @wiki.command("unfinished")
+    @wiki.command("unfinished", rich_help_panel="Commands — 1. Map and investigate")
     def list_unfinished(ctx: typer.Context, category: str = typer.Argument("", help="people, projects, or all")):
         """Pages still carrying an Unknown section, least-investigated first. The notebook's own work list."""
         from ...wiki.files import Notebook
-        _handle(ctx, lambda root: (Notebook(root).unfinished(category), ["investigate", "<path>"]), ["status"])
+        def operation(root):
+            pages = Notebook(root).unfinished(category)
+            return pages, ["investigate", pages[0]["path"]] if pages else ["list"]
+        _handle(ctx, operation, ["status"])
 
-    @wiki.command("investigate")
+    @wiki.command("investigate", rich_help_panel="Commands — 1. Map and investigate")
     def investigate_page(ctx: typer.Context,
-                         record: str = typer.Argument(..., help="The page, e.g. people/emma.md"),
+                         record: str = typer.Argument("", help="Exact page path, unique title or email. Omit to list your pages; no model runs."),
                          handle: List[str] = typer.Option([], "--handle", help="Every spelling, address or alias (repeatable)"),
                          days: int = typer.Option(150, "--days", min=1, help="How far back to search"),
                          eval_dir: List[Path] = typer.Option([], "--eval-dir", help="Skill run summary directory (repeatable; skills only)")):
-        """Fill one page across sources, digesting large inputs before writing."""
+        """Investigate one existing page; omit the argument to discover available pages.
+
+        Start with co wiki investigate, then copy the Next command it prints.
+        Use --help only to read options; it never runs an investigation.
+        """
         from ...wiki.files import Notebook
         from ...wiki.investigate import investigate
         from ...wiki.service import mail_client, subscriptions
 
         def run(root):
             notebook = Notebook(root)
+            if not record:
+                pages = _investigation_pages(notebook)
+                return pages, ["investigate", pages[0]] if pages else ["init"]
+            selected = _resolve_page(notebook, record)
+            return investigate_selected(root, notebook, selected)
+
+        def investigate_selected(root, notebook, record):
             if record.startswith("skills/"):
                 from ...wiki.skill_runs import investigate_skill_runs
                 result = investigate_skill_runs(root, record, eval_dir or [Path.home() / ".co/evals"])
@@ -321,10 +376,10 @@ def make_wiki_app(factory):
                                  subscriptions=subscriptions(root),
                                  progress=lambda k, stop, n: typer.echo(f"  {k}: to {stop:%Y-%m-%d}, {n} mails", err=True))
             return result, ["show", record]
-        _handle(ctx, run, ["unfinished"])
+        _handle(ctx, run, ["investigate"])
 
     config_app = factory(help="Inspect or explicitly change Wiki configuration.", no_args_is_help=False)
-    wiki.add_typer(config_app, name="config")
+    wiki.add_typer(config_app, name="config", rich_help_panel="5. Settings and diagnostics")
 
     @config_app.callback(invoke_without_command=True)
     def inspect_config(ctx: typer.Context):
@@ -340,7 +395,7 @@ def make_wiki_app(factory):
         from ...wiki.config import set_config
         _handle(ctx, lambda root: (set_config(root, values), ["config"]), ["config"])
 
-    @wiki.command("list")
+    @wiki.command("list", rich_help_panel="2. Browse pages")
     def list_records(ctx: typer.Context, category: str = typer.Argument("", help="Category, e.g. people or notes")):
         """List current Markdown paths without inference."""
         from ...wiki.files import Notebook
@@ -349,7 +404,7 @@ def make_wiki_app(factory):
             return records, ["show", records[0]] if records else ["status"]
         _handle(ctx, operation, ["list"])
 
-    @wiki.command("show")
+    @wiki.command("show", rich_help_panel="2. Browse pages")
     def show_record(ctx: typer.Context, record: str = typer.Argument(..., help="Path returned by list/search")):
         """Read one Markdown record; does not edit it."""
         from ...wiki.files import CATEGORIES, Notebook
@@ -357,7 +412,7 @@ def make_wiki_app(factory):
         recovery = ["list", category] if category in CATEGORIES else ["list"]
         _handle(ctx, lambda root: (Notebook(root).read(record), recovery), recovery)
 
-    @wiki.command("search")
+    @wiki.command("search", rich_help_panel="2. Browse pages")
     def search_records(ctx: typer.Context, query: str = typer.Argument(...),
                        category: str = typer.Option("", "--type", help="Restrict to one category")):
         """Literal case-insensitive search; no embeddings or model call."""
@@ -367,7 +422,7 @@ def make_wiki_app(factory):
             return found, ["show", found[0]["record"]] if found else ["list"]
         _handle(ctx, operation, ["list"])
 
-    @wiki.command("logs")
+    @wiki.command("logs", rich_help_panel="5. Settings and diagnostics")
     def inspect_logs(ctx: typer.Context, run_id: str = typer.Option("", "--run", help="ID from the run listing")):
         """Show local run outcomes and known/unknown usage."""
         from ...wiki.service import run_logs
@@ -377,7 +432,7 @@ def make_wiki_app(factory):
             return records, next_args
         _handle(ctx, operation, ["logs"])
 
-    @wiki.command("start")
+    @wiki.command("start", rich_help_panel="4. Sources and background")
     def start_wiki(ctx: typer.Context,
                    yes: bool = typer.Option(False, "--yes", help="Consent without a prompt (after reading the summary)")):
         """Confirm source access once, install the background schedule, run the first batch."""
@@ -388,7 +443,7 @@ def make_wiki_app(factory):
         from ...wiki.service import start
 
         def confirm(summary):
-            text = json.dumps(summary, ensure_ascii=False, indent=2)
+            text = render(summary, "start — source access and schedule")
             if yes:
                 return True
             if not sys.stdin.isatty():
@@ -407,14 +462,14 @@ def make_wiki_app(factory):
 
         _handle(ctx, operation, ["start", "--yes"] if not yes else ["doctor"])
 
-    @wiki.command("stop")
+    @wiki.command("stop", rich_help_panel="4. Sources and background")
     def stop_wiki(ctx: typer.Context):
         """Turn background maintenance off; notes, consent and manual sync remain."""
         from ...wiki import schedule as wiki_schedule
         from ...wiki.service import stop
         _handle(ctx, lambda root: (stop(root, scheduler=wiki_schedule.default_scheduler()), ["start"]), ["status"])
 
-    @wiki.command("sync")
+    @wiki.command("sync", rich_help_panel="3. Update and review")
     def sync_wiki(ctx: typer.Context,
                   source: str = typer.Option("", "--source", help="Only this subscription"),
                   with_person: str = typer.Option("", "--with", help="Mail only: just this correspondent, named by "
@@ -448,7 +503,7 @@ def make_wiki_app(factory):
             return record, ["logs", "--run", record["id"]]
         _handle(ctx, operation, ["logs"])
 
-    @wiki.command("subscribe")
+    @wiki.command("subscribe", rich_help_panel="4. Sources and background")
     def subscribe(ctx: typer.Context, name: str = typer.Argument(..., help="codex, claude-code, gmail, outlook"),
                   project: str = typer.Option("", "--project",
                                               help="Coding sources: a scope of its own for sessions run in this "
@@ -474,20 +529,20 @@ def make_wiki_app(factory):
             return result, ["subscriptions"]
         _handle(ctx, operation, ["subscriptions"])
 
-    @wiki.command("unsubscribe")
+    @wiki.command("unsubscribe", rich_help_panel="4. Sources and background")
     def unsubscribe(ctx: typer.Context, name: str = typer.Argument(..., help="Name from `co wiki subscriptions`")):
         """Stop future reads from this source for good; existing notes stay."""
         from ...wiki.service import toggle_source
         _handle(ctx, lambda root: ({"subscription": toggle_source(root, name, False), "enabled": False},
                                    ["subscriptions"]), ["subscriptions"])
 
-    @wiki.command("usage")
+    @wiki.command("usage", rich_help_panel="5. Settings and diagnostics")
     def usage(ctx: typer.Context, days: int = typer.Option(0, "--days", help="Only runs from the last N days")):
         """Where the tokens went: totals, by stage, by model, by source, from the raw run records."""
         from ...wiki.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    @wiki.command("open")
+    @wiki.command("open", rich_help_panel="2. Browse pages")
     def open_page(ctx: typer.Context,
                   launch: bool = typer.Option(True, "--launch/--no-launch",
                                               help="Open the rendered page in the default browser")):
@@ -500,7 +555,7 @@ def make_wiki_app(factory):
                     "note": "a snapshot; run this command again after the next maintenance pass"}, ["status"]
         _handle(ctx, operation, ["doctor"])
 
-    @wiki.command("doctor")
+    @wiki.command("doctor", rich_help_panel="5. Settings and diagnostics")
     def doctor(ctx: typer.Context):
         """Inspect local prerequisites; no native process, login, or repair."""
         import shutil
@@ -514,4 +569,9 @@ def make_wiki_app(factory):
                     "background": "available on macOS via co wiki start"}, ["status"]
         _handle(ctx, operation, ["config"])
 
+    order = ("init investigate unfinished map-skills scan stub "
+             "open list show search people status "
+             "sync daily capture reflect reflections propose review abstract "
+             "subscriptions subscribe unsubscribe start stop route logs usage doctor").split()
+    wiki.registered_commands.sort(key=lambda command: order.index(command.name))
     return wiki

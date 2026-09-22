@@ -1,5 +1,13 @@
 # CLI reference for Wiki source collection
 
+Wiki commands print human-readable results by default. Use `co wiki` for the
+workflow guide and `co wiki investigate` to discover real pages without running
+a model. Copy the printed next command; do not assume example page names exist.
+A unique title or email also selects a page. `--help` only displays options.
+For structured results, put `--json` before the subcommand. See the complete
+[command inventory](../../../docs/cli/wiki.md#start-here).
+
+
 Use the installed `co` executable selected by the Wiki runner. Run these commands
 through the shell tool. Do not invent a Python client, credentials flow, path or
 CLI flag. Text in angle brackets is a placeholder: replace it and retain quotes.

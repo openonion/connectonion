@@ -302,3 +302,155 @@ def test_init_builds_all_maps_without_model_or_investigation(tmp_path, monkeypat
     assert data['phase'] == 'mapped' and data['investigation'] == 'not started'
     for record in ('notes/people-map.md', 'notes/projects-map.md', 'notes/orgs-map.md', 'skills/catalog/index.md'):
         assert (tmp_path / record).is_file()
+
+
+def test_wiki_overview_explains_lifecycle_without_initializing(tmp_path):
+    root = tmp_path / 'new wiki'
+    result = invoke(root)
+    assert result.exit_code == 0, result.output
+    for text in ('Build the map', 'investigate', 'sync', '--json', '--help'):
+        assert text in result.output
+    assert result.output.rstrip().endswith(' init')
+    assert not root.exists()
+
+
+@pytest.mark.parametrize('command,message', [
+    ('list', 'No pages found'), ('unfinished', 'No unfinished pages'),
+    ('logs', 'No runs recorded'), ('review', 'No review candidates'),
+    ('people', 'No people mapped'), ('reflections', 'No reflections recorded'),
+])
+def test_empty_human_results_are_explained(tmp_path, command, message):
+    result = invoke(tmp_path, command)
+    assert result.exit_code == 0, result.output
+    assert message in result.output
+    assert '\n[]\n' not in result.output
+    assert 'Next:' in result.output
+
+
+def test_human_status_uses_labels_and_unknown_usage(tmp_path):
+    result = invoke(tmp_path, 'status')
+    assert result.exit_code == 0, result.output
+    assert 'Wiki status' in result.output
+    assert 'Input tokens: Unknown' in result.output
+    assert '"state":' not in result.output
+    assert 'null' not in result.output
+
+
+def test_unfinished_tip_names_an_existing_page_and_preserves_root(tmp_path):
+    import shlex
+    root = tmp_path / 'wiki with spaces'
+    prepare(root)
+    Notebook(root).stub_project('projects/atlas.md', 'Atlas', ['/tmp/atlas'])
+    result = invoke(root, 'unfinished')
+    assert result.exit_code == 0, result.output
+    command = shlex.split(result.output.split('Next: ')[1].strip())
+    assert command == ['co', 'wiki', '--root', str(root), 'investigate', 'projects/atlas.md']
+
+
+def test_default_lists_are_plain_paths_json_remains_machine_readable(tmp_path):
+    prepare(tmp_path)
+    Notebook(tmp_path).write('notes/sample.md', '# Sample')
+    human = invoke(tmp_path, 'list', 'notes')
+    assert '\nnotes/sample.md\n' in human.output
+    machine = invoke(tmp_path, '--json', 'list', 'notes')
+    assert json.loads(machine.stdout)['data'] == ['notes/sample.md']
+
+
+@pytest.mark.parametrize('kind,rows,tail', [
+    ('projects', [{'name': 'Atlas', 'path': '/tmp/atlas project'}], ['stub', 'project', 'Atlas', '--path', '/tmp/atlas project']),
+    ('people', [{'name': 'Mira', 'address': 'mira@example.org', 'mails': 4}],
+     ['stub', 'person', 'Mira', '--email', 'mira@example.org', '--handle', 'mira@example.org']),
+    ('orgs', [{'domain': 'example.org'}], ['stub', 'org', 'example.org', '--domain', 'example.org']),
+])
+def test_scan_tips_use_observed_values(tmp_path, monkeypatch, kind, rows, tail):
+    import shlex
+    from types import SimpleNamespace
+    monkeypatch.setattr('connectonion.wiki.service.mail_client', lambda *a, **kw: SimpleNamespace(my_addresses=lambda: []))
+    monkeypatch.setattr('connectonion.wiki.scan.scan_people', lambda *a, **kw: rows if kind == 'people' else [])
+    monkeypatch.setattr('connectonion.wiki.scan.scan_orgs', lambda *a, **kw: rows)
+    monkeypatch.setattr('connectonion.wiki.scan.scan_projects', lambda *a, **kw: rows)
+    result = invoke(tmp_path, 'scan', kind)
+    assert result.exit_code == 0, result.output
+    assert shlex.split(result.output.split('Next: ')[1].strip())[4:] == tail
+
+
+def test_human_formatter_preserves_partial_errors_and_terminal_safety():
+    from connectonion.cli.commands.wiki_output import render
+    result = render({'outcome': 'partial', 'errors': [{'source': 'gmail', 'error': 'Access denied'}],
+                     'usage': {'input_tokens': None}, 'report': '\x1b[31m untrusted'}, 'daily', failed=True)
+    assert 'needs attention' in result and 'Access denied' in result
+    assert 'Input tokens: Unknown' in result
+    assert '\x1b' not in result
+
+
+def test_investigate_without_arguments_discovers_real_pages_without_a_model(tmp_path, monkeypatch):
+    prepare(tmp_path)
+    Notebook(tmp_path).stub_person('people/ody-123.md', 'Ody', ['ody@example.org'])
+    monkeypatch.setattr('connectonion.wiki.investigate.investigate', lambda *a, **kw: pytest.fail('model called'))
+    result = invoke(tmp_path, 'investigate')
+    assert result.exit_code == 0, result.output
+    assert 'people/ody-123.md' in result.output
+    assert result.output.rstrip().endswith('investigate people/ody-123.md')
+
+
+def test_investigate_empty_notebook_guides_init(tmp_path):
+    root = tmp_path / 'absent'
+    result = invoke(root, 'investigate')
+    assert result.exit_code == 0, result.output
+    assert 'No pages available to investigate' in result.output
+    assert result.output.rstrip().endswith(' init')
+    assert not root.exists()
+
+
+@pytest.mark.parametrize('selector', ['Ody', 'ody@example.org', 'people/ody-123.md'])
+def test_investigate_resolves_observed_name_email_or_path(tmp_path, monkeypatch, selector):
+    prepare(tmp_path)
+    Notebook(tmp_path).stub_person('people/ody-123.md', 'Ody', ['ody@example.org'], email='ody@example.org')
+    monkeypatch.setattr('connectonion.wiki.service.subscriptions', lambda root: {})
+    calls = []
+    def run(root, record, *args, **kwargs):
+        calls.append(record)
+        return {'record': record, 'changed': []}
+    monkeypatch.setattr('connectonion.wiki.investigate.investigate', run)
+    result = invoke(tmp_path, 'investigate', selector)
+    assert result.exit_code == 0, result.output
+    assert calls == ['people/ody-123.md']
+    assert result.output.rstrip().endswith('show people/ody-123.md')
+
+
+def test_ambiguous_investigation_shows_choices_without_starting(tmp_path, monkeypatch):
+    prepare(tmp_path)
+    for suffix in ('one', 'two'):
+        Notebook(tmp_path).stub_person(f'people/ody-{suffix}.md', 'Ody', [])
+    monkeypatch.setattr('connectonion.wiki.investigate.investigate', lambda *a, **kw: pytest.fail('model called'))
+    result = invoke(tmp_path, 'investigate', 'Ody')
+    assert result.exit_code == 1, result.output
+    assert 'More than one page matches' in result.output
+    assert 'people/ody-one.md' in result.output and 'people/ody-two.md' in result.output
+    assert result.output.rstrip().endswith(' investigate')
+
+
+def test_help_orders_first_steps_and_exposes_all_commands(tmp_path):
+    from typer.main import get_command
+    wiki = get_command(app).commands['wiki']
+    output = invoke(tmp_path, '--help').output
+    assert output.index('1. Map and investigate') < output.index('2. Browse pages') < output.index('3. Update and review')
+    for name in wiki.commands:
+        assert __import__('re').search(r'│\s+' + __import__('re').escape(name) + r'\s{2,}', output), name
+    assert 'set' in invoke(tmp_path, 'config', '--help').output
+
+
+def test_investigate_help_does_not_run_even_with_page_argument(tmp_path, monkeypatch):
+    monkeypatch.setattr('connectonion.wiki.investigate.investigate', lambda *a, **kw: pytest.fail('model called'))
+    result = invoke(tmp_path, 'investigate', '--help', 'people/ody.md')
+    assert result.exit_code == 0
+    assert 'never runs an investigation' in result.output
+
+
+def test_json_investigate_discovery_and_missing_selection(tmp_path):
+    discovered = json.loads(invoke(tmp_path, '--json', 'investigate').stdout)
+    assert discovered['ok'] and discovered['data'] == []
+    result = invoke(tmp_path, '--json', 'investigate', 'missing')
+    failed = json.loads(result.stdout)
+    assert result.exit_code == 1 and not failed['ok']
+    assert failed['next'].endswith(' investigate')

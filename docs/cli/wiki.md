@@ -1,10 +1,59 @@
 # Personal Wiki — current branch contract
 
-Updated 2026-09-17. This documents the Wiki development branch, not a claim
+Updated 2026-09-22. This documents the Wiki development branch, not a claim
 that it has been released.
 
 See the [2026-09-17 progress review](wiki-progress.md) for the feature inventory,
 current CI blockers and remaining work.
+
+## Start here
+
+```bash
+co wiki                      # Read the guide and local status; does not initialize
+co wiki init                 # Build People, Organizations, Projects and Skills maps
+co wiki investigate          # List your actual pages; does not run a model
+```
+
+Copy the `Next:` command printed by `investigate` to investigate one existing
+page. You can also supply an exact title or email when it identifies one page,
+for example `co wiki investigate 'Ody'` if that person exists in your notebook.
+Ambiguous names list the matching paths and do not start a model. Example page
+names in old help text, such as `people/emma.md`, are not built-in records.
+`--help` displays help and exits, even when you also supply a page name.
+
+```bash
+co wiki unfinished           # Pages with remaining Unknown sections and a concrete next step
+co wiki open                 # Browse a snapshot in your browser
+co wiki sync --dry-run       # Inspect pending metadata, without running a model
+co wiki sync                 # Process a bounded batch using configured sources/model
+co wiki logs                 # Inspect results, partial coverage and failures
+```
+
+Normal output uses readable labels and plain page paths. Empty lists explain
+what is missing; unknown usage remains **Unknown**, never zero. Results end
+with a copyable `Next:` command, including the selected root and shell quoting.
+Use `co wiki --help` for the command groups; append `--help` to any command for
+its arguments. Root and JSON flags belong **before** the subcommand:
+
+```bash
+co wiki --root '/path/to/my wiki' investigate
+co wiki --root '/path/to/my wiki' --json status
+```
+
+Explicit `--json` retains the `ok`, `data`, and `next` envelope for scripts.
+No-argument `--json` continues to return status, without the human guide.
+Piping human output does not hide the next step. Grouped help covers:
+
+| Task | Commands |
+|---|---|
+| Map and investigate | `init`, `investigate`, `unfinished`, `map-skills`, `scan`, `stub` |
+| Browse | `open`, `list`, `show`, `search`, `people`, `status` |
+| Update and review | `sync`, `daily`, `capture`, `reflect`, `reflections`, `propose`, `review`, `abstract` |
+| Sources and background | `subscriptions`, `subscribe`, `unsubscribe`, `start`, `stop` |
+| Settings and diagnostics | `route`, `logs`, `usage`, `doctor`, `config`, `config set` |
+
+`start` explicitly authorizes collection and installs background maintenance;
+`init` does neither. A mapped page is not an investigated or quality-approved page.
 
 ## Installed-skill skeletons at initialization
 
