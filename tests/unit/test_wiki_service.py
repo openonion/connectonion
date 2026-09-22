@@ -73,11 +73,14 @@ def test_unsubscribe_survives_approval_and_does_not_erase(wiki):
     assert run_sync(root, runner=lambda *args, **kw: pytest.fail("invoked"))["outcome"] == "no_change"
 
 
-def test_dry_run_has_no_state_or_body_effects(wiki):
+@pytest.mark.parametrize("options", [{}, {"all_pending": True}, {"scheduled": True}, {"all_pending": True, "scheduled": True}])
+def test_dry_run_has_no_state_or_body_effects(wiki, monkeypatch, options):
     root, sessions = wiki
     rollout(sessions / "rollout-a.jsonl", [("user", "private")])
     before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
-    result = run_sync(root, dry_run=True)
+    monkeypatch.setattr("connectonion.wiki.service.collect", lambda *a, **kw: pytest.fail("dry-run collected bodies"))
+    result = run_sync(root, dry_run=True, **options)
+    assert result["dry_run"] is True
     after = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
     assert before == after
     assert result["sources"]["codex"]["message_count"] is None
