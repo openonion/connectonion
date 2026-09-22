@@ -164,7 +164,7 @@ class SealedChannel:
 
     def seal(self, message: Dict[str, Any], default=None) -> Dict[str, Any]:
         self._sent += 1
-        clear = json.dumps(message, default=default).encode()
+        clear = json.dumps(message, default=default, ensure_ascii=False).encode()
         cipher = self._box.encrypt(clear, _nonce(self._send_tag, self._sent)).ciphertext
         return {"type": SEALED, "n": self._sent, "c": base64.b64encode(cipher).decode("ascii")}
 

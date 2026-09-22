@@ -1,0 +1,2 @@
+version: v1.8.8b1
+no_visual_change: "Release-line correction and dry-run execution guard; no Wiki reader or rendered interface changes."

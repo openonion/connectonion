@@ -380,6 +380,15 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
     failed batch stops it, as does a refusal to start.
     """
     root = root.resolve()
+    # Inspection must win over every execution mode, including recursive backfill.
+    if dry_run:
+        progress = read_json(state_path(root, "progress.json"), {})
+        return {"dry_run": True, "sources": {
+            name: (pending_metadata(sub, progress.get(name, {})) if sub.get("kind") in KINDS
+                   else {"candidate_files": None, "message_count": None, "body_reads": False,
+                         "source_available": mail_available(sub["kind"]),
+                         "cursor": progress.get(name, {}).get("cursor") or sub.get("since")})
+            for name, sub in _selected_sources(root, source).items()}}
     if all_pending:
         records = []
         while True:
@@ -409,14 +418,6 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         # above this line and leaves it owed for the next tick.
         write_json(state_path(root, "worker.json"), {**worker_state(root), "last_scheduled_slot": slot.isoformat()})
         return record
-    if dry_run:
-        progress = read_json(state_path(root, "progress.json"), {})
-        return {"dry_run": True, "sources": {
-            name: (pending_metadata(sub, progress.get(name, {})) if sub.get("kind") in KINDS
-                   else {"candidate_files": None, "message_count": None, "body_reads": False,
-                         "source_available": mail_available(sub["kind"]),
-                         "cursor": progress.get(name, {}).get("cursor") or sub.get("since")})
-            for name, sub in _selected_sources(root, source).items()}}
     if not state_path(root, "consent.json").is_file():
         raise WikiError("Source access is not authorized yet; run `co wiki start` to review and confirm it")
     with maintenance_lock(root), _terminate_as_interrupt():

@@ -146,9 +146,14 @@ sandbox rather than by convention:
   `data-ochat-skill` button when you want the user to *do* something. Same-page
   anchors (`href="#section"`) work normally.
 
-Keep it under **2MB**. The Host won't send a larger file, and the Control Center pane goes
-blank. Inline images are base64, which is ~33% larger than the source file — compress
-screenshots before embedding them.
+The Host accepts HTML files up to **128 MiB** (UTF-8 bytes). Files that cannot
+be loaded show an explanatory Control Center page instead of hiding the pane.
+The WebSocket transport budget is **256 MiB**, including JSON escaping and sealed
+base64 overhead; unusually escape-heavy content can hit that budget first.
+Self-hosted relays must set Uvicorn `--ws-max-size 268435456`. Older Python
+clients must upgrade to receive snapshots beyond their previous default limit.
+The snapshot protocol and the client sandbox are unchanged; this patch does not
+enable JavaScript or external resource loading.
 
 ### A media query here measures the pane, not the window
 
@@ -252,7 +257,7 @@ See [websocket-protocol.md](websocket-protocol.md) for the full frame reference.
 | `render_starter(agent_metadata)` | The day-zero HTML, from `starter.html` |
 | `published_skills(skills)` | The project-tree skills a starter may offer as buttons |
 | `group_skills(skills)` | `(families, loose)` split by name prefix, for long lists |
-| `MAX_DASHBOARD_BYTES` | 2MB size cap |
+| `MAX_DASHBOARD_BYTES` | 128 MiB HTML cap; 256 MiB transport envelope |
 
 The path is resolved against the project directory captured at host startup, not the
 live working directory — so a tool that changes directories mid-run can't redirect
