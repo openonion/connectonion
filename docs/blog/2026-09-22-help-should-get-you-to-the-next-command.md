@@ -13,9 +13,3 @@ We tested the guide as input to a fresh text-only model. Seven goals, each paire
 Those results establish a narrow property: the guide can support the tested choices. They do not prove that an agent can complete every workflow or verify generated facts. The next evaluation should give an agent synthetic fixtures, help and command outputs, then check whether it discovers real inputs, finishes the work, verifies the result and stops correctly.
 
 The change ships in the opt-in [1.8.7b4 preview](/releases/1.8.7b4.md). The [Wiki guide](/cli/wiki.md) describes the command sequence. If help grows too large to choose from, we should split detailed workflows into command-specific pages while keeping the group guide focused on routing. One source of usage knowledge still needs several levels of detail.
-
-## Release-line correction
-
-After the b4 preview, the release plan reserved 1.8.7 for a dashboard patch and moved Wiki to 1.8.8. The next Wiki preview is 1.8.8b1. Earlier preview links and measurements above describe their original artifacts; they are not renamed. This separates the feature trial from the smaller patch without changing the workflow described here.
-
-A release audit also found that combining the documented dry-run option with backfill dropped the inspection flag in a recursive call. We reproduced it with a fake collector that failed if body collection began, then moved inspection ahead of execution-mode dispatch. The example matters beyond help text: a command described as a preview must remain one when its options are combined.
