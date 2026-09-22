@@ -11,8 +11,20 @@ from .wiki_output import guide, render
 
 
 def _next(ctx, arguments):
+    """The next command, spelled the way the user invoked this one.
+
+    A thin wrapper (`remi status`) that forwards to `co wiki` is only a product
+    if the tips agree with it; a user told `co wiki --root /long/path logs` has
+    been handed the wiring. The wrapper names itself in CO_WIKI_PROGRAM and every
+    Next line follows. The root is spelled out only when it is not the default,
+    which is also what makes a tip short enough to copy.
+    """
+    import os
+    program = shlex.split(os.environ.get("CO_WIKI_PROGRAM") or "co wiki")
     root = ctx.obj["root"]
-    return shlex.join(["co", "wiki", "--root", str(root), *arguments])
+    default = (Path.home() / ".co/wiki").expanduser().resolve()
+    location = [] if root == default else ["--root", str(root)]
+    return shlex.join([*program, *location, *arguments])
 
 
 def _emit(ctx, value, arguments, *, failed=False):
