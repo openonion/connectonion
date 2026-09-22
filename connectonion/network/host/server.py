@@ -1266,7 +1266,9 @@ def host(
     )
 
     workers, reload = usable_uvicorn_options(workers, reload)
-    uvicorn.run(app, host="0.0.0.0", port=port, workers=workers, reload=reload, log_level="warning")
+    from ..transport_limits import MAX_WEBSOCKET_MESSAGE_BYTES
+    uvicorn.run(app, host="0.0.0.0", port=port, workers=workers, reload=reload, log_level="warning",
+                ws_max_size=MAX_WEBSOCKET_MESSAGE_BYTES)
 
 
 def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl=86400, *, blacklist=None, whitelist=None, name=None, http=None, control_center=None):

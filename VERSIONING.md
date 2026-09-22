@@ -353,9 +353,10 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.6
+## Current Version: 1.8.7
 
 ### Version History
+- 1.8.7: Control Center accepts 128 MiB HTML snapshots with a 256 MiB transport envelope. Oversized/unreadable pages show a visible error; failed sends can retry. Stable patch from 1.8.6; Personal Wiki targets 1.8.8 (#1443).
 - 1.8.6 (**stable: WhatsApp as an inbox, with an undo.** A linked device sees
   the groups the number is in and answers only where it was addressed; `edit`
   and `delete` make a wrong answer in front of a customer recoverable; text is
