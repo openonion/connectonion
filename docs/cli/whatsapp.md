@@ -89,6 +89,7 @@ bundled protocol implementation old enough to start failing.
 ├── new/                unread, one file each
 ├── cur/                taken by a consumer
 ├── outbox/             replies waiting for the listener (see below)
+├── media/              photos, documents and voice notes, as they arrived
 ├── session.db          the linked device
 └── log
 ```
@@ -100,6 +101,33 @@ because they behave the same here.
 `chat` is the group JID (`1203630000000@g.us`) for a group message and the
 peer's JID (`447700900123@s.whatsapp.net`) for a direct one, so `reply` lands
 where the question was asked either way.
+
+## Photos, documents and voice notes
+
+A media message arrives with `kind` set to what it is — `image`, `video`,
+`audio`, `document`, `sticker` — and the bytes are fetched as it arrives, into
+`media/`. The record names the file:
+
+```json
+{"id":"3EB0…","chat":"447700900123@s.whatsapp.net","kind":"image","text":"",
+ "media":{"path":"/Users/you/.co/inbox/whatsapp/media/3EB0….jpg",
+          "mime":"image/jpeg","size":184320}}
+```
+
+So a consumer that receives this can open the file, and one that cannot read
+images can at least say which file it is declining to read.
+
+**Why at arrival and not on demand.** The media keys live in the protobuf
+envelope, and the queue record does not keep it, so a later `download <id>`
+would have nothing to download from. WhatsApp also drops media from its own
+servers after a while. The moment the message arrives is the only moment the
+file is reliably reachable.
+
+**When it fails, it says so.** An expired or unreachable file leaves
+`{"media":{"error":"…"}}` on the record and a line in `log`, and writes no
+file — a zero-byte document is worse than an error, because a consumer reads
+it as an empty document. Anything over 64 MB is refused the same way rather
+than filling the disk the inbox lives on.
 
 ## Groups: when the bot answers
 
