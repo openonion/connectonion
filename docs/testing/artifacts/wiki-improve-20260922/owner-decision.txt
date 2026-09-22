@@ -1,0 +1,1 @@
+Synthetic owner clarification and explicit decision, 2026-09-22: Mira owns Atlas maintenance. Leo was incorrectly recorded as owner. Mira decided to keep the pilot local for now so reviewers can work without a hosted account. This is a pilot decision, not a permanent rejection of hosting. No hosted website was released.

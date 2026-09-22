@@ -1,0 +1,10 @@
+{
+  "model": "gpt-5.5",
+  "usage": {
+    "input_tokens": 103820,
+    "output_tokens": 1505,
+    "cached_input_tokens": 57856
+  },
+  "outcome": "natural",
+  "error": null
+}

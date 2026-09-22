@@ -95,3 +95,18 @@ The count above includes the merged prompt-free initialization changes.
   checks (including nested code/fences): 16 passed. Wheel build and diff check pass.
 
 This is a post-b3 PR change; no package release or original Skill modification.
+
+## Investigation and maintenance quality safeguards, 2026-09-22
+
+- [x] Reject missing populated project flows, bundled local-file references, and
+  removal of mapped session/date fields; unknown flows remain explicit.
+- [x] Maintenance works on a disposable copy and validates changed entity pages
+  before promotion; failed updates preserve pending corrections and usage.
+- [x] Resolve conflicting template guidance and retain exact source-file references
+  through raw and compact reflection context.
+- [x] Matched investigation comparison and live correction/retry tested;
+  296 Wiki unit/CLI tests pass, 10 browser opt-in skips.
+- [ ] Continue semantic review of inferred timing; deterministic guards do not
+  establish factual entailment.
+
+[Retained attempts, costs, independent review and remaining limits](../testing/wiki-improvements-20260922.md).
