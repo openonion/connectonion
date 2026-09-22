@@ -136,6 +136,12 @@ class Message:
     # is different from an empty name: an id nobody can read is the state this
     # replaces, and every consumer was otherwise building the same lookup.
     sender_name: str = ""
+    # Where the bytes of a media message landed, once a provider could fetch
+    # them: {"path", "mime", "size"}, or {"error"} when the fetch failed. None
+    # for a message that carries no media. A consumer that sees `kind: image`
+    # and no media knows the difference between "a photo arrived" and "a photo
+    # arrived and here it is" -- and, when there is an error, why.
+    media: Optional[dict] = None
 
     def to_dict(self, *, raw: bool = False) -> dict:
         record = {
@@ -150,6 +156,8 @@ class Message:
             "mentioned": self.mentioned,
             "at": self.at,
         }
+        if self.media is not None:
+            record["media"] = self.media
         if raw and self.raw is not None:
             record["raw"] = self.raw
         return record
@@ -177,6 +185,7 @@ class Message:
             kind=str(record.get("kind") or "text"),
             quoted=record.get("quoted") if isinstance(record.get("quoted"), dict) else None,
             sender_name=str(record.get("sender_name") or ""),
+            media=record.get("media") if isinstance(record.get("media"), dict) else None,
         )
 
 
