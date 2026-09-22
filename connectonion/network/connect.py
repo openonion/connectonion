@@ -20,6 +20,8 @@ Lifecycle:
   7. Returns Response(text, done)
 """
 
+from .transport_limits import MAX_WEBSOCKET_MESSAGE_BYTES
+
 import asyncio
 import copy
 import json
@@ -718,7 +720,7 @@ class RemoteAgent:
         """
         for ws_url, is_direct in self._ways_to_reach():
             try:
-                ws = await websockets.connect(ws_url)
+                ws = await websockets.connect(ws_url, max_size=MAX_WEBSOCKET_MESSAGE_BYTES)
             except OSError:
                 if not is_direct:
                     raise          # the relay is the last resort; there is no next
@@ -735,7 +737,7 @@ class RemoteAgent:
                 # link is TLS to the relay, which is every client's old
                 # footing; keep it, on a fresh socket.
                 await ws.close()
-                return await websockets.connect(ws_url), False
+                return await websockets.connect(ws_url, max_size=MAX_WEBSOCKET_MESSAGE_BYTES), False
             sealed = await self._offer_seal(ws)
             if sealed is not None:
                 return sealed, True

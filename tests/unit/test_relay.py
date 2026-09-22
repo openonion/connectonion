@@ -47,7 +47,7 @@ class TestRelayConnection:
             # ping_interval is disabled
             # because Cloudflare drops WS control frames; see relay.py.
             mock_connect.assert_called_once_with(
-                "ws://127.0.0.1:9000/ws/announce", ping_interval=None
+                "ws://127.0.0.1:9000/ws/announce", ping_interval=None, max_size=256 * 1024 * 1024
             )
             assert result == mock_ws
 
@@ -64,7 +64,7 @@ class TestRelayConnection:
             # Base URL should have /ws/announce appended; ping_interval
             # disabled for CDN compatibility (see relay.py).
             mock_connect.assert_called_once_with(
-                "ws://localhost:8000/ws/announce", ping_interval=None
+                "ws://localhost:8000/ws/announce", ping_interval=None, max_size=256 * 1024 * 1024
             )
             assert result == mock_ws
 

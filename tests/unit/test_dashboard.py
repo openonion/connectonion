@@ -329,21 +329,23 @@ async def test_forward_sends_snapshot_after_output(in_tmp):
 # --- Size cap: an agent-authored file must degrade to "no Home", not stall the host ---
 
 
-def test_read_snapshot_skips_oversized_file(in_tmp):
-    (in_tmp / "dashboard.html").write_text("x" * (MAX_DASHBOARD_BYTES + 1), encoding="utf-8")
-    assert read_dashboard_snapshot() is None
+def test_read_snapshot_explains_oversized_file(in_tmp, monkeypatch):
+    monkeypatch.setattr(dashboard_module, "MAX_DASHBOARD_BYTES", 1024)
+    (in_tmp / "dashboard.html").write_text("x" * (dashboard_module.MAX_DASHBOARD_BYTES + 1), encoding="utf-8")
+    assert "128 MiB" in read_dashboard_snapshot()["html"]
 
 
-def test_read_snapshot_accepts_file_at_the_limit(in_tmp):
-    (in_tmp / "dashboard.html").write_text("x" * MAX_DASHBOARD_BYTES, encoding="utf-8")
-    assert read_dashboard_snapshot()["html"] == "x" * MAX_DASHBOARD_BYTES
+def test_read_snapshot_accepts_file_at_the_limit(in_tmp, monkeypatch):
+    monkeypatch.setattr(dashboard_module, "MAX_DASHBOARD_BYTES", 1024)
+    (in_tmp / "dashboard.html").write_text("x" * dashboard_module.MAX_DASHBOARD_BYTES, encoding="utf-8")
+    assert read_dashboard_snapshot()["html"] == "x" * dashboard_module.MAX_DASHBOARD_BYTES
 
 
 def test_read_snapshot_survives_an_unreadable_path(in_tmp, capsys):
     # dashboard.html is agent-authored, so it can be a directory, a broken symlink,
     # or binary. stat() succeeds on some of those; the read is what fails.
     (in_tmp / "dashboard.html").mkdir()
-    assert read_dashboard_snapshot() is None
+    assert "Could not read" in read_dashboard_snapshot()["html"]
     assert "Could not read" in capsys.readouterr().err
 
 
@@ -687,3 +689,28 @@ def test_an_operator_override_without_the_new_field_still_renders(tmp_path,
         dashboard._starter_templates.cache_clear()
 
     assert "<h1>A</h1>" in html
+
+
+def test_dashboard_above_old_limit_preserves_unicode_and_scripts(in_tmp):
+    html = '<!doctype html><style>.x{color:red}</style><script>let a=1;</script>' + '房源价格🌍' * 300000
+    assert len(html.encode()) > 2 * 1024 * 1024
+    (in_tmp / 'dashboard.html').write_text(html, encoding='utf-8')
+    frame = read_dashboard_snapshot('large')
+    assert frame == {'type': 'DASHBOARD_SNAPSHOT', 'html': html, 'session_id': 'large'}
+
+
+def test_encoding_expansion_returns_visible_error(in_tmp, monkeypatch):
+    monkeypatch.setattr(dashboard_module, 'MAX_WEBSOCKET_MESSAGE_BYTES', 65540)
+    (in_tmp / 'dashboard.html').write_text('<p>large envelope</p>')
+    assert 'transport envelope' in read_dashboard_snapshot()['html']
+
+
+@pytest.mark.asyncio
+async def test_failed_delivery_can_retry_unchanged_dashboard(in_tmp):
+    (in_tmp / 'dashboard.html').write_text('<p>retry</p>')
+    conn = {}
+    with pytest.raises(OSError):
+        await send_dashboard(AsyncMock(side_effect=OSError('disconnected')), 's', conn)
+    deliver = AsyncMock()
+    await send_dashboard(deliver, 's', conn)
+    deliver.assert_awaited_once()

@@ -15,6 +15,8 @@ Message Flow:
   Responses (with session_id) → Relay → Client
 """
 
+from .transport_limits import MAX_WEBSOCKET_MESSAGE_BYTES
+
 import asyncio
 import json
 from typing import Any, Dict
@@ -48,7 +50,7 @@ async def connect(relay_url: str | None = None):
     ws_url = f"{relay_url.rstrip('/')}/ws/announce"
     # ping_interval=None: Cloudflare drops WS PING frames; ANNOUNCE heartbeat
     # serves as keep-alive instead. See docs/network/protocol/agent-relay-protocol.md.
-    return await websockets.connect(ws_url, ping_interval=None)
+    return await websockets.connect(ws_url, ping_interval=None, max_size=MAX_WEBSOCKET_MESSAGE_BYTES)
 
 
 async def send_announce(websocket, announce_message: Dict[str, Any]):
@@ -156,7 +158,7 @@ async def _run_session(session_id, first_msg, sessions, relay_ws, session_handle
 
     async def send_msg(data):
         data["session_id"] = session_id
-        await relay_ws.send(json.dumps(data, default=pydantic_json_encoder))
+        await relay_ws.send(json.dumps(data, default=pydantic_json_encoder, ensure_ascii=False))
 
     async def recv_msg():
         try:
