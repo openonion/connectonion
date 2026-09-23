@@ -65,7 +65,7 @@ def validate(harness: str, model: str | None) -> str | None:
     if harness == OURS or model is None:
         return None
     if model.startswith(OUR_MODEL_PREFIXES):
-        example = {"codex": "gpt-5.6-luna, gpt-5.6-terra, gpt-5.5",
+        example = {"codex": "gpt-6-luna, gpt-6-sol, gpt-5.6-luna",
                    "claude-code": "opus, sonnet"}[harness]
         return (
             f"--model {model} is one of our providers, but --harness {harness} runs on "

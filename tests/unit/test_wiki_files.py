@@ -9,7 +9,7 @@ from connectonion.wiki.files import CATEGORIES, Notebook, WikiError, maintenance
 
 def test_inspection_does_not_initialize(tmp_path):
     root = tmp_path / "wiki"
-    assert read_config(root)["model"] == "gpt-5.6-luna"
+    assert read_config(root)["model"] == "gpt-6-luna"
     assert Notebook(root).list() == []
     assert not root.exists()
 

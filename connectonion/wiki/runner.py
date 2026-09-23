@@ -132,7 +132,7 @@ def run_task(directory: Path, prompt: str, config: dict, stage: str) -> dict:
         # Codex accepts the name and refuses it at the first turn. Say which model and
         # what to run, rather than relaying the provider's JSON.
         raise RunFailed(f"Model {config['model']} is not available to a ChatGPT login. "
-                        "Choose one that is: co wiki config set model gpt-5.6-luna", usage)
+                        "Choose one that is: co wiki config set model gpt-6-luna", usage)
     if completed.returncode or envelope.get("error") or envelope.get("outcome") != "natural":
         raise RunFailed(
             f"co ai did not complete (exit {completed.returncode}, "

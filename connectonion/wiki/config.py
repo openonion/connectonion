@@ -32,9 +32,9 @@ RUNNERS = ("codex", "coai", "claude-code")
 def default_config() -> dict:
     # Spark was the default until Codex 0.155 refused it for ChatGPT logins
     # ("not supported when using Codex with a ChatGPT account"), which made every
-    # new user's first investigation fail in eleven seconds. Luna runs on a
-    # ChatGPT subscription and was measured drafting person pages end to end.
-    return {"version": 1, "runner": "codex", "model": "gpt-5.6-luna",
+    # new user's first investigation fail in eleven seconds. gpt-6-luna runs on
+    # a ChatGPT subscription (checked with Codex 0.155.1 on 2026-09-23).
+    return {"version": 1, "runner": "codex", "model": "gpt-6-luna",
             "schedule": {"times": ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"],
                          "timezone": local_timezone()},
             # input_chars_per_batch bounds the source messages plus every notebook page

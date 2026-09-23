@@ -34,6 +34,28 @@ wrote what that batch happened to know. You are not in that position. If a
 section of the page is thin, it is because the material is thin, and you say
 so in `Uncertainties` rather than leaving the reader to guess.
 
+## What `Uncertainties` is for
+
+It is read by the user deciding what to trust. Every line is a question about
+**the subject** that is still open. Five kinds of line kept appearing on real
+pages on 2026-09-23 and none of them tells the user anything about the person:
+
+| Do not write | Why |
+|---|---|
+| "Gmail was searched over 150 days with 0 matches; Codex had 423 messages, 0 related." | Coverage. It goes in your final reply. |
+| "The existing page recorded 37 mails; the material has 52." | The map's counts come from a shorter window. They are placeholders: replace them with what the material shows and never discuss the difference. |
+| "No organisation page exists for UNSW in the notebook." | About the notebook, not the person. |
+| "No other address or second page for Misa was found." | A search that found nothing about identity is not news. Name a duplicate only when you see one. |
+| "No attachments were read." | Coverage again. |
+
+Keep lines like: "Role: not in her signature or on fis.com; unknown." --
+"Whether the 2026-09-22 meeting happened is not in the mail." -- "Signed as
+‘Ody’ and as ‘欧弟’; assumed the same person from the shared address."
+
+**No citation on anything that says `Unknown`, anywhere on the page.**
+`How the user writes to them: Unknown — no message from the user [8]` cites a
+source for something it does not contain. Write the `Unknown` bare.
+
 ## Identity is given, not guessed
 
 The subject arrives with its handles already resolved — names, spellings,
@@ -50,8 +72,8 @@ applies instead:
   another script: put it on that line so the next sweep reaches material this
   one could not. Company and project names belong in their own fields, not in
   the person's aliases, unless a source explicitly uses them as that person's handle.
-- **A handle that produced nothing is a finding**, and belongs in
-  `Uncertainties` with what was searched and over what window.
+- **A handle that produced nothing is a finding** when it is not the address
+  the page is already about: one line in `Uncertainties` naming the handle.
 - **A page titled by a handle takes the person's name once the material gives
   it.** The map created `# vern.chan` from an address; a signature reading
   "Vern Chan" makes the title `# Vern Chan`, with `vern.chan` kept in

@@ -243,5 +243,5 @@ def test_a_model_the_login_cannot_run_is_named_with_the_fix(tmp_path, monkeypatc
     monkeypatch.setattr("shutil.which", lambda name: "/usr/local/bin/co")
     config = read_config(root)
     from connectonion.wiki.runner import RunFailed, run_task
-    with pytest.raises(RunFailed, match="co wiki config set model gpt-5.6-luna"):
+    with pytest.raises(RunFailed, match="co wiki config set model gpt-6-luna"):
         run_task(root, "prompt", config, "investigate")
