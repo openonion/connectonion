@@ -411,8 +411,13 @@ def make_wiki_app(factory):
                     known += [h.strip() for h in line.split(":", 1)[1].replace("、", ",").split(",") if h.strip() and h.strip() != "Unknown"]
             handles = list(dict.fromkeys([*handle, *known, title.split(" (")[0]]))
             sources = subscriptions(root)
-            clients = {sub["kind"]: mail_client(sub["kind"], attachments=True) for sub in sources.values()
-                       if sub.get("kind") in ("outlook", "gmail") and sub.get("enabled")}
+            # Investigating one named person is an explicit request, so any mailbox
+            # this machine can already read is read, whether or not background sync
+            # is subscribed to it -- `init` read the same mailboxes to build the map.
+            # Only a mailbox the user explicitly unsubscribed is left alone.
+            from ...wiki.service import mail_available
+            clients = {kind: mail_client(kind, attachments=True) for kind in ("outlook", "gmail")
+                       if mail_available(kind) and not sources.get(kind, {}).get("unsubscribed")}
             result = investigate(root, record, title, handles, days=days, clients=clients,
                                  subscriptions=subscriptions(root),
                                  progress=lambda k, stop, n: typer.echo(f"  {k}: to {stop:%Y-%m-%d}, {n} mails", err=True))

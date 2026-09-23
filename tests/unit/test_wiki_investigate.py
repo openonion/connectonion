@@ -170,7 +170,7 @@ def test_coding_search_continues_past_first_batch_and_matches_aliases(tmp_path, 
                                 subscriptions={"codex": {"kind": "codex", "root": str(tmp_path)}})
     assert [i["source"] for i in items] == ["codex:2"]
     assert seen == [{}, {"offset": 40}, {"offset": 80}]
-    assert "2 messages" in coverage[0]
+    assert "2 messages" in next(line for line in coverage if line.startswith("codex"))
 
 
 @pytest.mark.parametrize("stdout,returncode", [
@@ -202,3 +202,140 @@ def test_timeout_preserves_unfinished_page(tmp_path, monkeypatch, co_ai):
         inv.investigate(root, "people/vern.md", "Vern", ["vern"], days=7,
                         clients={}, subscriptions={})
     assert inv.Notebook(root).read("people/vern.md") == before
+
+
+def test_a_person_s_mail_is_asked_of_the_server_not_found_by_listing_everything():
+    """Listing the whole window took minutes per person and a busy week past the
+    listing cap lost mail silently. With the person's addresses in hand, the
+    mailbox is asked for exactly their mail, every address once."""
+    class Searchable(Quiet):
+        asked = []
+        def list_between(self, s, e, n): raise AssertionError("listed the whole mailbox")
+        def list_with(self, address, start, end):
+            self.asked.append(address)
+            return [{"id": f"{address}-1", "from": f"Vern <{address}>", "to": ["me@x.y"],
+                     "subject": "Practice of Work", "date": "2026-07-21T00:00:00Z"}]
+        def get_email_body(self, i): return "--- Email Body ---\nOne team of 4-6 works."
+
+    box = Searchable()
+    items, coverage = inv.gather("Vern Chan", ["vern.chan@unsw.edu.au", "vern@founders.unsw.edu.au", "Vern Chan"],
+                                 days=90, clients={"outlook": box}, subscriptions={})
+    assert box.asked == ["vern.chan@unsw.edu.au", "vern@founders.unsw.edu.au"]
+    assert [i["text"].split("\n")[-1] for i in items] == ["One team of 4-6 works."] * 2
+    assert "searched on the server" in coverage[0] and "2 matched" in coverage[0]
+
+
+def test_a_mailbox_not_searched_is_named_in_coverage():
+    _, coverage = inv.gather("Vern Chan", ["vern.chan@unsw.edu.au"], days=30, clients={"outlook": Quiet()},
+                             subscriptions={"gmail": {"kind": "gmail", "unsubscribed": True}})
+    assert "gmail: unsubscribed by the user; not searched" in coverage
+    _, coverage = inv.gather("Vern Chan", ["vern.chan@unsw.edu.au"], days=30, clients={}, subscriptions={})
+    assert any(line.startswith("outlook: not connected (co auth microsoft)") for line in coverage)
+
+
+def test_a_model_the_login_cannot_run_is_named_with_the_fix(tmp_path, monkeypatch):
+    """Codex 0.155 refuses Spark for ChatGPT logins at the first turn; the provider's
+    JSON told nobody what to do next."""
+    root = _notebook(tmp_path, "codex")
+    refused = json.dumps({"outcome": "error", "error": 'turn failed: {"status":400,"error":{"message":'
+                          '"The \'gpt-5.3-codex-spark\' model is not supported when using Codex with a ChatGPT account."}}'})
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: types.SimpleNamespace(stdout=refused, stderr="", returncode=1))
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/local/bin/co")
+    config = read_config(root)
+    from connectonion.wiki.runner import RunFailed, run_task
+    with pytest.raises(RunFailed, match="co wiki config set model gpt-6-luna"):
+        run_task(root, "prompt", config, "investigate")
+
+
+def test_a_listed_source_nobody_cites_is_dropped_not_a_reason_to_refuse_the_page(tmp_path, monkeypatch):
+    """A real Ian Chan page was refused whole because its Sources listed the old
+    page as [1] and no sentence cited it. The listing is harmless; the page was not."""
+    from pathlib import Path
+    from connectonion.wiki.files import Notebook
+
+    def fake_run(argv, cwd, capture_output, text, timeout):
+        import re
+        path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
+        page = (Path(cwd) / 'people/vern.md').read_text()
+        page = page.replace("## Who they are\n- Unknown — not investigated yet",
+                            "## Who they are\n- Vern works at UNSW. [W1]", 1)
+        page = page.replace("## Sources\n- (none yet)",
+                            "## Sources\n- [1] Existing page people/vern.md, prior context only.\n"
+                            "- [W1] https://www.unsw.edu.au/staff/vern-chan, observed 2026-09-23.", 1)
+        path.write_text(page)
+        return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
+                                     stderr="", returncode=0)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/local/bin/co")
+    root = _notebook(tmp_path, "codex")
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=7,
+                    clients={"outlook": Quiet()}, subscriptions={})
+    page = Notebook(root).read("people/vern.md")
+    assert "Vern works at UNSW. [W1]" in page
+    assert "[W1] https://www.unsw.edu.au/staff/vern-chan" in page and "[1] Existing page" not in page
+
+
+def test_a_message_read_through_a_digest_can_still_be_cited_by_its_own_id():
+    """Ody Zhou's 201 mails were digested first, and the page cited the real
+    message ids the digests named -- all refused, because the digest item kept
+    only "gmail +4". Everyone with enough mail to need a digest was refused."""
+    from connectonion.wiki.extract import extraction_item
+    from connectonion.wiki.page_review import validate
+    from connectonion.wiki.files import Notebook
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp()) / "wiki"
+    prepare(root)
+    notebook = Notebook(root)
+    notebook.stub_person("people/ody.md", "Ody Zhou", ["ody"], email="zhouodywork@gmail.com")
+    original = notebook.read("people/ody.md")
+    chunk = [{"source": "gmail:3a7a430fcee5", "timestamp": "2026-08-01T00:00:00+00:00", "text": "a"},
+             {"source": "gmail:db0abd133958:Draft_v8.docx", "timestamp": "2026-08-02T00:00:00+00:00", "text": "b"}]
+    items = [extraction_item("Ody drafted v8 of the Emma agreement (gmail:db0abd133958).", chunk)]
+    candidate = original.replace("## Who they are\n- Unknown — not investigated yet",
+                                 "## Who they are\n- Ody drafts contracts. [1]", 1).replace(
+        "## Sources\n- (none yet)",
+        "## Sources\n- [1] `gmail:3a7a430fcee5`, `gmail:db0abd133958:Draft_v8.docx`, observed 2026-09-23.", 1)
+    assert validate("people/ody.md", candidate, original, items) == []
+    forged = candidate.replace("gmail:3a7a430fcee5", "gmail:ffffffffffff").replace(
+        "`gmail:db0abd133958:Draft_v8.docx`, ", "")
+    assert validate("people/ody.md", forged, original, items)          # an id no digest read is still refused
+    session = [{"source": "claude-code:3994b2ee-ff35:81", "timestamp": "2026-08-30T00:00:00+00:00", "text": "c"},
+               {"source": "gmail:c74572cd7d0e", "timestamp": "2026-08-31T00:00:00+00:00", "text": "d"}]
+    items.append(extraction_item("Dora reviewed the deck.", session))
+    whole = original.replace("## Who they are\n- Unknown — not investigated yet",
+                             "## Who they are\n- Dora reviews decks. [1]", 1).replace(
+        "## Sources\n- (none yet)", "## Sources\n- [1] `claude-code:3994b2ee-ff35`, observed 2026-08-30.", 1)
+    assert validate("people/ody.md", whole, original, items) == []     # the whole session it came from
+
+
+def test_the_owners_own_address_never_lands_on_someone_elses_page(tmp_path, monkeypatch):
+    """Dora's page listed xietianle@outlook.com -- the user's own Outlook -- as her
+    email and handle, from mail the two of them exchanged. The owner's addresses
+    are known; they are removed mechanically, the rest of the page is kept."""
+    from pathlib import Path
+    from connectonion.wiki.files import Notebook, state_path, write_json
+
+    def fake_run(argv, cwd, capture_output, text, timeout):
+        import re
+        path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
+        page = (Path(cwd) / 'people/vern.md').read_text()
+        page = re.sub(r'^- Email: .*$', '- Email: vern.chan@unsw.edu.au; me@outlook.com', page, count=1, flags=re.M)
+        page = re.sub(r'^- Handles: .*$', '- Handles: me@outlook.com', page, count=1, flags=re.M)
+        page = page.replace("## Who they are\n- Unknown — not investigated yet",
+                            "## Who they are\n- Vern works at UNSW. [W1]", 1).replace(
+            "## Sources\n- (none yet)", "## Sources\n- [W1] https://www.unsw.edu.au/staff/vern-chan, observed 2026-09-23.", 1)
+        path.write_text(page)
+        return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
+                                     stderr="", returncode=0)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/local/bin/co")
+    root = _notebook(tmp_path, "codex")
+    write_json(state_path(root, "map.json"), {"owner": {"record": "people/me.md", "addresses": ["me@outlook.com"]}})
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=7,
+                    clients={"outlook": Quiet()}, subscriptions={})
+    page = Notebook(root).read("people/vern.md")
+    assert "me@outlook.com" not in page
+    assert "- Email: vern.chan@unsw.edu.au" in page and "- Handles: Unknown" in page

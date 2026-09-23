@@ -24,7 +24,7 @@ need three different treatments:
 | A value the material now contradicts | Say so in `Uncertainties`, naming both. Do not silently pick one. |
 
 An `Unknown` you looked for and did not find **stays `Unknown`, and the search
-goes in `Uncertainties`**: "Searched the configured sources and window; no supporting record found." That sentence is what stops
+goes in `Uncertainties` as one line**: "Phone: searched the supplied mail and the web; not found." That sentence is what stops
 the next run from spending another pass on the same dead end, and it is the
 difference between "we do not know" and "nobody has looked".
 
@@ -34,7 +34,34 @@ wrote what that batch happened to know. You are not in that position. If a
 section of the page is thin, it is because the material is thin, and you say
 so in `Uncertainties` rather than leaving the reader to guess.
 
+## What `Uncertainties` is for
+
+It is read by the user deciding what to trust. Every line is a question about
+**the subject** that is still open. Five kinds of line kept appearing on real
+pages on 2026-09-23 and none of them tells the user anything about the person:
+
+| Do not write | Why |
+|---|---|
+| "Gmail was searched over 150 days with 0 matches; Codex had 423 messages, 0 related." | Coverage. It goes in your final reply. |
+| "The existing page recorded 37 mails; the material has 52." | The map's counts come from a shorter window. They are placeholders: replace them with what the material shows and never discuss the difference. |
+| "No organisation page exists for UNSW in the notebook." | About the notebook, not the person. |
+| "No other address or second page for Misa was found." | A search that found nothing about identity is not news. Name a duplicate only when you see one. |
+| "No attachments were read." | Coverage again. |
+
+Keep lines like: "Role: not in her signature or on fis.com; unknown." --
+"Whether the 2026-09-22 meeting happened is not in the mail." -- "Signed as
+‘Ody’ and as ‘欧弟’; assumed the same person from the shared address."
+
+**No citation on anything that says `Unknown`, anywhere on the page.**
+`How the user writes to them: Unknown — no message from the user [8]` cites a
+source for something it does not contain. Write the `Unknown` bare.
+
 ## Identity is given, not guessed
+
+**The user's own addresses are never the subject's.** Every message in the
+material was sent to or from the user, so the user's addresses -- the mailbox
+names in the coverage lines -- sit beside the subject's on every row. An
+address belongs in `Email` or `Handles` only when the subject writes from it.
 
 The subject arrives with its handles already resolved — names, spellings,
 addresses, paths. You do not have to work out who "odi" is; you were told.
@@ -50,8 +77,8 @@ applies instead:
   another script: put it on that line so the next sweep reaches material this
   one could not. Company and project names belong in their own fields, not in
   the person's aliases, unless a source explicitly uses them as that person's handle.
-- **A handle that produced nothing is a finding**, and belongs in
-  `Uncertainties` with what was searched and over what window.
+- **A handle that produced nothing is a finding** when it is not the address
+  the page is already about: one line in `Uncertainties` naming the handle.
 - **A page titled by a handle takes the person's name once the material gives
   it.** The map created `# vern.chan` from an address; a signature reading
   "Vern Chan" makes the title `# Vern Chan`, with `vern.chan` kept in
@@ -145,16 +172,21 @@ their limits. Run `co ...` through the shell tool. A command's presence does not
 prove that its account is authorized or its service is reachable; verify output
 and record failures in coverage. Never guess an email ID, file path or flag.
 
-The supplied material lists exactly which sources the collector searched. Check
-that coverage before claiming a complete investigation. Use the existing CLIs
-for additional searches; do not invent a second mail client or credentials flow.
+**Mail is already in front of you. Do not search it again.** For a person or an
+organisation, the collector has asked every connected mailbox, on the server,
+for every known address of the subject over the window, and every matching
+message -- and every attachment it could read -- is in the material with its
+source id (`outlook:…`, `gmail:…`). Searching Gmail, Outlook or `co email`
+yourself finds nothing new and produces citations the runner cannot verify: on
+2026-09-23 three good person pages were written from self-run `co outlook`
+searches, cited as "Outlook message 39" and "listing rows 2, 4, 7", and all
+three were rejected whole. Listing row numbers also change between listings,
+so they identify nothing a week later.
 
-- Run `co email addresses` for the account's own email service. If authorized,
-  inspect `co email inbox -n 100 --offset 0`, then subsequent offsets, and
-  `co email sent -n 100 --to <address>`. Read relevant messages with
-  `co email read <id>` and `co email sent read <id>`. This service is distinct
-  from Gmail and Outlook. Its sent listing has no offset: report that coverage
-  limit; do not claim it searched all sent history.
+- A new address for the subject (from a signature, a cc line): add it to
+  `Handles`. The next investigation searches it; you do not.
+- A mailbox the coverage marks "not searched" (not connected, or unsubscribed):
+  one line in `Uncertainties`. Do not work around it.
 - Read relevant documents in the known project/source directories. PDFs, Word
   documents, spreadsheets, slides and calendar attachments are evidence, too.
   Follow file references from messages; do not sweep unrelated private folders.
@@ -212,17 +244,19 @@ and what you looked for and did not find in `Uncertainties`. A guess is worse
 than a gap: the next pass would build on it. Five page loads is generous; ten
 means the site does not have it.
 
-You should have `co browser`, `co outlook` and `co gmail` wherever you are
-running; if one of them fails to run or cannot reach the network, say so in
-`Uncertainties` ("web: not reachable on this runner") and leave the fields
-`Unknown`. Do not pretend to have looked.
+You should have `co browser` for the web lookups above; if it fails to run or
+cannot reach the network, say so in `Uncertainties` ("web: not reachable on
+this runner") and leave the fields `Unknown`. Do not pretend to have looked.
 
 ## Finish, then say what you did not finish
 
-End the pass with a short account of coverage: which sources you read, how much
-material each one held, and which handles found nothing. That account is what
-tells a later run whether this page is worth re-investigating or is simply
-about someone quiet.
+End the pass with a short account of coverage **in your final reply, not on the
+page**: which sources you read, how much material each one held, and which
+handles found nothing. That reply is kept with the run and is what tells a
+later run whether this page is worth re-investigating or is simply about
+someone quiet. The page is for the user reading about a person. An
+`Uncertainties` section that lists every source searched reads as an audit log
+and buries the two questions that matter.
 
 ## What this stage must not do
 
@@ -250,8 +284,30 @@ references); do not invent `[S1]` or another citation dialect. Under `Sources`,
 define each cited number exactly once with the actual source ID or full inspected
 file path/URL, observation date, and confidence. Keep distinct inspected files
 and execution evidence separately traceable instead of bundling a directory into
-one catch-all source. For a command result, identify the command and working
-directory, and distinguish a recorded output file from a command actually run.
+one catch-all source.
+
+**Only three things are citable**, and the runner rejects the whole page if any
+citation is something else:
+
+1. a source id that appears in the supplied material (`outlook:3f2a91c0d4e5`,
+   `gmail:…`, `codex:…:81499`, `investigation:page`);
+2. a full `https://` URL you opened (as `[W1]`);
+3. for a project, a local file path you read inside the supplied project or
+   source directories.
+
+A command, a search query, a listing row number or "the Outlook results" is not
+a source. A fact you can only support that way does not go on the page.
+
+**Never attach a citation to `Unknown`.** `Phone: Unknown [W1]` cites a page for
+a fact it does not contain; the search belongs in `Uncertainties`.
+
+**The window is the window.** The material covers the days the coverage names.
+Say "no mail before <date> was searched" rather than implying the relationship
+began there.
+
+**Another page for the same person** -- the same name, or an address you see
+here on a different page -- is named in `Uncertainties`. Do not merge pages
+yourself.
 A diagram must not imply the program writes an artifact merely because an
 example output file exists. These rules apply even when only one entity template
 is loaded; no rule depends on an unrelated person's template being present.

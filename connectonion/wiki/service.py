@@ -157,6 +157,9 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
         elif enabled and sources[name].get("kind") in CHAT_KINDS and not sources[name].get("chats"):
             raise WikiError("Name the chats to read: --chat <id>, from `co whatsapp chats`")
         sources[name]["enabled"] = enabled
+        # "Never subscribed" and "the user said stop" both read as enabled=False;
+        # only the second forbids an explicit investigation from reading it.
+        sources[name]["unsubscribed"] = not enabled
         write_json(state_path(root, "subscriptions.json"), sources)
     return name
 

@@ -48,6 +48,47 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None) -> t
     return sorted(merged.values(), key=lambda row: (-row['mails'], row['address'])), own
 
 
+# Relays: an event platform writes on someone's behalf from an address of its own.
+RELAY = re.compile(r'@(?:[\w-]+\.)*luma-mail\.com$', re.I)
+# Where bulk mail comes from: a newsletter platform, or a sending subdomain a
+# company keeps apart from its people (mail.aitinkerers.org, e.domain.com.au,
+# news.ato.gov.au). A person writes from the company domain itself. On
+# 2026-09-23, 176 of 399 people pages were one-way senders, and the named
+# ones -- Substack, beehiiv, Coles specials, Medibank comms -- were all of this
+# shape, while the one-way *people* (a recruiter, a client who wrote first)
+# wrote from their own company domain.
+BULK = re.compile(
+    r'@(?:[\w-]+\.)*(?:substack\.com|beehiiv\.com|shopifyemail\.com|hs-send\.com|loops\.so|docusign\.net'
+    r'|mailchimpapp\.com|mcsv\.net|sendgrid\.net|klaviyomail\.com|convertkit-mail\d*\.com)$'
+    r'|@(?:mail|e|eg|email|emails|e-mails|news|newsletter|comms|edm|specials|communication|survey'
+    r'|feedback|invoicing|service|team|marketing|info|updates)\.[\w.-]+$', re.I)
+# A ConnectOnion agent's own address. It is software writing, not a person.
+AGENT_ADDRESS = re.compile(r'^0x[0-9a-f]{6,}@', re.I)
+
+
+def _notice(row: dict) -> bool:
+    """Only sends, never hears back, and looks like a system -- or is a relay."""
+    address = row['address']
+    if RELAY.search(address):
+        return True
+    return bool(row.get('one_way') and (AUTOMATED_HINT.search(address) or BULK.search(address)
+                                         or AGENT_ADDRESS.search(address)))
+
+
+def _people_groups(rows: list[dict]) -> list[list[dict]]:
+    """Rows that are one person: the same full display name (two words or more).
+
+    A single first name ("Aaron", "John") is too common to join on, so it keeps its
+    own page. Most mail first, so the busiest address leads its group.
+    """
+    groups = {}
+    for row in rows:
+        name = ' '.join(str(row.get('name') or '').split()).casefold()
+        key = name if len(name.split()) >= 2 and '@' not in name else row['address'].casefold()
+        groups.setdefault(key, []).append(row)
+    return sorted(groups.values(), key=lambda g: (-sum(r.get('mails', 0) for r in g), g[0]['address']))
+
+
 def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150,
               skill_directories=None, mine=(), source_errors=None) -> dict:
     """Map observed identities; correspondent classification remains unassessed."""
@@ -72,29 +113,56 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
             report['created'].append(owner_record)
         report['owner'] = {'record': owner_record, 'addresses': aliases}
         report['people'].append({'record': owner_record, 'classification': 'account owner'})
-    for row in people:
-        automated = bool(AUTOMATED_HINT.search(row['address']))
+    org_rows = []
+    for group in _people_groups(people):
+        addresses = [row['address'] for row in group]
+        first = group[0]
+        automated = all(AUTOMATED_HINT.search(row['address']) for row in group)
+        # A notice sender that never hears back, or someone reachable only through
+        # an event platform's relay, is not a person the user deals with. On one
+        # real mailbox this was 165 of 565 people pages (Neon Changelog, Airwallex,
+        # event platforms). They stay in the map report; they get no page.
+        if all(_notice(row) for row in group):
+            report['automated_correspondents'].extend(group)
+            org_rows += [{'address': a, 'record': None} for a in addresses]
+            continue
         if automated:
-            report['automated_correspondents'].append(row)
-        existing = next((p['path'] for p in roster if row['address'].casefold() in p['emails']), None)
-        record = existing or _record('people', row['name'] or row['address'], row['address'])
-        made = notebook.stub_person(record, row['name'] or row['address'], [row['address']], email=row['address'])
-        report['people'].append({**row, 'record': record, 'classification': 'automated candidate' if automated else 'unassessed'})
+            report['automated_correspondents'].extend(group)
+        existing = next((p['path'] for p in roster if {a.casefold() for a in addresses} & set(p['emails'])), None)
+        name = next((row['name'] for row in group if row.get('name')), '') or first['address']
+        record = existing or _record('people', name, first['address'])
+        made = notebook.stub_person(record, name, addresses, email=', '.join(addresses))
+        mails = sum(row.get('mails', 0) for row in group)
+        report['people'].append({**first, 'mails': mails, 'addresses': addresses, 'record': record,
+                                 'classification': 'automated candidate' if automated else 'unassessed'})
+        org_rows += [{'address': a, 'record': record} for a in addresses]
         if automated:
             page = notebook.read(record)
             marker = '- Correspondent classification: automated candidate; not verified as a person.'
             if marker not in page:
                 notebook.write(record, page.replace('## Uncertainties\n', '## Uncertainties\n' + marker + '\n'))
         if made:
-            notebook.write(record, notebook.read(record).replace('## Uncertainties\n', '## Uncertainties\n- Correspondent classification unassessed; mapping does not establish a person or employer.\n'))
+            notes = '- Correspondent classification unassessed; mapping does not establish a person or employer.\n'
+            if len(addresses) > 1:
+                # One person, several addresses: the same display name on a work and a
+                # personal address split one relationship across pages that each knew half.
+                notes += (f"- Addresses grouped by the display name “{name}”: {', '.join(addresses)}. "
+                          "Confirm they are one person before relying on it.\n")
+            notebook.write(record, notebook.read(record).replace('## Uncertainties\n', '## Uncertainties\n' + notes))
             page = notebook.read(record)
-            details = f"Observed mail count: {row.get('mails', 0)}; first: {row.get('first', 'unknown')}; last: {row.get('last', 'unknown')}; mailboxes: {', '.join(row.get('boxes', [])) or 'unknown'}. [1]"
+            dates = [row.get('first') for row in group if row.get('first')], [row.get('last') for row in group if row.get('last')]
+            boxes = sorted({box for row in group for box in row.get('boxes', [])})
+            details = (f"Observed mail count: {mails}; first: {min(dates[0]) if dates[0] else 'unknown'}; "
+                       f"last: {max(dates[1]) if dates[1] else 'unknown'}; mailboxes: {', '.join(boxes) or 'unknown'}. [1]")
             page = page.replace('## History\n- Unknown — not investigated yet', '## History\n- ' + details)
             page = page.replace('- (none yet)', '- [1] Enumeration metadata, observed ' + report['started'] + ' — .state/map.json; window-limited, not lifetime totals')
             notebook.write(record, page)
             report['created'].append(record)
+    if report['automated_correspondents']:
+        report['coverage'].append(f"{len(report['automated_correspondents'])} notice or relay senders listed in "
+                                  ".state/map.json without people pages")
     report['coverage'] += [f'{kind}: not configured or disabled; not searched' for kind in ('gmail', 'outlook') if kind not in clients]
-    report['orgs'], created_orgs = map_orgs(notebook, report['people'], report['started'], days, _record)
+    report['orgs'], created_orgs = map_orgs(notebook, org_rows, report['started'], days, _record)
     report['created'] += created_orgs
     report['coverage'].append('Organizations: exact observed mail domains, including single contacts and notices; '
                               'known public mailbox domains excluded; mailbox-provider list is not exhaustive; '

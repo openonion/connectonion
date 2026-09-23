@@ -9,7 +9,7 @@ from connectonion.wiki.files import CATEGORIES, Notebook, WikiError, maintenance
 
 def test_inspection_does_not_initialize(tmp_path):
     root = tmp_path / "wiki"
-    assert read_config(root)["model"] == "gpt-5.3-codex-spark"
+    assert read_config(root)["model"] == "gpt-6-luna"
     assert Notebook(root).list() == []
     assert not root.exists()
 
@@ -226,3 +226,10 @@ def test_an_organisation_page_joins_the_work_list_like_any_other(tmp_path):
     notebook = Notebook(tmp_path)
     notebook.stub_org("orgs/unsw.md", "UNSW", ["unsw.edu.au"])
     assert [p["path"] for p in notebook.unfinished()] == ["orgs/unsw.md"]
+
+
+def test_a_digest_chunk_is_no_larger_than_one_investigate_turn():
+    """A 300k chunk timed out in the same 600-second turn a 200k investigation fits in."""
+    from connectonion.wiki.config import default_config
+    limits = default_config()["limits"]
+    assert limits["extract_chars_per_batch"] <= limits["input_chars_per_batch"]

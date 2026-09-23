@@ -20,7 +20,9 @@ from .source import KINDS, source_files
 # Rings a bell on its own; the Skill still decides. Matched anywhere before the
 # @, because "no-reply.products@" slipped past a pattern anchored to the @.
 AUTOMATED_HINT = re.compile(r"no-?reply|noreply|notification|newsletter|mailer|calendar|invitation|"
-                            r"digest|alerts?|updates?|marketing|express@|automated", re.IGNORECASE)
+                            r"digest|alerts?|updates?|marketing|express@|automated|changelog|announce|"
+                            r"news@|billing|receipts?@|invoice@|bounce|support@|team@|hello@|info@",
+                            re.IGNORECASE)
 
 # Mailbox providers, not employers. A domain here says where someone keeps their
 # mail; every other domain says who they answer to, which is why 168 of 182 real

@@ -104,6 +104,53 @@ def _project_overview_errors(candidate: str) -> list[str]:
     return ['Project Overview requires a closed fenced ASCII flow, or an explicit Unknown statement']
 
 
+def drop_uncited_sources(text: str) -> str:
+    """Remove one-line Sources entries that no sentence cites.
+
+    A listed source nobody cites misleads no reader, and refusing the page for
+    it threw away a real, fully cited Ian Chan page on 2026-09-23 because the
+    old page was listed as [1]. A citation that points at nothing is still
+    refused by validate; only the harmless direction is repaired.
+    """
+    head, marker, tail = text.partition('\n## Sources\n')
+    if not marker:
+        return text
+    sources, rest = tail, ''
+    after = re.search(r'^(?:## |Investigation:)', tail, re.M)
+    if after:
+        sources, rest = tail[:after.start()], tail[after.start():]
+    cited = set(re.findall(r'\[(W?\d+)\](?!\()', head + rest))
+    kept = [line for line in sources.splitlines(keepends=True)
+            if not (m := re.match(r'^\s*(?:- )?\[(W?\d+)\]', line)) or m[1] in cited]
+    return head + marker + ''.join(kept) + rest
+
+
+IDENTITY_LINE = re.compile(r'^(- (?:Email|Handles|Also known as): )(.*)$', re.M)
+
+
+def drop_owner_addresses(text: str, owner: set[str]) -> tuple[str, list[str]]:
+    """Take the account owner's own addresses off someone else's identity lines.
+
+    Mail between the user and a person carries both addresses, and a real page
+    (Dora, 2026-09-23) listed the user's own Outlook as her email and handle.
+    Which addresses are the owner's is known, so this is removed mechanically
+    rather than asked of the model; the rest of the page is kept.
+    """
+    removed = []
+
+    def clean(match):
+        head, value = match.groups()
+        body, cites = re.match(r'^(.*?)((?:\s*\[W?\d+\])*)\s*$', value).groups()
+        parts = [part.strip() for part in re.split(r'[;,]', body) if part.strip()]
+        kept = [part for part in parts if part.casefold() not in owner]
+        removed.extend(part for part in parts if part.casefold() in owner)
+        if kept == parts:
+            return match.group(0)
+        return head + ('; '.join(kept) + cites if kept else 'Unknown')
+
+    return IDENTITY_LINE.sub(clean, text), sorted(set(removed))
+
+
 def validate(record: str, candidate: str, original: str, items: list[dict]) -> list[str]:
     """Structural checks only; citation existence does not prove factual entailment."""
     body = prose(candidate)
@@ -121,7 +168,14 @@ def validate(record: str, candidate: str, original: str, items: list[dict]) -> l
     defined = Counter(key for key, _ in definitions)
     errors += [f'Missing or duplicate citation: {key}' for key in refs if defined[key] != 1]
     known = {i['source'] for i in items if i.get('source') and i['source'] != 'investigation:page'}
-    known.update(source for i in items if i.get("role") == "reflection-summary" for source in i.get("sources", []))
+    derived = [source for i in items if i.get("role") in ("reflection-summary", "extract")
+               for source in i.get("sources", [])]
+    known.update(derived)
+    # A coding session is one transcript file; citing the session rather than
+    # one line of it is coarse but traceable. Dora's page cited
+    # `claude-code:<session>` for an account digested from that session.
+    known.update(source.rsplit(":", 1)[0] for source in derived
+                 if source.startswith(("codex:", "claude-code:")) and source.count(":") >= 2)
     if record.startswith('projects/'):
         errors += _project_overview_errors(candidate)
         for label in ('Sessions', 'First seen', 'Last seen'):

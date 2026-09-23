@@ -82,14 +82,30 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     for kind, client in clients.items():
         mine = {a.lower() for a in client.my_addresses()}
         own_addresses.update(mine)
-        rows, cursor = [], start
-        while cursor < end:
-            stop = min(cursor + timedelta(days=7), end)
-            rows += _patient(client.list_between, cursor.isoformat(), stop.isoformat(), 200) or []
+        emails = sorted({h for h in handles if "@" in h and h not in mine})
+        if emails and hasattr(client, "list_with"):
+            # Ask the server for this person's mail. Listing the whole window and
+            # filtering took minutes per person, and a week past the 200-row cap
+            # lost mail without saying so; this is complete and takes a second.
+            hit, taken = [], set()
+            for address in emails:
+                for r in _patient(client.list_with, address, start.isoformat(), end.isoformat()) or []:
+                    if r["id"] not in taken:
+                        taken.add(r["id"])
+                        hit.append(r)
             if progress:
-                progress(kind, stop, len(rows))
-            cursor = stop
-        hit = [r for r in rows if _matches(r, handles, mine)]
+                progress(kind, end, len(hit))
+            searched = f"searched on the server for {', '.join(emails)}"
+        else:
+            rows, cursor = [], start
+            while cursor < end:
+                stop = min(cursor + timedelta(days=7), end)
+                rows += _patient(client.list_between, cursor.isoformat(), stop.isoformat(), 200) or []
+                if progress:
+                    progress(kind, stop, len(rows))
+                cursor = stop
+            hit = [r for r in rows if _matches(r, handles, mine)]
+            searched = f"scanned {len(rows)} mails"
         attached = 0
         for r in sorted(hit, key=lambda r: str(r["date"])):
             body = _patient(client.get_email_body, r["id"])
@@ -115,8 +131,15 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                                   "subject": f"{r.get('subject', '')} — {Path(saved).name}",
                                   "text": extract_text(Path(saved), limit=None), "file": saved,
                                   "source": f"{kind}:{short}:{Path(saved).name}"})
-        coverage.append(f"{kind} ({', '.join(sorted(mine))}): scanned {len(rows)} mails over {days} days, "
+        coverage.append(f"{kind} ({', '.join(sorted(mine))}): {searched} over {days} days, "
                         f"{len(hit)} matched, {attached} attachments read")
+    for kind in ("outlook", "gmail"):
+        if kind not in clients:
+            # Say it. A mailbox left out used to vanish from coverage, so the model
+            # and the reader could not tell "no mail with this person" from "not asked".
+            why = ("unsubscribed by the user" if subscriptions.get(kind, {}).get("unsubscribed")
+                   else f"not connected (co auth {'google' if kind == 'gmail' else 'microsoft'})")
+            coverage.append(f"{kind}: {why}; not searched")
     for name, sub in subscriptions.items():
         if sub.get("kind") not in KINDS:
             continue
