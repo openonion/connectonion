@@ -178,3 +178,63 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
             'speedrun@substack.com', 'post-training@mail.aitinkerers.org',
             '0xa633fd2e63@mail.openonion.ai'} <= listed
     assert 'neon.tech' in {row['domain'] for row in result['orgs']}   # the domain is still mapped
+
+
+def test_addresses_the_owner_writes_to_and_never_hears_from_are_asked_about_not_merged(tmp_path, monkeypatch):
+    """On the real 90-day map of 2026-09-23 the second-largest people page was the
+    owner's own Gmail: 106 sent, 0 received. Investigating it would have pulled the
+    owner's mail into a page about a nobody. The map asks instead of deciding --
+    an assistant and a relative look exactly the same from the headers (#1635)."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    people = [
+        {'name': 'openonion ai', 'address': 'aaronplus1996@gmail.com', 'mails': 106, 'sent': 106,
+         'received': 0, 'one_way': True, 'first': '2026-06-25', 'last': '2026-09-23', 'boxes': ['gmail']},
+        {'name': 'Support', 'address': 'support@vendor.example', 'mails': 4, 'sent': 4, 'received': 0,
+         'one_way': True},
+        {'name': 'Dana Reyes', 'address': 'dana@client.example', 'mails': 1, 'sent': 1, 'received': 0,
+         'one_way': True},
+        {'name': 'Misa Zhang', 'address': 'misa@fisglobal.example', 'mails': 9, 'sent': 4, 'received': 5,
+         'one_way': False},
+    ]
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: (people, set()))
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+
+    asked = {row['address']: row for row in result['possible_own_addresses']}
+    assert list(asked) == ['aaronplus1996@gmail.com']    # one reply, or one letter, and it is a person
+    assert asked['aaronplus1996@gmail.com']['sent'] == 106
+    assert asked['aaronplus1996@gmail.com']['confirm'] == 'co wiki init --mine aaronplus1996@gmail.com'
+    assert any('never replied' in line for line in result['coverage'])
+
+    # Nothing is merged on a guess: the page is still there, still a person page.
+    page = asked['aaronplus1996@gmail.com']['record']
+    assert page in {row['record'] for row in result['people']}
+    assert 'aaronplus1996@gmail.com' in Notebook(tmp_path).read(page)
+    assert result.get('owner') is None
+
+
+def test_confirming_an_own_address_stops_the_question_and_keeps_the_page_as_the_owner(tmp_path, monkeypatch):
+    """--mine is the answer to the question init asked, so the second run must not
+    ask it again, and must reuse the page rather than leave a stranger's page and
+    an owner page both holding the same address."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    rows = [{'name': 'openonion ai', 'address': 'aaronplus1996@gmail.com', 'mails': 106, 'sent': 106,
+             'received': 0, 'one_way': True, 'first': '2026-06-25', 'last': '2026-09-23', 'boxes': ['gmail']}]
+
+    def mail_rows(clients, days, mine, coverage, errors=None):
+        own = {a.lower() for a in mine}
+        return [row for row in rows if row['address'] not in own], own
+
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', mail_rows)
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
+    first = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    page = first['possible_own_addresses'][0]['record']
+
+    second = build_map(tmp_path, {}, {}, skill_directories=[skills], mine=['aaronplus1996@gmail.com'])
+    assert second['possible_own_addresses'] == []
+    assert second['owner']['record'] == page
+    assert Notebook(tmp_path).list('people') == [page]

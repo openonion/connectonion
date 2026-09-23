@@ -241,6 +241,19 @@ def make_wiki_app(factory):
                                 + _next(ctx, ["init"]) + ".")
             if tips:
                 result["tips"] = tips
+            candidates = result.get("possible_own_addresses") or []
+            if candidates:
+                # The owner is the only one who can answer this, so the question
+                # arrives with the command that answers it, spelled for the root
+                # they actually used. Five at a time: the rest stay in the report.
+                result["confirm_own_addresses"] = [
+                    f"{row['address']}: {row['sent']} sent, none received. If it is yours, run "
+                    + _next(ctx, ["init", "--mine", row["address"]])
+                    + "; if it is an assistant or a relative, leave it as a person."
+                    for row in candidates[:5]]
+                if len(candidates) > 5:
+                    result["confirm_own_addresses"].append(
+                        f"{len(candidates) - 5} more in .state/map.json; nothing is merged without --mine.")
             if not selected:
                 result["people_setup"] = "No connected mail source. Local maps are ready; connect mail to add People."
             if result.get("errors"):

@@ -66,6 +66,35 @@ BULK = re.compile(
 AGENT_ADDRESS = re.compile(r'^0x[0-9a-f]{6,}@', re.I)
 
 
+# How much one-way writing stops looking like an unanswered message. Writing to
+# a new contact once and hearing nothing is ordinary; writing weekly for months
+# and never once hearing back is the shape of an address you own. On the real
+# 90-day map of 2026-09-23 the owner's own Gmail carried 106 sent and 0
+# received, while the genuinely unanswered strangers sat at one or two.
+WRITE_ONLY_MIN = 3
+
+
+def _write_only(row: dict) -> bool:
+    """Mail the owner keeps sending to an address that has never once replied.
+
+    This is the shape of the owner's own other mailbox, and the map cannot tell
+    it apart from a person who does not answer -- an assistant, a family member
+    on a shared laptop, and a self-addressed notes inbox all look identical from
+    the headers. So it is a question to put to the owner, never a merge: the
+    cost of guessing wrong is pulling a real person's mail into the owner's page
+    or the owner's mail into a stranger's.
+
+    Notice senders are excluded because they are the opposite case -- they write
+    to the owner -- and addresses like a support desk that never answers are
+    already named by AUTOMATED_HINT.
+    """
+    if row.get('received') or row.get('sent', 0) < WRITE_ONLY_MIN:
+        return False
+    address = row['address']
+    return not (AUTOMATED_HINT.search(address) or BULK.search(address)
+                or RELAY.search(address) or AGENT_ADDRESS.search(address))
+
+
 def _notice(row: dict) -> bool:
     """Only sends, never hears back, and looks like a system -- or is a relay."""
     address = row['address']
@@ -95,7 +124,8 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
     notebook = Notebook(root)
     report = {'phase': 'mapping', 'started': datetime.now(timezone.utc).isoformat(),
               'days': days, 'coverage': [], 'people': [], 'projects': [], 'orgs': [], 'created': [],
-              'errors': list(source_errors or []), 'automated_correspondents': []}
+              'errors': list(source_errors or []), 'automated_correspondents': [],
+              'possible_own_addresses': []}
     state = root / '.state' / 'map.json'
     state.parent.mkdir(parents=True, exist_ok=True)
     def save():
@@ -136,6 +166,13 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
         report['people'].append({**first, 'mails': mails, 'addresses': addresses, 'record': record,
                                  'classification': 'automated candidate' if automated else 'unassessed'})
         org_rows += [{'address': a, 'record': record} for a in addresses]
+        # Asked about, not acted on: the page stays exactly as it is until the
+        # owner answers with --mine, because only they can tell their own
+        # mailbox from someone who never writes back.
+        report['possible_own_addresses'] += [
+            {'address': row['address'], 'sent': row.get('sent', 0), 'record': record,
+             'confirm': 'co wiki init --mine ' + row['address']}
+            for row in group if _write_only(row)]
         if automated:
             page = notebook.read(record)
             marker = '- Correspondent classification: automated candidate; not verified as a person.'
@@ -158,6 +195,11 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
             page = page.replace('- (none yet)', '- [1] Enumeration metadata, observed ' + report['started'] + ' — .state/map.json; window-limited, not lifetime totals')
             notebook.write(record, page)
             report['created'].append(record)
+    report['possible_own_addresses'].sort(key=lambda row: (-row['sent'], row['address']))
+    if report['possible_own_addresses']:
+        report['coverage'].append(
+            f"{len(report['possible_own_addresses'])} addresses received mail from the owner and never replied; "
+            "they may be the owner's own. Pages are kept as they are until confirmed with co wiki init --mine")
     if report['automated_correspondents']:
         report['coverage'].append(f"{len(report['automated_correspondents'])} notice or relay senders listed in "
                                   ".state/map.json without people pages")

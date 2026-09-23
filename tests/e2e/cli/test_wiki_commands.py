@@ -304,6 +304,28 @@ def test_init_builds_all_maps_without_model_or_investigation(tmp_path, monkeypat
         assert (tmp_path / record).is_file()
 
 
+def test_init_asks_whether_a_write_only_address_is_the_owner_s_own(tmp_path, monkeypatch):
+    """The question is useless without the command that answers it, and the command
+    is useless if it forgets the root the user chose (#1635)."""
+    monkeypatch.setattr('connectonion.wiki.service.subscriptions', lambda root: {})
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: ([
+        {'name': 'openonion ai', 'address': 'aaronplus1996@gmail.com', 'mails': 106, 'sent': 106,
+         'received': 0, 'one_way': True, 'first': '2026-06-25', 'last': '2026-09-23', 'boxes': ['gmail']}], set()))
+    empty = tmp_path / 'empty-skills'
+    empty.mkdir()
+    root = tmp_path / 'wiki with spaces'
+    result = invoke(root, '--json', 'init', '--skills-dir', str(empty))
+    assert result.exit_code == 0, result.output
+    asked = json.loads(result.output)['data']['confirm_own_addresses']
+    assert len(asked) == 1
+    assert '106 sent, none received' in asked[0]
+    assert f"--root '{root}' init --mine aaronplus1996@gmail.com" in asked[0]
+
+    plain = invoke(root, 'init', '--skills-dir', str(empty))
+    assert plain.exit_code == 0, plain.output
+    assert 'aaronplus1996@gmail.com' in Text.from_ansi(plain.output).plain
+
+
 def test_wiki_overview_explains_lifecycle_without_initializing(tmp_path):
     root = tmp_path / 'new wiki'
     result = invoke(root)
