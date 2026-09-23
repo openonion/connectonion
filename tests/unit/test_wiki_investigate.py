@@ -301,3 +301,10 @@ def test_a_message_read_through_a_digest_can_still_be_cited_by_its_own_id():
     forged = candidate.replace("gmail:3a7a430fcee5", "gmail:ffffffffffff").replace(
         "`gmail:db0abd133958:Draft_v8.docx`, ", "")
     assert validate("people/ody.md", forged, original, items)          # an id no digest read is still refused
+    session = [{"source": "claude-code:3994b2ee-ff35:81", "timestamp": "2026-08-30T00:00:00+00:00", "text": "c"},
+               {"source": "gmail:c74572cd7d0e", "timestamp": "2026-08-31T00:00:00+00:00", "text": "d"}]
+    items.append(extraction_item("Dora reviewed the deck.", session))
+    whole = original.replace("## Who they are\n- Unknown — not investigated yet",
+                             "## Who they are\n- Dora reviews decks. [1]", 1).replace(
+        "## Sources\n- (none yet)", "## Sources\n- [1] `claude-code:3994b2ee-ff35`, observed 2026-08-30.", 1)
+    assert validate("people/ody.md", whole, original, items) == []     # the whole session it came from

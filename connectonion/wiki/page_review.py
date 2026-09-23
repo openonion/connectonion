@@ -142,8 +142,14 @@ def validate(record: str, candidate: str, original: str, items: list[dict]) -> l
     defined = Counter(key for key, _ in definitions)
     errors += [f'Missing or duplicate citation: {key}' for key in refs if defined[key] != 1]
     known = {i['source'] for i in items if i.get('source') and i['source'] != 'investigation:page'}
-    known.update(source for i in items if i.get("role") in ("reflection-summary", "extract")
-                 for source in i.get("sources", []))
+    derived = [source for i in items if i.get("role") in ("reflection-summary", "extract")
+               for source in i.get("sources", [])]
+    known.update(derived)
+    # A coding session is one transcript file; citing the session rather than
+    # one line of it is coarse but traceable. Dora's page cited
+    # `claude-code:<session>` for an account digested from that session.
+    known.update(source.rsplit(":", 1)[0] for source in derived
+                 if source.startswith(("codex:", "claude-code:")) and source.count(":") >= 2)
     if record.startswith('projects/'):
         errors += _project_overview_errors(candidate)
         for label in ('Sessions', 'First seen', 'Last seen'):
