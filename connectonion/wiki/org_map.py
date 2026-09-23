@@ -28,7 +28,9 @@ def map_orgs(notebook, people: list[dict], started: str, days: int, record_for) 
     for person in people:
         domain = _domain(str(person.get('address', '')))
         if domain:
-            groups.setdefault(domain, set()).add(person['record'])
+            contacts = groups.setdefault(domain, set())
+            if person.get('record'):   # a notice sender has no page to link to
+                contacts.add(person['record'])
     rows, created = [], []
     for domain, contacts in sorted(groups.items()):
         record = existing.get(domain) or record_for('orgs', domain, domain)

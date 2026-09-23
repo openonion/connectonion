@@ -1130,6 +1130,44 @@ class Gmail(GmailMailbox):
 
         return f"You have {count} unread email(s)."
 
+    def list_with(self, address: str, start: str, end: str, max_results: int = 1000) -> list:
+        """Every message `address` is on -- from, to or cc -- in [start, end), oldest first.
+
+        The server answers "this person's mail" directly (under a second) instead of
+        the caller listing the whole mailbox and filtering it, and page tokens mean a
+        busy correspondent is not silently cut off.
+        """
+        from datetime import datetime
+        from email.utils import parsedate_to_datetime
+        first = int(datetime.fromisoformat(start).timestamp())
+        last = int(datetime.fromisoformat(end).timestamp())
+        service = self._get_service()
+        query = f"{{from:{address} to:{address} cc:{address}}} after:{first} before:{last}"
+        ids, token = [], None
+        while len(ids) < max_results:
+            page = service.users().messages().list(userId='me', q=query, maxResults=500,
+                                                   pageToken=token).execute()
+            ids += [m['id'] for m in page.get('messages', [])]
+            token = page.get('nextPageToken')
+            if not token:
+                break
+        rows = []
+        for message_id in ids[:max_results]:
+            message = service.users().messages().get(
+                userId='me', id=message_id, format='metadata',
+                metadataHeaders=['From', 'To', 'Cc', 'Subject', 'Date']).execute()
+            headers = {h['name']: h['value'] for h in message.get('payload', {}).get('headers', [])}
+            try:
+                date = parsedate_to_datetime(headers.get('Date', '')).isoformat()
+            except (TypeError, ValueError):
+                date = start
+            rows.append({'id': message_id, 'from': headers.get('From', ''), 'to': [headers.get('To', '')],
+                         'cc': [headers.get('Cc', '')] if headers.get('Cc') else [],
+                         'subject': headers.get('Subject', ''), 'date': date,
+                         'snippet': message.get('snippet', ''),
+                         'unread': 'UNREAD' in message.get('labelIds', [])})
+        return sorted(rows, key=lambda row: (row['date'], row['id']))
+
     def list_between(self, start: str, end: str, max_results: int = 200) -> list:
         """Messages received in [start, end), oldest first, with ISO dates.
 

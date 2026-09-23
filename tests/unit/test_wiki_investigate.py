@@ -170,7 +170,7 @@ def test_coding_search_continues_past_first_batch_and_matches_aliases(tmp_path, 
                                 subscriptions={"codex": {"kind": "codex", "root": str(tmp_path)}})
     assert [i["source"] for i in items] == ["codex:2"]
     assert seen == [{}, {"offset": 40}, {"offset": 80}]
-    assert "2 messages" in coverage[0]
+    assert "2 messages" in next(line for line in coverage if line.startswith("codex"))
 
 
 @pytest.mark.parametrize("stdout,returncode", [
@@ -202,3 +202,46 @@ def test_timeout_preserves_unfinished_page(tmp_path, monkeypatch, co_ai):
         inv.investigate(root, "people/vern.md", "Vern", ["vern"], days=7,
                         clients={}, subscriptions={})
     assert inv.Notebook(root).read("people/vern.md") == before
+
+
+def test_a_person_s_mail_is_asked_of_the_server_not_found_by_listing_everything():
+    """Listing the whole window took minutes per person and a busy week past the
+    listing cap lost mail silently. With the person's addresses in hand, the
+    mailbox is asked for exactly their mail, every address once."""
+    class Searchable(Quiet):
+        asked = []
+        def list_between(self, s, e, n): raise AssertionError("listed the whole mailbox")
+        def list_with(self, address, start, end):
+            self.asked.append(address)
+            return [{"id": f"{address}-1", "from": f"Vern <{address}>", "to": ["me@x.y"],
+                     "subject": "Practice of Work", "date": "2026-07-21T00:00:00Z"}]
+        def get_email_body(self, i): return "--- Email Body ---\nOne team of 4-6 works."
+
+    box = Searchable()
+    items, coverage = inv.gather("Vern Chan", ["vern.chan@unsw.edu.au", "vern@founders.unsw.edu.au", "Vern Chan"],
+                                 days=90, clients={"outlook": box}, subscriptions={})
+    assert box.asked == ["vern.chan@unsw.edu.au", "vern@founders.unsw.edu.au"]
+    assert [i["text"].split("\n")[-1] for i in items] == ["One team of 4-6 works."] * 2
+    assert "searched on the server" in coverage[0] and "2 matched" in coverage[0]
+
+
+def test_a_mailbox_not_searched_is_named_in_coverage():
+    _, coverage = inv.gather("Vern Chan", ["vern.chan@unsw.edu.au"], days=30, clients={"outlook": Quiet()},
+                             subscriptions={"gmail": {"kind": "gmail", "unsubscribed": True}})
+    assert "gmail: unsubscribed by the user; not searched" in coverage
+    _, coverage = inv.gather("Vern Chan", ["vern.chan@unsw.edu.au"], days=30, clients={}, subscriptions={})
+    assert any(line.startswith("outlook: not connected (co auth microsoft)") for line in coverage)
+
+
+def test_a_model_the_login_cannot_run_is_named_with_the_fix(tmp_path, monkeypatch):
+    """Codex 0.155 refuses Spark for ChatGPT logins at the first turn; the provider's
+    JSON told nobody what to do next."""
+    root = _notebook(tmp_path, "codex")
+    refused = json.dumps({"outcome": "error", "error": 'turn failed: {"status":400,"error":{"message":'
+                          '"The \'gpt-5.3-codex-spark\' model is not supported when using Codex with a ChatGPT account."}}'})
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: types.SimpleNamespace(stdout=refused, stderr="", returncode=1))
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/local/bin/co")
+    config = read_config(root)
+    from connectonion.wiki.runner import RunFailed, run_task
+    with pytest.raises(RunFailed, match="co wiki config set model gpt-5.6-luna"):
+        run_task(root, "prompt", config, "investigate")

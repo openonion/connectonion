@@ -136,3 +136,45 @@ def test_project_scan_excludes_sandboxes_and_removed_worktrees(tmp_path):
             'type': 'session_meta', 'payload': {'id': str(i), 'cwd': cwd}}) + '\n')
     rows = scan_projects({'local': {'kind': 'codex', 'root': str(sessions)}}, 1)
     assert {r['path'] for r in rows} == set(paths[-2:])
+
+
+def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_path, monkeypatch):
+    """On a real mailbox Ody Zhou was four pages -- two Gmail addresses, an event
+    platform's relay, and a Drive share notice -- and notice senders were 165 of
+    565 people pages. A full display name joins addresses; a sender that only ever
+    sends and looks like a system, or writes through a relay, is listed, not paged."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    people = [
+        {'name': 'Ody Zhou', 'address': 'zhouodywork@gmail.com', 'mails': 30, 'one_way': False,
+         'first': '2026-07-17', 'last': '2026-09-14', 'boxes': ['gmail']},
+        {'name': 'Ody Zhou', 'address': 'zhouody@gmail.com', 'mails': 3, 'one_way': False,
+         'first': '2026-08-01', 'last': '2026-08-02', 'boxes': ['gmail']},
+        {'name': 'Ody Zhou', 'address': 'usr-abc@user.luma-mail.com', 'mails': 1, 'one_way': True},
+        {'name': 'Ody Zhou (via Google Drive)', 'address': 'drive-shares-dm-noreply@google.com', 'mails': 2,
+         'one_way': True},
+        {'name': 'Neon Changelog', 'address': 'changelog@neon.tech', 'mails': 4, 'one_way': True},
+        {'name': 'Andrew Suryanto', 'address': 'usr-xyz@user.luma-mail.com', 'mails': 1, 'one_way': True},
+        {'name': 'John', 'address': 'john@a.com', 'mails': 2, 'one_way': False},
+        {'name': 'John', 'address': 'john@b.com', 'mails': 2, 'one_way': False},
+        {'name': 'a16z speedrun', 'address': 'speedrun@substack.com', 'mails': 10, 'one_way': True},
+        {'name': 'AI Tinkerers', 'address': 'post-training@mail.aitinkerers.org', 'mails': 13, 'one_way': True},
+        {'name': '', 'address': '0xa633fd2e63@mail.openonion.ai', 'mails': 3, 'one_way': True},
+        {'name': 'Zhang, Misa', 'address': 'misa.zhang@fisglobal.com', 'mails': 3, 'one_way': True},
+    ]
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: (people, set()))
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    pages = {row['record']: row for row in result['people']}
+    ody = next(row for row in result['people'] if row['name'] == 'Ody Zhou')
+    assert ody['addresses'] == ['zhouodywork@gmail.com', 'zhouody@gmail.com', 'usr-abc@user.luma-mail.com']
+    assert ody['mails'] == 34
+    page = Notebook(tmp_path).read(ody['record'])
+    assert 'zhouody@gmail.com' in page and 'Confirm they are one person' in page
+    assert len(pages) == 4               # Ody, the two Johns kept apart, and Misa, who wrote first
+    listed = {row['address'] for row in result['automated_correspondents']}
+    assert {'changelog@neon.tech', 'drive-shares-dm-noreply@google.com', 'usr-xyz@user.luma-mail.com',
+            'speedrun@substack.com', 'post-training@mail.aitinkerers.org',
+            '0xa633fd2e63@mail.openonion.ai'} <= listed
+    assert 'neon.tech' in {row['domain'] for row in result['orgs']}   # the domain is still mapped

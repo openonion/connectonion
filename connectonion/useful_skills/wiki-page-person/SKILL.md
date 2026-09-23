@@ -70,6 +70,11 @@ Rules that make this page work, and that a thin page always breaks:
 - **`Contact` is fields, not prose.** A phone number inside a sentence cannot
   be found, and `Unknown` is the only way the user learns that the mailbox
   never carried one. Never write a contact detail into the summary instead.
+- **`Language` is observed, not declared.** The language the person writes to the
+  user in, from their own messages: `English`, `Mandarin; English for contracts`.
+  `Unknown` only when nothing they wrote is in the material. Nobody states
+  their working language in a signature; waiting for them to is how every
+  English-speaking colleague came out `Language: Unknown`.
 - **`Company` comes from the address domain and the signature block**, both of
   which are already in the material — `@unsw.edu.au` is UNSW, and the four
   lines under "Thank you," give the department, the office and the direct

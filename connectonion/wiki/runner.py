@@ -127,6 +127,12 @@ def run_task(directory: Path, prompt: str, config: dict, stage: str) -> dict:
             type(value) not in (int, float) or not math.isfinite(value) or value < 0
             for value in usage.values())):
         raise RunFailed("co ai returned invalid usage")
+    detail = str(envelope.get('error') or completed.stderr[-300:])
+    if "not supported when using Codex with a ChatGPT account" in detail:
+        # Codex accepts the name and refuses it at the first turn. Say which model and
+        # what to run, rather than relaying the provider's JSON.
+        raise RunFailed(f"Model {config['model']} is not available to a ChatGPT login. "
+                        "Choose one that is: co wiki config set model gpt-5.6-luna", usage)
     if completed.returncode or envelope.get("error") or envelope.get("outcome") != "natural":
         raise RunFailed(
             f"co ai did not complete (exit {completed.returncode}, "
@@ -173,7 +179,9 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,
                    "factual_quality": "not automatically assessed"})
         if errors:
-            raise RunFailed("Candidate rejected: " + "; ".join(errors), usage)
+            # The run is paid for; the page it wrote is kept where the reader can see
+            # what was refused and why, not discarded behind a one-line error.
+            raise RunFailed(f"Candidate rejected, kept at {candidate}: " + "; ".join(errors), usage)
         notebook.write(record, text)
 
 
