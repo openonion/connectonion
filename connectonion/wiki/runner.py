@@ -166,10 +166,10 @@ def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "") 
 
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage):
-    from .page_review import validate
+    from .page_review import drop_uncited_sources, validate
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
-    text = candidate.read_text(encoding="utf-8")
+    text = drop_uncited_sources(candidate.read_text(encoding="utf-8"))
     errors = validate(record, text, original, items)
     # Sync owns this same lock. Compare and write together so a completed
     # concurrent update cannot be silently replaced by an older candidate.

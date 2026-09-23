@@ -104,6 +104,27 @@ def _project_overview_errors(candidate: str) -> list[str]:
     return ['Project Overview requires a closed fenced ASCII flow, or an explicit Unknown statement']
 
 
+def drop_uncited_sources(text: str) -> str:
+    """Remove one-line Sources entries that no sentence cites.
+
+    A listed source nobody cites misleads no reader, and refusing the page for
+    it threw away a real, fully cited Ian Chan page on 2026-09-23 because the
+    old page was listed as [1]. A citation that points at nothing is still
+    refused by validate; only the harmless direction is repaired.
+    """
+    head, marker, tail = text.partition('\n## Sources\n')
+    if not marker:
+        return text
+    sources, rest = tail, ''
+    after = re.search(r'^(?:## |Investigation:)', tail, re.M)
+    if after:
+        sources, rest = tail[:after.start()], tail[after.start():]
+    cited = set(re.findall(r'\[(W?\d+)\](?!\()', head + rest))
+    kept = [line for line in sources.splitlines(keepends=True)
+            if not (m := re.match(r'^\s*(?:- )?\[(W?\d+)\]', line)) or m[1] in cited]
+    return head + marker + ''.join(kept) + rest
+
+
 def validate(record: str, candidate: str, original: str, items: list[dict]) -> list[str]:
     """Structural checks only; citation existence does not prove factual entailment."""
     body = prose(candidate)

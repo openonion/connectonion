@@ -245,3 +245,32 @@ def test_a_model_the_login_cannot_run_is_named_with_the_fix(tmp_path, monkeypatc
     from connectonion.wiki.runner import RunFailed, run_task
     with pytest.raises(RunFailed, match="co wiki config set model gpt-6-luna"):
         run_task(root, "prompt", config, "investigate")
+
+
+def test_a_listed_source_nobody_cites_is_dropped_not_a_reason_to_refuse_the_page(tmp_path, monkeypatch):
+    """A real Ian Chan page was refused whole because its Sources listed the old
+    page as [1] and no sentence cited it. The listing is harmless; the page was not."""
+    from pathlib import Path
+    from connectonion.wiki.files import Notebook
+
+    def fake_run(argv, cwd, capture_output, text, timeout):
+        import re
+        path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
+        page = (Path(cwd) / 'people/vern.md').read_text()
+        page = page.replace("## Who they are\n- Unknown — not investigated yet",
+                            "## Who they are\n- Vern works at UNSW. [W1]", 1)
+        page = page.replace("## Sources\n- (none yet)",
+                            "## Sources\n- [1] Existing page people/vern.md, prior context only.\n"
+                            "- [W1] https://www.unsw.edu.au/staff/vern-chan, observed 2026-09-23.", 1)
+        path.write_text(page)
+        return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
+                                     stderr="", returncode=0)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/local/bin/co")
+    root = _notebook(tmp_path, "codex")
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=7,
+                    clients={"outlook": Quiet()}, subscriptions={})
+    page = Notebook(root).read("people/vern.md")
+    assert "Vern works at UNSW. [W1]" in page
+    assert "[W1] https://www.unsw.edu.au/staff/vern-chan" in page and "[1] Existing page" not in page
