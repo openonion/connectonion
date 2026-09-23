@@ -355,8 +355,11 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 
 ## Current Version: 1.8.8b1
 
-Wiki targets 1.8.8. Stable 1.8.7 is reserved for the dashboard patch based on 1.8.6.
-Published 1.8.7b1–b4 Wiki previews remain immutable historical artifacts.
+The Personal Wiki feature targets 1.9.0 (#1443). Stable 1.8.7 shipped the
+dashboard patch. The published 1.8.8b1 Wiki preview and earlier 1.8.7b1–b4
+Wiki previews remain immutable historical artifacts; the target change does not
+rename, republish, or automatically accept those builds. The next version bump
+needs its own reviewed release candidate and Wiki acceptance evidence.
 
 - 1.8.8b1 (Retarget the validated Wiki preview to its dedicated 1.8.8 feature line; preserve dry-run semantics when combined with backfill or scheduled execution.)
 - 1.8.7b4 (Readable Wiki CLI output, help as the workflow guide, real-page discovery, organization maps and Skill source snapshots; validated investigation and staged maintenance preserve canonical pages.)
@@ -367,7 +370,7 @@ Published 1.8.7b1–b4 Wiki previews remain immutable historical artifacts.
 - 1.8.7a3 (Wiki initialization preview: explicit People metadata selection, grouped skill installations, temporary project exclusion; local acceptance recorded in PR #1613)
 
 ### Version History
-- 1.8.7: Control Center accepts 128 MiB HTML snapshots with a 256 MiB transport envelope. Oversized/unreadable pages show a visible error; failed sends can retry. Stable patch from 1.8.6; Personal Wiki targets 1.8.8 (#1443).
+- 1.8.7: Control Center accepts 128 MiB HTML snapshots with a 256 MiB transport envelope. Oversized/unreadable pages show a visible error; failed sends can retry. Stable patch from 1.8.6; Personal Wiki now targets 1.9.0 (#1443).
 - 1.8.6 (**stable: WhatsApp as an inbox, with an undo.** A linked device sees
   the groups the number is in and answers only where it was addressed; `edit`
   and `delete` make a wrong answer in front of a customer recoverable; text is
