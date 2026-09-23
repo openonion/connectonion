@@ -975,7 +975,7 @@ def _run_process(
     if on_started is not None:
         try:
             on_started()
-        except Exception:
+        except (Exception, KeyboardInterrupt):
             _kill_process_tree(process)
             _close_pipes(process)
             raise
@@ -1008,6 +1008,11 @@ def _run_process(
                         payload = event
     except (_ProviderCancelled, subprocess.TimeoutExpired):
         readers_stopped.set()
+        raise
+    except KeyboardInterrupt:
+        readers_stopped.set()
+        _kill_process_tree(process)
+        _close_pipes(process)
         raise
     except Exception as exc:
         readers_stopped.set()
