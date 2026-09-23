@@ -125,6 +125,32 @@ def drop_uncited_sources(text: str) -> str:
     return head + marker + ''.join(kept) + rest
 
 
+IDENTITY_LINE = re.compile(r'^(- (?:Email|Handles|Also known as): )(.*)$', re.M)
+
+
+def drop_owner_addresses(text: str, owner: set[str]) -> tuple[str, list[str]]:
+    """Take the account owner's own addresses off someone else's identity lines.
+
+    Mail between the user and a person carries both addresses, and a real page
+    (Dora, 2026-09-23) listed the user's own Outlook as her email and handle.
+    Which addresses are the owner's is known, so this is removed mechanically
+    rather than asked of the model; the rest of the page is kept.
+    """
+    removed = []
+
+    def clean(match):
+        head, value = match.groups()
+        body, cites = re.match(r'^(.*?)((?:\s*\[W?\d+\])*)\s*$', value).groups()
+        parts = [part.strip() for part in re.split(r'[;,]', body) if part.strip()]
+        kept = [part for part in parts if part.casefold() not in owner]
+        removed.extend(part for part in parts if part.casefold() in owner)
+        if kept == parts:
+            return match.group(0)
+        return head + ('; '.join(kept) + cites if kept else 'Unknown')
+
+    return IDENTITY_LINE.sub(clean, text), sorted(set(removed))
+
+
 def validate(record: str, candidate: str, original: str, items: list[dict]) -> list[str]:
     """Structural checks only; citation existence does not prove factual entailment."""
     body = prose(candidate)

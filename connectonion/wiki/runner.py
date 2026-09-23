@@ -10,7 +10,7 @@ from pathlib import Path
 from contextlib import nullcontext
 
 from ..skills_catalog import useful_skills_dir
-from .files import Notebook, WikiError, maintenance_lock, read_json, write_json
+from .files import Notebook, WikiError, maintenance_lock, read_json, state_path, write_json
 
 
 class RunFailed(WikiError):
@@ -166,10 +166,15 @@ def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "") 
 
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage):
-    from .page_review import drop_uncited_sources, validate
+    from .page_review import drop_owner_addresses, drop_uncited_sources, validate
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
-    text = drop_uncited_sources(candidate.read_text(encoding="utf-8"))
+    text = candidate.read_text(encoding="utf-8")
+    owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {})
+    removed = []
+    if record.startswith("people/") and record != owner.get("record"):
+        text, removed = drop_owner_addresses(text, {a.casefold() for a in owner.get("addresses", [])})
+    text = drop_uncited_sources(text)
     errors = validate(record, text, original, items)
     # Sync owns this same lock. Compare and write together so a completed
     # concurrent update cannot be silently replaced by an older candidate.
@@ -177,6 +182,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         if not notebook.path(record).is_file() or notebook.read(record) != original:
             errors.append("Page changed during investigation; preserve current page and retry")
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,
+                   "owner_addresses_removed": removed,
                    "factual_quality": "not automatically assessed"})
         if errors:
             # The run is paid for; the page it wrote is kept where the reader can see

@@ -58,6 +58,11 @@ source for something it does not contain. Write the `Unknown` bare.
 
 ## Identity is given, not guessed
 
+**The user's own addresses are never the subject's.** Every message in the
+material was sent to or from the user, so the user's addresses -- the mailbox
+names in the coverage lines -- sit beside the subject's on every row. An
+address belongs in `Email` or `Handles` only when the subject writes from it.
+
 The subject arrives with its handles already resolved — names, spellings,
 addresses, paths. You do not have to work out who "odi" is; you were told.
 

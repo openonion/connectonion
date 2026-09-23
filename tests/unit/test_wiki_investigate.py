@@ -308,3 +308,34 @@ def test_a_message_read_through_a_digest_can_still_be_cited_by_its_own_id():
                              "## Who they are\n- Dora reviews decks. [1]", 1).replace(
         "## Sources\n- (none yet)", "## Sources\n- [1] `claude-code:3994b2ee-ff35`, observed 2026-08-30.", 1)
     assert validate("people/ody.md", whole, original, items) == []     # the whole session it came from
+
+
+def test_the_owners_own_address_never_lands_on_someone_elses_page(tmp_path, monkeypatch):
+    """Dora's page listed xietianle@outlook.com -- the user's own Outlook -- as her
+    email and handle, from mail the two of them exchanged. The owner's addresses
+    are known; they are removed mechanically, the rest of the page is kept."""
+    from pathlib import Path
+    from connectonion.wiki.files import Notebook, state_path, write_json
+
+    def fake_run(argv, cwd, capture_output, text, timeout):
+        import re
+        path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
+        page = (Path(cwd) / 'people/vern.md').read_text()
+        page = re.sub(r'^- Email: .*$', '- Email: vern.chan@unsw.edu.au; me@outlook.com', page, count=1, flags=re.M)
+        page = re.sub(r'^- Handles: .*$', '- Handles: me@outlook.com', page, count=1, flags=re.M)
+        page = page.replace("## Who they are\n- Unknown — not investigated yet",
+                            "## Who they are\n- Vern works at UNSW. [W1]", 1).replace(
+            "## Sources\n- (none yet)", "## Sources\n- [W1] https://www.unsw.edu.au/staff/vern-chan, observed 2026-09-23.", 1)
+        path.write_text(page)
+        return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
+                                     stderr="", returncode=0)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/local/bin/co")
+    root = _notebook(tmp_path, "codex")
+    write_json(state_path(root, "map.json"), {"owner": {"record": "people/me.md", "addresses": ["me@outlook.com"]}})
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=7,
+                    clients={"outlook": Quiet()}, subscriptions={})
+    page = Notebook(root).read("people/vern.md")
+    assert "me@outlook.com" not in page
+    assert "- Email: vern.chan@unsw.edu.au" in page and "- Handles: Unknown" in page
