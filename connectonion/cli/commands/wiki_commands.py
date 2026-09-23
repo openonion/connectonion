@@ -27,6 +27,35 @@ def _next(ctx, arguments):
     return shlex.join([*program, *location, *arguments])
 
 
+def _absent_mail(selected, available, failed, sources, chosen_by_hand) -> dict:
+    """Why each mailbox is not in this map, in the words of the fix it needs.
+
+    Four states the init contract requires to stay apart, because each sends the
+    user somewhere different: never connected (co auth), connected but switched
+    off (subscribe), connected and asked for but it would not open (co auth
+    status), and deliberately left out of this run by --mail. From inside the
+    map they are one thing -- an absent client -- so the answer is assembled
+    here, where the command already knows all four (#1616).
+    """
+    reasons = {}
+    for kind, provider in (("gmail", "google"), ("outlook", "microsoft")):
+        if kind in selected and kind not in failed:
+            continue
+        if kind in failed:
+            reasons[kind] = (f"authorized but could not be opened ({failed[kind]}); not searched. "
+                             f"Check access with co auth status")
+        elif kind not in available:
+            reasons[kind] = f"not connected; not searched. Connect it with co auth {provider}"
+        elif sources.get(kind, {}).get("unsubscribed"):
+            reasons[kind] = (f"unsubscribed by the user; not searched. "
+                             f"Restore it with co wiki subscribe {kind}")
+        elif chosen_by_hand:
+            reasons[kind] = "connected, left out of this run by --mail; not searched"
+        else:
+            reasons[kind] = "connected but not read this run; not searched"
+    return reasons
+
+
 def _emit(ctx, value, arguments, *, failed=False):
     command = _next(ctx, arguments)
     if ctx.obj["json"]:
@@ -223,7 +252,10 @@ def make_wiki_app(factory):
                 raise WikiError("--mail must be gmail or outlook")
             available = {kind for kind in ("gmail", "outlook") if mail_available(kind)}
             if not mail:
-                selected.update(available)
+                # A mailbox the user explicitly unsubscribed stays out, the same
+                # rule investigate follows; anything else authorized is mapped.
+                selected.update(kind for kind in available
+                                if not sources.get(kind, {}).get("unsubscribed"))
                 selected.update(sub["kind"] for sub in sources.values()
                                 if sub.get("kind") in ("gmail", "outlook") and sub.get("enabled"))
             clients, errors = {}, []
@@ -232,8 +264,10 @@ def make_wiki_app(factory):
                     clients[kind] = mail_client(kind)
                 except Exception as error:
                     errors.append({"source": kind, "stage": "client", "error": type(error).__name__})
+            failed = {row["source"]: row["error"] for row in errors}
             result = build_map(root, sources, clients, days=days,
-                               skill_directories=skills_dir or None, mine=mine, source_errors=errors)
+                               skill_directories=skills_dir or None, mine=mine, source_errors=errors,
+                               absent=_absent_mail(selected, available, failed, sources, bool(mail)))
             tips = []
             for kind, provider in (("gmail", "google"), ("outlook", "microsoft")):
                 if kind not in available:

@@ -206,7 +206,7 @@ def test_addresses_the_owner_writes_to_and_never_hears_from_are_asked_about_not_
     assert list(asked) == ['aaronplus1996@gmail.com']    # one reply, or one letter, and it is a person
     assert asked['aaronplus1996@gmail.com']['sent'] == 106
     assert asked['aaronplus1996@gmail.com']['confirm'] == 'co wiki init --mine aaronplus1996@gmail.com'
-    assert any('never replied' in line for line in result['coverage'])
+    assert any('1 address received mail from the owner and never replied' in line for line in result['coverage'])
 
     # Nothing is merged on a guess: the page is still there, still a person page.
     page = asked['aaronplus1996@gmail.com']['record']
@@ -238,3 +238,42 @@ def test_confirming_an_own_address_stops_the_question_and_keeps_the_page_as_the_
     assert second['possible_own_addresses'] == []
     assert second['owner']['record'] == page
     assert Notebook(tmp_path).list('people') == [page]
+
+
+def test_coverage_separates_scanned_empty_from_never_scanned(tmp_path):
+    """The init contract asks for four source states to stay apart. Two of them are
+    the map's own to tell: a mailbox it read and found nobody in, and a session
+    directory that is not there. "unavailable or disabled" sent the user to check
+    the wrong thing half the time (#1616)."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    missing = tmp_path / 'no-sessions'
+    off = tmp_path / 'off'
+    off.mkdir()
+
+    class Empty:
+        def my_addresses(self):
+            return {'owner@example.org'}
+        def list_between(self, start, end, limit):
+            return []
+
+    subscriptions = {'codex': {'kind': 'codex', 'root': str(missing), 'enabled': True},
+                     'claude-code': {'kind': 'claude-code', 'root': str(off), 'enabled': False}}
+    result = build_map(tmp_path, subscriptions, {'gmail': Empty()}, skill_directories=[skills])
+    coverage = '\n'.join(result['coverage'])
+    assert 'gmail: metadata only, 150 days, at most 200 messages per seven-day window; no correspondents in this window' in coverage
+    assert f'codex: {missing} — no session directory at this path; nothing to scan' in coverage
+    assert f'claude-code: {off} — disabled; not scanned' in coverage
+
+
+def test_the_map_reports_the_absence_reason_it_was_given(tmp_path):
+    """Why a mailbox is missing is the command layer's knowledge; the map states it
+    rather than guessing, and still says something true when told nothing."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    told = build_map(tmp_path, {}, {}, skill_directories=[skills],
+                     absent={'gmail': 'authorized but could not be opened (TimeoutError); not searched'})
+    assert 'gmail: authorized but could not be opened (TimeoutError); not searched' in told['coverage']
+    assert 'outlook: not configured or disabled; not searched' in told['coverage']

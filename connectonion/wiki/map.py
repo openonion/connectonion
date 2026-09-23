@@ -33,7 +33,12 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None) -> t
             coverage.append(f'{kind}: metadata scan failed ({type(error).__name__}); incomplete')
             if errors is not None: errors.append({'source': kind, 'stage': 'metadata', 'error': type(error).__name__})
             continue
-        coverage.append(f'{kind}: metadata only, {days} days, at most 200 messages per seven-day window')
+        # Scanned and found nothing is not the same answer as never scanned, and
+        # the count is what tells them apart. Without it an unauthorized mailbox
+        # and an empty one read identically, which is the state the init contract
+        # names first (#1616).
+        found = f'{len(rows)} correspondents' if rows else 'no correspondents in this window'
+        coverage.append(f'{kind}: metadata only, {days} days, at most 200 messages per seven-day window; ' + found)
         for row in rows:
             old = merged.get(row['address'])
             if old:
@@ -118,8 +123,28 @@ def _people_groups(rows: list[dict]) -> list[list[dict]]:
     return sorted(groups.values(), key=lambda g: (-sum(r.get('mails', 0) for r in g), g[0]['address']))
 
 
+def _session_state(subscription: dict, projects: list) -> str:
+    """Disabled, missing, and scanned-but-empty are three different next steps.
+
+    "unavailable or disabled" told the user to check the wrong thing half the
+    time: a path that does not exist wants the client installed or a --root, a
+    disabled source wants subscribe, and an empty one wants neither.
+
+    `projects` is the whole run's result rather than this source's, because a
+    session is filed under the directory it ran in and two sources can share
+    one. It is only ever read for emptiness: when nothing at all was mapped,
+    every scanned source did come back empty, so the claim holds for each of
+    them; when something was, this says only that the source was read.
+    """
+    if not subscription.get('enabled', True):
+        return 'disabled; not scanned'
+    if not Path(subscription.get('root', '')).is_dir():
+        return 'no session directory at this path; nothing to scan'
+    return 'scanned' if projects else 'scanned; no sessions in this window'
+
+
 def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150,
-              skill_directories=None, mine=(), source_errors=None) -> dict:
+              skill_directories=None, mine=(), source_errors=None, absent=None) -> dict:
     """Map observed identities; correspondent classification remains unassessed."""
     notebook = Notebook(root)
     report = {'phase': 'mapping', 'started': datetime.now(timezone.utc).isoformat(),
@@ -197,13 +222,21 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
             report['created'].append(record)
     report['possible_own_addresses'].sort(key=lambda row: (-row['sent'], row['address']))
     if report['possible_own_addresses']:
+        count = len(report['possible_own_addresses'])
         report['coverage'].append(
-            f"{len(report['possible_own_addresses'])} addresses received mail from the owner and never replied; "
-            "they may be the owner's own. Pages are kept as they are until confirmed with co wiki init --mine")
+            f"{count} address{'es' if count > 1 else ''} received mail from the owner and never replied; "
+            f"{'they may be' if count > 1 else 'it may be'} the owner's own. Pages are kept as they are "
+            "until confirmed with co wiki init --mine")
     if report['automated_correspondents']:
         report['coverage'].append(f"{len(report['automated_correspondents'])} notice or relay senders listed in "
                                   ".state/map.json without people pages")
-    report['coverage'] += [f'{kind}: not configured or disabled; not searched' for kind in ('gmail', 'outlook') if kind not in clients]
+    # Why a mailbox is not here is the command layer's knowledge, not the map's:
+    # from inside, a mailbox nobody connected, one the user unsubscribed, and one
+    # that failed to open are all equally absent. It says what it was told, and
+    # falls back to the honest vagueness when it was told nothing.
+    absent = dict(absent or {})
+    report['coverage'] += [f'{kind}: ' + (absent.get(kind) or 'not configured or disabled; not searched')
+                           for kind in ('gmail', 'outlook') if kind not in clients]
     report['orgs'], created_orgs = map_orgs(notebook, org_rows, report['started'], days, _record)
     report['created'] += created_orgs
     report['coverage'].append('Organizations: exact observed mail domains, including single contacts and notices; '
@@ -242,8 +275,7 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
             if updated != page:
                 notebook.write(record, updated)
         report['projects'].append({**row, 'record': record})
-    report['coverage'] += [f'{name}: {sub.get("root", "")} — ' +
-                           ('scanned' if sub.get('enabled', True) and Path(sub.get('root', '')).is_dir() else 'unavailable or disabled')
+    report['coverage'] += [f'{name}: {sub.get("root", "")} — ' + _session_state(sub, report['projects'])
                            for name, sub in subscriptions.items() if sub.get('kind') in ('codex', 'claude-code')]
     report.update(phase='partial' if report['errors'] else 'mapped', finished=datetime.now(timezone.utc).isoformat(),
                   investigation='not started', classification='unassessed; no correspondents filtered')

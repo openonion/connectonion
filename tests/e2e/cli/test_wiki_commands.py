@@ -326,6 +326,33 @@ def test_init_asks_whether_a_write_only_address_is_the_owner_s_own(tmp_path, mon
     assert 'aaronplus1996@gmail.com' in Text.from_ansi(plain.output).plain
 
 
+@pytest.mark.parametrize("state,expected", [
+    ("absent", "gmail: not connected; not searched. Connect it with co auth google"),
+    ("broken", "gmail: authorized but could not be opened (TimeoutError); not searched. Check access with co auth status"),
+    ("unsubscribed", "gmail: unsubscribed by the user; not searched. Restore it with co wiki subscribe gmail"),
+])
+def test_init_says_which_of_the_four_source_states_a_mailbox_is_in(tmp_path, monkeypatch, state, expected):
+    """Never connected, would not open, and switched off each send the user somewhere
+    different, and 'not configured or disabled' sent them to the wrong place (#1616)."""
+    connected = state != "absent"
+    monkeypatch.setattr('connectonion.wiki.service.subscriptions',
+                        lambda root: {"gmail": {"id": "gmail", "kind": "gmail",
+                                                "unsubscribed": state == "unsubscribed"}})
+    monkeypatch.setattr('connectonion.wiki.service.mail_available', lambda kind: connected and kind == "gmail")
+
+    def client(kind, **kw):
+        raise TimeoutError("provider detail")
+    monkeypatch.setattr('connectonion.wiki.service.mail_client', client)
+    empty = tmp_path / 'empty-skills'
+    empty.mkdir()
+    result = invoke(tmp_path, '--json', 'init', '--skills-dir', str(empty))
+    payload = json.loads(result.output)
+    coverage = payload['data']['coverage']
+    assert expected in coverage
+    assert 'provider detail' not in str(payload)          # the provider's own words stay out
+    assert not any('not configured or disabled' in line for line in coverage)
+
+
 def test_wiki_overview_explains_lifecycle_without_initializing(tmp_path):
     root = tmp_path / 'new wiki'
     result = invoke(root)

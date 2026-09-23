@@ -64,6 +64,26 @@ Piping human output does not hide the next step. Grouped help covers:
 their canonical templates and available source metadata before any model
 investigation. Unknown fields remain explicit; investigation is a separate step.
 See the [initialization interaction contract](wiki-init-contract.md).
+
+Its coverage lines keep the four source states apart, because each one needs a
+different next command:
+
+```text
+gmail: metadata only, 150 days, at most 200 messages per seven-day window; 42 correspondents
+outlook: not connected; not searched. Connect it with co auth microsoft
+codex: /home/you/.codex/sessions — scanned; no sessions in this window
+claude-code: /home/you/.claude/projects — disabled; not scanned
+```
+
+A mailbox that was read and held nobody, one nobody has connected, one the user
+unsubscribed, and one that is connected but would not open are four different
+answers; so are a session directory that is missing, one switched off, and one
+scanned that had nothing inside the window.
+
+Where init can see that an address is probably the user's own — mail goes to it
+repeatedly and nothing ever comes back — it says so and prints the exact
+`init --mine <address>` that confirms it. It never merges on the guess: an
+assistant and a family member look the same from the headers.
 The map can also be run independently:
 
 ```bash
