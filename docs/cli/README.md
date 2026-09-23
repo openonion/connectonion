@@ -62,11 +62,15 @@ turn using the same runner as a Host-delegated Claude Work Room. Its JSON output
 includes the Claude session ID. Pass `--session <id>` on a later run to continue
 that conversation. A failed run prints a JSON error and exits nonzero.
 
-This is the first connector slice. It uses the existing headless Claude runner;
-the interactive `co claude` wrapper, scoped Hooks, local transcript mirroring,
-and terminal-to-web handover in [issue #1134](https://github.com/openonion/connectonion/issues/1134)
-are still in progress. Running `co claude run` by itself does not create a
-ConnectOnion Host session or Work Room; a Host/COAI delegation supplies those.
+The connector installs a temporary `SessionStart` Hook and checks its session
+ID and transcript path before accepting a Work Room input. Host/COAI Claude
+delegation uses this same path. Its explicit settings source disables ambient
+user/project settings for this headless run, so custom MCP servers and skills
+are not yet carried across a resume. The interactive `co claude` wrapper,
+local transcript mirroring, and terminal-to-web handover in
+[issue #1134](https://github.com/openonion/connectonion/issues/1134) are still
+in progress. Running `co claude run` by itself does not create a ConnectOnion
+Host session or Work Room; a Host/COAI delegation supplies those.
 
 Every command ends by naming the next one. Commands whose next step depends on
 what they found print it themselves (`Read one with: co gmail read <#>`); every

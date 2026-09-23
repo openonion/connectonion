@@ -183,7 +183,7 @@ def test_co_ai_claude_uses_the_plugin_invocation_lifecycle(monkeypatch, tmp_path
     monkeypatch.setattr(agent_mod, "load_project_context", lambda *a, **k: "")
     monkeypatch.setattr(
         coding_agents,
-        "_run_claude_code",
+        "run_co_claude",
         lambda **kwargs: json.dumps({
             "provider": "claude_code",
             "session_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",

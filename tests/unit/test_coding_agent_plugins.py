@@ -298,7 +298,7 @@ def test_claude_plugin_can_follow_the_authenticated_host_permission_ceiling(
             "exit_code": 0,
         })
 
-    monkeypatch.setattr(module, "_run_claude_code", fake_claude)
+    monkeypatch.setattr(module, "run_co_claude", fake_claude)
     agent = SimpleNamespace(
         current_session={"_active_tool_call_id": "call-9", **session},
         io=SimpleNamespace(log=MagicMock()),
@@ -321,7 +321,7 @@ def test_hosted_contact_uses_the_same_claude_mode_contract(monkeypatch, tmp_path
         seen.update(kwargs)
         return json.dumps({"provider": "claude_code", "exit_code": 0})
 
-    monkeypatch.setattr(module, "_run_claude_code", fake_claude)
+    monkeypatch.setattr(module, "run_co_claude", fake_claude)
     io = SimpleNamespace(log=MagicMock())
     agent = SimpleNamespace(
         current_session={
@@ -358,7 +358,7 @@ def test_claude_plugin_defaults_to_its_configured_workspace(monkeypatch, tmp_pat
         seen.update(kwargs)
         return json.dumps({"provider": "claude_code", "exit_code": 0})
 
-    monkeypatch.setattr(module, "_run_claude_code", fake_claude)
+    monkeypatch.setattr(module, "run_co_claude", fake_claude)
     agent = SimpleNamespace(
         current_session={"_active_tool_call_id": "call-default-cwd"},
         io=SimpleNamespace(log=MagicMock()),

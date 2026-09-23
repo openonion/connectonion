@@ -33,7 +33,7 @@ from ..core.provider_permissions import (
     provider_permission_state,
     selected_provider_permission_option,
 )
-from ..useful_tools.claude_code import _run_claude_code
+from ..useful_tools.claude_code import run_co_claude
 from ..useful_tools.codex import codex as _run_codex
 
 
@@ -303,7 +303,7 @@ class ClaudeCodePlugin(_CodingAgentPlugin):
         return self._invoke(
             agent,
             prompt,
-            lambda: _run_claude_code(
+            lambda: run_co_claude(
                 prompt=prompt,
                 cwd=str(working_directory),
                 session_id=session_id,

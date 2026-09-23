@@ -16,7 +16,7 @@ def test_co_claude_run_passes_a_bounded_workspace_and_resume_id(tmp_path, monkey
         calls.append(kwargs)
         return json.dumps({"status": "completed", "session_id": "session-1"})
 
-    monkeypatch.setattr(claude, "_run_claude_code", run_claude)
+    monkeypatch.setattr(claude, "run_co_claude", run_claude)
     result = CliRunner().invoke(app, [
         "claude", "run", "Fix the tests", "--cwd", str(tmp_path),
         "--session", "session-1", "--timeout", "30",
@@ -38,7 +38,7 @@ def test_co_claude_run_exits_nonzero_on_provider_failure(tmp_path, monkeypatch):
     claude = importlib.import_module("connectonion.useful_tools.claude_code")
     monkeypatch.setattr(
         claude,
-        "_run_claude_code",
+        "run_co_claude",
         lambda **kwargs: json.dumps({"status": "error", "error": "Claude CLI unavailable"}),
     )
 
