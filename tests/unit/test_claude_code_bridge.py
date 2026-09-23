@@ -19,12 +19,12 @@ claude = importlib.import_module("connectonion.useful_tools.claude_code")
 SESSION = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 
 
-def test_bridge_launch_loads_only_its_scoped_settings(tmp_path):
+def test_bridge_launch_adds_scoped_settings_to_native_sources(tmp_path):
     argv = claude._stream_command(
         ["claude"], "inspect", "", "default", "haiku", tmp_path / "settings.json"
     )
     assert "--safe-mode" not in argv
-    assert argv[argv.index("--setting-sources") + 1] == ""
+    assert "--setting-sources" not in argv
     assert argv[argv.index("--settings") + 1] == str(tmp_path / "settings.json")
 
 

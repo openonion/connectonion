@@ -64,9 +64,8 @@ that conversation. A failed run prints a JSON error and exits nonzero.
 
 The connector installs a temporary `SessionStart` Hook and checks its session
 ID and transcript path before accepting a Work Room input. Host/COAI Claude
-delegation uses this same path. Its explicit settings source disables ambient
-user/project settings for this headless run, so custom MCP servers and skills
-are not yet carried across a resume. The interactive `co claude` wrapper,
+delegation uses this same path. Claude's native user and project settings,
+skills, and MCP configuration remain available during a resume. The interactive `co claude` wrapper,
 local transcript mirroring, and terminal-to-web handover in
 [issue #1134](https://github.com/openonion/connectonion/issues/1134) are still
 in progress. Running `co claude run` by itself does not create a ConnectOnion

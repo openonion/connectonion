@@ -383,7 +383,7 @@ def _stream_command(command, prompt, session_id, permission_mode, model, bridge_
     if bridge_settings is None:
         argv.append("--safe-mode")
     else:
-        argv.extend(["--setting-sources", "", "--settings", str(bridge_settings)])
+        argv.extend(["--settings", str(bridge_settings)])
     argv.extend(["--permission-mode", cli_mode])
     if session_id:
         argv.extend(["--resume", session_id])

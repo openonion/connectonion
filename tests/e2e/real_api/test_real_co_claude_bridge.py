@@ -2,6 +2,7 @@
 
 import json
 import shutil
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -21,6 +22,16 @@ class RecordedIO:
 
 @pytest.mark.skipif(not shutil.which("claude"), reason="Claude CLI not installed")
 def test_host_claude_session_and_followup_emit_oip(tmp_path):
+    marker = tmp_path / "project-hook-ran"
+    settings_dir = tmp_path / ".claude"
+    settings_dir.mkdir()
+    (settings_dir / "settings.json").write_text(json.dumps({
+        "hooks": {"SessionStart": [{"hooks": [{
+            "type": "command",
+            "command": sys.executable,
+            "args": ["-c", f"from pathlib import Path; Path({str(marker)!r}).touch()"],
+        }]}]},
+    }))
     io = RecordedIO()
     agent = SimpleNamespace(
         current_session={
@@ -37,6 +48,7 @@ def test_host_claude_session_and_followup_emit_oip(tmp_path):
     ))
     assert first["status"] == "completed", first["error"]
     assert "CO_CLAUDE_OIP_FIRST_OK" in first["result"]
+    assert marker.exists(), "Claude did not load the project's SessionStart Hook"
 
     agent.current_session["_active_tool_call_id"] = "haiku-followup"
     second = json.loads(plugin.claude_code(
