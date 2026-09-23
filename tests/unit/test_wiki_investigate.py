@@ -274,3 +274,30 @@ def test_a_listed_source_nobody_cites_is_dropped_not_a_reason_to_refuse_the_page
     page = Notebook(root).read("people/vern.md")
     assert "Vern works at UNSW. [W1]" in page
     assert "[W1] https://www.unsw.edu.au/staff/vern-chan" in page and "[1] Existing page" not in page
+
+
+def test_a_message_read_through_a_digest_can_still_be_cited_by_its_own_id():
+    """Ody Zhou's 201 mails were digested first, and the page cited the real
+    message ids the digests named -- all refused, because the digest item kept
+    only "gmail +4". Everyone with enough mail to need a digest was refused."""
+    from connectonion.wiki.extract import extraction_item
+    from connectonion.wiki.page_review import validate
+    from connectonion.wiki.files import Notebook
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp()) / "wiki"
+    prepare(root)
+    notebook = Notebook(root)
+    notebook.stub_person("people/ody.md", "Ody Zhou", ["ody"], email="zhouodywork@gmail.com")
+    original = notebook.read("people/ody.md")
+    chunk = [{"source": "gmail:3a7a430fcee5", "timestamp": "2026-08-01T00:00:00+00:00", "text": "a"},
+             {"source": "gmail:db0abd133958:Draft_v8.docx", "timestamp": "2026-08-02T00:00:00+00:00", "text": "b"}]
+    items = [extraction_item("Ody drafted v8 of the Emma agreement (gmail:db0abd133958).", chunk)]
+    candidate = original.replace("## Who they are\n- Unknown — not investigated yet",
+                                 "## Who they are\n- Ody drafts contracts. [1]", 1).replace(
+        "## Sources\n- (none yet)",
+        "## Sources\n- [1] `gmail:3a7a430fcee5`, `gmail:db0abd133958:Draft_v8.docx`, observed 2026-09-23.", 1)
+    assert validate("people/ody.md", candidate, original, items) == []
+    forged = candidate.replace("gmail:3a7a430fcee5", "gmail:ffffffffffff").replace(
+        "`gmail:db0abd133958:Draft_v8.docx`, ", "")
+    assert validate("people/ody.md", forged, original, items)          # an id no digest read is still refused
