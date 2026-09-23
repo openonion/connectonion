@@ -2,9 +2,10 @@
 
 **Keep simple things simple, make complicated things possible.**
 
-**The command-line toolkit for AI agents.** One `co` CLI gives an agent an address, a
-real browser, email, chat inboxes and your client's files — each capability is a
-command the agent runs and you can read. Built for forward deployed engineers.
+**Connect your AI agent to Gmail, a real browser and your files — one command each.**
+
+No OAuth app, no DNS records, no Playwright script. Your Gmail and Outlook
+credentials stay on your machine. Works with Claude Code, Codex, or your own agent.
 
 <div align="center">
 

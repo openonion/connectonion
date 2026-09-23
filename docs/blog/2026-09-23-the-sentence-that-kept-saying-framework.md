@@ -18,7 +18,16 @@ because every capability is a shell command, anything that can run a shell can
 use it, including coding agents that have never imported our package.
 
 So the sentence became: **ConnectOnion is the command-line toolkit for AI agents.**
-It sits in `docs/PRODUCT.md` §0, and the README and PyPI summary now say the same.
+It was accurate, and it lasted about an hour. Read it as someone deciding whether
+to try the thing, and it answers the wrong question. It says what the product
+*is*. The reader wants to know what they *get*, and what it spares them.
+
+The version in `docs/PRODUCT.md` §0 now leads with the outcome: **Connect your AI
+agent to Gmail, a real browser and your files — one command each.** The second
+line lists the afternoon it saves: no OAuth app, no DNS records, no Playwright
+script, credentials that stay on your machine. Every clause maps to a command
+you can run. The category phrase did not disappear; it moved into metadata,
+where search engines look for a noun.
 
 The turn came while checking that sentence against the rest of `PRODUCT.md`.
 The foundation document, the file that exists to stop us publishing false

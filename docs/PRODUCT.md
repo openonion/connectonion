@@ -27,12 +27,24 @@ a record of what was cut and why. This file is the narrative. They must agree.
 
 ## 0. The one sentence
 
-**ConnectOnion is the command-line toolkit for AI agents: one `co` CLI gives an
-agent an address, a real browser, email, chat inboxes, your client's files and a
-chat link — each capability is a command the agent runs and you can read.**
+Written from the reader's side: what they get, then what it spares them.
 
-Use it verbatim where a page needs one line. It replaced "an AI agent framework"
-because that stopped describing what people adopt: the capabilities are CLI
+> **Connect your AI agent to Gmail, a real browser and your files — one command each.**
+>
+> No OAuth app, no DNS records, no Playwright script. Your Gmail and Outlook
+> credentials stay on your machine. Works with Claude Code, Codex, or your own agent.
+
+Use the headline verbatim where a page needs one line, and the second paragraph
+where it has room for two. Each clause is checkable: `co auth google` prints
+"Credentials will be saved only on this computer" (§3, Gmail); the agent's own
+mailbox needs no DNS (§3, email); `co browser` replaces the scripted login (§3).
+
+The **category**, for search engines, metadata and anywhere a noun phrase is
+needed, is "the command-line toolkit for AI agents". It names what the product
+is; the headline names what the reader gets. Lead with the headline.
+
+The category replaced "an AI agent framework" because that stopped describing
+what people adopt: the capabilities are CLI
 commands (§3), so anything that can run a shell command can use them — a
 ConnectOnion agent, or a coding agent such as Claude Code or Codex. The Python
 `Agent` class is still here (§4) and still the way to go deeper. It is how you
