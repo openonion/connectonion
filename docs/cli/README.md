@@ -55,6 +55,19 @@ co gmail --help         # the options and subcommands of one command
 `co commands` is plain text with no colour codes, so `co commands | grep draft`
 finds the draft commands without knowing which group holds them.
 
+### Claude Code connector preview
+
+`co claude run "Fix the tests" --cwd /path/to/project` starts one Claude Code
+turn using the same runner as a Host-delegated Claude Work Room. Its JSON output
+includes the Claude session ID. Pass `--session <id>` on a later run to continue
+that conversation. A failed run prints a JSON error and exits nonzero.
+
+This is the first connector slice. It uses the existing headless Claude runner;
+the interactive `co claude` wrapper, scoped Hooks, local transcript mirroring,
+and terminal-to-web handover in [issue #1134](https://github.com/openonion/connectonion/issues/1134)
+are still in progress. Running `co claude run` by itself does not create a
+ConnectOnion Host session or Work Room; a Host/COAI delegation supplies those.
+
 Every command ends by naming the next one. Commands whose next step depends on
 what they found print it themselves (`Read one with: co gmail read <#>`); every
 other command gets a `Next: …` line on stderr after it returns, from one table

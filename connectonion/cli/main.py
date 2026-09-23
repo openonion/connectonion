@@ -335,6 +335,35 @@ def commands():
     print("Functions inside the browser: co browser help")
 
 
+claude_app = _typer_app(help="Run Claude Code through the ConnectOnion session connector.")
+app.add_typer(claude_app, name="claude")
+
+
+@claude_app.command("run")
+def claude_run(
+    prompt: str = typer.Argument(..., help="Task for Claude Code"),
+    cwd: Path = typer.Option(Path("."), "--cwd", exists=True, file_okay=False, resolve_path=True, help="Workspace directory"),
+    session_id: str = typer.Option("", "--session", help="Claude session ID to resume"),
+    model: str = typer.Option("", "--model", help="Claude model override"),
+    timeout: int = typer.Option(600, "--timeout", min=1, help="Maximum run time in seconds"),
+):
+    """Start or resume one Claude Code turn and print its session envelope."""
+    from ..useful_tools.claude_code import _run_claude_code
+
+    result = _run_claude_code(
+        prompt=prompt,
+        cwd=str(cwd),
+        session_id=session_id,
+        model=model,
+        timeout=timeout,
+        workspace=cwd,
+    )
+    print(result)
+    import json
+    if json.loads(result)["status"] != "completed":
+        raise typer.Exit(1)
+
+
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def browser(
     headless: bool = typer.Option(False, "--headless/--no-headless", help="Run browser headless"),
