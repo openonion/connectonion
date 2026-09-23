@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "connectonion"
 version = "1.8.6"
-description = "A simple Python framework for creating AI agents with behavior tracking"
+description = "The command-line toolkit for AI agents: an address, a real browser, email, chat inboxes and files, each one a co command"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10"

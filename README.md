@@ -2,7 +2,9 @@
 
 **Keep simple things simple, make complicated things possible.**
 
-A template-first toolkit for FDEs building, debugging, deploying, and operating real AI agents.
+**The command-line toolkit for AI agents.** One `co` CLI gives an agent an address, a
+real browser, email, chat inboxes and your client's files — each capability is a
+command the agent runs and you can read. Built for forward deployed engineers.
 
 <div align="center">
 
@@ -15,7 +17,7 @@ A template-first toolkit for FDEs building, debugging, deploying, and operating 
 [![Discord](https://img.shields.io/badge/Discord-Join-7289DA?style=flat-square&logo=discord)](https://discord.gg/4xfD9k8AUF)
 [![Documentation](https://img.shields.io/badge/Docs-docs.connectonion.com-blue?style=flat-square)](http://docs.connectonion.com)
 
-**A simple, elegant open-source framework for production-ready AI agents**
+**Open source (Apache-2.0) · Python 3.10+ · `pip install connectonion`**
 
 [📚 Documentation](http://docs.connectonion.com) • [💬 Discord](https://discord.gg/4xfD9k8AUF) • [⭐ Star Us](https://github.com/openonion/connectonion)
 
@@ -60,7 +62,11 @@ Common delivery commands include:
 - `co browser` for a persistent browser;
 - `co server new --region <region>` and `co deploy --to <server>` for owned infrastructure;
 - `co email share` and `co email unshare` for scoped mailbox delegation;
-- `co gmail`, `co outlook`, and `co gdrive` for operator-connected services.
+- `co gmail`, `co outlook`, `co gcalendar`, and `co gdrive` for operator-connected services;
+- `co sms`, `co telegram`, `co whatsapp`, and `co feishu` as chat inboxes;
+- `co syno` for a Synology NAS, and `co call` to run one command on a remote agent.
+
+`co commands` lists every command with its summary.
 
 ## 🎯 Living Our Philosophy
 
