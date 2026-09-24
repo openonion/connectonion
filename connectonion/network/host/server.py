@@ -73,7 +73,7 @@ from .remote_browser import RemoteBrowserService
 from .replay import MemoryReplayStore, SignatureReplayStore
 from .inbox import create_inbox_lifespan
 from .schedule import create_schedule_lifespan
-from .session import ActiveSessionRegistry, SessionStorage, start_cleanup_job
+from .session import ActiveSessionRegistry, SessionStorage, SessionViewers, start_cleanup_job
 from .session.mode import HostPermissionPolicy
 from .ws_router import run_ws_session
 
@@ -423,6 +423,9 @@ def _create_route_handlers(
         "replay": replay_check,
         "ws_input": handle_ws_input,
         "ws_exec": handle_ws_exec,
+        # Every connection with a session open, so a turn started on one
+        # device streams to the others (#1606).
+        "viewers": SessionViewers(),
         "remote_browser": handle_remote_browser,
         # Laptops currently lending this host their connection (PROXY_ATTACH).
         "proxy_channels": (

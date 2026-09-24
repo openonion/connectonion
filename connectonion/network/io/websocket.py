@@ -467,15 +467,23 @@ class WebSocketIO(IO):
 
     def rewind_to(self, last_msg_id=None):
         """Rewind cursor for replay on reconnect. None or unknown id → replay all."""
+        position = self.position_after(last_msg_id)
+        with self._agent_condition:
+            self._cursor = position
+
+    def position_after(self, last_msg_id=None) -> int:
+        """Index just past `last_msg_id`; 0 when it is None or unknown (replay all).
+
+        A position rather than a mutation, so one reader resuming cannot move
+        where another reader of the same turn starts (#1606).
+        """
         with self._agent_condition:
             if last_msg_id is None:
-                self._cursor = 0
-                return
+                return 0
             for i, msg in enumerate(self._msgs_from_agent):
                 if msg.get('id') == last_msg_id:
-                    self._cursor = i + 1
-                    return
-            self._cursor = 0
+                    return i + 1
+            return 0
 
     def _wait_for_msgs_from_agent(self, cursor, stop_event=None):
         """Wait up to ~1s for new agent messages. Returns (messages, done).
@@ -492,10 +500,19 @@ class WebSocketIO(IO):
                 return [], True
             return list(self._msgs_from_agent[cursor:]), self._finished
 
-    async def read_msgs_from_agent(self, stop_event=None):
-        """Async iterator over agent messages. Resumes from last cursor position."""
+    async def read_msgs_from_agent(self, stop_event=None, start=None):
+        """Async iterator over agent messages.
+
+        With no `start` it resumes from the shared cursor and advances it — the
+        single-reader behaviour every existing caller relies on. With `start` it
+        is an independent reader: the log is append-only, so a second device
+        reads the same turn from its own position and leaves the shared cursor
+        alone. Two readers sharing one cursor start wherever the other one had
+        got to, and the later one silently misses the beginning of the turn.
+        """
         loop = asyncio.get_event_loop()
-        cursor = self._cursor
+        independent = start is not None
+        cursor = start if independent else self._cursor
         while True:
             new_messages, done = await loop.run_in_executor(
                 None, self._wait_for_msgs_from_agent, cursor, stop_event
@@ -505,11 +522,12 @@ class WebSocketIO(IO):
             for msg in new_messages:
                 yield msg
                 cursor += 1
-            # Batch-publish cursor under the lock so a concurrent rewind_to()
-            # (taking the same lock) can't be silently overwritten by an
-            # in-flight reader still finishing its yield loop.
-            with self._agent_condition:
-                self._cursor = cursor
+            if not independent:
+                # Batch-publish cursor under the lock so a concurrent rewind_to()
+                # (taking the same lock) can't be silently overwritten by an
+                # in-flight reader still finishing its yield loop.
+                with self._agent_condition:
+                    self._cursor = cursor
             if done:
                 return
 

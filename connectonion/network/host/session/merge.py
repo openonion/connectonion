@@ -8,31 +8,25 @@ LLM-Note:
   Performance: O(1) dict access
   Errors: none, handles missing keys with defaults
 
-Strategy:
-    1. Compare iteration counts (increments each LLM call, more granular than turn)
-    2. Higher iteration wins (server continued while client was disconnected)
-    3. If equal, compare updated timestamps as tiebreaker
+Strategy — compare (turn, iteration, updated), first difference wins:
+    1. turn: increments once per INPUT and never resets, so it orders sessions
+    2. iteration: increments each LLM call but restarts at 0 every turn, so it
+       only orders two copies of the *same* turn (mid-turn detection)
+    3. updated timestamp as the last tiebreaker; fully equal keeps the client
+
+Comparing iteration alone let a device whose last turn made 7 LLM calls
+overwrite a newer turn another device ran in 2, erasing it (#1606).
 """
+
+
+def _version(session: dict) -> tuple:
+    return (session.get('turn', 0), session.get('iteration', 0), session.get('updated', 0))
 
 
 def merge_sessions(client_session: dict, server_session: dict) -> tuple[dict, bool]:
     """
     Merge two sessions, return (merged_session, server_won).
-
-    Uses iteration count (increments each LLM call) for granular mid-turn detection.
-    Falls back to timestamp if iterations are equal.
     """
-    client_iter = client_session.get('iteration', 0)
-    server_iter = server_session.get('iteration', 0)
-
-    if server_iter > client_iter:
+    if _version(server_session) > _version(client_session):
         return server_session, True
-    elif client_iter > server_iter:
-        return client_session, False
-    else:
-        # Tiebreaker: timestamp
-        client_updated = client_session.get('updated', 0)
-        server_updated = server_session.get('updated', 0)
-        if server_updated > client_updated:
-            return server_session, True
-        return client_session, False
+    return client_session, False
