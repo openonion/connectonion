@@ -176,8 +176,13 @@ def test_the_older_co_eval_name_still_reaches_the_older_evals(project):
 
 
 def test_skills_help_points_at_benchmarks_without_claiming_to_author(project):
+    import re
+
     result = co("skills", "--help")
-    text = " ".join(result.output.replace("│", " ").split())  # Rich wraps and boxes help text
+    # CI sets FORCE_COLOR, so the help carries ANSI codes mid-sentence; Rich also
+    # wraps and boxes it. Compare the words.
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    text = " ".join(plain.replace("│", " ").split())
 
     assert "does not author or benchmark them" in text
     assert "co benchmark --help" in text
