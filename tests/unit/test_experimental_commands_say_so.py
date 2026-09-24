@@ -27,8 +27,13 @@ def listing():
 
 def test_wiki_and_claude_are_marked_experimental_in_the_command_list():
     commands = listing()
-    for name in ("wiki", "claude"):
+    for name in ("wiki", "claude", "discord", "tiktok"):
         assert "Experimental:" in commands[name], commands.get(name)
+
+
+def test_telegram_separates_the_shipped_send_from_the_new_inbox_verbs():
+    row = listing()["telegram"]
+    assert "send" in row and "Experimental: listen" in re.sub(r"\x1b\[[0-9;]*m", "", row)
 
 
 def test_stable_commands_are_not():
