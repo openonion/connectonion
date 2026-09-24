@@ -1,0 +1,9 @@
+version: v1.8.8b8
+images:
+  - file: co-wiki-help.png
+    alt: "Terminal output of co wiki --help: fourteen commands in four groups, global options, and where the advanced commands and old names are"
+    caption: "co wiki --help printed word for word from the agreed page (issue 1656): Build, Read, Keep it current and Settings, then the advanced commands and the old names that still work until 1.9."
+    scenario: "python scripts/capture_188b8_release_cli.py: the released co wiki --help, unedited"
+    viewport: "terminal, 96 columns"
+    commit: 2aaf306a
+    source_run: "scripts/capture_188b8_release_cli.py"
