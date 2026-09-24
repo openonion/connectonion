@@ -1,12 +1,12 @@
 # Personal Wiki 1.9.0 release plan
 
-The Personal Wiki feature release targets **1.9.0** ([#1443](https://github.com/openonion/connectonion/issues/1443)). The published `1.8.8b1` package is an immutable preview of earlier work. Retargeting does not change that artifact or make the Wiki ready for a stable release. `VERSIONING.md` continues to name the actual published package version until a new candidate is reviewed and tagged.
+The Personal Wiki feature release targets **1.9.0** ([#1443](https://github.com/openonion/connectonion/issues/1443)). Published `1.8.8b1` remains immutable; `1.8.8b3` is a later preview candidate. Neither preview declares the Wiki ready for a stable release. `VERSIONING.md` names the version of the checked-out candidate, which becomes public only after review and tagging.
 
 ## Release gate
 
 Before proposing 1.9.0 stable, verify the complete user path with the built package: initialize an empty notebook; show source coverage and an accurate map; investigate one project, person, and Skill from retained evidence; check citations and unsupported claims; accept a correction and update the page without losing its structure; then view and export the results. Include cases where a mailbox is unavailable or a model run fails. Record model usage and quality findings as well as command exit status. Review sharing and source visibility before calling a page safe to hand to another person or AI.
 
-The live failure in [#1628](https://github.com/openonion/connectonion/issues/1628) is a **release blocker**: all three attempted real person pages failed to write. Fix the default model, post-init mail availability, and candidate/evidence validation; rerun the same flow and retain the resulting pages and source coverage. The broader harness audit in [#1629](https://github.com/openonion/connectonion/issues/1629) is a dependency review. Resolve its Wiki-critical findings before declaring the harness path accepted; unrelated harness enhancements can ship separately.
+The live failure in [#1628](https://github.com/openonion/connectonion/issues/1628) originally blocked acceptance: all three attempted real person pages failed to write. [#1634](https://github.com/openonion/connectonion/pull/1634) repaired the default model, post-init mail availability, and candidate/evidence validation. The same real-notebook flow then accepted 11 of 11 selected people pages, with retained candidates, material, and reviews. That is evidence for the repaired sample, not a guarantee about every page. The broader harness audit in [#1629](https://github.com/openonion/connectonion/issues/1629) remains a dependency review. Resolve its Wiki-critical findings before declaring the harness path accepted; unrelated harness enhancements can ship separately.
 
 ## Scope and tracking
 
