@@ -353,7 +353,20 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.8b7
+## Current Version: 1.8.8b8
+
+1.8.8b8 is an opt-in preview after 1.8.8b7. `co wiki` gets the command
+surface agreed as its help pages (#1656): fourteen commands in four groups,
+each printing its page word for word, with a test holding every page to the
+code. `investigate` takes a category or `me`, `sync` is the whole update, and
+a run of every command on a real notebook fixed upkeep that could stop for
+good (#1670). Stable remains 1.8.7; the Wiki becomes long-term supported in
+1.9.0, after it is named (#1664).
+
+- 1.8.8b8 (co wiki: the agreed surface and verbatim help pages; investigate people|projects|orgs|skills --limit/--list and investigate me; sync runs maintenance then one page and is what the schedule runs; sources add/remove, config set route.<stage>, logs --usage; old names still work until 1.9; investigations appear in logs with their cost; one refused page no longer holds back a maintenance batch; the daily round tries the next page when the busiest does not fit the day's calls; projects read their sessions, not mail that names them.)
+
+Earlier in this line:
+
 
 1.8.8b7 is an opt-in preview after 1.8.8b6. It adds skill benchmarks — write at
 least five cases before the skill, score the real Agent on them, edit only the
