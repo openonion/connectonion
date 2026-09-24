@@ -58,6 +58,30 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             browser.close()
 
 
+def test_reader_runs_inside_opaque_wiki_iframe(tmp_path, monkeypatch):
+    from patchright.sync_api import sync_playwright
+
+    monkeypatch.setattr("connectonion.wiki.service.mail_available", lambda kind: False)
+    root = tmp_path / "wiki"
+    prepare(root)
+    Notebook(root).write("projects/example.md", "# Example\n\nA private page.\n")
+    html = write_reader(root).read_text(encoding="utf-8")
+    csp = ("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; "
+           "script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; "
+           "connect-src 'none'; form-action 'none'; base-uri 'none'\">")
+    with sync_playwright() as browser_api:
+        browser = browser_api.chromium.launch(channel="chrome", headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.set_content('<iframe sandbox="allow-scripts" style="width:100vw;height:100vh"></iframe>')
+        page.locator("iframe").evaluate("(frame, content) => frame.srcdoc = content",
+                                         html.replace("<head>", "<head>" + csp))
+        frame = page.frame_locator("iframe")
+        frame.get_by_role("heading", name="What your assistant knows").wait_for()
+        assert frame.get_by_role("link", name="Example").is_visible()
+        assert frame.locator("body").evaluate("body => getComputedStyle(body).fontFamily")
+        browser.close()
+
+
 @pytest.fixture
 def reader_page(tmp_path):
     """Synthetic snapshot, real offline template; no user notebooks or services."""
