@@ -231,9 +231,13 @@ def test_malformed_maintenance_keeps_page_and_pending_correction(tmp_path, monke
         return {'usage': {'input_tokens': 9}}
     monkeypatch.setattr('connectonion.wiki.runner.run_task', execute)
     result = run_sync(tmp_path)
-    assert result['outcome'] == 'failed'
+    # One malformed page no longer refuses the batch (#1670): it is kept as it
+    # was, the sound page is written, and the correction to the refused page
+    # stays pending for the next pass.
+    assert result['outcome'] == 'completed' and result['refused'] == 1
+    assert result['refusals'][0]['record'] == 'projects/atlas.md'
     assert result['usage']['input_tokens'] == 9
-    assert not nb.path('notes/new.md').exists()
+    assert nb.path('notes/new.md').exists()
     assert nb.read('projects/atlas.md') == old
     progress = json.loads((tmp_path / '.state/progress.json').read_text()) if (tmp_path / '.state/progress.json').exists() else {}
     assert 'reflection:' + correction['id'] not in progress.get('wiki_local_material', [])

@@ -621,6 +621,13 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
         record.update(outcome="completed", usage=usage or None, changed=result.get("changed", []),
                       refused=result.get("refused", 0), refusals=result.get("refusals", []),
                       report=result.get("report", ""))
+        # A refused page no longer holds back the batch, but the user's own
+        # correction to that page is not marked done: it waits for the next pass.
+        refused_pages = {row["record"] for row in result.get("refusals", [])}
+        waiting = {item["source"] for item in local if item.get("record") in refused_pages}
+        for key in ("wiki_local_material", "wiki_seen_source_ids"):
+            if key in updated and waiting:
+                updated[key] = sorted(set(updated[key]) - waiting)
         write_json(state_path(root, "progress.json"), updated)
     except BaseException as error:
         failed_usage = getattr(error, "usage", None)

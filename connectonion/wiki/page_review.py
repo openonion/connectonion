@@ -159,7 +159,7 @@ def drop_owner_addresses(text: str, owner: set[str]) -> tuple[str, list[str]]:
     return IDENTITY_LINE.sub(clean, text), sorted(set(removed))
 
 
-def validate(record: str, candidate: str, original: str, items: list[dict]) -> list[str]:
+def validate(record: str, candidate: str, original: str, items: list[dict], pages=frozenset()) -> list[str]:
     """Structural checks only; citation existence does not prove factual entailment."""
     body = prose(candidate)
     errors = []
@@ -200,7 +200,14 @@ def validate(record: str, candidate: str, original: str, items: list[dict]) -> l
             errors.append(f'Unused citation: {key}')
         if not (any(source in value for source in known) or value.strip() in old_sources
                 or re.search(r'https?://\S+', value) or _local_reference(value, original, items)
-                or prior_context_reference(value, record, items, original)):
+                or prior_context_reference(value, record, items, original)
+                # The map's own record, when the page already cited it: a real
+                # pass reworded "Enumeration metadata ... .state/map.json".
+                or ('.state/map.json' in value and '.state/map.json' in original)
+                # Another page of this notebook, named as context -- never as
+                # corroboration: "Existing mapped page `people/…md`, inspected".
+                or (re.search(r'\b(existing|mapped|prior)\b', value, re.I)
+                    and any(page in value for page in pages if page != record))):
             errors.append(f'Citation has no identifiable source: {key}')
     if candidate != original and not refs:
         errors.append('Changed page has no numbered evidence references')

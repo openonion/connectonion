@@ -205,27 +205,45 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
 
 
 def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held):
-    from .page_review import validate, headings
+    """Write every page that passes review; keep the ones that do not, with why.
+
+    A batch used to be refused whole when any one page failed, and a refused
+    batch does not advance the source cursor -- so a real notebook's upkeep
+    stopped on one batch that touched three pages, one of which lacked its
+    overview diagram, and retried the same refusal on every scheduled run.
+    Nothing is lost by refusing a page on its own: its candidate is kept under
+    refused/, and investigating that page reads every source again.
+    """
+    from .page_review import drop_uncited_sources, validate, headings
     after = {record: working.read(record) for record in working.list()}
     changed = sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
-    errors = []
+    accepted, refusals = [], []
     for record in changed:
         if record not in after:
-            errors.append(f'Maintenance must preserve existing page: {record}')
+            refusals.append({"record": record, "errors": ["Maintenance must preserve existing page"]})
+            continue
+        text = drop_uncited_sources(after[record])
+        working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
+        errors = validate(record, text, before.get(record, ''), items, pages=set(before)) if headings(record) else []
+        if errors:
+            refusals.append({"record": record, "errors": errors})
+            kept = directory / "refused" / record
+            kept.parent.mkdir(parents=True, exist_ok=True)
+            kept.write_text(text, encoding="utf-8")
         else:
-            working.write(record, after[record])  # Preflight path/size/secret policy for every page before promotion.
-            if headings(record):
-                errors.extend(f'{record}: {error}' for error in validate(record, after[record], before.get(record, ''), items))
+            accepted.append((record, text))
     # run_sync already holds this lock across collection and checkpoint commit.
     with nullcontext() if lock_held else maintenance_lock(notebook.root):
         if {r: notebook.read(r) for r in notebook.list()} != before:
-            errors.append('Notebook changed during maintenance; preserve current pages and retry')
-        write_json(directory / 'review.json', {'accepted': not errors, 'errors': errors,
+            write_json(directory / 'review.json', {'accepted': False, 'errors': ['Notebook changed during maintenance'],
+                       'factual_quality': 'not automatically assessed'})
+            raise RunFailed('Maintenance rejected: Notebook changed during maintenance; preserve current pages and retry',
+                            usage)
+        write_json(directory / 'review.json', {'accepted': [record for record, _ in accepted], 'refused': refusals,
                    'factual_quality': 'not automatically assessed'})
-        if errors:
-            raise RunFailed('Maintenance rejected: ' + '; '.join(errors), usage)
-        for record in changed:
-            notebook.write(record, after[record])
+        for record, text in accepted:
+            notebook.write(record, text)
+    return refusals
 
 
 def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "",
@@ -289,6 +307,7 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
     started = time.monotonic()
     result = {}
     inquiry_usage = {}
+    refusals = []
     try:
         from .inquiry import routing, run as inquiry_run, stage_config
         if candidate and routing(notebook.root):
@@ -305,7 +324,8 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
         if candidate:
             _promote_candidate(notebook, record, candidate, before[record], items, directory, result.get("usage"))
         elif stage in ("maintain", "abstract"):
-            _promote_maintenance(notebook, Notebook(task_root), before, items, directory, result.get("usage"), maintenance_lock_held)
+            refusals = _promote_maintenance(notebook, Notebook(task_root), before, items, directory,
+                                            result.get("usage"), maintenance_lock_held)
     except (WikiError, OSError) as error:
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")
         if isinstance(error, RunFailed) and inquiry_usage and not result:
@@ -317,7 +337,7 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
     write_json(directory / "result.json", {**metrics, "status": "candidate_accepted" if candidate else "execution_finished",
                "usage": result.get("usage"), "duration_seconds": time.monotonic() - started,
                "changed": changed(), "report": result.get("result")})
-    return {"usage": result.get("usage"), "changed": changed(), "refused": 0, "refusals": [],
+    return {"usage": result.get("usage"), "changed": changed(), "refused": len(refusals), "refusals": refusals,
             "report": str(result.get("result") or "")[:1000],
             "review_candidates": read_json(directory / "review-candidates.json", [])}
 
