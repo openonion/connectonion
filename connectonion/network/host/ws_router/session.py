@@ -160,12 +160,41 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
         control_task = asyncio.create_task(watch_control_center(
             send_msg, conn, route_handlers['control_center']))
 
+    # This connection as one viewer of its session (#1606). Registered under
+    # whichever session it is authenticated to, so a turn started from another
+    # device streams here too; None when the Host was built without a table.
+    viewers = route_handlers.get("viewers")
+    viewer = None
+    if viewers is not None:
+        from ..session import Viewer
+        viewer = Viewer(send_msg=send_msg, conn=conn)
+    watching = None
+
+    def track_viewer():
+        nonlocal watching
+        if viewer is None:
+            return
+        sid = conn.get("session_id") if conn.get("authenticated") else None
+        if sid == watching:
+            return
+        if watching:
+            viewers.discard(watching, viewer)
+        if sid:
+            viewers.add(sid, viewer)
+        watching = sid
+
     try:
         while True:
             data = await recv_msg()
             if data is None:
                 # recv_msg returns None on client close or relay-side timeout.
                 break
+
+            track_viewer()
+            # A turn another device started hands this viewer its io, so an
+            # approval, answer or stop sent from here reaches that turn.
+            if viewer is not None and viewer.io is not None and viewer.io is not active_io:
+                active_io = viewer.io
 
             msg_type = data.get("type")
 
@@ -179,6 +208,7 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     data, send_msg, conn, route_handlers, storage, registry,
                     trust, blacklist, whitelist,
                 )
+                track_viewer()
                 continue
 
             # A v2 CONNECT signs the capability that enables this gate. Keep the
@@ -396,6 +426,7 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                             )
                             if result:
                                 active_io, forward_task = result
+                            track_viewer()
             elif msg_type and msg_type.startswith("ADMIN_"):
                 await handle_admin_message(data, send_msg, route_handlers)
 
@@ -419,6 +450,9 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     station_watch_task = asyncio.create_task(
                         _watch_provider_station(station, send_msg)
                     )
+                # Now, not at the next frame: a turn started on another device
+                # in between would otherwise never reach this one.
+                track_viewer()
 
             elif msg_type == "INPUT":
                 if route_handlers.get("provider_station") is not None:
@@ -799,6 +833,11 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     "message": f"unknown message type: {msg_type!r}",
                 })
     finally:
+        if viewer is not None:
+            if watching:
+                viewers.discard(watching, viewer)
+            for task in list(viewer.tasks):
+                task.cancel()
         if proxy_channel is not None:
             await detach_proxy(proxy_channel, route_handlers)
         # asyncio cancel idiom: cancel() only signals; await ensures the task

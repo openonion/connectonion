@@ -7,7 +7,9 @@ LLM-Note:
   Integration: exposes Session, SessionStorage, ActiveSession, ActiveSessionRegistry, start_cleanup_job, merge_sessions, session_to_chat_items
 """
 
-from .active import ActiveSession, ActiveSessionRegistry, CleanupJob, start_cleanup_job
+from .active import (
+    ActiveSession, ActiveSessionRegistry, CleanupJob, SessionViewers, Viewer, start_cleanup_job,
+)
 from .merge import merge_sessions
 from .storage import Session, SessionStorage, session_owner
 from .sync import SessionSyncError, SessionSyncService
@@ -24,6 +26,8 @@ __all__ = [
     'ActiveSession',
     'ActiveSessionRegistry',
     'CleanupJob',
+    'SessionViewers',
+    'Viewer',
     'start_cleanup_job',
     # Utilities
     'merge_sessions',

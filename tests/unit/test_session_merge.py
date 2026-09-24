@@ -61,3 +61,28 @@ def test_server_iteration_with_missing_client_iteration_wins():
     merged, server_won = merge_sessions(client, server)
     assert merged is server
     assert server_won is True
+
+
+def test_a_stale_device_does_not_erase_a_turn_run_on_another_device():
+    """`iteration` restarts at 0 every turn, so it is only a version inside one.
+
+    Laptop's last turn took 7 LLM calls; the phone then ran turn 5 in 2. When
+    the laptop reconnects carrying its copy, comparing iteration alone let 7
+    beat 2 and turn 5 vanished from the conversation — no concurrency needed,
+    just switching devices (#1606).
+    """
+    laptop = {'turn': 4, 'iteration': 7, 'updated': 100, 'messages': ['t1', 't2', 't3', 't4']}
+    server = {'turn': 5, 'iteration': 2, 'updated': 200,
+              'messages': ['t1', 't2', 't3', 't4', 't5 from the phone']}
+    merged, server_won = merge_sessions(laptop, server)
+    assert merged is server
+    assert server_won is True
+
+
+def test_a_client_further_by_turns_still_wins():
+    """The one legitimate client win — the server lost its latest save."""
+    client = {'turn': 6, 'iteration': 1}
+    server = {'turn': 5, 'iteration': 9}
+    merged, server_won = merge_sessions(client, server)
+    assert merged is client
+    assert server_won is False
