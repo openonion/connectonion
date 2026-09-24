@@ -1,0 +1,26 @@
+{
+  "incomplete_evidence": {
+    "model": "gpt-5.5",
+    "usage": {
+      "input_tokens": 98349,
+      "output_tokens": 1747,
+      "cached_input_tokens": 56832
+    },
+    "outcome": "natural"
+  },
+  "complete_evidence": {
+    "model": "gpt-5.5",
+    "usage": {
+      "input_tokens": 72173,
+      "output_tokens": 1285,
+      "cached_input_tokens": 47232
+    },
+    "outcome": "natural"
+  },
+  "earlier_judge_attempt": {
+    "model": "gpt-6-astra",
+    "outcome": "backend rejected: requires newer Codex CLI",
+    "usage": null,
+    "followup": "Explicitly used gpt-5.5; no CLI upgrade."
+  }
+}

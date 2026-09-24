@@ -1,0 +1,33 @@
+{
+  "id": "run_bd2876bf80494888b6b87767235ecca3",
+  "started_at": "2026-09-22T01:43:44.184482+00:00",
+  "model": "gpt-5.6-luna",
+  "sources": [],
+  "items": 1,
+  "runner_attempts": 1,
+  "outcome": "failed",
+  "usage": {
+    "output_tokens": 3958,
+    "input_tokens": 485182,
+    "cached_input_tokens": 437248
+  },
+  "changed": [],
+  "refused": 0,
+  "extracted": false,
+  "unrecognised": {},
+  "warning": "",
+  "usage_by_stage": {
+    "maintain": {
+      "output_tokens": 3958,
+      "input_tokens": 485182,
+      "cached_input_tokens": 437248
+    }
+  },
+  "items_by_source": {
+    "local_material": 1
+  },
+  "chars_in": 994,
+  "seconds": 93.8,
+  "error": "Maintenance rejected: projects/atlas-58b543867f.md: Citation has no identifiable source: 9",
+  "finished_at": "2026-09-22T01:45:18.000625+00:00"
+}

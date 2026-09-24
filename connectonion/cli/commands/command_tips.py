@@ -98,13 +98,18 @@ NEXT = {
     "co announce": "Give subscribers the address they follow:  co keys",
     "co auth": HANDLER,               # every path ends "Next: co status" / "co outlook inbox"
     "co browser": HANDLER,            # rotating tip on stderr; exits by raise
+    "co claude run": 'Continue this Claude session:  co claude run "<next task>" --session <session-id>',
     "co call": HANDLER,               # prints the remote's own output; exits by raise
     "co commands": HANDLER,           # ends with the --help pointer itself
     "co copy": HANDLER,               # "co copy --list" after a copy; --list ends with usage
     "co create": HANDLER,             # "co deploy" after the resources block
     "co deploy": HANDLER,             # cloud: "co status"; --to: the journalctl line
     "co doctor": HANDLER,             # "Run 'co auth' if you need to authenticate"
-    "co eval": 'Fix what failed with the AI:  co ai "<what to fix>"',
+    "co benchmark list": HANDLER,     # empty: the schema and "check"; else "check <first invalid>"
+    "co benchmark check": HANDLER,    # valid: "co eval run <name> ..."; invalid: "check <name>" again
+    "co eval run": HANDLER,           # "co eval report <name> --latest"
+    "co eval report": HANDLER,        # the first failing case, or "add a harder case"
+    "co eval legacy": HANDLER,        # the older evals print their own tip (LEGACY_EVAL_TIP in main.py)
     "co init": HANDLER,               # global: "co init ./"; project: "co deploy"
     "co keys": HANDLER,               # "co keys --reveal" / "co status" / "co keys --ssh --write"
     "co proxy": HANDLER,              # every verb ends with a co proxy command; exits by raise
@@ -121,6 +126,7 @@ NEXT = {
     "co feishu done": "co feishu receive --timeout 0",
     "co feishu edit": "co feishu log",
     "co feishu delete": "co feishu log",
+    "co feishu react": "co feishu log",
     "co feishu check": HANDLER,  # every branch of _report_connection names its own
     "co feishu ls": "co feishu receive --timeout 0",
     "co feishu chats": HANDLER,
@@ -133,6 +139,7 @@ NEXT = {
     "co lark done": "co lark receive --timeout 0",
     "co lark edit": "co lark log",
     "co lark delete": "co lark log",
+    "co lark react": "co lark log",
     "co lark check": HANDLER,  # every branch of _report_connection names its own
     "co lark ls": "co lark receive --timeout 0",
     "co lark chats": HANDLER,
@@ -145,11 +152,27 @@ NEXT = {
     "co whatsapp done": "co whatsapp receive --timeout 0",
     "co whatsapp edit": "co whatsapp log",
     "co whatsapp delete": "co whatsapp log",
+    "co whatsapp react": "co whatsapp log",
+    "co whatsapp group create": HANDLER,  # names the new chat id in its own tip
+    "co whatsapp group add": HANDLER,
     "co whatsapp check": HANDLER,  # every branch of _report_connection names its own
     "co whatsapp ls": "co whatsapp receive --timeout 0",
     "co whatsapp chats": HANDLER,
     "co whatsapp log": "co whatsapp ls",
     "co whatsapp consume": "co whatsapp ls",
+    "co discord listen": "co discord receive --timeout 0",
+    "co discord receive": "co discord reply <message-id>",
+    "co discord send": "co discord receive --timeout 0",
+    "co discord reply": "co discord receive --timeout 0",
+    "co discord done": "co discord receive --timeout 0",
+    "co discord edit": "co discord log",
+    "co discord delete": "co discord log",
+    "co discord react": "co discord log",
+    "co discord check": HANDLER,  # every branch of _report_connection names its own
+    "co discord ls": "co discord receive --timeout 0",
+    "co discord chats": HANDLER,
+    "co discord log": "co discord ls",
+    "co discord consume": "co discord ls",
     "co email send": HANDLER,
     "co email inbox": HANDLER,
     "co email read": 'Reply from this address:  co email send <sender> "<subject>" "<body>"',
@@ -165,6 +188,10 @@ NEXT = {
     "co gcalendar *": HANDLER,
     "co gdrive *": HANDLER,
     "co gmail *": HANDLER,
+    # Every wiki command already ends by naming one next command, chosen from what
+    # it found: `list` points at the first page, `search` at the first hit, a failed
+    # `show` back at the category. A static line here would contradict that.
+    "co wiki *": HANDLER,
     "co outlook inbox": HANDLER,
     "co outlook read": HANDLER,
     "co outlook reply": HANDLER,  # 1.8.4 already emits a contextual next step
@@ -198,6 +225,19 @@ NEXT = {
     "co sub remove": HANDLER,
     "co syno *": HANDLER,
     "co telegram send": 'Send another:  co telegram send <chat> "<message>"',
+    # The inbox verbs beside it: the same table as feishu, lark and whatsapp.
+    "co telegram listen": "co telegram receive --timeout 0",
+    "co telegram receive": "co telegram reply <message-id>",
+    "co telegram reply": "co telegram receive --timeout 0",
+    "co telegram done": "co telegram receive --timeout 0",
+    "co telegram edit": "co telegram log",
+    "co telegram delete": "co telegram log",
+    "co telegram react": "co telegram log",
+    "co telegram check": HANDLER,  # every branch of _report_connection names its own
+    "co telegram ls": "co telegram receive --timeout 0",
+    "co telegram chats": HANDLER,
+    "co telegram log": "co telegram ls",
+    "co telegram consume": "co telegram ls",
     "co trust list": "Check one address:  co trust level <address>",
     "co trust level": "Make it a contact:  co trust add <address>",
     "co trust add": "See every list:  co trust list",
@@ -207,6 +247,7 @@ NEXT = {
     "co trust admin add": "See every list:  co trust list",
     "co trust admin remove": "See every list:  co trust list",
     "co youtube *": HANDLER,
+    "co tiktok *": HANDLER,
 }
 
 

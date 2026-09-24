@@ -1,0 +1,24 @@
+{
+  "stage": "investigate",
+  "harness": "codex",
+  "model": "gpt-5.6-luna",
+  "instructions_chars": 25171,
+  "material_chars": 2213,
+  "readable_material_chars": 2739,
+  "prompt_chars": 2186,
+  "input_items": 3,
+  "render_usage": {
+    "input_tokens": 349863,
+    "output_tokens": 4769,
+    "cached_input_tokens": 307968
+  },
+  "status": "failed",
+  "error": "Candidate rejected: Citation has no identifiable source: 5",
+  "usage": {
+    "input_tokens": 349863,
+    "cached_input_tokens": 307968,
+    "output_tokens": 4769
+  },
+  "duration_seconds": 104.4578216667287,
+  "changed": []
+}

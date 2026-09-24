@@ -77,7 +77,7 @@ _FROM = {
         "Memory", "Gmail", "GDrive", "YouTube", "Synology", "GoogleCalendar", "Outlook",
         "MicrosoftCalendar", "WebFetch", "Shell", "bash", "codex", "ClaudeCode",
         "youcom_search", "youcom_contents", "youcom_research",
-        "claude_code",
+        "claude_code", "generate_image",
         "DiffWriter",
         "MODE_NORMAL", "MODE_AUTO", "MODE_PLAN",
         "pick", "yes_no", "autocomplete", "TodoList", "SlashCommand",
@@ -170,6 +170,8 @@ __all__ = [
     "delete_sms",
     "list_sms_devices",
     "revoke_sms_device",
+    # Image generation
+    "generate_image",
     "send_telegram",
     # Class-based tools
     "Memory",

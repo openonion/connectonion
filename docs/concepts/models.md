@@ -88,6 +88,14 @@ agent = Agent("assistant", model="co/gemini-3-pro-image-preview")  # Managed
 agent = Agent("assistant", model="gemini-3-pro-image-preview")     # Your key
 ```
 
+Image models answer with pictures. With your own key, `gemini-3-pro-image-preview`
+and `gemini-2.5-flash-image` go through Google's images API, and the result is on
+`response.images` (from `create_llm(...).complete`) or `agent.last_images` as
+data URLs. The managed `co/` route has not been shown to return images, so treat
+`co/` image models as text-only for now. See
+[generate_image](../useful_tools/generate_image.md) for the one-line version and
+its limits.
+
 Gemini 3.8 Flash supports function calling, structured output, and
 `reasoning_effort="low"`, `"medium"`, or `"high"`. Google's 3.8 migration
 guidance deprecates `temperature`, `top_p`, `top_k`, and `candidate_count`, so

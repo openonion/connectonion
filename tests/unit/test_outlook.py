@@ -560,6 +560,64 @@ class TestOutlookListInbox:
             }]
 
 
+class TestOutlookRetriesOnlyWhatIsSafeToRepeat:
+    """A 504 from Graph's gateway can arrive after the mailbox already sent the
+    mail. Retrying POST /me/sendMail on it delivered the same mail twice."""
+
+    ENV = {
+        "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+        "MICROSOFT_ACCESS_TOKEN": "test-token",
+        "MICROSOFT_REFRESH_TOKEN": "test-refresh",
+        "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z",
+    }
+
+    @staticmethod
+    def _responses(mock_httpx, *codes):
+        replies = []
+        for code in codes:
+            reply = MagicMock()
+            reply.status_code = code
+            reply.text = ""
+            reply.headers = {"Retry-After": "0"}
+            reply.json.return_value = {"value": []}
+            replies.append(reply)
+        mock_httpx.request.side_effect = replies
+
+    @patch('connectonion.useful_tools.outlook.time.sleep')
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_a_send_that_timed_out_at_the_gateway_is_not_sent_again(self, mock_httpx, _sleep):
+        self._responses(mock_httpx, 504, 202)
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            try:
+                Outlook().send(to="r@example.com", subject="s", body="b")
+            except Exception:
+                pass  # the 504 is reported; what matters is how often it was posted
+
+        posts = [c for c in mock_httpx.request.call_args_list if c.args[0] == "POST"]
+        assert len(posts) == 1
+
+    @patch('connectonion.useful_tools.outlook.time.sleep')
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_a_throttled_send_is_retried_because_graph_did_not_do_it(self, mock_httpx, _sleep):
+        self._responses(mock_httpx, 429, 202)
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            assert "sent successfully" in Outlook().send(to="r@example.com", subject="s", body="b")
+
+        assert mock_httpx.request.call_count == 2
+
+    @patch('connectonion.useful_tools.outlook.time.sleep')
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_a_read_still_rides_out_a_gateway_timeout(self, mock_httpx, _sleep):
+        self._responses(mock_httpx, 504, 200)
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            Outlook()._request("GET", "/me/messages")
+
+        assert mock_httpx.request.call_count == 2
+
+
 class TestOutlookSendOperations:
     """Test Outlook send operations with mocked API."""
 

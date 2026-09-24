@@ -41,6 +41,7 @@ CREDENTIAL_ACTIONS = {
     "OPENROUTER_API_KEY": "co env set OPENROUTER_API_KEY <key>",
     "MISTRAL_API_KEY": "co env set MISTRAL_API_KEY <key>",
     "TELEGRAM_BOT_TOKEN": "co env set TELEGRAM_BOT_TOKEN <token>",
+    "DISCORD_BOT_TOKEN": "co env set DISCORD_BOT_TOKEN <token>",
 }
 
 

@@ -238,6 +238,54 @@ async def resolve_endpoint(
     return None
 
 
+async def probe_endpoints(agent_address: str, relay_url: str, timeout: float = 3.0) -> dict:
+    """What resolve_endpoint saw, kept: every listed endpoint and how it answered.
+
+    resolve_endpoint walks this list and throws each failure away, which is
+    right for connecting and useless for diagnosing. A share reported only
+    "the host is not reachable directly"; finding that the host announced
+    `http://34.129.161.131:8001` behind a firewall allowing 22/80/443 took a
+    manual relay query and a curl (#1387). This returns the same walk with the
+    answers in it.
+    """
+    https_relay = relay_url.replace("wss://", "https://").replace("ws://", "http://").rstrip("/")
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        try:
+            response = await client.get(f"{https_relay}/api/agents/{agent_address}")
+        except httpx.HTTPError as exc:
+            return {"listed": [], "probes": [], "relay_error": _probe_failure(exc)}
+        if response.status_code != 200:
+            return {"listed": [], "probes": [], "relay_error": f"relay answered HTTP {response.status_code}"}
+        listed = response.json().get("endpoints") or []
+        probes = []
+        for url in _sort_endpoints(listed):
+            if not url.startswith(("http://", "https://")):
+                continue
+            try:
+                info = await client.get(f"{url}/info")
+            except httpx.HTTPError as exc:
+                probes.append({"endpoint": url, "result": _probe_failure(exc)})
+                continue
+            if info.status_code != 200:
+                result = f"answered HTTP {info.status_code}"
+            elif info.json().get("address") != agent_address:
+                result = "answered /info, but for a different address"
+            else:
+                result = "ok"
+            probes.append({"endpoint": url, "result": result})
+    return {"listed": listed, "probes": probes}
+
+
+def _probe_failure(exc: Exception) -> str:
+    if isinstance(exc, httpx.ConnectTimeout):
+        return "connect timeout"
+    if isinstance(exc, httpx.ConnectError):
+        return "refused or unreachable"
+    if isinstance(exc, httpx.TimeoutException):
+        return "connected, then no answer"
+    return f"{type(exc).__name__}: {exc}"
+
+
 @dataclass
 class Response:
     """Response from remote agent."""

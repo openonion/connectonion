@@ -878,6 +878,7 @@ def test_json_mode_emits_one_stdout_object_and_saves_resume_state(
         "result": "done",
         "outcome": "natural",
         "error": None,
+        "usage": None,
     }
     assert captured.out.count("\n") == 1
     assert "progress" in captured.err
@@ -909,6 +910,7 @@ def test_json_max_iterations_preserves_result_and_exits_nonzero(
         "result": "done",
         "outcome": "max_iterations",
         "error": None,
+        "usage": None,
     }
     stored, _ = load_snapshot(tmp_path, envelope["session_id"])
     assert stored["trace"][-1]["reason"] == "max_iterations"
@@ -980,6 +982,7 @@ def test_failed_resume_preserves_the_last_atomic_snapshot(
         "result": None,
         "outcome": "error",
         "error": "follow-up failed",
+        "usage": None,
     }
     stored, tools = load_snapshot(tmp_path, session_id)
     assert stored == original
@@ -1007,6 +1010,7 @@ def test_json_failure_is_structured_and_nonzero(tmp_path, monkeypatch, capsys):
         "result": None,
         "outcome": "error",
         "error": "our bug",
+        "usage": None,
     }
     assert "before failure" in captured.err
 
@@ -1029,6 +1033,7 @@ def test_transient_one_shot_rejects_resume_without_echoing_the_session_id(capsys
         "result": None,
         "outcome": "error",
         "error": "A transient one-shot run cannot resume a session.",
+        "usage": None,
     }
 
 

@@ -165,6 +165,107 @@ Function arguments follow the shell: positional args in order, options as
 `--flag=value` (e.g. `take_screenshot --full-page=true`). Calling a function with
 the wrong arguments returns its usage line so a script (or agent) can self-correct.
 
+### Network: what the page sent, and a HAR of it
+
+A page is two things: the DOM you can see, and the requests it made. The DOM
+side is `get_text` / `save_page_context`; this is the other side. The surface is
+the one [agent-browser](https://github.com/vercel-labs/agent-browser) uses, so
+an agent that knows one knows the other; the tab name you already use with `-t`
+says whose traffic you mean.
+
+```bash
+co browser -t shop network requests                          # what this tab has sent
+co browser -t shop network requests --filter /api/ --type xhr,fetch --status 4xx
+co browser -t shop network requests --method POST --json     # for a skill to read
+co browser -t shop network request 7                         # one request, in full
+co browser -t shop network request 7 --raw                   # with header values
+co browser -t shop network clear                             # then one action, to isolate it
+```
+
+`requests` is the index — method, status, kind, size, duration, URL, newest
+last, id first so `cut -f1` feeds `request`. `--status` takes `200`, `2xx` or
+`400-499`; a spec that is none of those is an error, not an empty list, so a
+typo cannot read as "no errors". `request <n>` opens one: request headers,
+request body, response headers, response body.
+
+To see what **one action** did, clear first:
+
+```bash
+co browser -t shop network clear
+co browser -t shop click_element_by_selector "#search"
+co browser -t shop network requests
+```
+
+Indexes are never reused after a clear, so an id you wrote down cannot come to
+mean a different request later.
+
+**A HAR records a task.** `requests` is for looking now; a HAR is a file — the
+standard format Chrome DevTools and Charles import, and that Playwright's
+`route_from_har()` replays with the site gone:
+
+```bash
+co browser -t shop network har start                  # text bodies embedded (default)
+co browser -t shop network har start --content all    # every body, binary as base64
+co browser -t shop network har start --content none   # metadata only
+# ... do the task ...
+co browser -t shop network har stop                   # ~/.co/browser/har/shop-<time>.har
+co browser -t shop network har stop checkout.har --raw
+```
+
+The recording holds what the tab did between `start` and `stop`, and only that
+tab: a request that finished before `start` stays out even though its body was
+read after it. A second `start` is refused rather than silently throwing the
+first recording away. The file is written owner-only (0600).
+
+**Header values are shaped, not printed.** The consumer of this is usually a
+skill, and a skill feeds an LLM, so a session cookie must not arrive in a prompt
+by accident:
+
+```
+x-sign: <32 hex>
+authorization: Bearer <48 chars>
+set-cookie: <2 pairs, 28 bytes>
+content-type: application/json
+```
+
+The shape is the reusable part — that an endpoint wants a 32-character hex
+signature is the answer; the digits are just somebody's session. Headers that
+let you rebuild the call (`content-type`, `origin`, `referer`, `user-agent`) are
+printed whole. Add `--raw` for the values. A HAR follows the same rule: cookie
+and header values are shaped in the file unless you stop it with `--raw`, and
+then it is a live login — treat it like a password.
+
+Outside a recording, bodies are read only for `xhr`, `fetch` and `document`
+responses with a textual content type. Images, fonts, media and video segments
+are listed — they are part of what the page did — but never downloaded twice,
+which is what keeps this free on a page full of them. While a HAR records, its
+`--content` widens that: `text` to every textual body (scripts and stylesheets
+too), `all` to binary as well. A body over 64 KiB goes to a file under
+`~/.co/browser_network/` and the record names it; the HAR embeds it whole.
+
+The log is per tab, holds the last 500 requests, and goes away with the tab.
+
+### Cookies
+
+Cookies belong to the whole browser, not to one tab. The tab says which site
+you mean: its current page decides the default scope, and `--all` widens to
+every site.
+
+```bash
+co browser -t shop cookies                    # name, domain, path, expiry, flags, value (shaped)
+co browser -t shop cookies --raw              # with the values
+co browser -t shop cookies set theme dark     # on the tab's site; --domain D --path / to be explicit
+co browser -t shop cookies clear              # this site only; `cookies clear --all` for everything
+co browser -t shop cookies save               # ~/.co/browser/cookies/shop.json
+co browser -t shop cookies load ~/.co/browser/cookies/shop.json
+co browser cookies --all --json
+```
+
+A saved file is Playwright's `storage_state` shape, the same one `save_state`
+writes and `BrowserAutomation(seed_state=...)` reads, and it is written 0600: it
+is a live login. A tab with no site open is told to `go_to` one (or pass
+`--all`) rather than being shown every cookie in the browser.
+
 ### `do` — natural language
 
 `do` hands the same live browser to an AI agent that sees the page and works out

@@ -1160,18 +1160,21 @@ class CodexAppServer:
         on_event=None,
         on_approval=None,
         cancelled=None,
+        env=None,
     ):
         self.command = command
         self.cwd = cwd
         self.on_event = on_event or (lambda e: None)
         self.on_approval = on_approval or (lambda method, params: False)
         self.cancelled = cancelled or (lambda: False)
+        self.env = env
         self.proc = None
         self._next_id = 0
         self._pending = {}
         self._lock = threading.Lock()
         self._turn_done = threading.Event()
         self._turn_result = {}
+        self._token_usage = {}
         self._active_thread_id = None
         self._active_turn_id = None
         self._interrupt_sent_for_turn = None
@@ -1201,6 +1204,7 @@ class CodexAppServer:
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace", bufsize=1,
             shell=False,
+            env=self.env,
             **platform_options,
         )
         self._stderr_thread = threading.Thread(target=self._read_stderr, daemon=True)
@@ -1296,6 +1300,7 @@ class CodexAppServer:
         approval_pause_mark = self._approval_pause_mark()
         self._turn_done.clear()
         self._turn_result = {}
+        self._token_usage = {}
         started = self.request("turn/start", {
             "threadId": thread_id, "cwd": cwd or self.cwd or ".",
             "input": [{"type": "text", "text": prompt}],
@@ -1516,8 +1521,19 @@ class CodexAppServer:
                         "error": {"code": -32601, "message": f"method not supported: {method}"}})
 
     def _handle_notification(self, method, params):
-        if method == "turn/completed":
+        if method == "thread/tokenUsage/updated":
+            # turn/completed carries no token figures; this notification does.
+            # `total` is the thread's running total -- the whole run for a fresh
+            # thread, cumulative across turns for a resumed one.
+            total = params.get("tokenUsage", {}).get("total", {})
+            fields = {"inputTokens": "input_tokens", "outputTokens": "output_tokens",
+                      "cachedInputTokens": "cached_input_tokens"}
+            self._token_usage = {target: total[key] for key, target in fields.items()
+                                 if type(total.get(key)) is int and total[key] >= 0}
+        elif method == "turn/completed":
             self._turn_result = params.get("turn", params)
+            if not self._turn_result.get("usage") and self._token_usage:
+                self._turn_result["usage"] = self._token_usage
             self._active_turn_id = None
             self._turn_done.set()
         elif method == "turn/failed":

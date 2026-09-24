@@ -33,6 +33,12 @@ from ..core.provider_events import (
     remember_provider_activity,
     remember_provider_artifact,
 )
+from .claude_code_bridge import (
+    exclusive_workspace_writer,
+    poll_bridge,
+    scoped_bridge_settings,
+    session_start,
+)
 
 PERMISSION_MODES = (
     "default",
@@ -170,6 +176,8 @@ def _run_claude_code(
     timeout: int = 600,
     agent=None,
     workspace: str | Path | None = None,
+    bridge_settings: Path | None = None,
+    bridge_events: Path | None = None,
 ) -> str:
     """Private runner shared by safe, configured, and co-ai entry points."""
     validation = _validate_request(prompt, session_id, cwd, model, timeout)
@@ -189,7 +197,9 @@ def _run_claude_code(
     if error:
         return _envelope(session_id, error=error)
 
-    argv = _stream_command(command, prompt, session_id, permission_mode, model)
+    argv = _stream_command(
+        command, prompt, session_id, permission_mode, model, bridge_settings
+    )
     forwarder = _ClaudeStreamForwarder(agent)
     cancelled = _provider_cancellation_check(agent)
 
@@ -197,15 +207,30 @@ def _run_claude_code(
         forwarder.emit_user_message(prompt)
         _confirm_direct_workroom_turn(agent)
 
+    def provider_event(event: dict[str, Any]) -> None:
+        if (
+            bridge_events is not None
+            and event.get("type") == "system"
+            and event.get("subtype") == "init"
+        ):
+            hook = session_start(
+                bridge_events, cwd=working_directory, requested_session=session_id
+            )
+            if hook["session_id"] != event.get("session_id"):
+                raise ValueError("Claude Hook and init session IDs differ.")
+            provider_started()
+        forwarder.handle(event)
+
     try:
-        completed = _run_process(
-            argv,
-            cwd=str(working_directory),
-            timeout=timeout,
-            cancelled=cancelled if callable(cancelled) else None,
-            on_event=forwarder.handle,
-            on_started=provider_started,
-        )
+        with exclusive_workspace_writer(working_directory):
+            completed = _run_process(
+                argv,
+                cwd=str(working_directory),
+                timeout=timeout,
+                cancelled=cancelled if callable(cancelled) else None,
+                on_event=provider_event,
+                on_started=provider_started if bridge_events is None else None,
+            )
     except FileNotFoundError:
         return _envelope(session_id, error="Claude Code CLI not found during launch.")
     except subprocess.TimeoutExpired:
@@ -229,6 +254,175 @@ def _run_claude_code(
             error=f"Claude Code received an invalid launch argument: {_one_line(exc)}",
         )
     return _completed_envelope(completed, session_id)
+
+
+def run_co_claude(
+    prompt: str,
+    session_id: str = "",
+    cwd: str = "",
+    permission_mode: str = "default",
+    model: str = "",
+    timeout: int = 600,
+    agent=None,
+    workspace: str | Path | None = None,
+) -> str:
+    """Run one owned Claude turn with a scoped session-identity Hook."""
+    approval = None
+    if agent is not None and workspace is not None:
+        def approval(event):
+            return _approve_claude_permission(event, agent, Path(workspace).resolve())
+    with scoped_bridge_settings(permission_handler=approval) as (settings, events):
+        result = _run_claude_code(
+            prompt=prompt,
+            session_id=session_id,
+            cwd=cwd,
+            permission_mode=permission_mode,
+            model=model,
+            timeout=timeout,
+            agent=agent,
+            workspace=workspace,
+            bridge_settings=settings,
+            bridge_events=events,
+        )
+        outcome = json.loads(result)
+        if outcome["status"] != "completed":
+            return result
+        directory, error = _working_directory(cwd, workspace)
+        if error:
+            return _envelope(session_id, error=error)
+        try:
+            hook = session_start(events, cwd=directory, requested_session=session_id)
+        except ValueError as exc:
+            return _envelope(session_id, error=str(exc))
+        if hook["session_id"] != outcome["session_id"]:
+            return _envelope(session_id, error="Claude Hook and result session IDs differ.")
+        return result
+
+
+def _approve_claude_permission(event: dict, agent, workspace: Path) -> bool:
+    """Ask the paired owner only about a verified file edit in this workspace."""
+    session = getattr(agent, "current_session", None) or {}
+    requester = session.get("requester") or {}
+    io = getattr(agent, "io", None)
+    if requester.get("level") != "admin" or io is None:
+        return False
+    if event.get("tool_name") not in {"Edit", "MultiEdit", "Write", "NotebookEdit"}:
+        return False
+    tool_input = event.get("tool_input")
+    file_path = tool_input.get("file_path") if isinstance(tool_input, dict) else None
+    if not isinstance(file_path, str) or not file_path:
+        return False
+    target = Path(file_path)
+    if not target.is_absolute():
+        target = workspace / target
+    if not target.resolve().is_relative_to(workspace):
+        return False
+    parent = session.get("_active_tool_call_id")
+    if not isinstance(parent, str) or not parent:
+        return False
+    presentation = {
+        "action": "Make workspace file changes",
+        "scope": "This Work Room only",
+        "reason": "Apply the requested workspace file changes",
+        "scopeClassification": "workroom",
+        "allowOnce": True,
+        "allowSession": False,
+        "files": [target.name],
+    }
+    return bool(io.request_approval(
+        "claude_code",
+        {"action": presentation["action"], "scope": presentation["scope"],
+         "reason": presentation["reason"]},
+        context={
+            "provider": "claude_code",
+            "invocationId": f"claude_code:{parent}",
+            "parentToolCallId": parent,
+            "providerApproval": presentation,
+        },
+    ))
+
+
+def run_interactive_claude(
+    cwd: str = ".", session_id: str = "", model: str = "",
+    on_private_fact: Callable[[dict], None] | None = None,
+    on_message: Callable[[dict], None] | None = None,
+    stop_event: threading.Event | None = None,
+    skip_existing_messages: bool = False,
+) -> tuple[int, str]:
+    """Run Claude's TUI and observe scoped Hooks plus exact transcript messages."""
+    validation = _validate_request("interactive", session_id, cwd, model, 600)
+    if validation:
+        raise ValueError(validation)
+    directory, error = _working_directory(cwd, None)
+    if error:
+        raise ValueError(error)
+    command, error = _claude_command()
+    if error:
+        raise ValueError(error)
+
+    with exclusive_workspace_writer(directory), scoped_bridge_settings() as (settings, events):
+        argv = [*command, "--settings", str(settings)]
+        if session_id:
+            argv.extend(["--resume", session_id])
+        if model:
+            argv.extend(["--model", model])
+
+        # Claude shares the foreground terminal. Ctrl-C belongs to its TUI:
+        # it cancels a turn without making the owning wrapper abandon it.
+        previous_interrupt = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGINT, lambda *_: None)
+        process = None
+        try:
+            process = subprocess.Popen(
+                argv, cwd=str(directory), stdin=None, stdout=None, stderr=None,
+                shell=False, env=os.environ.copy(),
+            )
+            offset = 0
+            tailer = None
+            while process.poll() is None:
+                if stop_event is not None and stop_event.is_set():
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    break
+                offset, tailer, facts, messages = poll_bridge(
+                    events, offset, directory, tailer,
+                    skip_existing_messages=skip_existing_messages,
+                )
+                if on_private_fact is not None:
+                    for fact in facts:
+                        on_private_fact(fact)
+                if on_message is not None:
+                    for message in messages:
+                        on_message(message)
+                time.sleep(0.1)
+            offset, tailer, facts, messages = poll_bridge(
+                events, offset, directory, tailer,
+                skip_existing_messages=skip_existing_messages,
+            )
+            if on_private_fact is not None:
+                for fact in facts:
+                    on_private_fact(fact)
+            if on_message is not None:
+                for message in messages:
+                    on_message(message)
+            returncode = process.wait()
+        finally:
+            signal.signal(signal.SIGINT, previous_interrupt)
+            if process is not None and process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+
+        session_start(events, cwd=directory, requested_session=session_id)
+        hook = session_start(events, cwd=directory, requested_session="", latest=True)
+        return returncode, hook["session_id"]
 
 
 def _validate_request(prompt, session_id, cwd, model, timeout) -> str:
@@ -312,7 +506,7 @@ def _claude_command() -> tuple[list[str] | None, str]:
     return command, ""
 
 
-def _stream_command(command, prompt, session_id, permission_mode, model):
+def _stream_command(command, prompt, session_id, permission_mode, model, bridge_settings=None):
     cli_mode = "manual" if permission_mode == "default" else permission_mode
     argv = [
         *command,
@@ -321,10 +515,12 @@ def _stream_command(command, prompt, session_id, permission_mode, model):
         "stream-json",
         "--verbose",
         "--forward-subagent-text",
-        "--safe-mode",
-        "--permission-mode",
-        cli_mode,
     ]
+    if bridge_settings is None:
+        argv.append("--safe-mode")
+    else:
+        argv.extend(["--settings", str(bridge_settings)])
+    argv.extend(["--permission-mode", cli_mode])
     if session_id:
         argv.extend(["--resume", session_id])
     if model:
@@ -915,7 +1111,7 @@ def _run_process(
     if on_started is not None:
         try:
             on_started()
-        except Exception:
+        except (Exception, KeyboardInterrupt):
             _kill_process_tree(process)
             _close_pipes(process)
             raise
@@ -948,6 +1144,11 @@ def _run_process(
                         payload = event
     except (_ProviderCancelled, subprocess.TimeoutExpired):
         readers_stopped.set()
+        raise
+    except KeyboardInterrupt:
+        readers_stopped.set()
+        _kill_process_tree(process)
+        _close_pipes(process)
         raise
     except Exception as exc:
         readers_stopped.set()

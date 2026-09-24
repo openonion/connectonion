@@ -353,9 +353,71 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.6
+## Current Version: 1.8.8b8
+
+1.8.8b8 is an opt-in preview after 1.8.8b7. `co wiki` gets the command
+surface agreed as its help pages (#1656): fourteen commands in four groups,
+each printing its page word for word, with a test holding every page to the
+code. `investigate` takes a category or `me`, `sync` is the whole update, and
+a run of every command on a real notebook fixed upkeep that could stop for
+good (#1670). Stable remains 1.8.7; the Wiki becomes long-term supported in
+1.9.0, after it is named (#1664).
+
+- 1.8.8b8 (co wiki: the agreed surface and verbatim help pages; investigate people|projects|orgs|skills --limit/--list and investigate me; sync runs maintenance then one page and is what the schedule runs; sources add/remove, config set route.<stage>, logs --usage; old names still work until 1.9; investigations appear in logs with their cost; one refused page no longer holds back a maintenance batch; the daily round tries the next page when the busiest does not fit the day's calls; projects read their sessions, not mail that names them.)
+
+Earlier in this line:
+
+
+1.8.8b7 is an opt-in preview after 1.8.8b6. It adds skill benchmarks — write at
+least five cases before the skill, score the real Agent on them, edit only the
+skill and rerun (#1642) — and `co browser network` / `co browser cookies`,
+including HAR recording, on the tab names `-t` already has (#1597). It also
+brings finished work onto main: `co discord` and the `co telegram` inbox verbs
+(#1674, #1671), `co tiktok` post plans (#1675) and Gemini image output
+(#1672), all marked experimental in `co --help` (#1676), and stops Outlook
+resending mail after a 504 (#1669). Stable
+remains 1.8.7; the Personal Wiki acceptance target remains 1.9.0.
+
+- 1.8.8b7 (co benchmark list/check and co eval run/report: a frozen standard, per-expectation PASS/FAIL/UNVERIFIED with evidence, a skill that did not run fails the case, immutable reports compared run to run; the older co eval is unchanged. co browser -t TAB network requests/request/har start/har stop and cookies ls/set/clear/save/load, values shaped unless --raw, files 0600. Agent(tools=[skill]) can be constructed again. co discord and co telegram listen/receive/reply as inbox providers; co tiktok post plans and inspect; LLMResponse.images, agent.last_images and generate_image for Gemini image models; Outlook no longer retries sends on 503/504; wiki, claude, discord and tiktok marked Experimental in co --help.)
+
+Earlier in this line:
+
+1.8.8b6 is an opt-in preview after 1.8.8b5. The map now fills the owner's own
+Wiki page (#1655), and two correspondent rules no longer drop or invent people.
+Stable remains 1.8.7; the Personal Wiki acceptance target remains 1.9.0.
+
+- 1.8.8b6 (The owner's page is titled and filled by the map, with top correspondents, projects and possible own addresses; notification addresses the owner once replied to are notices; consumer mail.com addresses are people again.)
+
+Earlier in this line:
+
+
+1.8.8b5 is an opt-in preview after 1.8.8b4 (the Claude Code beta, released
+separately). It carries one conversation on two devices (#1606) and the CLI
+sweep of #1493, #1292, #1496, #1457, #1339, #1475, #1605, #1387, #1375, #1633
+and #1617. Stable remains 1.8.7.
+
+- 1.8.8b5 (One conversation open on several devices of the same identity, through the relay too; a device switch no longer erases a turn; co browser close ends what it owned; refused commands logged in full; co proxy diagnose names endpoints; co whatsapp react and group create/add.)
+
+Earlier in this line:
+
+The Personal Wiki feature targets 1.9.0 (#1443). Stable 1.8.7 shipped the
+dashboard patch. This 1.8.8b4 candidate remains an opt-in preview; published
+1.8.8b1 and earlier 1.8.7b1–b4 previews remain immutable historical artifacts.
+There was no published 1.8.8b2. The preview does not automatically accept the
+full 1.9.0 Wiki release.
+
+- 1.8.8b4 (Native Claude Code terminal sharing through OIP Station, signed browser pairing and control transfer, direct same-session continuation, and scoped approval for browser-initiated workspace edits.)
+- 1.8.8b3 (Preview the repaired real-person investigation flow, owner-alias hints, source-state explanations, private full-page opening, and a stable Wiki workspace for scheduled runs. The 1.9.0 quality and harness acceptance gates remain open; b2 was not published.)
+- 1.8.8b1 (Retarget the validated Wiki preview to its dedicated 1.8.8 feature line; preserve dry-run semantics when combined with backfill or scheduled execution.)
+- 1.8.7b4 (Readable Wiki CLI output, help as the workflow guide, real-page discovery, organization maps and Skill source snapshots; validated investigation and staged maintenance preserve canonical pages.)
+- 1.8.7b3 (Noninteractive Wiki initialization with connected mailbox discovery and deferred authentication tips)
+- 1.8.7b2 (Wiki memory workflow preview: attributed reflections, explicit inquiry model stages, durable local capture, reviewable connections and bounded daily investigation; design acceptance remains tracked separately)
+- 1.8.7b1 (Wiki beta preview: partial source failures, refreshed map metadata, consistent skill search, remote identity normalization, automated correspondent labels and accurate reader/doctor states; offline and Chrome acceptance passed)
+
+- 1.8.7a3 (Wiki initialization preview: explicit People metadata selection, grouped skill installations, temporary project exclusion; local acceptance recorded in PR #1613)
 
 ### Version History
+- 1.8.7: Control Center accepts 128 MiB HTML snapshots with a 256 MiB transport envelope. Oversized/unreadable pages show a visible error; failed sends can retry. Stable patch from 1.8.6; Personal Wiki now targets 1.9.0 (#1443).
 - 1.8.6 (**stable: WhatsApp as an inbox, with an undo.** A linked device sees
   the groups the number is in and answers only where it was addressed; `edit`
   and `delete` make a wrong answer in front of a customer recoverable; text is

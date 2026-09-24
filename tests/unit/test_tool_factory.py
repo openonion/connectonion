@@ -242,3 +242,29 @@ class TestToolFactoryWithComplexTypes:
         schema = tool.to_function_schema()
 
         assert schema["parameters"]["properties"]["data"] == {"type": "object"}
+
+
+def test_a_tool_that_takes_the_agent_by_forward_reference_can_be_registered():
+    # `skill(agent: 'Agent', name)` imports Agent only under TYPE_CHECKING, so the
+    # string could not be resolved and get_type_hints raised NameError: the
+    # documented way to let an Agent choose a skill, Agent(tools=[skill]), failed
+    # at construction. Found writing the `co eval run --invoke auto` tests (#1642).
+    from connectonion.core.tool_factory import create_tool_from_function
+    from connectonion.useful_plugins import skill
+
+    tool = create_tool_from_function(skill)
+
+    assert tool._needs_agent is True
+    properties = tool.to_function_schema()["parameters"]["properties"]
+    assert "name" in properties and "agent" not in properties, "the agent is injected, never asked for"
+
+
+def test_an_unresolvable_type_on_a_real_parameter_still_fails_loudly():
+    from connectonion.core.tool_factory import create_tool_from_function
+
+    def lookup(agent: "Agent", key: "NoSuchType") -> str:  # noqa: F821
+        """Look something up."""
+        return key
+
+    with pytest.raises(NameError, match="NoSuchType"):
+        create_tool_from_function(lookup)

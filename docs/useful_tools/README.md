@@ -21,6 +21,7 @@ Pre-built tools for common agent tasks.
 | [Synology](synology.md) | Synology NAS files | `from connectonion import Synology` |
 | [get_emails](get_emails.md) | Email parsing utilities | `from connectonion import get_emails` |
 | [send_email](send_email.md) | Send emails via API | `from connectonion import send_email` |
+| [generate_image](generate_image.md) | Prompt in, image file out (Gemini image models) | `from connectonion import generate_image` |
 | [SMS inbox](sms.md) | Pair Android and decrypt Agent SMS | `from connectonion import get_sms` |
 | [Outlook](outlook.md) | Outlook integration | `from connectonion import Outlook` |
 | [GoogleCalendar](google_calendar.md) | Google Calendar | `from connectonion import GoogleCalendar` |

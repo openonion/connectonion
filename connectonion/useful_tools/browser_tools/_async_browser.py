@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional
 
 from . import _async_element_finder as element_finder
 from . import _async_humanize as humanize
+from . import _async_network as network_log
 from . import _async_scroll as async_scroll
 from . import _async_terminal as terminal
 from . import engine as browser_engine
@@ -181,10 +182,19 @@ def _profile_dir() -> Path:
     return Path.home() / ".co" / "browser_profile"
 
 
+def has_display() -> bool:
+    """Whether a headed browser can open a window here."""
+    if platform.system() != "Linux":
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
 def _headless_without_display(headless: bool) -> bool:
-    if headless or platform.system() != "Linux":
+    # Only for a default: an explicit --no-headless is refused up front when
+    # there is no display (cli/main.py), never quietly turned into headless.
+    if headless:
         return headless
-    return not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    return not has_display()
 
 
 def _pid_alive(pid: int) -> bool:
@@ -291,7 +301,8 @@ def _occupancy_note(meta: Dict[str, Any]) -> str:
     if left > 0:
         return (
             f"owner expects to finish by {when} ({_age(left)} left) — "
-            "leave it alone until then"
+            "leave this tab alone until then; the browser is free for your own: "
+            'co browser tab open <name> --who <you> --for "<task>"'
         )
     return (
         f"owner expected to finish by {when} ({_age(-left)} ago) — "
@@ -385,6 +396,7 @@ class AsyncBrowserCore:
         self._page_used: Dict[Optional[str], float] = {}
         self._page_url: Dict[Optional[str], str] = {}
         self._tab_meta: Dict[Optional[str], Dict[str, Any]] = {}
+        self._network = network_log.NetworkLog()
         self._tab_idle_ttl = tab_idle_ttl
         self._max_tabs = max_tabs
         self._max_url_memory = 200
@@ -505,6 +517,9 @@ class AsyncBrowserCore:
                     page = await self.browser.new_page()
                 page.set_default_navigation_timeout(60000)
                 await page.set_viewport_size({"width": 1920, "height": 1200})
+                # Attach before the restore navigation below, so a tab that
+                # comes back to life records the request that revived it.
+                self._network.attach(page, key)
                 restore_url = self._page_url.get(key)
                 if restore_url:
                     try:
@@ -559,6 +574,10 @@ class AsyncBrowserCore:
         self._page_used.pop(key, None)
         self._page_url.pop(key, None)
         self._tab_meta.pop(key, None)
+        # A released tab's traffic goes with it: _release_tab already forgets
+        # everything else about the tab, and a long-lived daemon that kept
+        # five hundred records per dead tab would grow without a bound.
+        self._network.forget(key)
         if page is None:
             return None
         try:
@@ -570,6 +589,12 @@ class AsyncBrowserCore:
     async def is_alive(self) -> bool:
         """Use a driver round-trip; local Page flags remain stale after process death."""
         if self.browser is None:
+            return False
+        # A paid session that ended upstream can leave the context answering,
+        # and status said "open" right before the next page command failed with
+        # PaidSessionEndedError — a health check reporting ready (#1457). Page
+        # verbs already refuse on this; status now agrees with them.
+        if self._paid_run is not None and getattr(self._paid_run, "terminal_reason", None):
             return False
         try:
             await self.browser.cookies()
@@ -2009,6 +2034,173 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
                 f"- Elements: {len(element_dicts)}"
             )
 
+    async def network(
+        self,
+        action: str = "requests",
+        target: str = "",
+        path: str = "",
+        filter: str = "",
+        type: str = "",
+        method: str = "",
+        status: str = "",
+        limit: int = 30,
+        since: float = 0.0,
+        content: str = "text",
+        json: bool = False,
+        raw: bool = False,
+    ) -> str:
+        """What this tab sent and got back: requests | request <n> | clear | har start|stop [FILE].
+
+          co browser -t shop network requests --filter /api/ --type xhr,fetch --status 4xx
+          co browser -t shop network request 7 [--raw]
+          co browser -t shop network clear                  # then one action, to isolate it
+          co browser -t shop network har start [--content text|all|none]
+          co browser -t shop network har stop [FILE] [--raw]  # default ~/.co/browser/har/shop-<time>.har
+
+        The same surface as vercel-labs/agent-browser. Header and cookie values
+        are shaped, not shown, unless --raw: the reader is usually a skill, and
+        a skill feeds a model.
+        """
+        key = self._bound_session_key()
+        tab = self._tab_name(key)
+        if action == "requests":
+            records = self._network.select(key, url_contains=filter, method=method, kind=type,
+                                           status=status, since=since, limit=limit)
+            return network_log.render_list(records, as_json=json)
+        if action == "request":
+            if not str(target).isdigit():
+                raise ValueError(f"which request? co browser -t {tab} network request <n> — "
+                                 f"the numbers are the first column of `network requests`")
+            record = self._network.find(key, int(target))
+            if record is None:
+                raise ValueError(f"no request #{target} on tab {tab}. "
+                                 f"Next: co browser -t {tab} network requests")
+            return network_log.render_one(record, raw=raw)
+        if action == "clear":
+            return f"cleared {self._network.clear(key)} recorded request(s) on tab {tab}"
+        if action == "har":
+            return await self._har(target, key=key, tab=tab, path=path, content=content, raw=raw)
+        raise ValueError(f"unknown network action {action!r}: requests | request <n> | clear | har start | har stop")
+
+    async def _har(self, step: str, *, key, tab: str, path: str, content: str, raw: bool) -> str:
+        if step == "start":
+            running = self._network.har_start(key, content)
+            if running is not None:
+                since = datetime.fromtimestamp(running["since"]).strftime("%H:%M:%S")
+                raise ValueError(f"tab {tab} is already recording since {since} "
+                                 f"({len(running['entries'])} requests). "
+                                 f"Next: co browser -t {tab} network har stop")
+            return (f"recording HAR on tab {tab} (content={content}). "
+                    f"Next: do the task, then  co browser -t {tab} network har stop")
+        if step == "stop":
+            recording = self._network.har_stop(key)
+            if recording is None:
+                raise ValueError(f"tab {tab} is not recording. Next: co browser -t {tab} network har start")
+            from ..._version import __version__
+
+            document = network_log.to_har(recording, raw=raw, tab=tab, creator_version=__version__)
+            target = Path(path).expanduser() if path else self._default_har_path(tab)
+            await asyncio.to_thread(_write_private, target, _json_module.dumps(document, ensure_ascii=False, indent=1))
+            count = len(document["log"]["entries"])
+            note = ("it contains live cookie and authorization values — keep it private"
+                    if raw else "header and cookie values are shaped; --raw keeps them")
+            return f"saved {count} request(s) from tab {tab} to {target}\n{note}"
+        raise ValueError(f"har {step!r}? co browser -t {tab} network har start | har stop [FILE]")
+
+    def _default_har_path(self, tab: str) -> Path:
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        return Path.home() / ".co" / "browser" / "har" / f"{_file_safe(tab)}-{stamp}.har"
+
+    async def cookies(
+        self,
+        action: str = "ls",
+        name: str = "",
+        value: str = "",
+        domain: str = "",
+        path: str = "",
+        all: bool = False,
+        json: bool = False,
+        raw: bool = False,
+    ) -> str:
+        """This tab's site cookies: ls | set NAME VALUE | clear | save [FILE] | load FILE. --all for every site.
+
+          co browser -t shop cookies                        # cookies that go with the tab's current page
+          co browser -t shop cookies set theme dark
+          co browser -t shop cookies clear
+          co browser -t shop cookies save                   # default ~/.co/browser/cookies/shop.json
+          co browser -t shop cookies load ~/.co/browser/cookies/shop.json
+          co browser cookies --all
+
+        Cookies belong to the whole browser, not to one tab; the tab only says
+        which site you mean, so its current page decides the default scope.
+        Values are shaped unless --raw. A saved file is a live login: it is
+        written owner-only (0600) and loads back with `cookies load`.
+        """
+        async with self._tab_operation(ensure_page=False):
+            if self.browser is None:
+                raise ValueError("the browser is not open. Next: co browser go_to <url>")
+            key = self._bound_session_key()
+            tab = self._tab_name(key)
+            site = "" if all else self._tab_site(key, tab)
+            if action == "ls":
+                found = await self.browser.cookies([site] if site else [])
+                return network_log.render_cookies(found, raw=raw, as_json=json)
+            if action == "set":
+                if not name:
+                    raise ValueError(f"co browser -t {tab} cookies set NAME VALUE [--domain D] [--path /]")
+                cookie: Dict[str, Any] = {"name": name, "value": value}
+                if domain:
+                    cookie.update({"domain": domain, "path": path or "/"})
+                elif site:
+                    cookie["url"] = site
+                else:
+                    raise ValueError("set needs a site: run it with -t <tab> on an open page, or pass --domain")
+                await self.browser.add_cookies([cookie])
+                return f"set {name} for {domain or site}"
+            if action == "clear":
+                if not site:
+                    await self.browser.clear_cookies()
+                    return "cleared every cookie in this browser"
+                found = await self.browser.cookies([site])
+                for cookie in found:
+                    await self.browser.clear_cookies(name=cookie["name"], domain=cookie["domain"],
+                                                     path=cookie["path"])
+                return f"cleared {len(found)} cookie(s) for {site}"
+            if action == "save":
+                found = await self.browser.cookies([site] if site else [])
+                target = Path(name).expanduser() if name else self._default_cookie_path(tab, all)
+                # The storage_state shape, so `save_state` files, BrowserAutomation(seed_state=)
+                # and this verb all read and write one format.
+                await asyncio.to_thread(_write_private, target,
+                                        _json_module.dumps({"cookies": found, "origins": []}, indent=1))
+                return (f"saved {len(found)} cookie(s) {'from every site' if all else 'for ' + site} to {target}\n"
+                        "this file is a live login — keep it private")
+            if action == "load":
+                if not name:
+                    raise ValueError(f"co browser -t {tab} cookies load FILE")
+                data = _json_module.loads(Path(name).expanduser().read_text(encoding="utf-8"))
+                found = data.get("cookies", []) if isinstance(data, dict) else data
+                await self.browser.add_cookies(found)
+                return f"loaded {len(found)} cookie(s) from {name}"
+            raise ValueError(f"unknown cookies action {action!r}: ls | set | clear | save | load")
+
+    def _tab_site(self, key, tab: str) -> str:
+        """The URL whose cookies this tab means, or a usage error saying how to get one."""
+        page = self._pages.get(key)
+        url = getattr(page, "url", "") if page is not None else ""
+        if not url.startswith(("http://", "https://")):
+            raise ValueError(f"tab {tab} has no site open, so it cannot say which cookies you mean. "
+                             f"Next: co browser -t {tab} go_to <url>   (or --all for every site)")
+        return url
+
+    def _default_cookie_path(self, tab: str, every_site: bool) -> Path:
+        name = f"{_file_safe(tab)}-all.json" if every_site else f"{_file_safe(tab)}.json"
+        return Path.home() / ".co" / "browser" / "cookies" / name
+
+    @staticmethod
+    def _tab_name(key) -> str:
+        return "main" if key is None else str(key)
+
     async def set_viewport(self, width: int, height: int) -> str:
         async with self._tab_operation():
             if self.page is None:
@@ -2253,3 +2445,27 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
+
+
+# `network` and `cookies` take a --json flag, and a parameter called json hides
+# the module inside them.
+_json_module = json
+
+
+def _file_safe(name: str) -> str:
+    """A tab name as a file name: tabs are named by whoever opened them."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._") or "tab"
+
+
+def _write_private(path: Path, text: str) -> None:
+    """Write a file only its owner can read. A HAR recorded with --raw and a
+    cookie file are both a live login; created 0600 from the first byte, not
+    chmod-ed after, so there is no moment another user could read it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    if hasattr(os, "fchmod"):
+        # The mode above applies only when the file is created; overwriting a
+        # file someone left 0644 would otherwise keep it readable.
+        os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(text)

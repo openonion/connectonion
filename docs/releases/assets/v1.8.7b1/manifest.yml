@@ -1,0 +1,16 @@
+version: v1.8.7b1
+images:
+  - file: search-desktop.png
+    alt: Synthetic Wiki search shows one Atlas helper result
+    caption: Search groups installed copies without discarding their source pages.
+    scenario: Search for a skill installed twice in an isolated synthetic notebook
+    viewport: 1440x900, light
+    commit: f0e78b97
+    source_run: local beta-audit-2026-09-20 browser_probe.py
+  - file: search-mobile.png
+    alt: Synthetic Wiki search on a narrow viewport
+    caption: Grouped search remains readable without horizontal overflow.
+    scenario: Repeat the skill search at mobile width
+    viewport: 375x812, light
+    commit: f0e78b97
+    source_run: local beta-audit-2026-09-20 browser_probe.py

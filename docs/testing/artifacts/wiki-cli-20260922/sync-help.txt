@@ -1,0 +1,38 @@
+
+ Usage: python -m connectonion.cli.main wiki sync [OPTIONS]
+
+ Run one bounded incremental batch now (does not enable the background
+ schedule).
+
+ Before running: Use co wiki sync --dry-run to inspect pending metadata
+ without reading bodies or calling a model. Use co wiki subscriptions
+ to check which sources are enabled.
+
+ Source access must already be authorized. co wiki start reviews and confirms
+ access AND installs a background schedule; it is not required for map building
+ or page discovery. Do not run it just to dismiss an error without reviewing
+ the source/model/schedule summary.
+
+ Then run co wiki sync for one bounded batch. --all explicitly backfills all
+ pending batches and bypasses the daily attempt cap. --source selects a saved
+ subscription; --with limits mail to a correspondent.
+
+ Check co wiki logs, or the printed run-specific Next command, for changes,
+ failures and usage. A dry run or no_change result does not mean the Wiki
+ has been researched. Do not repeatedly retry a failed model run without
+ inspecting the failure.
+
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --source           <str>  Only this subscription                             │
+│ --with             <str>  Mail only: just this correspondent, named by       │
+│                           address or part of one. Everyone else keeps their  │
+│                           place in the queue                                 │
+│ --dry-run                 Pending file metadata only; no body reads          │
+│ --scheduled               Only if a saved time has come due since the last   │
+│                           scheduled batch (what the background job passes);  │
+│                           otherwise exit at once                             │
+│ --all                     Backfill: batch after batch, oldest first, until   │
+│                           nothing is pending; not limited by the daily       │
+│                           attempt cap                                        │
+│ --help                    Show this message and exit.                        │
+╰──────────────────────────────────────────────────────────────────────────────╯

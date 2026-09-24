@@ -15,6 +15,7 @@ import hashlib
 import multiprocessing.connection as mpc
 import os
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -30,6 +31,7 @@ AuthenticationError = mpc.AuthenticationError
 # The deadline exists for a client that connects and then stalls mid-challenge.
 HANDSHAKE_TIMEOUT = 10.0
 _SHORT_RUNTIME_ROOT = Path("/tmp")
+_RUN_USER_ROOT = Path("/run/user")  # systemd-logind: one 0700 dir per uid
 
 
 def _current_user() -> str:
@@ -37,6 +39,46 @@ def _current_user() -> str:
         return getpass.getuser()
     except (OSError, KeyError):  # stripped service env: no env vars and no pwd entry
         return "user"
+
+
+# The same directory however the process was started (#1475). The endpoint used
+# to come from $XDG_RUNTIME_DIR, else $TMPDIR — and cron, launchd and systemd
+# units without PAM have neither. A login shell and a scheduled job on the same
+# machine, as the same user, then looked for the daemon in two places; the job
+# started a second daemon, which died on the profile the first one held:
+#
+#     ssh / tmux login   ->  /run/user/1000/co/browser.sock
+#     cron / launchd     ->  /tmp/co-onion/browser.sock
+#
+# Each answer below is what a login session's variable already says, so an
+# interactive daemon keeps its address and the scheduled job now finds it.
+_CS_DARWIN_USER_TEMP_DIR = 65537  # <unistd.h>; Python's confstr has no name for it
+
+
+def _user_runtime_dir() -> Path | None:
+    """Linux's per-user runtime dir, with or without $XDG_RUNTIME_DIR.
+
+    A login session's variable points at /run/user/<uid>; a cron job has no
+    variable but the same directory is there, so fall back to it.
+    """
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime:
+        return Path(runtime)
+    run_user = _RUN_USER_ROOT / str(os.getuid())
+    if run_user.is_dir() and run_user.stat().st_uid == os.getuid():
+        return run_user
+    return None
+
+
+def _user_temp_dir() -> Path:
+    """macOS's per-user temp dir: what $TMPDIR holds in a login session.
+
+    launchd sets TMPDIR from this for a GUI session; cron and bare launchd jobs
+    get no TMPDIR, and tempfile fell back to the shared /tmp.
+    """
+    if sys.platform == "darwin":
+        return Path(os.confstr(_CS_DARWIN_USER_TEMP_DIR))
+    return Path(tempfile.gettempdir())
 
 
 def _sidecar_dir() -> Path:
@@ -51,10 +93,10 @@ def _sidecar_dir() -> Path:
         base = Path(os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()) / "co"
         base.mkdir(parents=True, exist_ok=True)
     else:
-        runtime = os.environ.get("XDG_RUNTIME_DIR")
+        runtime = _user_runtime_dir()
         if runtime:
             # Already per-user; the kernel gives each session its own.
-            base = Path(runtime) / "co"
+            base = runtime / "co"
         else:
             # The shared temp dir is not. Combined with the 0700 below, whoever
             # created it first owns it and every other user on the box gets
@@ -62,7 +104,7 @@ def _sidecar_dir() -> Path:
             # which is what a deployed agent hit after it stopped running as
             # root and found root's directory in its way. Scoped by username,
             # for the same reason the Windows pipe name is.
-            base = Path(tempfile.gettempdir()) / f"co-{_current_user()}"
+            base = _user_temp_dir() / f"co-{_current_user()}"
         base.mkdir(parents=True, exist_ok=True)
         # This dir is the POSIX trust boundary (any local user who can reach the
         # socket can drive the browser) — a failed chmod must be loud, not skipped.
@@ -73,7 +115,8 @@ def _sidecar_dir() -> Path:
 def default_address() -> str:
     """The daemon endpoint. $CO_BROWSER_SOCK overrides on both platforms.
 
-    POSIX: a Unix-socket path under $XDG_RUNTIME_DIR/co (or $TMPDIR/co) — unchanged.
+    POSIX: a Unix-socket path under the per-user runtime dir (see _user_runtime_dir),
+    else the per-user temp dir — the same for a login shell and a cron job (#1475).
     Windows: a per-user named pipe (the pipe namespace is machine-global, so it is
     scoped by username to avoid cross-user collisions).
     """

@@ -46,6 +46,7 @@ Example:
 
 import html
 import os
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -183,6 +184,24 @@ class Outlook:
 
         url = f"{self.GRAPH_API_URL}{endpoint}"
         response = httpx.request(method, url, headers=headers, **kwargs)
+        # Graph throttles per mailbox and says how long to wait. Several wiki
+        # investigations reading one mailbox at once drew 429 on 2026-09-23 and
+        # the run died on a request that would have succeeded seconds later.
+        #
+        # Only what is safe to repeat. 429 means Graph refused the request, so
+        # any method may be sent again. 503/504 mean the gateway gave up waiting
+        # — the mailbox may already have done it — so only a read is repeated.
+        # Retrying POST /sendMail on a 504 delivered the same mail twice.
+        retryable = (429,) if method.upper() not in ("GET", "HEAD") else (429, 503, 504)
+        for _ in range(3):
+            if response.status_code not in retryable:
+                break
+            try:
+                wait = float(response.headers.get("Retry-After", 5))
+            except ValueError:
+                wait = 5.0
+            time.sleep(min(max(wait, 1.0), 30.0))
+            response = httpx.request(method, url, headers=headers, **kwargs)
 
         if response.status_code == 401:
             # Token might have expired, try refreshing
@@ -939,6 +958,34 @@ class Outlook:
 
         return f"You have {count} unread email(s) in your inbox."
 
+    def list_with(self, address: str, start: str, end: str, max_results: int = 1000) -> list:
+        """Every message `address` is on -- from, to or cc -- in [start, end), oldest first.
+
+        Investigating one person used to list the whole mailbox a week at a time and
+        filter it: minutes per person, and a busy week past the 200-row cap lost mail
+        without saying so. KQL `participants:` asks the server for exactly that
+        person's mail (about a second), and nextLink paging means nothing is cut off.
+        `$search` cannot be combined with `$filter`, so the window's start goes in the
+        query and its end is applied here.
+        """
+        params = {
+            "$search": f'"participants:{address} AND received>={start[:10]}"',
+            "$top": 250,
+            "$select": "id,from,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
+        }
+        raw, endpoint = [], "/me/messages"
+        while endpoint and len(raw) < max_results:
+            result = self._request("GET", endpoint, params=params)
+            raw += result.get("value", [])
+            next_link = result.get("@odata.nextLink")
+            endpoint, params = (next_link.replace(self.GRAPH_API_URL, ""), None) if next_link else (None, None)
+        raw = [m for m in raw if start <= str(m.get("receivedDateTime", "")) < end][:max_results]
+        rows = self._email_dicts(raw)
+        for row, msg in zip(rows, raw):
+            row['to'] = [r.get('emailAddress', {}).get('address', '') for r in msg.get('toRecipients', [])]
+            row['cc'] = [r.get('emailAddress', {}).get('address', '') for r in msg.get('ccRecipients', [])]
+        return sorted(rows, key=lambda row: (str(row.get('date', '')), row['id']))
+
     def list_between(self, start: str, end: str, max_results: int = 200,
                      newest_first: bool = False) -> list:
         """Messages received in [start, end), oldest first; the shape list_inbox returns.
@@ -975,6 +1022,10 @@ class Outlook:
         """The addresses that count as the user's own, lower-cased."""
         line = self.get_my_email()
         return {line.split(":", 1)[-1].strip().lower()} if "@" in line else set()
+
+    def my_name(self) -> str:
+        """The display name on the account, or '' when none is set."""
+        return str(self._request("GET", "/me", params={"$select": "displayName"}).get("displayName") or "")
 
     def get_my_email(self) -> str:
         """Get the user's email address.

@@ -145,8 +145,10 @@ the latest completed, failed, or cancelled continuation omitted its catalog.
 
 ```
 ════════════════════════════════════════════════════════════════════
-  SESSION = connection.  EXECUTION = one INPUT → OUTPUT cycle.
-  Session outlives executions. Multiple INPUTs per session.
+  SESSION = the Host's conversation.  CONNECTION = one viewer of it.
+  EXECUTION = one INPUT → OUTPUT cycle.
+  Session outlives executions and connections. Multiple INPUTs per
+  session; any number of connections by its owner (see Multiple devices).
 ════════════════════════════════════════════════════════════════════
 
     ╭──────────╮
@@ -870,6 +872,35 @@ Keep-alive. Sent every 30 seconds.
 | `approval_needed` | Tool requires approval |
 | `plan` | Complete observational TodoList replacement |
 | `compact` | Context compaction |
+| `user_message` | `{content, session_id}` — the prompt of a turn started on **another** connection; sent only to viewers that did not type it, before that turn's stream |
+
+## Multiple devices
+
+One conversation can be open on several connections at once — a laptop and a
+phone, or two tabs. The Host keeps every authenticated connection to a session
+as a viewer of it. When any of them starts a turn, every other viewer signed
+in as the session's owner receives `user_message`, then the same stream and
+the same `OUTPUT`, read from its own position in the turn's log. Any viewer can
+answer an approval or `INTERRUPT` the turn, whichever device started it.
+
+The owner is the Ed25519 address, so "the same person on two devices" means
+the same identity on both (import the recovery phrase on the second device). A
+different identity naming the session id is given a new session and sees
+nothing, as before (#696).
+
+`user_input` is not the same thing: it is the agent's own trace event and goes
+to every connection, including the one that typed the prompt, which already
+shows it. `user_message` exists so a client can render another device's prompt
+without duplicating its own.
+
+Through the relay, the agent's ANNOUNCE declares `relay_features: ["conn_id"]`
+inside its signature. The relay then gives each client socket a `conn_id`, tags
+that socket's frames with it, and routes the agent's replies by it; the agent
+runs one protocol handler per `conn_id`. A relay or agent without it keeps one
+socket per conversation. Changing devices is also safe on its own: a
+reconnecting client's session only replaces the Host's when it is further
+ahead by `(turn, iteration, updated)` — `iteration` restarts every turn, and
+comparing it alone let a stale device erase a newer turn.
 
 #### AGENT_PROFILE
 
@@ -935,6 +966,21 @@ saw it.
 The HTML is agent-authored and untrusted: clients render it in a sandboxed iframe with
 scripting and network access blocked. Files over 2MB are not sent. See
 [dashboard.md](dashboard.md).
+
+#### WIKI_READ / WIKI_RESULT
+
+An authenticated owner may request the current private Wiki reader on the same
+signed OIP session used by Chat. The Host renders the existing read-only HTML
+template from its configured Wiki root and returns it to that request only. A
+non-owner receives an error without notebook content. `co ai` configures the
+default `~/.co/wiki` root; other Hosts have no Wiki unless configured with
+`wiki_root`. The HTML is capped at 16 MiB. This frame is never an Agent profile
+or public static artifact.
+
+```json
+{"type":"WIKI_READ","request_id":"read-1"}
+{"type":"WIKI_RESULT","request_id":"read-1","ok":true,"html":"<!doctype html>…"}
+```
 
 #### CONTROL_CENTER_APP (preview)
 

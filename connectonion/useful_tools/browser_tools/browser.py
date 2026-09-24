@@ -462,7 +462,12 @@ def _occupancy_note(meta) -> str:
     left = until - time.time()
     when = datetime.fromtimestamp(until).strftime("%H:%M")
     if left > 0:
-        return f"owner expects to finish by {when} ({_age(left)} left) — leave it alone until then"
+        # "Leave it alone" had no subject, and in a CLI that calls the whole thing
+        # "the browser" it read as the browser being busy: an agent deferred a
+        # user's task 40 minutes for a tab it never needed (#1605).
+        return (f"owner expects to finish by {when} ({_age(left)} left) — "
+                "leave this tab alone until then; the browser is free for your own: "
+                'co browser tab open <name> --who <you> --for "<task>"')
     return f"owner expected to finish by {when} ({_age(-left)} ago) — free for another agent to close"
 
 

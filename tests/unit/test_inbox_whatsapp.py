@@ -17,6 +17,7 @@ import json
 import sys
 import threading
 import time
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
@@ -1331,3 +1332,121 @@ def test_a_half_written_request_is_never_glob_ed_as_a_send(sdk):
         thread.join(timeout=5)
 
     assert sent == ["complete"]
+
+
+# ---- media arrives as bytes, not as a rumour (#1619) ----
+
+def media_event(kind_field="imageMessage", message_id="3EB0MEDIA"):
+    """A media MessageEv: the protobuf field name is what `_kind` reads."""
+    descriptor = SimpleNamespace(name=kind_field, type=11, label=1, is_repeated=False,
+                                 TYPE_MESSAGE=11, LABEL_REPEATED=3)
+    variant = SimpleNamespace(contextInfo=None, mimetype="image/jpeg")
+    message = SimpleNamespace(text="", ListFields=lambda: [(descriptor, variant)])
+    return SimpleNamespace(
+        Info=SimpleNamespace(
+            ID=message_id,
+            Timestamp=SimpleNamespace(seconds=1756808267),
+            MessageSource=SimpleNamespace(Chat=jid(PEER), Sender=jid(PEER), IsFromMe=False, IsGroup=False),
+        ),
+        Message=message,
+    )
+
+
+def test_a_photo_is_fetched_while_its_keys_are_still_in_hand(tmp_path, sdk):
+    """The media keys live in the protobuf and `to_message` drops it, so a later
+    `download <id>` has nothing to download from — and WhatsApp expires the bytes
+    server-side anyway. The only moment the file is reachable is the moment it
+    arrives, so that is when it is fetched."""
+    from connectonion.inbox.whatsapp import WhatsApp
+    inbox = Inbox("whatsapp", tmp_path)
+    asked = {}
+
+    class Client:
+        def download_any(self, message, path=None):
+            asked["message"] = message
+            Path(path).write_bytes(b"\xff\xd8\xff" + b"jpeg bytes")
+            return None
+
+    provider = linked(WhatsApp())
+    event = media_event()
+    message = provider.to_message(event)
+    provider.fetch_media(inbox, message, event, Client())
+
+    assert message.kind == "image"
+    saved = Path(message.media["path"])
+    assert saved.is_file() and saved.read_bytes().endswith(b"jpeg bytes")
+    assert saved.parent == tmp_path / "media"
+    assert message.media["size"] == 13 and message.media["mime"] == "image/jpeg"
+    assert "error" not in message.media
+    assert asked["message"] is event.Message   # the protobuf, not a copy of the record
+
+
+def test_a_media_download_that_fails_says_so_on_the_message(tmp_path, sdk):
+    """Expired media is the normal failure and a zero-byte file is worse than an
+    error: a caller reads an empty document as an empty document."""
+    from connectonion.inbox.whatsapp import WhatsApp
+    inbox = Inbox("whatsapp", tmp_path)
+
+    class Gone:
+        def download_any(self, message, path=None):
+            raise RuntimeError("media not found on server (410)")
+
+    provider = linked(WhatsApp())
+    event = media_event()
+    message = provider.to_message(event)
+    provider.fetch_media(inbox, message, event, Gone())
+
+    assert "path" not in message.media
+    assert "410" in message.media["error"]
+    assert not (tmp_path / "media").exists() or not any((tmp_path / "media").iterdir())
+
+
+def test_text_messages_never_touch_the_media_path(tmp_path, sdk):
+    from connectonion.inbox.whatsapp import WhatsApp
+
+    class Never:
+        def download_any(self, message, path=None):
+            raise AssertionError("a text message asked for a download")
+
+    provider = linked(WhatsApp())
+    plain = event(text="ship it", group=False)
+    message = provider.to_message(plain)
+    provider.fetch_media(Inbox("whatsapp", tmp_path), message, plain, Never())
+    assert message.media is None
+
+
+def test_a_saved_media_path_survives_the_queue_file(tmp_path, sdk):
+    """`receive` reads the record back from disk; a path that does not round-trip
+    is a path the consumer never sees."""
+    inbox = Inbox("whatsapp", tmp_path)
+    message = Message(id="m1", chat="c1", sender="s1", text="", at="2026-09-22T00:00:00Z",
+                      kind="image", media={"path": str(tmp_path / "media" / "m1.jpg"),
+                                           "mime": "image/jpeg", "size": 13})
+    inbox.deliver(message)
+    back = Message.from_dict(json.loads(message.to_json()))
+    assert back.media == message.media
+    assert '"media"' in inbox.received.read_text()
+
+
+# ---- the user's own messages are kept for the notebook, not delivered (#1625) ----
+
+def test_what_the_user_types_on_their_phone_is_kept_but_never_queued(tmp_path, sdk):
+    """`to_message` drops every IsFromMe event so the bot never answers itself --
+    which also threw away everything the user typed on their phone, the part a
+    notebook built on the user's own words needs most. It is kept in own.jsonl,
+    a record file, and still never reaches new/ where a consumer would answer it."""
+    inbox = Inbox("whatsapp", tmp_path)
+
+    class Client:
+        def download_any(self, message, path=None):
+            raise AssertionError("a text message asked for a download")
+
+    provider = linked(WhatsApp())
+    mine = event(text="keep the price at 210", group=True, from_me=True, message_id="3EB0MINE")
+    assert provider.to_message(mine) is None                   # still never delivered
+    provider.keep_own(inbox, mine, Client())
+    rows = [json.loads(line) for line in (tmp_path / "own.jsonl").read_text().splitlines()]
+    assert [(r["id"], r["text"]) for r in rows] == [("3EB0MINE", "keep the price at 210")]
+    assert not any(inbox.new.iterdir())                        # nothing queued for a consumer
+    provider.keep_own(inbox, mine, Client())                   # the same event twice is kept once
+    assert len((tmp_path / "own.jsonl").read_text().splitlines()) == 1

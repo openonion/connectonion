@@ -1,0 +1,8 @@
+Usage: python -m connectonion.cli.main wiki [OPTIONS] COMMAND [ARGS]...
+Try 'python -m connectonion.cli.main wiki --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'no-such-command'.                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+Next: co commands
+
+Exit: 2

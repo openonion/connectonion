@@ -244,6 +244,29 @@ still receives the provider invocation and opens the same interactive Work Room.
 - Watch Claude's inner tools start and finish as live O Chat cards
 - Receive one stable JSON result for success, timeout, or provider errors
 
+### Share a native Claude Code terminal
+
+Run `co claude --cwd /path/to/project` to launch Claude's normal interactive
+terminal with an OIP Work Room. The command prints a private Work Room URL and a
+pairing code. Open the URL in O Chat, pass the invite gate, then enter that code
+to watch the same Claude session. The browser can take control, send a direct
+Claude Code message, and return control to the terminal.
+`co claude --resume <session-id>` resumes an existing Claude session; `--model haiku` selects a
+smaller model for a trial. `--no-share` starts the terminal without a Work Room.
+
+The terminal process must remain running while the Work Room is available.
+Only one side writes the Claude session at a time. Pairing claims the private
+OIP session for that browser identity; later control and message commands are
+signed. The station's scoped Hooks expose session identity and live activity,
+while its transcript reader forwards visible conversation text. Hook tool input
+is not stored in the OIP trace. A browser message resumes the native Claude
+session directly, without wrapping it in another agent prompt.
+
+Browser-initiated file edits inside the selected workspace require a visible
+owner approval. Unknown actions, commands, and paths outside that workspace are
+denied. Native Claude's own terminal permission controls still govern turns
+made in the terminal.
+
 ### Delegate to Claude Code
 
 `co ai` can delegate an implementation or investigation while retaining

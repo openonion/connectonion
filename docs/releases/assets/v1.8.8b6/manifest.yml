@@ -1,0 +1,9 @@
+version: v1.8.8b6
+images:
+  - file: owner-page-filled-by-the-map.png
+    alt: "Terminal output of co wiki show on a synthetic owner's page filled by the map: name as title, top correspondents, projects and a possible own address"
+    caption: "After co wiki init on synthetic metadata, the owner's page is titled with the mailbox display name and lists who they write to most, their busiest projects and a possible own address with its --mine command; role and company stay Unknown for investigation (issue 1655)."
+    scenario: "python scripts/capture_188b6_release_cli.py: build_map on synthetic mail and session metadata, then the released co wiki show"
+    viewport: "terminal, 96 columns"
+    commit: f64df415
+    source_run: "scripts/capture_188b6_release_cli.py; real-mailbox evidence in PR #1658"

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "1.8.6"
+version = "1.8.8b8"
 description = "Connect your AI agent to Gmail, a real browser and your files, one command each. The agent CLI harness."
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -25,7 +25,7 @@ keywords = [
     "xray",
 ]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
@@ -71,6 +71,7 @@ dependencies = [
     "pypdf>=4.0.0",
     "python-pptx>=1.0.0",
     "python-docx>=1.1.0",
+    "openpyxl>=3.1.0",
     "packaging>=23.0",
     # uv.lock protects this repository, but it is not installed with the library.
     # Publish the audited transitive floors too, so an existing user environment
@@ -172,6 +173,7 @@ include = [
 [tool.hatch.build]
 include = [
     "connectonion/**/*.md",
+    "connectonion/**/*.html",
     "connectonion/**/*.txt",
     "connectonion/**/*.yaml",
     "connectonion/**/*.proto",

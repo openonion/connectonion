@@ -298,6 +298,8 @@ async def _send_agent_profile(send_msg, route_handlers, session_id):
         "model": metadata.get("model"),
         "tools": metadata.get("tools", []),
         "skills": metadata.get("skills", []),
+        **({"provider_station": "claude_code"}
+           if route_handlers.get("provider_station") is not None else {}),
         **({"balance_usd": metadata["balance_usd"]}
            if metadata.get("balance_usd") is not None else {}),
     })
@@ -528,19 +530,7 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     # agent actually has — including skills that live only on the operator's machine —
     # goes here and nowhere else.
     if route_handlers is not None:
-        metadata = route_handlers.get("agent_metadata")
-        if metadata:
-            await send_msg({
-                "type": "AGENT_PROFILE",
-                "session_id": session_id,
-                "name": metadata.get("name"),
-                "address": metadata.get("address"),
-                "model": metadata.get("model"),
-                "tools": metadata.get("tools", []),
-                "skills": metadata.get("skills", []),
-                **({"balance_usd": metadata["balance_usd"]}
-                   if metadata.get("balance_usd") is not None else {}),
-            })
+        await _send_agent_profile(send_msg, route_handlers, session_id)
 
     # Push the current dashboard.html so Home paints immediately, before any input.
     # This connection has seen nothing yet, so it always sends when a file exists.
@@ -548,5 +538,7 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     await send_dashboard(send_msg, session_id, conn)
 
     if status == "running" and resume_running:
-        active.io.rewind_to(data.get("last_msg_id"))
-        return resume_forwarding(send_msg, active, registry, session_id, storage, conn)
+        return resume_forwarding(
+            send_msg, active, registry, session_id, storage, conn,
+            last_msg_id=data.get("last_msg_id"),
+        )

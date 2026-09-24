@@ -157,7 +157,7 @@ import json
 import logging
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Type
 
 logger = logging.getLogger(__name__)
@@ -243,11 +243,105 @@ def _network_bounds(max_retries: int = LLM_MAX_RETRIES) -> dict:
 
 @dataclass
 class LLMResponse:
-    """Response from LLM including content and tool calls."""
+    """Response from LLM including content, tool calls, and generated images.
+
+    Attributes:
+        images: Images the model generated, as data URLs
+            ("data:image/png;base64,..."). Empty for every text-only call; only
+            image-output models (gemini-*-image*) fill it.
+    """
     content: Optional[str]
     tool_calls: List[ToolCall]
     raw_response: Any
     usage: Optional[TokenUsage] = None
+    images: List[str] = field(default_factory=list)
+
+
+def is_image_model(model: str) -> bool:
+    """Whether this names a Gemini model whose output is an image.
+
+    The last path segment is what counts, so the provider prefixes in use all
+    work: co/gemini-..., openrouter/google/gemini-..., models/gemini-...
+    Keyed on the word rather than a list because Google ships image variants
+    faster than this table is edited, and a new one should route correctly
+    before anyone prices it.
+    """
+    name = model.split("/")[-1]
+    return name.startswith("gemini") and "-image" in name
+
+
+def _image_url_of(item: Any) -> Optional[str]:
+    """The data URL inside one image entry, whichever shape the SDK gave it."""
+    image_url = item.get("image_url") if isinstance(item, dict) else getattr(item, "image_url", None)
+    if isinstance(image_url, str):
+        return image_url
+    if isinstance(image_url, dict):
+        return image_url.get("url")
+    return getattr(image_url, "url", None) if image_url is not None else None
+
+
+def _extract_images(message: Any) -> List[str]:
+    """Generated images from an OpenAI-compatible chat message.
+
+    OpenRouter returns them on `message.images` as
+    [{"type": "image_url", "image_url": {"url": "data:..."}}]. Some
+    compatible servers put the same parts inside `message.content` instead,
+    so both are read. A text reply has neither and yields [].
+    """
+    images = [url for url in map(_image_url_of, getattr(message, "images", None) or []) if url]
+    content = getattr(message, "content", None)
+    if isinstance(content, list):
+        for part in content:
+            kind = part.get("type") if isinstance(part, dict) else getattr(part, "type", None)
+            url = _image_url_of(part) if kind == "image_url" else None
+            if url:
+                images.append(url)
+    return images
+
+
+def _extract_text(message: Any) -> Optional[str]:
+    """Plain text of a chat message, joining text parts when content is a list.
+
+    A string (every text-only reply) is returned untouched.
+    """
+    content = getattr(message, "content", None)
+    if not isinstance(content, list):
+        return content
+    texts = []
+    for part in content:
+        kind = part.get("type") if isinstance(part, dict) else getattr(part, "type", None)
+        if kind != "text":
+            continue
+        text = part.get("text") if isinstance(part, dict) else getattr(part, "text", None)
+        if text:
+            texts.append(text)
+    return "\n".join(texts) if texts else None
+
+
+# Base64 openings of the formats an image model returns. images.generate
+# hands back bare base64 with no mime type, and gemini-3-pro-image-preview
+# produces JPEG, so labelling everything image/png would mislabel it.
+_BASE64_SIGNATURES = (("/9j/", "image/jpeg"), ("iVBORw0KGgo", "image/png"),
+                      ("UklGR", "image/webp"), ("R0lGOD", "image/gif"))
+
+
+def _data_url(b64: str) -> str:
+    """Wrap bare base64 image bytes as a data URL with the right mime type."""
+    mime = next((m for sig, m in _BASE64_SIGNATURES if b64.startswith(sig)), "image/png")
+    return f"data:{mime};base64,{b64}"
+
+
+def _last_user_prompt(messages: List[Dict[str, Any]]) -> str:
+    """Text of the last user message: the whole input a single-prompt API takes."""
+    for message in reversed(messages):
+        if message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, list):
+            return "\n".join(part.get("text", "") for part in content
+                             if isinstance(part, dict) and part.get("type") == "text")
+        return content or ""
+    return ""
 
 
 class LLM(ABC):
@@ -795,6 +889,17 @@ class GeminiLLM(LLM):
 
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
         """Complete a conversation using Gemini's OpenAI-compatible endpoint."""
+        # Google's OpenAI-compatible layer refuses image models on
+        # chat.completions. Observed in July 2026 on the branch this was ported
+        # from: gemini-2.5-flash-image answered 400 "Image generation is not yet
+        # supported on the chat.completions endpoint ... use
+        # client.images.generate", and gemini-3-pro-image-preview answered 400
+        # "Unhandled generated data mime type: image/jpeg". With tools there is
+        # no images-API equivalent, so that case still goes to chat.completions
+        # and gets Google's answer rather than a silently dropped tool list.
+        if is_image_model(self.model) and not tools:
+            return self._generate_images(messages, **kwargs)
+
         kwargs = _normalize_gemini_chat_kwargs(self.model, kwargs)
         api_kwargs = {
             "model": self.model,
@@ -845,6 +950,24 @@ class GeminiLLM(LLM):
             raw_response=response,
             usage=usage,
         )
+
+    def _generate_images(self, messages: List[Dict[str, Any]], **kwargs) -> LLMResponse:
+        """Generate images through the images API.
+
+        images.generate takes one prompt, so only the last user message is
+        sent; earlier turns are not. It reports no token usage either, so
+        `usage` is None and the call adds nothing to an agent's total_cost:
+        the charge is real, it is just not visible here.
+        """
+        result = self._call_provider(lambda: self.client.images.generate(
+            model=self.model,
+            prompt=_last_user_prompt(messages),
+            response_format="b64_json",
+            n=kwargs.get("n", 1),
+        ))
+        images = [_data_url(item.b64_json) for item in (result.data or [])
+                  if getattr(item, "b64_json", None)]
+        return LLMResponse(content=None, tool_calls=[], raw_response=result, images=images)
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
         """Get structured Pydantic output using Gemini's OpenAI-compatible endpoint with beta.chat.completions.parse."""
@@ -1047,6 +1170,11 @@ class OpenRouterLLM(LLM):
             **kwargs
         }
 
+        # OpenRouter returns generated images only when the request asks for
+        # the image modality; text models never get the parameter.
+        if is_image_model(self.model):
+            api_kwargs.setdefault("modalities", ["text", "image"])
+
         if tools:
             api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
             api_kwargs["tool_choice"] = "auto"
@@ -1075,7 +1203,13 @@ class OpenRouterLLM(LLM):
                 cost=cost,
             )
 
-        return LLMResponse(content=message.content, tool_calls=tool_calls, raw_response=response, usage=usage)
+        return LLMResponse(
+            content=_extract_text(message),
+            tool_calls=tool_calls,
+            raw_response=response,
+            usage=usage,
+            images=_extract_images(message),
+        )
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
         """Get structured Pydantic output using JSON-mode + schema validation.

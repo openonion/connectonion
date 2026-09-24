@@ -1,0 +1,16 @@
+version: v1.8.8b3
+images:
+  - file: reader-desktop.png
+    alt: "Synthetic Wiki project page in the offline reader at desktop width"
+    caption: "The desktop reader displays a synthetic project page; b3 retains this layout while investigation and opening behavior change."
+    scenario: "Open a synthetic investigated project page at 1440px"
+    viewport: "1440px, Chrome"
+    commit: 6651e7a1
+    source_run: "https://github.com/openonion/connectonion/blob/6651e7a1/docs/testing/wiki-187-integration.md"
+  - file: reader-mobile.png
+    alt: "Synthetic Wiki project page in the offline reader at mobile width"
+    caption: "The same synthetic project page remains readable at mobile width; this is reader regression evidence, not an OIP screenshot."
+    scenario: "Open a synthetic investigated project page at 375px"
+    viewport: "375px, Chrome"
+    commit: 6651e7a1
+    source_run: "https://github.com/openonion/connectonion/blob/6651e7a1/docs/testing/wiki-187-integration.md"
