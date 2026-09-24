@@ -101,6 +101,24 @@ def get_json_schema_type(param_type) -> dict:
     # Default to string
     return {"type": "string"}
 
+def _type_hints(func) -> dict:
+    """get_type_hints, able to read `agent: 'Agent'`.
+
+    A tool that takes the injected agent annotates it by forward reference and
+    imports Agent only under TYPE_CHECKING, because importing it at module level
+    would be circular. get_type_hints then raised NameError on the string, so
+    `Agent(tools=[skill])` — the documented way to let an Agent choose a skill —
+    failed at construction. Any other name that does not resolve still raises:
+    a real parameter with an unknown type must fail loudly.
+    """
+    try:
+        return get_type_hints(func)
+    except NameError:
+        from .agent import Agent
+
+        return get_type_hints(func, localns={"Agent": Agent})
+
+
 def _unbound_method_owner(func):
     """The class name if `func` is a method accessed off the class, else None.
 
@@ -145,7 +163,7 @@ def create_tool_from_function(func: Callable) -> Callable:
 
     # Build the parameters schema from the function signature
     sig = inspect.signature(func)
-    type_hints = get_type_hints(func)
+    type_hints = _type_hints(func)
 
     owner = _unbound_method_owner(func)
     if owner:
@@ -314,7 +332,7 @@ def extract_methods_from_instance(instance) -> List[Callable]:
         # Check if method has proper type annotations
         try:
             sig = inspect.signature(attr)
-            type_hints = get_type_hints(attr)
+            type_hints = _type_hints(attr)
 
             # Must have return type annotation to be a valid tool
             if 'return' not in type_hints:
