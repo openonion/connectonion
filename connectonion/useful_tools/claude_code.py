@@ -33,7 +33,7 @@ from ..core.provider_events import (
     remember_provider_activity,
     remember_provider_artifact,
 )
-from .claude_code_bridge import scoped_bridge_settings, session_start
+from .claude_code_bridge import poll_bridge, scoped_bridge_settings, session_start
 
 PERMISSION_MODES = (
     "default",
@@ -287,6 +287,73 @@ def run_co_claude(
         if hook["session_id"] != outcome["session_id"]:
             return _envelope(session_id, error="Claude Hook and result session IDs differ.")
         return result
+
+
+def run_interactive_claude(
+    cwd: str = ".", session_id: str = "", model: str = "",
+    on_private_fact: Callable[[dict], None] | None = None,
+    on_message: Callable[[dict], None] | None = None,
+) -> tuple[int, str]:
+    """Run Claude's TUI and observe scoped Hooks plus exact transcript messages."""
+    validation = _validate_request("interactive", session_id, cwd, model, 600)
+    if validation:
+        raise ValueError(validation)
+    directory, error = _working_directory(cwd, None)
+    if error:
+        raise ValueError(error)
+    command, error = _claude_command()
+    if error:
+        raise ValueError(error)
+
+    with scoped_bridge_settings() as (settings, events):
+        argv = [*command, "--settings", str(settings)]
+        if session_id:
+            argv.extend(["--resume", session_id])
+        if model:
+            argv.extend(["--model", model])
+
+        # Claude shares the foreground terminal. Ctrl-C belongs to its TUI:
+        # it cancels a turn without making the owning wrapper abandon it.
+        previous_interrupt = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGINT, lambda *_: None)
+        process = None
+        try:
+            process = subprocess.Popen(
+                argv, cwd=str(directory), stdin=None, stdout=None, stderr=None,
+                shell=False, env=os.environ.copy(),
+            )
+            offset = 0
+            tailer = None
+            while process.poll() is None:
+                offset, tailer, facts, messages = poll_bridge(events, offset, directory, tailer)
+                if on_private_fact is not None:
+                    for fact in facts:
+                        on_private_fact(fact)
+                if on_message is not None:
+                    for message in messages:
+                        on_message(message)
+                time.sleep(0.1)
+            offset, tailer, facts, messages = poll_bridge(events, offset, directory, tailer)
+            if on_private_fact is not None:
+                for fact in facts:
+                    on_private_fact(fact)
+            if on_message is not None:
+                for message in messages:
+                    on_message(message)
+            returncode = process.wait()
+        finally:
+            signal.signal(signal.SIGINT, previous_interrupt)
+            if process is not None and process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+
+        session_start(events, cwd=directory, requested_session=session_id)
+        hook = session_start(events, cwd=directory, requested_session="", latest=True)
+        return returncode, hook["session_id"]
 
 
 def _validate_request(prompt, session_id, cwd, model, timeout) -> str:

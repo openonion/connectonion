@@ -339,6 +339,30 @@ claude_app = _typer_app(help="Run Claude Code through the ConnectOnion session c
 app.add_typer(claude_app, name="claude")
 
 
+@claude_app.callback(invoke_without_command=True)
+def claude_interactive(
+    ctx: typer.Context,
+    cwd: Path = typer.Option(Path("."), "--cwd", exists=True, file_okay=False, resolve_path=True, help="Workspace directory"),
+    session_id: str = typer.Option("", "--resume", help="Claude session ID to resume"),
+    model: str = typer.Option("", "--model", help="Claude model override"),
+):
+    """Launch Claude's interactive terminal with a scoped session Hook."""
+    if ctx.invoked_subcommand is not None:
+        return
+    from ..useful_tools.claude_code import run_interactive_claude
+
+    try:
+        exit_code, owned_session = run_interactive_claude(str(cwd), session_id, model)
+    except ValueError as exc:
+        print(f"co claude: {exc}", file=sys.stderr)
+        raise typer.Exit(1) from exc
+    print(f"Claude session: {owned_session}", file=sys.stderr)
+    from .commands.command_tips import print_tip
+    print_tip(f"Next: co claude --resume {owned_session}")
+    if exit_code:
+        raise typer.Exit(exit_code)
+
+
 @claude_app.command("run")
 def claude_run(
     prompt: str = typer.Argument(..., help="Task for Claude Code"),

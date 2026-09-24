@@ -46,3 +46,19 @@ def test_co_claude_run_exits_nonzero_on_provider_failure(tmp_path, monkeypatch):
 
     assert result.exit_code == 1
     assert json.loads(result.stdout)["error"] == "Claude CLI unavailable"
+
+
+def test_co_claude_launches_interactive_connector(tmp_path, monkeypatch):
+    claude = importlib.import_module("connectonion.useful_tools.claude_code")
+    calls = []
+
+    def run_interactive(cwd, session_id, model):
+        calls.append((cwd, session_id, model))
+        return 0, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+
+    monkeypatch.setattr(claude, "run_interactive_claude", run_interactive)
+    result = CliRunner().invoke(app, ["claude", "--cwd", str(tmp_path), "--model", "haiku"])
+
+    assert result.exit_code == 0
+    assert "Claude session: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" in result.output
+    assert calls == [(str(tmp_path), "", "haiku")]
