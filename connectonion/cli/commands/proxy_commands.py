@@ -347,6 +347,33 @@ def _stop(address: str, as_json: bool) -> int:
     )
 
 
+def _probe_reach(address: str) -> dict:
+    """Ask the relay which endpoints the host announces, and try each from here."""
+    import asyncio
+
+    from ...backend import backend_ws_url
+    from ...network.connect import probe_endpoints
+
+    return asyncio.run(probe_endpoints(address, backend_ws_url()))
+
+
+def _describe_reach(reach: dict) -> str:
+    """The endpoints the relay lists, verbatim, with what each one did (#1387)."""
+    if reach.get("relay_error"):
+        return f"Could not ask the relay which endpoints the host announces: {reach['relay_error']}."
+    if not reach["probes"]:
+        return "The relay lists no direct endpoint for this host, so there is nothing to reach."
+    lines = ["The host announces:"]
+    lines += [f"  {p['endpoint']}  → {p['result']}" for p in reach["probes"]]
+    if all(p["result"] == "connect timeout" for p in reach["probes"]):
+        where = ", ".join(p["endpoint"].split("//", 1)[1] for p in reach["probes"])
+        lines.append(
+            f"Nothing answers at {where} from this network — usually a cloud firewall "
+            "that allows only 22/80/443. A `co deploy --to` host answers on 443."
+        )
+    return "\n".join(lines)
+
+
 def _diagnose(address: str, as_json: bool) -> int:
     share = _load().get(address)
     if share is None:
@@ -374,6 +401,7 @@ def _diagnose(address: str, as_json: bool) -> int:
             as_json,
         )
     if row["state"] != "attached":
+        reach = _probe_reach(address)
         return _emit(
             {
                 "ok": False,
@@ -381,9 +409,10 @@ def _diagnose(address: str, as_json: bool) -> int:
                 "command": "diagnose",
                 "summary": (
                     f"The share for {address} is {row['state']}: {row['detail'] or 'no detail'}. "
-                    "It keeps retrying; the host has to be reachable directly, not through the relay."
+                    "It keeps retrying; the host has to be reachable directly, not through the relay.\n"
+                    + _describe_reach(reach)
                 ),
-                "result": row,
+                "result": {**row, "endpoints": reach},
                 "next_actions": [
                     f"Check the host answers with: co remote-browser {address} sessions",
                     f"Stop lending with: co proxy stop {address}",
