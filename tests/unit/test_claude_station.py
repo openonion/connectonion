@@ -104,3 +104,28 @@ def test_browser_approval_requires_owned_workspace_edit(tmp_path):
         agent, tmp_path,
     )
     assert len(io.requests) == 1
+
+
+def test_a_long_turn_is_written_once_not_once_per_tool_call(tmp_path):
+    """#1654: each commit appends the whole session, so per-event commits were quadratic."""
+    storage = SessionStorage(tmp_path / "station" / "session_results.jsonl")
+    station = claude_station.ClaudeStation(tmp_path, storage)
+    station._on_fact({"hook_event_name": "SessionStart", "session_id": "abc"})
+    written = len(storage.path.read_text().splitlines())
+    station._on_fact({"hook_event_name": "UserPromptSubmit"})
+    for index in range(200):
+        for kind in ("PreToolUse", "PostToolUse"):
+            station._on_fact({
+                "hook_event_name": kind, "tool_name": "Bash", "tool_use_id": f"t{index}",
+            })
+
+    assert len(storage.path.read_text().splitlines()) == written
+    live, _ = station.events_since(0)
+    assert sum(event["type"] == "provider_activity" for event in live) == 400
+
+    station._on_fact({"hook_event_name": "Stop"})
+
+    assert len(storage.path.read_text().splitlines()) == written + 1
+    trace = storage.get(station.session_id).session["trace"]
+    assert sum(event["type"] == "provider_activity" for event in trace) == 400
+    assert trace[-1]["status"] == "completed"

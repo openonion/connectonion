@@ -26,7 +26,6 @@ _EVENT_FIELDS = (
     "hook_event_name", "session_id", "transcript_path", "cwd", "source",
     "tool_name", "tool_use_id", "agent_id",
 )
-_MAX_EVENTS = 4096
 _MAX_EVENT_RATE = 128
 _MAX_TRANSCRIPT_LINE = 1024 * 1024
 _MAX_TRANSCRIPT_RECORDS = 512
@@ -98,22 +97,20 @@ class _HookReceiver(BaseHTTPRequestHandler):
         except (ValueError, UnicodeDecodeError):
             self.send_error(400)
             return
+        # An approval is never shed: the rate limit bounds observation only.
+        permission = event["hook_event_name"] == "PermissionRequest"
         with server.event_lock:
-            if server.event_count >= _MAX_EVENTS:
-                self.send_error(429)
-                return
             now = time.monotonic()
             while server.recent_events and now - server.recent_events[0] >= 1:
                 server.recent_events.popleft()
-            if len(server.recent_events) >= _MAX_EVENT_RATE:
+            if not permission and len(server.recent_events) >= _MAX_EVENT_RATE:
                 self.send_error(429)
                 return
             with server.events.open("a", encoding="utf-8") as output:
                 output.write(json.dumps(record) + "\n")
-            server.event_count += 1
             server.recent_events.append(now)
         handler = getattr(server, "permission_handler", None)
-        if event["hook_event_name"] == "PermissionRequest" and handler is not None:
+        if permission and handler is not None:
             approved = bool(handler(event))
             response = json.dumps({"hookSpecificOutput": {
                 "hookEventName": "PermissionRequest",
@@ -175,7 +172,6 @@ def scoped_bridge_settings(permission_handler: Callable[[dict], bool] | None = N
         receiver.token = secrets.token_urlsafe(32)
         receiver.events = events
         receiver.event_lock = Lock()
-        receiver.event_count = 0
         receiver.recent_events = deque()
         receiver.permission_handler = permission_handler
         url = f"http://127.0.0.1:{receiver.server_port}/hook"
