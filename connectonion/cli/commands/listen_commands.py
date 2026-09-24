@@ -290,18 +290,21 @@ def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: 
     print(sent)
 
 
-def _unsupported(name: str, verb: str,
+def _unsupported(p, name: str, verb: str,
                  endpoint: str = "PUT and DELETE on /im/v1/messages/<id>") -> None:
     """Say which provider cannot do this and what it would take, not "error".
 
     A verb that exists on `co whatsapp` and not on `co lark` has to say so in
     the terms the reader is in — otherwise the obvious reading of a bare
-    failure is that the message id was wrong.
+    failure is that the message id was wrong. A provider names its own
+    endpoint in `unwired`; Feishu and Lark share the default, because a
+    Telegram user told to look at /im/v1/messages is sent to the wrong docs.
     """
+    where = (getattr(p, "unwired", None) or {}).get(verb) or \
+        f"Feishu and Lark have the endpoint for it ({endpoint})"
     errors.print(
         f"co {name} {verb} is not implemented. WhatsApp is the only provider with it so far; "
-        f"Feishu and Lark have the endpoint for it ({endpoint}) "
-        f"and nobody has wired it up. Next: co {name} send",
+        f"{where} and nobody has wired it up. Next: co {name} send",
         style="red")
     sys.exit(1)
 
@@ -312,7 +315,7 @@ def handle_edit(name: str, message_id: str, text: Optional[str] = None,
     p = _configured(name)
     inbox = Inbox(name)
     if getattr(p, "edit", None) is None:
-        _unsupported(name, "edit")
+        _unsupported(p, name, "edit")
     original = inbox.lookup_sent(message_id)
     if original is None:
         # Deliberately not "no such message": we can only edit our own, so the
@@ -338,7 +341,7 @@ def handle_delete(name: str, message_id: str) -> None:
     p = _configured(name)
     inbox = Inbox(name)
     if getattr(p, "revoke", None) is None:
-        _unsupported(name, "delete")
+        _unsupported(p, name, "delete")
     ours = inbox.lookup_sent(message_id)
     if ours is not None:
         chat, sender = ours["chat"], ""
@@ -401,7 +404,7 @@ def handle_react(name: str, message_id: str, emoji: str) -> None:
     p = _configured(name)
     inbox = Inbox(name)
     if getattr(p, "react", None) is None:
-        _unsupported(name, "react", "POST /im/v1/messages/<id>/reactions")
+        _unsupported(p, name, "react", "POST /im/v1/messages/<id>/reactions")
     ours = inbox.lookup_sent(message_id)
     if ours is not None:
         chat, sender, mine = ours["chat"], "", True

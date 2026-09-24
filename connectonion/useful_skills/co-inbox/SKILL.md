@@ -12,6 +12,10 @@ read them. Nothing here knows what an agent is.
 a clean hour, and `consume` runs commands whose own failures it reports on
 stderr while continuing.
 
+`co discord …` takes the same verbs for a Discord bot (`DISCORD_BOT_TOKEN`,
+Message Content intent on). Its ids are Discord's message ids and its chat is
+the channel id. See docs/cli/discord.md.
+
 ## Which command
 
 | you want to | run |

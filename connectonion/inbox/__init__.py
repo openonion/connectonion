@@ -57,6 +57,7 @@ def reactions_enabled() -> bool:
 # an extra (`pip install 'connectonion[whatsapp]'`), which costs nothing here:
 # the module is imported by name only when someone asks for that provider.
 PROVIDERS = {
+    "discord": ("connectonion.inbox.discord", "Discord", {}),  # websockets: a core dependency
     "feishu": ("connectonion.inbox.feishu", "Feishu", {"domain": "feishu"}),
     "lark": ("connectonion.inbox.feishu", "Feishu", {"domain": "lark"}),
     "whatsapp": ("connectonion.inbox.whatsapp", "WhatsApp", {}),
