@@ -10,7 +10,7 @@ produce; this one says only what is true of **this** source.
 
 ## What reaches you
 
-Only the chats the user named with `co wiki subscribe whatsapp --chat <id>`.
+Only the chats the user named with `co wiki sources add whatsapp --chat <id>`.
 The phone is in many more groups — family, unrelated communities, other
 clients — and none of them is in the batch. So a person or a group that is not
 here is not "absent from the user's life"; it was not chosen.

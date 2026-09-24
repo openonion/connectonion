@@ -1,7 +1,11 @@
 # Personal Wiki — current branch contract
 
-Updated 2026-09-22. This documents the Wiki development branch, not a claim
-that it has been released.
+Updated 2026-09-24. The Wiki ships in the opt-in 1.8.8 previews and becomes
+long-term supported in 1.9.0 (#1664 names it first). The command surface and
+every `--help` page are the agreed design in #1656; the pages themselves live
+in `connectonion/cli/commands/wiki_help.md` and a test holds them to the code.
+Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
+`unsubscribe`, `route`, `usage`) still work until 1.9 and print their new name.
 
 See the [2026-09-17 progress review](wiki-progress.md) for the feature inventory,
 current CI blockers and remaining work.
@@ -22,10 +26,11 @@ names in old help text, such as `people/emma.md`, are not built-in records.
 `--help` displays help and exits, even when you also supply a page name.
 
 ```bash
-co wiki unfinished           # Pages with remaining Unknown sections and a concrete next step
+co wiki investigate          # What is left to investigate, by category; no model
+co wiki investigate me       # Fill your own page first
 co wiki open                 # Open the full-page Wiki in your browser
 co wiki sync --dry-run       # Inspect pending metadata, without running a model
-co wiki sync                 # Process a bounded batch using configured sources/model
+co wiki sync                 # One update: new material, then at most one unfinished page
 co wiki logs                 # Inspect results, partial coverage and failures
 ```
 
@@ -163,20 +168,22 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co wiki stub person "Alice" --email alice@example.org --handle 艾丽丝` | Create the canonical person skeleton if absent. |
 | `co wiki stub org "UNSW" --domain unsw.edu.au --person people/vern-chan.md` | Create an organisation skeleton; `People here` holds links, not copies. |
 | `co wiki stub project "Aurora" --path /path/to/repo` | Create a project skeleton. |
-| `co wiki people` | Existing identity roster: page, title, aliases, addresses, relationship summary. |
+| `co wiki list people --aliases` | Existing identity roster: page, title, aliases, addresses, relationship summary. |
 | `co wiki investigate people/alice.md` | Read the existing page, gather sources, digest oversized material, fill that same page through the Skill. |
-| `co wiki unfinished` | Pages with unresolved sections, least-investigated first. |
+| `co wiki investigate` | What is left to investigate, by category, most useful first. No model. |
+| `co wiki investigate people --limit 3` | Investigate up to three unfinished people pages, most mail first; `--list` prints the order and runs nothing. Also `projects`, `orgs`, `skills`. |
+| `co wiki investigate me` | Fill your own page from what you sent and your coding sessions of the last 30 days. |
 | `co wiki abstract` | Run wiki-abstract over existing notebook evidence. |
 | `co wiki start` | Confirm source access, run first bounded sync, install macOS background schedule. |
 | `co wiki start --yes` | Explicit noninteractive consent for start. |
 | `co wiki stop` | Remove that notebook's background job; preserve pages and progress. |
-| `co wiki sync` | One incremental source batch, optionally extraction followed by maintenance. |
+| `co wiki sync` | The whole update: one batch of new material, then at most one unfinished page. What the schedule runs (`sync --scheduled`). |
 | `co wiki sync --source codex --dry-run` | Pending metadata only; no model or source body reads. |
-| `co wiki subscribe codex --project /path/to/repo --since 30d` | Save a scoped source choice. |
-| `co wiki subscribe whatsapp --chat <id>` | Read one WhatsApp chat (group or person) from the files `co whatsapp listen` keeps; ids from `co whatsapp chats`. Repeat per chat; the next `co wiki start` shows it and asks before anything is read. `unsubscribe whatsapp --chat <id>` stops one chat. |
-| `co wiki unsubscribe codex` | Disable that source. |
+| `co wiki sources add codex --project /path/to/repo --since 30d` | Save a scoped source choice. |
+| `co wiki sources add whatsapp --chat <id>` | Read one WhatsApp chat (group or person) from the files `co whatsapp listen` keeps; ids from `co whatsapp chats`. Repeat per chat; the next `co wiki start` shows it and asks before anything is read. `co wiki sources remove whatsapp --chat <id>` stops one chat. |
+| `co wiki sources remove codex` | Disable that source. |
 | `co wiki list people` / `show people/alice.md` / `search Alice` | Inspect Markdown without model calls. |
-| `co wiki status` / `subscriptions` / `config` / `logs` / `usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. |
+| `co wiki status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. |
 | `co wiki open` | Open the full-page private Wiki through the current `co ai` Host when its identity is configured; otherwise open a local snapshot. |
 | `co wiki open --local` | Render and open the self-contained local HTML snapshot. |
 | `co wiki open --no-launch` | Return the page address without opening the browser. |
@@ -266,7 +273,7 @@ therefore closes its delegate before the Wiki process timeout is reached.
 
 ## Scheduling and accounting
 
-launchd invokes the resolved `co wiki --root ... daily --scheduled` CLI every
+launchd invokes the resolved `co wiki --root ... sync --scheduled` CLI every
 five minutes, with PATH entries for co and installed delegates. Saved local
 time slots determine whether a batch is due. Repeated start reloads one job;
 missed slots coalesce into one catch-up. No permanent Wiki daemon is added.

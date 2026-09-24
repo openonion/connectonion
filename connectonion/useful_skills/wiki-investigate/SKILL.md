@@ -141,7 +141,7 @@ A **person's** page follows `wiki-page-person`, appended to these
 instructions by the notebook runner. If invoked directly through `co ai` and
 the template is not appended, read `../wiki-page-person/SKILL.md` relative to
 this Skill's directory before writing. Follow it exactly, including the headings and the `Contact`
-labels: the roster behind `co wiki people` finds a person's addresses and aliases
+labels: the roster behind `co wiki list people --aliases` finds a person's addresses and aliases
 by those labels, so a renamed section is an invisible one and the next batch
 meets them as a stranger again.
 
@@ -323,7 +323,7 @@ verification unresolved when it is missing.
 ## Question-driven execution and model routing
 
 Templates govern presentation, not which conclusions must be reached. With explicit
-`co wiki route` settings, the runner saves plan.json, synthesize.json and a separate
+`route.<stage>` settings (`co wiki config set`), the runner saves plan.json, synthesize.json and a separate
 method-review.json before rendering a candidate. Read those concise decisions and
 retained original evidence. Preserve overturned hypotheses and unresolved questions;
 source-ID checks do not prove truth. Method improvements are candidates only: never

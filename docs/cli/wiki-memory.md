@@ -26,19 +26,19 @@ the resulting context still exceeds the budget.
 ## Investigate questions with explicit stage models
 
 ```bash
-co wiki route plan --runner codex --model default
-co wiki route extract --runner coai --model ollama/qwen3.5:9b
-co wiki route synthesize --runner codex --model default
-co wiki route render --runner codex --model default
+co wiki config set route.plan default
+co wiki config set route.extract ollama/qwen3.5:9b
+co wiki config set route.synthesize default
+co wiki config set route.render default
 co wiki investigate projects/aurora.md
 ```
 
 Setting any route opts investigations into plan → synthesis → candidate rendering.
 Extraction runs when material exceeds the existing input budget, using its own
 configured route. Unconfigured stages inherit the notebook's existing runner/model.
-Inspect `co wiki route` and `co wiki config` before choosing destinations: explicitly
+Inspect `co wiki config` before choosing destinations: explicitly
 routing a stage to a cloud harness permits that stage to read the supplied evidence.
-There is no automatic provider escalation or retry loop. Run `co wiki route --clear`
+There is no automatic provider escalation or retry loop. Run `co wiki config set route.<stage> default` for each stage
 to remove all overrides and return to single-pass investigation; `route STAGE --clear`
 removes only that stage override.
 
@@ -77,7 +77,7 @@ co wiki review ID --verdict answer --author user \
 ```bash
 co wiki capture /absolute/path/rollout.jsonl --source codex
 co wiki capture /absolute/path/session.jsonl --source claude-code
-co wiki daily --days 30
+co wiki sync
 ```
 
 Capture filters to recognized user messages using the existing source adapters,

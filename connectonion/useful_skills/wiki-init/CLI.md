@@ -43,7 +43,7 @@ read-only: do not send, reply, create drafts, delete, archive or mark messages r
 | Bundled Wiki skills | `python -c 'from connectonion.skills_catalog import useful_skills_dir; print(useful_skills_dir())'`, then `wiki-init/`, `wiki-investigate/`, `wiki-page-person/` |
 | Project-local skills | `.co/skills/` under the selected project; do not omit the leading dot |
 | User-local skills | `~/.co/skills/`; the loader can select these before bundled skills |
-| Codex input sessions | `${CODEX_HOME:-$HOME/.codex}/sessions`; confirm the root in `co wiki --root '<root>' subscriptions` |
+| Codex input sessions | `${CODEX_HOME:-$HOME/.codex}/sessions`; confirm the root in `co wiki --root '<root>' sources` |
 | Claude Code input sessions | `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects`; confirm subscriptions |
 | Wiki root | Explicit `co wiki --root '<root>'`; only when omitted does it default to `~/.co/wiki` |
 | Wiki pages | `<root>/people/`, `<root>/projects/`, `<root>/notes/`; use paths returned by `stub` or `list` |
@@ -192,14 +192,14 @@ starts a separate model-driven workflow.
 ## Wiki: enumerate, build the skeleton, investigate
 
 ```bash
-co wiki --root '<absolute-notebook-root>' subscriptions
+co wiki --root '<absolute-notebook-root>' sources
 co wiki --root '<absolute-notebook-root>' map-skills
 co wiki --root '<absolute-notebook-root>' --json scan projects --days 150
 co wiki --root '<absolute-notebook-root>' --json scan people --days 150 --min-mails 1 --mine 'owner@example.com' --mine 'other-owner@example.com'
 co wiki --root '<absolute-notebook-root>' stub person 'Person Name' --email 'person@example.com' --handle 'Person Name'
 co wiki --root '<absolute-notebook-root>' stub project 'Project Name' --path '<observed-repository-path>'
 co wiki --root '<absolute-notebook-root>' investigate '<record-returned-by-stub>' --days 150
-co wiki --root '<absolute-notebook-root>' unfinished
+co wiki --root '<absolute-notebook-root>' investigate
 ```
 
 `--root` and Wiki `--json` belong before the subcommand. Repeat `--mine` for each
