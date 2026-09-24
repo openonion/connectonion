@@ -353,7 +353,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.8b4
+## Current Version: 1.8.8b5
+
+1.8.8b5 is an opt-in preview after 1.8.8b4 (the Claude Code beta, released
+separately). It carries one conversation on two devices (#1606) and the CLI
+sweep of #1493, #1292, #1496, #1457, #1339, #1475, #1605, #1387, #1375, #1633
+and #1617. Stable remains 1.8.7.
+
+- 1.8.8b5 (One conversation open on several devices of the same identity, through the relay too; a device switch no longer erases a turn; co browser close ends what it owned; refused commands logged in full; co proxy diagnose names endpoints; co whatsapp react and group create/add.)
+
+Earlier in this line:
 
 The Personal Wiki feature targets 1.9.0 (#1443). Stable 1.8.7 shipped the
 dashboard patch. This 1.8.8b4 candidate remains an opt-in preview; published
