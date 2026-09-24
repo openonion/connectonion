@@ -145,6 +145,9 @@ class Agent:
         # Token usage tracking
         self.total_cost: float = 0.0  # Cumulative cost in USD
         self.last_usage: Optional[TokenUsage] = None  # From most recent LLM call
+        # Images from the most recent LLM call that produced any (data URLs).
+        # Only image-output models fill this; it stays [] for text models.
+        self.last_images: List[str] = []
 
         # Initialize logger (unified: terminal + file + YAML evals)
         # Environment override stays highest priority for the legacy path. An
@@ -706,6 +709,14 @@ class Agent:
             if response is not None:
                 if not response.tool_calls:
                     content = response.content or ""
+                    images = getattr(response, 'images', None)
+                    if not content.strip() and isinstance(images, list) and images:
+                        # An image model's whole answer can be the picture.
+                        # Without a line of text the empty-terminal guard below
+                        # raised on a call that had succeeded; the images
+                        # themselves are on self.last_images.
+                        count = len(images)
+                        content = f"Generated {count} image{'s' if count > 1 else ''}."
                     if content.strip():
                         self.current_session['messages'].append({
                             "role": "assistant",
@@ -884,6 +895,17 @@ class Agent:
         if response.usage:
             self.last_usage = response.usage
             self.total_cost += response.usage.cost
+
+        # An image model answers with pictures rather than text, and the final
+        # string input() returns cannot carry them. Keep them on the agent and
+        # hand each to a connected client. isinstance, because a test double or
+        # a third-party LLM may return something that is not an LLMResponse.
+        images = getattr(response, 'images', None)
+        if isinstance(images, list) and images:
+            self.last_images = images
+            if self.io:
+                for image in images:
+                    self.io.send_image(image)
 
         # Record llm_result AFTER LLM completes (streams to client)
         # Convert usage to dict for JSON serialization (Pydantic objects need model_dump())
