@@ -140,6 +140,16 @@ def test_open_renders_a_local_page_without_touching_the_notebook(tmp_path, monke
     assert len(opened) == 1 and opened[0].startswith("file://")
 
 
+def test_open_uses_owner_wiki_url_when_no_root_is_selected(monkeypatch):
+    opened = []
+    monkeypatch.setattr("connectonion.address.load",
+                        lambda directory: {"address": "0x" + "a" * 64})
+    monkeypatch.setattr("webbrowser.open", lambda url: opened.append(url) or True)
+    result = runner.invoke(app, ["wiki", "open"])
+    assert result.exit_code == 0, result.output
+    assert opened == [f"https://chat.openonion.ai/0x{'a' * 64}/wiki"]
+
+
 def test_open_before_start_creates_nothing(tmp_path, monkeypatch):
     monkeypatch.setattr("webbrowser.open", lambda url, *a, **k: True)
     root = tmp_path / "wiki"

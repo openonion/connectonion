@@ -115,7 +115,8 @@ def make_wiki_app(factory):
     def overview(ctx: typer.Context,
                  root: Optional[Path] = typer.Option(None, "--root", help="Notebook root (default ~/.co/wiki)"),
                  json_out: bool = typer.Option(False, "--json", help="Machine-readable output with next command")):
-        ctx.obj = {"root": (root or Path.home() / ".co/wiki").expanduser().resolve(), "json": json_out}
+        ctx.obj = {"root": (root or Path.home() / ".co/wiki").expanduser().resolve(),
+                   "default_root": root is None, "json": json_out}
         if ctx.invoked_subcommand is None:
             if ctx.obj["json"]:
                 inspect_status(ctx)
@@ -671,14 +672,26 @@ def make_wiki_app(factory):
     @wiki.command("open", rich_help_panel="2. Browse pages")
     def open_page(ctx: typer.Context,
                   launch: bool = typer.Option(True, "--launch/--no-launch",
-                                              help="Open the rendered page in the default browser")):
-        """Render the notebook to a disposable local HTML page; no edits, no model."""
+                                              help="Open the Wiki in the default browser"),
+                  local: bool = typer.Option(False, "--local", help="Use the local HTML snapshot")):
+        """Open the full-page Wiki; use --local for the file snapshot."""
         from ...wiki.reader import open_reader
 
         def operation(root):
+            from connectonion.project import selected_identity_dir
+            from connectonion import address
+
+            identity = None if local or not ctx.obj["default_root"] else address.load(selected_identity_dir())
+            if identity:
+                import webbrowser
+
+                url = f"https://chat.openonion.ai/{identity['address']}/wiki"
+                if launch:
+                    webbrowser.open(url)
+                return {"page": url, "launched": launch}, ["status"]
             page = open_reader(root, launch=launch)
             return {"page": str(page), "launched": launch,
-                    "note": "a snapshot; run this command again after the next maintenance pass"}, ["status"]
+                    "note": "local snapshot; run again after the next maintenance pass"}, ["status"]
         _handle(ctx, operation, ["doctor"])
 
     @wiki.command("doctor", rich_help_panel="5. Settings and diagnostics")

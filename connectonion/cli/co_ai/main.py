@@ -168,4 +168,4 @@ def start_server(
         from ...network.trust import TrustAgent
 
         trust = TrustAgent("careful", invite_code=invite_code, co_dir=co_dir)
-    host(agent, port=port, trust=trust, co_dir=co_dir)
+    host(agent, port=port, trust=trust, co_dir=co_dir, wiki_root=Path.home() / ".co/wiki")

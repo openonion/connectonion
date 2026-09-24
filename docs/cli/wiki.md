@@ -175,8 +175,9 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co wiki unsubscribe codex` | Disable that source. |
 | `co wiki list people` / `show people/alice.md` / `search Alice` | Inspect Markdown without model calls. |
 | `co wiki status` / `subscriptions` / `config` / `logs` / `usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. |
-| `co wiki open` | Render a private, self-contained HTML snapshot and open it. |
-| `co wiki open --no-launch` | Render without opening the browser. |
+| `co wiki open` | Open the full-page private Wiki through the current `co ai` Host when its identity is configured; otherwise open a local snapshot. |
+| `co wiki open --local` | Render and open the self-contained local HTML snapshot. |
+| `co wiki open --no-launch` | Return the page address without opening the browser. |
 
 `init` is the foreground Skill workflow. `start` remains the explicit
 background lifecycle command; initialization does not install a schedule.
