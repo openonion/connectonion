@@ -297,3 +297,75 @@ def test_the_map_reports_the_absence_reason_it_was_given(tmp_path):
                      absent={'gmail': 'authorized but could not be opened (TimeoutError); not searched'})
     assert 'gmail: authorized but could not be opened (TimeoutError); not searched' in told['coverage']
     assert 'outlook: not configured or disabled; not searched' in told['coverage']
+
+
+def test_the_owners_page_is_filled_from_the_map_and_named(tmp_path, monkeypatch):
+    """A first notebook opened on a blank page titled "Account owner" even though
+    the map had just learned the owner's name, who they write to most and where
+    they have been working. The map fills what it knows, cites itself, and asks
+    about possible own addresses on the page; role and company stay Unknown."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+
+    class Mail:
+        def my_addresses(self): return {'xietianle@outlook.com'}
+        def my_name(self): return 'Aaron x'
+
+    people = [
+        {'name': 'Ody Zhou', 'address': 'zhouodywork@gmail.com', 'mails': 30, 'sent': 20, 'received': 10,
+         'one_way': False, 'first': '2026-07-01', 'last': '2026-09-20', 'boxes': ['gmail']},
+        {'name': 'Ody Zhou', 'address': 'zhouody@gmail.com', 'mails': 4, 'sent': 2, 'received': 2,
+         'one_way': False, 'boxes': ['outlook']},
+        {'name': 'Tamara Berryman', 'address': 'tamara@unsw.example', 'mails': 12, 'sent': 5, 'received': 7,
+         'one_way': False, 'boxes': ['outlook']},
+        {'name': '', 'address': 'aaronplus1996@gmail.com', 'mails': 106, 'sent': 106, 'received': 0,
+         'one_way': True, 'boxes': ['gmail']},
+        {'name': 'Aaron', 'address': 'notifications@github.com', 'mails': 96, 'sent': 1, 'received': 95,
+         'one_way': False, 'boxes': ['gmail']},
+        {'name': '', 'address': 'larryleework7@gmail.com', 'mails': 14, 'sent': 14, 'received': 0,
+         'one_way': True, 'boxes': ['gmail']},
+    ]
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows',
+                        lambda *a: (people, {'xietianle@outlook.com'}))
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [
+        {'origin': '', 'repo': '/w/connectonion', 'path': '/w/connectonion', 'sessions': 40,
+         'first': '2026-08-01', 'last': '2026-09-20'}])
+    result = build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=90)
+    page = Notebook(tmp_path).read(result['owner']['record'])
+    assert page.startswith('# Aaron x\n')
+    assert 'Ody Zhou (34)' in page and 'Tamara Berryman (12)' in page
+    assert page.index('Ody Zhou (34)') < page.index('Tamara Berryman (12)')
+    assert 'aaronplus1996@gmail.com (106' not in page.split('## Uncertainties')[0]   # not a correspondent
+    assert 'Possibly also the owner\'s: aaronplus1996@gmail.com' in page
+    assert 'co wiki init --mine aaronplus1996@gmail.com' in page
+    # A colleague who answers on another channel is asked about by init, not named on the page.
+    assert 'larryleework7@gmail.com' in {row['address'] for row in result['possible_own_addresses']}
+    assert 'larryleework7' not in page
+    assert 'connectonion (40)' in page and '[1] Enumeration metadata' in page
+    assert '- Role: Unknown' in page and '- Company: Unknown' in page
+    # GitHub notifications, named after the owner, are a notice, not a person.
+    assert 'notifications@github.com' in {row['address'] for row in result['automated_correspondents']}
+    assert not any(row.get('address') == 'notifications@github.com' for row in result['people'])
+
+    # A second map never overwrites what an investigation wrote.
+    record = result['owner']['record']
+    notebook = Notebook(tmp_path)
+    notebook.write(record, notebook.read(record).replace('- This is the owner\'s own page. [1]',
+                                                         '- Founder of OpenOnion. [2]'))
+    build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=90)
+    assert '- Founder of OpenOnion. [2]' in notebook.read(record)
+
+
+def test_a_name_given_at_init_wins_over_the_mailbox(tmp_path):
+    from connectonion.wiki.map import _owner_name
+
+    class Mail:
+        def my_name(self): return 'Aaron x'
+
+    class Broken:
+        def my_name(self): raise RuntimeError('graph down')
+
+    assert _owner_name({'outlook': Mail()}, 'Aaron Xie') == 'Aaron Xie'
+    assert _owner_name({'gmail': Broken(), 'outlook': Mail()}) == 'Aaron x'
+    assert _owner_name({}) == 'Account owner'

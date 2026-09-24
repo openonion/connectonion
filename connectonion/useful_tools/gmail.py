@@ -1203,6 +1203,11 @@ class Gmail(GmailMailbox):
                 addresses.add(alias['sendAsEmail'].lower())
         return {address for address in addresses if address}
 
+    def my_name(self) -> str:
+        """The primary send-as display name, or '' when none is set."""
+        aliases = self._get_service().users().settings().sendAs().list(userId='me').execute().get('sendAs', [])
+        return next((a.get('displayName') or '' for a in aliases if a.get('isPrimary')), '')
+
     def get_my_identity(self) -> str:
         """Get the user's email address and aliases (who am I?).
 

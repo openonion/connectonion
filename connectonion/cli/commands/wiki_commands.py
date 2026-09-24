@@ -228,7 +228,8 @@ def make_wiki_app(factory):
                   days: int = typer.Option(150, "--days", min=1),
                   skills_dir: List[Path] = typer.Option([], "--skills-dir"),
                   mine: List[str] = typer.Option([], "--mine"),
-                  mail: List[str] = typer.Option([], "--mail", help="Only map these mailboxes: gmail or outlook (repeatable); default: connected mailboxes")):
+                  mail: List[str] = typer.Option([], "--mail", help="Only map these mailboxes: gmail or outlook (repeatable); default: connected mailboxes"),
+                  name: str = typer.Option("", "--name", help="Your name as the title of your own page; default: the name a mailbox has on file")):
         """Build people, organization, project and skill maps; no model or investigation.
 
         When to use: Run co wiki init for a new notebook or to refresh its map.
@@ -271,7 +272,7 @@ def make_wiki_app(factory):
             failed = {row["source"]: row["error"] for row in errors}
             result = build_map(root, sources, clients, days=days,
                                skill_directories=skills_dir or None, mine=mine, source_errors=errors,
-                               absent=_absent_mail(selected, available, failed, sources, bool(mail)))
+                               absent=_absent_mail(selected, available, failed, sources, bool(mail)), name=name)
             tips = []
             for kind, provider in (("gmail", "google"), ("outlook", "microsoft")):
                 if kind not in available:

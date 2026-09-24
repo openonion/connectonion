@@ -1017,6 +1017,10 @@ class Outlook:
         line = self.get_my_email()
         return {line.split(":", 1)[-1].strip().lower()} if "@" in line else set()
 
+    def my_name(self) -> str:
+        """The display name on the account, or '' when none is set."""
+        return str(self._request("GET", "/me", params={"$select": "displayName"}).get("displayName") or "")
+
     def get_my_email(self) -> str:
         """Get the user's email address.
 

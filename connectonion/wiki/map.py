@@ -101,9 +101,16 @@ def _write_only(row: dict) -> bool:
 
 
 def _notice(row: dict) -> bool:
-    """Only sends, never hears back, and looks like a system -- or is a relay."""
+    """Only sends, never hears back, and looks like a system -- or is a relay.
+
+    "Never hears back" is nearly never for a notification address: replying to
+    a GitHub notification by mail once made notifications@github.com (95 in,
+    1 out, display name "Aaron") a person page named after the owner.
+    """
     address = row['address']
     if RELAY.search(address):
+        return True
+    if AUTOMATED_HINT.search(address) and row.get('received', 0) >= 10 * max(row.get('sent', 0), 1):
         return True
     return bool(row.get('one_way') and (AUTOMATED_HINT.search(address) or BULK.search(address)
                                          or AGENT_ADDRESS.search(address)))
@@ -143,8 +150,87 @@ def _session_state(subscription: dict, projects: list) -> str:
     return 'scanned' if projects else 'scanned; no sessions in this window'
 
 
+def _owner_name(clients: dict, given: str = '') -> str:
+    """What the owner is called: what they said, else what a mailbox has on file."""
+    if given.strip():
+        return given.strip()
+    for client in clients.values():
+        try:
+            name = client.my_name() if hasattr(client, 'my_name') else ''
+        except Exception:  # A name is a nicety; a failed lookup must not block the map.
+            name = ''
+        if name and name.strip():
+            return name.strip()
+    return 'Account owner'
+
+
+UNFILLED = '- Unknown — not investigated yet'
+
+
+def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
+    """The owner's page, filled with what the map itself knows.
+
+    Every other page is written from the owner's point of view, and a first
+    notebook opened on a blank page titled "Account owner" showed nothing of
+    what the map had just learned. Only facts the enumeration holds go here --
+    addresses, mailboxes, who the owner writes to most, where they have been
+    working -- each cited to the map. Role, company and language are not in
+    mail headers and stay Unknown for investigation. A section someone has
+    already filled is never touched.
+    """
+    owner = report.get('owner')
+    if not owner:
+        return
+    record = owner['record']
+    page = notebook.read(record)
+    original = page
+    if page.startswith('# Account owner\n') and name != 'Account owner':
+        page = f'# {name}\n' + page[len('# Account owner\n'):]
+    days, date = report['days'], report['started'][:10]
+    own = {row['record'] for row in report['possible_own_addresses']}
+    people = [row for row in report['people'] if row.get('classification') == 'unassessed'
+              and row['record'] not in own and row.get('mails')]
+    people.sort(key=lambda row: (-row['mails'], row['record']))
+    sent = sum(row.get('sent', 0) for row in people)
+    received = sum(row.get('received', 0) for row in people)
+    top = ', '.join(f"{row.get('name') or row['address']} ({row['mails']})" for row in people[:5])
+    projects = sorted(report['projects'], key=lambda row: (-row['sessions'], row['name']))
+    sessions = sum(row['sessions'] for row in projects)
+    boxes = sorted({box for row in people for box in row.get('boxes', [])})
+    filled = {
+        'Who they are': [f"The owner of this notebook{'' if name == 'Account owner' else ', ' + name}; "
+                         f"the other pages are written from their side. [1]"],
+        'Why they are here': ['This is the owner\'s own page. [1]'],
+        'History': ([f"In the {days} days to {date}: wrote {sent} and received {received} messages with "
+                     f"{len(people)} correspondents in {', '.join(boxes) or 'no mailbox'}. [1]"]
+                    + ([f"Most mail with: {top}. [1]"] if top else [])
+                    + ([f"Coding sessions in the same window: {sessions} across {len(projects)} projects; most: "
+                        + ', '.join(f"{row['name']} ({row['sessions']})" for row in projects[:5]) + '. [1]']
+                       if projects else [])),
+    }
+    for section, lines in filled.items():
+        page = page.replace(f'## {section}\n{UNFILLED}', f'## {section}\n' + '\n'.join(f'- {line}' for line in lines), 1)
+    # init asks about every write-only address; the page names only those that
+    # carry the owner's own name. On the real map the write-only list also held
+    # two colleagues who answer on other channels, and a page stating they were
+    # "possibly the owner's" would mislead whoever reads it.
+    tokens = {part for address in owner['addresses'] for part in re.split(r'[^a-z]+', address.split('@')[0])
+              if len(part) >= 4} | {part for part in re.split(r'[^a-z]+', name.casefold()) if len(part) >= 4}
+    asked = [f"- Possibly also the owner's: {row['address']} ({row['sent']} sent, none received). "
+             f"If it is yours: {row['confirm']}" for row in report['possible_own_addresses']
+             if any(token in row['address'].split('@')[0].casefold() for token in tokens)][:5]
+    if asked and '## Uncertainties\n' in page and asked[0] not in page:
+        page = page.replace(f'## Uncertainties\n{UNFILLED}\n', '## Uncertainties\n', 1)
+        page = page.replace('## Uncertainties\n', '## Uncertainties\n' + '\n'.join(asked) + '\n', 1)
+    if '[1]' in page and '\n## Sources\n- (none yet)' in page:
+        page = page.replace('\n## Sources\n- (none yet)', '\n## Sources\n- [1] Enumeration metadata, observed '
+                            + report['started'] + ' — .state/map.json; window-limited, not lifetime totals', 1)
+    if page != original:
+        notebook.write(record, page)
+
+
 def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150,
-              skill_directories=None, mine=(), source_errors=None, absent=None) -> dict:
+              skill_directories=None, mine=(), source_errors=None, absent=None, name: str = '') -> dict:
     """Map observed identities; correspondent classification remains unassessed."""
     notebook = Notebook(root)
     report = {'phase': 'mapping', 'started': datetime.now(timezone.utc).isoformat(),
@@ -164,6 +250,7 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
         aliases = sorted({address.casefold() for address in own})
         existing = next((p['path'] for p in roster if set(aliases).intersection(p['emails'])), None)
         owner_record = existing or _record('people', 'Account owner', aliases[0])
+        owner_name = _owner_name(clients, name)
         if notebook.stub_person(owner_record, 'Account owner', aliases, email=', '.join(aliases)):
             report['created'].append(owner_record)
         report['owner'] = {'record': owner_record, 'addresses': aliases}
@@ -189,6 +276,9 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
         made = notebook.stub_person(record, name, addresses, email=', '.join(addresses))
         mails = sum(row.get('mails', 0) for row in group)
         report['people'].append({**first, 'mails': mails, 'addresses': addresses, 'record': record,
+                                 'sent': sum(row.get('sent', 0) for row in group),
+                                 'received': sum(row.get('received', 0) for row in group),
+                                 'boxes': sorted({box for row in group for box in row.get('boxes', [])}),
                                  'classification': 'automated candidate' if automated else 'unassessed'})
         org_rows += [{'address': a, 'record': record} for a in addresses]
         # Asked about, not acted on: the page stays exactly as it is until the
@@ -277,6 +367,8 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
         report['projects'].append({**row, 'record': record})
     report['coverage'] += [f'{name}: {sub.get("root", "")} — ' + _session_state(sub, report['projects'])
                            for name, sub in subscriptions.items() if sub.get('kind') in ('codex', 'claude-code')]
+    if report.get('owner'):
+        _fill_owner(notebook, report, owner_name)
     report.update(phase='partial' if report['errors'] else 'mapped', finished=datetime.now(timezone.utc).isoformat(),
                   investigation='not started', classification='unassessed; no correspondents filtered')
     save()
