@@ -9,7 +9,7 @@ def prepare_post(path: str, caption: str, account: str) -> dict:
     """Prepare a reviewable local plan; this does not create a TikTok draft.
 
     The logged-in upload form and its per-account settings must be observed
-    before a submission adapter can be implemented. See co-creator/SKILL.md.
+    before a submission adapter can be implemented. See co-tiktok/SKILL.md.
     """
     if not re.fullmatch(r"@[A-Za-z0-9._]{2,24}", account):
         raise CreatorError("invalid_account", "Supply the intended TikTok @handle for the local plan.")
