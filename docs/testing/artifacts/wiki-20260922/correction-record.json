@@ -1,0 +1,16 @@
+{
+  "id": "ed1024e5327a4333b873ac27ef7744de",
+  "subject": "projects/atlas-58b543867f.md",
+  "statement": "Mira owns Atlas maintenance; the earlier Leo attribution is incorrect. No hosted release has occurred.",
+  "author": "synthetic-user",
+  "basis": "Explicit owner clarification in /Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas/ownership.txt; inspect this file.",
+  "previous": "Leo owns Atlas",
+  "applies": "As of 2026-09-22",
+  "sources": [
+    "/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas/ownership.txt"
+  ],
+  "supersedes": [],
+  "kind": "correction",
+  "recorded_at": "2026-09-22T01:28:52.894169+00:00",
+  "status": "asserted"
+}

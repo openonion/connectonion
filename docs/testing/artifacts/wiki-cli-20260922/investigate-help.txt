@@ -1,0 +1,36 @@
+
+ Usage: python -m connectonion.cli.main wiki investigate [OPTIONS] [record]
+
+ Investigate one existing page; omit the argument to discover available pages.
+
+ When to use: Fill an existing page from its available evidence.
+
+ Choose the input: Run co wiki investigate without arguments. It lists real
+ pages without running a model. Copy the printed Next command, or supply
+ one exact title or email from your notebook. Do not copy fictional paths
+ from examples. With no pages, run co wiki init first.
+
+ More than one match: Use an exact path from the reported choices. A missing
+ or ambiguous selection does not start a model. --handle adds known aliases;
+ --days limits the search window. Skill pages use retained run evidence;
+ --eval-dir selects that evidence directory, not the original Skill directory.
+
+ Check the result: Follow the printed show command and review sources,
+ Unknown sections and coverage. A completed command is not a factual-quality
+ verdict; incomplete evidence remains incomplete. Use co wiki unfinished
+ to find remaining gaps.
+
+ Use --help only to read options; it never runs an investigation.
+
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│   record      <str>  Exact page path, unique title or email. Omit to list    │
+│                      your pages; no model runs.                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --handle          <str>               Every spelling, address or alias       │
+│                                       (repeatable)                           │
+│ --days            <int range> [x>=1]  How far back to search [default: 150]  │
+│ --eval-dir        <path>              Skill run summary directory            │
+│                                       (repeatable; skills only)              │
+│ --help                                Show this message and exit.            │
+╰──────────────────────────────────────────────────────────────────────────────╯

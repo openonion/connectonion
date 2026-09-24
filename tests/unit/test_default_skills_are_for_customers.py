@@ -2,13 +2,17 @@
 
 from pathlib import Path
 
-
 EXPECTED_DEFAULTS = {
     "dashboard",
     "topup",
     "install-connectonion",
     "co-browser",
     "co-mail-and-drive",
+    "wiki-init",
+    "wiki-investigate",
+    "wiki-extract",
+    "wiki-maintain",
+    "wiki-abstract",
 }
 CONTRIBUTOR_SKILLS = {"commit", "review-pr", "ship-feature"}
 

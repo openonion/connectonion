@@ -1,0 +1,102 @@
+{
+  "A": {
+    "verdict": "revise",
+    "issues": [
+      {
+        "severity": "major",
+        "type": "unsupported_inference",
+        "text": "Key decisions states 'Keep the tool local and command-line based' as a decision. The original material supports local implementation and no hosted service, but explicitly records hosted publication as a later request, not a completed deployment or decision.",
+        "sources": [
+          "goals[3]",
+          "original_material user codex:atlas-synthetic:175",
+          "original_files README.md"
+        ]
+      },
+      {
+        "severity": "minor",
+        "type": "goal_miss",
+        "text": "Overview does not contain the requested short fenced ASCII flow, although the evidence supports one.",
+        "sources": [
+          "goals[1]",
+          "original_files README.md",
+          "original_files count.py"
+        ]
+      },
+      {
+        "severity": "minor",
+        "type": "citation_granularity",
+        "text": "Source [3] combines draft.txt and output.txt, so not every inspected file has a distinct numbered reference.",
+        "sources": [
+          "goals[2]",
+          "A Sources [3]"
+        ]
+      }
+    ],
+    "notes": [
+      "A accurately preserves Sessions: 1, First seen: 2026-09-22, Last seen: 2026-09-22.",
+      "A correctly treats hosted site as unimplemented.",
+      "No false owner claim is made; ownership is left unknown."
+    ]
+  },
+  "B": {
+    "verdict": "accept",
+    "issues": [],
+    "notes": [
+      "B accurately describes Atlas as a local command-line word counter and keeps hosted site unimplemented.",
+      "B includes short fenced ASCII overview and architecture diagrams supported by README.md/count.py.",
+      "B gives distinct numbered references for README.md, count.py, draft.txt, output.txt, execution evidence, page, session, and coverage.",
+      "B correctly says no explicit product or technical decision record was found, instead of converting current implementation into a decision.",
+      "B preserves Sessions: 1, First seen: 2026-09-22, Last seen: 2026-09-22."
+    ]
+  },
+  "A_vs_B": {
+    "preference": "B",
+    "reason": "B better satisfies the goals: it includes evidenced fenced ASCII flow, separates inspected-file references, preserves mapped dates/session count, and avoids A's unsupported inference that local-only scope is a recorded decision."
+  },
+  "C_after_correction": {
+    "verdict": "accept",
+    "scope_note": "C is evaluated with C_extra_evidence and is not a same-input comparison against A/B.",
+    "issues": [],
+    "checks": {
+      "owner": {
+        "status": "pass",
+        "text": "C correctly says Mira owns Atlas maintenance and notes Leo was incorrectly recorded as owner.",
+        "sources": [
+          "C_extra_evidence.owner_decision",
+          "C_extra_evidence.reflection"
+        ]
+      },
+      "decision": {
+        "status": "pass",
+        "text": "C records Mira's 2026-09-22 pilot decision: keep the pilot local so reviewers can work without a hosted account.",
+        "sources": [
+          "C_extra_evidence.owner_decision"
+        ]
+      },
+      "hosting": {
+        "status": "pass",
+        "text": "C correctly states hosting is deferred for the pilot and not permanently rejected; no hosted website was released.",
+        "sources": [
+          "C_extra_evidence.owner_decision",
+          "original_files README.md"
+        ]
+      },
+      "diagram_preservation": {
+        "status": "pass",
+        "text": "C preserves the short fenced ASCII overview flow and the implementation architecture map from B.",
+        "sources": [
+          "goals[1]",
+          "C_after_correction Overview",
+          "C_after_correction Architecture map"
+        ]
+      },
+      "mapped_metadata": {
+        "status": "pass",
+        "text": "C preserves Sessions: 1, First seen: 2026-09-22, Last seen: 2026-09-22.",
+        "sources": [
+          "original_material page projects/atlas-58b543867f.md"
+        ]
+      }
+    }
+  }
+}

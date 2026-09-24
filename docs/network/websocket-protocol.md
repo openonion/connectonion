@@ -936,6 +936,21 @@ The HTML is agent-authored and untrusted: clients render it in a sandboxed ifram
 scripting and network access blocked. Files over 2MB are not sent. See
 [dashboard.md](dashboard.md).
 
+#### WIKI_READ / WIKI_RESULT
+
+An authenticated owner may request the current private Wiki reader on the same
+signed OIP session used by Chat. The Host renders the existing read-only HTML
+template from its configured Wiki root and returns it to that request only. A
+non-owner receives an error without notebook content. `co ai` configures the
+default `~/.co/wiki` root; other Hosts have no Wiki unless configured with
+`wiki_root`. The HTML is capped at 16 MiB. This frame is never an Agent profile
+or public static artifact.
+
+```json
+{"type":"WIKI_READ","request_id":"read-1"}
+{"type":"WIKI_RESULT","request_id":"read-1","ok":true,"html":"<!doctype html>…"}
+```
+
 #### CONTROL_CENTER_APP (preview)
 
 The full Web Control Center is a reviewed website rather than an HTML snapshot. After

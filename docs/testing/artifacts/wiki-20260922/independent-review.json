@@ -1,0 +1,46 @@
+{
+  "decision": "revise",
+  "reasons": [
+    "The candidate accurately describes the local CLI word counter and preserves the hosted site as unimplemented.",
+    "However, it fails an explicit output goal requiring a short fenced ASCII user-flow diagram in Overview.",
+    "It also weakens traceability by grouping distinct source files together and frames current implementation status as a decision without direct evidence."
+  ],
+  "issues": [
+    {
+      "severity": "major",
+      "type": "missing_required_content",
+      "issue": "Overview does not include a short fenced ASCII user-flow diagram.",
+      "output_pointer": "candidate: ## Overview",
+      "source_pointer": "request.json goals[1]",
+      "evidence_status": "missing_evidence",
+      "reason": "The Overview contains only a prose bullet. There is no fenced code block and no ASCII flow such as input file -> count.py -> stdout."
+    },
+    {
+      "severity": "major",
+      "type": "traceability",
+      "issue": "Distinct source files are not separately traceable.",
+      "output_pointer": "candidate: ## Sources, source [3]",
+      "source_pointer": "request.json goals[5]; request.json source_files.draft.txt; request.json source_files.output.txt",
+      "evidence_status": "proven_by_output",
+      "reason": "The candidate combines draft.txt and output.txt into one citation. The goal requires distinct source files to be separately traceable, so each file should have its own source entry or otherwise be individually addressable."
+    },
+    {
+      "severity": "minor",
+      "type": "unsupported_inference",
+      "issue": "Current implementation status is phrased as a key decision.",
+      "output_pointer": "candidate: ## Key decisions",
+      "source_pointer": "request.json source_files.README.md; request.json materials[2].text",
+      "evidence_status": "missing_evidence",
+      "reason": "The evidence says Atlas is currently local/CLI and that a hosted version is not implemented. It does not show an explicit decision to keep the tool local, so this should be reframed as current status rather than a decision."
+    }
+  ],
+  "checks": {
+    "local_word_counter_accuracy": "pass",
+    "real_command_and_sample_result": "pass",
+    "hosted_site_unimplemented": "pass",
+    "owners_not_invented": "pass",
+    "decision_rationale_not_invented": "revise",
+    "distinct_source_files_traceable": "revise",
+    "overview_ascii_flow_diagram": "revise"
+  }
+}

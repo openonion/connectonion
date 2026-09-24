@@ -484,7 +484,10 @@ def call(
 def ai(
     prompt: Optional[str] = typer.Argument(None, help="One-shot prompt (runs and exits)"),
     port: int = typer.Option(8000, "--port", "-p", help="Port for web server"),
-    model: str = typer.Option(DEFAULT_MODEL, "--model", "-m", help="Model to use"),
+    model: Optional[str] = typer.Option(
+        None, "--model", "-m", show_default=DEFAULT_MODEL,
+        help="Model to use; unset means the harness's own default",
+    ),
     max_iterations: int = typer.Option(100, "--max-iterations", "-i", help="Max iterations"),
     full_access: bool = typer.Option(
         False,
@@ -524,6 +527,23 @@ def ai(
     no_listen: bool = typer.Option(
         False, "--no-listen", help="Do not answer any channel this run"
     ),
+    sandbox: str = typer.Option(
+        "workspace-write", "--sandbox",
+        metavar="read-only|workspace-write|danger-full-access",
+        help="What a delegated Codex run may write. workspace-write is cwd and "
+             "TMPDIR only; reads are unrestricted at every level.",
+    ),
+    harness: str = typer.Option(
+        "ours", "--harness", metavar="ours|codex|claude-code",
+        help="Which agent loop runs the task. A delegated harness runs on its own "
+             "subscription with its own tools, and spends none of our tokens "
+             "deciding to delegate.",
+    ),
+    permission_mode: str = typer.Option(
+        "default", "--permission-mode",
+        help="Claude Code headless permissions. The default is manual; select a broader mode explicitly.",
+    ),
+    timeout: int = typer.Option(600, "--timeout", min=1, help="Delegated harness task timeout, in seconds"),
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
@@ -544,6 +564,10 @@ def ai(
         invite_code=invite_code,
         invite_code_file=invite_code_file,
         listen=channels,
+        harness=harness,
+        sandbox=sandbox,
+        permission_mode=permission_mode,
+        timeout=timeout,
     )
 
 
@@ -758,6 +782,12 @@ def server_destroy(
     from .commands.server_commands import handle_server_destroy
     if not handle_server_destroy(name=name, yes=yes):
         raise typer.Exit(1)
+
+
+# Experimental Wiki inspection (no background collection entry yet).
+from .commands.wiki_commands import make_wiki_app
+
+app.add_typer(make_wiki_app(_typer_app), name="wiki")
 
 
 # Skills command group

@@ -1,0 +1,149 @@
+{
+  "model": "co/gemini-3.7-flash",
+  "cases": [
+    {
+      "command": "co wiki",
+      "exit": 0,
+      "output": "Wiki \u2014 map first, investigate next\n\nBuild the map (no model):\n  co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' init\nChoose a page to investigate (no model until you select one):\n  co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' investigate\nBrowse the map in your browser:\n  co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' open\nPreview pending updates (no model):\n  co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' sync --dry-run\nUpdate from pending material:\n  co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' sync\nInspect results and failures:\n  co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' logs\nDiscover all commands and options:\n  co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' --help\n\ninit builds People, Organizations, Projects and Skills; it does not start investigation.\ninvestigate with no argument lists your pages and prints a concrete next command.\ninvestigate and sync may use the configured model. start explicitly enables background work.\nTip: put --root and --json before the subcommand; add --help after any command.\n\nWiki status\n\nState: Background maintenance has not started. Map building and investigation are separate steps.\nRoot: /private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces\nConfigured: No\nDate: 2026-09-22\nTimezone: Australia/Sydney\nSchedule times:\n  03:00\n  04:00\n  06:00\n  17:00\n  18:00\n  19:00\nNext run: Unknown\nWorker: None\nBatches today: 0\nRunner attempts today: 0\nUsage today:\n  Input tokens: Unknown\n  Output tokens: Unknown\n  Cached input tokens: Unknown\nUsage coverage:\n  Input tokens:\n    Known attempts: 0\n    Total attempts: 0\n  Output tokens:\n    Known attempts: 0\n    Total attempts: 0\n  Cached input tokens:\n    Known attempts: 0\n    Total attempts: 0\nLast run: Unknown\nNext: co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' init\n",
+      "goal": "Build the initial map.",
+      "next": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' init",
+      "reply": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' init",
+      "pass": true
+    },
+    {
+      "command": "co wiki investigate",
+      "exit": 0,
+      "output": "Wiki investigate\n\nNo pages available to investigate. Run init to build the map first.\nNext: co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' init\n",
+      "goal": "Build a map because no pages exist yet.",
+      "next": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' init",
+      "reply": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' init",
+      "pass": true
+    },
+    {
+      "command": "co wiki investigate",
+      "exit": 0,
+      "output": "Wiki investigate\n\npeople/ody-123.md\nNext: co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' investigate people/ody-123.md\n",
+      "goal": "Investigate the available person page.",
+      "next": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' investigate people/ody-123.md",
+      "reply": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' investigate people/ody-123.md",
+      "pass": true
+    },
+    {
+      "command": "co wiki unfinished",
+      "exit": 0,
+      "output": "Wiki unfinished\n\n1.\n  Path: people/ody-123.md\n  Unknown: 14\n  Status: Investigation: mapped 2026-09-22 \u00b7 not investigated yet\n  Investigated passes: 0\nNext: co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' investigate people/ody-123.md\n",
+      "goal": "Investigate the unfinished page.",
+      "next": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' investigate people/ody-123.md",
+      "reply": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' investigate people/ody-123.md",
+      "pass": true
+    },
+    {
+      "command": "co wiki list people",
+      "exit": 0,
+      "output": "Wiki list\n\npeople/ody-123.md\nNext: co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' show people/ody-123.md\n",
+      "goal": "Read the listed person page.",
+      "next": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' show people/ody-123.md",
+      "reply": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' show people/ody-123.md",
+      "pass": true
+    },
+    {
+      "command": "co wiki search Ody",
+      "exit": 0,
+      "output": "Wiki search\n\n1.\n  Record: people/ody-123.md\n  Line: 1\n  Text: # Ody\n2.\n  Record: people/ody-123.md\n  Line: 4\n  Text: - Email: ody@example.org\n3.\n  Record: people/ody-123.md\n  Line: 9\n  Text: - Handles: ody@example.org\n4.\n  Record: people/ody-123.md\n  Line: 11\n  Text: - Also known as: ody@example.org\nNext: co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' show people/ody-123.md\n",
+      "goal": "Read the matching page.",
+      "next": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' show people/ody-123.md",
+      "reply": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' show people/ody-123.md",
+      "pass": true
+    },
+    {
+      "command": "co wiki show people/ody-123.md",
+      "exit": 0,
+      "output": "# Ody\n\n## Contact\n- Email: ody@example.org\n- Phone: Unknown\n- Company: Unknown\n- Role: Unknown\n- Signing entity: Unknown\n- Handles: ody@example.org\n- Language: Unknown\n- Also known as: ody@example.org\n\n## Who they are\n- Unknown \u2014 not investigated yet\n\n## Why they are here\n- Unknown \u2014 not investigated yet\n\n## Our relationship\n- Unknown \u2014 not investigated yet\n\n## History\n- Unknown \u2014 not investigated yet\n\n## Open threads\n- Unknown \u2014 not investigated yet\n\n## How they communicate\n- Unknown \u2014 not investigated yet\n\n## How the user writes to them\n- Unknown \u2014 not investigated yet\n\n## Cadence\n- Unknown \u2014 not investigated yet\n\n## Uncertainties\n- Unknown \u2014 not investigated yet\n\n## Sources\n- (none yet)\n\nInvestigation: mapped 2026-09-22 \u00b7 not investigated yet\n\nNext: co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' list people\n",
+      "goal": "Return to the list of people.",
+      "next": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' list people",
+      "reply": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' list people",
+      "pass": true
+    },
+    {
+      "command": "co wiki show people/missing.md",
+      "exit": 1,
+      "output": "Error: Record not found; list the notebook for current record paths\nNext: co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' list people\n",
+      "goal": "Find the actual person page path.",
+      "next": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' list people",
+      "reply": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' list people",
+      "pass": true
+    },
+    {
+      "command": "co wiki investigate Nobody",
+      "exit": 1,
+      "output": "Error: No page matches that name, email or path. Run investigate without arguments to see available pages.\nNext: co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' investigate\n",
+      "goal": "Discover available pages without running a model.",
+      "next": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' investigate",
+      "reply": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' investigate",
+      "pass": true
+    },
+    {
+      "command": "co wiki people",
+      "exit": 0,
+      "output": "Wiki people\n\n1.\n  Path: people/ody-123.md\n  Title: Ody\n  Aliases:\n    ody@example.org\n  Emails:\n    ody@example.org\n  Summary: Unknown \u2014 not investigated yet\nNext: co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' list people\n",
+      "goal": "List person page paths.",
+      "next": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' list people",
+      "reply": "`co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' list people --paths`",
+      "pass": false
+    },
+    {
+      "command": "co wiki status",
+      "exit": 0,
+      "output": "Wiki status\n\nState: Background maintenance has not started. Map building and investigation are separate steps.\nRoot: /private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces\nConfigured: Yes\nDate: 2026-09-22\nTimezone: Australia/Sydney\nSchedule times:\n  03:00\n  04:00\n  06:00\n  17:00\n  18:00\n  19:00\nNext run: Unknown\nWorker: None\nBatches today: 0\nRunner attempts today: 0\nUsage today:\n  Input tokens: Unknown\n  Output tokens: Unknown\n  Cached input tokens: Unknown\nUsage coverage:\n  Input tokens:\n    Known attempts: 0\n    Total attempts: 0\n  Output tokens:\n    Known attempts: 0\n    Total attempts: 0\n  Cached input tokens:\n    Known attempts: 0\n    Total attempts: 0\nLast run: Unknown\nNext: co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' logs\n",
+      "goal": "Inspect previous run results.",
+      "next": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' logs",
+      "reply": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' logs",
+      "pass": true
+    },
+    {
+      "command": "co wiki logs",
+      "exit": 0,
+      "output": "Wiki logs\n\nNo runs recorded. Initialization alone does not run investigation.\nNext: co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' status\n",
+      "goal": "Inspect the notebook status.",
+      "next": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' status",
+      "reply": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' status",
+      "pass": true
+    },
+    {
+      "command": "co wiki config",
+      "exit": 0,
+      "output": "Wiki config\n\nPath: /private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces/config.yaml\nSaved: Yes\nConfig:\n  Version: 1\n  Runner: codex\n  Model: gpt-5.3-codex-spark\n  Schedule:\n    Times:\n      03:00\n      04:00\n      06:00\n      17:00\n      18:00\n      19:00\n    Timezone: Australia/Sydney\n  Limits:\n    Runner calls per day: 6\n    Items per batch: 20\n    Input chars per batch: 200000\n    Timeout seconds: 600\n    Extract items per batch: 40\n    Extract chars per batch: 300000\nNext: co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' status\n",
+      "goal": "Inspect the notebook status.",
+      "next": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' status",
+      "reply": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' status",
+      "pass": true
+    },
+    {
+      "command": "co wiki subscriptions",
+      "exit": 0,
+      "output": "Wiki subscriptions\n\ncodex:\n  Id: codex\n  Kind: codex\n  Root: /Users/changxing/.codex/sessions\n  Project: Unknown\n  Since: 2026-07-24T02:26:35.200208+00:00\n  Max lookback days: 180\n  Enabled: Yes\n  Consented: No\n  Adapter: available\nclaude-code:\n  Id: claude-code\n  Kind: claude-code\n  Root: /Users/changxing/.claude/projects\n  Project: Unknown\n  Since: 2026-07-24T02:26:35.200208+00:00\n  Max lookback days: 180\n  Enabled: Yes\n  Consented: No\n  Adapter: available\ngmail:\n  Id: gmail\n  Kind: gmail\n  Since: 2026-07-24T02:26:35.200208+00:00\n  Max lookback days: 730\n  Exclude automated: Yes\n  Enabled: No\n  Consented: No\n  Adapter: available\noutlook:\n  Id: outlook\n  Kind: outlook\n  Since: 2026-07-24T02:26:35.200208+00:00\n  Max lookback days: 730\n  Exclude automated: Yes\n  Enabled: No\n  Consented: No\n  Adapter: available\nNext: co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' status\n",
+      "goal": "Inspect the notebook status.",
+      "next": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' status",
+      "reply": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' status",
+      "pass": true
+    },
+    {
+      "command": "co wiki usage",
+      "exit": 0,
+      "output": "Wiki usage\n\nRuns: 0\nDays: Unknown\nTotal: None\nBy stage: None\nBy model: None\nBy source: None\nNext: co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' logs\n",
+      "goal": "Inspect the run logs.",
+      "next": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' logs",
+      "reply": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' logs",
+      "pass": true
+    },
+    {
+      "command": "co wiki reflections",
+      "exit": 0,
+      "output": "Wiki reflections\n\nNo reflections recorded.\nNext: co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' list\n",
+      "goal": "Browse existing pages.",
+      "next": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' list",
+      "reply": "co wiki --root '/private/var/folders/_q/1pcbyb417fqb29_gckycjkvw0000gn/T/wiki-cli-tips-dj6s_14e/wiki with spaces' list",
+      "pass": true
+    }
+  ]
+}

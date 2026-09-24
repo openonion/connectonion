@@ -1,0 +1,7 @@
+Usage: co wiki investigate [OPTIONS] {record}
+Try 'co wiki investigate --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ Missing argument 'record'.                                                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+Next: co commands
+Exit: 2

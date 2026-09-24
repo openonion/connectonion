@@ -983,6 +983,7 @@ def host(
     examples: list = None,
     http=None,
     provider_station=None,
+    wiki_root: Path = None,
 ):
     """
     Host an agent over HTTP/WebSocket with P2P relay discovery (enabled by default).
@@ -1186,6 +1187,7 @@ def host(
         project_dir=co_dir.parent,
         provider_station=provider_station,
     )
+    route_handlers["wiki_root"] = Path(wiki_root).expanduser().resolve() if wiki_root else None
     # The host signs its half of a sealed direct channel with this.
     route_handlers["identity"] = addr_data
 

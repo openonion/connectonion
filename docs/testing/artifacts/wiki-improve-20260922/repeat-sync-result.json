@@ -1,0 +1,19 @@
+{
+  "id": "run_eb38f40b076b43a4bdb1ebb2a57fee54",
+  "started_at": "2026-09-22T01:48:11.484963+00:00",
+  "model": "gpt-5.6-luna",
+  "sources": [],
+  "items": 0,
+  "runner_attempts": 0,
+  "outcome": "no_change",
+  "usage": null,
+  "changed": [],
+  "refused": 0,
+  "extracted": false,
+  "unrecognised": {},
+  "warning": "",
+  "usage_by_stage": {},
+  "items_by_source": {},
+  "chars_in": 0,
+  "seconds": null
+}

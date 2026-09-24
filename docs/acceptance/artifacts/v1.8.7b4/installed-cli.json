@@ -1,0 +1,57 @@
+{
+  "version": "1.8.7b4",
+  "installed_from_site_packages": true,
+  "cases": [
+    {
+      "command": "co wiki --help",
+      "exit": 0,
+      "passed": true
+    },
+    {
+      "command": "co wiki investigate",
+      "exit": 0,
+      "passed": true
+    },
+    {
+      "command": "co wiki investigate --help",
+      "exit": 0,
+      "passed": true
+    },
+    {
+      "command": "co wiki list people",
+      "exit": 0,
+      "passed": true
+    },
+    {
+      "command": "co wiki show people/ody-123.md",
+      "exit": 0,
+      "passed": true
+    },
+    {
+      "command": "co wiki search Ody",
+      "exit": 0,
+      "passed": true
+    },
+    {
+      "command": "co wiki investigate missing-person",
+      "exit": 1,
+      "passed": true
+    },
+    {
+      "command": "co wiki --json status",
+      "exit": 0,
+      "passed": true
+    },
+    {
+      "command": "co wiki status",
+      "exit": 0,
+      "passed": true
+    },
+    {
+      "command": "init with disconnected synthetic adapters",
+      "source_snapshot": true,
+      "no_consent_or_runs": true,
+      "passed": true
+    }
+  ]
+}

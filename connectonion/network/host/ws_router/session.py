@@ -403,6 +403,10 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 from .control_center import handle_control_center
                 await handle_control_center(data, send_msg, conn, route_handlers)
 
+            elif msg_type == "WIKI_READ":
+                from .wiki import handle_wiki_read
+                await handle_wiki_read(data, send_msg, conn, route_handlers)
+
             elif msg_type == "CONNECT":
                 # First message: auth + session merge + maybe reattach to a running agent.
                 result = await handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist)

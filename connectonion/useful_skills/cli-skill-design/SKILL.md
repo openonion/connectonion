@@ -1,13 +1,22 @@
 ---
 name: cli-skill-design
-description: Design a `co <thing>` CLI surface and its SKILL.md together so an agent can drive it without guessing — every command ends by naming the next one, `--help` lists everything, and every failure says what to run instead. Use when adding a new CLI command group, writing or rewriting a SKILL.md for one, or auditing an existing one.
+description: Design a `co <thing>` CLI surface and its SKILL.md together so an agent can drive it without guessing — help teaches the workflow and serves as the skill source of truth, every command names the next step, and failures explain recovery. Use when adding a new CLI command group, writing or rewriting a SKILL.md for one, or auditing an existing one.
 ---
 
 # Designing a CLI skill
 
-A CLI skill is two files that have to agree: the command surface (`co <thing> ...`)
-and the `SKILL.md` that tells an agent how to drive it. Design them together —
-the agent's whole world is *what it types* and *what comes back*.
+Design command help as a usage skill for both people and agents. The help page
+is the source of truth for choosing and using a command: purpose, inputs,
+procedure, effects, verification and recovery. An agent should be able to learn
+correct usage from help, execute a command, and continue from its actual output.
+
+Keep one authored workflow definition. Render terminal help and, where supported,
+a loadable Skill from that definition. Derive command names, arguments, defaults
+and required flags from the CLI registration. Author workflow and evidence
+requirements explicitly; function signatures alone cannot explain them. A
+separate SKILL.md can route to relevant help and add domain judgment without
+maintaining a second copy of command syntax. This is a design requirement, not
+a claim that an existing CLI already generates Skills from its help.
 
 `co-browser` is the worked example. Read it before you write anything: its exit-code
 table, its "read the output, not just the exit code" rule, and its Done checklist are
@@ -15,8 +24,84 @@ what this methodology generalizes. (Building a skill that drives a *website* thr
 `co browser`? That is the sibling skill `browser-workflow-skill-builder` — DOM,
 selectors, verification scripts. This one is about the command surface itself.)
 
-Two properties. Each has a test you run and paste the result of — not a principle
-you assert in the PR.
+Start with the help workflow contract below, then verify command discovery,
+execution and recovery. Record actual test results, not just design principles.
+
+## Help is the usage skill
+
+### Design each help page around a task
+
+Put the common workflow before the option catalog. A useful page answers:
+
+| Part | What help must teach |
+|---|---|
+| Purpose | When to choose this command and which related command serves a different goal |
+| Inputs | What is required, how to discover real IDs/paths/names, and how ambiguity is resolved |
+| Procedure | The minimal ordered commands, using examples verified on the current branch |
+| Effects | What is read, written, sent or scheduled; whether a model is called; prerequisites and actual authorization behavior |
+| Results | What output means, including empty, partial, failed and no-change results |
+| Verification | How to inspect the result and evidence; what a successful exit does not establish |
+| Recovery | Concrete commands for missing inputs, ambiguous matches, unavailable sources and failures |
+| Next step | How to choose the next action from observed output and when to stop |
+
+A group help page routes goals to workflows and lists all capabilities. Detailed
+command help supplies the procedure and options only when needed. Human-readable
+output is the default; expose structured output explicitly when supported and
+show the real flag placement. Do not document a JSON or export flag that the
+command does not implement.
+
+Examples must explain where argument values come from. Prefer a discovery
+command that lists actual records and prints a copyable next command. Where
+useful, invoking a command without its required selection can show choices
+without starting work. A fictional example filename is not an existing record;
+never make the user or agent guess it. Explain that --help displays help and
+exits even when other arguments are supplied, if that is the CLI's behavior.
+
+Preserve the full path from intent to evidence:
+
+```text
+Goal → discover command → read relevant help → discover inputs
+     → execute → inspect output → verify → continue, recover or stop
+```
+
+Load progressively: group help first, then the selected command's help. Keep
+unrelated command detail out of the agent's context. If a Skill artifact is
+required, generate it from the same workflow definition or make it a thin entry
+point to help. Verify that help and any generated Skill agree with the registered
+CLI; do not build an independent documentation dialect.
+
+### Test help as an agent input
+
+Keep these checks separate from the output-only tip test below:
+
+1. **Help-only command selection.** Give a fresh text-only model one rendered
+   help page and a goal. Provide no separate Skill, implementation code or
+   conversation history. Ask for the next command and grade whether it exists,
+   uses supported flags and advances the goal. Use llm_do, with no tools; never
+   execute these replies. Include first run, existing data, missing/ambiguous
+   inputs, safe previews, failures and structured output where supported.
+2. **Workflow completion.** In a separate controlled test, give an agent only
+   the goal, access to CLI help and command outputs. Use synthetic fixtures and
+   isolated state; restrict execution to the fixture CLI and test dependencies.
+   Check that it discovers real inputs, completes the task, verifies evidence
+   and stops or recovers correctly. Do not connect production accounts, send
+   messages or install background jobs as a side effect of testing guidance.
+
+Pin the model and fixtures, retain outputs and define acceptance before the run.
+Allocate enough response tokens for a complete command, including quoted paths.
+If a harness limit truncates a response, retain it as an incomplete evaluation
+and document any allowance change. For genuine command-selection failures,
+improve the help; do not weaken the goal or grader to make the result pass.
+
+Report the two kinds of evidence separately:
+
+| Help page / workflow | Goal | Model and fixture | Observed choice or result | Verification | Pass / failure |
+|---|---|---|---|---|---|
+
+A correct command choice does not prove workflow completion. A zero exit code
+does not prove factual quality. If only help selection was tested, say so;
+identify untested execution or recovery paths instead of calling the whole skill
+validated. Where there is no PR, retain this report with the local change.
 
 ## (a) Tip-tested discoverability
 
@@ -187,7 +272,8 @@ invocations were a standing choice.
 
 ## Progressive disclosure
 
-The skill is read top to bottom by an agent that wants to act now.
+Both help and the Skill are read by an agent that wants to act now. Apply the
+same ordering to the shared workflow definition:
 
 1. **Routing first** — if several commands could serve the request, the first
    section is the table that picks one. Wrong-command errors are the expensive kind.
@@ -198,9 +284,10 @@ The skill is read top to bottom by an agent that wants to act now.
 4. **Errors and recovery last.** By then the agent is only here because something
    broke.
 
-Everything else belongs in `--help`. If the skill is restating `--help`, delete it
-from the skill: two copies drift, and the copy in the skill is the one that goes
-stale.
+Detailed options belong in the relevant command help. Put reusable usage
+knowledge in the shared help definition; let the Skill route to it or render
+from it. Keep separately authored Skill content focused on domain judgment.
+Avoid two manually maintained copies of the same workflow.
 
 ## Honesty rule
 
@@ -213,6 +300,12 @@ with a failed run.
 
 ## Done checklist
 
+- [ ] Help teaches purpose, observed inputs, procedure, effects, results, verification and recovery before listing options
+- [ ] Help and any loadable Skill share one workflow definition or the Skill explicitly routes to help
+- [ ] Command syntax/defaults match CLI registration; generated Skill exports are verified if implemented
+- [ ] Help-only command-selection tests run with a pinned model; results and failures retained
+- [ ] Controlled help-and-output-only workflow completion tested, or execution coverage explicitly marked untested
+
 - [ ] Routing table first, if more than one command could serve the request
 - [ ] Every command in the skill exists in `--help` (diffed, both directions)
 - [ ] Every command prints one next-step tip, and the tip survives `| cat`
@@ -222,6 +315,7 @@ with a failed run.
 - [ ] "Read the output, not just the exit code" stated if any failure exits 0
 - [ ] Gotchas that change a reported result are written down
 - [ ] Nothing documented that was not run
+
 - [ ] No flag that a caller would pass every time (if there is one, it has a `config` verb and a home)
 
 ## Shared env contract (1.8.4 implementation)

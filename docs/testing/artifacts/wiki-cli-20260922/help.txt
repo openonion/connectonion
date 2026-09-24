@@ -1,0 +1,100 @@
+
+ Usage: python -m connectonion.cli.main wiki [OPTIONS] COMMAND [ARGS]...
+
+ Wiki — map first, investigate next
+
+ First run: Build the map with co wiki init. This creates People,
+ Organizations, Projects and Skills from templates and source metadata. It does
+ not investigate or start background work.
+
+ Choose a page: Run co wiki investigate without arguments to list your actual
+ pages; no model runs. Copy its Next command to investigate one page. Do not
+ invent page paths from examples. An exact title or email may select one unique
+ page; for multiple matches, use an exact path from the choices. An empty list
+ means initialize the map first.
+
+ Check the result: Follow the printed show command, or browse with co wiki
+ open. Review sources, Unknown sections and partial coverage. Command success
+ alone does not prove factual quality. Find remaining work with co wiki
+ unfinished.
+
+ Update later: Preview pending metadata with co wiki sync --dry-run, then use
+ co wiki sync once source access is authorized. Source access is authorized
+ through start, which also installs a background schedule; do not treat it as
+ an initialization step. Inspect outcomes and failures with co wiki logs.
+
+ Calling convention: Keep --root before the subcommand in every call. JSON is
+ opt-in: co wiki --json status. Read ok/data/next in JSON mode; otherwise
+ follow the printed Next command. Exit 1 reports an operation failure; exit 2
+ is an argument/command error. Append --help to any command to learn its
+ workflow and options; --help displays instructions and never executes the
+ task.
+
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --root        <path>  Notebook root (default ~/.co/wiki)                     │
+│ --json                Machine-readable output with next command              │
+│ --help                Show this message and exit.                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands — 1. Map and investigate ──────────────────────────────────────────╮
+│ init           Build people, organization, project and skill maps; no model  │
+│                or investigation.                                             │
+│ investigate    Investigate one existing page; omit the argument to discover  │
+│                available pages.                                              │
+│ unfinished     Pages still carrying an Unknown section, least-investigated   │
+│                first. The notebook's own work list.                          │
+│ map-skills     Build the installed-Skill map and missing page skeletons; no  │
+│                model, no execution.                                          │
+│ scan           Enumerate correspondents, organisations or projects from the  │
+│                sources. No model.                                            │
+│ stub           Create a page with its structure already in place; every      │
+│                unknown section says so. No model.                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ 2. Browse pages ────────────────────────────────────────────────────────────╮
+│ open           Render the notebook to a disposable local HTML page; no       │
+│                edits, no model.                                              │
+│ list           List current Markdown paths without inference.                │
+│ show           Read one Markdown record; does not edit it.                   │
+│ search         Literal case-insensitive search; no embeddings or model call. │
+│ people         List known identities, aliases and contact addresses; no      │
+│                source reads.                                                 │
+│ status         Show local run counts, known usage, and background readiness. │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ 3. Update and review ───────────────────────────────────────────────────────╮
+│ sync           Run one bounded incremental batch now (does not enable the    │
+│                background schedule).                                         │
+│ daily          Maintain current material, then investigate at most one       │
+│                unfinished page.                                              │
+│ capture        Capture local user messages into a durable queue; no model or │
+│                sync.                                                         │
+│ reflect        Retain an attributed reflection, correction or real-world     │
+│                change.                                                       │
+│ reflections    Read retained reflections or write a lossless compact view;   │
+│                no deletion.                                                  │
+│ propose        Save an evidence-linked question or candidate connection for  │
+│                review.                                                       │
+│ review         List questions/links, or explicitly answer/accept/reject a    │
+│                candidate.                                                    │
+│ abstract       Run the abstraction Skill on existing pages and their         │
+│                evidence.                                                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ 4. Sources and background ──────────────────────────────────────────────────╮
+│ subscriptions  Show saved source choices or unsaved defaults; no body reads. │
+│ subscribe      Enable or restore a source; bodies are read only after        │
+│                `start` has been confirmed.                                   │
+│ unsubscribe    Stop future reads from this source for good; existing notes   │
+│                stay.                                                         │
+│ start          Confirm source access once, install the background schedule,  │
+│                run the first batch.                                          │
+│ stop           Turn background maintenance off; notes, consent and manual    │
+│                sync remain.                                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ 5. Settings and diagnostics ────────────────────────────────────────────────╮
+│ route          Inspect or explicitly choose a stage model; enables planned   │
+│                investigation.                                                │
+│ logs           Show local run outcomes and known/unknown usage.              │
+│ usage          Where the tokens went: totals, by stage, by model, by source, │
+│                from the raw run records.                                     │
+│ doctor         Inspect local prerequisites; no native process, login, or     │
+│                repair.                                                       │
+│ config         Inspect or explicitly change Wiki configuration.              │
+╰──────────────────────────────────────────────────────────────────────────────╯

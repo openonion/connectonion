@@ -136,6 +136,12 @@ class Message:
     # is different from an empty name: an id nobody can read is the state this
     # replaces, and every consumer was otherwise building the same lookup.
     sender_name: str = ""
+    # Where the bytes of a media message landed, once a provider could fetch
+    # them: {"path", "mime", "size"}, or {"error"} when the fetch failed. None
+    # for a message that carries no media. A consumer that sees `kind: image`
+    # and no media knows the difference between "a photo arrived" and "a photo
+    # arrived and here it is" -- and, when there is an error, why.
+    media: Optional[dict] = None
 
     def to_dict(self, *, raw: bool = False) -> dict:
         record = {
@@ -150,6 +156,8 @@ class Message:
             "mentioned": self.mentioned,
             "at": self.at,
         }
+        if self.media is not None:
+            record["media"] = self.media
         if raw and self.raw is not None:
             record["raw"] = self.raw
         return record
@@ -177,6 +185,7 @@ class Message:
             kind=str(record.get("kind") or "text"),
             quoted=record.get("quoted") if isinstance(record.get("quoted"), dict) else None,
             sender_name=str(record.get("sender_name") or ""),
+            media=record.get("media") if isinstance(record.get("media"), dict) else None,
         )
 
 
@@ -207,6 +216,9 @@ class Inbox:
         self.root = Path(home) if home else default_home(provider)
         self.received = self.root / "received.jsonl"
         self.sent = self.root / "sent.jsonl"
+        # What the account owner typed in their own chats. A record, never a
+        # queue: nothing in new/ is written for it, so no consumer answers it.
+        self.own = self.root / "own.jsonl"
         self.completed = self.root / "done.jsonl"
         self.handouts = self.root / "attempts.jsonl"
         self.tmp = self.root / "tmp"
@@ -432,6 +444,13 @@ class Inbox:
         if by is not None:
             record["by"] = by
         self._append(self.sent, json.dumps(record, ensure_ascii=False, separators=(",", ":")))
+
+    def record_own(self, message: Message) -> None:
+        """One line in own.jsonl: a message the account owner sent themselves."""
+        self._append(self.own, message.to_json())
+
+    def own_records(self) -> list:
+        return list(self._records(self.own))
 
     def already_replied(self, message_id: str) -> bool:
         for record in self._records(self.sent):

@@ -1,0 +1,1 @@
+Synthetic project owner clarification, 2026-09-22: Mira owns Atlas maintenance. Leo was incorrectly recorded as owner. The project remains a local prototype; no hosted website was released.

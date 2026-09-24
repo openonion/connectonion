@@ -1,0 +1,28 @@
+
+ Usage: python -m connectonion.cli.main wiki init [OPTIONS]
+
+ Build people, organization, project and skill maps; no model or investigation.
+
+ When to use: Run co wiki init for a new notebook or to refresh its map.
+ Existing authored pages are preserved. This reads available source metadata
+ and installed Skill text; it does not run a model or enable a schedule.
+
+ Expected result: Source coverage, created pages and an explicit not-started
+ investigation state. Then run co wiki investigate to choose a real page.
+ Mapped does not mean researched or verified.
+
+ If sources are missing: Read the coverage and setup tips. Run co auth status
+ to inspect mailbox access, then retry init after connecting the missing
+ source.
+ --skills-dir replaces default Skill roots; repeat it to include multiple
+ roots.
+
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --days              <int range> [x>=1]  [default: 150]                       │
+│ --skills-dir        <path>                                                   │
+│ --mine              <str>                                                    │
+│ --mail              <str>               Only map these mailboxes: gmail or   │
+│                                         outlook (repeatable); default:       │
+│                                         connected mailboxes                  │
+│ --help                                  Show this message and exit.          │
+╰──────────────────────────────────────────────────────────────────────────────╯

@@ -1,0 +1,4 @@
+Error: Record not found; list the notebook for current record paths
+Next: co wiki --root /private/tmp/wiki-cli-preview-0922 list people
+
+Exit: 1
