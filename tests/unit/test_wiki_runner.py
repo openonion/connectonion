@@ -164,3 +164,36 @@ def test_skill_composition_keeps_source_and_page_definition(notebook, delegate):
     text = next((notebook.root / ".state/tasks").glob("*/instructions.md")).read_text()
     assert "wiki-source-codex" in text and "# A person's page" in text
     assert "wiki_write" not in text and "wiki_people" not in text
+
+
+def test_one_bad_page_does_not_hold_back_the_rest_of_a_maintenance_batch(tmp_path):
+    """A real batch touched three pages, one lacked its overview diagram, and the
+    whole batch was refused -- with the cursor held, so every scheduled run
+    retried the same refusal and upkeep stopped."""
+    from connectonion.wiki.config import prepare
+    from connectonion.wiki.files import Notebook
+    from connectonion.wiki.runner import _promote_maintenance
+    root, work = tmp_path / "wiki", tmp_path / "work"
+    prepare(root)
+    prepare(work)
+    notebook, working = Notebook(root), Notebook(work)
+    for record, name in (("people/good.md", "Good"), ("people/bad.md", "Bad")):
+        notebook.stub_person(record, name, [])
+        working.stub_person(record, name, [])
+    before = {r: notebook.read(r) for r in notebook.list()}
+    items = [{"role": "user", "source": "codex:abc:1", "text": "x", "timestamp": "2026-09-24T00:00:00+00:00"}]
+    good = before["people/good.md"].replace("## Who they are\n- Unknown — not investigated yet",
+                                             "## Who they are\n- Ships the agent. [1]").replace(
+        "## Sources\n- (none yet)", "## Sources\n- [1] `codex:abc:1`, 2026-09-24.")
+    bad = before["people/bad.md"].replace("## Who they are\n- Unknown — not investigated yet",
+                                           "## Who they are\n- Invented. [1]").replace(
+        "## Sources\n- (none yet)", "## Sources\n- [1] Outlook message 39.")
+    working.write("people/good.md", good)
+    working.write("people/bad.md", bad)
+    directory = tmp_path / "task"
+    directory.mkdir()
+    refusals = _promote_maintenance(notebook, working, before, items, directory, None, False)
+    assert notebook.read("people/good.md") == good                      # written
+    assert notebook.read("people/bad.md") == before["people/bad.md"]     # kept as it was
+    assert [r["record"] for r in refusals] == ["people/bad.md"]
+    assert (directory / "refused" / "people/bad.md").read_text() == bad  # the model's work is kept

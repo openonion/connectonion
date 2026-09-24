@@ -142,7 +142,7 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
                                  "about": about or None, "consented": False,
                                  "since": (now() - timedelta(days=days)).isoformat()}
         if name not in sources:
-            raise WikiError("Subscription not found; inspect subscriptions for exact names")
+            raise WikiError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code and whatsapp, and `co wiki sources` lists the ones saved here")
         if chats:
             if sources[name].get("kind") not in CHAT_KINDS:
                 raise WikiError(f"--chat names a chat in {', '.join(CHAT_KINDS)}, not in {name}")
@@ -194,7 +194,7 @@ def set_window(root: Path, name: str, value: str, *, narrow: bool = False, force
     with maintenance_lock(root):
         sources = subscriptions(root)
         if name not in sources:
-            raise WikiError("Subscription not found; inspect subscriptions for exact names")
+            raise WikiError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code and whatsapp, and `co wiki sources` lists the ones saved here")
         days = window_days(value, sources[name].get("kind", name))
         since = now() - timedelta(days=days)
         current = sources[name].get("since")
@@ -621,6 +621,13 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
         record.update(outcome="completed", usage=usage or None, changed=result.get("changed", []),
                       refused=result.get("refused", 0), refusals=result.get("refusals", []),
                       report=result.get("report", ""))
+        # A refused page no longer holds back the batch, but the user's own
+        # correction to that page is not marked done: it waits for the next pass.
+        refused_pages = {row["record"] for row in result.get("refusals", [])}
+        waiting = {item["source"] for item in local if item.get("record") in refused_pages}
+        for key in ("wiki_local_material", "wiki_seen_source_ids"):
+            if key in updated and waiting:
+                updated[key] = sorted(set(updated[key]) - waiting)
         write_json(state_path(root, "progress.json"), updated)
     except BaseException as error:
         failed_usage = getattr(error, "usage", None)

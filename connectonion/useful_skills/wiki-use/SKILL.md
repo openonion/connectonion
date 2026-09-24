@@ -14,15 +14,15 @@ confuse installing this Skill with starting collection or approving source acces
 | The user wants to turn it on (asks once, then runs in the background) | `co wiki start` — run it in the user's terminal; it needs their confirmation |
 | Pull in the latest sessions right now | `co wiki sync` |
 | Turn background maintenance off | `co wiki stop` |
-| Stop reading one source for good, or bring it back | `co wiki unsubscribe codex` / `co wiki subscribe codex` |
-| Add a scoped source (only sessions run in one directory) | `co wiki subscribe codex --project /path --since 30d` |
+| Stop reading one source for good, or bring it back | `co wiki sources remove codex` / `co wiki sources add codex` |
+| Add a scoped source (only sessions run in one directory) | `co wiki sources add codex --project /path --since 30d` |
 | Find relevant records by text | `co wiki search "query"` |
 | Browse one category | `co wiki list people` |
 | Read a result | `co wiki show people/alice.md` |
 | Inspect an earlier run | `co wiki logs` |
-| Where the tokens went (by stage, model, source; per item and per 1k chars) | `co wiki usage` / `co wiki usage --days 7` |
+| Where the tokens went (by stage, model, source; per item and per 1k chars) | `co wiki logs --usage` / `co wiki logs --usage --days 7` |
 | Show the user the whole notebook in their browser | `co wiki open` (remote when the default Wiki has a Host identity; `--local` opens a snapshot) |
-| Understand source choices | `co wiki subscriptions` |
+| Understand source choices | `co wiki sources` |
 | Inspect the selected configuration | `co wiki config` |
 | Diagnose local prerequisites without starting a provider | `co wiki doctor` |
 

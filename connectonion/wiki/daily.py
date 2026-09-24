@@ -19,7 +19,9 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     if maintenance['outcome'] not in ('completed', 'no_change'):
         return {'outcome': 'partial', 'maintenance': maintenance, 'investigation': None}
     notebook = Notebook(root)
-    pages = [p for p in notebook.unfinished() if p['path'].startswith(('people/', 'projects/', 'orgs/'))]
+    from .queue import order
+    pages = [p for category in ('people', 'projects', 'orgs') for p in order(root, category) if not p['recent']]
+    pages.sort(key=lambda p: -p['weight'])
     if not pages:
         return {'outcome': 'completed', 'maintenance': maintenance, 'investigation': None}
     config = read_config(root)
@@ -44,24 +46,45 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
                   'sources': [], 'items': 0, 'changed': [], 'phase': 'daily-investigation'}
         path = state_path(root, f"runs/{record['id']}.json")
         write_json(path, record)
-    target = pages[0]['path']
-    text = notebook.read(target)
-    title = next((line[2:] for line in text.splitlines() if line.startswith('# ')), target)
-    person = next((p for p in notebook.people() if p['path'] == target), {})
-    handles = list(dict.fromkeys([title, *person.get('emails', []), *person.get('aliases', [])]))
+    sources = subscriptions(root)
+    # The same mailboxes `co wiki investigate` reads: every connected one the
+    # user did not unsubscribe. Reading only subscribed mailboxes here left the
+    # scheduled investigation with no mail -- the #1628 failure, one path over.
+    from .service import mail_available
+    result, tried = None, []
     try:
-        sources = subscriptions(root)
-        clients = {s['kind']: mail_client(s['kind'], attachments=True) for s in sources.values()
-                   if s.get('enabled') and s.get('kind') in ('gmail', 'outlook')}
-        result = (investigate_one or investigate)(root, target, title, handles, days=days,
-                      clients=clients, subscriptions=sources, max_calls=allocation)
-        record.update(outcome='completed', usage=result.get('usage'), changed=result.get('changed', []))
+        clients = {kind: mail_client(kind, attachments=True) for kind in ('outlook', 'gmail')
+                   if mail_available(kind) and not sources.get(kind, {}).get('unsubscribed')}
+        # The busiest page first -- but the busiest page is also the one most
+        # likely not to fit the day's calls: a real 185-mail contact needed more
+        # digest calls than the cap left, so the scheduled round failed every day
+        # and never reached anyone. That refusal comes before any model call, so
+        # the next page is tried, up to three.
+        for page in pages[:3]:
+            target = page['path']
+            tried.append(target)
+            text = notebook.read(target)
+            title = next((line[2:] for line in text.splitlines() if line.startswith('# ')), target)
+            person = next((p for p in notebook.people() if p['path'] == target), {})
+            handles = list(dict.fromkeys([title, *person.get('emails', []), *person.get('aliases', [])]))
+            try:
+                result = (investigate_one or investigate)(root, target, title, handles, days=days,
+                              clients=clients, subscriptions=sources, max_calls=allocation)
+                break
+            except WikiError as error:
+                if 'call budget' not in str(error):
+                    raise
+        if result is None:
+            record.update(outcome='completed', reason='no_page_fits_budget', tried=tried)
+        else:
+            record.update(outcome='completed', usage=result.get('usage'), changed=result.get('changed', []),
+                          record=tried[-1], tried=tried)
     except Exception as error:
         record.update(outcome='failed', error=str(error) if isinstance(error, WikiError) else type(error).__name__,
-                      usage=getattr(error, 'usage', None))
-        result = None
+                      usage=getattr(error, 'usage', None), tried=tried)
+        result = False
     finally:
         record['finished_at'] = now().isoformat()
         write_json(path, record)
-    return {'outcome': 'completed' if result is not None else 'partial',
-            'maintenance': maintenance, 'investigation': result, 'run': record}
+    return {'outcome': 'partial' if result is False else 'completed',
+            'maintenance': maintenance, 'investigation': result or None, 'run': record}

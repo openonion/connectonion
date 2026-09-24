@@ -78,7 +78,9 @@ def test_a_batch_that_fails_past_preflight_exits_nonzero_and_is_logged(consented
            "PYTHONPATH": str(Path(__file__).resolve().parents[3])}
     code, payload, stderr = co(consented, "sync", env=env)
     assert code == 1, stderr
-    assert "failed" in payload["data"].lower() and "run_" in payload["data"], payload
+    # `sync` is the whole update now (#1656): a failed first batch is a partial round.
+    assert payload["data"]["outcome"] == "partial", payload
+    assert payload["data"]["maintenance"]["outcome"] == "failed" and payload["data"]["maintenance"]["id"].startswith("run_")
     runs = list((consented / ".state" / "runs").glob("*.json"))
     record = json.loads(runs[0].read_text())
     assert len(runs) == 1 and record["outcome"] == "failed"

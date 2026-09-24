@@ -70,8 +70,14 @@ def _matches(row: dict, handles: list[str], mine: set) -> bool:
 
 
 def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscriptions: dict,
-           progress=None, attachments_dir: Path | None = None) -> tuple[list[dict], list[str]]:
-    """Everything every source holds about the subject, oldest first, plus what was searched."""
+           progress=None, attachments_dir: Path | None = None,
+           sent_only: bool = False, mail_skipped: str = "") -> tuple[list[dict], list[str]]:
+    """Everything every source holds about the subject, oldest first, plus what was searched.
+
+    `sent_only` is the owner's own page: every message in a mailbox involves
+    the owner, so "mail about the owner" is the whole mailbox. What the owner
+    wrote is what describes them; what others sent them describes the others.
+    """
     handles = [h.strip().lower() for h in handles if h.strip()]
     if days < 1 or not handles:
         raise WikiError("Investigation needs a positive day window and at least one subject handle")
@@ -81,6 +87,11 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     own_addresses = set()
     for kind, client in clients.items():
         mine = {a.lower() for a in client.my_addresses()}
+        if sent_only:
+            # Each mailbox knows only its own login. The owner's other addresses
+            # are the owner too, not correspondents to search the server for: a
+            # first `investigate me` searched for them and found 6 of ~150 mails.
+            mine |= {h for h in handles if "@" in h}
         own_addresses.update(mine)
         emails = sorted({h for h in handles if "@" in h and h not in mine})
         if emails and hasattr(client, "list_with"):
@@ -106,6 +117,9 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 cursor = stop
             hit = [r for r in rows if _matches(r, handles, mine)]
             searched = f"scanned {len(rows)} mails"
+            if sent_only:
+                hit = [r for r in hit if _address(r["from"]) in mine]
+                searched += ", kept the owner's own sent mail"
         attached = 0
         for r in sorted(hit, key=lambda r: str(r["date"])):
             body = _patient(client.get_email_body, r["id"])
@@ -137,8 +151,10 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         if kind not in clients:
             # Say it. A mailbox left out used to vanish from coverage, so the model
             # and the reader could not tell "no mail with this person" from "not asked".
-            why = ("unsubscribed by the user" if subscriptions.get(kind, {}).get("unsubscribed")
-                   else f"not connected (co auth {'google' if kind == 'gmail' else 'microsoft'})")
+            # A mailbox left out on purpose says why; "not connected" sent a user
+            # to log in again for a project page that simply does not read mail.
+            why = (mail_skipped or ("unsubscribed by the user" if subscriptions.get(kind, {}).get("unsubscribed")
+                   else f"not connected (co auth {'google' if kind == 'gmail' else 'microsoft'})"))
             coverage.append(f"{kind}: {why}; not searched")
     for name, sub in subscriptions.items():
         if sub.get("kind") not in KINDS:
@@ -231,13 +247,15 @@ def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: P
 
 
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
-                clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None) -> dict:
+                clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
+                sent_only: bool = False, mail_skipped: str = "") -> dict:
     """Fill the page's gaps from everything gathered; the page itself is the first input."""
     notebook = Notebook(root)
     if not notebook.path(record).is_file():
         raise WikiError(f"{record} does not exist; create it with `co wiki stub` first")
     items, coverage = gather(subject, handles, days=days, clients=clients, subscriptions=subscriptions,
-                             progress=progress, attachments_dir=root / ".state" / "attachments")
+                             progress=progress, attachments_dir=root / ".state" / "attachments",
+                             sent_only=sent_only, mail_skipped=mail_skipped)
     config = read_config(root)
     from .inquiry import routing, stage_config
     original_material = None

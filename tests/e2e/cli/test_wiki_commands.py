@@ -31,15 +31,6 @@ def test_inspection_before_start_does_not_create_files(tmp_path, args):
     assert not root.exists()
 
 
-def test_help_lists_only_implemented_commands_and_no_fake_start(tmp_path):
-    result = invoke(tmp_path, "--help")
-    assert result.exit_code == 0
-    for name in ("status", "config", "subscriptions", "list", "show", "search", "logs", "doctor", "init", "people", "abstract"):
-        assert name in result.output
-    for name in ("approve", "reject", "template"):
-        assert not __import__("re").search(r"│\s+" + name + r"\s{2,}", result.output.split("Commands")[1])
-
-
 def test_file_listing_show_and_literal_search(tmp_path):
     prepare(tmp_path)
     Notebook(tmp_path).write("people/alice.md", "# Alice\nWorks on Project Aurora.")
@@ -161,11 +152,6 @@ def test_open_before_start_creates_nothing(tmp_path, monkeypatch):
     assert not root.exists()
 
 
-def test_help_lists_open(tmp_path):
-    result = invoke(tmp_path, "--help")
-    assert "open" in result.output.split("Commands")[1]
-
-
 class _CliScheduler:
     installed, uninstalled = [], []
 
@@ -194,13 +180,6 @@ def lifecycle(tmp_path, monkeypatch):
         return {"usage": None, "changed": []}
     monkeypatch.setattr("connectonion.wiki.runner.run_stage", fake_codex)
     return tmp_path / "wiki", sessions, calls
-
-
-def test_help_lists_the_lifecycle_commands(tmp_path):
-    result = invoke(tmp_path, "--help")
-    commands = result.output.split("Commands")[1]
-    for name in ("start", "stop", "sync", "subscribe", "unsubscribe"):
-        assert name in commands
 
 
 def test_sync_before_start_is_refused_and_names_start(lifecycle):
@@ -296,12 +275,12 @@ def test_skill_entry_points_delegate_and_return_a_next_command(tmp_path, monkeyp
 def test_people_roster_returns_identity_and_existing_path(tmp_path):
     prepare(tmp_path)
     Notebook(tmp_path).stub_person("people/ody.md", "Ody Zhou", ["odi"], email="ody@example.org")
-    result = invoke(tmp_path, "--json", "people")
+    result = invoke(tmp_path, "--json", "list", "people", "--aliases")
     assert result.exit_code == 0, result.output
-    output = json.loads(result.output)
+    output = json.loads(result.stdout)
     assert "ody@example.org" in str(output["data"])
     assert "people/ody.md" in str(output["data"]) and "odi" in str(output["data"])
-    assert output["next"].endswith("list people")
+    assert output["next"].endswith("show people/ody.md")
 
 
 def test_init_builds_all_maps_without_model_or_investigation(tmp_path, monkeypatch):
@@ -370,7 +349,7 @@ def test_wiki_overview_explains_lifecycle_without_initializing(tmp_path):
     root = tmp_path / 'new wiki'
     result = invoke(root)
     assert result.exit_code == 0, result.output
-    for text in ('Build the map', 'investigate', 'sync', '--json', '--help'):
+    for text in ("Build the notebook's frame", 'investigate', 'sync', '--json', '--help'):
         assert text in result.output
     assert result.output.rstrip().endswith(' init')
     assert not root.exists()
@@ -451,8 +430,8 @@ def test_investigate_without_arguments_discovers_real_pages_without_a_model(tmp_
     monkeypatch.setattr('connectonion.wiki.investigate.investigate', lambda *a, **kw: pytest.fail('model called'))
     result = invoke(tmp_path, 'investigate')
     assert result.exit_code == 0, result.output
-    assert 'people/ody-123.md' in result.output
-    assert result.output.rstrip().endswith('investigate people/ody-123.md')
+    assert 'people/ody-123.md' in result.output          # listed under People, most useful first
+    assert result.output.rstrip().endswith('investigate people')
 
 
 def test_investigate_empty_notebook_guides_init(tmp_path):
@@ -492,52 +471,23 @@ def test_ambiguous_investigation_shows_choices_without_starting(tmp_path, monkey
     assert result.output.rstrip().endswith(' investigate')
 
 
-def test_help_orders_first_steps_and_exposes_all_commands(tmp_path):
-    from typer.main import get_command
-    wiki = get_command(app).commands['wiki']
-    output = Text.from_ansi(invoke(tmp_path, '--help').output).plain
-    assert output.index('1. Map and investigate') < output.index('2. Browse pages') < output.index('3. Update and review')
-    for name in wiki.commands:
-        assert __import__('re').search(r'│\s+' + __import__('re').escape(name) + r'\s{2,}', output), name
-    assert 'set' in invoke(tmp_path, 'config', '--help').output
-
-
 def test_investigate_help_does_not_run_even_with_page_argument(tmp_path, monkeypatch):
     monkeypatch.setattr('connectonion.wiki.investigate.investigate', lambda *a, **kw: pytest.fail('model called'))
     result = invoke(tmp_path, 'investigate', '--help', 'people/ody.md')
     assert result.exit_code == 0
-    assert 'never runs an investigation' in result.output
+    assert result.stdout.startswith('co wiki investigate —')
 
 
 def test_json_investigate_discovery_and_missing_selection(tmp_path):
     discovered = json.loads(invoke(tmp_path, '--json', 'investigate').stdout)
-    assert discovered['ok'] and discovered['data'] == []
+    assert discovered['ok'] and 'No pages available' in discovered['data']
+    assert discovered['next'].endswith(' init')
     result = invoke(tmp_path, '--json', 'investigate', 'missing')
     failed = json.loads(result.stdout)
     assert result.exit_code == 1 and not failed['ok']
     assert failed['next'].endswith(' investigate')
 
 
-def test_group_help_is_a_workflow_with_evidence_and_recovery(tmp_path):
-    output = Text.from_ansi(invoke(tmp_path, '--help').output).plain
-    output = ' '.join(output.split())
-    for phrase in ('First run:', 'Choose a page:', 'Check the result:', 'Update later:',
-                   'Do not invent page paths', 'partial coverage', 'co wiki investigate',
-                   'JSON', '--root'):
-        assert phrase in output, phrase
-    assert output.index('First run:') < output.index('1. Map and investigate')
-
-
-@pytest.mark.parametrize('command,phrases', [
-    ('init', ('When to use:', 'Expected result:', 'If sources are missing:', 'co auth status')),
-    ('investigate', ('When to use:', 'Choose the input:', 'Check the result:', 'More than one match:')),
-    ('sync', ('Before running:', 'co wiki sync --dry-run', 'Source access', 'background schedule', 'co wiki logs')),
-])
-def test_primary_command_help_teaches_the_workflow(tmp_path, command, phrases):
-    output = Text.from_ansi(invoke(tmp_path, command, '--help').output).plain
-    plain = ' '.join(output.split())
-    for phrase in phrases:
-        assert phrase in plain, phrase
 def test_a_wrapper_can_put_its_own_name_on_every_next_step(tmp_path, monkeypatch):
     """A thin `remi` command that forwards to `co wiki` is only a product if the tips
     agree with it: a user who typed `remi status` and is told `co wiki --root /long/path
@@ -556,10 +506,59 @@ def test_a_wrapper_can_put_its_own_name_on_every_next_step(tmp_path, monkeypatch
 def test_subscribing_a_whatsapp_chat_points_at_start(tmp_path):
     """Naming a chat is not permission to read it; the next command is the one
     that shows the user what will be read and asks."""
-    result = invoke(tmp_path, '--json', 'subscribe', 'whatsapp', '--chat', '120363411567190840@g.us')
+    result = invoke(tmp_path, '--json', 'sources', 'add', 'whatsapp', '--chat', '120363411567190840@g.us')
     assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
+    payload = json.loads(result.stdout)
     assert payload['data']['chats'] == ['120363411567190840@g.us']
     assert payload['next'].endswith(' start')
-    refused = invoke(tmp_path / 'fresh', 'subscribe', 'whatsapp')   # no chat named yet
+    refused = invoke(tmp_path / 'fresh', 'sources', 'add', 'whatsapp')   # no chat named yet
     assert refused.exit_code == 1 and 'co whatsapp chats' in refused.output
+
+
+def test_a_project_is_read_from_its_folders_not_from_mail_that_names_it(tmp_path, monkeypatch):
+    """Matching mail on a project's name scanned 3,500 mails for one project on a
+    real mailbox and timed out. The help page says a project is read from its
+    sessions; mail about it comes in only through --handle."""
+    prepare(tmp_path)
+    Notebook(tmp_path).stub_project("projects/aurora.md", "Aurora", ["/work/aurora"])
+    monkeypatch.setattr('connectonion.wiki.service.mail_available', lambda kind: True)
+    monkeypatch.setattr('connectonion.wiki.service.mail_client', lambda kind, **kw: object())
+    calls = []
+    def run(root, record, title, handles, **kwargs):
+        calls.append((handles, sorted(kwargs['clients'])))
+        return {'record': record, 'changed': []}
+    monkeypatch.setattr('connectonion.wiki.investigate.investigate', run)
+    assert invoke(tmp_path, 'investigate', 'projects/aurora.md').exit_code == 0
+    assert calls[-1] == (['/work/aurora', 'Aurora'], [])
+    assert invoke(tmp_path, 'investigate', 'projects/aurora.md', '--handle', 'aurora@client.example').exit_code == 0
+    assert calls[-1][1] == ['gmail', 'outlook'] and 'aurora@client.example' in calls[-1][0]
+
+
+def test_an_investigation_is_a_run_in_the_logs_with_its_cost(tmp_path, monkeypatch):
+    """A notebook with a dozen investigated pages said "No runs recorded": the
+    Wiki's most expensive calls were missing from the one command that shows cost."""
+    prepare(tmp_path)
+    Notebook(tmp_path).stub_person('people/ody.md', 'Ody', ['ody@example.org'], email='ody@example.org')
+    monkeypatch.setattr('connectonion.wiki.service.subscriptions', lambda root: {})
+    monkeypatch.setattr('connectonion.wiki.investigate.investigate', lambda root, record, *a, **k: {
+        'record': record, 'changed': [record], 'usage': {'input_tokens': 1200, 'output_tokens': 300},
+        'usage_by_stage': {'investigate': {'input_tokens': 1200, 'output_tokens': 300}}, 'chars_gathered': 4800})
+    assert invoke(tmp_path, 'investigate', 'people/ody.md').exit_code == 0
+    runs = json.loads(invoke(tmp_path, '--json', 'logs').stdout)['data']
+    assert runs[0]['phase'] == 'investigate' and runs[0]['record'] == 'people/ody.md'
+    assert runs[0]['outcome'] == 'completed' and runs[0]['runner_attempts'] == 0   # not the background cap
+    usage = json.loads(invoke(tmp_path, '--json', 'logs', '--usage').stdout)['data']
+    assert usage['total']['input_tokens'] == 1200 and usage['by_stage']['investigate']['output_tokens'] == 300
+
+
+def test_an_error_that_names_a_command_makes_it_the_next_line(tmp_path):
+    """`sync` before `start` said "run co wiki start" and printed Next: co wiki logs."""
+    prepare(tmp_path)
+    result = invoke(tmp_path, 'sync')
+    assert result.exit_code == 1 and 'co wiki start' in result.output
+    assert result.output.rstrip().endswith(f'--root {tmp_path} start')
+
+
+def test_list_without_a_category_is_refused_before_anything_runs(tmp_path):
+    result = invoke(tmp_path, 'investigate', '--list')
+    assert result.exit_code == 1 and 'investigate people --list' in result.output

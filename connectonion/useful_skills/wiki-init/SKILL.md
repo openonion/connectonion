@@ -9,7 +9,7 @@ You are building the frame once. Everything programmatic is a command; you
 supply the judgement between the commands. Do not reimplement in prose what a
 command already does. The task supplies the notebook root: include
 `co wiki --root "<root>"` in EVERY Wiki command below, including follow-ups.
-Read existing pages and `co wiki people` before creating another identity.
+Read existing pages and `co wiki list people --aliases` before creating another identity.
 Do not call `co wiki init` recursively or install a background schedule here.
 
 Treat `co wiki --help` as the executable workflow guide: it explains task

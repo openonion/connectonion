@@ -339,3 +339,30 @@ def test_the_owners_own_address_never_lands_on_someone_elses_page(tmp_path, monk
     page = Notebook(root).read("people/vern.md")
     assert "me@outlook.com" not in page
     assert "- Email: vern.chan@unsw.edu.au" in page and "- Handles: Unknown" in page
+
+
+def test_the_owners_page_reads_what_the_owner_sent_from_every_address():
+    """`investigate me` passes all the owner's addresses. A mailbox knows only its
+    own login, so the others were searched for as if they were other people and
+    the first real run found 6 of about 150 sent mails."""
+    class Box:
+        def my_addresses(self): return {"me@outlook.com"}
+        def list_with(self, *a, **k): raise AssertionError("the owner is not a correspondent to search for")
+        def list_between(self, start, end, n):
+            return [{"id": "a", "from": "me@outlook.com", "to": ["x@y.z"], "date": start, "subject": "s"},
+                    {"id": "b", "from": "Me <me@mail.example.org>", "to": ["x@y.z"], "date": start, "subject": "s"},
+                    {"id": "c", "from": "x@y.z", "to": ["me@outlook.com"], "date": start, "subject": "s"}]
+        def get_email_body(self, i): return f"body {i}"
+    items, coverage = inv.gather("Me", ["me@outlook.com", "me@mail.example.org"], days=7,
+                                 clients={"outlook": Box()}, subscriptions={}, sent_only=True)
+    assert sorted(i["text"] for i in items) == ["body a", "body b"]          # both addresses, only what was sent
+    assert "kept the owner's own sent mail" in coverage[0]
+
+
+def test_a_mailbox_left_out_on_purpose_says_why_not_that_it_is_disconnected():
+    """A project page skips mail by design; its coverage said "not connected (co auth
+    microsoft)", which sends a user to log in again for nothing."""
+    items, coverage = inv.gather("Aurora", ["/work/aurora"], days=7, clients={}, subscriptions={},
+                                 mail_skipped="not read for a project page; name its mail with --handle")
+    assert "outlook: not read for a project page; name its mail with --handle; not searched" in coverage
+    assert not any("co auth" in line for line in coverage)
