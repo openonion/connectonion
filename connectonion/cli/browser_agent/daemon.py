@@ -71,15 +71,35 @@ def _coerce(value: str, annotation):
     return value
 
 
-def _split_tokens(tokens):
-    """Split shell tokens into positional args and --key[=value] kwargs."""
+def _split_tokens(tokens, params=()):
+    """Split shell tokens into positional args and --key[=value] kwargs.
+
+    `--key value` works too when `key` is a parameter that takes a value — the
+    way `tab open --who me --for "..."` always has, and the way every other CLI
+    an agent knows does. Knowing the parameters is what makes that safe: a bare
+    `--raw` on a bool stays a switch, and a word after it stays positional.
+    """
+    takes_value = {
+        p.name for p in params
+        if p.annotation not in (bool, inspect.Parameter.empty)
+    }
     positional, kwargs = [], {}
-    for tok in tokens:
-        if tok.startswith("--"):
-            key, eq, val = tok[2:].partition("=")
-            kwargs[key.replace("-", "_")] = val if eq else True
-        else:
+    index = 0
+    while index < len(tokens):
+        tok = tokens[index]
+        index += 1
+        if not tok.startswith("--"):
             positional.append(tok)
+            continue
+        key, eq, val = tok[2:].partition("=")
+        name = key.replace("-", "_")
+        if eq:
+            kwargs[name] = val
+        elif name in takes_value and index < len(tokens) and not tokens[index].startswith("--"):
+            kwargs[name] = tokens[index]
+            index += 1
+        else:
+            kwargs[name] = True
     return positional, kwargs
 
 
@@ -611,9 +631,9 @@ class BrowserDaemon:
     ) -> tuple:
         """Match a verb to an async browser method and await its result."""
         method = getattr(self.browser, verb)
-        positional, kwargs = _split_tokens(raw_args)
-
         params = list(inspect.signature(method).parameters.values())
+        positional, kwargs = _split_tokens(raw_args, params)
+
         args = [_coerce(v, params[i].annotation if i < len(params) else str)
                 for i, v in enumerate(positional)]
         kw = {}
