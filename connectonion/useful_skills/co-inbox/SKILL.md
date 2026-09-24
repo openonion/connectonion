@@ -37,6 +37,24 @@ stderr while continuing.
 `co lark …` is the same verbs against Lark. Pick by where your bot lives; the
 credentials are separate (`FEISHU_APP_*` and `LARK_APP_*`).
 
+### Two WhatsApps, not one
+
+`co whatsapp` and `co whatsapp-cloud` are different providers with different
+inboxes (`~/.co/inbox/whatsapp/`, `~/.co/inbox/whatsapp-cloud/`). Do not mix
+their ids: a message received on one cannot be replied to from the other.
+
+- **`co whatsapp`** is a linked device on an ordinary number. It is the only one
+  that can sit in a group a person created, and it has `edit`, `delete` and
+  `group`.
+- **`co whatsapp-cloud`** is Meta's Business Cloud API (preview). One-to-one
+  only. It has one extra verb, `co whatsapp-cloud bind`, run once to route
+  Meta's webhook through O API; `co whatsapp-cloud check` says what else is
+  missing. **Exit 3 from `send` or `reply` here usually means the 24-hour window
+  is closed** — the customer has not written for a day and Meta only accepts an
+  approved template now. Resending the same text will be refused again, so
+  report it rather than retrying. `edit` and `delete` refuse, because Meta has
+  neither.
+
 ### Finding a conversation
 
 `send` and `reply` need a chat id, and until you have one there is nothing to

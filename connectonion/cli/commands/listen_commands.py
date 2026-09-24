@@ -1,5 +1,5 @@
 """
-Purpose: The verbs of an inbox provider — `co feishu listen | receive | send | reply | done | check | ls | log | consume`
+Purpose: The verbs of an inbox provider — `co feishu listen | receive | send | reply | done | check | ls | log | consume`, and `co whatsapp-cloud bind`
 LLM-Note:
   Dependencies: imports from [json, os, subprocess, sys, threading, time, typing, rich.console, inbox/] | imported by [cli/main.py via _inbox_group()] | tested by [tests/unit/test_listen_commands.py]
   Data flow: handle_listen → provider.run(inbox) until Ctrl-C | handle_receive → inbox.receive() → one JSON line on stdout | handle_send/handle_reply → stdin or argument → provider.send() → sent.jsonl → the new message id on stdout | handle_consume → Inbox.serve(handler) → subprocess(stdin=message) → reply(stdout)
@@ -20,7 +20,7 @@ from typing import List, Optional
 
 from rich.console import Console
 
-from ...inbox import ANSWERING, Inbox, ListenerStopped, provider, reactions_enabled
+from ...inbox import ANSWERING, Inbox, ListenerStopped, ProviderPolicyError, provider, reactions_enabled
 from .command_tips import print_tip
 
 console = Console()
@@ -235,9 +235,20 @@ def handle_send(name: str, chat: str, text: Optional[str] = None, reply_to: Opti
     except Exception as exc:
         inbox.record_sent(chat=chat, text=body, reply_to=reply_to, error=str(exc), by="send")
         errors.print(str(exc), style="red")
-        sys.exit(1)
+        sys.exit(_send_failure_code(exc))
     inbox.record_sent(chat=chat, text=body, reply_to=reply_to, provider_id=sent, by="send")
     print(sent)
+
+
+def _send_failure_code(exc: Exception) -> int:
+    """3 when the platform's rules refused the send, 1 for anything else.
+
+    A closed WhatsApp 24-hour window is not a failed request: the same text
+    will be refused every time until the customer writes again. Exit 3 is the
+    code this CLI already uses for "a person has to do something first", so a
+    supervisor that retries on 1 leaves it alone without being told why.
+    """
+    return EXIT_CONFIG if isinstance(exc, ProviderPolicyError) else 1
 
 
 def _mark_answering(p, inbox, message) -> None:
@@ -283,7 +294,7 @@ def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: 
         inbox.record_sent(chat=original.chat, text=body, reply_to=message_id,
                           error=str(exc), by="reply")
         errors.print(str(exc), style="red")
-        sys.exit(1)
+        sys.exit(_send_failure_code(exc))
     inbox.record_sent(chat=original.chat, text=body, reply_to=message_id, provider_id=sent,
                       by="reply")
     inbox.done(message_id, by="reply")
@@ -291,13 +302,21 @@ def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: 
 
 
 def _unsupported(name: str, verb: str,
-                 endpoint: str = "PUT and DELETE on /im/v1/messages/<id>") -> None:
+                 endpoint: str = "PUT and DELETE on /im/v1/messages/<id>", p=None) -> None:
     """Say which provider cannot do this and what it would take, not "error".
 
     A verb that exists on `co whatsapp` and not on `co lark` has to say so in
     the terms the reader is in — otherwise the obvious reading of a bare
     failure is that the message id was wrong.
+
+    A provider whose platform has no such operation at all says so through
+    its `cannot` table, because "nobody has wired it up" would send someone
+    looking for an endpoint that does not exist.
     """
+    reason = (getattr(p, "cannot", None) or {}).get(verb)
+    if reason:
+        errors.print(f"co {name} {verb}: {reason}. Next: co {name} send", style="red")
+        sys.exit(1)
     errors.print(
         f"co {name} {verb} is not implemented. WhatsApp is the only provider with it so far; "
         f"Feishu and Lark have the endpoint for it ({endpoint}) "
@@ -312,7 +331,7 @@ def handle_edit(name: str, message_id: str, text: Optional[str] = None,
     p = _configured(name)
     inbox = Inbox(name)
     if getattr(p, "edit", None) is None:
-        _unsupported(name, "edit")
+        _unsupported(name, "edit", p=p)
     original = inbox.lookup_sent(message_id)
     if original is None:
         # Deliberately not "no such message": we can only edit our own, so the
@@ -338,7 +357,7 @@ def handle_delete(name: str, message_id: str) -> None:
     p = _configured(name)
     inbox = Inbox(name)
     if getattr(p, "revoke", None) is None:
-        _unsupported(name, "delete")
+        _unsupported(name, "delete", p=p)
     ours = inbox.lookup_sent(message_id)
     if ours is not None:
         chat, sender = ours["chat"], ""
@@ -420,6 +439,35 @@ def handle_react(name: str, message_id: str, emoji: str) -> None:
     what = f"reacted {emoji}" if emoji else "removed our reaction"
     inbox.log(f"{what} on {message_id} in {chat} as {sent or 'no id'}")
     print(sent)
+
+
+def handle_bind(name: str) -> None:
+    """Register the provider's webhook routing. Prints the binding id.
+
+    Every secret it needs is read from the environment, never from argv: an
+    app secret typed on a command line is in shell history and visible in
+    `ps` to every user on the machine.
+    """
+    p = provider(name)
+    problems = p.bind_missing()
+    if problems:
+        for problem in problems:
+            errors.print(problem, style="red")
+        sys.exit(EXIT_CONFIG)
+    try:
+        result = p.bind()
+    except Exception as exc:
+        errors.print(str(exc), style="red")
+        sys.exit(1)
+    binding_id = result["id"]
+    from ...backend import backend_url
+
+    print(binding_id)
+    errors.print("In the Meta app, set the WhatsApp webhook callback URL to "
+                 f"{backend_url()}/api/v1/messaging/webhooks/whatsapp/{binding_id}, "
+                 "the verify token to the same value, and subscribe the `messages` field.",
+                 style="dim", soft_wrap=True)
+    print_tip(f"Next: co env set WHATSAPP_CLOUD_BINDING_ID {binding_id}")
 
 
 def handle_check(name: str) -> None:
