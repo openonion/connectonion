@@ -1,0 +1,16 @@
+version: v1.8.8b7
+images:
+  - file: benchmark-report-after-a-skill-edit.png
+    alt: "Terminal output of co eval report reimbursement --latest: five cases pass, each with the skill activation evidence and every must and must_not expectation, then score 50% to 100% against the previous run and the two newly passing cases"
+    caption: "A reimbursement skill scored by co eval run against the same five cases on co/gemini-3.8-flash. After editing only SKILL.md, all five cases pass, including the mixed batch and the duplicate invoice, and the report names what changed since the run before (issue 1642)."
+    scenario: "python scripts/capture_188b7_release_cli.py on the demo project: the saved report.json files from three real co eval run invocations, rendered by the released co eval report; the absolute project path is shortened to project-relative"
+    viewport: "terminal, 96 columns"
+    commit: 97de5ea2
+    source_run: "co eval run reimbursement --agent agent.py --skill reimbursement --invoke explicit, 24 September 2026, co/gemini-3.8-flash; runs 1 to 3 and the ledger are in PR 1665"
+  - file: help-marks-experimental.png
+    alt: "Terminal output of co --help filtered to seven rows: claude, wiki, discord and tiktok begin with Experimental:, telegram reads send then Experimental: listen, receive, reply, and whatsapp and gmail carry no label"
+    caption: "co --help tells the commands this preview brought in, and the earlier previews, apart from the ones that have carried real mail and chats: discord, tiktok and the telegram inbox verbs were ported against fakes and have not met the real service yet (PRs 1669 and 1676)."
+    scenario: "python scripts/capture_188b7_release_cli.py on the release commit: a live run of this checkout's co --help with NO_COLOR and 110 columns, filtered to the named rows as the command line shows; the box border is dropped"
+    viewport: "terminal, 110 columns"
+    commit: 739efe5c
+    source_run: "co --help, 24 September 2026, the release/1.8.8b7 branch built on main after PR 1676"

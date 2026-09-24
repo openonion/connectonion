@@ -353,7 +353,21 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.8b6
+## Current Version: 1.8.8b7
+
+1.8.8b7 is an opt-in preview after 1.8.8b6. It adds skill benchmarks — write at
+least five cases before the skill, score the real Agent on them, edit only the
+skill and rerun (#1642) — and `co browser network` / `co browser cookies`,
+including HAR recording, on the tab names `-t` already has (#1597). It also
+brings finished work onto main: `co discord` and the `co telegram` inbox verbs
+(#1674, #1671), `co tiktok` post plans (#1675) and Gemini image output
+(#1672), all marked experimental in `co --help` (#1676), and stops Outlook
+resending mail after a 504 (#1669). Stable
+remains 1.8.7; the Personal Wiki acceptance target remains 1.9.0.
+
+- 1.8.8b7 (co benchmark list/check and co eval run/report: a frozen standard, per-expectation PASS/FAIL/UNVERIFIED with evidence, a skill that did not run fails the case, immutable reports compared run to run; the older co eval is unchanged. co browser -t TAB network requests/request/har start/har stop and cookies ls/set/clear/save/load, values shaped unless --raw, files 0600. Agent(tools=[skill]) can be constructed again. co discord and co telegram listen/receive/reply as inbox providers; co tiktok post plans and inspect; LLMResponse.images, agent.last_images and generate_image for Gemini image models; Outlook no longer retries sends on 503/504; wiki, claude, discord and tiktok marked Experimental in co --help.)
+
+Earlier in this line:
 
 1.8.8b6 is an opt-in preview after 1.8.8b5. The map now fills the owner's own
 Wiki page (#1655), and two correspondent rules no longer drop or invent people.
