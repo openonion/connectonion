@@ -1547,6 +1547,8 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
 
 app.add_typer(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, send, reply."), name="feishu")
 app.add_typer(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply."), name="lark")
+# Discord too: its Gateway client is `websockets`, already a core dependency.
+app.add_typer(_inbox_group("discord", "Discord bot as an inbox: listen, receive, send, reply."), name="discord")
 _whatsapp_app = _inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply.")
 _whatsapp_groups = _typer_app(help="Start a group, or add people to one. One line per person.")
 

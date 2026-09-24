@@ -351,6 +351,20 @@ endpoint for joining one. Use a number you have dedicated to this: a linked
 device sees every chat the number is in, and automating the consumer client is
 against WhatsApp's terms. See [whatsapp.md](whatsapp.md).
 
+#### `co discord` - A Discord Bot as a Directory of Files
+
+```bash
+co discord listen                      # Gateway connection; every message → ~/.co/inbox/discord/
+co discord receive                     # next message as one JSON line
+echo "on it" | co discord reply 123456789012345678
+co discord consume -- claude -p
+```
+
+The same verbs, over an outbound Gateway WebSocket: no public endpoint, no
+OpenOnion credential. Your own bot's token lives in `~/.co/keys.env` as
+`DISCORD_BOT_TOKEN`, and the Message Content intent must be on. See
+[discord.md](discord.md).
+
 ---
 
 #### `co gmail` - Send & Read Gmail

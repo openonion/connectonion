@@ -339,6 +339,9 @@ Worth saying out loud on any page that sells to a business:
 - `@expose` has a design document and no implementation.
 - `logger.load_messages()` has no callers, so "replay a past run" is a data format,
   not a feature. `co eval` is the real replay path.
+- `co discord listen / receive / send / reply / consume` (`inbox/discord.py`) is
+  wired and unit-tested against a fake Gateway only; no live bot has connected
+  (#341). A preview, not a claim.
 - `co feishu listen / receive / send / reply` (`cli/commands/listen_commands.py`,
   `inbox/`), and the consumers that answer with an agent (`co ai --listen`, the
   Host's inbox lifespan), are wired and unit-tested but have not passed the live
