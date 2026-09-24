@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Lock, Thread
+from typing import Callable
 from urllib.parse import urlsplit
 from urllib.request import ProxyHandler, Request, build_opener
 
@@ -111,6 +112,19 @@ class _HookReceiver(BaseHTTPRequestHandler):
                 output.write(json.dumps(record) + "\n")
             server.event_count += 1
             server.recent_events.append(now)
+        handler = getattr(server, "permission_handler", None)
+        if event["hook_event_name"] == "PermissionRequest" and handler is not None:
+            approved = bool(handler(event))
+            response = json.dumps({"hookSpecificOutput": {
+                "hookEventName": "PermissionRequest",
+                "decision": {"behavior": "allow" if approved else "deny"},
+            }}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(response)))
+            self.end_headers()
+            self.wfile.write(response)
+            return
         self.send_response(204)
         self.end_headers()
 
@@ -142,12 +156,14 @@ def forward_hook(url: str, token: str) -> None:
     request = Request(url, data=raw, headers={
         "Authorization": f"Bearer {token}", "Content-Type": "application/json",
     })
-    with build_opener(ProxyHandler({})).open(request, timeout=5) as response:
-        response.read()
+    with build_opener(ProxyHandler({})).open(request, timeout=180) as response:
+        output = response.read(_MAX_HOOK_INPUT)
+        if output:
+            sys.stdout.write(output.decode("utf-8"))
 
 
 @contextmanager
-def scoped_bridge_settings():
+def scoped_bridge_settings(permission_handler: Callable[[dict], bool] | None = None):
     """Install per-process Hooks with a private authenticated loopback receiver."""
     with TemporaryDirectory(prefix="co-claude-") as directory:
         root = Path(directory)
@@ -161,14 +177,17 @@ def scoped_bridge_settings():
         receiver.event_lock = Lock()
         receiver.event_count = 0
         receiver.recent_events = deque()
+        receiver.permission_handler = permission_handler
         url = f"http://127.0.0.1:{receiver.server_port}/hook"
         hook = {
             "type": "command", "command": sys.executable,
             "args": [str(Path(__file__).resolve()), url, receiver.token],
             "timeout": 5,
         }
+        permission_hook = {**hook, "timeout": 180}
         settings.write_text(json.dumps({
-            "hooks": {event: [{"hooks": [hook]}] for event in _OBSERVED_EVENTS},
+            "hooks": {event: [{"hooks": [permission_hook if event == "PermissionRequest" else hook]}]
+                      for event in _OBSERVED_EVENTS},
         }))
         os.chmod(settings, 0o600)
         thread = Thread(target=receiver.serve_forever, name="co-claude-hooks", daemon=True)

@@ -267,7 +267,11 @@ def run_co_claude(
     workspace: str | Path | None = None,
 ) -> str:
     """Run one owned Claude turn with a scoped session-identity Hook."""
-    with scoped_bridge_settings() as (settings, events):
+    approval = None
+    if agent is not None and workspace is not None:
+        def approval(event):
+            return _approve_claude_permission(event, agent, Path(workspace).resolve())
+    with scoped_bridge_settings(permission_handler=approval) as (settings, events):
         result = _run_claude_code(
             prompt=prompt,
             session_id=session_id,
@@ -295,10 +299,54 @@ def run_co_claude(
         return result
 
 
+def _approve_claude_permission(event: dict, agent, workspace: Path) -> bool:
+    """Ask the paired owner only about a verified file edit in this workspace."""
+    session = getattr(agent, "current_session", None) or {}
+    requester = session.get("requester") or {}
+    io = getattr(agent, "io", None)
+    if requester.get("level") != "admin" or io is None:
+        return False
+    if event.get("tool_name") not in {"Edit", "MultiEdit", "Write", "NotebookEdit"}:
+        return False
+    tool_input = event.get("tool_input")
+    file_path = tool_input.get("file_path") if isinstance(tool_input, dict) else None
+    if not isinstance(file_path, str) or not file_path:
+        return False
+    target = Path(file_path)
+    if not target.is_absolute():
+        target = workspace / target
+    if not target.resolve().is_relative_to(workspace):
+        return False
+    parent = session.get("_active_tool_call_id")
+    if not isinstance(parent, str) or not parent:
+        return False
+    presentation = {
+        "action": "Make workspace file changes",
+        "scope": "This Work Room only",
+        "reason": "Apply the requested workspace file changes",
+        "scopeClassification": "workroom",
+        "allowOnce": True,
+        "allowSession": False,
+        "files": [target.name],
+    }
+    return bool(io.request_approval(
+        "claude_code",
+        {"action": presentation["action"], "scope": presentation["scope"],
+         "reason": presentation["reason"]},
+        context={
+            "provider": "claude_code",
+            "invocationId": f"claude_code:{parent}",
+            "parentToolCallId": parent,
+            "providerApproval": presentation,
+        },
+    ))
+
+
 def run_interactive_claude(
     cwd: str = ".", session_id: str = "", model: str = "",
     on_private_fact: Callable[[dict], None] | None = None,
     on_message: Callable[[dict], None] | None = None,
+    stop_event: threading.Event | None = None,
 ) -> tuple[int, str]:
     """Run Claude's TUI and observe scoped Hooks plus exact transcript messages."""
     validation = _validate_request("interactive", session_id, cwd, model, 600)
@@ -331,6 +379,14 @@ def run_interactive_claude(
             offset = 0
             tailer = None
             while process.poll() is None:
+                if stop_event is not None and stop_event.is_set():
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    break
                 offset, tailer, facts, messages = poll_bridge(events, offset, directory, tailer)
                 if on_private_fact is not None:
                     for fact in facts:

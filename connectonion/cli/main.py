@@ -345,17 +345,23 @@ def claude_interactive(
     cwd: Path = typer.Option(Path("."), "--cwd", exists=True, file_okay=False, resolve_path=True, help="Workspace directory"),
     session_id: str = typer.Option("", "--resume", help="Claude session ID to resume"),
     model: str = typer.Option("", "--model", help="Claude model override"),
+    share: bool = typer.Option(True, "--share/--no-share", help="Share this terminal through an OIP Work Room"),
 ):
-    """Launch Claude's interactive terminal with a scoped session Hook."""
+    """Launch Claude's terminal and an OIP Work Room on the same session."""
     if ctx.invoked_subcommand is not None:
         return
-    from ..useful_tools.claude_code import run_interactive_claude
+    if share:
+        from .co_ai.claude_station import launch_claude_station
 
-    try:
-        exit_code, owned_session = run_interactive_claude(str(cwd), session_id, model)
-    except ValueError as exc:
-        print(f"co claude: {exc}", file=sys.stderr)
-        raise typer.Exit(1) from exc
+        exit_code, owned_session = launch_claude_station(cwd, session_id, model)
+    else:
+        from ..useful_tools.claude_code import run_interactive_claude
+
+        try:
+            exit_code, owned_session = run_interactive_claude(str(cwd), session_id, model)
+        except ValueError as exc:
+            print(f"co claude: {exc}", file=sys.stderr)
+            raise typer.Exit(1) from exc
     print(f"Claude session: {owned_session}", file=sys.stderr)
     from .commands.command_tips import print_tip
     print_tip(f"Next: co claude --resume {owned_session}")

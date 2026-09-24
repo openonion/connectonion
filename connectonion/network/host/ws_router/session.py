@@ -26,6 +26,26 @@ from .remote_browser import run_remote_browser
 console = Console()
 
 
+async def _watch_provider_station(station, send_msg):
+    """Deliver the terminal's durable provider events to its paired Work Room."""
+    offset = 0
+    while True:
+        record = await asyncio.to_thread(station.storage.get, station.session_id)
+        trace = record.session.get("trace", []) if record else []
+        events = trace[offset:]
+        for event in events:
+            if event.get("type") in {
+                "provider_invocation", "provider_activity", "provider_message",
+                "provider_artifact",
+            }:
+                await send_msg({**event, "session_id": station.session_id})
+        for event in events:
+            if event.get("type") == "provider_session":
+                await send_msg({**event, "session_id": station.session_id})
+        offset = len(trace)
+        await asyncio.sleep(0.3)
+
+
 async def _send_provider_interrupt_ack(
     send_msg,
     *,
@@ -128,6 +148,7 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
     active_io = None
     forward_task = None
     session_watch_task = None
+    station_watch_task = None
     exec_tasks = set()
     # The laptop share attached on this socket, if any. It lives exactly as
     # long as the socket: registered on PROXY_ATTACH, detached in finally.
@@ -225,6 +246,52 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 owner = getattr(active, "owner", None) if active else None
                 status = active.status if active and owner == requester else "not_found"
                 await send_msg({"type": "SESSION_STATUS", "session_id": sid, "status": status})
+
+            elif msg_type == "PROVIDER_STATION_ATTACH":
+                station = route_handlers.get("provider_station")
+                request_id = data.get("request_id") or data.get("requestId")
+                pairing_code = data.get("pairingCode")
+                accepted = (
+                    conn.get("authenticated")
+                    and station is not None
+                    and isinstance(request_id, str) and 0 < len(request_id) <= 128
+                    and isinstance(pairing_code, str) and 0 < len(pairing_code) <= 128
+                )
+                result = (
+                    await asyncio.to_thread(station.attach, conn["agent_address"], pairing_code)
+                    if accepted else {"accepted": False, "reason": "invalid_request"}
+                )
+                await send_msg({
+                    "type": "PROVIDER_STATION_ATTACH_ACK",
+                    "requestId": request_id if isinstance(request_id, str) else "",
+                    "request_id": request_id if isinstance(request_id, str) else "",
+                    **result,
+                })
+
+            elif msg_type == "PROVIDER_CONTROL":
+                station = route_handlers.get("provider_station")
+                request_id = data.get("request_id") or data.get("requestId")
+                revision = data.get("stateRevision")
+                action = data.get("action")
+                valid = (
+                    conn.get("authenticated") and station is not None
+                    and isinstance(request_id, str) and 0 < len(request_id) <= 128
+                    and data.get("sessionId") == conn.get("session_id") == station.session_id
+                    and isinstance(revision, int) and not isinstance(revision, bool)
+                    and revision > 0
+                    and action in {"take", "release"}
+                )
+                result = {"accepted": False, "reason": "invalid_request"}
+                if valid:
+                    method = station.take_control if action == "take" else station.release_control
+                    result = await asyncio.to_thread(method, conn["agent_address"], revision)
+                await send_msg({
+                    "type": "PROVIDER_CONTROL_ACK",
+                    "requestId": request_id if isinstance(request_id, str) else "",
+                    "request_id": request_id if isinstance(request_id, str) else "",
+                    "action": action if action in {"take", "release"} else "",
+                    **result,
+                })
 
             elif msg_type in {
                 "SESSION_SYNC", "SESSION_GET", "SESSION_WATCH", "SESSION_UPDATE"
@@ -341,8 +408,18 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 result = await handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist)
                 if result:
                     active_io, forward_task = result
+                station = route_handlers.get("provider_station")
+                if (station is not None and conn.get("authenticated")
+                        and conn.get("session_id") == station.session_id
+                        and station_watch_task is None):
+                    station_watch_task = asyncio.create_task(
+                        _watch_provider_station(station, send_msg)
+                    )
 
             elif msg_type == "INPUT":
+                if route_handlers.get("provider_station") is not None:
+                    await send_msg({"type": "ERROR", "code": "provider_station_only", "message": "Use the Claude Work Room"})
+                    continue
                 # If a running agent already owns this session, route INPUT as
                 # mid-execution runtime input. Otherwise spawn a fresh agent.
                 sid = conn.get("session_id")
@@ -373,6 +450,9 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                         active_io, forward_task = result
 
             elif msg_type == "EXEC":
+                if route_handlers.get("provider_station") is not None:
+                    await send_msg({"type": "ERROR", "code": "provider_station_only", "message": "Use the Claude Work Room"})
+                    continue
                 # Direct tool execution — no LLM, no session. Auth is the same
                 # gate as INPUT; each EXEC runs as its own task so a slow tool
                 # (long shell command) never blocks this read loop or other EXECs.
@@ -546,6 +626,16 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 )
 
             elif msg_type == "PROVIDER_INPUT":
+                station = route_handlers.get("provider_station")
+                if station is not None and not station.can_continue(conn.get("agent_address"), conn.get("session_id")):
+                    await _send_provider_input_ack(
+                        send_msg,
+                        request_id=data.get("requestId") if isinstance(data.get("requestId"), str) else "",
+                        invocation_id=data.get("invocationId") if isinstance(data.get("invocationId"), str) else None,
+                        accepted=False,
+                        reason="terminal_owns_session",
+                    )
+                    continue
                 invocation_id = data.get("invocationId")
                 request_id = data.get("requestId")
                 state_revision = data.get("stateRevision")
@@ -710,7 +800,7 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
         # asyncio cancel idiom: cancel() only signals; await ensures the task
         # actually unwinds before we return. The CancelledError surfaced by
         # that await is the expected exit signal — not a bug, swallow it.
-        for task in (forward_task, session_watch_task, ping_task, control_task, *exec_tasks):
+        for task in (forward_task, session_watch_task, station_watch_task, ping_task, control_task, *exec_tasks):
             if task and not task.done():
                 task.cancel()
                 try:

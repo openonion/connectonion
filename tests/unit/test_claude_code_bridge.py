@@ -3,6 +3,8 @@
 import importlib
 import json
 import sys
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -108,6 +110,25 @@ def test_scoped_receiver_rejects_wrong_token_and_unknown_events():
             _post_hook(hook, {"hook_event_name": "PreToolUse", "tool_name": {"secret": "x"}})
         assert nested_identity.value.code == 400
         assert events.read_text() == ""
+
+
+def test_permission_hook_returns_claude_decision_without_spooling_tool_input():
+    requests = []
+    with scoped_bridge_settings(lambda event: requests.append(event) or False) as (settings, events):
+        hook = json.loads(settings.read_text())["hooks"]["PermissionRequest"][0]["hooks"][0]
+        event = {
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/tmp/note.txt", "content": "private secret"},
+        }
+        request = Request(hook["args"][1], data=json.dumps(event).encode(), headers={
+            "Authorization": f"Bearer {hook['args'][2]}",
+        })
+        with urlopen(request, timeout=2) as response:
+            decision = json.loads(response.read())
+        assert decision["hookSpecificOutput"]["decision"]["behavior"] == "deny"
+        assert requests == [event]
+        assert "private secret" not in events.read_text()
 
 
 def test_scoped_receiver_bounds_body_and_event_rate(monkeypatch):
@@ -298,6 +319,38 @@ Path('transcript.jsonl').write_text(json.dumps({
     assert messages == [{
         "message_id": "reply-1", "role": "assistant", "text": "hello from Claude",
     }]
+
+
+def test_interactive_takeover_reaps_claude_before_return(tmp_path, monkeypatch):
+    fake_cli = tmp_path / "sleeping_claude.py"
+    fake_cli.write_text("""
+import json
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+argv = sys.argv[1:]
+settings = json.loads(Path(argv[argv.index('--settings') + 1]).read_text())
+hook = settings['hooks']['SessionStart'][0]['hooks'][0]
+subprocess.run([hook['command'], *hook['args']], input=json.dumps({
+    'hook_event_name': 'SessionStart',
+    'session_id': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    'transcript_path': str(Path.cwd() / 'transcript.jsonl'),
+    'cwd': str(Path.cwd()),
+}), text=True, check=True)
+Path('child.pid').write_text(str(__import__('os').getpid()))
+time.sleep(30)
+""")
+    monkeypatch.setattr(claude, "_claude_command", lambda: ([sys.executable, str(fake_cli)], ""))
+    stop = threading.Event()
+    started = time.monotonic()
+    code, session_id = claude.run_interactive_claude(
+        cwd=str(tmp_path), on_private_fact=lambda _: stop.set(), stop_event=stop,
+    )
+    assert code != 0
+    assert session_id == SESSION
+    assert time.monotonic() - started < 10
 
 
 @pytest.mark.parametrize("changed", ["session", "cwd", "transcript"])

@@ -59,6 +59,37 @@ _MAX_ARTIFACT_DATA_URL_LENGTH = 262_144
 _PROVIDER_MESSAGE_ROLES = frozenset({"user", "assistant"})
 _PROVIDER_MESSAGE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,512}$")
 _MAX_PROVIDER_MESSAGE_LENGTH = 16_000
+_CLAUDE_STATION_PHASES = frozenset({
+    "local_starting", "local_observing", "handover_to_remote",
+    "remote_controlling", "handover_to_local", "completed", "failed",
+})
+
+
+def provider_session_event(
+    *, invocation_id: str, parent_tool_call_id: str, session_id: str,
+    owner: str, phase: str, state_revision: int,
+) -> dict[str, Any]:
+    """Describe one Claude control owner without exposing CLI or Hook details."""
+    if not all(isinstance(value, str) and 0 < len(value) <= 512
+               for value in (invocation_id, parent_tool_call_id)):
+        raise ValueError("provider session needs bounded correlation")
+    if not isinstance(session_id, str) or len(session_id) > 512:
+        raise ValueError("provider session id is invalid")
+    if owner not in {"terminal", "browser"} or phase not in _CLAUDE_STATION_PHASES:
+        raise ValueError("provider session control state is invalid")
+    if isinstance(state_revision, bool) or not isinstance(state_revision, int) or state_revision < 1:
+        raise ValueError("provider session revision must be positive")
+    return {
+        "type": "provider_session",
+        "provider": "claude_code",
+        "invocationId": invocation_id,
+        "parentToolCallId": parent_tool_call_id,
+        "sessionId": session_id,
+        "owner": owner,
+        "phase": phase,
+        "stateRevision": state_revision,
+        "protocolVersion": "oip-provider-session/0.1",
+    }
 
 
 def provider_task_title(prompt: object) -> str:

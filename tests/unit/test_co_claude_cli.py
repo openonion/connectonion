@@ -57,7 +57,7 @@ def test_co_claude_launches_interactive_connector(tmp_path, monkeypatch):
         return 0, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 
     monkeypatch.setattr(claude, "run_interactive_claude", run_interactive)
-    result = CliRunner().invoke(app, ["claude", "--cwd", str(tmp_path), "--model", "haiku"])
+    result = CliRunner().invoke(app, ["claude", "--no-share", "--cwd", str(tmp_path), "--model", "haiku"])
 
     assert result.exit_code == 0
     assert "Claude session: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" in result.output

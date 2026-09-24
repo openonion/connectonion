@@ -20,7 +20,11 @@ Streaming-only event types (llm_call, llm_result, compact, etc.) are not
 reconstructed — they're live-only feedback and don't survive reconnect by design.
 """
 
-from ....core.provider_events import provider_artifact_event, provider_message_event
+from ....core.provider_events import (
+    provider_artifact_event,
+    provider_message_event,
+    provider_session_event,
+)
 from ....useful_plugins.runtime_input import RUNTIME_INPUT_FRAME_PREFIX
 
 
@@ -69,6 +73,19 @@ def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
             key: value for key, value in entry.items()
             if key not in {'ts'}
         }
+
+    if entry_type == 'provider_session':
+        try:
+            return provider_session_event(
+                invocation_id=entry.get('invocationId'),
+                parent_tool_call_id=entry.get('parentToolCallId'),
+                session_id=entry.get('sessionId'),
+                owner=entry.get('owner'),
+                phase=entry.get('phase'),
+                state_revision=entry.get('stateRevision'),
+            )
+        except ValueError:
+            return None
 
     if entry_type == 'provider_activity':
         return _provider_activity_item(entry)
@@ -318,6 +335,14 @@ def _nest_provider_invocations(items: list[dict]) -> list[dict]:
     for item in items:
         invocation_id = item.get('invocationId')
         parent_id = item.get('parentToolCallId')
+        if item.get('type') == 'provider_session' and invocation_id in invocations:
+            invocation = invocations[invocation_id]
+            revision = item['stateRevision']
+            if revision >= invocation.get('controlRevision', 0):
+                invocation['controlOwner'] = item['owner']
+                invocation['controlPhase'] = item['phase']
+                invocation['controlRevision'] = revision
+            continue
         if item.get('type') == 'provider_invocation' and invocation_id in invocations:
             if invocation_id not in emitted:
                 output.append(invocations[invocation_id])
