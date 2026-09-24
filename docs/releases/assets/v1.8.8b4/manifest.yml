@@ -1,0 +1,16 @@
+version: v1.8.8b4
+images:
+  - file: pairing-desktop.png
+    alt: "Claude Code Station pairing form in O Chat at desktop width"
+    caption: "The Work Room link opens a focused pairing form before a browser can observe or control the native session."
+    scenario: "Open the Claude Code Station landing page before pairing"
+    viewport: "1280px, Chromium"
+    commit: 4e47b8b400a8d5279b9b63daefa874ef6b16bbe5
+    source_run: "https://github.com/openonion/oo-chat/pull/245"
+  - file: browser-control-mobile.png
+    alt: "Claude Code Station control state with a reachable Return to terminal action at phone width"
+    caption: "After signed takeover, the browser owns the same Claude session and can return it to the terminal."
+    scenario: "Take control in O Chat and inspect the session at 375px"
+    viewport: "375px, Chromium"
+    commit: 4e47b8b400a8d5279b9b63daefa874ef6b16bbe5
+    source_run: "https://github.com/openonion/oo-chat/pull/245"
