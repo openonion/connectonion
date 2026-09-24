@@ -54,6 +54,87 @@ def _owner_alive(sock_path: str) -> bool:
     return _owner_pid(sock_path) is not None
 
 
+# How long `co browser close` waits for the daemon to answer before it stops
+# the daemon's processes itself. Closing a paid browser is a clock that keeps
+# running: a close that hung for 3h 12m billed the whole time (#1496).
+CLOSE_DEADLINE = 60
+CLOSE_GRACE = 10  # seconds the tree gets to exit on its own after the daemon
+
+
+def _process_tree(pid):
+    """The daemon and everything under it, captured while the tree is intact.
+
+    Playwright starts Chrome in its own process group, so killing the daemon's
+    group — or the daemon — leaves the browser running, orphaned, still billed.
+    Walking the tree before the close is the only moment the parent links still
+    say which Chrome is ours.
+    """
+    if pid is None:
+        return []
+    import psutil
+
+    try:
+        root = psutil.Process(pid)
+        return [root, *root.children(recursive=True)]
+    except psutil.Error:
+        return []
+
+
+def _finish_close(owner_pid, watched, *, answered: bool, reason: str, payload: str = ""):
+    """Verify a whole-browser close actually ended every process it owned.
+
+    A process still running after the daemon should have gone is stopped here,
+    and the close exits 1 naming it: exiting 0 over a live paid runtime is what
+    made the waste invisible to every scheduler checking the exit code.
+    """
+    import psutil
+
+    # psutil.Process.is_running() also checks the creation time, so a pid the
+    # OS has since given to an unrelated process is never touched.
+    running = [p for p in watched if p.is_running()]
+    if answered:
+        # Chrome's helpers finish a moment after the daemon; a clean close must
+        # not be reported as forced because they were still on their way out.
+        # A daemon that never answered is not shutting anything down: no wait.
+        if owner_pid is not None:
+            _wait_for_pid_exit(owner_pid)
+        _, running = psutil.wait_procs(running, timeout=CLOSE_GRACE)
+    left = running
+    if not left and answered:
+        return 0, payload
+    if not left:
+        return 1, f"Browser close failed: {reason}"
+    names = ", ".join(sorted({_describe(p) for p in left}))
+    for process in left:
+        try:
+            process.terminate()
+        except psutil.Error:
+            pass  # already gone between the check and the signal
+    _, alive = psutil.wait_procs(left, timeout=5)
+    for process in alive:
+        try:
+            process.kill()
+        except psutil.Error:
+            pass
+    _, alive = psutil.wait_procs(alive, timeout=5)
+    what = "did not answer" if not answered else "answered but left processes running"
+    if alive:
+        return 1, (f"Browser close {what}; {len(alive)} process(es) survived SIGKILL: "
+                   f"{', '.join(sorted({_describe(p) for p in alive}))}")
+    return 1, (f"Browser close {what}, so it was finished by force: stopped "
+               f"{len(left)} process(es) ({names}). Nothing from that browser is "
+               "running now; the exit code is 1 so a script notices it was not clean.")
+
+
+def _describe(process) -> str:
+    import psutil
+
+    try:
+        return f"{process.name()}[{process.pid}]"
+    except psutil.Error:
+        return f"pid {process.pid}"
+
+
 def _wait_for_pid_exit(pid: int, timeout: float = 15.0) -> bool:
     """Wait for one exact daemon process, never a replacement using its endpoint."""
     deadline = time.monotonic() + timeout
@@ -340,6 +421,8 @@ def _request_with_identity(
     sock_path = target.address if target is not None else default_sock_path()
     authkey_path = target.authkey_path if target is not None else None
     owner_pid = None
+    closing = tab is None and line.split() == ["close"]
+    watched = []
     try:
         conn = _connection
         if conn is None:
@@ -425,10 +508,11 @@ def _request_with_identity(
                     effective_engine,
                     target=target,
                 )
-        # A successful whole-browser close is a lifecycle barrier on Windows.
-        # Record the exact process serving this connection so a concurrently
-        # started replacement is never mistaken for the daemon being closed.
-        if transport.IS_WINDOWS and tab is None and line.split() == ["close"]:
+        # A whole-browser close is a lifecycle barrier. Record the exact process
+        # serving this connection so a concurrently started replacement is never
+        # mistaken for the daemon being closed — and everything under it, so a
+        # paid runtime the daemon left behind can be found after it is gone.
+        if closing:
             owner_pid = _owner_pid(sock_path)
             # Embedded users and socket round-trip tests may run the daemon in
             # another thread of this process. That process cannot exit while the
@@ -436,6 +520,10 @@ def _request_with_identity(
             # has a different pid.
             if owner_pid == os.getpid():
                 owner_pid = None
+            watched = _process_tree(owner_pid)
+            if not transport.IS_WINDOWS:
+                # The teardown path must not be able to hang (#1496).
+                conn.settimeout(CLOSE_DEADLINE)
     except RuntimeError as exc:
         # Setup failures (authkey mismatch/corruption, daemon didn't start) must exit
         # with a clean one-line error, NEVER a traceback: typer's pretty exceptions
@@ -515,6 +603,9 @@ def _request_with_identity(
                 f"Screenshot saved to: {path}" for path in saved_paths
             )
     except (EOFError, OSError, ProtocolError, ArtifactTransferError) as exc:
+        if closing and watched:
+            return _finish_close(owner_pid, watched, answered=False,
+                                 reason=f"no answer within {CLOSE_DEADLINE}s ({exc})")
         return 1, (
             "browser daemon closed or rejected the OIP stream — "
             f"restart it and retry ({exc})"
@@ -522,6 +613,9 @@ def _request_with_identity(
     finally:
         conn.close()
 
+    if closing and watched:
+        return _finish_close(owner_pid, watched, answered=code == 0, reason=payload,
+                             payload=payload)
     if code == 0:
         if owner_pid is not None and not _wait_for_pid_exit(owner_pid):
             return 1, (

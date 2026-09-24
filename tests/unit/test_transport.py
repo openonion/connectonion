@@ -20,6 +20,7 @@ Component under test: connectonion.cli.browser_agent.transport
 
 import os
 import sys
+from pathlib import Path
 import time
 import threading
 import multiprocessing.connection as mpc
@@ -261,16 +262,21 @@ class TestTheRuntimeDirIsPerUser:
     and found root's directory in its way.
     """
 
+    @pytest.fixture(autouse=True)
+    def no_run_user(self, tmp_path, monkeypatch):
+        # These are about the temp-dir fallback; keep the host's /run/user out.
+        monkeypatch.setattr(tp, "_RUN_USER_ROOT", tmp_path / "no-run-user")
+
     def test_the_shared_temp_dir_is_scoped_by_user(self, tmp_path, monkeypatch):
         monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
-        monkeypatch.setattr(tp.tempfile, "gettempdir", lambda: str(tmp_path))
+        monkeypatch.setattr(tp, "_user_temp_dir", lambda: tmp_path)
         monkeypatch.setattr(tp, "_current_user", lambda: "alice")
 
         assert tp._sidecar_dir().name == "co-alice"
 
     def test_two_users_do_not_collide(self, tmp_path, monkeypatch):
         monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
-        monkeypatch.setattr(tp.tempfile, "gettempdir", lambda: str(tmp_path))
+        monkeypatch.setattr(tp, "_user_temp_dir", lambda: tmp_path)
 
         monkeypatch.setattr(tp, "_current_user", lambda: "alice")
         alice = tp._sidecar_dir()
@@ -284,3 +290,46 @@ class TestTheRuntimeDirIsPerUser:
         monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
 
         assert tp._sidecar_dir().name == "co"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="named pipes do not depend on env")
+class TestACronJobFindsTheLoginShellsDaemon:
+    """#1475: the endpoint came from $XDG_RUNTIME_DIR, else $TMPDIR, and cron has
+    neither. A login shell and a cron job for the same user looked in two
+    places; the job started a second daemon and died on the profile lock."""
+
+    def test_linux_without_the_variable_uses_the_same_run_user_dir(self, tmp_path, monkeypatch):
+        run_user = tmp_path / "run-user"
+        (run_user / str(os.getuid())).mkdir(parents=True)
+        monkeypatch.setattr(tp, "_RUN_USER_ROOT", run_user)
+        monkeypatch.delenv("CO_BROWSER_SOCK", raising=False)
+
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(run_user / str(os.getuid())))
+        login_shell = tp.default_address()
+        monkeypatch.delenv("XDG_RUNTIME_DIR")
+        cron = tp.default_address()
+
+        assert cron == login_shell
+
+    def test_a_run_user_dir_that_is_not_ours_is_not_used(self, tmp_path, monkeypatch):
+        run_user = tmp_path / "run-user"
+        run_user.mkdir()
+        monkeypatch.setattr(tp, "_RUN_USER_ROOT", run_user)   # no dir for our uid
+        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+
+        assert tp._user_runtime_dir() is None
+
+    @pytest.mark.skipif(sys.platform != "darwin", reason="macOS per-user temp dir")
+    def test_macos_with_no_environment_resolves_the_same_endpoint(self):
+        import subprocess
+
+        code = ("from connectonion.cli.browser_agent.transport import default_address;"
+                "print(default_address())")
+        root = str(Path(tp.__file__).resolve().parents[3])
+        shell = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                               env={**os.environ, "PYTHONPATH": root}, check=True)
+        bare = {"PATH": os.environ["PATH"], "PYTHONPATH": root}   # what cron gives a job
+        cron = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                              env=bare, check=True)
+
+        assert cron.stdout == shell.stdout

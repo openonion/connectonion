@@ -337,7 +337,10 @@ def commands():
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def browser(
-    headless: bool = typer.Option(False, "--headless/--no-headless", help="Run browser headless"),
+    headless: Optional[bool] = typer.Option(
+        None, "--headless/--no-headless",
+        help="Run browser headless. Default: headed, or headless on Linux with no display.",
+    ),
     engine: str = typer.Option(
         None,
         "--engine",
@@ -357,15 +360,28 @@ def browser(
         from .commands.browser_config import handle_browser_config
         raise typer.Exit(handle_browser_config(args[1] if len(args) > 1 else None))
 
+    from ..useful_tools.browser_tools._async_browser import has_display
     from ..useful_tools.browser_tools.engine import effective_mode
     from .commands.browser_commands import handle_browser
+
+    # An explicit --no-headless used to be indistinguishable from the default,
+    # so with no display it was quietly launched headless — and headless Chrome
+    # says `HeadlessChrome` in its User-Agent, which is what the caller was
+    # avoiding by asking for a window. Asked for a window, get one or a refusal
+    # (#1339).
+    if headless is False and not has_display():
+        print("--no-headless needs a display, and this machine has none "
+              "(DISPLAY and WAYLAND_DISPLAY are unset).")
+        print("Give it a virtual one:  xvfb-run -a co browser --no-headless <command>")
+        print("Or accept headless:     co browser <command>")
+        raise typer.Exit(2)
     try:
         mode = effective_mode(engine)
     except ValueError as error:
         print(str(error))
         print("Next: co browser config")
         raise typer.Exit(2)
-    raise typer.Exit(handle_browser(args or [], headless=headless, engine_mode=mode))
+    raise typer.Exit(handle_browser(args or [], headless=bool(headless), engine_mode=mode))
 
 
 @app.command(
