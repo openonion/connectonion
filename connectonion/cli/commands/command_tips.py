@@ -105,7 +105,11 @@ NEXT = {
     "co create": HANDLER,             # "co deploy" after the resources block
     "co deploy": HANDLER,             # cloud: "co status"; --to: the journalctl line
     "co doctor": HANDLER,             # "Run 'co auth' if you need to authenticate"
-    "co eval": 'Fix what failed with the AI:  co ai "<what to fix>"',
+    "co benchmark list": HANDLER,     # empty: the schema and "check"; else "check <first invalid>"
+    "co benchmark check": HANDLER,    # valid: "co eval run <name> ..."; invalid: "check <name>" again
+    "co eval run": HANDLER,           # "co eval report <name> --latest"
+    "co eval report": HANDLER,        # the first failing case, or "add a harder case"
+    "co eval legacy": HANDLER,        # the older evals print their own tip (LEGACY_EVAL_TIP in main.py)
     "co init": HANDLER,               # global: "co init ./"; project: "co deploy"
     "co keys": HANDLER,               # "co keys --reveal" / "co status" / "co keys --ssh --write"
     "co proxy": HANDLER,              # every verb ends with a co proxy command; exits by raise
