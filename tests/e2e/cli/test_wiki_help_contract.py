@@ -54,12 +54,17 @@ def test_every_command_and_subcommand_has_a_page():
             assert f"co wiki {group} {sub}" in names, (group, sub)
 
 
-def test_the_root_page_lists_exactly_the_visible_commands():
+def test_every_command_is_on_the_root_page_the_advanced_page_or_is_an_old_name():
+    """Nothing is hidden (`co commands` lists all of it, #1643); the root page
+    simply lists fourteen, and the rest are one page away or say what replaced them."""
     listed = re.findall(r"^  ([a-z][a-z-]*)\s{2,}\S", pages()["co wiki"], re.M)
-    visible = [name for name, command in WIKI.commands.items() if not command.hidden]
     assert listed == ROOT_COMMANDS
-    assert sorted(visible) == sorted(ROOT_COMMANDS)
     assert re.findall(r"^  ([a-z][a-z-]*)\s{2,}\S", pages()["co wiki advanced"], re.M) == ADVANCED
+    assert set(WIKI.commands) == {*ROOT_COMMANDS, *ADVANCED, "advanced", *OLD_NAMES}
+    for old, new in OLD_NAMES.items():
+        assert WIKI.commands[old].help.startswith(f"Old name for `co wiki {new.split(' --')[0]}"), old
+    for name in [*ROOT_COMMANDS, *ADVANCED]:
+        assert WIKI.commands[name].help and "\n" not in WIKI.commands[name].help, name
 
 
 def _commands_in(text):

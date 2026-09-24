@@ -31,8 +31,30 @@ def page(name: str) -> str:
     return text if program == "co wiki" else text.replace("co wiki", program)
 
 
+def summary(name: str) -> str:
+    """The one line `co commands` lists for this page, taken from the pages.
+
+    A command listed on the root or advanced page is summarised by that line,
+    so the listing and the page cannot disagree; any other page by its first
+    sentence.
+    """
+    word = name.split()[-1]
+    for listing in ("co wiki", "co wiki advanced"):
+        found = re.search(rf"^  {re.escape(word)}\s{{2,}}(.+)$", pages()[listing], re.M)
+        if found and len(name.split()) == 3:
+            return found.group(1).strip()
+    text = pages()[name].split(" — ", 1)[-1] if name == "co wiki" else pages()[name]
+    first = " ".join(text.split("\n\n")[0].split())
+    match = re.match(r"(.+?\.)(?:\s|$)", first)
+    return match.group(1) if match else first
+
+
 def verbatim(name: str, base=typer.core.TyperCommand):
     """A command (or group) class whose --help is exactly one page."""
     def format_help(self, ctx, formatter):
         formatter.write(page(name) + "\n")
-    return type("WikiHelp", (base,), {"format_help": format_help})
+
+    def __init__(self, *args, **kwargs):
+        base.__init__(self, *args, **kwargs)
+        self.help = self.help if self.help and self.help != name else summary(name)
+    return type("WikiHelp", (base,), {"format_help": format_help, "__init__": __init__})

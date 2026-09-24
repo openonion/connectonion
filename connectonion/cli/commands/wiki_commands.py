@@ -381,7 +381,7 @@ def make_wiki_app(factory):
     @wiki.command("search", cls=V("co wiki search"))
     def search_records(ctx: typer.Context, query: str = typer.Argument(...),
                        within: str = typer.Option("", "--in"),
-                       old_type: str = typer.Option("", "--type", hidden=True)):
+                       old_type: str = typer.Option("", "--type")):
         from ...wiki.files import Notebook
         def operation(root):
             found = Notebook(root).search(query, within or old_type)
@@ -466,7 +466,7 @@ def make_wiki_app(factory):
                   dry_run: bool = typer.Option(False, "--dry-run"),
                   scheduled: bool = typer.Option(False, "--scheduled"),
                   all_pending: bool = typer.Option(False, "--all"),
-                  days: int = typer.Option(30, "--days", min=1, hidden=True)):
+                  days: int = typer.Option(30, "--days", min=1)):
         _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days)
 
     # --------------------------------------------------------------- Settings
@@ -564,7 +564,7 @@ def make_wiki_app(factory):
     def inspect_logs(ctx: typer.Context, run_id: str = typer.Argument(""),
                      usage: bool = typer.Option(False, "--usage"),
                      days: int = typer.Option(0, "--days", min=0),
-                     old_run: str = typer.Option("", "--run", hidden=True)):
+                     old_run: str = typer.Option("", "--run")):
         from ...wiki.service import run_logs, usage_report
 
         def operation(root):
@@ -626,11 +626,11 @@ def make_wiki_app(factory):
 
     # --------------------------------------------------------------- Advanced
 
-    @wiki.command("advanced", cls=V("co wiki advanced"), hidden=True)
+    @wiki.command("advanced", cls=V("co wiki advanced"))
     def advanced(ctx: typer.Context):
         typer.echo(page("co wiki advanced"))
 
-    @wiki.command("scan", cls=V("co wiki scan"), hidden=True)
+    @wiki.command("scan", cls=V("co wiki scan"))
     def scan_sources(ctx: typer.Context,
                      what: str = typer.Argument("people"),
                      days: int = typer.Option(150, "--days", min=1),
@@ -660,13 +660,13 @@ def make_wiki_app(factory):
                           if rows else ["sources"])
         _handle(ctx, run, ["status"])
 
-    @wiki.command("map-skills", cls=V("co wiki map-skills"), hidden=True)
+    @wiki.command("map-skills", cls=V("co wiki map-skills"))
     def map_skill_pages(ctx: typer.Context, skills_dir: List[Path] = typer.Option([], "--skills-dir")):
         from ...wiki.files import Notebook
         from ...wiki.skill_map import map_skills
         _handle(ctx, lambda root: (map_skills(Notebook(root), skills_dir or None), ["list", "skills"]), ["status"])
 
-    @wiki.command("stub", cls=V("co wiki stub"), hidden=True)
+    @wiki.command("stub", cls=V("co wiki stub"))
     def stub_page(ctx: typer.Context,
                   kind: str = typer.Argument(...),
                   name: str = typer.Argument(...),
@@ -695,7 +695,7 @@ def make_wiki_app(factory):
             return {"record": record, "created": made}, ["investigate", record, *sum((["--handle", h] for h in handle), [])]
         _handle(ctx, run, ["investigate"])
 
-    @wiki.command("reflect", cls=V("co wiki reflect"), hidden=True)
+    @wiki.command("reflect", cls=V("co wiki reflect"))
     def reflect(ctx: typer.Context, subject: str, statement: str,
                 author: str = typer.Option(..., "--author"),
                 basis: str = typer.Option(..., "--basis"),
@@ -709,14 +709,14 @@ def make_wiki_app(factory):
                  previous=previous, applies=applies, kind=kind, sources=source, supersedes=supersedes),
                  ["investigate", subject]), ["list"])
 
-    @wiki.command("reflections", cls=V("co wiki reflections"), hidden=True)
+    @wiki.command("reflections", cls=V("co wiki reflections"))
     def reflection_records(ctx: typer.Context, subject: str = typer.Argument(""),
                            compact: bool = typer.Option(False, "--compact")):
         from ...wiki.reflections import compress, records
         _handle(ctx, lambda root: (compress(root, subject) if compact else records(root, subject),
                                   ["list"]), ["list"])
 
-    @wiki.command("propose", cls=V("co wiki propose"), hidden=True)
+    @wiki.command("propose", cls=V("co wiki propose"))
     def propose_review(ctx: typer.Context, kind: str, subject: str, question: str,
                        basis: str = typer.Option(..., "--basis"),
                        related: str = typer.Option("", "--related")):
@@ -724,7 +724,7 @@ def make_wiki_app(factory):
         _handle(ctx, lambda root: (propose(root, kind, [subject, related] if related else [subject],
                                          question, basis), ["review"]), ["list"])
 
-    @wiki.command("review", cls=V("co wiki review"), hidden=True)
+    @wiki.command("review", cls=V("co wiki review"))
     def review_candidates(ctx: typer.Context, review_id: str = typer.Argument(""),
                           verdict: str = typer.Option("", "--verdict"),
                           author: str = typer.Option("", "--author"),
@@ -745,7 +745,7 @@ def make_wiki_app(factory):
                     if review_id else listing(root)), ["review"]
         _handle(ctx, operation, ["review"])
 
-    @wiki.command("abstract", cls=V("co wiki abstract"), hidden=True)
+    @wiki.command("abstract", cls=V("co wiki abstract"))
     def abstract_pages(ctx: typer.Context):
         from ...wiki.config import read_config
         from ...wiki.files import Notebook
@@ -753,7 +753,7 @@ def make_wiki_app(factory):
         _handle(ctx, lambda root: (
             run_stage(Notebook(root), [], read_config(root), stage="abstract"), ["list", "decisions"]), ["status"])
 
-    @wiki.command("capture", cls=V("co wiki capture"), hidden=True)
+    @wiki.command("capture", cls=V("co wiki capture"))
     def capture_session(ctx: typer.Context, transcript: Path, source: str = typer.Option(..., "--source")):
         from ...wiki.capture import capture
         _handle(ctx, lambda root: (capture(root, transcript.expanduser().resolve(), source),
@@ -761,7 +761,7 @@ def make_wiki_app(factory):
 
     # ------------------------------------------------ Old names (until 1.9)
 
-    @wiki.command("unfinished", hidden=True)
+    @wiki.command("unfinished", help="Old name for `co wiki investigate`; works until 1.9.")
     def list_unfinished(ctx: typer.Context, category: str = typer.Argument("")):
         _moved(ctx, "unfinished", ["investigate", *([category] if category and category != "all" else [])])
         from ...wiki.files import Notebook
@@ -770,13 +770,13 @@ def make_wiki_app(factory):
             return pages, ["investigate", pages[0]["path"]] if pages else ["list"]
         _handle(ctx, operation, ["status"])
 
-    @wiki.command("people", hidden=True)
+    @wiki.command("people", help="Old name for `co wiki list people --aliases`; works until 1.9.")
     def list_people(ctx: typer.Context):
         _moved(ctx, "people", ["list", "people", "--aliases"])
         from ...wiki.files import Notebook
         _handle(ctx, lambda root: (Notebook(root).people(), ["list", "people"]), ["list", "people"])
 
-    @wiki.command("daily", hidden=True)
+    @wiki.command("daily", help="Old name for `co wiki sync`; works until 1.9.")
     def daily_round(ctx: typer.Context, days: int = typer.Option(30, "--days", min=1),
                     scheduled: bool = typer.Option(False, "--scheduled")):
         # Installed launchd jobs still call `daily --scheduled`; the notice goes
@@ -784,13 +784,13 @@ def make_wiki_app(factory):
         _moved(ctx, "daily", ["sync"])
         _sync(ctx, "", "", False, scheduled, False, days)
 
-    @wiki.command("subscriptions", hidden=True)
+    @wiki.command("subscriptions", help="Old name for `co wiki sources`; works until 1.9.")
     def inspect_subscriptions(ctx: typer.Context):
         _moved(ctx, "subscriptions", ["sources"])
         from ...wiki.service import subscriptions
         _handle(ctx, lambda root: (subscriptions(root), ["sources"]), ["config"])
 
-    @wiki.command("subscribe", hidden=True)
+    @wiki.command("subscribe", help="Old name for `co wiki sources add`; works until 1.9.")
     def subscribe(ctx: typer.Context, name: str = typer.Argument(...),
                   chat: List[str] = typer.Option([], "--chat"),
                   project: str = typer.Option("", "--project"),
@@ -801,13 +801,13 @@ def make_wiki_app(factory):
         _moved(ctx, "subscribe", ["sources", "add", name])
         _add_source(ctx, name, chat, project, about, since, only, force)
 
-    @wiki.command("unsubscribe", hidden=True)
+    @wiki.command("unsubscribe", help="Old name for `co wiki sources remove`; works until 1.9.")
     def unsubscribe(ctx: typer.Context, name: str = typer.Argument(...),
                     chat: List[str] = typer.Option([], "--chat")):
         _moved(ctx, "unsubscribe", ["sources", "remove", name])
         _remove_source(ctx, name, chat)
 
-    @wiki.command("route", hidden=True)
+    @wiki.command("route", help="Old name for `co wiki config set route.<stage>`; works until 1.9.")
     def route_stage(ctx: typer.Context, stage: str = typer.Argument(""),
                     runner: str = typer.Option("", "--runner"),
                     model: str = typer.Option("", "--model"),
@@ -822,7 +822,7 @@ def make_wiki_app(factory):
             return value, ["config"]
         _handle(ctx, operation, ["config"])
 
-    @wiki.command("usage", hidden=True)
+    @wiki.command("usage", help="Old name for `co wiki logs --usage`; works until 1.9.")
     def usage(ctx: typer.Context, days: int = typer.Option(0, "--days")):
         _moved(ctx, "usage", ["logs", "--usage"])
         from ...wiki.service import usage_report

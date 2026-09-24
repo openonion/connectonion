@@ -33,7 +33,10 @@ Options (before the command):
 
 First time:   co wiki init
 Every page:   co wiki <command> --help
-Advanced:     co wiki advanced --help
+Advanced:     co wiki advanced --help   (scan, map-skills, stub, reflect, reflections,
+              propose, review, abstract, capture)
+Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
+              and usage still work until 1.9 and print their new name.
 ```
 
 ## co wiki init
