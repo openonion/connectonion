@@ -1407,7 +1407,7 @@ def telegram_send(
     handle_telegram_send(chat, message)
 
 
-# Inbox providers: feishu, lark, whatsapp. One directory per provider under
+# Inbox providers: feishu, lark, whatsapp, whatsapp-cloud. One directory per provider under
 # ~/.co/inbox/, the same nine verbs on each. The tool knows nothing about
 # agents; anything that can read a file consumes it (DD-063).
 def _inbox_group(name: str, help_text: str) -> typer.Typer:
@@ -1563,6 +1563,25 @@ def _whatsapp_group_add(
 
 _whatsapp_app.add_typer(_whatsapp_groups, name="group")
 app.add_typer(_whatsapp_app, name="whatsapp")
+
+# The WhatsApp Business Cloud API, a separate provider from `co whatsapp` on
+# purpose: that one is a linked device that can sit in groups a person made;
+# this one is Meta's official API for a business number, with its own
+# credentials, its own inbox directory, and one extra verb to register the
+# webhook routing with O API.
+_whatsapp_cloud_app = _inbox_group(
+    "whatsapp-cloud",
+    "WhatsApp Business Cloud API as an inbox: bind, listen, receive, send, reply.")
+
+
+@_whatsapp_cloud_app.command("bind")
+def _whatsapp_cloud_bind():
+    """Register Meta's webhook with O API from WHATSAPP_CLOUD_* variables. Prints the binding id."""
+    from .commands.listen_commands import handle_bind
+    handle_bind("whatsapp-cloud")
+
+
+app.add_typer(_whatsapp_cloud_app, name="whatsapp-cloud")
 
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.
