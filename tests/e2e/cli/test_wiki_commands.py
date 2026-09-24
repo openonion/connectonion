@@ -513,3 +513,22 @@ def test_subscribing_a_whatsapp_chat_points_at_start(tmp_path):
     assert payload['next'].endswith(' start')
     refused = invoke(tmp_path / 'fresh', 'sources', 'add', 'whatsapp')   # no chat named yet
     assert refused.exit_code == 1 and 'co whatsapp chats' in refused.output
+
+
+def test_a_project_is_read_from_its_folders_not_from_mail_that_names_it(tmp_path, monkeypatch):
+    """Matching mail on a project's name scanned 3,500 mails for one project on a
+    real mailbox and timed out. The help page says a project is read from its
+    sessions; mail about it comes in only through --handle."""
+    prepare(tmp_path)
+    Notebook(tmp_path).stub_project("projects/aurora.md", "Aurora", ["/work/aurora"])
+    monkeypatch.setattr('connectonion.wiki.service.mail_available', lambda kind: True)
+    monkeypatch.setattr('connectonion.wiki.service.mail_client', lambda kind, **kw: object())
+    calls = []
+    def run(root, record, title, handles, **kwargs):
+        calls.append((handles, sorted(kwargs['clients'])))
+        return {'record': record, 'changed': []}
+    monkeypatch.setattr('connectonion.wiki.investigate.investigate', run)
+    assert invoke(tmp_path, 'investigate', 'projects/aurora.md').exit_code == 0
+    assert calls[-1] == (['/work/aurora', 'Aurora'], [])
+    assert invoke(tmp_path, 'investigate', 'projects/aurora.md', '--handle', 'aurora@client.example').exit_code == 0
+    assert calls[-1][1] == ['gmail', 'outlook'] and 'aurora@client.example' in calls[-1][0]

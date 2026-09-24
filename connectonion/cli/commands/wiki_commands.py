@@ -248,7 +248,18 @@ def make_wiki_app(factory):
                     known += [h.strip() for h in line.split(":", 1)[1].replace("、", ",").split(",")
                               if h.strip() and h.strip() != "Unknown"]
             handles = list(dict.fromkeys([*handle, *known, title.split(" (")[0]]))
-            return investigate(root, record, title, handles, days=days or 150, clients=clients_for(root),
+            clients = clients_for(root)
+            if record.startswith("projects/"):
+                # A project is read from where it lives: the sessions run in its
+                # folders. Matching mail on its name pulled in every notification
+                # and signature that mentioned it -- 3,500 mails scanned for one
+                # project on a real mailbox, then a turn that timed out. Mail about
+                # a project comes in through --handle, named on purpose.
+                section = text.partition("## Paths\n")[2].split("\n## ")[0]
+                handles = list(dict.fromkeys([*handle, *(line[2:].strip() for line in section.splitlines()
+                                                          if line.startswith("- /")), title]))
+                clients = {kind: client for kind, client in clients.items() if handle}
+            return investigate(root, record, title, handles, days=days or 150, clients=clients,
                                subscriptions=subscriptions(root), progress=progress)
 
         def overview(root):
