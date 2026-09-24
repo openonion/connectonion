@@ -5,9 +5,9 @@ import time
 from types import SimpleNamespace
 
 from connectonion.cli.co_ai import claude_station
+from connectonion.network.host.http_router import session_handler, sessions_handler
 from connectonion.network.host.session.storage import SessionStorage, session_owner
 from connectonion.network.host.session.ui import session_to_chat_items
-from connectonion.network.host.http_router import session_handler, sessions_handler
 from connectonion.useful_tools.claude_code import _approve_claude_permission
 
 
@@ -25,6 +25,10 @@ def test_terminal_browser_terminal_handover(tmp_path, monkeypatch):
             "hook_event_name": "SessionStart", "session_id": native_session,
         })
         if len(launched) == 1:
+            control_revision = station._revision
+            options["on_private_fact"]({"hook_event_name": "UserPromptSubmit"})
+            options["on_private_fact"]({"hook_event_name": "Stop"})
+            assert station._revision == control_revision
             assert options["stop_event"].wait(3)
         return 0, native_session
 

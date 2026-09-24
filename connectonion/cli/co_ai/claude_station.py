@@ -114,11 +114,9 @@ class ClaudeStation:
                 self._append(self._invocation("running"))
         elif kind == "UserPromptSubmit":
             with self._condition:
-                self._revision += 1
                 self._append(self._invocation("running"))
         elif kind == "Stop":
             with self._condition:
-                self._revision += 1
                 self._append(self._invocation("completed"))
         elif kind in {"PreToolUse", "PostToolUse", "PostToolUseFailure", "SubagentStart", "SubagentStop"}:
             self._on_activity(fact)
@@ -254,7 +252,6 @@ class ClaudeStation:
                 self._transition("completed" if code == 0 else "failed", status="done")
                 return code
             with self._condition:
-                self._revision += 1
                 self._append(self._invocation("completed"), status="done")
             self._transition("remote_controlling", status="done")
             self._resume_local.wait()
