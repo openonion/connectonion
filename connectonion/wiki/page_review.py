@@ -79,11 +79,19 @@ def _local_reference(value: str, original: str, items: list[dict]) -> bool:
     return False
 
 
-def prior_context_reference(value: str, record: str, items: list[dict]) -> bool:
-    """A retained page is identifiable context, never independent corroboration."""
+def prior_context_reference(value: str, record: str, items: list[dict], original: str = "") -> bool:
+    """A retained page is identifiable context, never independent corroboration.
+
+    Investigation hands the page over as an item; maintenance edits the page in
+    place, so there the page that existed before the run is the supplied
+    context. A real maintenance pass cited "Existing person-page contact field"
+    for an email the map had put there, and the whole update was refused.
+    """
     supplied = any(item.get('role') == 'page' and item.get('record') == record for item in items)
     label = re.search(r'\b(existing|prior|derived|mapped)\b', value, re.I)
-    return bool(supplied and label and (f'`{record}`' in value or 'investigation:page' in value))
+    if supplied and label and (f'`{record}`' in value or 'investigation:page' in value):
+        return True
+    return bool(original.strip() and label and (record in value or re.search(r'\bpage\b', value, re.I)))
 
 
 def _project_overview_errors(candidate: str) -> list[str]:
@@ -192,7 +200,7 @@ def validate(record: str, candidate: str, original: str, items: list[dict]) -> l
             errors.append(f'Unused citation: {key}')
         if not (any(source in value for source in known) or value.strip() in old_sources
                 or re.search(r'https?://\S+', value) or _local_reference(value, original, items)
-                or prior_context_reference(value, record, items)):
+                or prior_context_reference(value, record, items, original)):
             errors.append(f'Citation has no identifiable source: {key}')
     if candidate != original and not refs:
         errors.append('Changed page has no numbered evidence references')

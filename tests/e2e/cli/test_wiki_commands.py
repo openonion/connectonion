@@ -532,3 +532,33 @@ def test_a_project_is_read_from_its_folders_not_from_mail_that_names_it(tmp_path
     assert calls[-1] == (['/work/aurora', 'Aurora'], [])
     assert invoke(tmp_path, 'investigate', 'projects/aurora.md', '--handle', 'aurora@client.example').exit_code == 0
     assert calls[-1][1] == ['gmail', 'outlook'] and 'aurora@client.example' in calls[-1][0]
+
+
+def test_an_investigation_is_a_run_in_the_logs_with_its_cost(tmp_path, monkeypatch):
+    """A notebook with a dozen investigated pages said "No runs recorded": the
+    Wiki's most expensive calls were missing from the one command that shows cost."""
+    prepare(tmp_path)
+    Notebook(tmp_path).stub_person('people/ody.md', 'Ody', ['ody@example.org'], email='ody@example.org')
+    monkeypatch.setattr('connectonion.wiki.service.subscriptions', lambda root: {})
+    monkeypatch.setattr('connectonion.wiki.investigate.investigate', lambda root, record, *a, **k: {
+        'record': record, 'changed': [record], 'usage': {'input_tokens': 1200, 'output_tokens': 300},
+        'usage_by_stage': {'investigate': {'input_tokens': 1200, 'output_tokens': 300}}, 'chars_gathered': 4800})
+    assert invoke(tmp_path, 'investigate', 'people/ody.md').exit_code == 0
+    runs = json.loads(invoke(tmp_path, '--json', 'logs').stdout)['data']
+    assert runs[0]['phase'] == 'investigate' and runs[0]['record'] == 'people/ody.md'
+    assert runs[0]['outcome'] == 'completed' and runs[0]['runner_attempts'] == 0   # not the background cap
+    usage = json.loads(invoke(tmp_path, '--json', 'logs', '--usage').stdout)['data']
+    assert usage['total']['input_tokens'] == 1200 and usage['by_stage']['investigate']['output_tokens'] == 300
+
+
+def test_an_error_that_names_a_command_makes_it_the_next_line(tmp_path):
+    """`sync` before `start` said "run co wiki start" and printed Next: co wiki logs."""
+    prepare(tmp_path)
+    result = invoke(tmp_path, 'sync')
+    assert result.exit_code == 1 and 'co wiki start' in result.output
+    assert result.output.rstrip().endswith(f'--root {tmp_path} start')
+
+
+def test_list_without_a_category_is_refused_before_anything_runs(tmp_path):
+    result = invoke(tmp_path, 'investigate', '--list')
+    assert result.exit_code == 1 and 'investigate people --list' in result.output

@@ -130,9 +130,9 @@ def set_config(root: Path, pairs: list[str]) -> dict:
                 if not isinstance(target, dict):
                     raise WikiError("Invalid nested configuration; preserve config.yaml for diagnosis")
             elif len(parts) != 1 or key not in ("model", "runner"):
-                raise WikiError("Unknown or immutable configuration key")
+                raise WikiError(f"{key}: " "not a setting; the keys are model, runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co wiki config`)")
             if parts[-1] not in target:
-                raise WikiError("Unknown configuration key")
+                raise WikiError(f"{key}: " "not a setting; the keys are model, runner, schedule.times, schedule.timezone, limits.<name> and route.<stage> (see `co wiki config`)")
             if key == "schedule.times":
                 value = sorted(raw.split(","))
             elif parts[0] == "limits":

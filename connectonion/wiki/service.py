@@ -142,7 +142,7 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
                                  "about": about or None, "consented": False,
                                  "since": (now() - timedelta(days=days)).isoformat()}
         if name not in sources:
-            raise WikiError("Subscription not found; inspect subscriptions for exact names")
+            raise WikiError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code and whatsapp, and `co wiki sources` lists the ones saved here")
         if chats:
             if sources[name].get("kind") not in CHAT_KINDS:
                 raise WikiError(f"--chat names a chat in {', '.join(CHAT_KINDS)}, not in {name}")
@@ -194,7 +194,7 @@ def set_window(root: Path, name: str, value: str, *, narrow: bool = False, force
     with maintenance_lock(root):
         sources = subscriptions(root)
         if name not in sources:
-            raise WikiError("Subscription not found; inspect subscriptions for exact names")
+            raise WikiError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code and whatsapp, and `co wiki sources` lists the ones saved here")
         days = window_days(value, sources[name].get("kind", name))
         since = now() - timedelta(days=days)
         current = sources[name].get("since")

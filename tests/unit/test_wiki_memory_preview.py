@@ -331,3 +331,28 @@ def test_routes_can_be_disabled_without_erasing_evidence(root):
     assert inquiry.clear_route(root) == {}
     assert not inquiry.routing(root)
     assert Notebook(root).read('projects/a.md') == '# A\n'
+
+
+def test_a_page_too_big_for_the_day_gives_way_to_the_next(root, monkeypatch):
+    """A real 185-mail contact needed more digest calls than the daily cap left,
+    so the scheduled round failed every day and reached no one."""
+    from connectonion.wiki.daily import run_daily
+    from connectonion.wiki.config import prepare
+    from connectonion.wiki.files import WikiError
+    prepare(root)
+    for name in ('big', 'small'):
+        Notebook(root).stub_person(f'people/{name}.md', name.title(), [])
+    monkeypatch.setattr('connectonion.wiki.daily.subscriptions', lambda root: {})
+    monkeypatch.setattr('connectonion.wiki.service.mail_available', lambda kind: False)
+    tried = []
+    def investigate_one(root, record, *args, **kw):
+        tried.append(record)
+        if record == 'people/big.md':
+            raise WikiError('Extraction exceeds remaining call budget; page preserved')
+        return {'changed': [record], 'usage': {'input_tokens': 1}}
+    monkeypatch.setattr('connectonion.wiki.queue.order', lambda root, category: (
+        [{'path': 'people/big.md', 'weight': 185, 'recent': False},
+         {'path': 'people/small.md', 'weight': 3, 'recent': False}] if category == 'people' else []))
+    result = run_daily(root, maintain=lambda root: {'outcome': 'no_change'}, investigate_one=investigate_one)
+    assert result['outcome'] == 'completed' and tried == ['people/big.md', 'people/small.md']
+    assert result['run']['record'] == 'people/small.md'

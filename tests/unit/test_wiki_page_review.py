@@ -252,3 +252,15 @@ def test_correction_exposes_exact_original_file_references(tmp_path):
     items = reflections.context(nb.root)
     assert _local_reference(f'`{source}`', '', items)
     assert not _local_reference(f'`{neighbor}`', '', items)
+
+
+def test_maintenance_may_cite_the_page_that_existed_before_it():
+    """Maintenance edits a page in place, so no `page` item names it. A real pass
+    cited "Existing person-page contact field" for an email the map put there,
+    and the whole update was refused."""
+    from connectonion.wiki.page_review import prior_context_reference
+    value = "Existing person-page contact field; email listed as test@example.org; observed 2026-09-24"
+    items = [{"role": "reflection", "source": "reflection:59715bf2"}]
+    assert prior_context_reference(value, "people/test-person.md", items, original="# Test Person\n- Email: t@e.org")
+    assert not prior_context_reference(value, "people/test-person.md", items, original="")   # a new page has no past
+    assert not prior_context_reference("Outlook message 39", "people/test-person.md", items, original="# T")

@@ -1,6 +1,7 @@
 """Experimental Wiki inspection. No collection or provider startup on import."""
 
 import json
+import re
 import shlex
 from pathlib import Path
 from typing import List, Optional
@@ -62,7 +63,11 @@ def _emit(ctx, value, arguments, *, failed=False):
     if ctx.obj["json"]:
         typer.echo(json.dumps({"ok": not failed, "data": value, "next": command}, ensure_ascii=False))
     else:
-        text = render(value, ctx.info_name or "status", failed=failed)
+        path, parent = [ctx.info_name or "status"], ctx.parent
+        while parent is not None and parent.info_name not in (None, "wiki") and parent.parent is not None:
+            path.insert(0, parent.info_name)
+            parent = parent.parent
+        text = render(value, " ".join(path), failed=failed)
         typer.echo(text, err=failed)
         typer.echo(f"Next: {command}", err=failed)
     if failed:
@@ -76,7 +81,10 @@ def _handle(ctx, operation, recovery):
         value, arguments = operation(ctx.obj["root"])
     except (WikiError, OSError, UnicodeError) as error:
         message = str(error) if isinstance(error, WikiError) else "Cannot read or write the selected Wiki files"
-        _emit(ctx, message, recovery, failed=True)
+        # An error that says what to run is the Next line too. `sync` before
+        # `start` said "run co wiki start" and then printed "Next: co wiki logs".
+        named = re.search(r"`co wiki ([^`<>]+)`", message)
+        _emit(ctx, message, shlex.split(named.group(1)) if named else recovery, failed=True)
         return
     _emit(ctx, value, arguments)
 
@@ -84,6 +92,43 @@ def _handle(ctx, operation, recovery):
 def _moved(ctx, old: str, new: list):
     """An old name still works, and says what it is called now (#1656)."""
     typer.echo(f"`co wiki {old}` is now `{_next(ctx, new)}`; the old name works until 1.9.", err=True)
+
+
+def _logged(root, record, phase, call):
+    """Run one investigation and keep a run record of it, whatever happens.
+
+    Investigations are the Wiki's most expensive calls and `co wiki logs` did
+    not list a single one: on a notebook with a dozen investigated pages it
+    said "No runs recorded". A manual run is not charged to the background
+    daily cap (runner_attempts stays 0), but its usage counts in logs --usage.
+    """
+    import uuid
+    from ...wiki.config import read_config
+    from ...wiki.files import state_path, write_json
+    from ...wiki.runner import RunFailed
+    from ...wiki.service import now
+    run = {"id": "run_" + uuid.uuid4().hex, "started_at": now().isoformat(), "phase": phase,
+           "record": record, "model": read_config(root)["model"], "outcome": "running",
+           "runner_attempts": 0, "usage": None, "changed": [], "sources": [], "items": 0}
+    path = state_path(root, f"runs/{run['id']}.json")
+    write_json(path, run)
+    try:
+        result = call()
+        run.update(outcome="completed", usage=result.get("usage"), usage_by_stage=result.get("usage_by_stage") or {},
+                   changed=result.get("changed") or [], items=result.get("items", 0),
+                   chars_in=result.get("chars_gathered") or 0, coverage=result.get("coverage") or [])
+        return result
+    except BaseException as error:
+        run.update(outcome=("refused" if isinstance(error, RunFailed) and "rejected" in str(error) else
+                            "interrupted" if isinstance(error, KeyboardInterrupt) else "failed"),
+                   error=str(error)[:1000], usage=getattr(error, "usage", None))
+        raise
+    finally:
+        run["finished_at"] = now().isoformat()
+        from datetime import datetime
+        run["seconds"] = round((datetime.fromisoformat(run["finished_at"])
+                                - datetime.fromisoformat(run["started_at"])).total_seconds(), 1)
+        write_json(path, run)
 
 
 def _investigation_pages(notebook):
@@ -259,8 +304,9 @@ def make_wiki_app(factory):
                 handles = list(dict.fromkeys([*handle, *(line[2:].strip() for line in section.splitlines()
                                                           if line.startswith("- /")), title]))
                 clients = {kind: client for kind, client in clients.items() if handle}
-            return investigate(root, record, title, handles, days=days or 150, clients=clients,
-                               subscriptions=subscriptions(root), progress=progress)
+            return _logged(root, record, "investigate", lambda: investigate(
+                root, record, title, handles, days=days or 150, clients=clients,
+                subscriptions=subscriptions(root), progress=progress))
 
         def overview(root):
             state = read_json(state_path(root, "map.json"), {})
@@ -284,8 +330,9 @@ def make_wiki_app(factory):
             if list_only:
                 rows = order(root, category)
                 if not ctx.obj["json"]:
-                    unit = {"people": "mails", "projects": "sessions", "orgs": "people", "skills": ""}[category]
-                    rows = [f"{row['path']}  ({row['weight']} {unit}".rstrip() + ", "
+                    unit = {"people": "mails", "projects": "sessions", "orgs": "people"}.get(category)
+                    rows = [f"{row['path']}  ("
+                            + (f"{row['weight']} {unit}, " if unit else "")
                             + (f"investigated {row['last_investigated']}" if row["last_investigated"]
                                else "not investigated") + (", skipped: this week" if row["recent"] else "") + ")"
                             for row in rows]
@@ -314,20 +361,21 @@ def make_wiki_app(factory):
             record = owner["record"]
             title = next((l[2:].strip() for l in Notebook(root).read(record).splitlines() if l.startswith("# ")),
                          "Account owner")
-            result = investigate(root, record, title, [*owner.get("addresses", []), *handle], days=days or 30,
-                                 clients=clients_for(root), subscriptions=subscriptions(root),
-                                 progress=progress, sent_only=True)
+            result = _logged(root, record, "investigate me", lambda: investigate(
+                root, record, title, [*owner.get("addresses", []), *handle], days=days or 30,
+                clients=clients_for(root), subscriptions=subscriptions(root), progress=progress, sent_only=True))
             return result, ["show", record]
 
         def run(root):
+            if list_only and target not in CATEGORIES:
+                raise WikiError("--list goes with a category: co wiki investigate people --list "
+                                "(or projects, orgs, skills)")
             if not target:
                 return overview(root)
             if target == "me":
                 return me(root)
             if target in CATEGORIES:
                 return by_category(root, target)
-            if list_only:
-                raise WikiError("--list goes with a category: people, projects, orgs or skills")
             notebook = Notebook(root)
             record = _resolve_page(notebook, target)
             result = one(root, notebook, record)
@@ -425,6 +473,13 @@ def make_wiki_app(factory):
             result = start(root, confirm=confirm, scheduler=wiki_schedule.default_scheduler())
             if not result["started"]:
                 raise WikiError("Start was not confirmed; nothing was read or installed")
+            first = result.get("first_batch") or {}
+            if first.get("outcome") == "failed":
+                # The schedule is installed, but the first update did not work; exit 0
+                # here let `start && ...` walk past it (seen on a real notebook).
+                result["attention"] = (f"The schedule is installed, but the first update failed: "
+                                       f"{first.get('error')}")
+                _emit(ctx, result, ["logs", first["id"]], failed=True)
             return result, ["status"]
 
         _handle(ctx, operation, ["start", "--yes"] if not yes else ["doctor"])
@@ -580,7 +635,11 @@ def make_wiki_app(factory):
 
         def operation(root):
             if usage:
-                return usage_report(root, days or None), ["logs"]
+                report = usage_report(root, days or None)
+                if not report["runs"]:
+                    window = f" in the last {days} days" if days else ""
+                    return f"No runs with recorded usage{window}.", ["logs"]
+                return report, ["logs"]
             chosen = run_id or old_run
             records = run_logs(root, chosen)[:20]
             return records, (["logs", records[0]["id"]] if records and not chosen else ["status"])
