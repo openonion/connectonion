@@ -6,6 +6,7 @@ and not whether Google answers. That is tests/e2e/real_api/test_real_gemini_imag
 """
 
 import base64
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -25,7 +26,11 @@ def _llm(images, content=None):
 
 
 def _patched(llm):
-    return patch("connectonion.useful_tools.generate_image.create_llm", return_value=llm)
+    # Patch the module object, not its dotted name: useful_tools re-exports the
+    # function as `generate_image`, so once the package has been imported the
+    # dotted path resolves to the function and patch() fails on create_llm.
+    module = sys.modules[generate_image.__module__]
+    return patch.object(module, "create_llm", return_value=llm)
 
 
 def test_the_image_is_written_where_asked(tmp_path):
