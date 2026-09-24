@@ -121,7 +121,9 @@ def test_explicit_goes_through_the_real_plugin_and_records_what_was_sent(project
 
     case = report["cases"][0]
     assert case["effective_input"] == "/refund Customer has a receipt, refund them"
-    assert case["attempts"][0]["activation"]["status"] == "PASS"
+    assert case["attempts"][0]["activation"] == {
+        "status": "PASS", "evidence": "/refund was replaced with .co/skills/refund/SKILL.md"}, \
+        "a project skill is named by its project path, not an absolute one"
 
 
 def test_explicit_without_the_plugin_is_caught_not_assumed(project):

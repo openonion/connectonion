@@ -140,9 +140,18 @@ def activation(skill: Optional[dict], invoke: str, session: dict, sent: str) -> 
     if any("Skill did not start" in text for text in user_texts):
         return {"status": "FAIL", "evidence": "the skill's preflight refused to start it"}
     if marker and any(marker in text for text in user_texts):
-        return {"status": "PASS", "evidence": f"/{name} was replaced with {skill['path']}"}
+        return {"status": "PASS", "evidence": f"/{name} was replaced with {_shown(skill['path'])}"}
     return {"status": "FAIL",
             "evidence": f"{sent!r} reached the Agent unchanged: its skills plugin did not take /{name}"}
+
+
+def _shown(path: str) -> str:
+    """A project skill by its project path, `.co/skills/x/SKILL.md`. The absolute
+    path wrapped every evidence line in two on the first real report."""
+    try:
+        return str(Path(path).resolve().relative_to(Path.cwd().resolve()))
+    except ValueError:
+        return path  # ~/.co/skills or built-in: outside the project, so it stays absolute
 
 
 def tool_evidence(session: dict) -> List[dict]:
