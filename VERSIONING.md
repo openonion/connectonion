@@ -353,11 +353,12 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.8b1
+## Current Version: 1.8.8b2
 
 Wiki targets 1.8.8. Stable 1.8.7 is reserved for the dashboard patch based on 1.8.6.
 Published 1.8.7b1–b4 Wiki previews remain immutable historical artifacts.
 
+- 1.8.8b2 (Add the read-only browser request inspector to the 1.8.8 preview; retain the Wiki feature train from b1.)
 - 1.8.8b1 (Retarget the validated Wiki preview to its dedicated 1.8.8 feature line; preserve dry-run semantics when combined with backfill or scheduled execution.)
 - 1.8.7b4 (Readable Wiki CLI output, help as the workflow guide, real-page discovery, organization maps and Skill source snapshots; validated investigation and staged maintenance preserve canonical pages.)
 - 1.8.7b3 (Noninteractive Wiki initialization with connected mailbox discovery and deferred authentication tips)
