@@ -106,7 +106,10 @@ class TestUsageErrors:
         monkeypatch.setattr(browser, "_send", lambda *a: pytest.fail("usage error reached the browser"))
         result = runner.invoke(app, arguments)
         assert result.exit_code == 2
-        assert "tiktok" in result.stderr and "--help" in result.stderr
+        # GitHub Actions makes Rich force colour, which splits "--help" with
+        # escape codes; read the text the person actually sees.
+        stderr = re.sub(r"\x1b\[[0-9;]*m", "", result.stderr)
+        assert "tiktok" in stderr and "--help" in stderr
 
     def test_bare_tiktok_shows_both_commands_and_where_to_start(self):
         result = runner.invoke(app, ["tiktok"])
