@@ -40,7 +40,7 @@ where it has room for two. Each clause is checkable: `co auth google` prints
 mailbox needs no DNS (§3, email); `co browser` replaces the scripted login (§3).
 
 The **category**, for search engines, metadata and anywhere a noun phrase is
-needed, is "the command-line toolkit for AI agents". It names what the product
+needed, is "the agent CLI harness". It names what the product
 is; the headline names what the reader gets. Lead with the headline.
 
 The category replaced "an AI agent framework" because that stopped describing

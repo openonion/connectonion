@@ -27,7 +27,8 @@ agent to Gmail, a real browser and your files — one command each.** The second
 line lists the afternoon it saves: no OAuth app, no DNS records, no Playwright
 script, credentials that stay on your machine. Every clause maps to a command
 you can run. The category phrase did not disappear; it moved into metadata,
-where search engines look for a noun.
+where search engines look for a noun — and it got shorter on the way: **the
+agent CLI harness**.
 
 The turn came while checking that sentence against the rest of `PRODUCT.md`.
 The foundation document, the file that exists to stop us publishing false
