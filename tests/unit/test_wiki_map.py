@@ -182,6 +182,7 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
         {'name': 'AI Tinkerers', 'address': 'post-training@mail.aitinkerers.org', 'mails': 13, 'one_way': True},
         {'name': '', 'address': '0xa633fd2e63@mail.openonion.ai', 'mails': 3, 'one_way': True},
         {'name': 'Zhang, Misa', 'address': 'misa.zhang@fisglobal.com', 'mails': 3, 'one_way': True},
+        {'name': 'Lee Chen', 'address': 'lee.chen@mail.com', 'mails': 2, 'one_way': True},
     ]
     monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: (people, set()))
     monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
@@ -192,7 +193,7 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
     assert ody['mails'] == 34
     page = Notebook(tmp_path).read(ody['record'])
     assert 'zhouody@gmail.com' in page and 'Confirm they are one person' in page
-    assert len(pages) == 4               # Ody, the two Johns kept apart, and Misa, who wrote first
+    assert len(pages) == 5               # Ody, the two Johns, Misa who wrote first, and a mail.com person
     listed = {row['address'] for row in result['automated_correspondents']}
     assert {'changelog@neon.tech', 'drive-shares-dm-noreply@google.com', 'usr-xyz@user.luma-mail.com',
             'speedrun@substack.com', 'post-training@mail.aitinkerers.org',

@@ -353,7 +353,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.8b5
+## Current Version: 1.8.8b6
+
+1.8.8b6 is an opt-in preview after 1.8.8b5. The map now fills the owner's own
+Wiki page (#1655), and two correspondent rules no longer drop or invent people.
+Stable remains 1.8.7; the Personal Wiki acceptance target remains 1.9.0.
+
+- 1.8.8b6 (The owner's page is titled and filled by the map, with top correspondents, projects and possible own addresses; notification addresses the owner once replied to are notices; consumer mail.com addresses are people again.)
+
+Earlier in this line:
+
 
 1.8.8b5 is an opt-in preview after 1.8.8b4 (the Claude Code beta, released
 separately). It carries one conversation on two devices (#1606) and the CLI

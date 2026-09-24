@@ -66,7 +66,10 @@ BULK = re.compile(
     r'@(?:[\w-]+\.)*(?:substack\.com|beehiiv\.com|shopifyemail\.com|hs-send\.com|loops\.so|docusign\.net'
     r'|mailchimpapp\.com|mcsv\.net|sendgrid\.net|klaviyomail\.com|convertkit-mail\d*\.com)$'
     r'|@(?:mail|e|eg|email|emails|e-mails|news|newsletter|comms|edm|specials|communication|survey'
-    r'|feedback|invoicing|service|team|marketing|info|updates)\.[\w.-]+$', re.I)
+    r'|feedback|invoicing|service|team|marketing|info|updates)\.[\w-]+\.[\w.-]+$', re.I)
+# A sending subdomain sits *under* a company's domain: mail.aitinkerers.org,
+# news.ato.gov.au. Without the second label, anyone@mail.com -- a consumer
+# mailbox -- read as bulk and lost their page.
 # A ConnectOnion agent's own address. It is software writing, not a person.
 AGENT_ADDRESS = re.compile(r'^0x[0-9a-f]{6,}@', re.I)
 
