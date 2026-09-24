@@ -1398,7 +1398,9 @@ def transfer(
 # Telegram command group. The bot is the user's own (@BotFather), so the token
 # lives in their keys.env -- no OpenOnion credential and nothing billed.
 telegram_app = _typer_app(help="Telegram bot as an inbox: listen, receive, send, reply.")
-app.add_typer(telegram_app, name="telegram")
+# send has shipped since 1.7.0; the inbox verbs (#1671) have not met a live bot yet.
+app.add_typer(telegram_app, name="telegram",
+              short_help="Telegram bot: send. Experimental: listen, receive, reply.")
 
 
 @telegram_app.command("send")
@@ -1548,7 +1550,9 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
 app.add_typer(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, send, reply."), name="feishu")
 app.add_typer(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply."), name="lark")
 # Discord too: its Gateway client is `websockets`, already a core dependency.
-app.add_typer(_inbox_group("discord", "Discord bot as an inbox: listen, receive, send, reply."), name="discord")
+# Experimental: ported in #1674 and tested against fakes only, never a live Gateway.
+app.add_typer(_inbox_group("discord", "Discord bot as an inbox: listen, receive, send, reply."), name="discord",
+              short_help="Experimental: Discord bot as an inbox: listen, receive, send, reply.")
 _whatsapp_app = _inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply.")
 _whatsapp_groups = _typer_app(help="Start a group, or add people to one. One line per person.")
 
@@ -1976,7 +1980,8 @@ def youtube_update(item: str = typer.Argument(..., help="Listing number, video I
 # submission adapter: nobody has yet seen the logged-in upload form, and a
 # publish button written from guesses would be a publish button nobody tested.
 tiktok_app = _typer_app(help="TikTok local post plans and read-only browser readiness. Upload/publish is not implemented.")
-app.add_typer(tiktok_app, name="tiktok")
+app.add_typer(tiktok_app, name="tiktok",
+              short_help="Experimental: TikTok post plans and read-only readiness. Nothing is uploaded.")
 
 
 @tiktok_app.callback(invoke_without_command=True)
