@@ -1,0 +1,9 @@
+# The session hook that missed the workspace
+
+We wanted a Claude Code task opened from a browser to land in the same Work Room as a task started from a terminal. The first step seemed small: launch the real Claude CLI, record the session ID from its `SessionStart` Hook, and forward its streamed activity as OIP events. A Haiku run from the source checkout replied correctly. The browser showed the conversation, and a second prompt resumed the session.
+
+Then the installed-package test ran from an ordinary temporary workspace. Claude still started, but the connector said its Hook had never run. The Hook command was `python -m connectonion.useful_tools.claude_code_bridge`; that worked only while the repository happened to be on Python's import path. The actual user workspace has no reason to contain our source tree. We changed the command to the installed module's absolute script path and reran the wheel from outside the checkout. The Hook and the resumed session both worked there.
+
+A second mismatch was quieter. We had disabled Claude's normal settings sources to make the temporary Hook easy to reason about. That also disabled the user's project Hooks, MCP servers, and settings. A session could be identified, but it would not behave like the Claude session the user expected. The scoped Hook can be supplied as an additional settings file while Claude keeps loading its normal configuration. Identity is still checked against our own private Hook record before a Work Room input is acknowledged.
+
+The local tests now cover the identity boundary and the installed wheel; a real Haiku call covers the provider path; browser tests cover the OIP Work Room presentation and continuation. These tests establish one owned headless turn and resume. An interactive terminal wrapper, live transcript mirror, and transfer of control between terminal and browser still need separate acceptance before we can call the full handover complete.

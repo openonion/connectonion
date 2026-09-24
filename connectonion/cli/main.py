@@ -335,6 +335,65 @@ def commands():
     print("Functions inside the browser: co browser help")
 
 
+claude_app = _typer_app(help="Run Claude Code through the ConnectOnion session connector.")
+app.add_typer(claude_app, name="claude")
+
+
+@claude_app.callback(invoke_without_command=True)
+def claude_interactive(
+    ctx: typer.Context,
+    cwd: Path = typer.Option(Path("."), "--cwd", exists=True, file_okay=False, resolve_path=True, help="Workspace directory"),
+    session_id: str = typer.Option("", "--resume", help="Claude session ID to resume"),
+    model: str = typer.Option("", "--model", help="Claude model override"),
+    share: bool = typer.Option(True, "--share/--no-share", help="Share this terminal through an OIP Work Room"),
+):
+    """Launch Claude's terminal and an OIP Work Room on the same session."""
+    if ctx.invoked_subcommand is not None:
+        return
+    if share:
+        from .co_ai.claude_station import launch_claude_station
+
+        exit_code, owned_session = launch_claude_station(cwd, session_id, model)
+    else:
+        from ..useful_tools.claude_code import run_interactive_claude
+
+        try:
+            exit_code, owned_session = run_interactive_claude(str(cwd), session_id, model)
+        except ValueError as exc:
+            print(f"co claude: {exc}", file=sys.stderr)
+            raise typer.Exit(1) from exc
+    print(f"Claude session: {owned_session}", file=sys.stderr)
+    from .commands.command_tips import print_tip
+    print_tip(f"Next: co claude --resume {owned_session}")
+    if exit_code:
+        raise typer.Exit(exit_code)
+
+
+@claude_app.command("run")
+def claude_run(
+    prompt: str = typer.Argument(..., help="Task for Claude Code"),
+    cwd: Path = typer.Option(Path("."), "--cwd", exists=True, file_okay=False, resolve_path=True, help="Workspace directory"),
+    session_id: str = typer.Option("", "--session", help="Claude session ID to resume"),
+    model: str = typer.Option("", "--model", help="Claude model override"),
+    timeout: int = typer.Option(600, "--timeout", min=1, help="Maximum run time in seconds"),
+):
+    """Start or resume one Claude Code turn and print its session envelope."""
+    from ..useful_tools.claude_code import run_co_claude
+
+    result = run_co_claude(
+        prompt=prompt,
+        cwd=str(cwd),
+        session_id=session_id,
+        model=model,
+        timeout=timeout,
+        workspace=cwd,
+    )
+    print(result)
+    import json
+    if json.loads(result)["status"] != "completed":
+        raise typer.Exit(1)
+
+
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def browser(
     headless: bool = typer.Option(False, "--headless/--no-headless", help="Run browser headless"),

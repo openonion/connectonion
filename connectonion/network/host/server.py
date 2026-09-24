@@ -301,6 +301,7 @@ def _create_route_handlers(
     mode_policy: HostPermissionPolicy | None = None,
     remote_browser_service=None,
     project_dir=None,
+    provider_station=None,
 ):
     """Create route handler dict for ASGI app.
 
@@ -433,6 +434,7 @@ def _create_route_handlers(
             else remote_browser_service.proxy_channels
         ),
         "prepare_provider_workroom_turn": handle_prepare_provider_workroom_turn,
+        "provider_station": provider_station,
         "admin_logs": handle_admin_logs,
         "admin_sessions": admin_sessions_handler,
         # TrustAgent instance for direct access in http.py/websocket.py
@@ -983,6 +985,7 @@ def host(
     summary: str = None,
     examples: list = None,
     http=None,
+    provider_station=None,
     wiki_root: Path = None,
 ):
     """
@@ -1128,6 +1131,8 @@ def host(
 
     agent_metadata["address"] = addr_data['address']
     agent_metadata["trust"] = trust if isinstance(trust, str) else "custom"
+    if provider_station is not None:
+        agent_metadata["provider_station"] = "claude_code"
 
     # Rendered here and not earlier: the Home shows the address and the trust
     # level, and neither exists until this point. Called above, it rendered a
@@ -1136,12 +1141,13 @@ def host(
     ensure_dashboard(agent_metadata)
 
     # co_dir, not the default: host(co_dir=...) must put the sessions there too.
-    storage = SessionStorage(co_dir / "session_results.jsonl")
+    storage = provider_station.storage if provider_station is not None else SessionStorage(co_dir / "session_results.jsonl")
 
     # Any session still marked `running` belongs to a process that is gone —
     # this one just started and owns none. Left alone they are permanent, since
     # `running` is exempt from TTL, and every mid-turn restart adds one (#545).
-    storage.reconcile_interrupted()
+    if provider_station is None:
+        storage.reconcile_interrupted()
     # And drop what no reader can see: superseded records, and sessions past
     # their TTL that are not running. The file is append-only otherwise, and a
     # live agent was at 17 MB for 222 sessions — every dashboard open reparses
@@ -1182,6 +1188,7 @@ def host(
         mode_policy=_host_mode_policy(sample),
         remote_browser_service=remote_browser_service,
         project_dir=co_dir.parent,
+        provider_station=provider_station,
     )
     route_handlers["wiki_root"] = Path(wiki_root).expanduser().resolve() if wiki_root else None
     # The host signs its half of a sealed direct channel with this.

@@ -55,6 +55,31 @@ co gmail --help         # the options and subcommands of one command
 `co commands` is plain text with no colour codes, so `co commands | grep draft`
 finds the draft commands without knowing which group holds them.
 
+### Claude Code connector preview
+
+`co claude --cwd /path/to/project --model haiku` opens Claude's native
+interactive terminal. On exit it prints the verified session ID; pass
+`--resume <id>` to reopen that session. The wrapper installs temporary Hooks
+through an authenticated loopback receiver and reads user/assistant messages
+from the exact transcript path supplied by `SessionStart`. It skips unknown
+transcript records and does not forward thinking or raw tool data.
+
+`co claude run "Fix the tests" --cwd /path/to/project` starts one Claude Code
+turn using the same runner as a Host-delegated Claude Work Room. Its JSON output
+includes the Claude session ID. Pass `--session <id>` on a later run to continue
+that conversation. A failed run prints a JSON error and exits nonzero.
+
+The connector installs a temporary `SessionStart` Hook and checks its session
+ID and transcript path before accepting a Work Room input. Host/COAI Claude
+delegation uses this same path. Claude's native user and project settings,
+skills, and MCP configuration remain available during a resume. The interactive
+wrapper currently observes locally; Host registration, OIP mirroring to O Chat,
+terminal-to-web handover, approval routing, and release to terminal in
+[issue #1134](https://github.com/openonion/connectonion/issues/1134) remain in
+progress. Neither `co claude` nor `co claude run` by itself creates a
+ConnectOnion Host session or Work Room; a Host/COAI delegation supplies those
+for headless runs.
+
 Every command ends by naming the next one. Commands whose next step depends on
 what they found print it themselves (`Read one with: co gmail read <#>`); every
 other command gets a `Next: …` line on stderr after it returns, from one table

@@ -34,7 +34,7 @@ def test_co_ai_mode_owns_claude_permission_mode(
         seen.update(kwargs)
         return '{"provider":"claude_code","session_id":"s"}'
 
-    monkeypatch.setattr(claude_wrapper, "_run_claude_code", fake_claude_code)
+    monkeypatch.setattr(claude_wrapper, "run_co_claude", fake_claude_code)
     session = {"mode": mode}
     if mode == "full-access":
         session["turns_left"] = 10
@@ -66,7 +66,7 @@ def test_unknown_or_missing_mode_uses_auto(monkeypatch, tmp_path):
     calls = []
     monkeypatch.setattr(
         claude_wrapper,
-        "_run_claude_code",
+        "run_co_claude",
         lambda **kwargs: calls.append(kwargs) or "result",
     )
 
@@ -88,7 +88,7 @@ def test_full_access_label_without_bounded_grant_uses_provider_default(
     seen = {}
     monkeypatch.setattr(
         claude_wrapper,
-        "_run_claude_code",
+        "run_co_claude",
         lambda **kwargs: seen.update(kwargs) or "result",
     )
 
@@ -105,7 +105,7 @@ def test_hosted_contact_uses_the_same_claude_contract(monkeypatch, tmp_path, mod
     seen = {}
     monkeypatch.setattr(
         claude_wrapper,
-        "_run_claude_code",
+        "run_co_claude",
         lambda **kwargs: seen.update(kwargs) or '{"provider":"claude_code","exit_code":0}',
     )
     session = {
