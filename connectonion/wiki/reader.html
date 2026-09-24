@@ -254,7 +254,7 @@ window.WIKI = WIKI;
 
 // Theme setup
 (function() {
-  const saved = localStorage.getItem("co-wiki-theme");
+  const saved = location.protocol === "file:" ? localStorage.getItem("co-wiki-theme") : null;
   if (saved === "light" || saved === "dark") {
     document.documentElement.dataset.theme = saved;
   }
@@ -263,10 +263,10 @@ window.WIKI = WIKI;
 function setTheme(mode) {
   if (mode === "auto") {
     delete document.documentElement.dataset.theme;
-    localStorage.removeItem("co-wiki-theme");
+    if (location.protocol === "file:") localStorage.removeItem("co-wiki-theme");
   } else {
     document.documentElement.dataset.theme = mode;
-    localStorage.setItem("co-wiki-theme", mode);
+    if (location.protocol === "file:") localStorage.setItem("co-wiki-theme", mode);
   }
   renderRail(route().category || (route().record ? route().record.split("/")[0] : (route().query ? "search" : null)));
 }
@@ -542,7 +542,7 @@ function renderRail(active) {
 
   foot.appendChild(el("div", { text: "Snapshot " + fmtTime(WIKI.as_of) }));
   foot.appendChild(el("div", { text: s.next_run ? "Next pass " + fmtTime(s.next_run) : (s.state || "") }));
-  foot.appendChild(el("div", {}, [el("code", { text: "co wiki open" }), " re-renders"]));
+  foot.appendChild(el("div", { text: location.protocol === "about:" ? "Reload for latest" : "co wiki open re-renders" }));
   document.getElementById("brand-sub").textContent = (WIKI.root || "").split("/").filter(Boolean).slice(-2).join("/");
 }
 
