@@ -307,15 +307,19 @@ process; server storage remains ciphertext-only. See [sms.md](sms.md).
 
 ---
 
-#### `co telegram` - Send from Your Telegram Bot
+#### `co telegram` - Your Telegram Bot as a Directory of Files
 
 ```bash
 co telegram send 123456789 "The deployment needs attention"
 co telegram send @my_channel "Version 1.7 is ready for review"
+co telegram listen                       # long poll; every message → ~/.co/inbox/telegram/
+co telegram receive                      # next message as one JSON line
+echo "on it" | co telegram reply -100123.55
 ```
 
 Uses your own BotFather token from `TELEGRAM_BOT_TOKEN`; no OpenOnion credits
-are involved. The same `send_telegram` function is available as an agent tool.
+are involved. `send` is unchanged; the inbox verbs are the same as
+`co feishu`'s. The same `send_telegram` function is available as an agent tool.
 See [telegram.md](telegram.md) for setup, credential handling, and errors.
 
 #### `co feishu` / `co lark` - A Feishu Bot as a Directory of Files
@@ -346,6 +350,20 @@ to answer in a group a person created, since the official Cloud API has no
 endpoint for joining one. Use a number you have dedicated to this: a linked
 device sees every chat the number is in, and automating the consumer client is
 against WhatsApp's terms. See [whatsapp.md](whatsapp.md).
+
+#### `co discord` - A Discord Bot as a Directory of Files
+
+```bash
+co discord listen                      # Gateway connection; every message → ~/.co/inbox/discord/
+co discord receive                     # next message as one JSON line
+echo "on it" | co discord reply 123456789012345678
+co discord consume -- claude -p
+```
+
+The same verbs, over an outbound Gateway WebSocket: no public endpoint, no
+OpenOnion credential. Your own bot's token lives in `~/.co/keys.env` as
+`DISCORD_BOT_TOKEN`, and the Message Content intent must be on. See
+[discord.md](discord.md).
 
 ---
 
@@ -404,6 +422,10 @@ tokens and granted scopes remain local. See [Google auth](../integrations/google
 
 - [co gcalendar](gcalendar.md): list/read events, find free slots, preview and confirm Calendar writes and Meet creation.
 - [co youtube](youtube.md): read channels/videos and preview or confirm uploads and metadata updates.
+
+#### `co tiktok` - TikTok post plans (preview)
+
+- [co tiktok](tiktok.md): seal a local post plan and read login evidence from your own `co browser` tab. Upload and publish are not implemented; `--confirm` refuses to submit.
 
 ---
 
@@ -760,7 +782,27 @@ co skills list               # Show what's installed
 
 `co ai` loads `.co/skills/` and `~/.co/skills/` automatically. The runtime `skills` plugin also checks Claude skill directories directly, but `co skills copy` gives publishing one normalized library under `~/.co/skills/`.
 
-See [skills documentation](skills.md) for full details.
+See [skills documentation](skills.md) for full details. `co skills` manages
+skills; it does not author or test them — for that, see the next section.
+
+---
+
+#### `co benchmark` / `co eval run` - Build a Skill Against a Standard
+
+Write at least five cases before the skill, run the real Agent on them, edit
+only the skill, and rerun the identical benchmark:
+
+```bash
+co benchmark check reimbursement        # .co/benchmarks/reimbursement.yaml; never runs an Agent
+co eval run reimbursement --agent agent.py --skill reimbursement --runs 3
+co eval report reimbursement --latest   # case by case, and what changed since the run before
+```
+
+Every expectation is PASS, FAIL or UNVERIFIED with its evidence; a forbidden
+outcome that happened is a hard FAIL, a skill that did not run fails the case,
+and an outside effect the Agent only claimed stays UNVERIFIED. The older
+`co eval [name]` over `.co/evals/*.yaml` works unchanged. See
+[benchmark.md](benchmark.md).
 
 ---
 

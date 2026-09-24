@@ -187,8 +187,14 @@ class Outlook:
         # Graph throttles per mailbox and says how long to wait. Several wiki
         # investigations reading one mailbox at once drew 429 on 2026-09-23 and
         # the run died on a request that would have succeeded seconds later.
+        #
+        # Only what is safe to repeat. 429 means Graph refused the request, so
+        # any method may be sent again. 503/504 mean the gateway gave up waiting
+        # — the mailbox may already have done it — so only a read is repeated.
+        # Retrying POST /sendMail on a 504 delivered the same mail twice.
+        retryable = (429,) if method.upper() not in ("GET", "HEAD") else (429, 503, 504)
         for _ in range(3):
-            if response.status_code not in (429, 503, 504):
+            if response.status_code not in retryable:
                 break
             try:
                 wait = float(response.headers.get("Retry-After", 5))

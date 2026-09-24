@@ -26,6 +26,7 @@ from .file_tools import (
     write,
 )
 from .gdrive import GDrive
+from .generate_image import generate_image
 from .youtube import YouTube
 from .get_emails import get_emails, mark_read, mark_unread
 from .gmail import Gmail
@@ -71,6 +72,8 @@ __all__ = [
     "delete_sms",
     "list_sms_devices",
     "revoke_sms_device",
+    # Image generation
+    "generate_image",
     # Class-based tools
     "Memory",
     "Gmail",

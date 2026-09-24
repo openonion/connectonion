@@ -95,7 +95,15 @@ def main(
     no_tips: bool = typer.Option(False, "--no-tips",
         help="Do not print the Next: line after the command (CO_TIPS=off does the same for every run)."),
 ):
-    """ConnectOnion - A simple Python framework for creating AI agents."""
+    """ConnectOnion - A simple Python framework for creating AI agents.
+
+    \b
+    Build or improve a skill:
+      1. Define the standard first: co benchmark --help
+      2. Write/check >=5 distinct cases; then edit .co/skills/<name>/SKILL.md
+      3. Run and score the real Agent: co eval --help
+      4. Inspect failures, edit the skill, rerun the SAME benchmark
+    """
     from ..environment import selection_error
     error = selection_error()
     if error is not None and ctx.invoked_subcommand != "env":
@@ -120,6 +128,11 @@ def _show_help():
     console.print("  co init                          Set up global credentials", markup=False)
     console.print("  [cyan]co create my-agent[/cyan]               Create a project")
     console.print("  [cyan]cd my-agent && python agent.py[/cyan]    Run your agent")
+    # The workflow, not just the commands: an agent handed "improve this skill"
+    # must find that the test cases come first without being told a command
+    # name (#1642). `co skills` manages skills and says so.
+    console.print("  co benchmark --help              Build a skill: write >=5 test cases first", markup=False)
+    console.print("  co eval --help                   Then score the real Agent, edit the skill, rerun", markup=False)
     console.print()
     # The register, not a selection. This list used to be typed by hand and
     # named 16 of 24 commands — ai, announce, call, reset, server, setup,
@@ -335,8 +348,10 @@ def commands():
     print("Functions inside the browser: co browser help")
 
 
-claude_app = _typer_app(help="Run Claude Code through the ConnectOnion session connector.")
-app.add_typer(claude_app, name="claude")
+claude_app = _typer_app(help="Experimental — run Claude Code through the ConnectOnion session connector. "
+                              "Preview only; its surface may change before 1.9.0.")
+app.add_typer(claude_app, name="claude",
+              short_help="Experimental: Run Claude Code through the ConnectOnion session connector.")
 
 
 @claude_app.callback(invoke_without_command=True)
@@ -599,18 +614,193 @@ def copy(
     handle_copy(names=names or [], list_all=list_all, path=path, force=force)
 
 
-@app.command()
-def eval(
+# ---- skill benchmarks (#1642) ------------------------------------------------
+#
+# `co benchmark` authors and checks the standard and never runs an Agent;
+# `co eval run|report` runs the real Agent on it and keeps the scored report.
+# The old `co eval [NAME]` over .co/evals/*.yaml keeps working unchanged: a
+# first word that is not `run` or `report` is routed to it, so no existing
+# invocation changes meaning and no old file is read as a benchmark.
+
+BENCHMARK_HELP = """Author the standard BEFORE editing a skill. Never runs an Agent.
+
+\b
+Files: .co/benchmarks/<name>.yaml
+A suite needs at least 5 distinct cases, with both kinds:
+  kind: normal          the task should simply succeed
+  kind: counterexample  the right answer is to refuse, stop or flag
+Each case: id, kind, input, expect.must (outcomes that must happen);
+a counterexample also needs expect.must_not (outcomes that must not).
+given and fixture are optional context. Write outcomes a user could
+observe, not exact wording or a prescribed tool route. No agent: or
+skill: field — the same cases must be able to compare two of them.
+
+\b
+  - id: title-mismatch
+    kind: counterexample
+    given: "One invoice's buyer title differs from the company name"
+    input: "Please process this batch"
+    expect:
+      must: ["The mismatched invoice and its discrepancy reach the user"]
+      must_not: ["The mismatched invoice is submitted"]
+
+\b
+Next after `co benchmark check <name>` passes:
+  1. write or edit .co/skills/<skill>/SKILL.md (the skill is the deliverable)
+  2. co eval run <name> --agent agent.py --skill <skill> --runs 3
+  3. co eval report <name> --latest, edit only the skill, rerun the same benchmark
+"""
+
+benchmark_app = _typer_app(help=BENCHMARK_HELP, invoke_without_command=True)
+
+
+@benchmark_app.callback()
+def _benchmark(ctx: typer.Context):
+    # Bare `co benchmark` is discovery only: it never runs anything.
+    if ctx.invoked_subcommand is None:
+        console.print(ctx.get_help())
+
+
+@benchmark_app.command("list")
+def benchmark_list(json_out: bool = typer.Option(False, "--json", help="Structured list for coding agents")):
+    """Show authored suites, their paths and whether they are valid. Read-only."""
+    from .commands.benchmark_commands import handle_benchmark_list
+    raise typer.Exit(code=handle_benchmark_list(as_json=json_out))
+
+
+@benchmark_app.command("check")
+def benchmark_check(
+    name: str = typer.Argument(..., help="File stem of .co/benchmarks/<name>.yaml, not a path"),
+    json_out: bool = typer.Option(False, "--json", help="Structured errors: case_id, field, reason, fix"),
+):
+    """Validate one suite: at least 5 distinct cases, both kinds, must/must_not. Never calls an Agent.
+
+    Exit 0 valid; 2 missing or invalid suite, with every problem and its fix.
+    """
+    from .commands.benchmark_commands import handle_benchmark_check
+    raise typer.Exit(code=handle_benchmark_check(name, as_json=json_out))
+
+
+app.add_typer(benchmark_app, name="benchmark")
+
+
+class _EvalGroup(_OneSuggestion):
+    """`co eval run|report` are subcommands; any other first word is the old `co eval NAME`."""
+
+    def resolve_command(self, ctx, args):
+        if args and not args[0].startswith("-") and args[0] not in self.commands:
+            args = ["legacy", *args]
+        return super().resolve_command(ctx, args)
+
+
+EVAL_HELP = """Run a benchmark with the real Agent and inspect scored reports.
+
+\b
+  co eval run <name> --agent agent.py [--skill NAME] [--invoke auto|explicit] [--runs N]
+  co eval report <name> [--latest | --run ID]
+
+\b
+Each expectation is PASS, FAIL or UNVERIFIED, with the reason and evidence.
+A must_not that happened is a hard FAIL. An outside effect (sent, submitted,
+paid) the Agent only claims, with no tool result showing it, is UNVERIFIED.
+Reports are kept under .co/eval-runs/<name>/<run-id>/ and never overwritten.
+Write the benchmark first: co benchmark --help.
+
+\b
+Older evals: `co eval [NAME] [--agent FILE]` still runs .co/evals/*.yaml
+exactly as before (docs/debug/eval.md); those files are not benchmarks.
+"""
+
+eval_app = typer.Typer(cls=_EvalGroup, help=EVAL_HELP, invoke_without_command=True)
+
+
+@eval_app.callback()
+def _eval(
+    ctx: typer.Context,
+    agent: Optional[str] = typer.Option(None, "--agent", "-a", help="Older evals: agent file (overrides YAML)"),
+):
+    if ctx.invoked_subcommand is None:
+        # The exit code is the point of #682: `co eval` returned 0 after a run
+        # where nothing executed. Discarding it here would leave that fix
+        # unreachable from a shell, which is where CI reads it.
+        raise typer.Exit(code=_legacy_eval(None, agent))
+    ctx.obj = {"agent": agent}
+
+
+@eval_app.command("run")
+def eval_run(
+    name: str = typer.Argument(..., help="Benchmark name: .co/benchmarks/<name>.yaml; must pass co benchmark check"),
+    agent: str = typer.Option(..., "--agent", "-a", help="The real Agent entry point, e.g. agent.py"),
+    skill: Optional[str] = typer.Option(None, "--skill", help="Skill under test; its invocation must be observed"),
+    invoke: str = typer.Option("auto", "--invoke",
+                               help="auto: send the input unchanged, the Agent must choose the skill. "
+                                    "explicit: send /<skill> <input>"),
+    runs: int = typer.Option(1, "--runs", min=1, help="Repeat each case on a fresh session"),
+    json_out: bool = typer.Option(False, "--json", help="Summary and report path as JSON"),
+    live: bool = typer.Option(False, "--live",
+                              help="Allow outside effects. Without it the run sets CO_EVAL_LIVE=0 "
+                                   "and unproven effects stay UNVERIFIED"),
+    judge_model: Optional[str] = typer.Option(None, "--judge-model", help="Model that judges outcomes"),
+):
+    """Run every case on the real Agent and score each expectation. Saves an immutable report.
+
+    Exit 0 all expectations pass; 1 any FAIL, UNVERIFIED or skill not invoked;
+    2 bad benchmark, agent path, skill or option; 3 the Agent or runner broke (never a pass).
+    """
+    from .commands.benchmark_commands import handle_eval_run
+    raise typer.Exit(code=handle_eval_run(name, agent, skill_name=skill, invoke=invoke, runs=runs,
+                                          as_json=json_out, live=live, judge_model=judge_model))
+
+
+@eval_app.command("report")
+def eval_report(
+    name: str = typer.Argument(..., help="Benchmark name"),
+    latest: bool = typer.Option(False, "--latest", help="The most recent run (the default)"),
+    run_id: Optional[str] = typer.Option(None, "--run", help="A saved run id"),
+    json_out: bool = typer.Option(False, "--json", help="The full saved report as JSON"),
+):
+    """Reopen a saved run: case by case, and what changed since the run before. Read-only.
+
+    Exit 0 report found; 2 no such benchmark run.
+    """
+    if latest and run_id:
+        console.print("--latest and --run are exclusive")
+        raise typer.Exit(code=2)
+    from .commands.benchmark_commands import handle_eval_report
+    raise typer.Exit(code=handle_eval_report(name, run_id=run_id, as_json=json_out))
+
+
+@eval_app.command("legacy")
+def eval_legacy(
+    ctx: typer.Context,
     name: Optional[str] = typer.Argument(None, help="Specific eval name"),
     agent: Optional[str] = typer.Option(None, "--agent", "-a", help="Agent file (overrides YAML)"),
 ):
-    """Run evals and show results."""
+    """Run the older .co/evals/*.yaml, unchanged. `co eval <name>` still reaches it.
+
+    Visible rather than hidden: a command only reachable by guessing is one an
+    agent cannot find (tests/unit/test_cli_discovery.py).
+    """
+    raise typer.Exit(code=_legacy_eval(name, agent or (ctx.obj or {}).get("agent")))
+
+
+LEGACY_EVAL_TIP = 'Fix what failed with the AI:  co ai "<what to fix>"'
+
+
+def _legacy_eval(name: Optional[str], agent: Optional[str]) -> int:
+    """The older `co eval [NAME]`, unchanged, with the tip it has always ended on."""
+    import sys
+
+    from .commands.command_tips import tips_enabled
     from .commands.eval_commands import handle_eval
 
-    # The exit code is the point of #682: `co eval` returned 0 after a run
-    # where nothing executed. Discarding it here would leave that fix
-    # unreachable from a shell, which is where CI reads it.
-    raise typer.Exit(code=handle_eval(name=name, agent_file=agent) or 0)
+    code = handle_eval(name=name, agent_file=agent) or 0
+    if code == 0 and tips_enabled():
+        print(LEGACY_EVAL_TIP, file=sys.stderr)
+    return code
+
+
+app.add_typer(eval_app, name="eval")
 
 
 @app.command()
@@ -800,14 +990,20 @@ def server_destroy(
         raise typer.Exit(1)
 
 
-# Experimental Wiki inspection (no background collection entry yet).
+# Experimental: the Personal Wiki targets 1.9.0 and its acceptance gates are
+# open, so the command list says so wherever `co --help` is read.
 from .commands.wiki_commands import make_wiki_app
 
-app.add_typer(make_wiki_app(_typer_app), name="wiki")
+app.add_typer(make_wiki_app(_typer_app), name="wiki",
+              short_help="Experimental: Personal Wiki — map first, investigate next. Targets 1.9.0.")
 
 
 # Skills command group
-skills_app = _typer_app(help="Discover, copy, and list SKILL.md files from agent tool directories")
+skills_app = _typer_app(help=(
+    "Discover, copy, list and link existing SKILL.md files; does not author or benchmark them.\n\n"
+    "Project skills live in .co/skills/<name>/SKILL.md. Creating or improving a skill? "
+    "Define its test cases first: co benchmark --help. Then write SKILL.md and score it: co eval --help."
+))
 app.add_typer(skills_app, name="skills")
 
 
@@ -1201,8 +1397,10 @@ def transfer(
 
 # Telegram command group. The bot is the user's own (@BotFather), so the token
 # lives in their keys.env -- no OpenOnion credential and nothing billed.
-telegram_app = _typer_app(help="Send a message from your Telegram bot.")
-app.add_typer(telegram_app, name="telegram")
+telegram_app = _typer_app(help="Telegram bot as an inbox: listen, receive, send, reply.")
+# send has shipped since 1.7.0; the inbox verbs (#1671) have not met a live bot yet.
+app.add_typer(telegram_app, name="telegram",
+              short_help="Telegram bot: send. Experimental: listen, receive, reply.")
 
 
 @telegram_app.command("send")
@@ -1215,11 +1413,15 @@ def telegram_send(
     handle_telegram_send(chat, message)
 
 
-# Inbox providers: feishu, lark, whatsapp. One directory per provider under
+# Inbox providers: feishu, lark, whatsapp, telegram. One directory per provider under
 # ~/.co/inbox/, the same nine verbs on each. The tool knows nothing about
 # agents; anything that can read a file consumes it (DD-063).
-def _inbox_group(name: str, help_text: str) -> typer.Typer:
-    group = _typer_app(help=help_text)
+def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = None,
+                 with_send: bool = True) -> typer.Typer:
+    """The inbox verbs on a fresh group, or on an existing one that already has
+    its own `send`: `co telegram send` shipped first, and its output is part of
+    its contract, so Telegram gains the other verbs beside it."""
+    group = group if group is not None else _typer_app(help=help_text)
 
     @group.command("listen")
     def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl")):
@@ -1238,7 +1440,6 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
         from .commands.listen_commands import handle_receive
         handle_receive(name, timeout=timeout, start=not no_start, context=context)
 
-    @group.command("send")
     def _send(
         chat: str = typer.Argument(..., help="Chat id"),
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
@@ -1248,6 +1449,9 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
         """Send text to a chat. Prints the new message id."""
         from .commands.listen_commands import handle_send
         handle_send(name, chat, text, reply_to=reply_to, plain=plain)
+
+    if with_send:
+        group.command("send")(_send)
 
     @group.command("reply")
     def _reply(
@@ -1345,6 +1549,10 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
 
 app.add_typer(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, send, reply."), name="feishu")
 app.add_typer(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply."), name="lark")
+# Discord too: its Gateway client is `websockets`, already a core dependency.
+# Experimental: ported in #1674 and tested against fakes only, never a live Gateway.
+app.add_typer(_inbox_group("discord", "Discord bot as an inbox: listen, receive, send, reply."), name="discord",
+              short_help="Experimental: Discord bot as an inbox: listen, receive, send, reply.")
 _whatsapp_app = _inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply.")
 _whatsapp_groups = _typer_app(help="Start a group, or add people to one. One line per person.")
 
@@ -1371,6 +1579,9 @@ def _whatsapp_group_add(
 
 _whatsapp_app.add_typer(_whatsapp_groups, name="group")
 app.add_typer(_whatsapp_app, name="whatsapp")
+# Telegram keeps the `send` it shipped with and gains every other inbox verb on
+# the same group, with the same TELEGRAM_BOT_TOKEN.
+_inbox_group("telegram", "", group=telegram_app, with_send=False)
 
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.
@@ -1762,6 +1973,42 @@ def youtube_update(item: str = typer.Argument(..., help="Listing number, video I
     """Preview title/description edits without changing privacy or other parts."""
     from .commands.youtube_commands import handle_youtube_update
     handle_youtube_update(item, title, description, dry_run, confirm, json_output)
+
+
+# TikTok stops short of TikTok itself. `post` seals a local plan and `inspect`
+# reads login evidence from a browser tab the caller already owns. There is no
+# submission adapter: nobody has yet seen the logged-in upload form, and a
+# publish button written from guesses would be a publish button nobody tested.
+tiktok_app = _typer_app(help="TikTok local post plans and read-only browser readiness. Upload/publish is not implemented.")
+app.add_typer(tiktok_app, name="tiktok",
+              short_help="Experimental: TikTok post plans and read-only readiness. Nothing is uploaded.")
+
+
+@tiktok_app.callback(invoke_without_command=True)
+def tiktok_callback(ctx: typer.Context):
+    if ctx.invoked_subcommand is None:
+        print(ctx.get_help())
+        print("Start a local post plan: co tiktok post --help")
+
+
+@tiktok_app.command("post")
+def tiktok_post(path: str = typer.Argument(..., help="Local video file; preview never uploads it"),
+                caption: str = typer.Option(..., "--caption"),
+                account: str = typer.Option(..., "--account", help="Intended @handle; not an authenticated identity assertion"),
+                dry_run: bool = typer.Option(False, "--dry-run", help="Explicit local preview (the default)"),
+                confirm: Optional[str] = typer.Option(None, "--confirm", help="Validate a plan digest, then refuse submission until the browser adapter is verified"),
+                json_output: bool = typer.Option(False, "--json")):
+    """Prepare a local plan. No TikTok draft, upload, or post is created."""
+    from .commands.tiktok_commands import handle_tiktok_post
+    handle_tiktok_post(path, caption, account, dry_run, confirm, json_output)
+
+
+@tiktok_app.command("inspect")
+def tiktok_inspect(tab: str = typer.Option(..., "--tab", help="An existing co browser tab owned by this task"),
+                   json_output: bool = typer.Option(False, "--json")):
+    """Capture and verify login/readiness evidence; never click or upload."""
+    from .commands.tiktok_browser_commands import handle_inspect
+    handle_inspect(tab, json_output)
 
 from .commands.gcalendar_commands import gcalendar_app
 gcalendar_app.info.cls = _OneSuggestion
