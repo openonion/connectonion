@@ -681,7 +681,8 @@ def make_wiki_app(factory):
             from connectonion.project import selected_identity_dir
             from connectonion import address
 
-            identity = None if local or not ctx.obj["default_root"] else address.load(selected_identity_dir())
+            identity = (address.load(selected_identity_dir())
+                        if not local and ctx.obj["default_root"] and root.is_dir() else None)
             if identity:
                 import webbrowser
 

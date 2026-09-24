@@ -3,6 +3,7 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 import yaml
@@ -140,8 +141,10 @@ def test_open_renders_a_local_page_without_touching_the_notebook(tmp_path, monke
     assert len(opened) == 1 and opened[0].startswith("file://")
 
 
-def test_open_uses_owner_wiki_url_when_no_root_is_selected(monkeypatch):
+def test_open_uses_owner_wiki_url_when_no_root_is_selected(tmp_path, monkeypatch):
     opened = []
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    prepare(tmp_path / ".co/wiki")
     monkeypatch.setattr("connectonion.address.load",
                         lambda directory: {"address": "0x" + "a" * 64})
     monkeypatch.setattr("webbrowser.open", lambda url: opened.append(url) or True)
