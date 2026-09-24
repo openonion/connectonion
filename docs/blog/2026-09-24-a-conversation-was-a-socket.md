@@ -54,3 +54,11 @@ was given a session of its own and saw nothing.
 The lesson is the shape of the first plan. The error appeared at the relay,
 so the fix wanted to live at the relay. The rule behind it was written into
 every layer, and one of those layers was quietly losing work.
+
+*Later that day.* With the relay deployed, we ran the same three clients through
+production. Laptop and phone worked both ways. The stranger again saw nothing —
+but its `CONNECTED` said it had joined the laptop's session. The Host had given
+it a new one; the agent's relay adapter then stamped the relay's routing id over
+every outgoing frame, because routing used to depend on it. Now that a socket is
+routed by its `conn_id`, the frame keeps the session the Host actually assigned,
+and the stranger is told the truth about where it is.
