@@ -24,6 +24,8 @@ USAGE = (
     '  co browser tab open [NAME] [--who <agent>] [--for "<purpose>"]   register a tab; prints its name\n'
     "  co browser tab ls [--json]               the board: every tab, who runs it, last command\n"
     "  co browser tab close <NAME>              release your tab when the task is done\n"
+    "  co browser -t TAB network requests|request <n>|har start|har stop [FILE]   what the tab sent; HAR\n"
+    "  co browser -t TAB cookies [set|clear|save|load] [--all] [--raw]   the tab's site cookies\n"
     "  co browser close                         close the browser and stop the daemon\n"
     "  co browser install-onion                  install the onionwright driver (--engine wtf does this for you)\n"
     "  co browser help                          list every browser function\n"
