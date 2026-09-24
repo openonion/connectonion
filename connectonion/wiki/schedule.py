@@ -10,7 +10,7 @@ kept to this one file, and everything else stays one implementation in `sync`.
 The job is a tick, not a calendar. Measured 2026-09-07 on macOS 26: a
 `StartCalendarInterval` job -- array or dict form, plain /bin/sh, with or
 without ProcessType -- never fired in three experiments, while `StartInterval`
-fired to the second every time. So launchd runs `co wiki daily --scheduled`
+fired to the second every time. So launchd runs `co wiki sync --scheduled` (formerly `daily --scheduled`, which still works)
 every TICK_SECONDS, and `sync` decides whether one of the saved times has come
 due since the last scheduled batch, in the saved timezone rather than the
 machine's. Missed slots (asleep, powered off) collapse into one catch-up at the
@@ -79,7 +79,7 @@ class Launchd:
         job = {
             "Label": label_for(root),
             "ProgramArguments": [self.executable,
-                                 "wiki", "--root", str(root), "daily", "--scheduled"],
+                                 "wiki", "--root", str(root), "sync", "--scheduled"],
             "StartInterval": TICK_SECONDS,
             "RunAtLoad": False,
             "ProcessType": "Background",

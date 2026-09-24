@@ -19,7 +19,9 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     if maintenance['outcome'] not in ('completed', 'no_change'):
         return {'outcome': 'partial', 'maintenance': maintenance, 'investigation': None}
     notebook = Notebook(root)
-    pages = [p for p in notebook.unfinished() if p['path'].startswith(('people/', 'projects/', 'orgs/'))]
+    from .queue import order
+    pages = [p for category in ('people', 'projects', 'orgs') for p in order(root, category) if not p['recent']]
+    pages.sort(key=lambda p: -p['weight'])
     if not pages:
         return {'outcome': 'completed', 'maintenance': maintenance, 'investigation': None}
     config = read_config(root)
@@ -51,8 +53,12 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     handles = list(dict.fromkeys([title, *person.get('emails', []), *person.get('aliases', [])]))
     try:
         sources = subscriptions(root)
-        clients = {s['kind']: mail_client(s['kind'], attachments=True) for s in sources.values()
-                   if s.get('enabled') and s.get('kind') in ('gmail', 'outlook')}
+        # The same mailboxes `co wiki investigate` reads: every connected one the
+        # user did not unsubscribe. Reading only subscribed mailboxes here left the
+        # scheduled investigation with no mail -- the #1628 failure, one path over.
+        from .service import mail_available
+        clients = {kind: mail_client(kind, attachments=True) for kind in ('outlook', 'gmail')
+                   if mail_available(kind) and not sources.get(kind, {}).get('unsubscribed')}
         result = (investigate_one or investigate)(root, target, title, handles, days=days,
                       clients=clients, subscriptions=sources, max_calls=allocation)
         record.update(outcome='completed', usage=result.get('usage'), changed=result.get('changed', []))
