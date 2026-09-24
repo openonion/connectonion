@@ -20,7 +20,7 @@ the WS, so a reconnecting client just re-subscribes — no separate
 
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Optional
 
 
@@ -116,6 +116,52 @@ class ActiveSessionRegistry:
         """Total sessions in registry."""
         with self._lock:
             return len(self._sessions)
+
+
+@dataclass(eq=False)
+class Viewer:
+    """One connection that has a session open — a tab, a phone, a laptop.
+
+    `io` is the turn this viewer is watching, so a phone can answer an approval
+    or stop a turn that the laptop started. `tasks` are the forwarders started
+    on its behalf by another connection; they die with the socket.
+    """
+    send_msg: object
+    conn: dict
+    tasks: set = field(default_factory=set)
+    io: object = None
+
+
+class SessionViewers:
+    """session_id → the connections that currently have it open.
+
+    A session used to be one connection: the turn's output went to whichever
+    socket sent the INPUT and nowhere else, so a second device either saw
+    nothing or was refused outright (#1606). The session is the Host's; a
+    connection only watches it, and any number may.
+    """
+
+    def __init__(self):
+        self._viewers: Dict[str, list] = {}
+        self._lock = threading.Lock()
+
+    def add(self, session_id: str, viewer: Viewer) -> None:
+        with self._lock:
+            watching = self._viewers.setdefault(session_id, [])
+            if viewer not in watching:
+                watching.append(viewer)
+
+    def discard(self, session_id: str, viewer: Viewer) -> None:
+        with self._lock:
+            watching = self._viewers.get(session_id, [])
+            if viewer in watching:
+                watching.remove(viewer)
+            if not watching:
+                self._viewers.pop(session_id, None)
+
+    def of(self, session_id: str) -> list:
+        with self._lock:
+            return list(self._viewers.get(session_id, []))
 
 
 class CleanupJob(threading.Thread):

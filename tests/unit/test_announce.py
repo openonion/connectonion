@@ -128,7 +128,10 @@ class TestCreateAnnounceMessage:
 
             # Parse and verify it's sorted
             parsed = json.loads(signed_data.decode('utf-8'))
-            expected_keys = ["address", "endpoints", "relay", "summary", "timestamp", "type"]
+            # relay_features is signed on purpose: a relay admits a second
+            # device to a conversation only for an agent that really said so.
+            expected_keys = ["address", "endpoints", "relay", "relay_features",
+                             "summary", "timestamp", "type"]
             assert list(parsed.keys()) == expected_keys
 
     def test_profile_is_included_in_signed_payload(self):
