@@ -103,14 +103,13 @@ in operator-written code running inside an isolated environment; a model can
 never select it through the tool schema.
 
 Headless Claude Code cannot open its own interactive permission prompt inside
-O Chat. The adapter uses Claude's `--safe-mode`, which disables `CLAUDE.md`,
-skills, plugins, hooks, MCP servers, custom commands and agents, and related
-customizations. This preserves installed authentication but prevents ordinary
-user, project, and local configuration from raising this delegated turn's
-authority. Include relevant project instructions in the delegated prompt.
-Admin-managed policy still applies and may be stricter. Actions allowed by the
-operator-bound mode can run and appear as live cards; an unmatched permission
-request fails closed.
+O Chat. Standalone function calls use Claude's `--safe-mode`; hosted Work Room
+turns instead install scoped, authenticated Hooks for exact session observation
+and browser approval. The Hook receiver does not persist tool input. Hosted
+file edits require an authenticated owner decision and a verified path inside
+the selected workspace; commands and unknown actions are denied. Include
+relevant project instructions in the delegated prompt. Admin-managed policy
+still applies and may be stricter. An unmatched permission request fails closed.
 
 The subprocess receives only a small process/locale environment and
 Claude-specific authentication variables. Unrelated API keys and cloud/GitHub
