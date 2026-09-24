@@ -2,6 +2,14 @@
 
 Run and manage agent evals with `co eval`. Test agent behavior, track results over time, use LLM-as-judge for semantic evaluation.
 
+> **Building or improving a skill?** Use a benchmark instead: `co benchmark`
+> and `co eval run | report` ([docs/cli/benchmark.md](../cli/benchmark.md)).
+> A benchmark keeps the authored cases and the scored runs in separate files,
+> checks that the skill actually ran, and compares every run with the one
+> before. Everything on this page keeps working unchanged: `co eval` and
+> `co eval <name>` still run `.co/evals/*.yaml` exactly as described here, and
+> those files are never read as benchmarks.
+
 ## Quick Start
 
 ```bash

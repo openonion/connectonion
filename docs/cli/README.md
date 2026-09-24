@@ -760,7 +760,27 @@ co skills list               # Show what's installed
 
 `co ai` loads `.co/skills/` and `~/.co/skills/` automatically. The runtime `skills` plugin also checks Claude skill directories directly, but `co skills copy` gives publishing one normalized library under `~/.co/skills/`.
 
-See [skills documentation](skills.md) for full details.
+See [skills documentation](skills.md) for full details. `co skills` manages
+skills; it does not author or test them — for that, see the next section.
+
+---
+
+#### `co benchmark` / `co eval run` - Build a Skill Against a Standard
+
+Write at least five cases before the skill, run the real Agent on them, edit
+only the skill, and rerun the identical benchmark:
+
+```bash
+co benchmark check reimbursement        # .co/benchmarks/reimbursement.yaml; never runs an Agent
+co eval run reimbursement --agent agent.py --skill reimbursement --runs 3
+co eval report reimbursement --latest   # case by case, and what changed since the run before
+```
+
+Every expectation is PASS, FAIL or UNVERIFIED with its evidence; a forbidden
+outcome that happened is a hard FAIL, a skill that did not run fails the case,
+and an outside effect the Agent only claimed stays UNVERIFIED. The older
+`co eval [name]` over `.co/evals/*.yaml` works unchanged. See
+[benchmark.md](benchmark.md).
 
 ---
 
