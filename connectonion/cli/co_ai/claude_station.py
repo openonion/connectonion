@@ -43,6 +43,7 @@ class ClaudeStation:
         self._resume_local = threading.Event()
         self._phase = "local_starting"
         self._revision = 1
+        self._invocation_revision = 0
         self._activity_ids: dict[str, tuple[str, int]] = {}
         self._activity_sequence = 0
         self.storage.save(Session(
@@ -87,6 +88,7 @@ class ClaudeStation:
             self._condition.notify_all()
 
     def _invocation(self, status: str) -> dict:
+        self._invocation_revision += 1
         if status == "running":
             summary = "Running in the terminal" if self._phase.startswith("local") else "Claude Code is working"
         else:
@@ -102,7 +104,7 @@ class ClaudeStation:
             "taskTitle": "Claude Code session",
             "status": status,
             "currentSummary": summary,
-            "stateRevision": self._revision,
+            "stateRevision": self._invocation_revision,
         }
 
     def _on_fact(self, fact: dict) -> None:

@@ -49,8 +49,12 @@ def test_terminal_browser_terminal_handover(tmp_path, monkeypatch):
     assert station.can_continue("0xowner", station.session_id) is True
     cards = session_to_chat_items(storage.get(station.session_id).session)
     provider = next(item for item in cards if item.get("type") == "provider_invocation")
+    assert provider["status"] == "completed"
     assert provider["controlOwner"] == "browser"
     assert provider["controlPhase"] == "remote_controlling"
+    revisions = [event["stateRevision"] for event in storage.get(station.session_id).session["trace"]
+                 if event["type"] == "provider_invocation"]
+    assert revisions == sorted(set(revisions))
     assert station.take_control("0xowner", taken["stateRevision"])["accepted"] is False
     released = station.release_control("0xowner", taken["stateRevision"])
     assert released["accepted"] is True
