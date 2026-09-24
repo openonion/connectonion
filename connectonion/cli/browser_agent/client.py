@@ -14,6 +14,7 @@ import inspect
 import os
 import shlex
 import socket
+import subprocess
 import sys
 import time
 import uuid
@@ -61,6 +62,36 @@ CLOSE_DEADLINE = 60
 CLOSE_GRACE = 10  # seconds the tree gets to exit on its own after the daemon
 
 
+class _Proc:
+    """One process, known by pid *and* start time, so a recycled pid never matches."""
+
+    def __init__(self, pid: int, started: str, name: str, handle=None):
+        self.pid, self.started, self.name, self.handle = pid, started, name, handle
+
+    def __str__(self):
+        return f"{self.name}[{self.pid}]"
+
+
+def _ps_table() -> dict:
+    """{pid: (ppid, start time, command)} from one `ps`; {} if there is no ps.
+
+    Standard library only: psutil is a dev extra, and a check that needs it
+    would crash `close` on every ordinary install.
+    """
+    try:
+        out = subprocess.run(["ps", "-A", "-o", "pid=,ppid=,lstart=,comm="],
+                             capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return {}  # a slim container with no procps: the check is skipped, not a crash
+    table = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 8 and parts[0].isdigit() and parts[1].isdigit():
+            # lstart is always five words: "Thu Sep 24 19:30:00 2026"
+            table[int(parts[0])] = (int(parts[1]), " ".join(parts[2:7]), " ".join(parts[7:]))
+    return table
+
+
 def _process_tree(pid):
     """The daemon and everything under it, captured while the tree is intact.
 
@@ -71,13 +102,64 @@ def _process_tree(pid):
     """
     if pid is None:
         return []
-    import psutil
+    if transport.IS_WINDOWS:
+        return _windows_tree(pid)
+    table = _ps_table()
+    if pid not in table:
+        return []
+    tree, frontier = [pid], [pid]
+    while frontier:
+        parent = frontier.pop()
+        children = [child for child, (ppid, _, _) in table.items() if ppid == parent]
+        tree += children
+        frontier += children
+    return [_Proc(p, table[p][1], os.path.basename(table[p][2])) for p in tree]
 
+
+def _windows_tree(pid):
+    # No ps on Windows. psutil when it happens to be installed; otherwise the
+    # close keeps its old barrier (wait for the daemon's pid) and nothing more.
+    try:
+        import psutil
+    except ImportError:
+        return []
     try:
         root = psutil.Process(pid)
-        return [root, *root.children(recursive=True)]
+        return [_Proc(p.pid, str(p.create_time()), p.name(), p)
+                for p in (root, *root.children(recursive=True))]
     except psutil.Error:
         return []
+
+
+def _still_running(processes):
+    if not processes:
+        return []
+    if transport.IS_WINDOWS:
+        return [p for p in processes if p.handle.is_running()]
+    table = _ps_table()
+    return [p for p in processes if p.pid in table and table[p.pid][1] == p.started]
+
+
+def _wait_gone(processes, timeout: float):
+    """The ones still running after up to `timeout` seconds."""
+    deadline = time.monotonic() + timeout
+    left = _still_running(processes)
+    while left and time.monotonic() < deadline:
+        time.sleep(0.2)
+        left = _still_running(left)
+    return left
+
+
+def _stop(process, hard: bool) -> None:
+    if process.handle is not None:
+        (process.handle.kill if hard else process.handle.terminate)()
+        return
+    import signal
+
+    try:
+        os.kill(process.pid, signal.SIGKILL if hard else signal.SIGTERM)
+    except ProcessLookupError:
+        pass  # it exited between the check and the signal, which is what we wanted
 
 
 def _finish_close(owner_pid, watched, *, answered: bool, reason: str, payload: str = ""):
@@ -87,52 +169,33 @@ def _finish_close(owner_pid, watched, *, answered: bool, reason: str, payload: s
     and the close exits 1 naming it: exiting 0 over a live paid runtime is what
     made the waste invisible to every scheduler checking the exit code.
     """
-    import psutil
-
-    # psutil.Process.is_running() also checks the creation time, so a pid the
-    # OS has since given to an unrelated process is never touched.
-    running = [p for p in watched if p.is_running()]
     if answered:
         # Chrome's helpers finish a moment after the daemon; a clean close must
         # not be reported as forced because they were still on their way out.
         # A daemon that never answered is not shutting anything down: no wait.
         if owner_pid is not None:
             _wait_for_pid_exit(owner_pid)
-        _, running = psutil.wait_procs(running, timeout=CLOSE_GRACE)
-    left = running
+        left = _wait_gone(watched, CLOSE_GRACE)
+    else:
+        left = _still_running(watched)
     if not left and answered:
         return 0, payload
     if not left:
         return 1, f"Browser close failed: {reason}"
-    names = ", ".join(sorted({_describe(p) for p in left}))
+    names = ", ".join(sorted({str(p) for p in left}))
     for process in left:
-        try:
-            process.terminate()
-        except psutil.Error:
-            pass  # already gone between the check and the signal
-    _, alive = psutil.wait_procs(left, timeout=5)
+        _stop(process, hard=False)
+    alive = _wait_gone(left, 5)
     for process in alive:
-        try:
-            process.kill()
-        except psutil.Error:
-            pass
-    _, alive = psutil.wait_procs(alive, timeout=5)
+        _stop(process, hard=True)
+    alive = _wait_gone(alive, 5)
     what = "did not answer" if not answered else "answered but left processes running"
     if alive:
         return 1, (f"Browser close {what}; {len(alive)} process(es) survived SIGKILL: "
-                   f"{', '.join(sorted({_describe(p) for p in alive}))}")
+                   f"{', '.join(sorted({str(p) for p in alive}))}")
     return 1, (f"Browser close {what}, so it was finished by force: stopped "
                f"{len(left)} process(es) ({names}). Nothing from that browser is "
                "running now; the exit code is 1 so a script notices it was not clean.")
-
-
-def _describe(process) -> str:
-    import psutil
-
-    try:
-        return f"{process.name()}[{process.pid}]"
-    except psutil.Error:
-        return f"pid {process.pid}"
 
 
 def _wait_for_pid_exit(pid: int, timeout: float = 15.0) -> bool:

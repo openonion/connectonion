@@ -6,12 +6,12 @@ hung left the paid runtime running, orphaned, renewing every 15 minutes — and
 child in its own session, the way Chrome is started.
 """
 
+import os
 import subprocess
 import sys
 import threading
 import time
 
-import psutil
 import pytest
 
 from connectonion.cli.browser_agent import client
@@ -40,7 +40,22 @@ def start(life, take_browser):
     # The real daemon is detached, so it never becomes the CLI's zombie. This one
     # is our child: reap it the moment it exits, or it counts as still running.
     threading.Thread(target=daemon.wait, daemon=True).start()
-    return daemon, psutil.Process(browser_pid)
+    return daemon, browser_pid
+
+
+def running(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def gone(pid, within=5.0):
+    deadline = time.monotonic() + within
+    while running(pid) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    return not running(pid)
 
 
 def test_a_clean_close_exits_0_and_touches_nothing():
@@ -52,7 +67,7 @@ def test_a_clean_close_exits_0_and_touches_nothing():
 
     daemon.wait(5)
     assert (code, text) == (0, "Browser closed")
-    assert not browser.is_running()
+    assert gone(browser)
 
 
 def test_an_orphaned_browser_is_stopped_and_the_close_exits_1(monkeypatch):
@@ -65,8 +80,8 @@ def test_an_orphaned_browser_is_stopped_and_the_close_exits_1(monkeypatch):
 
     daemon.wait(5)
     assert code == 1
-    assert "left processes running" in text and f"[{browser.pid}]" in text
-    assert not browser.is_running()
+    assert "left processes running" in text and f"[{browser}]" in text
+    assert gone(browser)
 
 
 def test_a_daemon_that_never_answers_is_ended_with_its_browser(monkeypatch):
@@ -81,14 +96,25 @@ def test_a_daemon_that_never_answers_is_ended_with_its_browser(monkeypatch):
     daemon.wait(10)
     assert code == 1 and "did not answer" in text
     assert daemon.returncode is not None
-    assert not browser.is_running()
+    assert gone(browser)
 
 
-def test_a_pid_reused_by_another_process_is_not_touched():
-    """is_running() checks creation time: a recycled pid is a different process."""
-    daemon, browser = start(life=0.1, take_browser=True)
-    watched = client._process_tree(daemon.pid)
-    daemon.wait(5)
-    time.sleep(0.2)
+def test_a_live_pid_with_another_start_time_is_a_different_process():
+    """Identity is pid and start time: a pid the OS gave to something else later
+    must never be treated as one of the browser's processes."""
+    me = client._process_tree(os.getpid())[0]
+    recycled = client._Proc(me.pid, "Mon Jan  1 00:00:00 2001", me.name)
 
-    assert all(not p.is_running() for p in watched)
+    assert client._still_running([me]) == [me]
+    assert client._still_running([recycled]) == []
+
+
+def test_the_tree_includes_a_child_in_its_own_session():
+    """The whole point: Chrome is started in its own process group."""
+    daemon, browser = start(life=600, take_browser=True)
+    try:
+        pids = {p.pid for p in client._process_tree(daemon.pid)}
+        assert {daemon.pid, browser} <= pids
+    finally:
+        daemon.kill()
+        os.kill(browser, 9)
