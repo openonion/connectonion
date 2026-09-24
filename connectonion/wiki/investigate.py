@@ -71,7 +71,7 @@ def _matches(row: dict, handles: list[str], mine: set) -> bool:
 
 def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscriptions: dict,
            progress=None, attachments_dir: Path | None = None,
-           sent_only: bool = False) -> tuple[list[dict], list[str]]:
+           sent_only: bool = False, mail_skipped: str = "") -> tuple[list[dict], list[str]]:
     """Everything every source holds about the subject, oldest first, plus what was searched.
 
     `sent_only` is the owner's own page: every message in a mailbox involves
@@ -151,8 +151,10 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         if kind not in clients:
             # Say it. A mailbox left out used to vanish from coverage, so the model
             # and the reader could not tell "no mail with this person" from "not asked".
-            why = ("unsubscribed by the user" if subscriptions.get(kind, {}).get("unsubscribed")
-                   else f"not connected (co auth {'google' if kind == 'gmail' else 'microsoft'})")
+            # A mailbox left out on purpose says why; "not connected" sent a user
+            # to log in again for a project page that simply does not read mail.
+            why = (mail_skipped or ("unsubscribed by the user" if subscriptions.get(kind, {}).get("unsubscribed")
+                   else f"not connected (co auth {'google' if kind == 'gmail' else 'microsoft'})"))
             coverage.append(f"{kind}: {why}; not searched")
     for name, sub in subscriptions.items():
         if sub.get("kind") not in KINDS:
@@ -246,14 +248,14 @@ def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: P
 
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
-                sent_only: bool = False) -> dict:
+                sent_only: bool = False, mail_skipped: str = "") -> dict:
     """Fill the page's gaps from everything gathered; the page itself is the first input."""
     notebook = Notebook(root)
     if not notebook.path(record).is_file():
         raise WikiError(f"{record} does not exist; create it with `co wiki stub` first")
     items, coverage = gather(subject, handles, days=days, clients=clients, subscriptions=subscriptions,
                              progress=progress, attachments_dir=root / ".state" / "attachments",
-                             sent_only=sent_only)
+                             sent_only=sent_only, mail_skipped=mail_skipped)
     config = read_config(root)
     from .inquiry import routing, stage_config
     original_material = None

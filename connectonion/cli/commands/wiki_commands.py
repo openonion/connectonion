@@ -304,9 +304,11 @@ def make_wiki_app(factory):
                 handles = list(dict.fromkeys([*handle, *(line[2:].strip() for line in section.splitlines()
                                                           if line.startswith("- /")), title]))
                 clients = {kind: client for kind, client in clients.items() if handle}
+            skipped = "" if clients or not record.startswith("projects/") else \
+                "not read for a project page; name its mail with --handle"
             return _logged(root, record, "investigate", lambda: investigate(
                 root, record, title, handles, days=days or 150, clients=clients,
-                subscriptions=subscriptions(root), progress=progress))
+                subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped))
 
         def overview(root):
             state = read_json(state_path(root, "map.json"), {})

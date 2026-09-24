@@ -357,3 +357,12 @@ def test_the_owners_page_reads_what_the_owner_sent_from_every_address():
                                  clients={"outlook": Box()}, subscriptions={}, sent_only=True)
     assert sorted(i["text"] for i in items) == ["body a", "body b"]          # both addresses, only what was sent
     assert "kept the owner's own sent mail" in coverage[0]
+
+
+def test_a_mailbox_left_out_on_purpose_says_why_not_that_it_is_disconnected():
+    """A project page skips mail by design; its coverage said "not connected (co auth
+    microsoft)", which sends a user to log in again for nothing."""
+    items, coverage = inv.gather("Aurora", ["/work/aurora"], days=7, clients={}, subscriptions={},
+                                 mail_skipped="not read for a project page; name its mail with --handle")
+    assert "outlook: not read for a project page; name its mail with --handle; not searched" in coverage
+    assert not any("co auth" in line for line in coverage)
