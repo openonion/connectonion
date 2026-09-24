@@ -23,7 +23,7 @@ names in old help text, such as `people/emma.md`, are not built-in records.
 
 ```bash
 co wiki unfinished           # Pages with remaining Unknown sections and a concrete next step
-co wiki open                 # Browse a snapshot in your browser
+co wiki open                 # Open the full-page Wiki in your browser
 co wiki sync --dry-run       # Inspect pending metadata, without running a model
 co wiki sync                 # Process a bounded batch using configured sources/model
 co wiki logs                 # Inspect results, partial coverage and failures
