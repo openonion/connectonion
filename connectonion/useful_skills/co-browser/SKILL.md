@@ -217,7 +217,7 @@ when its owner expects to finish:
 
 ```
 [scrape] https://...  who=alice  purpose='scrape pricing'  open 3m
-   owner expects to finish by 14:20 (7m left) — leave it alone until then
+   owner expects to finish by 14:20 (7m left) — leave this tab alone until then; the browser is free for your own: co browser tab open <name> --who <you> --for "<task>"
 ```
 
 Inside that window, open your own tab instead. Once it has passed, the tab is

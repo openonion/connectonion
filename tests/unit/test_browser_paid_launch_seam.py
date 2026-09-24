@@ -290,6 +290,29 @@ def test_a_terminated_paid_session_refuses_page_commands():
     core._require_live_paid_session()
 
 
+def test_status_does_not_call_an_ended_paid_session_open():
+    """#1457: the context still answered, so status said `Browser: open` right
+    before the next page command failed with PaidSessionEndedError."""
+    import asyncio
+
+    class AnsweringContext:
+        async def cookies(self):
+            return []
+
+    core = async_mod.AsyncBrowserCore.__new__(async_mod.AsyncBrowserCore)
+    core.browser = AnsweringContext()
+    core._paid_run = FakePaidRun()
+
+    core._paid_run.terminal_reason = None
+    assert asyncio.run(core.is_alive()) is True
+
+    core._paid_run.terminal_reason = "browser_exited"
+    assert asyncio.run(core.is_alive()) is False
+
+    core._paid_run = None                      # the free engine is unaffected
+    assert asyncio.run(core.is_alive()) is True
+
+
 def test_the_guard_is_called_from_the_page_command_entry_point():
     """The check must run where page commands enter, not sit unreferenced.
 

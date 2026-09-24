@@ -681,8 +681,20 @@ class TestOccupancyNote:
 
         note = _occupancy_note({"needs_until": time.time() + 600})
 
-        assert "leave it alone" in note
+        assert "leave this tab alone" in note
         assert "left)" in note, "a peer needs to know how long to wait"
+
+    def test_a_busy_tab_says_the_browser_is_not_and_names_the_way_on(self):
+        """"leave it alone" had no subject and read as "the browser is busy"; an
+        agent deferred a user's task 40 minutes for a tab it never needed (#1605)."""
+        import time
+        from connectonion.useful_tools.browser_tools import _async_browser, browser
+
+        for module in (browser, _async_browser):
+            note = module._occupancy_note({"needs_until": time.time() + 600})
+            assert "leave this tab alone" in note
+            assert "the browser is free" in note
+            assert "co browser tab open <name>" in note
 
     def test_past_the_declared_window_says_free_to_close(self):
         import time
