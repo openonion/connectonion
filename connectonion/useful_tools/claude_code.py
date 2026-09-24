@@ -347,6 +347,7 @@ def run_interactive_claude(
     on_private_fact: Callable[[dict], None] | None = None,
     on_message: Callable[[dict], None] | None = None,
     stop_event: threading.Event | None = None,
+    skip_existing_messages: bool = False,
 ) -> tuple[int, str]:
     """Run Claude's TUI and observe scoped Hooks plus exact transcript messages."""
     validation = _validate_request("interactive", session_id, cwd, model, 600)
@@ -387,7 +388,10 @@ def run_interactive_claude(
                         process.kill()
                         process.wait()
                     break
-                offset, tailer, facts, messages = poll_bridge(events, offset, directory, tailer)
+                offset, tailer, facts, messages = poll_bridge(
+                    events, offset, directory, tailer,
+                    skip_existing_messages=skip_existing_messages,
+                )
                 if on_private_fact is not None:
                     for fact in facts:
                         on_private_fact(fact)
@@ -395,7 +399,10 @@ def run_interactive_claude(
                     for message in messages:
                         on_message(message)
                 time.sleep(0.1)
-            offset, tailer, facts, messages = poll_bridge(events, offset, directory, tailer)
+            offset, tailer, facts, messages = poll_bridge(
+                events, offset, directory, tailer,
+                skip_existing_messages=skip_existing_messages,
+            )
             if on_private_fact is not None:
                 for fact in facts:
                     on_private_fact(fact)

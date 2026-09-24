@@ -5,9 +5,9 @@ import time
 from types import SimpleNamespace
 
 from connectonion.cli.co_ai import claude_station
+from connectonion.network.host.http_router import session_handler, sessions_handler
 from connectonion.network.host.session.storage import SessionStorage, session_owner
 from connectonion.network.host.session.ui import session_to_chat_items
-from connectonion.network.host.http_router import session_handler, sessions_handler
 from connectonion.useful_tools.claude_code import _approve_claude_permission
 
 
@@ -18,13 +18,19 @@ def test_terminal_browser_terminal_handover(tmp_path, monkeypatch):
     assert session_handler(storage, station.session_id) is None
     assert sessions_handler(storage)["sessions"] == []
     launched = []
+    history_modes = []
 
     def terminal(**options):
         launched.append(options["session_id"])
+        history_modes.append(options["skip_existing_messages"])
         options["on_private_fact"]({
             "hook_event_name": "SessionStart", "session_id": native_session,
         })
         if len(launched) == 1:
+            control_revision = station._revision
+            options["on_private_fact"]({"hook_event_name": "UserPromptSubmit"})
+            options["on_private_fact"]({"hook_event_name": "Stop"})
+            assert station._revision == control_revision
             assert options["stop_event"].wait(3)
         return 0, native_session
 
@@ -43,14 +49,30 @@ def test_terminal_browser_terminal_handover(tmp_path, monkeypatch):
     assert station.can_continue("0xowner", station.session_id) is True
     cards = session_to_chat_items(storage.get(station.session_id).session)
     provider = next(item for item in cards if item.get("type") == "provider_invocation")
+    assert provider["status"] == "completed"
     assert provider["controlOwner"] == "browser"
     assert provider["controlPhase"] == "remote_controlling"
+    revisions = [event["stateRevision"] for event in storage.get(station.session_id).session["trace"]
+                 if event["type"] == "provider_invocation"]
+    assert revisions == sorted(set(revisions))
     assert station.take_control("0xowner", taken["stateRevision"])["accepted"] is False
     released = station.release_control("0xowner", taken["stateRevision"])
     assert released["accepted"] is True
     worker.join(timeout=3)
     assert not worker.is_alive()
     assert launched == ["", native_session]
+    assert history_modes == [False, True]
+
+
+def test_invocation_revision_advances_from_persisted_trace(tmp_path):
+    storage = SessionStorage(tmp_path / "station" / "session_results.jsonl")
+    station = claude_station.ClaudeStation(tmp_path, storage)
+    station._append(station._invocation("running"))
+    station._invocation_revision = 0
+
+    completed = station._invocation("completed")
+
+    assert completed["stateRevision"] == 2
 
 
 def test_browser_approval_requires_owned_workspace_edit(tmp_path):

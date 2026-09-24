@@ -43,6 +43,7 @@ class ClaudeStation:
         self._resume_local = threading.Event()
         self._phase = "local_starting"
         self._revision = 1
+        self._invocation_revision = 0
         self._activity_ids: dict[str, tuple[str, int]] = {}
         self._activity_sequence = 0
         self.storage.save(Session(
@@ -87,6 +88,11 @@ class ClaudeStation:
             self._condition.notify_all()
 
     def _invocation(self, status: str) -> dict:
+        trace = self.storage.get(self.session_id).session["trace"]
+        latest = next((event["stateRevision"] for event in reversed(trace)
+                       if event.get("type") == "provider_invocation"
+                       and event.get("invocationId") == self.invocation_id), 0)
+        self._invocation_revision = max(self._invocation_revision, latest) + 1
         if status == "running":
             summary = "Running in the terminal" if self._phase.startswith("local") else "Claude Code is working"
         else:
@@ -102,7 +108,7 @@ class ClaudeStation:
             "taskTitle": "Claude Code session",
             "status": status,
             "currentSummary": summary,
-            "stateRevision": self._revision,
+            "stateRevision": self._invocation_revision,
         }
 
     def _on_fact(self, fact: dict) -> None:
@@ -114,11 +120,9 @@ class ClaudeStation:
                 self._append(self._invocation("running"))
         elif kind == "UserPromptSubmit":
             with self._condition:
-                self._revision += 1
                 self._append(self._invocation("running"))
         elif kind == "Stop":
             with self._condition:
-                self._revision += 1
                 self._append(self._invocation("completed"))
         elif kind in {"PreToolUse", "PostToolUse", "PostToolUseFailure", "SubagentStart", "SubagentStop"}:
             self._on_activity(fact)
@@ -232,6 +236,7 @@ class ClaudeStation:
 
     def run(self) -> int:
         """Run the TUI on the foreground thread; remote turns use Host workers."""
+        returning_from_browser = False
         while True:
             self._stop_local.clear()
             self._resume_local.clear()
@@ -244,6 +249,7 @@ class ClaudeStation:
                     on_private_fact=self._on_fact,
                     on_message=self._on_message,
                     stop_event=self._stop_local,
+                    skip_existing_messages=returning_from_browser,
                 )
             except (OSError, ValueError) as exc:
                 self._transition("failed", status="done")
@@ -254,10 +260,10 @@ class ClaudeStation:
                 self._transition("completed" if code == 0 else "failed", status="done")
                 return code
             with self._condition:
-                self._revision += 1
                 self._append(self._invocation("completed"), status="done")
             self._transition("remote_controlling", status="done")
             self._resume_local.wait()
+            returning_from_browser = True
 
 
 class _StationOutput:
@@ -325,7 +331,7 @@ def launch_claude_station(workspace: Path, session_id: str, model: str) -> tuple
         name="co-claude-station-host",
         daemon=True,
     )
-    print(f"Claude Work Room: https://o.openonion.ai/{identity['address']}")
+    print(f"Claude Work Room: https://chat.openonion.ai/{identity['address']}")
     print(f"Pairing code: {station.pairing_code}")
     original_stdout, original_stderr = sys.stdout, sys.stderr
     with (state_dir / "station-host.log").open("a", encoding="utf-8") as log:
