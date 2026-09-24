@@ -564,6 +564,66 @@ class TestLoggerIntegration:
         assert args[0] == "Tool 'bash' denied by connectonion.auto"
         assert kwargs == {"success": False}
 
+    def test_a_refused_command_is_in_the_log_in_full(self, tmp_path):
+        """The call line is truncated for width, and truncation cut the part that
+        was refused — `| head -40` — off the only record of a refused command.
+        Read back from the real log file, not a mock (#1493)."""
+        def bash(command: str) -> str:
+            return command
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(bash))
+        agent = FakeAgent()
+
+        def reject(_event_type: str) -> None:
+            raise ValueError("Tool 'bash' denied by connectonion.auto")
+
+        agent._invoke_events = reject
+        log = tmp_path / "run.log"
+        command = "CO_WHO=lidaily co browser -t lidaily-1000 get_text | head -40"
+
+        execute_single_tool(tool_name="bash", tool_args={"command": command},
+                            tool_id="call_1", tools=tools, agent=agent,
+                            logger=Logger("t", log=str(log)))
+
+        written = log.read_text()
+        assert f"refused call, in full: bash(command='{command}')" in written
+
+    def test_a_tool_that_failed_while_running_is_not_called_refused(self, tmp_path):
+        def bash(command: str) -> str:
+            raise RuntimeError("exit 1")
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(bash))
+        log = tmp_path / "run.log"
+
+        execute_single_tool(tool_name="bash", tool_args={"command": "false"},
+                            tool_id="call_1", tools=tools, agent=FakeAgent(),
+                            logger=Logger("t", log=str(log)))
+
+        assert "refused call" not in log.read_text()
+
+    def test_a_tool_that_does_not_exist_is_answered_with_the_ones_that_do(self):
+        """A bare "not found" left the model guessing, and it guessed the same
+        name again — 4-6 calls to `add` at the start of most runs (#1292)."""
+        def bash(command: str) -> str:
+            return command
+
+        def read_file(path: str) -> str:
+            return path
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(bash))
+        tools.add(create_tool_from_function(read_file))
+
+        trace = execute_single_tool(tool_name="add", tool_args={"a": 1, "b": 2},
+                                    tool_id="call_1", tools=tools, agent=FakeAgent(),
+                                    logger=Mock())
+
+        assert trace["status"] == "not_found"
+        assert "do not call it again" in trace["result"]
+        assert "The tools you can call are: bash, read_file." in trace["result"]
+
     def test_error_includes_schema_info(self):
         """Error result includes tool schema so LLM can fix the call."""
         def write_file(path: str, content: str) -> str:

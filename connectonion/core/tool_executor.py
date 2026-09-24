@@ -250,6 +250,13 @@ def execute_and_record_tools(
         agent._invoke_events('after_tools')
 
 
+def _full_args(tool_args: dict) -> str:
+    """Every argument, untruncated, safe to print through Rich markup."""
+    from rich.markup import escape
+
+    return escape(", ".join(f"{name}={value!r}" for name, value in tool_args.items()))
+
+
 def execute_single_tool(
     tool_name: str,
     tool_args: Dict,
@@ -287,6 +294,8 @@ def execute_single_tool(
 
     # Log tool call before execution
     logger.log_tool_call(tool_name, tool_args)
+    # Whether before_each_tool let it through; an error before that is a refusal.
+    cleared = False
 
     trace_entry = {
         "type": "tool_result",
@@ -315,7 +324,15 @@ def execute_single_tool(
 
     # Check if tool exists
     if tool_func is None:
-        error_msg = f"Tool '{tool_name}' not found"
+        # Name what does exist. A bare "not found" left the model guessing, and
+        # it guessed the same name again: 4-6 calls to a tool called `add` at
+        # the start of most `co ai` runs, each refused in under a millisecond (#1292).
+        available = sorted(tools.names() if hasattr(tools, "names") else tools or [])
+        error_msg = (
+            f"Tool '{tool_name}' not found. It does not exist in this session; "
+            f"do not call it again. The tools you can call are: "
+            f"{', '.join(available) if available else 'none'}."
+        )
 
         trace_entry["result"] = error_msg
         trace_entry["status"] = "not_found"
@@ -382,6 +399,7 @@ def execute_single_tool(
             agent._invoke_events('before_each_tool')
         finally:
             agent.current_session.pop('pending_tool', None)
+        cleared = True
 
         # Execute the tool with timing (restart timer AFTER events for accurate tool timing)
         tool_start = time.time()
@@ -535,6 +553,12 @@ def execute_single_tool(
         time_str = f"{tool_duration/1000:.4f}s" if tool_duration < 100 else f"{tool_duration/1000:.1f}s"
         logger.log_tool_result(str(e), tool_duration, success=False)
         logger.print(f"[red]✗[/red] Error ({time_str}): {str(e)}")
+        if not cleared:
+            # Refused before it ran, so it left no effects: this line is the
+            # only record of what was asked. The call line above is truncated
+            # for width, which cut `... | head -40` — the part that was refused
+            # — off the one command that needed diagnosing (#1493).
+            logger.print(f"  refused call, in full: {tool_name}({_full_args(tool_args)})")
 
         # Note: on_error event will fire in execute_and_record_tools after result message added
 
