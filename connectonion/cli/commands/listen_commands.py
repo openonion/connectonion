@@ -290,7 +290,8 @@ def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: 
     print(sent)
 
 
-def _unsupported(name: str, verb: str) -> None:
+def _unsupported(name: str, verb: str,
+                 endpoint: str = "PUT and DELETE on /im/v1/messages/<id>") -> None:
     """Say which provider cannot do this and what it would take, not "error".
 
     A verb that exists on `co whatsapp` and not on `co lark` has to say so in
@@ -299,8 +300,8 @@ def _unsupported(name: str, verb: str) -> None:
     """
     errors.print(
         f"co {name} {verb} is not implemented. WhatsApp is the only provider with it so far; "
-        f"Feishu and Lark have the endpoints for it (PUT and DELETE on /im/v1/messages/<id>) "
-        f"and nobody has wired them up. Next: co {name} send",
+        f"Feishu and Lark have the endpoint for it ({endpoint}) "
+        f"and nobody has wired it up. Next: co {name} send",
         style="red")
     sys.exit(1)
 
@@ -356,6 +357,68 @@ def handle_delete(name: str, message_id: str) -> None:
         errors.print(str(exc), style="red")
         sys.exit(1)
     inbox.log(f"deleted {message_id} in {chat} as {sent or 'no id'}")
+    print(sent)
+
+
+def handle_group(name: str, phones: list, *, subject: str = "", chat: str = "") -> None:
+    """Create a group (subject) or add to one (chat). One line per person.
+
+    Asked to start a room for a new client, the answer used to be "a human has
+    to create it on a phone, then add me" (#1617). The per-person lines are the
+    point: WhatsApp calls the group a success while quietly leaving out anyone
+    whose privacy settings forbid being added.
+    """
+    p = _configured(name)
+    try:
+        result = p.create_group(subject, phones) if subject else p.add_to_group(chat, phones)
+    except Exception as exc:
+        errors.print(f"{exc}. A listener started before this version cannot do "
+                     f"this; restart it. Next: co {name} listen", style="red")
+        sys.exit(1)
+    print(result["chat"])
+    missing = 0
+    for person in result["participants"]:
+        added = person["outcome"] in ("added", "already in the group")
+        missing += not added
+        print(f"  {'✓' if added else '✗'} +{person['phone']}  {person['outcome']}")
+    if result.get("invite_link"):
+        print(f"  invite_link: {result['invite_link']}")
+    what = f"created group {subject!r}" if subject else "added to group"
+    Inbox(name).log(f"{what} {result['chat']}: {len(phones) - missing}/{len(phones)} in")
+    print_tip(f"Next: co {name} send {result['chat']} \"<text>\"")
+    if missing:
+        sys.exit(1)
+
+
+def handle_react(name: str, message_id: str, emoji: str) -> None:
+    """React to any message — ours, or somebody else's. "" removes our reaction.
+
+    The automatic SEEN/ANSWERING receipts only land on messages the bot will
+    answer. In a group, people acknowledge each other with a 👍; the bot could
+    only stay silent or send a whole message, which is louder than the moment
+    deserves (#1633). Prints the reaction's id so a script can check it landed.
+    """
+    p = _configured(name)
+    inbox = Inbox(name)
+    if getattr(p, "react", None) is None:
+        _unsupported(name, "react", "POST /im/v1/messages/<id>/reactions")
+    ours = inbox.lookup_sent(message_id)
+    if ours is not None:
+        chat, sender, mine = ours["chat"], "", True
+    else:
+        received = inbox.lookup(message_id)
+        if received is None:
+            errors.print(f"no message {message_id} in {inbox.received} or {inbox.sent}. "
+                         f"Next: co {name} log", style="red")
+            sys.exit(1)
+        chat, sender, mine = received.chat, received.sender, False
+    try:
+        sent = p.react(chat, message_id, emoji, sender=sender, mine=mine)
+    except Exception as exc:
+        errors.print(str(exc), style="red")
+        sys.exit(1)
+    what = f"reacted {emoji}" if emoji else "removed our reaction"
+    inbox.log(f"{what} on {message_id} in {chat} as {sent or 'no id'}")
     print(sent)
 
 

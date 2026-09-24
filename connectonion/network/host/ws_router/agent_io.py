@@ -105,9 +105,14 @@ def _agent_thread_body(route_handlers, storage, prompt, io, session, images, fil
         io.mark_agent_done()
 
 
-async def forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holder=None, conn=None, storage=None):
-    """Forward agent events to client. Send OUTPUT (or ERROR) when agent finishes."""
-    async for event in io.read_msgs_from_agent():
+async def forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holder=None, conn=None, storage=None, start=None):
+    """Forward agent events to client. Send OUTPUT (or ERROR) when agent finishes.
+
+    `start` makes this an independent reader of the turn's log (see
+    WebSocketIO.read_msgs_from_agent) — what every viewer but the first needs.
+    """
+    reader = io.read_msgs_from_agent() if start is None else io.read_msgs_from_agent(start=start)
+    async for event in reader:
         if event.get("type") == "approval_needed":
             io.register_permission_request(event, session_id)
         if session_id:
@@ -166,20 +171,59 @@ async def forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holde
         await send_dashboard(send_msg, session_id, conn)
 
 
-def resume_forwarding(send_msg, active, registry, session_id, storage, conn=None):
+def resume_forwarding(send_msg, active, registry, session_id, storage, conn=None, last_msg_id=None):
     """Restart the forward task on an existing running session's io. Returns (io, forward_task).
 
     Called when a client reconnects to a session whose agent thread is still
-    alive. The io stayed live in ActiveSession across the WS drop; we just
-    spawn a fresh task to pump it to the new client.
+    alive — or when a second device opens it mid-turn. The io stayed live in
+    ActiveSession; we spawn a task that reads it from this client's own
+    position, so a device joining cannot move where another one is reading.
     """
     console.print("  [dim]↻ resuming forwarding to running agent[/dim]")
     io = active.io
     registry.update_ping(session_id)
     task = asyncio.create_task(
-        forward_agent_msgs_to_client(send_msg, io, session_id, storage=storage, conn=conn)
+        forward_agent_msgs_to_client(
+            send_msg, io, session_id, storage=storage, conn=conn,
+            start=io.position_after(last_msg_id),
+        )
     )
     return io, task
+
+
+async def _watch_turn(viewer, io, session_id, prompt, result_holder):
+    """Stream a turn another device started to this viewer, prompt first.
+
+    The prompt goes out as `user_message` because the viewer never typed it:
+    without it the other device shows an answer to a question it cannot see.
+    A client that predates the event ignores it and still gets the stream.
+    """
+    await viewer.send_msg({"type": "user_message", "content": prompt, "session_id": session_id})
+    await forward_agent_msgs_to_client(
+        viewer.send_msg, io, session_id,
+        result_holder=result_holder, conn=viewer.conn, start=0,
+    )
+
+
+def fan_out_turn(viewers, session_id, io, result_holder, prompt, *, origin_conn, owner):
+    """Show a turn started on one connection to every other one that has the session open.
+
+    Only viewers signed in as the session's owner: the same rule that keeps a
+    stranger naming this session id from reading a turn in progress (#696).
+    Each viewer also adopts the turn's io, so it can approve or stop it.
+    """
+    if viewers is None or not session_id:
+        return
+    for viewer in viewers.of(session_id):
+        if viewer.conn is origin_conn:
+            viewer.io = io
+            continue
+        if not owner or viewer.conn.get("agent_address") != owner:
+            continue
+        viewer.io = io
+        task = asyncio.create_task(_watch_turn(viewer, io, session_id, prompt, result_holder))
+        viewer.tasks.add(task)
+        task.add_done_callback(viewer.tasks.discard)
 
 
 def verified_prompt(data: dict, route_handlers) -> tuple:
@@ -284,6 +328,10 @@ async def start_agent(data, send_msg, conn, route_handlers, storage, registry):
 
     task = asyncio.create_task(
         forward_agent_msgs_to_client(send_msg, io, session_id, result_holder=result_holder, conn=conn)
+    )
+    fan_out_turn(
+        route_handlers.get("viewers"), session_id, io, result_holder, prompt,
+        origin_conn=conn, owner=agent_address,
     )
     return io, task
 

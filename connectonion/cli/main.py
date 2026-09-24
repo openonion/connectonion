@@ -335,9 +335,71 @@ def commands():
     print("Functions inside the browser: co browser help")
 
 
+claude_app = _typer_app(help="Run Claude Code through the ConnectOnion session connector.")
+app.add_typer(claude_app, name="claude")
+
+
+@claude_app.callback(invoke_without_command=True)
+def claude_interactive(
+    ctx: typer.Context,
+    cwd: Path = typer.Option(Path("."), "--cwd", exists=True, file_okay=False, resolve_path=True, help="Workspace directory"),
+    session_id: str = typer.Option("", "--resume", help="Claude session ID to resume"),
+    model: str = typer.Option("", "--model", help="Claude model override"),
+    share: bool = typer.Option(True, "--share/--no-share", help="Share this terminal through an OIP Work Room"),
+):
+    """Launch Claude's terminal and an OIP Work Room on the same session."""
+    if ctx.invoked_subcommand is not None:
+        return
+    if share:
+        from .co_ai.claude_station import launch_claude_station
+
+        exit_code, owned_session = launch_claude_station(cwd, session_id, model)
+    else:
+        from ..useful_tools.claude_code import run_interactive_claude
+
+        try:
+            exit_code, owned_session = run_interactive_claude(str(cwd), session_id, model)
+        except ValueError as exc:
+            print(f"co claude: {exc}", file=sys.stderr)
+            raise typer.Exit(1) from exc
+    print(f"Claude session: {owned_session}", file=sys.stderr)
+    from .commands.command_tips import print_tip
+    print_tip(f"Next: co claude --resume {owned_session}")
+    if exit_code:
+        raise typer.Exit(exit_code)
+
+
+@claude_app.command("run")
+def claude_run(
+    prompt: str = typer.Argument(..., help="Task for Claude Code"),
+    cwd: Path = typer.Option(Path("."), "--cwd", exists=True, file_okay=False, resolve_path=True, help="Workspace directory"),
+    session_id: str = typer.Option("", "--session", help="Claude session ID to resume"),
+    model: str = typer.Option("", "--model", help="Claude model override"),
+    timeout: int = typer.Option(600, "--timeout", min=1, help="Maximum run time in seconds"),
+):
+    """Start or resume one Claude Code turn and print its session envelope."""
+    from ..useful_tools.claude_code import run_co_claude
+
+    result = run_co_claude(
+        prompt=prompt,
+        cwd=str(cwd),
+        session_id=session_id,
+        model=model,
+        timeout=timeout,
+        workspace=cwd,
+    )
+    print(result)
+    import json
+    if json.loads(result)["status"] != "completed":
+        raise typer.Exit(1)
+
+
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def browser(
-    headless: bool = typer.Option(False, "--headless/--no-headless", help="Run browser headless"),
+    headless: Optional[bool] = typer.Option(
+        None, "--headless/--no-headless",
+        help="Run browser headless. Default: headed, or headless on Linux with no display.",
+    ),
     engine: str = typer.Option(
         None,
         "--engine",
@@ -357,15 +419,28 @@ def browser(
         from .commands.browser_config import handle_browser_config
         raise typer.Exit(handle_browser_config(args[1] if len(args) > 1 else None))
 
+    from ..useful_tools.browser_tools._async_browser import has_display
     from ..useful_tools.browser_tools.engine import effective_mode
     from .commands.browser_commands import handle_browser
+
+    # An explicit --no-headless used to be indistinguishable from the default,
+    # so with no display it was quietly launched headless — and headless Chrome
+    # says `HeadlessChrome` in its User-Agent, which is what the caller was
+    # avoiding by asking for a window. Asked for a window, get one or a refusal
+    # (#1339).
+    if headless is False and not has_display():
+        print("--no-headless needs a display, and this machine has none "
+              "(DISPLAY and WAYLAND_DISPLAY are unset).")
+        print("Give it a virtual one:  xvfb-run -a co browser --no-headless <command>")
+        print("Or accept headless:     co browser <command>")
+        raise typer.Exit(2)
     try:
         mode = effective_mode(engine)
     except ValueError as error:
         print(str(error))
         print("Next: co browser config")
         raise typer.Exit(2)
-    raise typer.Exit(handle_browser(args or [], headless=headless, engine_mode=mode))
+    raise typer.Exit(handle_browser(args or [], headless=bool(headless), engine_mode=mode))
 
 
 @app.command(
@@ -1201,6 +1276,15 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
         from .commands.listen_commands import handle_delete
         handle_delete(name, message_id)
 
+    @group.command("react")
+    def _react(
+        message_id: str = typer.Argument(..., help="Id of any message, received or sent"),
+        emoji: str = typer.Argument(..., help='The emoji; "" removes our reaction'),
+    ):
+        """React to a message, anyone's. Prints the reaction's id."""
+        from .commands.listen_commands import handle_react
+        handle_react(name, message_id, emoji)
+
     @group.command("done")
     def _done(message_id: str = typer.Argument(..., help="Id of a taken message")):
         """Forget a taken message without replying, so it does not come back in an hour."""
@@ -1261,7 +1345,32 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
 
 app.add_typer(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, send, reply."), name="feishu")
 app.add_typer(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply."), name="lark")
-app.add_typer(_inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply."), name="whatsapp")
+_whatsapp_app = _inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply.")
+_whatsapp_groups = _typer_app(help="Start a group, or add people to one. One line per person.")
+
+
+@_whatsapp_groups.command("create")
+def _whatsapp_group_create(
+    subject: str = typer.Argument(..., help="The group's name"),
+    phones: List[str] = typer.Argument(..., help="Phone numbers with country code, e.g. 61412345678"),
+):
+    """Create a group with these people. Prints its chat id, then one line per person."""
+    from .commands.listen_commands import handle_group
+    handle_group("whatsapp", phones, subject=subject)
+
+
+@_whatsapp_groups.command("add")
+def _whatsapp_group_add(
+    chat: str = typer.Argument(..., help="The group's chat id, from `co whatsapp chats`"),
+    phones: List[str] = typer.Argument(..., help="Phone numbers with country code"),
+):
+    """Add people to a group this account administers. One line per person."""
+    from .commands.listen_commands import handle_group
+    handle_group("whatsapp", phones, chat=chat)
+
+
+_whatsapp_app.add_typer(_whatsapp_groups, name="group")
+app.add_typer(_whatsapp_app, name="whatsapp")
 
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.

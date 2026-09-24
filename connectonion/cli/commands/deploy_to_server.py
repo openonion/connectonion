@@ -12,6 +12,7 @@ LLM-Note:
 import base64
 import hashlib
 import json
+import re
 import shlex
 import shutil
 import subprocess
@@ -727,6 +728,7 @@ def _remote_agent_account(target: str, agent: str) -> Optional[dict]:
     co_dir = f"{SRV}/{agent}/.co"
     script = f"""
 import json
+import re
 from pathlib import Path
 
 from connectonion import address
@@ -908,6 +910,34 @@ def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
     return True
 
 
+def _requirements_pin_connectonion(requirements: Path) -> Optional[str]:
+    """The line in requirements.txt that chooses a connectonion build, if any.
+
+    A pre-release wheel next to the project, a direct URL, an exact `==`: each
+    says "this build, not whichever the CLI happens to be". The CLI's own pin
+    then ran after it and replaced it — 1.8.0a5 was asked for, 1.7.0 was
+    installed, and nothing in the output said so (#1375). A bare name or a
+    range chooses nothing, and there the CLI's pin is still the right default.
+    """
+    if not requirements.exists():
+        return None
+    for raw in requirements.read_text(encoding="utf-8").splitlines():
+        line = raw.split(" #", 1)[0].strip()
+        lowered = line.lower()
+        if "connectonion" not in lowered or lowered.startswith("#"):
+            continue
+        name = re.split(r"[\s<>=!~\[@;]", lowered.lstrip("-e ").strip(), maxsplit=1)[0]
+        if name == "connectonion":
+            if "==" in lowered or "@" in lowered:
+                return line
+            continue  # bare or a range: choose nothing
+        # A file or URL naming a connectonion build: ./connectonion-1.8.0a5-py3-none-any.whl,
+        # https://…/connectonion-1.8.0.tar.gz, git+https://…/connectonion, -e ../connectonion
+        if "/" in lowered or lowered.endswith((".whl", ".tar.gz", ".zip")):
+            return line
+    return None
+
+
 def _install_deps_if_changed(target: str, agent: str, project_dir: Path,
                              skill_requirements=None) -> bool:
     """pip install when requirements.txt changed, or when this CLI is a new
@@ -944,6 +974,7 @@ def _install_deps_if_changed(target: str, agent: str, project_dir: Path,
         return True
 
     console.print("[dim]  installing dependencies …[/dim]")
+    project_pin = _requirements_pin_connectonion(requirements)
     root_install = (
         f"{SRV}/{agent}/.venv/bin/pip install -q -U -r requirements.txt\n"
         if requirements.exists() else ""
@@ -977,8 +1008,14 @@ def _install_deps_if_changed(target: str, agent: str, project_dir: Path,
         # The pin also fixes the reverse skew: an older CLI deploying onto a
         # server that resolves a *newer* connectonion than the one writing the
         # systemd unit and the .co/ layout it will read.
-        + f"{SRV}/{agent}/.venv/bin/pip install -q "
-        f"{shlex.quote('connectonion==' + __version__)}\n"
+        #
+        # Unless the project chose a build itself (#1375): then its line stands.
+        + ("" if project_pin else
+           f"{SRV}/{agent}/.venv/bin/pip install -q "
+           f"{shlex.quote('connectonion==' + __version__)}\n")
+        # Say what is actually installed, whoever chose it.
+        + f"echo \"connectonion $({SRV}/{agent}/.venv/bin/pip show connectonion "
+        f"| sed -n 's/^Version: //p')\"\n"
         # This is the realized state, not another copy of what was requested.
         # It is written only after every install succeeds, so a failed deploy
         # leaves the old digest in place and the next deploy retries.
@@ -997,6 +1034,11 @@ def _install_deps_if_changed(target: str, agent: str, project_dir: Path,
         for line in (result.stderr or result.stdout).strip().splitlines()[-12:]:
             console.print(f"  [dim]{line}[/dim]")
         return False
+    installed = next((line.split(" ", 1)[1] for line in (result.stdout or "").splitlines()
+                      if line.startswith("connectonion ")), "?")
+    why = (f"requirements.txt chose it: {project_pin}" if project_pin
+           else f"pinned to this CLI's {__version__}")
+    console.print(f"  [dim]connectonion {installed} on the server ({why})[/dim]")
     return True
 
 

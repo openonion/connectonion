@@ -48,6 +48,11 @@ class FakeProvider:
         self.revoked.append((chat, message_id, sender))
         return f"om_revoke{len(self.revoked)}"
 
+    def react(self, chat, message_id, emoji, *, sender="", mine=False):
+        self.reacted = getattr(self, "reacted", [])
+        self.reacted.append((chat, message_id, emoji, sender, mine))
+        return f"om_react{len(self.reacted)}"
+
 
 @pytest.fixture
 def box(tmp_path, monkeypatch):
@@ -193,3 +198,64 @@ class TestAProviderWithoutThem:
         assert exit_.value.code == 1
         err = capsys.readouterr().err
         assert "not implemented" in err and "WhatsApp" in err
+
+
+class TestReact:
+    """#1633: acknowledge anyone's message, not only the ones addressed to us."""
+
+    def test_someone_elses_message_is_addressed_by_its_sender(self, box, fake, capsys):
+        box.deliver(Message(id="om_theirs", chat="oc_ops", sender="on_x",
+                            text="Looking forward to see u guys", at="2026-09-23T01:00:00Z"))
+
+        listen_commands.handle_react("whatsapp", "om_theirs", "🙌")
+
+        assert fake.reacted == [("oc_ops", "om_theirs", "🙌", "on_x", False)]
+        assert capsys.readouterr().out.strip() == "om_react1"
+
+    def test_our_own_message_is_marked_mine(self, box, fake):
+        # WhatsApp addresses a reaction by who sent the message; in a group that
+        # is us, and the chat id would point it at the wrong author.
+        box.record_sent(chat="oc_ops", text="done", provider_id="om_1", by="send")
+
+        listen_commands.handle_react("whatsapp", "om_1", "✅")
+
+        assert fake.reacted == [("oc_ops", "om_1", "✅", "", True)]
+
+    def test_an_empty_emoji_takes_the_reaction_off_and_the_log_says_so(self, box, fake):
+        box.deliver(Message(id="om_theirs", chat="oc_ops", sender="on_x", text="hi",
+                            at="2026-09-23T01:00:00Z"))
+
+        listen_commands.handle_react("whatsapp", "om_theirs", "")
+
+        assert fake.reacted[-1][2] == ""
+        assert "removed our reaction on om_theirs" in box.logfile.read_text()
+
+    def test_an_unknown_id_names_both_places_that_were_searched(self, box, fake, capsys):
+        with pytest.raises(SystemExit) as exit_:
+            listen_commands.handle_react("whatsapp", "om_nope", "👍")
+
+        assert exit_.value.code == 1
+        err = capsys.readouterr().err
+        assert "received.jsonl" in err and "sent.jsonl" in err
+
+
+class TestTheProviderAddressesTheReaction:
+    def test_mine_uses_the_accounts_own_jid(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from connectonion.inbox import whatsapp as wa
+
+        built = []
+        client = SimpleNamespace(
+            get_me=lambda: SimpleNamespace(JID="ME"),
+            build_reaction=lambda to, author, mid, emoji: built.append(author) or "r",
+            send_message=lambda to, msg: SimpleNamespace(ID="om_r"),
+        )
+        box = wa.WhatsApp.__new__(wa.WhatsApp)
+        box._client = client
+        monkeypatch.setattr(wa, "_build_jid", lambda value: f"jid:{value}")
+
+        box._react_now("group@g.us", "om_1", "✅", "", mine=True)
+        box._react_now("group@g.us", "om_2", "👍", "123@s.whatsapp.net")
+
+        assert built == ["ME", "jid:123@s.whatsapp.net"]

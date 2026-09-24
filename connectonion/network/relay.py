@@ -142,8 +142,19 @@ async def send_response(
     await websocket.send(message_json)
 
 
-async def _run_session(session_id, first_msg, sessions, relay_ws, session_handler, *, identity=None):
-    """Create relay transport adapters and run protocol handler for one session.
+def _route_key(msg: Dict[str, Any]) -> str:
+    """Which client connection a relayed frame belongs to.
+
+    A relay that names the client socket (`conn_id`) lets one conversation be
+    open on a laptop and a phone at once: each socket gets its own protocol
+    handler, and the Host decides what they share (#1606). An older relay only
+    sends `session_id`, and then the conversation is the connection, as before.
+    """
+    return msg.get("conn_id") or msg["session_id"]
+
+
+async def _run_session(route_key, first_msg, sessions, relay_ws, session_handler, *, identity=None):
+    """Create relay transport adapters and run protocol handler for one connection.
 
     ``identity`` is the host's keys. With it, a session whose first frame is
     SEAL is sealed end to end exactly like a direct socket; the relay keeps
@@ -153,12 +164,25 @@ async def _run_session(session_id, first_msg, sessions, relay_ws, session_handle
     from .asgi.http import pydantic_json_encoder
     from .sealed import host_seal_or_pass
 
-    q = sessions[session_id]
+    q = sessions[route_key]
     await q.put(first_msg)
+    conn_id = first_msg.get("conn_id")
+    relay_session = first_msg["session_id"]
 
     async def send_msg(data):
-        data["session_id"] = session_id
-        await relay_ws.send(json.dumps(data, default=pydantic_json_encoder, ensure_ascii=False))
+        # A copy: with several viewers the same logged event is sent on every
+        # connection, and stamping this one's conn_id into the shared dict
+        # would leave it on the next.
+        if conn_id:
+            # The relay routes this socket by conn_id, so the frame can keep the
+            # session the Host actually assigned. Overwriting it told a caller
+            # who does not own the session id they named that they had joined
+            # it — while the Host, correctly, ran them in a new one (#1606).
+            frame = {"session_id": relay_session, **data, "conn_id": conn_id}
+        else:
+            # An older relay routes by session_id, so it has to be this one.
+            frame = {**data, "session_id": relay_session}
+        await relay_ws.send(json.dumps(frame, default=pydantic_json_encoder, ensure_ascii=False))
 
     async def recv_msg():
         try:
@@ -190,7 +214,7 @@ async def _run_session(session_id, first_msg, sessions, relay_ws, session_handle
         else:
             await session_handler(send_msg, recv_msg, sealed_by=sealed_by)
     finally:
-        del sessions[session_id]
+        del sessions[route_key]
 
 
 def heartbeat_is_worth_printing() -> bool:
@@ -311,13 +335,13 @@ async def serve_loop(
             if msg.get("type") == "ANNOUNCE_OK":
                 continue
 
-            session_id = msg["session_id"]
-            if session_id in sessions:
-                await sessions[session_id].put(msg)
+            route_key = _route_key(msg)
+            if route_key in sessions:
+                await sessions[route_key].put(msg)
             else:
-                sessions[session_id] = asyncio.Queue()
+                sessions[route_key] = asyncio.Queue()
                 asyncio.create_task(_run_session(
-                    session_id, msg, sessions, websocket, session_handler,
+                    route_key, msg, sessions, websocket, session_handler,
                     identity=addr_data,
                 ))
 

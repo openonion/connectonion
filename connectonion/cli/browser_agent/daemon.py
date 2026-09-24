@@ -739,6 +739,7 @@ class BrowserDaemon:
             + (f" · artifact={engine['artifact_id']}" if engine.get("artifact_id") else "")
             + cost
             + session
+            + (f" · ended={engine['terminal_reason']}" if engine.get("terminal_reason") else "")
         )
         # Surface stealth-driver health here so a misconfigured driver (webdriver leak) is
         # visible where users look for browser state, not only in `co doctor`.

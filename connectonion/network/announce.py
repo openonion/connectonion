@@ -169,6 +169,10 @@ def create_announce_message(
         "summary": fit_summary(summary),
         "endpoints": endpoints,
         "relay": relay,
+        # Tells the relay this agent routes by the client socket's conn_id, so it
+        # may admit a second device to a conversation already open (#1606).
+        # Inside the signed bytes: a relay must not be talked into it.
+        "relay_features": ["conn_id"],
     }
     if profile is not None:
         # The outer ANNOUNCE signature proves the profile only to the relay.

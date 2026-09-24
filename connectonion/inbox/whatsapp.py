@@ -126,6 +126,31 @@ def _jid_str(jid) -> str:
     return f"{user}@{server}"
 
 
+def _digits(phone: str) -> str:
+    """A phone number as WhatsApp's user part: digits only, no + or spaces."""
+    return "".join(ch for ch in str(phone) if ch.isdigit())
+
+
+# WhatsApp's own codes for a participant it did not add. Anything else is
+# reported with its number rather than guessed at.
+_PARTICIPANT_ERRORS = {
+    0: "added",
+    403: "not added: their privacy settings only allow an invite (send them invite_link)",
+    409: "already in the group",
+}
+
+
+def _participant_outcome(code: int) -> str:
+    return _PARTICIPANT_ERRORS.get(code, f"not added (WhatsApp code {code})")
+
+
+def _add_participants():
+    """neonize's ADD action, imported when a group is changed, not at import."""
+    from neonize.utils.enum import ParticipantChange
+
+    return ParticipantChange.ADD
+
+
 def _build_jid(chat: str):
     """`user@server` back into the SDK's JID."""
     from neonize.utils.jid import build_jid
@@ -909,13 +934,17 @@ class WhatsApp:
 
     # ---- outbound ----------------------------------------------------------
 
-    def react(self, chat: str, message_id: str, emoji: str, *, sender: str = "") -> str:
+    def react(self, chat: str, message_id: str, emoji: str, *, sender: str = "",
+              mine: bool = False) -> str:
         """Put our reaction on a message, replacing whichever we left before.
+        An empty emoji takes our reaction off.
 
         Queued like a send, because the caller is usually `reply` in another
-        process and the listener owns the only socket."""
-        return self._queue({"kind": "reaction", "chat": chat,
-                            "message_id": message_id, "emoji": emoji, "sender": sender})
+        process and the listener owns the only socket. `mine` marks a message
+        this account sent: WhatsApp addresses a reaction by who sent the
+        message, and in a group that is us, not the chat."""
+        return self._queue({"kind": "reaction", "chat": chat, "message_id": message_id,
+                            "emoji": emoji, "sender": sender, "mine": mine})
 
     def send(self, chat: str, text: str, *, reply_to: Optional[str] = None, fresh: bool = False,
              plain: bool = False) -> str:
@@ -965,7 +994,19 @@ class WhatsApp:
         return self._queue({"kind": "revoke", "chat": chat, "message_id": message_id,
                             "sender": sender})
 
+    def create_group(self, subject: str, phones: list) -> dict:
+        """Start a group with these people. Returns the chat and, per person, what happened."""
+        return self._request({"kind": "group_create", "subject": subject, "phones": list(phones)})
+
+    def add_to_group(self, chat: str, phones: list) -> dict:
+        """Add people to a group this account administers. Same shape as create_group."""
+        return self._request({"kind": "group_add", "chat": chat, "phones": list(phones)})
+
     def _queue(self, payload: dict) -> str:
+        """Hand one outbound request to the listener; its answer is a message id."""
+        return str(self._request(payload).get("id", ""))
+
+    def _request(self, payload: dict) -> dict:
         """Hand one outbound request to the listener and wait for its answer."""
         inbox = Inbox(self.name)
         spool = inbox.root / "outbox"
@@ -981,7 +1022,7 @@ class WhatsApp:
             if result is not None:
                 if result.get("error"):
                     raise RuntimeError(result["error"])
-                return str(result.get("id", ""))
+                return result
             time.sleep(_SEND_POLL)
 
         request.unlink(missing_ok=True)
@@ -1006,7 +1047,10 @@ class WhatsApp:
                     continue
                 answer = request.with_suffix(".result")
                 try:
-                    _publish(answer, {"id": self._perform(payload)})
+                    outcome = self._perform(payload)
+                    # A send answers with an id; a group change answers with
+                    # the chat and one line per person.
+                    _publish(answer, outcome if isinstance(outcome, dict) else {"id": outcome})
                 except Exception as exc:
                     _publish(answer, {"error": str(exc)})
                     inbox.log(f"send to {payload.get('chat')} failed: {exc}")
@@ -1022,28 +1066,78 @@ class WhatsApp:
             kind = payload.get("kind")
             if kind == "reaction":
                 return self._react_now(payload["chat"], payload["message_id"],
-                                       payload["emoji"], payload.get("sender", ""))
+                                       payload["emoji"], payload.get("sender", ""),
+                                       mine=payload.get("mine", False))
             if kind == "edit":
                 return self._edit_now(payload["chat"], payload["message_id"], payload["text"])
             if kind == "revoke":
                 return self._revoke_now(payload["chat"], payload["message_id"],
                                         payload.get("sender", ""))
+            if kind == "group_create":
+                return self._group_now(payload["phones"], subject=payload["subject"])
+            if kind == "group_add":
+                return self._group_now(payload["phones"], chat=payload["chat"])
             return self._send_now(payload["chat"], payload["text"], payload.get("reply_to"))
         except Exception as exc:
             raise RuntimeError(_sending_failed(exc)) from exc
 
-    def _react_now(self, chat: str, message_id: str, emoji: str, sender: str) -> str:
+    def _react_now(self, chat: str, message_id: str, emoji: str, sender: str,
+                   *, mine: bool = False) -> str:
         """The actual reaction, on the listener's own connection.
 
         `sender` is whoever sent the message being reacted to — WhatsApp needs
         it to address the reaction, and in a direct chat it is the chat itself.
+        For our own message it is us, which is the account's JID, not the chat.
         """
         if self._client is None:
             raise RuntimeError("not connected")
         to = _build_jid(chat)
-        reaction = self._client.build_reaction(to, _build_jid(sender or chat), message_id, emoji)
+        author = self._client.get_me().JID if mine else _build_jid(sender or chat)
+        reaction = self._client.build_reaction(to, author, message_id, emoji)
         result = self._client.send_message(to, reaction)
         return str(getattr(result, "ID", "") or "")
+
+    def _group_now(self, phones: list, *, subject: str = "", chat: str = "") -> dict:
+        """Create a group, or add to one, and say what happened to each person.
+
+        WhatsApp reports success for the group as a whole while quietly not
+        adding a number whose privacy settings forbid it, so the caller would
+        report a group the client is not in (#1617). Every number gets its own
+        outcome, and "no account" is told apart from "refused".
+        """
+        if self._client is None:
+            raise RuntimeError("not connected")
+        digits = [_digits(phone) for phone in phones]
+        found = {_digits(r.Query): r for r in self._client.is_on_whatsapp(*[f"+{d}" for d in digits])}
+        outcomes, jids = {}, []
+        for d in digits:
+            hit = found.get(d)
+            if hit is None or not hit.IsIn:
+                outcomes[d] = "no WhatsApp account"
+            else:
+                jids.append(hit.JID)
+        if subject:
+            info = self._client.create_group(subject, jids)
+            group, results = info.JID, info.Participants
+        else:
+            group = _build_jid(chat)
+            results = self._client.update_group_participants(group, jids, _add_participants())
+        needs_invite = False
+        for p in results:
+            d = _digits(p.PhoneNumber.User or p.JID.User)
+            if d not in digits:
+                continue  # the creator's own entry
+            outcomes[d] = _participant_outcome(p.Error)
+            needs_invite |= p.Error == 403
+        for d in digits:
+            # Not listed at all is not the same as added — saying "added" here
+            # would be the very report #1617 is about.
+            outcomes.setdefault(d, "not confirmed: WhatsApp's answer did not list this number")
+        result = {"chat": _jid_str(group),
+                  "participants": [{"phone": d, "outcome": outcomes[d]} for d in digits]}
+        if needs_invite:
+            result["invite_link"] = self._client.get_group_invite_link(group)
+        return result
 
     def _send_now(self, chat: str, text: str, reply_to: Optional[str] = None) -> str:
         """The actual send, on the listener's own connection."""

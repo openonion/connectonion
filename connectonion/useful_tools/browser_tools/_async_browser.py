@@ -181,10 +181,19 @@ def _profile_dir() -> Path:
     return Path.home() / ".co" / "browser_profile"
 
 
+def has_display() -> bool:
+    """Whether a headed browser can open a window here."""
+    if platform.system() != "Linux":
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
 def _headless_without_display(headless: bool) -> bool:
-    if headless or platform.system() != "Linux":
+    # Only for a default: an explicit --no-headless is refused up front when
+    # there is no display (cli/main.py), never quietly turned into headless.
+    if headless:
         return headless
-    return not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    return not has_display()
 
 
 def _pid_alive(pid: int) -> bool:
@@ -291,7 +300,8 @@ def _occupancy_note(meta: Dict[str, Any]) -> str:
     if left > 0:
         return (
             f"owner expects to finish by {when} ({_age(left)} left) — "
-            "leave it alone until then"
+            "leave this tab alone until then; the browser is free for your own: "
+            'co browser tab open <name> --who <you> --for "<task>"'
         )
     return (
         f"owner expected to finish by {when} ({_age(-left)} ago) — "
@@ -570,6 +580,12 @@ class AsyncBrowserCore:
     async def is_alive(self) -> bool:
         """Use a driver round-trip; local Page flags remain stale after process death."""
         if self.browser is None:
+            return False
+        # A paid session that ended upstream can leave the context answering,
+        # and status said "open" right before the next page command failed with
+        # PaidSessionEndedError — a health check reporting ready (#1457). Page
+        # verbs already refuse on this; status now agrees with them.
+        if self._paid_run is not None and getattr(self._paid_run, "terminal_reason", None):
             return False
         try:
             await self.browser.cookies()

@@ -10,57 +10,27 @@ Preview releases never replace the stable recommendation. Install one with
 
 ## Current release
 
-Stable **1.8.5** turns a Feishu or Lark bot into a directory of files. One
-process holds the connection and writes every message into
-`~/.co/inbox/<provider>/`; anything that can read a file can answer it. Taking a
-message is an atomic rename, so two consumers never get the same one, and a
-message sent while the listener was down is read back on reconnect and queued
-exactly once — the property that was this release's gate, closed on a live
-tenant on 15 September.
-
-The command line also names what to run next, and that contract is now audited
-rather than asserted: one next step per refusal instead of two, a typo ending at
-a runnable command rather than `--help`, and `co commands` listing all 199. And
-`co gcalendar` invitations reach their attendees — `sendUpdates` was never
-passed, so an event created with `--attendees` had been notifying nobody.
-
-See [1.8.5 release notes](releases/1.8.5.md) for the known limits, and
-[the live acceptance record](acceptance/1.8.5/lark-live-2026-09-15.md) for what
-was measured.
+Stable **1.8.7** repairs large Control Center snapshots: the Host accepts up
+to 128 MiB of HTML within a 256 MiB WebSocket envelope and gives a visible
+failure when a load cannot complete. See [1.8.7 release notes](releases/1.8.7.md).
 
 ```bash
-python -m pip install --upgrade connectonion==1.8.5
-co --version
-co lark check
+python -m pip install --upgrade 'connectonion==1.8.7'
 ```
 
 ## Current preview
 
-Alpha **1.8.6a1** runs a model on your own machine. `model="ollama/qwen2.5:0.5b"`
-needs no API key, no credits and sends nothing off the laptop — text, structured
-output validated by Pydantic, and real tool calls. Any other local runtime is
-reached with an explicit `base_url`, and that address is checked **before** the
-model name, which is what stops a model you happened to call `gpt-4` in LM Studio
-from routing on its name and handing your `OPENAI_API_KEY` to whatever is
-listening on that port. Existing routing is unchanged.
-
-It also adds **WhatsApp** as a third inbox provider behind an optional extra —
-the same nine verbs as `co feishu` and `co lark`, connecting as a linked
-companion device because the Cloud API has no endpoint for joining a group a
-human created. **It has not been accepted against a real account yet**; see the
-notes.
-
-Mail listings take `--since` / `--until`, Outlook gains `--json`, and
-`co gmail inbox --since --json` refuses rather than silently dropping the window.
-And `done.jsonl` finally names the consumer that handled each message, closing a
-1.8.5 known limit.
+Beta **1.8.8b4** adds a native Claude Code terminal Work Room to the Wiki
+preview line. `co claude --cwd /path/to/project` prints a private pairing code
+and an O Chat link. After pairing, the browser can watch the same Claude
+session, take control, send a direct continuation, and return it to the
+terminal. See [1.8.8b4 release notes](releases/1.8.8b4.md) for tested scope
+and current limits.
 
 ```bash
-python -m pip install --pre connectonion==1.8.6a1
-co --version
+python -m pip install --upgrade --pre 'connectonion==1.8.8b4'
+co claude --cwd /path/to/project
 ```
-
-See [1.8.6a1 release notes](releases/1.8.6a1.md).
 
 <details>
 <summary>The preview line that became 1.8.5</summary>

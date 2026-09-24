@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from connectonion.core.mode import AUTO, FULL_ACCESS, READ_ONLY, mode_of
-from connectonion.useful_tools.claude_code import _run_claude_code
+from connectonion.useful_tools.claude_code import run_co_claude
 
 
 def claude_code(
@@ -27,7 +27,7 @@ def claude_code(
         AUTO: "acceptEdits",
         FULL_ACCESS: "auto",
     }[current]
-    return _run_claude_code(
+    return run_co_claude(
         prompt=prompt,
         session_id=session_id,
         cwd=cwd,

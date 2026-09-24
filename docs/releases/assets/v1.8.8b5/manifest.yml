@@ -1,0 +1,23 @@
+version: v1.8.8b5
+images:
+  - file: two-devices-through-the-relay.png
+    alt: "Terminal output of the two-device acceptance script run through the production relay, with eight passing checks"
+    caption: "A real Host and three signed clients through wss://oo.openonion.ai: laptop and phone share one session and see each other's questions and the same answer; a different identity gets its own session and nothing of it (issue 1606)."
+    scenario: "python scripts/two_device_acceptance.py --relay wss://oo.openonion.ai, real model, live relay"
+    viewport: "terminal, 96 columns"
+    commit: b4530cd2
+    source_run: "scripts/capture_188b5_release_cli.py, live run on 2026-09-24 against main at b4530cd2"
+  - file: close-ends-what-it-owned.png
+    alt: "Terminal output of co browser close stopping ten processes of a frozen browser daemon and exiting 1"
+    caption: "co browser --engine system close, with the daemon frozen by SIGSTOP on a private socket and profile: after the 60s deadline the daemon, Chrome, its helpers and Playwright's node are stopped by name, the exit code is 1, and nothing from that profile is left (issue 1496)."
+    scenario: "Real daemon and system Chrome open on example.com, daemon SIGSTOPped, then close"
+    viewport: "terminal, 96 columns"
+    commit: b4530cd2
+    source_run: "scripts/capture_188b5_release_cli.py, live run on 2026-09-24 against main at b4530cd2"
+  - file: diagnose-names-the-endpoints.png
+    alt: "The endpoint section co proxy diagnose prints, one probe result per endpoint a live host announces"
+    caption: "The endpoint section of co proxy diagnose, produced by the same probe_endpoints and _describe_reach it calls, against a live host registered on the production relay: the LAN address answers, the public one does not (issue 1387)."
+    scenario: "Live host announcing to wss://oo.openonion.ai, probed from the same machine"
+    viewport: "terminal, 96 columns"
+    commit: b4530cd2
+    source_run: "scripts/capture_188b5_release_cli.py, live run on 2026-09-24 against main at b4530cd2"

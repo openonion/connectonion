@@ -353,14 +353,24 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.8b3
+## Current Version: 1.8.8b5
+
+1.8.8b5 is an opt-in preview after 1.8.8b4 (the Claude Code beta, released
+separately). It carries one conversation on two devices (#1606) and the CLI
+sweep of #1493, #1292, #1496, #1457, #1339, #1475, #1605, #1387, #1375, #1633
+and #1617. Stable remains 1.8.7.
+
+- 1.8.8b5 (One conversation open on several devices of the same identity, through the relay too; a device switch no longer erases a turn; co browser close ends what it owned; refused commands logged in full; co proxy diagnose names endpoints; co whatsapp react and group create/add.)
+
+Earlier in this line:
 
 The Personal Wiki feature targets 1.9.0 (#1443). Stable 1.8.7 shipped the
-dashboard patch. This 1.8.8b3 candidate remains an opt-in preview; published
+dashboard patch. This 1.8.8b4 candidate remains an opt-in preview; published
 1.8.8b1 and earlier 1.8.7b1–b4 previews remain immutable historical artifacts.
 There was no published 1.8.8b2. The preview does not automatically accept the
 full 1.9.0 Wiki release.
 
+- 1.8.8b4 (Native Claude Code terminal sharing through OIP Station, signed browser pairing and control transfer, direct same-session continuation, and scoped approval for browser-initiated workspace edits.)
 - 1.8.8b3 (Preview the repaired real-person investigation flow, owner-alias hints, source-state explanations, private full-page opening, and a stable Wiki workspace for scheduled runs. The 1.9.0 quality and harness acceptance gates remain open; b2 was not published.)
 - 1.8.8b1 (Retarget the validated Wiki preview to its dedicated 1.8.8 feature line; preserve dry-run semantics when combined with backfill or scheduled execution.)
 - 1.8.7b4 (Readable Wiki CLI output, help as the workflow guide, real-page discovery, organization maps and Skill source snapshots; validated investigation and staged maintenance preserve canonical pages.)

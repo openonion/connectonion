@@ -98,6 +98,7 @@ NEXT = {
     "co announce": "Give subscribers the address they follow:  co keys",
     "co auth": HANDLER,               # every path ends "Next: co status" / "co outlook inbox"
     "co browser": HANDLER,            # rotating tip on stderr; exits by raise
+    "co claude run": 'Continue this Claude session:  co claude run "<next task>" --session <session-id>',
     "co call": HANDLER,               # prints the remote's own output; exits by raise
     "co commands": HANDLER,           # ends with the --help pointer itself
     "co copy": HANDLER,               # "co copy --list" after a copy; --list ends with usage
@@ -121,6 +122,7 @@ NEXT = {
     "co feishu done": "co feishu receive --timeout 0",
     "co feishu edit": "co feishu log",
     "co feishu delete": "co feishu log",
+    "co feishu react": "co feishu log",
     "co feishu check": HANDLER,  # every branch of _report_connection names its own
     "co feishu ls": "co feishu receive --timeout 0",
     "co feishu chats": HANDLER,
@@ -133,6 +135,7 @@ NEXT = {
     "co lark done": "co lark receive --timeout 0",
     "co lark edit": "co lark log",
     "co lark delete": "co lark log",
+    "co lark react": "co lark log",
     "co lark check": HANDLER,  # every branch of _report_connection names its own
     "co lark ls": "co lark receive --timeout 0",
     "co lark chats": HANDLER,
@@ -145,6 +148,9 @@ NEXT = {
     "co whatsapp done": "co whatsapp receive --timeout 0",
     "co whatsapp edit": "co whatsapp log",
     "co whatsapp delete": "co whatsapp log",
+    "co whatsapp react": "co whatsapp log",
+    "co whatsapp group create": HANDLER,  # names the new chat id in its own tip
+    "co whatsapp group add": HANDLER,
     "co whatsapp check": HANDLER,  # every branch of _report_connection names its own
     "co whatsapp ls": "co whatsapp receive --timeout 0",
     "co whatsapp chats": HANDLER,

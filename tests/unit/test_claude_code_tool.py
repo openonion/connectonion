@@ -892,6 +892,47 @@ def test_process_reader_kills_the_group_on_cooperative_cancellation(tmp_path):
     kill.assert_called_once_with(process)
 
 
+def test_process_reader_reaps_claude_on_terminal_interrupt(tmp_path):
+    process = MagicMock()
+    process.stdout = io.StringIO("")
+    process.stderr = io.StringIO("")
+    process.poll.return_value = None
+
+    with patch.object(claude_module.subprocess, "Popen", return_value=process), patch.object(
+        claude_module, "_check_process_boundary", side_effect=KeyboardInterrupt
+    ), patch.object(claude_module, "_kill_process_tree") as kill:
+        with pytest.raises(KeyboardInterrupt):
+            claude_module._run_process(
+                ["claude"], cwd=str(tmp_path), timeout=2, on_event=lambda event: None
+            )
+
+    kill.assert_called_once_with(process)
+    assert process.stdout.closed
+    assert process.stderr.closed
+
+
+@pytest.mark.skipif(claude_module.os.name == "nt", reason="POSIX process-group regression")
+def test_real_process_is_reaped_on_terminal_interrupt(tmp_path):
+    started = []
+    start_process = claude_module._start_process
+
+    def capture_process(argv, cwd):
+        process = start_process(argv, cwd)
+        started.append(process)
+        return process
+
+    with patch.object(claude_module, "_start_process", side_effect=capture_process), patch.object(
+        claude_module, "_check_process_boundary", side_effect=KeyboardInterrupt
+    ):
+        with pytest.raises(KeyboardInterrupt):
+            claude_module._run_process(
+                [sys.executable, "-c", "import time; time.sleep(30)"],
+                cwd=str(tmp_path), timeout=2, on_event=lambda event: None,
+            )
+
+    assert started[0].poll() is not None
+
+
 def test_process_runner_is_headless_and_does_not_use_a_shell(tmp_path):
     process = MagicMock()
     process.stdout = io.StringIO('{"type":"result","session_id":"s"}\n')

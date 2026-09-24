@@ -644,6 +644,56 @@ class TestDependenciesInstallFromTheProjectDirectory:
             "an absolute -r path does not help; the relative entries inside it are the problem"
 
 
+class TestAProjectsOwnConnectonionBuildIsKept:
+    """#1375: requirements.txt named a pre-release wheel; the CLI's own
+    `pip install connectonion==<cli version>` ran after it and replaced it with
+    1.7.0, which had no `co remote-browser`, and the output said nothing."""
+
+    @pytest.mark.parametrize("line", [
+        "./connectonion-1.8.0a5-py3-none-any.whl",
+        "connectonion==1.8.0a5",
+        "connectonion @ https://example.com/connectonion-1.8.0a5-py3-none-any.whl",
+        "git+https://github.com/openonion/connectonion@main",
+        "-e ../connectonion",
+    ])
+    def test_a_chosen_build_is_recognised(self, tmp_path, line):
+        (tmp_path / "requirements.txt").write_text(f"requests\n{line}\n")
+        assert dts._requirements_pin_connectonion(tmp_path / "requirements.txt") == line
+
+    @pytest.mark.parametrize("line", ["connectonion", "connectonion>=1.8", "# connectonion==1.0"])
+    def test_a_bare_name_or_a_range_chooses_nothing(self, tmp_path, line):
+        (tmp_path / "requirements.txt").write_text(f"{line}\n")
+        assert dts._requirements_pin_connectonion(tmp_path / "requirements.txt") is None
+
+    def _install(self, tmp_path, requirements, capsys):
+        commands = []
+
+        def fake_ssh(target, command, timeout=300):
+            commands.append(command)
+            out = "connectonion 1.8.0a5\n" if "pip install" in command else ""
+            return subprocess.CompletedProcess(args=[], returncode=0, stdout=out, stderr="")
+
+        (tmp_path / "requirements.txt").write_text(requirements)
+        with patch.object(dts, "_ssh", side_effect=fake_ssh):
+            assert dts._install_deps_if_changed("co@host", "my-agent", tmp_path) is True
+        return next(c for c in commands if "pip install" in c), capsys.readouterr().out
+
+    def test_the_project_pin_is_not_overridden_and_the_result_is_said(self, tmp_path, capsys):
+        install, out = self._install(tmp_path, "./connectonion-1.8.0a5-py3-none-any.whl\n", capsys)
+
+        assert "connectonion==" not in install
+        assert "connectonion 1.8.0a5 on the server" in out
+        assert "requirements.txt chose it" in out
+
+    def test_without_one_the_cli_pin_stays_and_is_said(self, tmp_path, capsys):
+        from connectonion import __version__
+
+        install, out = self._install(tmp_path, "requests\n", capsys)
+
+        assert f"connectonion=={__version__}" in install
+        assert f"pinned to this CLI's {__version__}" in out
+
+
 class TestTheAgentCanFindItsOwnCommands:
     """`co call <address> co status` — the example in `co call`'s own help —
     answered "co: command not found" on a deployed agent. The unit set no PATH,
