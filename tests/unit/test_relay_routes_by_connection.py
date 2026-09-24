@@ -58,6 +58,22 @@ def test_an_older_relay_gets_no_conn_id_back():
     assert frames == [{"type": "CONNECTED", "session_id": "s1"}]
 
 
+def test_a_caller_given_a_new_session_is_told_so():
+    """Through the production relay, a different identity naming the laptop's
+    session id got nothing of the laptop's turns — but its CONNECTED said it had
+    joined that session, because the adapter stamped the relay's id over the new
+    one the Host gave it. Routed by conn_id, the Host's answer stands."""
+    frames, _ = _serve_one({"type": "CONNECT", "session_id": "laptops", "conn_id": "c9"},
+                           {"type": "CONNECTED", "session_id": "a-new-one"})
+    assert frames == [{"type": "CONNECTED", "session_id": "a-new-one", "conn_id": "c9"}]
+
+
+def test_an_older_relay_still_needs_its_own_session_id_on_every_frame():
+    frames, _ = _serve_one({"type": "CONNECT", "session_id": "s1"},
+                           {"type": "CONNECTED", "session_id": "a-new-one"})
+    assert frames == [{"type": "CONNECTED", "session_id": "s1"}]
+
+
 def test_one_logged_event_sent_to_two_sockets_is_not_stamped_by_the_first():
     event = {"type": "thinking", "content": "x"}
     laptop, _ = _serve_one({"type": "INPUT", "session_id": "s1", "conn_id": "laptop"}, event)

@@ -166,15 +166,22 @@ async def _run_session(route_key, first_msg, sessions, relay_ws, session_handler
 
     q = sessions[route_key]
     await q.put(first_msg)
-    tags = {"session_id": first_msg["session_id"]}
-    if first_msg.get("conn_id"):
-        tags["conn_id"] = first_msg["conn_id"]
+    conn_id = first_msg.get("conn_id")
+    relay_session = first_msg["session_id"]
 
     async def send_msg(data):
         # A copy: with several viewers the same logged event is sent on every
         # connection, and stamping this one's conn_id into the shared dict
         # would leave it on the next.
-        frame = {**data, **tags}
+        if conn_id:
+            # The relay routes this socket by conn_id, so the frame can keep the
+            # session the Host actually assigned. Overwriting it told a caller
+            # who does not own the session id they named that they had joined
+            # it — while the Host, correctly, ran them in a new one (#1606).
+            frame = {"session_id": relay_session, **data, "conn_id": conn_id}
+        else:
+            # An older relay routes by session_id, so it has to be this one.
+            frame = {**data, "session_id": relay_session}
         await relay_ws.send(json.dumps(frame, default=pydantic_json_encoder, ensure_ascii=False))
 
     async def recv_msg():
