@@ -18,9 +18,11 @@ def test_terminal_browser_terminal_handover(tmp_path, monkeypatch):
     assert session_handler(storage, station.session_id) is None
     assert sessions_handler(storage)["sessions"] == []
     launched = []
+    history_modes = []
 
     def terminal(**options):
         launched.append(options["session_id"])
+        history_modes.append(options["skip_existing_messages"])
         options["on_private_fact"]({
             "hook_event_name": "SessionStart", "session_id": native_session,
         })
@@ -55,6 +57,7 @@ def test_terminal_browser_terminal_handover(tmp_path, monkeypatch):
     worker.join(timeout=3)
     assert not worker.is_alive()
     assert launched == ["", native_session]
+    assert history_modes == [False, True]
 
 
 def test_browser_approval_requires_owned_workspace_edit(tmp_path):

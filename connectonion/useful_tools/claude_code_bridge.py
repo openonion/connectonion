@@ -228,7 +228,8 @@ def _validate_session_start(event: dict, cwd: Path, requested_session: str) -> d
 
 
 def poll_bridge(
-    events: Path, offset: int, cwd: Path, tailer: "ClaudeTranscriptTailer | None"
+    events: Path, offset: int, cwd: Path, tailer: "ClaudeTranscriptTailer | None",
+    *, skip_existing_messages: bool = False,
 ) -> tuple[int, "ClaudeTranscriptTailer | None", list[dict], list[dict]]:
     """Consume bounded Hook facts, then mirror only the current exact transcript."""
     facts = []
@@ -247,6 +248,8 @@ def poll_bridge(
                 path = Path(hook["transcript_path"])
                 if tailer is None:
                     tailer = ClaudeTranscriptTailer(path, hook["session_id"])
+                    if skip_existing_messages:
+                        tailer.skip_existing()
                 elif tailer.path != path or tailer.session_id != hook["session_id"]:
                     messages.extend(tailer.read_available())
                     tailer.follow(path, hook["session_id"])
@@ -278,6 +281,13 @@ class ClaudeTranscriptTailer:
         self.seen: set[str] = set()
         self.recent = deque(maxlen=2048)
         self.unknown_records = 0
+
+    def skip_existing(self) -> None:
+        """A returning TUI watches new text; OIP already holds earlier turns."""
+        if self.path.is_file():
+            stat = self.path.stat()
+            self.identity = (stat.st_dev, stat.st_ino)
+            self.offset = stat.st_size
 
     def follow(self, path: Path, session_id: str = "") -> None:
         """Follow a new SessionStart transcript after resume, compact, or fork."""

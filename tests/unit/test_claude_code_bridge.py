@@ -175,6 +175,33 @@ def test_latest_session_start_tracks_an_interactive_fork(tmp_path):
         assert latest["transcript_path"] == str(tmp_path / "forked.jsonl")
 
 
+def test_returning_terminal_only_mirrors_new_transcript_messages(tmp_path):
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(json.dumps({
+        "type": "user", "sessionId": SESSION, "uuid": "browser-turn",
+        "message": {"content": "Already in OIP"},
+    }) + "\n")
+    with scoped_bridge_settings() as (settings, events):
+        hook = json.loads(settings.read_text())["hooks"]["SessionStart"][0]["hooks"][0]
+        _post_hook(hook, {
+            "hook_event_name": "SessionStart", "session_id": SESSION,
+            "transcript_path": str(transcript), "cwd": str(tmp_path),
+        })
+        offset, tailer, _, messages = poll_bridge(
+            events, 0, tmp_path, None, skip_existing_messages=True,
+        )
+        assert messages == []
+        with transcript.open("a") as output:
+            output.write(json.dumps({
+                "type": "assistant", "sessionId": SESSION, "uuid": "terminal-turn",
+                "message": {"content": [{"type": "text", "text": "New terminal answer"}]},
+            }) + "\n")
+        _, _, _, messages = poll_bridge(events, offset, tmp_path, tailer)
+        assert messages == [{
+            "message_id": "terminal-turn", "role": "assistant", "text": "New terminal answer",
+        }]
+
+
 def test_exact_path_tailer_handles_partial_lines_and_duplicate_replay(tmp_path):
     path = tmp_path / "session.jsonl"
     tailer = ClaudeTranscriptTailer(path)

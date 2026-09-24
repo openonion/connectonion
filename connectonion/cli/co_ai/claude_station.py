@@ -230,6 +230,7 @@ class ClaudeStation:
 
     def run(self) -> int:
         """Run the TUI on the foreground thread; remote turns use Host workers."""
+        returning_from_browser = False
         while True:
             self._stop_local.clear()
             self._resume_local.clear()
@@ -242,6 +243,7 @@ class ClaudeStation:
                     on_private_fact=self._on_fact,
                     on_message=self._on_message,
                     stop_event=self._stop_local,
+                    skip_existing_messages=returning_from_browser,
                 )
             except (OSError, ValueError) as exc:
                 self._transition("failed", status="done")
@@ -255,6 +257,7 @@ class ClaudeStation:
                 self._append(self._invocation("completed"), status="done")
             self._transition("remote_controlling", status="done")
             self._resume_local.wait()
+            returning_from_browser = True
 
 
 class _StationOutput:
