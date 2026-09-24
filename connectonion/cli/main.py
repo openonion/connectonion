@@ -1276,6 +1276,15 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
         from .commands.listen_commands import handle_delete
         handle_delete(name, message_id)
 
+    @group.command("react")
+    def _react(
+        message_id: str = typer.Argument(..., help="Id of any message, received or sent"),
+        emoji: str = typer.Argument(..., help='The emoji; "" removes our reaction'),
+    ):
+        """React to a message, anyone's. Prints the reaction's id."""
+        from .commands.listen_commands import handle_react
+        handle_react(name, message_id, emoji)
+
     @group.command("done")
     def _done(message_id: str = typer.Argument(..., help="Id of a taken message")):
         """Forget a taken message without replying, so it does not come back in an hour."""
@@ -1336,7 +1345,32 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
 
 app.add_typer(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, send, reply."), name="feishu")
 app.add_typer(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply."), name="lark")
-app.add_typer(_inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply."), name="whatsapp")
+_whatsapp_app = _inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply.")
+_whatsapp_groups = _typer_app(help="Start a group, or add people to one. One line per person.")
+
+
+@_whatsapp_groups.command("create")
+def _whatsapp_group_create(
+    subject: str = typer.Argument(..., help="The group's name"),
+    phones: List[str] = typer.Argument(..., help="Phone numbers with country code, e.g. 61412345678"),
+):
+    """Create a group with these people. Prints its chat id, then one line per person."""
+    from .commands.listen_commands import handle_group
+    handle_group("whatsapp", phones, subject=subject)
+
+
+@_whatsapp_groups.command("add")
+def _whatsapp_group_add(
+    chat: str = typer.Argument(..., help="The group's chat id, from `co whatsapp chats`"),
+    phones: List[str] = typer.Argument(..., help="Phone numbers with country code"),
+):
+    """Add people to a group this account administers. One line per person."""
+    from .commands.listen_commands import handle_group
+    handle_group("whatsapp", phones, chat=chat)
+
+
+_whatsapp_app.add_typer(_whatsapp_groups, name="group")
+app.add_typer(_whatsapp_app, name="whatsapp")
 
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.

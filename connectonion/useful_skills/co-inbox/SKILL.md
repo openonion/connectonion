@@ -26,6 +26,8 @@ stderr while continuing.
 | send without being asked | `co feishu send <chat> "text"` |
 | **fix something you already said** | `co feishu edit <id> "text"` |
 | **take back something you said** | `co feishu delete <id>` |
+| **acknowledge a message without a reply** | `co feishu react <id> 👍` |
+| **start a group with people (WhatsApp)** | `co whatsapp group create "<name>" <phone>…` |
 | see what is waiting | `co feishu ls` |
 | **find out which conversations exist** | `co feishu chats` |
 | **read one conversation back** | `co feishu log --chat <id>` |
@@ -200,6 +202,39 @@ to keep.
 - **Both are WhatsApp only right now.** `co feishu edit` and `co lark edit`
   name the endpoints that exist and say nobody has wired them up, so a failure
   never looks like a bad id.
+
+## Acknowledging without a message
+
+In a group, people put a 👍 on each other's messages. A whole reply is louder
+than that moment deserves, and silence reads as not listening.
+
+```bash
+co whatsapp react "$ID" 👍     # any message id from receive, log, send or reply
+co whatsapp react "$ID" ""     # take your reaction off
+```
+
+It works on anyone's message, including ones not addressed to you and ones from
+before this run, and it goes through the listener like `send`. Deciding *when* a
+reaction fits is yours; the automatic SEEN/ANSWERING receipts stay as they are.
+WhatsApp only, for now.
+
+## Starting a room for a client
+
+```bash
+co whatsapp group create "Acme × OpenOnion" 61412345678 61498765432
+# 120363041234567890@g.us
+#   ✓ +61412345678  added
+#   ✗ +61498765432  not added: their privacy settings only allow an invite (send them invite_link)
+#   invite_link: https://chat.whatsapp.com/…
+co whatsapp group add 120363041234567890@g.us 61400000000
+```
+
+Numbers take the country code, no `+` needed. The first line is the chat id —
+use it with `send`. Then **read every person's line before you tell anyone the
+group is ready**: WhatsApp reports the group as created even when it quietly
+left someone out, and "no WhatsApp account" is a different fix from "their
+privacy settings only allow an invite". Exit 1 means at least one person is not
+in; send those people the `invite_link` or ask for another number.
 
 ### Your text is read as Markdown
 
