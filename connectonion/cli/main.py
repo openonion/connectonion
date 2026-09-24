@@ -335,8 +335,10 @@ def commands():
     print("Functions inside the browser: co browser help")
 
 
-claude_app = _typer_app(help="Run Claude Code through the ConnectOnion session connector.")
-app.add_typer(claude_app, name="claude")
+claude_app = _typer_app(help="Experimental — run Claude Code through the ConnectOnion session connector. "
+                              "Preview only; its surface may change before 1.9.0.")
+app.add_typer(claude_app, name="claude",
+              short_help="Experimental: Run Claude Code through the ConnectOnion session connector.")
 
 
 @claude_app.callback(invoke_without_command=True)
@@ -800,10 +802,12 @@ def server_destroy(
         raise typer.Exit(1)
 
 
-# Experimental Wiki inspection (no background collection entry yet).
+# Experimental: the Personal Wiki targets 1.9.0 and its acceptance gates are
+# open, so the command list says so wherever `co --help` is read.
 from .commands.wiki_commands import make_wiki_app
 
-app.add_typer(make_wiki_app(_typer_app), name="wiki")
+app.add_typer(make_wiki_app(_typer_app), name="wiki",
+              short_help="Experimental: Personal Wiki — map first, investigate next. Targets 1.9.0.")
 
 
 # Skills command group
