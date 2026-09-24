@@ -1393,7 +1393,7 @@ def transfer(
 
 # Telegram command group. The bot is the user's own (@BotFather), so the token
 # lives in their keys.env -- no OpenOnion credential and nothing billed.
-telegram_app = _typer_app(help="Send a message from your Telegram bot.")
+telegram_app = _typer_app(help="Telegram bot as an inbox: listen, receive, send, reply.")
 app.add_typer(telegram_app, name="telegram")
 
 
@@ -1407,11 +1407,15 @@ def telegram_send(
     handle_telegram_send(chat, message)
 
 
-# Inbox providers: feishu, lark, whatsapp. One directory per provider under
+# Inbox providers: feishu, lark, whatsapp, telegram. One directory per provider under
 # ~/.co/inbox/, the same nine verbs on each. The tool knows nothing about
 # agents; anything that can read a file consumes it (DD-063).
-def _inbox_group(name: str, help_text: str) -> typer.Typer:
-    group = _typer_app(help=help_text)
+def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = None,
+                 with_send: bool = True) -> typer.Typer:
+    """The inbox verbs on a fresh group, or on an existing one that already has
+    its own `send`: `co telegram send` shipped first, and its output is part of
+    its contract, so Telegram gains the other verbs beside it."""
+    group = group if group is not None else _typer_app(help=help_text)
 
     @group.command("listen")
     def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl")):
@@ -1430,7 +1434,6 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
         from .commands.listen_commands import handle_receive
         handle_receive(name, timeout=timeout, start=not no_start, context=context)
 
-    @group.command("send")
     def _send(
         chat: str = typer.Argument(..., help="Chat id"),
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
@@ -1440,6 +1443,9 @@ def _inbox_group(name: str, help_text: str) -> typer.Typer:
         """Send text to a chat. Prints the new message id."""
         from .commands.listen_commands import handle_send
         handle_send(name, chat, text, reply_to=reply_to, plain=plain)
+
+    if with_send:
+        group.command("send")(_send)
 
     @group.command("reply")
     def _reply(
@@ -1563,6 +1569,9 @@ def _whatsapp_group_add(
 
 _whatsapp_app.add_typer(_whatsapp_groups, name="group")
 app.add_typer(_whatsapp_app, name="whatsapp")
+# Telegram keeps the `send` it shipped with and gains every other inbox verb on
+# the same group, with the same TELEGRAM_BOT_TOKEN.
+_inbox_group("telegram", "", group=telegram_app, with_send=False)
 
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.

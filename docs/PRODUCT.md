@@ -345,6 +345,9 @@ Worth saying out loud on any page that sells to a business:
   acceptance run in #1310 against a real Feishu group: the no-loss-during-a-gap
   gate failed on 8 September and the repair has not been re-tested live. Until
   it has, this is a preview, not a claim.
+- `co telegram listen / receive / reply / consume` (`inbox/telegram.py`) is wired
+  and unit-tested against fakes only; no live bot has been polled (#352). A
+  preview, not a claim.
 
 ### One security finding, not a marketing note
 

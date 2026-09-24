@@ -307,15 +307,19 @@ process; server storage remains ciphertext-only. See [sms.md](sms.md).
 
 ---
 
-#### `co telegram` - Send from Your Telegram Bot
+#### `co telegram` - Your Telegram Bot as a Directory of Files
 
 ```bash
 co telegram send 123456789 "The deployment needs attention"
 co telegram send @my_channel "Version 1.7 is ready for review"
+co telegram listen                       # long poll; every message → ~/.co/inbox/telegram/
+co telegram receive                      # next message as one JSON line
+echo "on it" | co telegram reply -100123.55
 ```
 
 Uses your own BotFather token from `TELEGRAM_BOT_TOKEN`; no OpenOnion credits
-are involved. The same `send_telegram` function is available as an agent tool.
+are involved. `send` is unchanged; the inbox verbs are the same as
+`co feishu`'s. The same `send_telegram` function is available as an agent tool.
 See [telegram.md](telegram.md) for setup, credential handling, and errors.
 
 #### `co feishu` / `co lark` - A Feishu Bot as a Directory of Files

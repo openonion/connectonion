@@ -36,6 +36,9 @@ stderr while continuing.
 
 `co lark …` is the same verbs against Lark. Pick by where your bot lives; the
 credentials are separate (`FEISHU_APP_*` and `LARK_APP_*`).
+`co telegram …` is the same verbs against a Telegram bot (`TELEGRAM_BOT_TOKEN`
+from @BotFather); its ids are `<chat>.<message_id>`, and its `send` keeps the
+older two-argument form. See docs/cli/telegram.md.
 
 ### Finding a conversation
 
