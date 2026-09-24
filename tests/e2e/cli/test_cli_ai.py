@@ -40,6 +40,7 @@ def test_ai_forwards_full_access_options():
         listen=None,
         harness="ours",
         sandbox="workspace-write",
+        permission_mode="default",
         timeout=600,
     )
 
@@ -71,6 +72,7 @@ def test_ai_forwards_json_and_resume_options():
         listen=None,
         harness="ours",
         sandbox="workspace-write",
+        permission_mode="default",
         timeout=600,
     )
 

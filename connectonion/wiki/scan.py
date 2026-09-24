@@ -133,7 +133,7 @@ def project_exclusion(path: Path) -> str:
     return ""
 
 
-def scan_projects(subscriptions: dict, days: int) -> list[dict]:
+def scan_projects(subscriptions: dict, days: int, wiki_root: Path | None = None) -> list[dict]:
     """Every `cwd` a coding session ran in, with how often and how recently."""
     since = datetime.now(timezone.utc) - timedelta(days=days)
     projects = collections.defaultdict(lambda: {"sessions": 0, "first": "", "last": "", "tools": set()})
@@ -155,6 +155,8 @@ def scan_projects(subscriptions: dict, days: int) -> list[dict]:
             if sub.get("project") and cwd != sub["project"]:
                 continue
             if not cwd or meta.get("skip") or project_exclusion(Path(cwd)):
+                continue
+            if wiki_root and Path(cwd).resolve().is_relative_to(wiki_root.resolve()):
                 continue
             entry = projects[cwd]
             entry["sessions"] += 1

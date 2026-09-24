@@ -480,6 +480,10 @@ def ai(
              "subscription with its own tools, and spends none of our tokens "
              "deciding to delegate.",
     ),
+    permission_mode: str = typer.Option(
+        "default", "--permission-mode",
+        help="Claude Code headless permissions. The default is manual; select a broader mode explicitly.",
+    ),
     timeout: int = typer.Option(600, "--timeout", min=1, help="Delegated harness task timeout, in seconds"),
 ):
     """Start AI coding agent or run one-shot prompt."""
@@ -503,6 +507,7 @@ def ai(
         listen=channels,
         harness=harness,
         sandbox=sandbox,
+        permission_mode=permission_mode,
         timeout=timeout,
     )
 

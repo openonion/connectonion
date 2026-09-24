@@ -595,7 +595,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
     stage = "extract" if record["extracted"] else "maintain"
     try:
         if record["extracted"]:
-            digest = (extractor or run_extract)(items, config, kind)
+            digest = (extractor(items, config, kind) if extractor else
+                      run_extract(items, config, kind, root=root))
             usage = dict(digest.get("usage") or {})
             record["usage_by_stage"]["extract"] = digest.get("usage")
             notes = digest["notes"].strip()

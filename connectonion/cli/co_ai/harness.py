@@ -52,6 +52,17 @@ def validate_sandbox(harness: str, sandbox: str) -> str | None:
     return None
 
 
+def validate_permission(harness: str, mode: str) -> str | None:
+    """Claude's headless permission choice must be explicit at the caller."""
+    from ...useful_tools.claude_code import PERMISSION_MODES
+
+    if mode not in PERMISSION_MODES:
+        return f"Unknown Claude Code permission mode {mode!r}. Use one of: {', '.join(PERMISSION_MODES)}."
+    if mode != "default" and harness != "claude-code":
+        return "--permission-mode applies only to --harness claude-code."
+    return None
+
+
 def validate(harness: str, model: str | None) -> str | None:
     """The reason this combination cannot run, or None.
 
@@ -115,7 +126,7 @@ def expand_skill(prompt: str) -> str:
 
 
 def run(harness: str, prompt: str, model: str, *, cwd: str = "", timeout: int = 600,
-        sandbox: str = DEFAULT_SANDBOX) -> dict:
+        sandbox: str = DEFAULT_SANDBOX, permission_mode: str = "default") -> dict:
     """Hand the task to a native coding agent; return our envelope's fields.
 
     Each delegate answers in its own JSON shape and with its own idea of what
@@ -135,7 +146,8 @@ def run(harness: str, prompt: str, model: str, *, cwd: str = "", timeout: int = 
                     timeout=timeout, approval="auto")
     else:
         from ...useful_tools.claude_code import _run_claude_code
-        raw = _run_claude_code(prompt=text, cwd=cwd, model=model, timeout=timeout)
+        raw = _run_claude_code(prompt=text, cwd=cwd, model=model, timeout=timeout,
+                               permission_mode=permission_mode)
 
     try:
         answer = json.loads(raw)

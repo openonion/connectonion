@@ -31,7 +31,7 @@ def make(tmp_path, monkeypatch):
     return scheduler, calls
 
 
-def test_plist_runs_scheduled_sync_with_a_path_that_can_find_codex(tmp_path, monkeypatch):
+def test_plist_runs_scheduled_daily_with_a_path_that_can_find_codex(tmp_path, monkeypatch):
     scheduler, _ = make(tmp_path, monkeypatch)
     root = tmp_path / "wiki"
     config = default_config()
@@ -39,7 +39,7 @@ def test_plist_runs_scheduled_sync_with_a_path_that_can_find_codex(tmp_path, mon
     plist = plistlib.loads(scheduler.render(root, config).encode())
     assert plist["Label"] == label_for(root)
     assert plist["ProgramArguments"] == ["/venv/bin/co",
-                                         "wiki", "--root", str(root), "sync", "--scheduled"]
+                                         "wiki", "--root", str(root), "daily", "--scheduled"]
     assert "/opt/codex/bin" in plist["EnvironmentVariables"]["PATH"]
     assert "/venv/bin" in plist["EnvironmentVariables"]["PATH"]
     assert plist["StandardErrorPath"].startswith(str(root / ".state"))
@@ -87,4 +87,4 @@ def test_job_ticks_on_an_interval_and_never_relies_on_calendar_triggers(tmp_path
     assert plist["StartInterval"] == TICK_SECONDS and 60 <= TICK_SECONDS <= 600
     assert "StartCalendarInterval" not in plist
     assert plist["RunAtLoad"] is False  # the first tick catches up; no batch races the foreground one
-    assert plist["ProgramArguments"][-2:] == ["sync", "--scheduled"]
+    assert plist["ProgramArguments"][-2:] == ["daily", "--scheduled"]
