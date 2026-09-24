@@ -30,9 +30,7 @@ async def _watch_provider_station(station, send_msg):
     """Deliver the terminal's durable provider events to its paired Work Room."""
     offset = 0
     while True:
-        record = await asyncio.to_thread(station.storage.get, station.session_id)
-        trace = record.session.get("trace", []) if record else []
-        events = trace[offset:]
+        events, offset = await asyncio.to_thread(station.events_since, offset)
         for event in events:
             if event.get("type") in {
                 "provider_invocation", "provider_activity", "provider_message",
@@ -42,7 +40,6 @@ async def _watch_provider_station(station, send_msg):
         for event in events:
             if event.get("type") == "provider_session":
                 await send_msg({**event, "session_id": station.session_id})
-        offset = len(trace)
         await asyncio.sleep(0.3)
 
 

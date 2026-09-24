@@ -462,3 +462,18 @@ def test_missing_session_hook_never_acknowledges_web_input(tmp_path, monkeypatch
     ))
     assert result["status"] == "error"
     agent.io.send.assert_not_called()
+
+
+def test_a_busy_second_never_sheds_an_approval(monkeypatch):
+    bridge = importlib.import_module("connectonion.useful_tools.claude_code_bridge")
+    monkeypatch.setattr(bridge, "_MAX_EVENT_RATE", 1)
+    with scoped_bridge_settings(permission_handler=lambda event: True) as (settings, events):
+        hooks = json.loads(settings.read_text())["hooks"]
+        _post_hook(hooks["Stop"][0]["hooks"][0], {"hook_event_name": "Stop"})
+        hook = hooks["PermissionRequest"][0]["hooks"][0]
+        request = Request(hook["args"][1], data=json.dumps({
+            "hook_event_name": "PermissionRequest", "tool_name": "Bash",
+        }).encode(), headers={"Authorization": f"Bearer {hook['args'][2]}"})
+        with urlopen(request, timeout=2) as response:
+            decision = json.loads(response.read())
+        assert decision["hookSpecificOutput"]["decision"]["behavior"] == "allow"

@@ -46,6 +46,10 @@ class ClaudeStation:
         self._invocation_revision = 0
         self._activity_ids: dict[str, tuple[str, int]] = {}
         self._activity_sequence = 0
+        # Events of the turn in progress. The Host commits a session once per
+        # turn, never per event: each commit appends the whole session, so a
+        # commit per tool call grew the file with the square of the session.
+        self._pending: list[dict] = []
         self.storage.save(Session(
             session_id=self.session_id,
             status="running",
@@ -65,30 +69,44 @@ class ClaudeStation:
             state_revision=self._revision,
         )
 
-    def _append(self, event: dict, *, status: str | None = None) -> None:
-        def update(record: Session | None) -> Session:
-            if record is None:
-                raise RuntimeError("Claude Station session disappeared")
-            session = dict(record.session or {})
-            trace = list(session.get("trace") or [])
-            trace.append(event)
-            session["trace"] = trace
-            return record.model_copy(update={
-                "session": session,
-                "status": status if status is not None else record.status,
-            })
+    def _append(self, event: dict) -> None:
+        with self._condition:
+            self._pending.append(event)
 
-        self.storage.atomic_update(self.session_id, update)
+    def _commit(self, *, status: str | None = None) -> None:
+        """Write the turn's events at once: at Stop and at every control change."""
+        with self._condition:
+            events, self._pending = self._pending, []
+
+            def update(record: Session | None) -> Session:
+                if record is None:
+                    raise RuntimeError("Claude Station session disappeared")
+                session = dict(record.session or {})
+                session["trace"] = [*(session.get("trace") or []), *events]
+                return record.model_copy(update={
+                    "session": session,
+                    "status": status if status is not None else record.status,
+                })
+
+            self.storage.atomic_update(self.session_id, update)
+
+    def events_since(self, offset: int) -> tuple[list[dict], int]:
+        """Committed trace plus the live turn, as one list the Work Room tails."""
+        with self._condition:
+            record = self.storage.get(self.session_id)
+            events = [*(record.session.get("trace") or []), *self._pending]
+        return events[offset:], len(events)
 
     def _transition(self, phase: str, *, status: str | None = None) -> None:
         with self._condition:
             self._phase = phase
             self._revision += 1
-            self._append(self._session_event(), status=status)
+            self._append(self._session_event())
+            self._commit(status=status)
             self._condition.notify_all()
 
     def _invocation(self, status: str) -> dict:
-        trace = self.storage.get(self.session_id).session["trace"]
+        trace, _ = self.events_since(0)
         latest = next((event["stateRevision"] for event in reversed(trace)
                        if event.get("type") == "provider_invocation"
                        and event.get("invocationId") == self.invocation_id), 0)
@@ -124,6 +142,7 @@ class ClaudeStation:
         elif kind == "Stop":
             with self._condition:
                 self._append(self._invocation("completed"))
+                self._commit()
         elif kind in {"PreToolUse", "PostToolUse", "PostToolUseFailure", "SubagentStart", "SubagentStop"}:
             self._on_activity(fact)
 
@@ -210,7 +229,7 @@ class ClaudeStation:
                 return {"accepted": False, "reason": "provider_busy"}
             deadline = time.monotonic() + 10
             while record.status != "done" and time.monotonic() < deadline:
-                time.sleep(0.1)
+                self._condition.wait(0.1)
                 record = self.storage.get(self.session_id)
             if record.status != "done":
                 return {"accepted": False, "reason": "provider_busy"}
@@ -260,7 +279,7 @@ class ClaudeStation:
                 self._transition("completed" if code == 0 else "failed", status="done")
                 return code
             with self._condition:
-                self._append(self._invocation("completed"), status="done")
+                self._append(self._invocation("completed"))
             self._transition("remote_controlling", status="done")
             self._resume_local.wait()
             returning_from_browser = True
