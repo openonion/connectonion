@@ -6,15 +6,23 @@ previews aimed at 1.9.0. A label in brackets would not do: Rich reads
 `[experimental]` as markup and prints nothing.
 """
 
+import re
+
 from typer.testing import CliRunner
 
 from connectonion.cli import main as cli_main
 
 
 def listing():
+    # On GitHub Actions Rich forces colour, so every row starts with ANSI codes;
+    # strip them and the box before reading the command name.
     result = CliRunner().invoke(cli_main.app, ["--help"], env={"COLUMNS": "200"})
-    return {line.split()[1]: line for line in result.output.splitlines()
-            if line.startswith("│ ") and len(line.split()) > 2}
+    rows = {}
+    for line in result.output.splitlines():
+        words = re.sub(r"\x1b\[[0-9;]*m", "", line).replace("│", " ").split()
+        if len(words) > 1:
+            rows.setdefault(words[0], line)
+    return rows
 
 
 def test_wiki_and_claude_are_marked_experimental_in_the_command_list():
