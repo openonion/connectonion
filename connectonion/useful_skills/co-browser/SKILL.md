@@ -143,6 +143,26 @@ co browser -t mytab go_to "https://example.com/item/<id>/"
 Six scroll-and-screenshot round trips became one script plus one `go_to` this way,
 and the per-item menu became unambiguous because the page held exactly one item.
 
+**What the page sent, and its cookies.** When the DOM does not explain what a
+page did — which API it called, what came back, why a login did not stick — read
+the network layer instead of guessing from screenshots. Your `-t` tab name says
+whose traffic and which site's cookies you mean:
+
+```bash
+co browser -t mytab network clear                 # then do ONE action
+co browser -t mytab click_element_by_selector "#save"
+co browser -t mytab network requests --type xhr,fetch --status 4xx
+co browser -t mytab network request 7             # headers + bodies of that call
+co browser -t mytab network har start             # record a whole task as a HAR file
+co browser -t mytab network har stop              # prints ~/.co/browser/har/mytab-<time>.har
+co browser -t mytab cookies                       # this site's cookies
+```
+
+Header and cookie **values are shaped** (`x-sign: <32 hex>`, `<22 chars>`), never
+printed, unless you pass `--raw`. Keep it that way: the shape is what you need to
+understand an endpoint, and the value is someone's login — it must not go into a
+prompt, a log or a message. Only use `--raw` when the user asked for the values.
+
 **`do "<instruction>"`** (natural language — an AI agent sees the page and works out
 the steps). Use for judgment, not for steps you already know:
 

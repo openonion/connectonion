@@ -62,3 +62,25 @@ Two releases ago the same suite shipped a race in an outbox that CI caught and
 local runs did not. That one was a missing case. This one had a case, and the
 case was wrong. Both were only visible from outside the tests — once from a
 loaded CI runner, once from a page that actually loaded.
+
+## Postscript, 24 September: it agreed with me again
+
+Before this shipped, the verbs moved under `co browser network` —
+`requests`, `request <n>`, and a new `har start` / `har stop` that writes a
+standard HAR file — so the surface matches vercel-labs/agent-browser, and they
+learned the tab names `-t` already had. Thirty new tests went green against
+fakes. Then the HAR went through Playwright's own `route_from_har()` with the
+site switched off, and the page rebuilt itself from the file: the format was
+right. What was wrong was in the file's first line.
+
+The page loaded *before* `har start` was in the recording. A request event
+fires, the handler starts reading the body, and the body arrives a few
+milliseconds later — after `start` had already run. The fake handed its body
+back instantly, so no fake request could ever straddle the moment recording
+began. A real one did on the first try. The record now keeps when its event
+fired, and a recording takes only what fired while it was on.
+
+The same run produced a false alarm worth writing down too: an image in
+`--content all` came out empty. Chrome had thrown away a test PNG that was only
+a header; a valid one round-tripped as base64. The first thing a real run tells
+you is sometimes about the test.
