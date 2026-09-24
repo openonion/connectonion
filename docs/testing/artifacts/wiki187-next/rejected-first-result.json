@@ -1,0 +1,19 @@
+{
+  "stage": "investigate",
+  "harness": "codex",
+  "model": "gpt-5.6-luna",
+  "instructions_chars": 20870,
+  "material_chars": 1969,
+  "readable_material_chars": 2359,
+  "prompt_chars": 987,
+  "source_items": 3,
+  "status": "failed",
+  "error": "Candidate rejected: Changed page has no numbered evidence references",
+  "usage": {
+    "input_tokens": 243122,
+    "output_tokens": 3236,
+    "cached_input_tokens": 208896
+  },
+  "duration_seconds": 75.83897945797071,
+  "changed": []
+}

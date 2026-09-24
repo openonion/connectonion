@@ -1,0 +1,5 @@
+Wiki investigate
+
+people/ody-123.md
+Next: co wiki --root /private/tmp/wiki-b4-visual-fixture investigate people/ody-123.md
+Exit: 0

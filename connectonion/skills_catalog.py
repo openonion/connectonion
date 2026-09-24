@@ -16,6 +16,12 @@ DEFAULT_LIBRARY_SKILLS = (
     "install-connectonion",
     "co-browser",
     "co-mail-and-drive",
+    # Wiki stages share the same CLI skill resolution for every harness.
+    "wiki-init",
+    "wiki-investigate",
+    "wiki-extract",
+    "wiki-maintain",
+    "wiki-abstract",
 )
 
 

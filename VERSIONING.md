@@ -353,9 +353,25 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.6
+## Current Version: 1.8.8b3
+
+The Personal Wiki feature targets 1.9.0 (#1443). Stable 1.8.7 shipped the
+dashboard patch. This 1.8.8b3 candidate remains an opt-in preview; published
+1.8.8b1 and earlier 1.8.7b1–b4 previews remain immutable historical artifacts.
+There was no published 1.8.8b2. The preview does not automatically accept the
+full 1.9.0 Wiki release.
+
+- 1.8.8b3 (Preview the repaired real-person investigation flow, owner-alias hints, source-state explanations, private full-page opening, and a stable Wiki workspace for scheduled runs. The 1.9.0 quality and harness acceptance gates remain open; b2 was not published.)
+- 1.8.8b1 (Retarget the validated Wiki preview to its dedicated 1.8.8 feature line; preserve dry-run semantics when combined with backfill or scheduled execution.)
+- 1.8.7b4 (Readable Wiki CLI output, help as the workflow guide, real-page discovery, organization maps and Skill source snapshots; validated investigation and staged maintenance preserve canonical pages.)
+- 1.8.7b3 (Noninteractive Wiki initialization with connected mailbox discovery and deferred authentication tips)
+- 1.8.7b2 (Wiki memory workflow preview: attributed reflections, explicit inquiry model stages, durable local capture, reviewable connections and bounded daily investigation; design acceptance remains tracked separately)
+- 1.8.7b1 (Wiki beta preview: partial source failures, refreshed map metadata, consistent skill search, remote identity normalization, automated correspondent labels and accurate reader/doctor states; offline and Chrome acceptance passed)
+
+- 1.8.7a3 (Wiki initialization preview: explicit People metadata selection, grouped skill installations, temporary project exclusion; local acceptance recorded in PR #1613)
 
 ### Version History
+- 1.8.7: Control Center accepts 128 MiB HTML snapshots with a 256 MiB transport envelope. Oversized/unreadable pages show a visible error; failed sends can retry. Stable patch from 1.8.6; Personal Wiki now targets 1.9.0 (#1443).
 - 1.8.6 (**stable: WhatsApp as an inbox, with an undo.** A linked device sees
   the groups the number is in and answers only where it was addressed; `edit`
   and `delete` make a wrong answer in front of a customer recoverable; text is

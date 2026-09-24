@@ -116,11 +116,25 @@ them by saying what you cannot read yet rather than by guessing at silence:
 ```bash
 case "$(jq -r .kind <<<"$MESSAGE")" in
   text)  ;;                     # the normal path
-  image|video|audio|document)
-    echo "I can see you sent a $(jq -r .kind <<<"$MESSAGE"), but I can't read one yet." ;;
+  image|video|audio|document|sticker)
+    FILE=$(jq -r '.media.path // empty' <<<"$MESSAGE")
+    if [ -n "$FILE" ]; then
+      :                         # the bytes are on disk at $FILE — read it
+    else
+      WHY=$(jq -r '.media.error // "not fetched"' <<<"$MESSAGE")
+      echo "I can see you sent a $(jq -r .kind <<<"$MESSAGE"), but I could not open it ($WHY)."
+    fi ;;
   *) exit 0 ;;                  # nothing to say
 esac
 ```
+
+**On WhatsApp, a media message carries the file itself.** `media.path` is where
+the bytes landed, with `media.mime` and `media.size` beside it; the listener
+fetches them as the message arrives, because the keys are only valid then.
+When the fetch failed the record says `media.error` instead, and there is no
+file — so check for the path rather than assuming one, and say what went wrong
+rather than treating a missing photo as an empty message. Providers other than
+WhatsApp have no `media` yet; the `kind` is still there.
 
 A `kind` this list does not name is still the platform's name for it, lowercased
 — new message types appear faster than releases do, and arriving as something

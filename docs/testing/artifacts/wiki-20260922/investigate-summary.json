@@ -1,0 +1,31 @@
+{
+  "root": "/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/notebook",
+  "record": "projects/atlas-58b543867f.md",
+  "map": "completed",
+  "investigation": {
+    "record": "projects/atlas-58b543867f.md",
+    "items": 1,
+    "chars_gathered": 602,
+    "tokens_estimated_in": 150,
+    "coverage": [
+      "codex: 1 messages in window, 1 related to subject (handle or project match)"
+    ],
+    "changed": [
+      "projects/atlas-58b543867f.md"
+    ],
+    "usage": {
+      "output_tokens": 3552,
+      "input_tokens": 270878,
+      "cached_input_tokens": 237568
+    },
+    "usage_by_stage": {
+      "investigate": {
+        "output_tokens": 3552,
+        "input_tokens": 270878,
+        "cached_input_tokens": 237568
+      }
+    },
+    "report": "I’m using the `wiki-investigate` skill as instructed. I’ll read the composed instructions, current page, and all paginated source material, then write only the required candidate file.The supplied material contains one project request plus coverage metadata, so I’m checking the recorded project files and session evidence before drafting. I’ll keep the request to publish a hosted site explicitly uncompleted unless there is execution evidence.I found a README, the sole implementation, sample input/output, and one recorded coding-session message. I also ran the documented command in the recorded project directory and got `3`; there is no deployment evidence, so the hosted-site request will remain an open thread.Created the complete revised page at [candidate.md](/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/notebook/.state/tasks/investigate-8qx4jwmj/candidate.md).\n\nIt documents Atlas’s local CLI implementation, verified sample run, evidence sources, uncertainties, and "
+  },
+  "factual_review": "required: check local workflow, sample result and unimplemented hosting"
+}

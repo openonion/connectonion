@@ -18,6 +18,7 @@ and says so when it is not.
 
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -46,6 +47,19 @@ LIBMAGIC_INSTALL = {
 # JID names, and the group one is the only one this treats as a group.
 GROUP_SERVER = "g.us"
 USER_SERVER = "s.whatsapp.net"
+
+# The kinds whose bytes are worth fetching. Location and contact cards carry no
+# file; a sticker does, and a consumer asked "what did they send" needs it.
+MEDIA_KINDS = {"image", "video", "audio", "document", "sticker"}
+# What each kind is usually saved as. The extension is a convenience for the
+# person who opens the folder; the mime recorded on the message is what a
+# caller should branch on.
+MEDIA_SUFFIX = {"image": ".jpg", "video": ".mp4", "audio": ".ogg",
+                "document": ".bin", "sticker": ".webp"}
+# WhatsApp's own ceiling for media is 2 GB, but an inbox that fills a disk
+# stops answering anybody. Past this, the record says the file was too large
+# and where it would have gone, which is recoverable; a full disk is not.
+MEDIA_MAX_BYTES = 64 * 1024 * 1024
 
 # How long `send` waits for the listener to pick the request up and answer.
 SEND_TIMEOUT_SECONDS = 30.0
@@ -205,6 +219,17 @@ def _kind(message) -> str:
             # removed wherever it is rather than stripped as a suffix.
             return name.replace("Message", "").lower() or "text"
     return "text"
+
+
+def _mime_of(message, kind: str) -> str:
+    """The mime type WhatsApp put on the media, when it put one there."""
+    try:
+        for descriptor, variant in message.ListFields():
+            if getattr(descriptor, "name", "") in KINDS and KINDS[descriptor.name] == kind:
+                return str(getattr(variant, "mimetype", "") or "")
+    except Exception:  # noqa: BLE001 - a mime we cannot read costs the caller nothing
+        pass
+    return ""
 
 
 def _quoted_reference(context, own_ids) -> Optional[dict]:
@@ -508,6 +533,9 @@ class WhatsApp:
             # A raising handler would surface as a Go-side panic and take the
             # whole process down, listener and all. A payload we cannot read is
             # one log line.
+            if getattr(event.Info.MessageSource, "IsFromMe", False):
+                self.keep_own(inbox, event, _client)
+                return
             try:
                 message = self.to_message(event)
             except Exception as exc:
@@ -520,6 +548,9 @@ class WhatsApp:
                     message.raw = {"info": str(event.Info), "message": str(event.Message)}
                 except Exception as exc:
                     inbox.log(f"raw payload of {message.id} not kept: {exc}")
+            # Before `take`, because the queue record is what a consumer reads:
+            # a path that arrives after delivery arrives after the answer.
+            self.fetch_media(inbox, message, event, _client)
             self.take(inbox, message, raw=raw)
 
         # Things that happen to this account which are not somebody typing. They
@@ -692,15 +723,16 @@ class WhatsApp:
         lid = _user_of(_jid_str(getattr(me, "LID", None)))
         return phone, frozenset(i for i in (phone, lid) if i)
 
-    def to_message(self, event, *, raw: bool = False) -> Optional[Message]:
+    def to_message(self, event, *, raw: bool = False, own: bool = False) -> Optional[Message]:
         """A MessageEv as a Message, or None for an event that is not someone
-        talking to us."""
+        talking to us. `own` builds one for the user's own message instead, for
+        `keep_own`; it is never delivered."""
         from neonize.utils.message import extract_text
 
         source = event.Info.MessageSource
         # Our own messages come back over the same socket. Delivering them would
         # answer ourselves, and the answer would arrive as another message.
-        if source.IsFromMe:
+        if bool(source.IsFromMe) != own:
             return None
 
         text = extract_text(event.Message) or ""
@@ -777,6 +809,68 @@ class WhatsApp:
             if _user_of(getattr(context, "participant", "")) in own:
                 return True
         return any(one in (text or "") for one in own)
+
+    def fetch_media(self, inbox: Inbox, message: Message, event, client) -> None:
+        """Save the bytes of a media message, while its keys are still in hand.
+
+        There is no later. The media keys live in the protobuf envelope and
+        `to_message` keeps none of it, so a `download <id>` command issued
+        afterwards would have nothing to download from -- and WhatsApp drops the
+        bytes from its own servers after a while regardless. The moment the
+        event arrives is the only moment the file is reachable, so this runs
+        there, and the path goes on the record the consumer reads.
+
+        Never raises: this is called from the MessageEv handler, where an
+        exception is a Go-side panic that ends the listener. A failure is
+        recorded on the message, because "the photo could not be fetched" is
+        something the consumer must be able to say, and a missing file it reads
+        as an empty document is worse than an error.
+        """
+        if message.kind not in MEDIA_KINDS:
+            return
+        directory = inbox.root / "media"
+        safe = re.sub(r"[^A-Za-z0-9_.-]", "_", message.id) or "message"
+        target = directory / f"{safe}{MEDIA_SUFFIX.get(message.kind, '.bin')}"
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            client.download_any(event.Message, str(target))
+            size = target.stat().st_size if target.is_file() else 0
+            if not size:
+                raise RuntimeError("the download wrote no bytes")
+            if size > MEDIA_MAX_BYTES:
+                target.unlink(missing_ok=True)
+                raise RuntimeError(f"{size} bytes is over the {MEDIA_MAX_BYTES}-byte limit")
+        except Exception as exc:
+            target.unlink(missing_ok=True)
+            message.media = {"error": f"{type(exc).__name__}: {exc}"}
+            inbox.log(f"media of {message.id} not fetched: {exc}")
+            return
+        message.media = {"path": str(target), "mime": _mime_of(event.Message, message.kind), "size": size}
+        inbox.log(f"media of {message.id} saved to {target} ({size} bytes)")
+
+    def keep_own(self, inbox: Inbox, event, client) -> None:
+        """Record what the user typed on their own phone, without queueing it.
+
+        Every IsFromMe event used to be dropped, so the bot would never answer
+        itself -- and with it went everything the user said in their own chats,
+        which is the part a notebook built on the user's words needs most. It is
+        appended to own.jsonl, a record file no consumer reads, so nothing
+        answers it. The agent's own replies arrive here too; sent.jsonl names
+        them, and a reader that wants only the user leaves those ids out.
+
+        Never raises, for the same reason as `fetch_media`: this runs inside the
+        MessageEv handler.
+        """
+        try:
+            message = self.to_message(event, own=True)
+            if message is None:
+                return
+            if any(row.get("id") == message.id for row in inbox.own_records()):
+                return   # WhatsApp retries; the same message twice is one record
+            self.fetch_media(inbox, message, event, client)
+            inbox.record_own(message)
+        except Exception as exc:
+            inbox.log(f"own message not kept ({type(exc).__name__}: {exc})")
 
     def take(self, inbox: Inbox, message: Message, *, raw: bool = False) -> bool:
         """Put a message in the queue, and mark it as seen where it was asked.
