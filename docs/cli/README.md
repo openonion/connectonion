@@ -423,6 +423,10 @@ tokens and granted scopes remain local. See [Google auth](../integrations/google
 - [co gcalendar](gcalendar.md): list/read events, find free slots, preview and confirm Calendar writes and Meet creation.
 - [co youtube](youtube.md): read channels/videos and preview or confirm uploads and metadata updates.
 
+#### `co tiktok` - TikTok post plans (preview)
+
+- [co tiktok](tiktok.md): seal a local post plan and read login evidence from your own `co browser` tab. Upload and publish are not implemented; `--confirm` refuses to submit.
+
 ---
 
 #### `co syno` - Synology NAS

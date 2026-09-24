@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from connectonion.useful_tools.creator_plan import CreatorError, confirm_plan
+from connectonion.useful_tools.tiktok import prepare_post
 from connectonion.useful_tools.youtube import prepare_upload
 
 
@@ -41,6 +42,25 @@ def test_confirmation_rejects_tampered_plan(clip):
     plan["body"]["status"]["privacyStatus"] = "public"
     with pytest.raises(CreatorError):
         confirm_plan(plan, plan["confirmation"])
+
+
+def test_tiktok_is_local_plan_not_a_draft_or_publish(clip):
+    plan = prepare_post(str(clip), "A literal caption #demo", "@creator")
+    assert plan["operation"] == "tiktok.post"
+    assert plan["caption"] == "A literal caption #demo"
+    assert plan["submit_supported"] is False
+    assert plan["account"] == "@creator"
+    assert "access_token" not in json.dumps(plan)
+    confirm_plan(plan, plan["confirmation"])
+    with pytest.raises(CreatorError, match="confirmation"):
+        confirm_plan(prepare_post(str(clip), "Another caption", "@creator"), plan["confirmation"])
+
+
+@pytest.mark.parametrize("caption", ["", "   ", "x" * 2201])
+def test_tiktok_caption_must_be_present_and_bounded(clip, caption):
+    with pytest.raises(CreatorError) as error:
+        prepare_post(str(clip), caption, "@creator")
+    assert error.value.code == "invalid_caption"
 
 
 @pytest.mark.parametrize("title", ["", " " * 5, "x" * 101, "bad<title"])

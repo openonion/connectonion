@@ -59,7 +59,9 @@ def test_youtube_help_skill_parity():
     skill = (Path(__file__).resolve().parents[2] / 'connectonion/useful_skills/co-google/SKILL.md').read_text()
     visible = set(get_command(app).commands['youtube'].commands)
     assert visible == set(re.findall(r'co youtube ([a-z][a-z-]*)', skill))
-    assert 'tiktok' not in get_command(app).commands
+    # TikTok was kept out of the Google-only 1.8.3 release. It now ships as its
+    # own group with its own skill; the Google skill must still not claim it.
+    assert 'tiktok' not in skill.lower()
     for name in visible:
         assert CliRunner().invoke(app, ['youtube', name, '--help']).exit_code == 0
 

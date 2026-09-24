@@ -247,6 +247,7 @@ NEXT = {
     "co trust admin add": "See every list:  co trust list",
     "co trust admin remove": "See every list:  co trust list",
     "co youtube *": HANDLER,
+    "co tiktok *": HANDLER,
 }
 
 

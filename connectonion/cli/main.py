@@ -1970,6 +1970,41 @@ def youtube_update(item: str = typer.Argument(..., help="Listing number, video I
     from .commands.youtube_commands import handle_youtube_update
     handle_youtube_update(item, title, description, dry_run, confirm, json_output)
 
+
+# TikTok stops short of TikTok itself. `post` seals a local plan and `inspect`
+# reads login evidence from a browser tab the caller already owns. There is no
+# submission adapter: nobody has yet seen the logged-in upload form, and a
+# publish button written from guesses would be a publish button nobody tested.
+tiktok_app = _typer_app(help="TikTok local post plans and read-only browser readiness. Upload/publish is not implemented.")
+app.add_typer(tiktok_app, name="tiktok")
+
+
+@tiktok_app.callback(invoke_without_command=True)
+def tiktok_callback(ctx: typer.Context):
+    if ctx.invoked_subcommand is None:
+        print(ctx.get_help())
+        print("Start a local post plan: co tiktok post --help")
+
+
+@tiktok_app.command("post")
+def tiktok_post(path: str = typer.Argument(..., help="Local video file; preview never uploads it"),
+                caption: str = typer.Option(..., "--caption"),
+                account: str = typer.Option(..., "--account", help="Intended @handle; not an authenticated identity assertion"),
+                dry_run: bool = typer.Option(False, "--dry-run", help="Explicit local preview (the default)"),
+                confirm: Optional[str] = typer.Option(None, "--confirm", help="Validate a plan digest, then refuse submission until the browser adapter is verified"),
+                json_output: bool = typer.Option(False, "--json")):
+    """Prepare a local plan. No TikTok draft, upload, or post is created."""
+    from .commands.tiktok_commands import handle_tiktok_post
+    handle_tiktok_post(path, caption, account, dry_run, confirm, json_output)
+
+
+@tiktok_app.command("inspect")
+def tiktok_inspect(tab: str = typer.Option(..., "--tab", help="An existing co browser tab owned by this task"),
+                   json_output: bool = typer.Option(False, "--json")):
+    """Capture and verify login/readiness evidence; never click or upload."""
+    from .commands.tiktok_browser_commands import handle_inspect
+    handle_inspect(tab, json_output)
+
 from .commands.gcalendar_commands import gcalendar_app
 gcalendar_app.info.cls = _OneSuggestion
 app.add_typer(gcalendar_app, name="gcalendar")
