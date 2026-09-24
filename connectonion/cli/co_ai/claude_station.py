@@ -88,7 +88,11 @@ class ClaudeStation:
             self._condition.notify_all()
 
     def _invocation(self, status: str) -> dict:
-        self._invocation_revision += 1
+        trace = self.storage.get(self.session_id).session["trace"]
+        latest = next((event["stateRevision"] for event in reversed(trace)
+                       if event.get("type") == "provider_invocation"
+                       and event.get("invocationId") == self.invocation_id), 0)
+        self._invocation_revision = max(self._invocation_revision, latest) + 1
         if status == "running":
             summary = "Running in the terminal" if self._phase.startswith("local") else "Claude Code is working"
         else:
@@ -327,7 +331,7 @@ def launch_claude_station(workspace: Path, session_id: str, model: str) -> tuple
         name="co-claude-station-host",
         daemon=True,
     )
-    print(f"Claude Work Room: https://o.openonion.ai/{identity['address']}")
+    print(f"Claude Work Room: https://chat.openonion.ai/{identity['address']}")
     print(f"Pairing code: {station.pairing_code}")
     original_stdout, original_stderr = sys.stdout, sys.stderr
     with (state_dir / "station-host.log").open("a", encoding="utf-8") as log:

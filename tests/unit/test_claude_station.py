@@ -64,6 +64,17 @@ def test_terminal_browser_terminal_handover(tmp_path, monkeypatch):
     assert history_modes == [False, True]
 
 
+def test_invocation_revision_advances_from_persisted_trace(tmp_path):
+    storage = SessionStorage(tmp_path / "station" / "session_results.jsonl")
+    station = claude_station.ClaudeStation(tmp_path, storage)
+    station._append(station._invocation("running"))
+    station._invocation_revision = 0
+
+    completed = station._invocation("completed")
+
+    assert completed["stateRevision"] == 2
+
+
 def test_browser_approval_requires_owned_workspace_edit(tmp_path):
     class ApprovalIO:
         def __init__(self):
