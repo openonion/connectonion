@@ -33,7 +33,12 @@ from ..core.provider_events import (
     remember_provider_activity,
     remember_provider_artifact,
 )
-from .claude_code_bridge import poll_bridge, scoped_bridge_settings, session_start
+from .claude_code_bridge import (
+    exclusive_workspace_writer,
+    poll_bridge,
+    scoped_bridge_settings,
+    session_start,
+)
 
 PERMISSION_MODES = (
     "default",
@@ -217,14 +222,15 @@ def _run_claude_code(
         forwarder.handle(event)
 
     try:
-        completed = _run_process(
-            argv,
-            cwd=str(working_directory),
-            timeout=timeout,
-            cancelled=cancelled if callable(cancelled) else None,
-            on_event=provider_event,
-            on_started=provider_started if bridge_events is None else None,
-        )
+        with exclusive_workspace_writer(working_directory):
+            completed = _run_process(
+                argv,
+                cwd=str(working_directory),
+                timeout=timeout,
+                cancelled=cancelled if callable(cancelled) else None,
+                on_event=provider_event,
+                on_started=provider_started if bridge_events is None else None,
+            )
     except FileNotFoundError:
         return _envelope(session_id, error="Claude Code CLI not found during launch.")
     except subprocess.TimeoutExpired:
@@ -305,7 +311,7 @@ def run_interactive_claude(
     if error:
         raise ValueError(error)
 
-    with scoped_bridge_settings() as (settings, events):
+    with exclusive_workspace_writer(directory), scoped_bridge_settings() as (settings, events):
         argv = [*command, "--settings", str(settings)]
         if session_id:
             argv.extend(["--resume", session_id])

@@ -13,6 +13,7 @@ import pytest
 
 from connectonion.useful_tools.claude_code_bridge import (
     ClaudeTranscriptTailer,
+    exclusive_workspace_writer,
     poll_bridge,
     scoped_bridge_settings,
     session_start,
@@ -20,6 +21,40 @@ from connectonion.useful_tools.claude_code_bridge import (
 
 claude = importlib.import_module("connectonion.useful_tools.claude_code")
 SESSION = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+
+
+def test_claude_workspace_has_only_one_writer(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+
+    with exclusive_workspace_writer(workspace):
+        with pytest.raises(ValueError, match="already owns"):
+            with exclusive_workspace_writer(workspace):
+                pass
+        other = tmp_path / "other"
+        other.mkdir()
+        with exclusive_workspace_writer(other):
+            pass
+
+    with exclusive_workspace_writer(workspace):
+        pass
+
+
+def test_headless_does_not_start_while_terminal_owns_workspace(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(claude, "_claude_command", lambda: (["claude"], ""))
+    launched = MagicMock()
+    monkeypatch.setattr(claude, "_run_process", launched)
+
+    with exclusive_workspace_writer(tmp_path):
+        result = json.loads(claude.run_co_claude(
+            "continue", cwd=str(tmp_path), workspace=tmp_path, session_id=SESSION,
+        ))
+
+    assert result["status"] == "error"
+    assert "already owns" in result["error"]
+    launched.assert_not_called()
 
 
 def _post_hook(hook, event, *, token=None):

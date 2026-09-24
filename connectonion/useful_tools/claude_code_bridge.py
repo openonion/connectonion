@@ -1,5 +1,6 @@
 """Scoped Claude Code Hook settings for one ConnectOnion-owned process."""
 
+import hashlib
 import json
 import os
 import secrets
@@ -29,6 +30,48 @@ _MAX_EVENT_RATE = 128
 _MAX_TRANSCRIPT_LINE = 1024 * 1024
 _MAX_TRANSCRIPT_RECORDS = 512
 _MAX_TRANSCRIPT_BYTES = 2 * 1024 * 1024
+
+
+@contextmanager
+def exclusive_workspace_writer(cwd: Path):
+    """Allow one owned Claude writer per workspace across CLI processes.
+
+    Claude's session ID is unknown until SessionStart for a fresh TUI. A
+    workspace lock also covers that interval and prevents a browser worker
+    from resuming the same transcript while the native TUI owns it.
+    """
+    directory = Path.home() / ".co" / "claude-writers"
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    name = hashlib.sha256(str(cwd.resolve()).encode()).hexdigest()
+    path = directory / f"{name}.lock"
+    with path.open("a+b") as handle:
+        path.chmod(0o600)
+        if os.name == "nt":
+            import msvcrt
+
+            if path.stat().st_size == 0:
+                handle.write(b"\0")
+                handle.flush()
+            handle.seek(0)
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as exc:
+                raise ValueError("Claude Code already owns this workspace.") from exc
+        else:
+            import fcntl
+
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise ValueError("Claude Code already owns this workspace.") from exc
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 class _HookReceiver(BaseHTTPRequestHandler):
