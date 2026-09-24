@@ -3,6 +3,7 @@
 import tempfile
 from pathlib import Path
 
+from .files import state_path
 from .runner import RunFailed, instructions, run_task, task_prompt
 
 NOTHING = "Nothing worth keeping."
@@ -27,16 +28,18 @@ def extraction_item(notes: str, items: list[dict]) -> dict:
             "sources": sorted({item["source"] for item in items if item.get("source")})}
 
 
-def run_extract(items: list[dict], config: dict, kind: str = "") -> dict:
+def run_extract(items: list[dict], config: dict, kind: str = "", *, root: Path) -> dict:
     """Read the extraction artifact, not the agent's status message."""
-    with tempfile.TemporaryDirectory(prefix="co-wiki-extract-") as temporary:
+    tasks = state_path(root, "tasks")
+    tasks.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with tempfile.TemporaryDirectory(prefix="extract-", dir=tasks) as temporary:
         directory = Path(temporary)
         prompt = task_prompt(directory, items, "extract", kind)
         output = directory / "notes.md"
         prompt += (f"Write the complete extraction notes to {output}; this file is your output. "
                    "If nothing is worth keeping, write exactly 'Nothing worth keeping.' "
                    "Do not edit notebook pages, read other sources, or start nested Wiki jobs.")
-        result = run_task(directory, prompt, config, "extract")
+        result = run_task(tasks, prompt, config, "extract")
         notes = output.read_text(encoding="utf-8").strip() if output.is_file() else ""
         if not notes:
             raise RunFailed("co ai extraction returned no notes file", result.get("usage"))

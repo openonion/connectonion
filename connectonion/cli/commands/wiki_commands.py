@@ -128,11 +128,14 @@ def make_wiki_app(factory):
                 _handle(ctx, operation, ["config"])
 
     @wiki.command("daily", rich_help_panel="3. Update and review")
-    def daily_round(ctx: typer.Context, days: int = typer.Option(30, "--days", min=1)):
+    def daily_round(ctx: typer.Context, days: int = typer.Option(30, "--days", min=1),
+                    scheduled: bool = typer.Option(False, "--scheduled", hidden=True)):
         """Maintain current material, then investigate at most one unfinished page."""
         from ...wiki.daily import run_daily
         def operation(root):
-            result = run_daily(root, days=days)
+            result = run_daily(root, days=days, scheduled=scheduled)
+            if result is None:
+                return {"due": False, "ran": False}, ["status"]
             if result["outcome"] == "partial":
                 _emit(ctx, result, ["logs"], failed=True)
             return result, ["logs"]
@@ -342,7 +345,7 @@ def make_wiki_app(factory):
 
         def run(root):
             if what == "projects":
-                rows = scan_projects(subscriptions(root), days)
+                rows = scan_projects(subscriptions(root), days, root)
                 return rows, (["stub", "project", rows[0]["name"], "--path", rows[0]["path"]]
                               if rows else ["subscriptions"])
             if what not in ("people", "orgs"):

@@ -114,10 +114,11 @@ def test_investigation_cannot_overwrite_live_page_on_failure(tmp_path, monkeypat
     original = nb.read(record)
     def run(directory, prompt, config, stage):
         assert directory != nb.root
-        assert (directory / record).read_text() == original
+        working = next(directory.glob('investigate-*/notebook'))
+        assert (working / record).read_text() == original
         assert 'Write notebook Markdown pages directly' not in prompt
         if action == 'wrong_target':
-            (directory / record).write_text('# Accidental direct edit')
+            (working / record).write_text('# Accidental direct edit')
         else:
             nb.write(record, original + '\nConcurrent user correction.\n')
             Path(re.search(r'NEW file (.+?candidate.md)', prompt)[1]).write_text(original)
@@ -224,8 +225,9 @@ def test_malformed_maintenance_keeps_page_and_pending_correction(tmp_path, monke
     correction = reflections.add(tmp_path, 'projects/atlas.md', 'Mira owns Atlas', author='user', basis='Synthetic correction')
     def execute(directory, prompt, config, stage):
         assert directory != nb.root
-        Notebook(directory).write('projects/atlas.md', '# Atlas\n\n## Ownership\nMira\n')
-        Notebook(directory).write('notes/new.md', '# New note\n')
+        working = next(directory.glob('maintain-*/notebook'))
+        Notebook(working).write('projects/atlas.md', '# Atlas\n\n## Ownership\nMira\n')
+        Notebook(working).write('notes/new.md', '# New note\n')
         return {'usage': {'input_tokens': 9}}
     monkeypatch.setattr('connectonion.wiki.runner.run_task', execute)
     result = run_sync(tmp_path)

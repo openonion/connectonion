@@ -1,6 +1,6 @@
 """Background maintenance rides the OS scheduler; there is no daemon of our own.
 
-`co wiki sync` already carries the lock, the attempt cap and the incremental
+`co wiki daily` uses sync's lock, attempt cap and incremental
 checkpoint, so the only thing the background needs is something that survives a
 closed terminal and a reboot and wakes us now and then. launchd is that on
 macOS: one declarative job file. A worker process of ours would still need a
@@ -10,7 +10,7 @@ kept to this one file, and everything else stays one implementation in `sync`.
 The job is a tick, not a calendar. Measured 2026-09-07 on macOS 26: a
 `StartCalendarInterval` job -- array or dict form, plain /bin/sh, with or
 without ProcessType -- never fired in three experiments, while `StartInterval`
-fired to the second every time. So launchd runs `co wiki sync --scheduled`
+fired to the second every time. So launchd runs `co wiki daily --scheduled`
 every TICK_SECONDS, and `sync` decides whether one of the saved times has come
 due since the last scheduled batch, in the saved timezone rather than the
 machine's. Missed slots (asleep, powered off) collapse into one catch-up at the
@@ -79,7 +79,7 @@ class Launchd:
         job = {
             "Label": label_for(root),
             "ProgramArguments": [self.executable,
-                                 "wiki", "--root", str(root), "sync", "--scheduled"],
+                                 "wiki", "--root", str(root), "daily", "--scheduled"],
             "StartInterval": TICK_SECONDS,
             "RunAtLoad": False,
             "ProcessType": "Background",

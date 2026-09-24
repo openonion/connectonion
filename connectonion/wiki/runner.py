@@ -2,6 +2,7 @@
 
 import json
 import math
+import os
 import shutil
 import subprocess
 import tempfile
@@ -88,6 +89,10 @@ def harness_flags(config: dict, stage: str) -> list[str]:
     if harness == "codex":
         sandbox = "danger-full-access" if stage in ("init", "investigate") else "workspace-write"
         flags += ["--sandbox", sandbox]
+    elif harness == "claude-code":
+        # Selecting Claude for Wiki explicitly allows the file writes and source
+        # commands its headless task needs. The generic co ai default stays manual.
+        flags += ["--permission-mode", "bypassPermissions"]
     if config["model"] != "default":
         flags += ["--model", config["model"]]
     if harness != "ours":
@@ -95,16 +100,24 @@ def harness_flags(config: dict, stage: str) -> list[str]:
     return flags
 
 
-def run_task(directory: Path, prompt: str, config: dict, stage: str) -> dict:
-    """The only model process started by Wiki; require COAI's success envelope."""
+def run_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
+    """Run every Wiki model turn from its stable task workspace."""
     timeout = config["limits"]["timeout_seconds"]
     # Let the shared native adapter time out and close its subprocesses first.
     # Killing the co parent before its own deadline bypasses that cleanup.
     process_timeout = timeout + 15 if config["runner"] != "coai" else timeout
+    options = {}
+    if config["runner"] == "claude-code":
+        # Wiki's Claude route promises a subscription-backed run. Do not let an
+        # ambient API key silently turn a scheduled notebook update into API spend.
+        environment = os.environ.copy()
+        environment.pop("ANTHROPIC_API_KEY", None)
+        options["env"] = environment
     try:
         completed = subprocess.run(
             [preflight(), "ai", "--json", *harness_flags(config, stage), prompt],
-            cwd=str(directory), capture_output=True, text=True, timeout=process_timeout)
+            cwd=str(workspace.resolve()), capture_output=True, text=True,
+            timeout=process_timeout, **options)
     except subprocess.TimeoutExpired as error:
         raise RunFailed(f"co ai timed out after {timeout}s; source progress was preserved") from error
     except OSError as error:
@@ -243,7 +256,7 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
                    "Only write that candidate file using write(path, content). "
                    "The runner owns validation and replacement. Do not start nested Wiki jobs. ")
     else:
-        if stage == "maintain":
+        if stage in ("maintain", "abstract"):
             task_root = directory / "notebook"
             from .config import prepare
             prepare(task_root)
@@ -279,17 +292,19 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
     try:
         from .inquiry import routing, run as inquiry_run, stage_config
         if candidate and routing(notebook.root):
-            inquiry_result = inquiry_run(notebook.root, directory, items, config, run_task)
+            inquiry_result = inquiry_run(
+                notebook.root, directory, items, config,
+                lambda _task_directory, text, route, phase: run_task(workdir, text, route, phase))
             inquiry_usage = inquiry_result.get("usage") or {}
             prompt += f" Read {directory / 'synthesize.json'} and retain unresolved findings and cited correction reasons."
         selected_config = stage_config(notebook.root, config, "render") if candidate else config
-        result = run_task(task_root, prompt, selected_config, stage)
+        result = run_task(workdir, prompt, selected_config, stage)
         metrics["render_usage"] = result.get("usage")
         result["usage"] = {key: inquiry_usage.get(key, 0) + (result.get("usage") or {}).get(key, 0)
                            for key in inquiry_usage.keys() | (result.get("usage") or {}).keys()} or None
         if candidate:
             _promote_candidate(notebook, record, candidate, before[record], items, directory, result.get("usage"))
-        elif stage == "maintain":
+        elif stage in ("maintain", "abstract"):
             _promote_maintenance(notebook, Notebook(task_root), before, items, directory, result.get("usage"), maintenance_lock_held)
     except (WikiError, OSError) as error:
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")

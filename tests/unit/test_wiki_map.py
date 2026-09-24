@@ -138,6 +138,26 @@ def test_project_scan_excludes_sandboxes_and_removed_worktrees(tmp_path):
     assert {r['path'] for r in rows} == set(paths[-2:])
 
 
+def test_project_scan_does_not_turn_wiki_runs_into_a_project(tmp_path, monkeypatch):
+    import json
+    from connectonion.wiki.scan import scan_projects
+
+    root = tmp_path / 'wiki'
+    nested = root / '.state/tasks/investigate-1/notebook'
+    nested.mkdir(parents=True)
+    project = tmp_path / 'real-project'
+    project.mkdir()
+    sessions = tmp_path / 'sessions'
+    sessions.mkdir()
+    for i, cwd in enumerate((root, nested, project)):
+        (sessions / f'rollout-{i}.jsonl').write_text(json.dumps({
+            'type': 'session_meta', 'payload': {'id': str(i), 'cwd': str(cwd)}}) + '\n')
+    monkeypatch.setattr('connectonion.wiki.scan.project_exclusion', lambda path: '')
+
+    rows = scan_projects({'local': {'kind': 'codex', 'root': str(sessions)}}, 1, wiki_root=root)
+    assert [row['path'] for row in rows] == [str(project)]
+
+
 def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_path, monkeypatch):
     """On a real mailbox Ody Zhou was four pages -- two Gmail addresses, an event
     platform's relay, and a Drive share notice -- and notice senders were 165 of

@@ -55,7 +55,9 @@ Piping human output does not hide the next step. Grouped help covers:
 | Sources and background | `subscriptions`, `subscribe`, `unsubscribe`, `start`, `stop` |
 | Settings and diagnostics | `route`, `logs`, `usage`, `doctor`, `config`, `config set` |
 
-`start` explicitly authorizes collection and installs background maintenance;
+`start` explicitly authorizes collection and installs background maintenance
+plus at most one unfinished-page investigation per local day when the day's
+call budget allows;
 `init` does neither. A mapped page is not an investigated or quality-approved page.
 
 ## Installed-skill skeletons at initialization
@@ -214,10 +216,21 @@ The direct Skill call does not run Wiki's deterministic source collection or
 advance its sync cursor. Use `co wiki investigate` for that orchestration.
 COAI expands the Skill name and supplies its installed directory.
 
+Every Wiki model turn starts from the fixed `.state/tasks/` workspace inside
+the selected Wiki root (`~/.co/wiki` by default). Codex therefore groups
+those turns under one workspace in its history. Inputs, review results and
+disposable page copies live in per-run subdirectories there;
+the runner validates a candidate before promoting it to the notebook.
+
 Codex extraction/maintenance/abstraction use workspace-write. Initialization
 and investigation retain the existing danger-full-access setting for source
-and browser access. Claude Code/COAI manage their own permissions. Skills
-govern what the task should do; they are not OS permission enforcement.
+and browser access. When explicitly selected as the Wiki runner, Claude Code
+uses `bypassPermissions` so its headless task can write candidate pages and
+run source commands; the generic `co ai --harness claude-code` default remains
+manual. Wiki removes an ambient `ANTHROPIC_API_KEY` from Claude's subprocess
+environment so the run uses the selected account's subscription rather than
+silently billing the API. Skills govern what the task should do; they are not
+OS permission enforcement.
 The removed scoped wiki_* tools are no longer a filesystem guarantee.
 
 ## Source coverage and output
@@ -252,7 +265,7 @@ therefore closes its delegate before the Wiki process timeout is reached.
 
 ## Scheduling and accounting
 
-launchd invokes the resolved `co wiki --root ... sync --scheduled` CLI every
+launchd invokes the resolved `co wiki --root ... daily --scheduled` CLI every
 five minutes, with PATH entries for co and installed delegates. Saved local
 time slots determine whether a batch is due. Repeated start reloads one job;
 missed slots coalesce into one catch-up. No permanent Wiki daemon is added.
@@ -267,8 +280,11 @@ read a delegated agent may perform.
 limits, or a $1 stop budget. They need an actual provider meter in the shared
 execution layer. The init Skill now stops after the owner and ranked map by
 default and explicitly reports that percentage enforcement is unavailable.
-Investigation/initialization calls are not covered by sync's daily attempt cap.
-Scheduled sync does not yet interleave unfinished investigations.
+The scheduled daily round maintains first, then attempts at most one unfinished
+page per local day. It reserves a bounded number of investigation calls within
+the same daily attempt cap and leaves room for later maintenance slots when
+possible. Initialization currently builds the map without a model call; manual
+investigation remains outside the scheduled cap.
 
 The UI is a static snapshot; run `open` again after changing pages. No merge,
 release, new background job, broad mailbox backfill or production wiki rewrite

@@ -244,7 +244,7 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
                               'organization identity unverified; existing organization pages preserved')
     save()
     groups = {}
-    for row in scan_projects(subscriptions, days):
+    for row in scan_projects(subscriptions, days, root):
         identity = canonical_origin(row['origin']) or row['repo'] or row['path']
         group = groups.setdefault(identity, {'name': Path(row['repo'] or row['path']).name,
                                             'paths': [], 'sessions': 0, 'first': row['first'], 'last': row['last']})

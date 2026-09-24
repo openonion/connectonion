@@ -31,7 +31,7 @@ def delegate(monkeypatch):
         if argv[-1].startswith('/wiki-investigate'):
             import re
             path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
-            path.write_text((Path(kw['cwd']) / 'notes/old.md').read_text())
+            path.write_text((Path(kw['cwd']).parent.parent / 'notes/old.md').read_text())
         return SimpleNamespace(returncode=0, stdout=json.dumps({
             "outcome": "natural", "result": "done", "usage": {"input_tokens": 13}}), stderr="")
 
@@ -52,19 +52,28 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
                         "ours" if harness == "coai" else harness]
     assert argv[-1].startswith(f"/wiki-{stage} ")
     assert len(argv[-1]) < 8000  # Large material must not go through argv.
-    if stage in ("investigate", "maintain"):
-        assert Path(options["cwd"]).name == "notebook"
-        assert Path(options["cwd"]) != notebook.root
-    else:
-        assert options["cwd"] == str(notebook.root)
+    assert options["cwd"] == str(notebook.root / ".state/tasks")
     seconds = config["limits"]["timeout_seconds"]
     assert options["timeout"] == seconds + (0 if harness == "coai" else 15)
     if harness != "coai":
         assert argv[argv.index("--timeout") + 1] == str(seconds)
+    if harness == "claude-code":
+        assert argv[argv.index("--permission-mode") + 1] == "bypassPermissions"
+    else:
+        assert "--permission-mode" not in argv
     material = next((notebook.root / ".state/tasks").glob("*/material.json"))
     assert json.loads(material.read_text()) == [item]
     assert result["usage"] == {"input_tokens": 13}
     assert result["changed"] == []
+
+
+def test_claude_wiki_does_not_inherit_an_api_billing_key(notebook, delegate, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "ambient-test-key")
+    config = default_config()
+    config["runner"] = "claude-code"
+    run_stage(notebook, [], config)
+    assert "ANTHROPIC_API_KEY" not in delegate[0][1]["env"]
+    assert delegate[0][1]["cwd"] == str(notebook.root / ".state/tasks")
 
 
 def test_changes_include_deleted_and_partial_files(notebook, monkeypatch, delegate):
@@ -80,6 +89,21 @@ def test_changes_include_deleted_and_partial_files(notebook, monkeypatch, delega
         run_stage(notebook, [], default_config())
     assert caught.value.changed == ["notes/new.md", "notes/old.md"]
     assert caught.value.usage == {"input_tokens": 7}
+
+
+def test_abstract_writes_disposable_copy_then_promotes(notebook, monkeypatch, delegate):
+    def write_decision(argv, **kw):
+        workspace = Path(kw["cwd"])
+        working = next(workspace.glob("abstract-*/notebook"))
+        assert working != notebook.root
+        Notebook(working).write("decisions/example.md", "# Why use Markdown\n\n## Why\nReadable pages.\n")
+        return SimpleNamespace(returncode=0, stdout=json.dumps({
+            "outcome": "natural", "result": "done", "usage": {"input_tokens": 2}}), stderr="")
+
+    monkeypatch.setattr("connectonion.wiki.runner.subprocess.run", write_decision)
+    result = run_stage(notebook, [], default_config(), stage="abstract")
+    assert result["changed"] == ["decisions/example.md"]
+    assert notebook.read("decisions/example.md").startswith("# Why use Markdown")
 
 
 def test_timeout_reports_partial_changes(notebook, monkeypatch, delegate):
@@ -101,9 +125,13 @@ def test_invalid_envelope_fails(notebook, monkeypatch, delegate, payload):
         run_stage(notebook, [], default_config())
 
 
-def test_extract_reads_written_notes_not_status_text(monkeypatch, delegate):
+def test_extract_reads_written_notes_not_status_text(tmp_path, monkeypatch, delegate):
     def extract(argv, **kw):
-        directory = Path(kw["cwd"])
+        import re
+        root = tmp_path / "wiki"
+        assert Path(kw["cwd"]) == root / ".state/tasks"
+        directory = Path(re.search(r"Write the complete extraction notes to (.+?);", argv[-1])[1]).parent
+        assert directory.parent == root / ".state/tasks"
         assert argv[-1].startswith("/wiki-extract ")
         assert "--harness" in argv
         assert json.loads((directory / "material.json").read_text())[0]["text"] == "source"
@@ -112,13 +140,14 @@ def test_extract_reads_written_notes_not_status_text(monkeypatch, delegate):
             "outcome": "natural", "result": "I wrote the notes", "usage": {"input_tokens": 9}}), stderr="")
 
     monkeypatch.setattr("connectonion.wiki.runner.subprocess.run", extract)
-    result = run_extract([{"text": "source", "source": "gmail:1"}], default_config(), "gmail")
+    result = run_extract([{"text": "source", "source": "gmail:1"}], default_config(), "gmail",
+                         root=tmp_path / "wiki")
     assert result == {"notes": "## People\n- Alice agreed [mail:1]", "usage": {"input_tokens": 9}}
 
 
-def test_extract_without_output_fails_and_preserves_usage(delegate):
+def test_extract_without_output_fails_and_preserves_usage(tmp_path, delegate):
     with pytest.raises(RunFailed, match="notes") as caught:
-        run_extract([], default_config())
+        run_extract([], default_config(), root=tmp_path / "wiki")
     assert caught.value.usage == {"input_tokens": 13}
 
 

@@ -161,6 +161,47 @@ def test_cli_passes_timeout_to_shared_delegate(monkeypatch, capsys):
     assert seen[0]["timeout"] == 37
 
 
+def test_claude_permission_reaches_native_delegate(monkeypatch):
+    import importlib
+    module = importlib.import_module("connectonion.useful_tools.claude_code")
+    seen = {}
+
+    def fake(**kwargs):
+        seen.update(kwargs)
+        return json.dumps({"status": "completed", "result": "done", "exit_code": 0})
+
+    monkeypatch.setattr(module, "_run_claude_code", fake)
+    answer = harness_mod.run("claude-code", "do it", "", permission_mode="bypassPermissions")
+    assert answer["outcome"] == "natural"
+    assert seen["permission_mode"] == "bypassPermissions"
+
+
+def test_cli_passes_claude_permission_mode(monkeypatch, capsys):
+    seen = []
+    monkeypatch.setattr(harness_mod, "run", lambda *a, **kw: seen.append(kw) or {
+        "result": "done", "outcome": "natural", "error": None, "usage": None})
+    ai_commands.handle_ai(prompt="do it", harness="claude-code", json_output=True,
+                          permission_mode="bypassPermissions")
+    assert seen[0]["permission_mode"] == "bypassPermissions"
+
+
+def test_cli_flag_reaches_claude_permission_mode(monkeypatch):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+
+    seen = []
+    monkeypatch.setattr(harness_mod, "run", lambda *a, **kw: seen.append(kw) or {
+        "result": "done", "outcome": "natural", "error": None, "usage": None})
+    result = CliRunner().invoke(app, ["ai", "--harness", "claude-code", "--permission-mode",
+                                      "bypassPermissions", "--json", "do it"])
+    assert result.exit_code == 0, result.output
+    assert seen[0]["permission_mode"] == "bypassPermissions"
+
+
+def test_claude_permission_is_refused_for_codex():
+    assert "only" in harness_mod.validate_permission("codex", "bypassPermissions")
+
+
 def test_the_requested_model_reaches_the_delegate(monkeypatch):
     seen = {}
 

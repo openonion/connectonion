@@ -25,7 +25,7 @@ def co_ai(monkeypatch):
         import re
         from pathlib import Path
         path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
-        path.write_text((Path(cwd) / 'people/vern.md').read_text())
+        path.write_text(next(Path(cwd).glob('investigate-*/notebook/people/vern.md')).read_text())
         return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
                                      stderr="", returncode=0)
 
@@ -256,7 +256,7 @@ def test_a_listed_source_nobody_cites_is_dropped_not_a_reason_to_refuse_the_page
     def fake_run(argv, cwd, capture_output, text, timeout):
         import re
         path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
-        page = (Path(cwd) / 'people/vern.md').read_text()
+        page = next(Path(cwd).glob('investigate-*/notebook/people/vern.md')).read_text()
         page = page.replace("## Who they are\n- Unknown — not investigated yet",
                             "## Who they are\n- Vern works at UNSW. [W1]", 1)
         page = page.replace("## Sources\n- (none yet)",
@@ -320,7 +320,7 @@ def test_the_owners_own_address_never_lands_on_someone_elses_page(tmp_path, monk
     def fake_run(argv, cwd, capture_output, text, timeout):
         import re
         path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
-        page = (Path(cwd) / 'people/vern.md').read_text()
+        page = next(Path(cwd).glob('investigate-*/notebook/people/vern.md')).read_text()
         page = re.sub(r'^- Email: .*$', '- Email: vern.chan@unsw.edu.au; me@outlook.com', page, count=1, flags=re.M)
         page = re.sub(r'^- Handles: .*$', '- Handles: me@outlook.com', page, count=1, flags=re.M)
         page = page.replace("## Who they are\n- Unknown — not investigated yet",

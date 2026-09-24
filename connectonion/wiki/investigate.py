@@ -195,11 +195,15 @@ def _split_item(item: dict, limit_chars: int):
         remaining = remaining[low:]
 
 
-def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, max_calls=None) -> tuple[list[dict], dict]:
+def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: Path | None = None,
+                     max_calls=None) -> tuple[list[dict], dict]:
     """Oldest first, each chunk within the extract limits, one digest item per chunk."""
     from .extract import NOTHING, extraction_item, run_extract
     limits = config["limits"]
-    extractor = extractor or run_extract
+    if extractor is None:
+        if root is None:
+            raise WikiError("Wiki root is required for model extraction")
+        extractor = lambda chunk, settings, kind: run_extract(chunk, settings, kind, root=root)
     chunks, current, size = [], [], 2  # The serialized list's brackets count too.
     for item in items:
         for part in _split_item(item, limits["extract_chars_per_batch"]):
@@ -259,7 +263,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         # order, through the extraction Skill, and let the one investigate turn read the
         # digests -- the same two-pass shape the timeline mode already runs.
         items, digest_usage = digest_in_chunks(items, stage_config(root, config, "extract"), extractor,
-                                                     max_calls=None if max_calls is None else max_calls - synthesis_calls)
+                                               root=root,
+                                               max_calls=None if max_calls is None else max_calls - synthesis_calls)
         usage_by_stage["extract"] = digest_usage
         coverage.append(f"digest: {gathered_chars:,} chars gathered (~{gathered_chars // 4:,} tokens), over the "
                         f"{room:,}-char room for one turn; summarised in {len(items)} chunk(s) first")

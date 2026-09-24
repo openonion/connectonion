@@ -170,9 +170,34 @@ def test_daily_maintains_before_one_investigation(root, monkeypatch):
         return {'changed': [], 'usage': {'input_tokens': 1}}
     result = run_daily(root, maintain=maintain, investigate_one=investigate_one)
     assert result['outcome'] == 'completed'
+    assert result['run']['runner_attempts'] == 4
     assert calls == ['maintain', 'investigate']
     again = run_daily(root, maintain=maintain, investigate_one=investigate_one)
-    assert again['outcome'] == 'budget_exhausted'
+    assert again['reason'] == 'already_attempted_today'
+    assert calls == ['maintain', 'investigate', 'maintain']
+
+
+def test_scheduled_daily_waits_for_a_due_slot(root, monkeypatch):
+    from connectonion.wiki.daily import run_daily
+    from connectonion.wiki.config import prepare
+    prepare(root)
+    Notebook(root).write('projects/a.md', '# A\nUnknown\n')
+    monkeypatch.setattr('connectonion.wiki.daily.subscriptions', lambda root: {})
+    calls = []
+
+    def maintain(root, *, scheduled):
+        assert scheduled is True
+        calls.append('tick')
+        return None if len(calls) == 1 else {'outcome': 'no_change'}
+
+    def investigate_one(*args, **kwargs):
+        calls.append('investigate')
+        return {'changed': [], 'usage': {'input_tokens': 1}}
+
+    assert run_daily(root, scheduled=True, maintain=maintain, investigate_one=investigate_one) is None
+    result = run_daily(root, scheduled=True, maintain=maintain, investigate_one=investigate_one)
+    assert result['outcome'] == 'completed'
+    assert calls == ['tick', 'tick', 'investigate']
 
 
 def test_extraction_budget_refuses_before_any_model_call():
