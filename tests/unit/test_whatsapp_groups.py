@@ -9,18 +9,32 @@ the client was not in.
 from types import SimpleNamespace
 
 import pytest
-from neonize.proto.Neonize_pb2 import JID, GroupInfo, GroupParticipant
 
 from connectonion.cli.commands import listen_commands
 from connectonion.inbox import whatsapp as wa
 
+# The optional WhatsApp extra is not installed in CI, so these stand-ins carry
+# the SDK's field names; test_the_fields_used_are_the_sdks checks the names
+# against the real types wherever neonize is installed.
+
 
 def jid(user, server="s.whatsapp.net"):
-    return JID(User=user, Server=server)
+    return SimpleNamespace(User=user, Server=server)
+
+
+def participant(j, error=0, super_admin=False):
+    return SimpleNamespace(JID=j, PhoneNumber=j, Error=error, IsSuperAdmin=super_admin)
+
+
+@pytest.fixture(autouse=True)
+def no_sdk_needed(monkeypatch):
+    # Importing neonize starts its runtime thread, and CI does not install it.
+    monkeypatch.setattr(wa, "_add_participants", lambda: "ADD")
+    monkeypatch.setattr(wa, "_build_jid", lambda chat: jid(*chat.split("@")))
 
 
 class FakeClient:
-    """neonize's client, answering with the SDK's own proto types."""
+    """neonize's client, answering in the shape of the SDK's types."""
 
     def __init__(self, on_whatsapp, errors):
         self.on_whatsapp = on_whatsapp          # numbers that have an account
@@ -32,14 +46,13 @@ class FakeClient:
                                 JID=jid(n.lstrip("+"))) for n in numbers]
 
     def _participants(self, jids):
-        return [GroupParticipant(JID=j, PhoneNumber=j, Error=self.errors.get(j.User, 0))
-                for j in jids]
+        return [participant(j, self.errors.get(j.User, 0)) for j in jids]
 
     def create_group(self, subject, jids):
         self.created = (subject, [j.User for j in jids])
-        me = GroupParticipant(JID=jid("61400000001"), IsSuperAdmin=True)
-        return GroupInfo(JID=jid("120363", "g.us"),
-                         Participants=[me, *self._participants(jids)])
+        me = participant(jid("61400000001"), super_admin=True)
+        return SimpleNamespace(JID=jid("120363", "g.us"),
+                               Participants=[me, *self._participants(jids)])
 
     def update_group_participants(self, group, jids, action):
         return self._participants(jids)
@@ -87,6 +100,31 @@ def test_a_number_whatsapp_did_not_list_is_not_reported_as_added():
 
     assert outcomes(result)["61411111111"].startswith("not confirmed")
     assert "invite_link" not in result
+
+
+def test_the_fields_used_are_the_sdks():
+    """The stand-ins above are only honest if neonize's types have these fields.
+
+    In a subprocess: importing neonize starts its runtime thread, which this
+    suite rightly refuses to let a test leave behind.
+    """
+    import importlib.util
+    import subprocess
+    import sys
+
+    if importlib.util.find_spec("neonize") is None:
+        pytest.skip("the whatsapp extra is not installed")
+    check = (
+        "from neonize.proto.Neonize_pb2 import GroupParticipant, GroupInfo, IsOnWhatsAppResponse\n"
+        "from neonize.utils.enum import ParticipantChange\n"
+        "names = lambda t: {f.name for f in t.DESCRIPTOR.fields}\n"
+        "assert {'JID', 'PhoneNumber', 'Error', 'IsSuperAdmin'} <= names(GroupParticipant)\n"
+        "assert {'JID', 'Participants'} <= names(GroupInfo)\n"
+        "assert {'Query', 'IsIn', 'JID'} <= names(IsOnWhatsAppResponse)\n"
+        "assert ParticipantChange.ADD\n"
+    )
+    result = subprocess.run([sys.executable, "-c", check], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
 
 
 class FakeProvider:

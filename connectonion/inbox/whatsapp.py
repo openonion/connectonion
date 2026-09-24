@@ -144,6 +144,13 @@ def _participant_outcome(code: int) -> str:
     return _PARTICIPANT_ERRORS.get(code, f"not added (WhatsApp code {code})")
 
 
+def _add_participants():
+    """neonize's ADD action, imported when a group is changed, not at import."""
+    from neonize.utils.enum import ParticipantChange
+
+    return ParticipantChange.ADD
+
+
 def _build_jid(chat: str):
     """`user@server` back into the SDK's JID."""
     from neonize.utils.jid import build_jid
@@ -1098,8 +1105,6 @@ class WhatsApp:
         report a group the client is not in (#1617). Every number gets its own
         outcome, and "no account" is told apart from "refused".
         """
-        from neonize.utils.enum import ParticipantChange
-
         if self._client is None:
             raise RuntimeError("not connected")
         digits = [_digits(phone) for phone in phones]
@@ -1116,7 +1121,7 @@ class WhatsApp:
             group, results = info.JID, info.Participants
         else:
             group = _build_jid(chat)
-            results = self._client.update_group_participants(group, jids, ParticipantChange.ADD)
+            results = self._client.update_group_participants(group, jids, _add_participants())
         needs_invite = False
         for p in results:
             d = _digits(p.PhoneNumber.User or p.JID.User)
