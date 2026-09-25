@@ -54,8 +54,13 @@ notebook. So `co wiki show`, `search` and `sync` all failed because of one
 file the user never made. A pasted log saved as a 3 MB page did the same
 thing, and that included the commands you'd need to find and fix it.
 
-The listing now skips those files. An oversized page is left out, and a
-warning on stderr names it. Every other command keeps working.
+A tester then found more of the same: a symlinked page, and a page saved in
+Latin-1 instead of UTF-8. None of the errors said which file was the
+problem. The listing now skips Finder and editor files without comment. It
+also leaves out a symlink, an oversized page or a non-UTF-8 page, and prints
+a warning on stderr that names the file and what to do about it. Every other
+command keeps working. Asking for that one page directly is still refused,
+but the refusal now names it.
 
 ## A dependency for a few users
 

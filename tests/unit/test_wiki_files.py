@@ -262,3 +262,35 @@ def test_a_page_over_one_megabyte_is_skipped_with_a_warning_naming_it(tmp_path, 
     assert warning.count("notes/pasted-log.md") == 1  # once, not once per listing
     with pytest.raises(WikiError, match="notes/pasted-log.md"):
         note.read("notes/pasted-log.md")
+
+
+def _broken(tmp_path, kind):
+    """One page a whole-notebook command cannot use, made the way users make them."""
+    if kind == "symlink":
+        outside = tmp_path / "elsewhere.md"
+        outside.write_text("# Elsewhere", encoding="utf-8")
+        (tmp_path / "notes/linked.md").symlink_to(outside)
+        return "notes/linked.md", "ymlink"
+    if kind == "not-utf8":
+        (tmp_path / "notes/latin1.md").write_bytes("# Caf\xe9".encode("latin-1"))
+        return "notes/latin1.md", "UTF-8"
+    (tmp_path / "notes/huge-export.md").write_text("x" * (MAX_NOTE_BYTES + 2), encoding="utf-8")
+    return "notes/huge-export.md", "1 MB"
+
+
+@pytest.mark.parametrize("kind", ["symlink", "not-utf8", "oversized"])
+def test_a_page_the_notebook_cannot_use_is_skipped_by_name_and_refused_by_name(tmp_path, capsys, kind):
+    """Whole-notebook commands skip it and say which file; naming that one file is still
+    refused, and the refusal names it too, so the user knows what to fix."""
+    prepare(tmp_path / "wiki")
+    root = tmp_path / "wiki"
+    note = Notebook(root)
+    note.write("people/alice.md", "# Alice\nA colleague.")
+    record, why = _broken(root, kind)
+    assert note.list() == ["people/alice.md"]
+    assert [hit["record"] for hit in note.search("colleague")] == ["people/alice.md"]
+    assert all(row["path"] != record for row in note.unfinished())
+    warning = capsys.readouterr().err
+    assert record in warning and why in warning
+    with pytest.raises(WikiError, match=record):
+        note.read(record)

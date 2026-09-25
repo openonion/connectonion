@@ -111,18 +111,18 @@ def maintenance_lock(root: Path):
 _WARNED: set = set()
 
 
-def _warn_oversized(record: str, size: int) -> None:
+def _warn_skipped(record: str, why: str) -> None:
     """Name the page once per process and carry on without it.
 
-    A pasted log saved as a page used to fail every command, including the ones
-    that would have let the user find and fix it. Listing is how every command
-    starts, so it warns once rather than on each of a command's listings.
+    One stray page -- a symlink, a pasted log over 1 MB, a file saved in Latin-1
+    -- used to fail every command, including the ones that would have let the
+    user find and fix it, and the error never said which file. Listing is how
+    every command starts, so it warns once rather than on each listing.
     """
-    if (record, size) in _WARNED:
+    if (record, why) in _WARNED:
         return
-    _WARNED.add((record, size))
-    print(f"Wiki: skipped {record}: {size / 1_000_000:.1f} MB is over the 1 MB page limit; "
-          "split or trim it to include it", file=sys.stderr)
+    _WARNED.add((record, why))
+    print(f"Wiki: skipped {record}: {why}", file=sys.stderr)
 
 
 def _today() -> str:
@@ -137,17 +137,22 @@ class Notebook:
         self.root = root.resolve()
 
     def path(self, record: str, *, writing: bool = False) -> Path:
-        path = safe_path(self.root, record)
+        try:
+            path = safe_path(self.root, record)
+        except WikiError as error:
+            # Name the file: a refusal that does not say which page leaves nothing to fix.
+            # repr, because this is the one place the path has not yet been checked for control characters.
+            raise WikiError(f"{record!r}: {error}") from error
         parts = PurePosixPath(record).parts
         if parts[0] not in CATEGORIES or len(parts) < 2 or path.suffix != ".md":
-            raise WikiError("Expected a Markdown record inside a Wiki category")
+            raise WikiError(f"{record}: expected a Markdown record inside a Wiki category")
         if writing and (path.name.lower() in ("agents.md", "skill.md", "claude.md")
                         or parts[:2] == ("skills", "approved")):
             raise WikiError("Runtime instructions and approved Skills are not writable notebook targets")
         if parts[0] == "skills" and (len(parts) < 3 or parts[1] not in ("catalog", "candidates", "approved")):
-            raise WikiError("Skill notes belong in skills/catalog or skills/candidates")
+            raise WikiError(f"{record}: skill notes belong in skills/catalog or skills/candidates")
         if path.is_file() and path.stat().st_nlink != 1:
-            raise WikiError("Hardlinked files are not supported notebook content")
+            raise WikiError(f"{record}: hardlinked files are not supported notebook content")
         return path
 
     def list(self, category: str = "") -> list[str]:
@@ -164,11 +169,21 @@ class Notebook:
                 # every command refuse the whole notebook as a "hidden path".
                 if any(part.startswith(".") for part in PurePosixPath(record).parts):
                     continue
-                self.path(record)
-                if not path.is_file():
+                # A page no command can use is left out by name rather than failing
+                # every command; asking for that one page still refuses it (read()).
+                try:
+                    self.path(record)  # symlinks, hardlinks, a note outside its category's shape
+                    if not path.is_file():
+                        continue
+                    if path.stat().st_size > MAX_NOTE_BYTES:
+                        _warn_skipped(record, "it is larger than 1 MB, the page limit; split or trim it to include it")
+                        continue
+                    path.read_bytes().decode("utf-8")
+                except UnicodeDecodeError:
+                    _warn_skipped(record, "it is not UTF-8 text; re-save it as UTF-8 to include it")
                     continue
-                if path.stat().st_size > MAX_NOTE_BYTES:
-                    _warn_oversized(record, path.stat().st_size)
+                except WikiError as error:
+                    _warn_skipped(record, str(error).removeprefix(f"{record!r}: ").removeprefix(f"{record}: ").removeprefix(f"{record} "))
                     continue
                 result.append(record)
         return result
@@ -370,10 +385,13 @@ class Notebook:
     def read(self, record: str) -> str:
         path = self.path(record)
         if not path.is_file():
-            raise WikiError("Record not found; list the notebook for current record paths")
+            raise WikiError(f"Record not found: {record}; list the notebook for current record paths")
         if path.stat().st_size > MAX_NOTE_BYTES:
             raise WikiError(f"{record} is larger than 1 MB, the page limit; split or trim it to use it")
-        return path.read_text(encoding="utf-8")
+        try:
+            return path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as error:
+            raise WikiError(f"{record} is not UTF-8 text; re-save it as UTF-8 to use it") from error
 
     def write(self, record: str, content: str) -> bool:
         path = self.path(record, writing=True)
