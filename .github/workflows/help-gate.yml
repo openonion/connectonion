@@ -8,7 +8,7 @@ name: help-gate
 # new or changed page clear, accurate, realistic and simple. A model's verdict
 # varies between runs, so it is reported in the job summary and does not
 # block. Only commands whose help changed are reviewed, so a PR pays for its
-# own pages, not all 265.
+# own pages, not all of them.
 
 on:
   pull_request:
@@ -33,7 +33,7 @@ jobs:
         run: |
           pip install -q -e .
           # A base from before co audit existed has nothing to compare; review every page then.
-          if co audit --help >/dev/null 2>&1; then co audit --inventory > "$RUNNER_TEMP/base.json"; else echo '{}' > "$RUNNER_TEMP/base.json"; fi
+          if co audit --help >/dev/null 2>&1; then co audit co --inventory > "$RUNNER_TEMP/base.json"; else echo '{}' > "$RUNNER_TEMP/base.json"; fi
 
       - name: Checkout the PR
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -53,6 +53,6 @@ jobs:
           {
             echo "## co audit --review (advisory)"
             echo '```'
-            co audit --since "$RUNNER_TEMP/base.json" --review || true
+            co audit co --since "$RUNNER_TEMP/base.json" --review || true
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"

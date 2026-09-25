@@ -1,62 +1,71 @@
-# `co audit` — is every command's help something an agent can act on?
+# `co audit` — is a CLI fit for an agent harness?
 
-For an agent, a `co` help page is the prompt that describes the tool. `co audit`
-checks every page against the contract in #1643: hard rules first, a model's
-judgement last.
+An agent that drives a command-line tool has only what the tool prints. `co
+audit` asks one question of any CLI, `co` or anyone else's: can an agent with
+only this program's help find the command for a task, run it safely, and know
+what it will change?
 
-It never reads the source. It runs `co --help`, opens every command that page
-lists, and keeps going down, exactly as an agent would, then judges each page
-from what it printed. A label that exists in a docstring but never prints does
-not count.
+Name the command as you would type it:
 
 ```bash
-co audit                              # every page, hard rules only (about 30 s)
-co audit gmail send                   # one command or group
-co audit gmail send --review          # then a model judges the page
-co audit --inventory > base.json      # fingerprint every page
-co audit --since base.json --review   # only pages added or changed since then
-co audit --json                       # findings for scripts
+co audit co                  # all of co (about 30 s)
+co audit co gmail            # one co group
+co audit yt-dlp              # any program on PATH
+co audit gh pr --review      # then a model judges each page that passed
+co audit co --json
 ```
 
-Exit 0 means no problem was found; exit 1 lists each problem with its fix.
+It never reads source code. It runs `<command> --help` (or `-h`), opens every
+subcommand the page lists, and keeps going down, many at once, each in an
+empty HOME and working directory with no input. Then it judges each page from
+what it printed. Exit 0 means fit; exit 1 lists each problem and its fix, and
+a table scores every rule:
 
-## Hard rules (free, deterministic, offline)
+```
+gh: 228 pages
+  prints         227/228
+  hangs          228/228
+  writes           1/228
+  usage          228/228
+  example        127/228
+  ...
+✗ not yet fit for an agent harness: 329 problems
+```
 
-Each page is printed by a real `co` process in an empty HOME and working
-directory, many at once.
+## Rules (the same for every program)
 
 | rule | fails when |
 |---|---|
-| `exit0` | `--help` does not exit 0 |
-| `writes` | reading help created a file |
-| `usage` | no `Usage:` line (hand-written pages such as `co proxy` are exempt) |
-| `example` | no `Example:` line |
+| `prints` | `--help` (or `-h`) does not print and exit 0 |
+| `hangs` | it did not return within 20 seconds, e.g. waiting for input |
+| `writes` | reading help created a file (the finding names it) |
+| `usage` | no usage line |
+| `example` | no example |
 | `self_example` | no example runs this command itself |
 | `flags` | an example uses a flag that the page of the command it runs does not document |
-| `refs` | an Example, Next or Back line names a `co` command no page lists |
-| `side_effect` | the page never says what it changes: Read-only, Writes, Sends, Deletes, Removes, Creates, Changes, Charges, Deploys, Installs, Uploads, Publishes, Starts, Stops or Runs |
-| `back` | no `Back:` line (generated for every page, so this means the page was hand-written) |
 | `private` | an example contains a real home path or a full 0x address |
-| `unreachable` | `co commands` lists a command that no page reachable from `co --help` lists, so an agent reading pages can never find it |
 
-CI runs the same rules on every PR, through `tests/unit/test_cli_help_contract.py`,
-and a failure blocks the merge. The command and the test share one engine
-(`connectonion/cli/audit.py`), so they cannot disagree.
+Subcommands are read from the layouts real CLIs print: Typer/Rich panels
+(any title but Options and Arguments), `Commands:`-style sections (uv, click,
+kubectl), `CORE COMMANDS` with `name:` rows (gh), and argparse's
+`{build,serve}`. A listed word whose page is its parent's page word for word
+is not counted as a command.
 
 ## Model review (`--review`)
 
-Only pages that pass every hard rule are reviewed. A text-only model reads
-the page and judges four things:
+Only pages that pass every rule are reviewed. A text-only model judges four
+things a rule cannot: is the first line clear to a newcomer, does the page say
+what the command reads or changes, is the example realistic, is it simple. It
+returns one concrete rewrite. Pin `--model` when comparing runs.
 
-- **clear**: a newcomer knows when to use the command from the first line;
-- **effects match**: what the page says it changes fits the command;
-- **example realistic**: a user would actually run it;
-- **simple**: plain words, no internal jargon.
+## In CI
 
-It returns one concrete rewrite for the weakest sentence. A model's verdict
-varies between runs, so in CI this is advisory: the `help-gate` workflow
-reviews only the pages a PR added or changed and writes the result to the job
-summary without blocking. Pin `--model` when comparing two runs.
+`tests/unit/test_cli_help_contract.py` runs the same engine on `co` on every
+PR and blocks on any problem. It adds three house conventions of ours: a
+fixed "what it changes" word, a `Back:` line, and every command in
+`co commands` reachable from `co --help`. The `help-gate` workflow runs
+`co audit co --since base.json --review` on pages a PR changed, and reports
+without blocking, because a model's verdict varies between runs.
 
-`co wiki` keeps its own reviewed pages and contract test, and is not audited
-here.
+`co wiki` keeps its own reviewed pages (#1656), which are being rewritten
+(#1667); `co audit co` reports their missing examples.

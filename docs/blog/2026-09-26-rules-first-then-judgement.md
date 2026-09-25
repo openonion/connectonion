@@ -31,6 +31,15 @@ check had passed. `co --help` itself had no example. And `co proxy`'s label
 lived in a docstring that its hand-written help never prints. An agent could
 not see either. Now the check cannot either.
 
+Then one more: why is `co audit` only for `co`? The question it asks, whether
+an agent can use a tool from its help alone, is the same for `gh` or `yt-dlp`.
+So there is one set of rules and one code path, and the command takes what you
+would type: `co audit co gmail`, `co audit gh`. Our own conventions, like the
+fixed "what it changes" words, stayed in our CI test rather than in the tool.
+Pointed at `gh`, it found that reading any help page writes a device id to
+disk, and that 101 of 228 pages have no example; `uv` has none on any of its
+45 pages.
+
 A model's verdict varies between runs, so it never blocks a merge. The rules
 gate every PR, and the review writes its suggestions to the job summary for
 the pages that PR changed.

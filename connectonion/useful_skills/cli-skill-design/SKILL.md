@@ -52,12 +52,12 @@ Two other register tests apply to every leaf:
 (a tip naming one real command, or `HANDLER` when the handler prints its own),
 and `test_cli_tips_name_real_commands.py` checks every tip string.
 
-`co audit` runs the same rules (it is the same engine), so the quick check
-while writing is:
+`co audit` runs the same engine against the printed pages, and works on any
+CLI (`co audit gh`, `co audit yt-dlp`), so the quick check while writing is:
 
 ```bash
-co audit <group> <command>             # hard rules; exit 1 names each fix
-co audit <group> <command> --review    # then a model judges clarity, accuracy, example, simplicity
+co audit co <group> <command>            # rules; exit 1 names each fix
+co audit co <group> <command> --review   # then a model judges clarity, effects, example, simplicity
 ```
 
 The `help-gate` workflow runs `--review` on the pages a PR changed and reports
