@@ -118,6 +118,8 @@ NEXT = {
     "co eval run": HANDLER,           # "co eval report <name> --latest"
     "co eval report": HANDLER,        # the first failing case, or "add a harder case"
     "co eval legacy": HANDLER,        # the older evals print their own tip (LEGACY_EVAL_TIP in main.py)
+    "co fetch": HANDLER,              # the page is the output; a cross-site redirect names "co fetch <target>"
+    "co search": HANDLER,             # "co fetch <first result>"; a failure names "--engine ddg"
     "co init": HANDLER,               # global: "co init ./"; project: "co deploy"
     "co keys": HANDLER,               # "co keys --reveal" / "co status" / "co keys --ssh --write"
     "co proxy": HANDLER,              # every verb ends with a co proxy command; exits by raise

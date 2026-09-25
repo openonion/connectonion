@@ -11,6 +11,7 @@ Tools included:
 - Background tasks: run_background, task_output, kill_task
 - User interaction: ask_user, skill, load_guide
 - Shell: bash (with approval flow)
+- Web: web_search (managed credits, free DuckDuckGo fallback), web_fetch (page as Markdown)
 
 Plugins included:
 - caller-supplied plugins: Explicit opt-ins such as task evaluation
@@ -35,6 +36,8 @@ Debug:
 from pathlib import Path
 
 from connectonion import Agent, ClaudeCodePlugin, CodexPlugin, TodoList, bash
+from connectonion.useful_tools.page_fetch import web_fetch
+from connectonion.useful_tools.search_engines import web_search
 from connectonion.core.events import after_user_input
 from connectonion.core.usage import DEFAULT_MODEL
 from connectonion.useful_plugins import (
@@ -142,6 +145,10 @@ def create_agent(
         *([run_background, task_output, kill_task] if background_tools else []),
         load_guide,
         ask_user,
+        # Skills written for Claude Code and Codex assume the agent can search
+        # and read the web; without these they stall at their first lookup.
+        web_search,
+        web_fetch,
     ]
 
     base_prompt = assemble_prompt(

@@ -668,6 +668,42 @@ def copy(
     handle_copy(names=names or [], list_all=list_all, path=path, force=force)
 
 
+# ---- web search and fetch ---------------------------------------------------
+#
+# The same two tools co ai carries, as commands, so a skill written for Claude
+# Code or Codex that needs the web has something to run from bash.
+
+@app.command()
+def search(
+    query: str = typer.Argument(..., help="What to search for"),
+    engine: str = typer.Option("auto", "--engine", "-e",
+                               help="auto (your key, else ConnectOnion credits, else free), co, serper, brave, ddg (free, no key)"),
+    count: int = typer.Option(10, "--count", "-n", min=1, max=20, help="Number of results"),
+    json_out: bool = typer.Option(False, "--json", help="Structured results for scripts and agents"),
+):
+    """Search the web. `co` is Google results billed to your credits; `ddg` is free.
+
+    Exit 0 with results; 1 when the engine could not answer, naming a free one.
+    """
+    from .commands.web_commands import handle_search
+    raise typer.Exit(code=handle_search(query, engine, count, as_json=json_out))
+
+
+@app.command()
+def fetch(
+    url: str = typer.Argument(..., help="A public http(s) page; private and local addresses are refused"),
+    prompt: str = typer.Option("", "--prompt", "-p", help="Question about the page; a small model answers from it"),
+    max_chars: int = typer.Option(20000, "--max-chars", help="Longest page text printed without --prompt"),
+    json_out: bool = typer.Option(False, "--json", help="url, status, content_type, title, markdown, redirect"),
+):
+    """Fetch a web page as Markdown. Pages that need JavaScript: co browser.
+
+    Exit 0 with the page (or the redirect it points to); 1 when it could not be fetched.
+    """
+    from .commands.web_commands import handle_fetch
+    raise typer.Exit(code=handle_fetch(url, prompt, max_chars, as_json=json_out))
+
+
 # ---- skill benchmarks (#1642) ------------------------------------------------
 #
 # `co benchmark` authors and checks the standard and never runs an Agent;
