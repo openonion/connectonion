@@ -709,8 +709,12 @@ def _print_host_banner(
     console.print()
 
     # Config and logs info (absolute paths)
-    console.print(f"{indent}[dim]config:[/dim] {_config_whereabouts(config_file)}")
-    console.print(f"{indent}[dim]logs:[/dim] {logs_dir}")
+    # soft_wrap: Rich otherwise breaks a long path mid-word at the console
+    # width (".co/hos" / "t.yaml" on an 80-column CI log), and a path is
+    # printed to be copied. The terminal still wraps the line visually.
+    console.print(f"{indent}[dim]config:[/dim] {_config_whereabouts(config_file)}",
+                  soft_wrap=True)
+    console.print(f"{indent}[dim]logs:[/dim] {logs_dir}", soft_wrap=True)
     console.print()
 
     # Trust/Invite (belongs to host layer)
