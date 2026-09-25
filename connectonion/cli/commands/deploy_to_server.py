@@ -638,7 +638,9 @@ RSYNC_FILTERS = [
     "--exclude", ".co/logs/",
     "--exclude", ".co/evals/",
     "--exclude", ".co/sessions/",
-    "--exclude", ".venv/",
+    # No trailing slash: `.venv/` matches directories only, so a server that
+    # keeps its venv behind a `.venv` symlink had it deleted by --delete (#1699).
+    "--exclude", ".venv",
     "--exclude", ".git/",
     "--exclude", "__pycache__/",
     # Every other shape a credential takes, from the list `co skills copy`
