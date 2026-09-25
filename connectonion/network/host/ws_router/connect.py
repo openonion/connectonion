@@ -131,8 +131,12 @@ def authenticate_reattach_frame(data, route_handlers, trust, blacklist, whitelis
     return authenticate_connect_identity(data, replay_check=replay_check, **auth_kwargs)
 
 
-async def handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist):
-    """Handle CONNECT message: auth + merge + optional running reattach."""
+async def handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist,
+                         on_authenticated=None):
+    """Handle CONNECT message: auth + merge + optional running reattach.
+
+    ``on_authenticated`` is passed through to establish_connection.
+    """
     _, agent_address, _, err = authenticate_connect_frame(
         data, route_handlers, trust, blacklist, whitelist, conn=conn
     )
@@ -162,7 +166,8 @@ async def handle_connect(data, send_msg, conn, route_handlers, storage, registry
         return
 
     return await establish_connection(
-        data, agent_address, send_msg, conn, storage, registry, route_handlers
+        data, agent_address, send_msg, conn, storage, registry, route_handlers,
+        on_authenticated=on_authenticated,
     )
 
 
@@ -223,7 +228,7 @@ async def republish_authenticated_connection(data, send_msg, conn, storage,
         })
         return
     session_id = conn["session_id"]
-    status = _connection_status(registry, session_id)
+    status = _connection_status(registry, session_id, storage.get(session_id))
     server_newer = _merge_reattach_session(data, conn, storage)
     connected_msg = _reattach_connected_frame(
         conn, status, route_handlers, server_newer
@@ -241,13 +246,15 @@ async def republish_authenticated_connection(data, send_msg, conn, storage,
     )
 
 
-def _connection_status(registry, session_id):
+def _connection_status(registry, session_id, stored=None):
     active = registry.get(session_id)
     if active and active.status == "running":
         return "running"
     if active and active.status == "connected":
         registry.update_ping(session_id)
         return "connected"
+    if stored and stored.session and stored.session.get("messages"):
+        return "connected"   # history on disk, nothing live: see establish_connection
     return "new"
 
 
@@ -309,7 +316,8 @@ async def _send_agent_profile(send_msg, route_handlers, session_id):
 
 
 async def establish_connection(data, agent_address, send_msg, conn, storage, registry,
-                               route_handlers=None, resume_running=True):
+                               route_handlers=None, resume_running=True,
+                               on_authenticated=None):
     """Post-auth half of CONNECT: populate conn, merge sessions, send CONNECTED.
 
     Called by handle_connect and, after a successful onboard, with the stashed
@@ -317,6 +325,13 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
 
     ``route_handlers`` is optional so a caller that only needs the session half can
     omit it; without it no AGENT_PROFILE is sent.
+
+    ``on_authenticated`` runs as soon as CONNECTED is sent, before the profile
+    and the Home snapshot. The socket loop uses it to join the session's
+    viewers: it used to join only after this whole function returned, and a
+    fresh host's first snapshot can take seconds to render, so a turn another
+    device started in that window never reached this one (re-test of 1.8.8b9:
+    4 of 4).
     """
     _record_oip_compatibility(data, conn)
     # A second CONNECT on the same socket must not inherit the first identity
@@ -442,6 +457,13 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     elif active and active.status == 'connected':
         status = "connected"
         registry.update_ping(session_id)
+    elif stored and stored.session and stored.session.get("messages"):
+        # Nothing live, but the conversation is on disk: the host restarted
+        # (the registry is memory) or the idle entry expired. "new" told the
+        # client its session was gone while the history was intact, and the
+        # next INPUT continued it anyway. "connected" is the documented word
+        # for a session that exists and is idle.
+        status = "connected"
     else:
         status = "new"
 
@@ -530,6 +552,10 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
         connected_msg["session"] = client_session
         connected_msg["chat_items"] = session_to_chat_items(client_session)
     await send_msg(connected_msg)
+    # Straight after CONNECTED, so a client never sees a turn's frames before
+    # it knows which session it is in, and before the slow half below.
+    if on_authenticated is not None:
+        on_authenticated()
 
     # This socket is now past signature verification and the trust gate, so it is the
     # one channel entitled to the agent's full picture. /info and the relay directory

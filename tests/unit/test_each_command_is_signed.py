@@ -220,7 +220,7 @@ async def _session_with(
 ):
     from connectonion.network.host.ws_router import session
 
-    async def fake_connect(data, send, conn, *args):
+    async def fake_connect(data, send, conn, *args, **kwargs):
         if connect_calls is not None:
             connect_calls.append(data)
         conn.update(

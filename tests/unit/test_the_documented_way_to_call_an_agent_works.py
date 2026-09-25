@@ -182,7 +182,7 @@ class TestACallerWithNoIdentityIsToldHowToGetOne:
                 return json.dumps({"type": "ERROR", "message": "unauthorized: signed request required"})
 
         async def handshake():
-            turn = SimpleNamespace(deadline=asyncio.get_running_loop().time() + 5)
+            turn = SimpleNamespace(deadline=asyncio.get_running_loop().time() + 5, started=False)
             await remote._wait_for_connected(Host(), turn)
 
         with pytest.raises(ConnectionError) as refused:

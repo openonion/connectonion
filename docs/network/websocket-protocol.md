@@ -807,8 +807,8 @@ Response to CONNECT.
 
 | `status` | Meaning | Client action |
 |----------|---------|---------------|
-| `"new"` | Fresh session | Send INPUT when ready |
-| `"connected"` | Session alive, idle | Send INPUT when ready |
+| `"new"` | Fresh session: the Host has nothing stored under this id | Send INPUT when ready |
+| `"connected"` | Session exists and is idle: alive, or its history is on disk after a Host restart | Send INPUT when ready |
 | `"running"` | Agent still running | Wait for events/OUTPUT |
 
 `server_newer`, `session`, and `chat_items` are only included when the server's session data is newer than the client's (e.g., agent completed while client was away).

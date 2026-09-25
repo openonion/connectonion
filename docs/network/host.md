@@ -10,12 +10,22 @@
 
 ## Quick Start (60 Seconds)
 
+Save this as `agent.py` and run `python agent.py`:
+
 ```python
-from connectonion import Agent, host
+from connectonion import Agent, host, llm_do
+
+
+# A tool is a plain function; its docstring and type hints are what the agent sees
+def translate(text: str, language: str) -> str:
+    """Translate text into the given language."""
+    return llm_do(f"Translate into {language}. Reply with the translation only:\n{text}")
+
 
 # Define your agent
 def create_agent():
     return Agent("translator", tools=[translate])
+
 
 # Make it network-accessible
 host(create_agent)
@@ -25,7 +35,7 @@ host(create_agent)
 ```
 [agent] ─────────────────────────────────────
         translator
-        co/gemini-3.8-flash • 12 tools
+        co/gemini-3.8-flash · 1 tool
 
 [host]  ─────────────────────────────────────
         http://localhost:8000
@@ -35,7 +45,7 @@ host(create_agent)
         ↳ chat.openonion.ai ↗
         ✓ relay
 
-        config: /Users/you/my-agent/.co/host.yaml
+        config: none (defaults) — create /Users/you/my-agent/.co/host.yaml to change them
         logs: /Users/you/my-agent/.co/logs
 
 Waiting for tasks...
@@ -54,9 +64,13 @@ A Google or Microsoft account record is taken whole from one of these, never
 mixed. The project `.env` is read by `host()`, so anything `agent.py` reads
 before calling it (at import) sees only 1 and 3.
 
+`config:` names `.co/host.yaml` when the project has one. A plain `host()`
+needs none and runs on defaults; the banner then says where the file would go.
+`co create` and `co init ./` write one.
+
 **Port already in use?** `host()` checks before printing the banner and stops
-with the port and how to move it: change `port:` in `.co/host.yaml`, or for one
-run `AGENT_PORT=8001 python agent.py`.
+with the port and how to move it: set `port:` in `.co/host.yaml` (creating the
+file if the project has none), or for one run `AGENT_PORT=8001 python agent.py`.
 
 **By default, your agent is automatically discoverable.** Anyone with your address can connect:
 

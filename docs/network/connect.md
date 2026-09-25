@@ -110,7 +110,7 @@ response.text   # "Hello! How can I help?"
 response.done   # True (complete) or False (needs more input)
 
 agent.ui        # All events for rendering
-agent.status    # 'idle' | 'working' | 'waiting'
+agent.status    # 'idle' | 'working' | 'waiting' | 'unknown'
 ```
 
 ---
@@ -237,7 +237,16 @@ No configuration needed - handled automatically by the SDK.
 `input(prompt, timeout=60.0)`: a deadline for the whole call. Stream frames
 and keepalives do not extend it. When it passes, `TurnTimeoutError` (a
 `TimeoutError`) names the session. The turn may still be running there, and
-`agent.stop()` interrupts it.
+`agent.stop()` interrupts it. Until the Host says otherwise, `agent.status` is
+`'unknown'`, not `'idle'`.
+
+`on_approval` counts against the same deadline. It runs off the event loop, so
+the connection stays alive while it decides. An answer given in time is sent,
+on a reopened socket if the first one closed meanwhile. If it has not answered
+when the deadline passes, the client **declines** that approval, so the Host is
+not left waiting and the gated tool does not run on an answer its caller
+stopped waiting for, and then raises `TurnTimeoutError`. A later answer from
+the callback is discarded.
 
 Long-running agent tasks have plenty of time to complete:
 
@@ -262,7 +271,8 @@ apart, within the call's deadline:
 - If it says anything else, the Host no longer has the turn: it restarted, or
   the turn ended while the client was away. The call raises `TurnLostError` (a
   `ConnectionError`) naming the session id and the original close reason. It
-  also raises that when the Host cannot be reached again.
+  also raises that when the Host cannot be reached again, including when the
+  relay answers `Agent not connected` because the Host has not come back.
 
 The prompt is **never sent again**. Running it twice could repeat its tool
 calls. The Python client does not poll `GET /sessions/{id}`: a Host that
@@ -805,7 +815,7 @@ class RemoteAgent:
     current_session: dict    # Full session data
     available_modes: list     # Host-advertised modes for this session
     ui: List[UIEvent]        # Shortcut to current_session['trace']
-    status: str              # 'idle' | 'working' | 'waiting'
+    status: str              # 'idle' | 'working' | 'waiting' | 'unknown'
 ```
 
 `input()` waits for one turn, and `timeout` bounds the whole call. The agent
@@ -979,7 +989,7 @@ response = agent.input("task")
 agent = connect("0x...")
 response = agent.input("task")
 agent.ui      # All events for UI rendering
-agent.status  # 'idle' | 'working' | 'waiting'
+agent.status  # 'idle' | 'working' | 'waiting' | 'unknown'
 ```
 
 ```typescript

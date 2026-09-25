@@ -30,6 +30,7 @@ import copy
 import inspect
 import json
 import sys
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -356,6 +357,23 @@ class ApprovalPendingError(RuntimeError):
 _RECONNECT_DELAYS = (0.5, 1.0, 2.0)
 
 
+class _AgentAway(Exception):
+    """The relay answered a reattach with "Agent not connected".
+
+    Mid-turn that is not an authentication failure: the Host's process is gone
+    or has not reconnected to the relay yet -- a restart looks exactly like
+    this. It is retried like a closed socket, and ends in TurnLostError.
+    """
+
+
+class _ApprovalTimedOut(Exception):
+    """on_approval had not decided when the call's deadline came."""
+
+    def __init__(self, request: Dict[str, Any]):
+        super().__init__(request.get("id"))
+        self.request = request
+
+
 class _Turn:
     """What one call is doing: the prompt or answer it sends, and by when."""
 
@@ -373,6 +391,7 @@ class _Turn:
         self.answer = None       # a response frame still to send on reattach
         self.answered = set()    # request ids answered, so a replay is not re-answered
         self.closed = None       # why the first socket closed, for the error
+        self.declined = None     # the tool whose approval the deadline declined
 
     def resume_with(self, answer: Dict[str, Any], request: Dict[str, Any]) -> None:
         """Continue a turn the Host holds, opening with the answer to `request`."""
@@ -405,6 +424,40 @@ async def _recv_before(ws, deadline: float) -> str:
 async def _maybe_await(value):
     """Callbacks may be plain functions or coroutines."""
     return await value if inspect.isawaitable(value) else value
+
+
+def _call_off_the_loop(fn, *args) -> "asyncio.Future":
+    """fn(*args) on a daemon thread, as a future of this loop.
+
+    Not asyncio.to_thread: asyncio.run() joins the default executor on the way
+    out, so a sync input() whose callback overran the deadline still waited for
+    the callback to return before raising. A daemon thread is abandoned
+    instead, and its late result is dropped.
+    """
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+
+    def settle(result, error):
+        if future.done():
+            return
+        if error is not None:
+            future.set_exception(error)
+        else:
+            future.set_result(result)
+
+    def run():
+        try:
+            outcome = (fn(*args), None)
+        except Exception as error:
+            outcome = (None, error)
+        try:
+            loop.call_soon_threadsafe(settle, *outcome)
+        except RuntimeError:
+            # The loop is closed: the call gave up on this answer at its deadline.
+            return
+
+    threading.Thread(target=run, daemon=True, name="on_approval").start()
+    return future
 
 
 def _ask_text(event: Dict[str, Any]) -> str:
@@ -468,7 +521,14 @@ class RemoteAgent:
 
     @property
     def status(self) -> str:
-        """Current status: 'idle' | 'working' | 'waiting'"""
+        """Current status: 'idle' | 'working' | 'waiting' | 'unknown'
+
+        'unknown' follows a TurnTimeoutError: this client stopped waiting at
+        its deadline, and the turn may still be running on the Host. It said
+        'idle' there, which a caller reasonably read as "safe to start the next
+        turn". stop() ends such a turn, and the next input() or stop() learns
+        the truth from the Host.
+        """
         return self._status
 
     @property
@@ -576,12 +636,16 @@ class RemoteAgent:
             on_onboard: Callback when agent requires onboarding (invite code or payment).
                         Called with (methods: list[str], payment_amount: float | None).
                         Should return {"invite_code": "..."} or {"payment": amount}.
-                        If None, prompts interactively in terminal.
+                        If None, prompts in the terminal, or raises
+                        ConnectionError saying so when stdin is not a terminal.
             images: Optional list of base64 data URLs for multimodal input
             files: Optional list of file dicts with name and base64 data
             on_approval: Called with the approval_needed event when the agent
                          asks to run a gated tool. Return True/False, or
                          {"approved": bool, "scope": "once" | "session"}.
+                         It runs on its own thread and counts against
+                         `timeout`: not answered by the deadline, the approval
+                         is declined and TurnTimeoutError raised.
                          Without it, input() raises ApprovalPendingError at
                          once; answer with respond_to_approval() or stop().
             on_ask: Called with the ask_user event; return the answer text.
@@ -1089,6 +1153,7 @@ class RemoteAgent:
             ))
             event = await self._next_frame(ws, until="CONNECTED")
             if event.get("status") != "running":
+                self._status = "idle"   # the Host says nothing runs: no longer unknown
                 return False
             await ws.send(json.dumps(self._build_command_message({"type": "INTERRUPT"}, is_direct)))
             # True means the turn ended, not merely that a frame went out.
@@ -1132,6 +1197,16 @@ class RemoteAgent:
                 else:
                     try:
                         return await self._run_on_socket(connection, is_direct, turn)
+                    except _AgentAway as away:
+                        failure = f"the relay says the agent is not connected ({away})"
+                        if failures >= len(_RECONNECT_DELAYS) or (
+                            turn.deadline - asyncio.get_running_loop().time()
+                            <= _RECONNECT_DELAYS[failures]
+                        ):
+                            # Out of retries or out of time. Either way the
+                            # Host is away, and TurnLostError says so; a
+                            # TurnTimeoutError would suggest it still ran.
+                            raise self._turn_lost(turn, failure)
                     except websockets.exceptions.ConnectionClosed as closed:
                         if not turn.started:
                             raise ConnectionError(
@@ -1145,12 +1220,17 @@ class RemoteAgent:
                 await asyncio.sleep(min(_RECONNECT_DELAYS[failures], turn.remaining()))
                 failures += 1
         except asyncio.TimeoutError:
-            self._status = "idle"
+            # Not "idle": the Host may still be running the turn.
+            self._status = "unknown"
             sid = self._known_session_id()
+            declined = (
+                f" on_approval had not answered for {turn.declined!r} by then, so "
+                f"that approval was declined." if turn.declined else ""
+            )
             raise TurnTimeoutError(
                 f"No result within {turn.timeout}s (a deadline for the whole call, "
                 f"not per message). The turn may still be running on the host in "
-                f"session {sid}: agent.stop() interrupts it.",
+                f"session {sid}: agent.stop() interrupts it.{declined}",
                 session_id=sid,
             ) from None
         finally:
@@ -1195,6 +1275,12 @@ class RemoteAgent:
             if event_type == "PING":
                 await ws.send(json.dumps({"type": "PONG"}))
             elif event_type == "ERROR":
+                detail = str(event.get("message", event.get("error")) or "")
+                if turn.started and "agent not connected" in detail.lower():
+                    # Reattaching through the relay to a Host that restarted
+                    # mid-turn. This raised "Auth error: Agent not connected"
+                    # with no session id, instead of TurnLostError.
+                    raise _AgentAway(detail)
                 self._status = "idle"
                 raise self._auth_error(event)
             elif event_type == "ONBOARD_REQUIRED":
@@ -1210,10 +1296,26 @@ class RemoteAgent:
         self._add_ui_event({"type": "onboard_required", "methods": methods, "payment_amount": payment_amount})
         if on_onboard:
             return on_onboard(methods, payment_amount)
+        if not (sys.stdin and sys.stdin.isatty()):
+            # A script, a pipe, CI: there is nobody to type a code, and input()
+            # ended the call in a bare EOFError after printing a prompt no one
+            # would see. Say what the agent wants and how to give it.
+            self._status = "idle"
+            raise ConnectionError(
+                f"This agent admits strangers only after onboarding "
+                f"(methods: {', '.join(methods) or 'none offered'}), and there is "
+                f"no terminal here to ask for it. Pass it to input(): "
+                f"on_onboard=lambda methods, amount: {{\"invite_code\": \"...\"}}"
+                + (f" or {{\"payment\": {payment_amount}}}" if payment_amount else "")
+                + ". Or ask the agent's operator to add your address as a contact "
+                f"(co trust add {self._keys['address'] if self._keys else '<your address>'})."
+            )
         return self._prompt_onboard(methods, payment_amount)
 
     async def _stream_events(self, ws, is_direct: bool, turn: "_Turn") -> Response:
         """Consume the turn's events until OUTPUT, or a request nobody here can answer."""
+        import websockets
+
         while True:
             event = json.loads(await _recv_before(ws, turn.deadline))
             event_type = event.get("type")
@@ -1257,7 +1359,12 @@ class RemoteAgent:
             elif event_type in ("approval_needed", "ask_user"):
                 if event.get("id") is not None and event.get("id") in turn.answered:
                     continue  # replayed on reattach; already answered
-                answer = await self._answer_request(event, turn)
+                try:
+                    answer = await self._answer_request(event, turn)
+                except _ApprovalTimedOut:
+                    turn.declined = event.get("tool")
+                    await self._decline_at_deadline(ws, is_direct, event)
+                    raise asyncio.TimeoutError from None
                 if answer is None:
                     # Nobody here can answer it. The turn waits on the Host,
                     # and waiting here as well was the 519-second hang.
@@ -1267,7 +1374,14 @@ class RemoteAgent:
                         raise self._approval_pending(event)
                     return Response(text=_ask_text(event), done=False)
                 turn.answered.add(event.get("id"))
-                await ws.send(json.dumps(self._build_command_message(answer, is_direct)))
+                try:
+                    await ws.send(json.dumps(self._build_command_message(answer, is_direct)))
+                except websockets.exceptions.ConnectionClosed:
+                    # The socket died while the caller decided. The answer is
+                    # still the caller's: send it first on the reattached socket
+                    # rather than drop it and leave the Host waiting forever.
+                    turn.resume_with(answer, event)
+                    raise
 
             else:
                 # Stream event (tool_call, tool_result, thinking, etc.)
@@ -1283,7 +1397,7 @@ class RemoteAgent:
             })
             if turn.on_approval is None:
                 return None
-            decision = await _maybe_await(turn.on_approval(event))
+            decision = await self._decide_within_deadline(event, turn)
             if isinstance(decision, dict):
                 frame = {
                     "type": "APPROVAL_RESPONSE",
@@ -1311,6 +1425,44 @@ class RemoteAgent:
             # A Host from #1692 on delivers an answer only to the request it names.
             frame["request_id"] = event["id"]
         return frame
+
+    async def _decline_at_deadline(self, ws, is_direct: bool, event: Dict[str, Any]) -> None:
+        """Tell the Host no, so it is not left waiting on an answer nobody will send."""
+        import websockets
+
+        frame = {"type": "APPROVAL_RESPONSE", "approved": False, "scope": "once"}
+        if event.get("id") is not None:
+            frame["request_id"] = event["id"]
+        try:
+            await ws.send(json.dumps(self._build_command_message(frame, is_direct)))
+        except websockets.exceptions.ConnectionClosed:
+            # Nothing left to tell it on. The TurnTimeoutError that follows
+            # names the session, and stop() still ends the turn.
+            self._pending_request = event
+            return
+        self._pending_request = None
+
+    async def _decide_within_deadline(self, event: Dict[str, Any], turn: "_Turn") -> Any:
+        """on_approval's decision, if it comes before the call's deadline.
+
+        A callback slower than the time left used to block the event loop, its
+        True went out (if at all) after the call had already given up, and the
+        Host was left waiting on the approval forever. Now it runs off the loop
+        and against the deadline. What happens at the deadline is a choice,
+        made here: the approval is declined. The caller has abandoned the turn
+        by then, and a gated tool must not run on an answer that arrived after
+        its caller stopped listening; declining lets the Host move on instead
+        of waiting. A late answer from the callback is discarded.
+        """
+        try:
+            decision = await asyncio.wait_for(
+                _call_off_the_loop(turn.on_approval, event), turn.remaining()
+            )
+            # A coroutine callback is created in the thread and awaited here,
+            # under the same deadline.
+            return await asyncio.wait_for(_maybe_await(decision), turn.remaining())
+        except asyncio.TimeoutError:
+            raise _ApprovalTimedOut(event) from None
 
     def _approval_pending(self, event: Dict[str, Any]) -> "ApprovalPendingError":
         sid = self._known_session_id()

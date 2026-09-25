@@ -25,6 +25,9 @@ Usage:
     co trust admin remove <address>  # Remove admin (super admin only)
 """
 
+import re
+
+import typer
 from rich.console import Console
 
 from ...network.trust.tools import (
@@ -33,6 +36,7 @@ from ...network.trust.tools import (
     demote_to_stranger,
     get_level,
     get_self_address,
+    is_admin,
     list_file,
     load_admins,
     promote_to_contact,
@@ -42,6 +46,25 @@ from ...network.trust.tools import (
 )
 
 console = Console()
+
+# An agent address is an Ed25519 public key: 0x and 64 hex digits.
+ADDRESS = re.compile(r"^0x[0-9a-fA-F]{64}$")
+
+
+def _require_address(address: str) -> None:
+    """Refuse anything that cannot be an address, with exit code 2 (a usage error).
+
+    `co trust add not-an-address` printed "✓ not-an-address promoted to
+    contact" and stored it: a typo, or a name pasted where the key belonged,
+    looked like success and admitted nobody. Removing (`remove`, `unblock`,
+    `admin remove`) is not checked, so an entry an older version stored can
+    still be taken out.
+    """
+    if ADDRESS.match(address or ""):
+        return
+    console.print(f"\n[red]✗ {address!r} is not an agent address.[/red] "
+                  "An address is 0x followed by 64 hex digits.\n")
+    raise typer.Exit(2)
 
 
 def _read_list(list_name: str) -> list[str]:
@@ -118,7 +141,17 @@ def handle_trust_list():
 
 def handle_trust_level(address: str):
     """Check trust level of an address."""
+    _require_address(address)
     level = get_level(address)
+    if level != "blocked" and is_admin(address):
+        # This reported the agent's own address as a stranger and suggested
+        # making it a contact. Admins -- this agent's own key always among
+        # them -- pass every trust check; none of the lists apply to them.
+        own = " (this agent's own address)" if address == get_self_address() else ""
+        console.print(f"\n{address}: [bold magenta]admin[/bold magenta]{own}\n")
+        from .command_tips import print_tip
+        print_tip("Admins pass every trust check. Next: co trust list")
+        return
 
     level_colors = {
         "stranger": "dim",
@@ -142,6 +175,7 @@ def handle_trust_level(address: str):
 
 def handle_trust_add(address: str, whitelist: bool = False):
     """Add address to contacts or whitelist."""
+    _require_address(address)
     if whitelist:
         result = promote_to_whitelist(address)
         console.print(f"\n[green]✓[/green] {result}\n")
@@ -158,6 +192,7 @@ def handle_trust_remove(address: str):
 
 def handle_trust_block(address: str, reason: str = ""):
     """Block an address."""
+    _require_address(address)
     result = block(address, reason)
     console.print(f"\n[red]✓[/red] {result}\n")
 
@@ -170,6 +205,7 @@ def handle_trust_unblock(address: str):
 
 def handle_admin_add(address: str):
     """Add an admin."""
+    _require_address(address)
     result = add_admin(address)
     console.print(f"\n[green]✓[/green] {result}\n")
 
