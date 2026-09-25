@@ -1,9 +1,9 @@
 version: v1.8.9b3
 images:
-  - file: co-search-managed.png
-    alt: "Terminal output of co search \"latest stable rust version\" --engine co -n 3: an answer, three sources with real URLs, and the next step"
-    caption: "The managed engine against production: Gemini's answer grounded in Google Search, then the pages it cites, redirect links resolved to real URLs, each source on one short line, and Next: co fetch the first source."
-    scenario: "python scripts/capture_189b3_release_cli.py: a live co search --engine co under the maintainer's login, unedited"
+  - file: teams-help.png
+    alt: "Terminal output of co outlook calendar teams --help above its options box: usage, what the command creates and sends, a line saying Teams meetings need a work or school Microsoft account and that a personal account is refused before anything is created or sent, and the three required arguments"
+    caption: "co outlook calendar teams --help names the account a Teams meeting needs. On a personal Microsoft account Graph used to create the event and mail invitations with no link; the command now refuses first (issue 1719, PR 1738)."
+    scenario: "python scripts/capture_189b3_release_cli.py on the release branch: a live run of this checkout's co entry point in a throwaway HOME, no network, NO_COLOR and 96 columns, cut above the options box as the command line shows"
     viewport: "terminal, 96 columns"
-    commit: e70814bd
-    source_run: "scripts/capture_189b3_release_cli.py"
+    commit: addbbff8
+    source_run: "co outlook calendar teams --help, 26 September 2026, the release/1.8.9b3 branch built on main after PR 1742"

@@ -375,16 +375,41 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b3
+## Current Version: 1.8.9b4
 
-1.8.9b3 is the third preview of the 1.8.9 fix line (#1722). `co ai` can
+1.8.9b4 is the fourth preview of the 1.8.9 fix line (#1722). `co ai` can
 search the web and read a page (#1724): `web_search` and `web_fetch` are
 default tools and `co search` / `co fetch` commands. Managed search is Gemini
 grounded in Google Search, $0.02 of credits per Google query, verified against
 production; out of credits it falls back to free DuckDuckGo and says so.
 Stable is 1.8.8.
 
-- 1.8.9b3 (web_search / web_fetch in co ai and as co search / co fetch; managed Gemini-grounded search on credits with a DuckDuckGo fallback; SSRF-guarded Markdown fetch; skills plugin lists skills to a plain Agent #1736; durable write #1740; key ownership errors #1739; Outlook Teams guard #1738; deploy upload exclusions #1737.)
+- 1.8.9b4 (web_search / web_fetch in co ai and as co search / co fetch; managed Gemini-grounded search on credits with a DuckDuckGo fallback; SSRF-guarded Markdown fetch.)
+
+Earlier in this line:
+
+## 1.8.9b3
+
+1.8.9b3 is the third preview of the 1.8.9 fix line (#1722): six bugs reported
+in real use, each a tool that reported success or blamed the wrong party. A
+write reports success only once its bytes are on disk (#1338); `co outlook
+calendar teams` refuses a personal account before sending linkless invitations
+(#1719); a rejected key says whose it is (#1728) and `co create --key` keeps it
+(#1341); a plain Agent is told its skills (#1666); `co deploy` no longer sends a
+laptop's runtime state over the server's (#1694); `co doctor` survives evals
+trimmed mid-walk (#1653). Stable is 1.8.8.
+
+- 1.8.9b3 (write/DiffWriter read back and compare bytes, rejected/timed-out/plan-mode writes are failures, full failure reason in the run log; teams checks allowedOnlineMeetingProviders before creating; O API 401 classified caller vs upstream; co create --key writes under its provider's variable; skills plugin injects the skill list when the skill tool is present; six more rsync excludes for server-owned .co state; doctor skips eval files removed mid-walk.)
+
+Earlier in this line:
+
+1.8.9b2 is the second preview of the 1.8.9 fix line (#1722). Every `co`
+command outside `co wiki` now has help an agent can act on (#1721): an
+example, what the command changes, and the way back to its parent, enforced
+for every page by `tests/unit/test_cli_help_contract.py` (#1657). A
+fresh-agent test finds 13 of 13 single-step goals from help alone. Stable is
+1.8.8.
+
 - 1.8.9b2 (help contract for 264 commands: examples, what each changes, a generated Back line; CI gate with no exceptions; discovery fixes for co status, co trust, co env set, co skills and co sub; co auth feishu/lark says it creates a Feishu application; co keys --write names ~/.co/ssh/; opt-in fresh-agent discovery test.)
 
 Earlier in this line:
