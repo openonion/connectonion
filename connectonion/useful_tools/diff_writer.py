@@ -2,10 +2,10 @@
 Purpose: Web-based file writing tool with Claude Code-style permission modes
 LLM-Note:
   Dependencies: imports from [difflib, pathlib, typing] | imported by [useful_tools/__init__.py, __init__.py] | tested by [tests/unit/test_diff_writer.py]
-  Data flow: Agent calls DiffWriter.write(agent, path, content) -> show diff via agent.io -> ask approval via agent.io -> write file -> return status
+  Data flow: Agent calls DiffWriter.write(agent, path, content) -> show diff via agent.io -> ask approval via agent.io -> write file -> read it back -> return status (plan preview, rejection and a mismatch on disk are ToolFailure)
   State/Effects: reads and writes files on filesystem | sends diff_preview and ask_user events via agent.io
   Integration: exposes DiffWriter class with write(agent, path, content), diff(path, content), read(path) | used as agent tool via Agent(tools=[DiffWriter()])
-  Errors: returns error string if file unreadable | returns user feedback on rejection | no exceptions raised
+  Errors: returns ToolFailure on plan-mode preview, on rejection (with feedback) and when the file on disk does not match what was asked | OSError from the write bubbles up
 
 Permission Modes (like Claude Code's Shift+Tab cycle):
   - normal: Prompt for every edit (default)
@@ -35,6 +35,8 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from ..core.interrupt import UserInterrupt
+from ..core.tool_result import ToolFailure
+from .file_tools.write import confirm_written
 
 # Permission modes (like Claude Code's Shift+Tab cycle)
 MODE_NORMAL = "normal"      # Prompt for every edit
@@ -78,11 +80,17 @@ class DiffWriter:
         file_exists = file_path.exists()
         io = agent.io if agent else None
 
-        # Plan mode = read-only, just show what would happen
+        # Plan mode = read-only, just show what would happen. Returned as a
+        # ToolFailure so a preview can never be read as ✓ in a transcript:
+        # nothing was written, and the agent must not move on as if it had
+        # been (#1338).
         if self.mode == MODE_PLAN:
             diff_text = self._generate_diff(path, content)
             preview = self._build_preview(diff_text, content, file_exists)
-            return f"[Plan mode] Would write {len(content)} bytes to {path}\n\nPreview:\n{preview[:500]}"
+            return ToolFailure(
+                f"[Plan mode] Not written. Would write {len(content)} bytes to {path}"
+                f"\n\nPreview:\n{preview[:500]}"
+            )
 
         # Generate diff for display
         diff_text = self._generate_diff(path, content)
@@ -96,9 +104,14 @@ class DiffWriter:
         if self.mode == MODE_NORMAL:
             choice = self._ask_approval(agent, path, preview, truncated)
 
+            # "reject" also covers a closed channel or an empty answer: no
+            # approval arrived, so nothing was written and it must not read
+            # as a completed write.
             if choice == "reject":
                 feedback = self._ask_feedback(agent, path)
-                return f"User rejected changes to {path}. Feedback: {feedback}"
+                return ToolFailure(
+                    f"User rejected changes to {path}. Not written. Feedback: {feedback}"
+                )
 
             if choice == "approve_all":
                 self.mode = MODE_AUTO  # Switch to auto mode for rest of session
@@ -107,8 +120,11 @@ class DiffWriter:
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(content, encoding="utf-8")
 
+        confirmed = confirm_written(file_path, content)
+        if isinstance(confirmed, ToolFailure):
+            return confirmed
         mode_note = "" if self.mode == MODE_NORMAL else f" [{self.mode} mode]"
-        return f"Wrote {len(content)} bytes to {path}{mode_note}"
+        return f"Wrote {confirmed}{mode_note}"
 
     def diff(self, path: str, content: str) -> str:
         """Show diff without writing (preview mode).

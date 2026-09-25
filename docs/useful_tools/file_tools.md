@@ -112,6 +112,11 @@ Create NEW files only. Returns error if file exists.
 **Behavior:**
 - ✓ Creates parent directories automatically
 - ✗ Fails if file already exists (suggests using `edit()`)
+- ✓ Reads the file back after writing. Success names the resolved absolute
+  path, the UTF-8 size and the mtime: `Successfully wrote 7 bytes to
+  '/abs/notes/today.md' (verified on disk, mtime 2026-09-25T10:14:03)`
+- ✗ Fails (a `ToolFailure`, shown as ✗) if the bytes on disk are not the bytes
+  asked for, or no file is there afterwards; the run log prints the full reason
 - ✓ Tracks snapshot after write for subsequent edits
 
 ### `glob(pattern, path=None)`
