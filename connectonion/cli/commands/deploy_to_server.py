@@ -634,6 +634,21 @@ RSYNC_FILTERS = [
     "--exclude", ".co/schedule-state.json",
     "--exclude", ".co/schedule-state.json.lock",
     "--exclude", ".co/schedule.tick.lock",
+    # Everything else the running agent writes into `.co/` (#1694). Each of
+    # these exists on a laptop that ever ran the agent, and rsync sends a file
+    # that exists. Session history with its lock and sync epoch (the glob also
+    # takes compaction's temp files); the signatures already used, which a
+    # laptop's copy would reopen to replay; remote-browser leases and the
+    # browser runtime holding its authkey and profile; files callers uploaded;
+    # and contacts.txt, the callers onboarded by invite or payment on the server.
+    # whitelist.txt and blocklist.txt stay deployable: host-config.md documents
+    # them as files the author writes.
+    "--exclude", ".co/session_results.jsonl*",
+    "--exclude", ".co/replay.sqlite3*",
+    "--exclude", ".co/remote-browser-sessions.json",
+    "--exclude", ".co/remote-browser-runtime/",
+    "--exclude", ".co/uploads/",
+    "--exclude", ".co/contacts.txt",
     "--exclude", ".co/requirements.sha256",
     "--exclude", ".co/logs/",
     "--exclude", ".co/evals/",

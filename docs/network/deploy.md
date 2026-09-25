@@ -307,9 +307,19 @@ protected, while project-authored configuration and skills still travel:
 | | |
 |---|---|
 | `.co/keys/` | **kept** — the agent's address, so its email and every trust relationship hold |
-| `.co/logs/`, `.co/evals/` | **kept** — history a dashboard can actually show |
+| `.co/logs/`, `.co/evals/`, `.co/sessions/` | **kept** — history a dashboard can actually show |
+| `.co/session_results.jsonl` | **kept** — every turn the deployed agent served; a laptop's copy never replaces it |
+| `.co/schedule-state.json` | **kept** — what the scheduler ran, and what is paused on the server |
+| `.co/contacts.txt`, `.co/admins.txt`, `.co/address.json` | **kept** — who onboarded and who is in charge, as the server knows it |
+| `.co/replay.sqlite3`, `.co/uploads/`, `.co/remote-browser-*` | **kept** — used signatures, files callers sent, browser leases |
 | `.co/skills/` | **synced** — skills are what the agent *is*, not state it accumulated |
 | everything else in the project | synced, with `--delete`, so a deleted file goes away |
+
+"Kept" means both halves: a deploy neither deletes the server's copy nor sends a
+local one over it. Anyone who has run the agent on their laptop has local copies of
+most of these, so protecting them from deletion alone is not enough.
+`.co/whitelist.txt` and `.co/blocklist.txt` are not in this list: they are files you
+write, and they deploy like the rest of `.co/`.
 
 The project's root `.gitignore` is the boundary for its own generated state too.
 An ignored path is neither uploaded nor deleted on the server. For example, an agent
