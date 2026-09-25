@@ -1,0 +1,9 @@
+version: v1.8.8b12
+images:
+  - file: output-is-what-it-says.png
+    alt: "Terminal: co benchmark list redirected into .co/benchmarks/reimbursement.yaml, whose first lines are the YAML example; co benchmark check reimbursement says Valid: 5 cases (3 normal, 2 counterexample) and exits 0; co browser tab ls says no browser is open and exits 0"
+    caption: "Output that is only what it says it is: the benchmark example saved straight from stdout passes co benchmark check as printed, and co browser tab ls with no browser running says so instead of starting one (PR 1712, found by the last walk through 1.8.8b11)."
+    scenario: "python scripts/capture_188b12_release_cli.py on the release branch: a live run of this checkout's co entry point in a throwaway HOME, project and browser socket, no network, NO_COLOR and 96 columns; the scratch path is shown project-relative"
+    viewport: "terminal, 96 columns"
+    commit: 310bc5b1
+    source_run: "co benchmark list, co benchmark check reimbursement and co browser tab ls, 25 September 2026, the release/1.8.8b12 branch built on main after PR 1712"

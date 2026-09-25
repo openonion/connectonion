@@ -353,7 +353,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.8b11
+## Current Version: 1.8.8b12
+
+1.8.8b12 is an opt-in preview after 1.8.8b11: during `co eval run` the agent
+under test can no longer read the benchmark's expected outcomes, and an attempt
+that saw them anyway is INVALID, not a pass (#1712); plus browser, Wiki and docs
+promises found unkept by the last walk through b11. Stable remains 1.8.7.
+
+- 1.8.8b12 (eval-run tool guard for .co/benchmarks and eval-runs, INVALID attempts; tab ls/list/close start no daemon; client deadlines = daemon deadline + 10s and reads give up on a frozen daemon; forced close removes its files; paid engine profile under CO_BROWSER_PROFILE_DIR/onion; benchmark list prose to stderr; co create . suggests a name; co wiki show me; per-root launchd labels with migration; host.md and connect.md corrected.)
+
+Earlier in this line:
 
 1.8.8b11 is 1.8.8b10 as built: b10 was tagged but its wheel could not be built
 from the source package (co ai prompt links to design records no longer
