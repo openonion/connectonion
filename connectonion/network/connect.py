@@ -4,9 +4,9 @@ LLM-Note:
   Dependencies: imports from [asyncio, copy, json, time, uuid, dataclasses, typing, httpx, websockets (lazy), ..address (sign)] | imported by [network/__init__.py, connectonion/__init__.py]
   Data flow: input() sends signed CONNECT/INPUT and consumes stream/OUTPUT | set_session_mode() validates Host state, sends signed OIP mode_change, and waits for mode_changed
   State/Effects: mutates current session/modes/UI/status only from authenticated carrier responses; opens outbound sockets; signs deep-detached command payloads; endpoint resolution may query relay and candidate /info endpoints
-  Integration: exposes connect(), RemoteAgent, Response, ExecResult, PermissionModeError; RemoteAgent provides input/call/set_session_mode sync+async actions and read-only state
-  Performance: endpoint resolution attempted once per RemoteAgent (cached in _endpoint_resolved/_resolved_endpoint) | per-recv asyncio.wait_for to avoid hangs (default timeout=60s, 30s for CONNECTED) | sync .input() rejected inside running event loop (use input_async)
-  Errors: raises ConnectionError on transport/auth failure, PermissionModeError on owned policy refusal, TimeoutError on receive timeout, RuntimeError for sync calls in async contexts, ValueError for invalid choices
+  Integration: exposes connect(), RemoteAgent, Response, ExecResult, PermissionModeError, TurnTimeoutError, TurnLostError, ApprovalPendingError; RemoteAgent provides input/respond_to_approval/stop/call/set_session_mode sync+async actions and read-only state
+  Performance: endpoint resolution attempted once per RemoteAgent (cached in _endpoint_resolved/_resolved_endpoint) | input() timeout is one deadline for the whole call (default 60s; CONNECTED also bounded at 30s) | a socket closed mid-turn is reopened on the same session up to 3 times | sync .input() rejected inside running event loop (use input_async)
+  Errors: raises ConnectionError on transport/auth failure, PermissionModeError on owned policy refusal, TurnTimeoutError (TimeoutError) at the deadline, ApprovalPendingError when an approval is pending without on_approval, TurnLostError (ConnectionError) when a dropped turn cannot be picked up, RuntimeError for sync calls in async contexts, ValueError for invalid choices
 Protocol: CONNECT → CONNECTED → INPUT → streaming events → OUTPUT
 See docs/network/websocket-protocol.md for full specification.
 
@@ -16,14 +16,18 @@ Lifecycle:
   3. Server responds with CONNECTED { session_id, status }
   4. Client sends INPUT { prompt }
   5. Receives streaming events: tool_call, tool_result, thinking, assistant
-  6. Receives final OUTPUT or ask_user
-  7. Returns Response(text, done)
+  6. Answers PING, approval_needed (on_approval) and ask_user (on_ask) with
+     request_id = the event's id; without a callback, stops and surfaces them
+  7. Receives final OUTPUT; returns Response(text, done)
+  A socket that closes after INPUT is reopened with CONNECT {session_id,
+  last_msg_id}; if CONNECTED is not "running" the turn is gone: TurnLostError.
 """
 
 from .transport_limits import MAX_WEBSOCKET_MESSAGE_BYTES
 
 import asyncio
 import copy
+import inspect
 import json
 import sys
 import time
@@ -321,6 +325,95 @@ class PermissionModeError(ConnectionError):
         self.data = data
 
 
+class TurnTimeoutError(TimeoutError):
+    """input() reached its deadline; the turn may still be running on the Host."""
+
+    def __init__(self, message: str, session_id: Optional[str] = None):
+        super().__init__(message)
+        self.session_id = session_id
+
+
+class TurnLostError(ConnectionError):
+    """The socket closed mid-turn and the Host no longer has the turn to pick up."""
+
+    def __init__(self, message: str, session_id: Optional[str] = None):
+        super().__init__(message)
+        self.session_id = session_id
+
+
+class ApprovalPendingError(RuntimeError):
+    """The agent is waiting on an approval and no on_approval was given to answer it."""
+
+    def __init__(self, message: str, session_id: Optional[str], request: Dict[str, Any]):
+        super().__init__(message)
+        self.session_id = session_id
+        self.request = request
+
+
+# Pauses before each attempt to reopen a session whose socket closed mid-turn.
+# Enough to ride out a network blip or a relay reconnect; a Host that stays
+# down longer ends the call with TurnLostError rather than a silent wait.
+_RECONNECT_DELAYS = (0.5, 1.0, 2.0)
+
+
+class _Turn:
+    """What one call is doing: the prompt or answer it sends, and by when."""
+
+    def __init__(self, prompt, images, files, on_onboard, on_approval, on_ask,
+                 *, deadline: float, timeout: float):
+        self.prompt = prompt
+        self.images = images
+        self.files = files
+        self.on_onboard = on_onboard
+        self.on_approval = on_approval
+        self.on_ask = on_ask
+        self.deadline = deadline
+        self.timeout = timeout
+        self.started = False     # the Host has this turn: never send INPUT again
+        self.answer = None       # a response frame still to send on reattach
+        self.answered = set()    # request ids answered, so a replay is not re-answered
+        self.closed = None       # why the first socket closed, for the error
+
+    def resume_with(self, answer: Dict[str, Any], request: Dict[str, Any]) -> None:
+        """Continue a turn the Host holds, opening with the answer to `request`."""
+        if request.get("id") is not None:
+            answer["request_id"] = request["id"]
+            self.answered.add(request["id"])
+        self.answer = answer
+        self.started = True
+
+    def remaining(self) -> float:
+        left = self.deadline - asyncio.get_running_loop().time()
+        if left <= 0:
+            raise asyncio.TimeoutError
+        return left
+
+
+async def _recv_before(ws, deadline: float) -> str:
+    """One frame, or TimeoutError at `deadline`.
+
+    A deadline, not a per-recv timeout: that reset on every frame, so a turn
+    that streamed or was merely kept alive by PINGs never timed out (519 s
+    against timeout=60, waiting on an approval nobody could see).
+    """
+    left = deadline - asyncio.get_running_loop().time()
+    if left <= 0:
+        raise asyncio.TimeoutError
+    return await asyncio.wait_for(ws.recv(), timeout=left)
+
+
+async def _maybe_await(value):
+    """Callbacks may be plain functions or coroutines."""
+    return await value if inspect.isawaitable(value) else value
+
+
+def _ask_text(event: Dict[str, Any]) -> str:
+    # `question` is the field the tool sends. This once read `text`, which no
+    # producer has ever sent -- useful_tools/ask_user.py and diff_writer.py
+    # both send `question`. `text` stays accepted for the old shape.
+    return event.get("question") or event.get("text") or ""
+
+
 class RemoteAgent:
     """
     Interface to a remote agent with real-time UI updates.
@@ -361,6 +454,14 @@ class RemoteAgent:
         self._available_modes: List[Dict[str, Any]] = []
         self._resolved_endpoint: Optional[str] = None
         self._endpoint_resolved = False
+        # The session CONNECTED named, kept even when no OUTPUT arrives, so a
+        # timed-out or dropped turn can be stopped or picked up again.
+        self._session_id: Optional[str] = None
+        self._last_event_id: Optional[str] = None
+        # An approval_needed or ask_user the running turn is blocked on.
+        self._pending_request: Optional[Dict[str, Any]] = None
+        # (loop, socket, is_direct) of the turn in flight, for stop().
+        self._live = None
 
     @property
     def status(self) -> str:
@@ -452,26 +553,46 @@ class RemoteAgent:
         on_onboard: Optional[Callable[[List[str], Optional[float]], Dict[str, Any]]] = None,
         images: Optional[List[str]] = None,
         files: Optional[List[Dict[str, Any]]] = None,
+        *,
+        on_approval: Optional[Callable[[Dict[str, Any]], Any]] = None,
+        on_ask: Optional[Callable[[Dict[str, Any]], Any]] = None,
     ) -> Response:
         """
         Send prompt to remote agent and get response.
 
         Returns Response(text, done) where:
         - done=True: Task complete
-        - done=False: Agent asked a question, send another input to answer
+        - done=False: Agent asked a question; the next input() is sent as its answer
 
         Args:
             prompt: Task/prompt to send
-            timeout: Seconds to wait for response (default 60)
+            timeout: Seconds the whole call may take (default 60). A deadline,
+                     not a per-message timeout: frames and keepalives do not
+                     extend it. On expiry TurnTimeoutError names the session;
+                     the turn may still be running there, and stop() ends it.
             on_onboard: Callback when agent requires onboarding (invite code or payment).
                         Called with (methods: list[str], payment_amount: float | None).
                         Should return {"invite_code": "..."} or {"payment": amount}.
                         If None, prompts interactively in terminal.
             images: Optional list of base64 data URLs for multimodal input
             files: Optional list of file dicts with name and base64 data
+            on_approval: Called with the approval_needed event when the agent
+                         asks to run a gated tool. Return True/False, or
+                         {"approved": bool, "scope": "once" | "session"}.
+                         Without it, input() raises ApprovalPendingError at
+                         once; answer with respond_to_approval() or stop().
+            on_ask: Called with the ask_user event; return the answer text.
+                    Without it, input() returns done=False with the question.
 
         Returns:
             Response with text and done flag
+
+        Raises:
+            TurnTimeoutError: the deadline passed (a TimeoutError).
+            ApprovalPendingError: an approval is pending and on_approval is None.
+            TurnLostError: the socket closed mid-turn and the Host no longer has
+                the turn (a ConnectionError). A socket that closes while the
+                Host still runs the turn is reopened and the turn picked up.
 
         Example:
             >>> response = agent.input("Book a flight to Tokyo")
@@ -493,7 +614,10 @@ class RemoteAgent:
         except RuntimeError as e:
             if "input() cannot be used" in str(e):
                 raise
-        return asyncio.run(self._stream_input(prompt, timeout, on_onboard, images, files))
+        return asyncio.run(self._stream_input(
+            prompt, timeout, on_onboard, images, files,
+            on_approval=on_approval, on_ask=on_ask,
+        ))
 
     async def input_async(
         self,
@@ -502,9 +626,15 @@ class RemoteAgent:
         on_onboard: Optional[Callable[[List[str], Optional[float]], Dict[str, Any]]] = None,
         images: Optional[List[str]] = None,
         files: Optional[List[Dict[str, Any]]] = None,
+        *,
+        on_approval: Optional[Callable[[Dict[str, Any]], Any]] = None,
+        on_ask: Optional[Callable[[Dict[str, Any]], Any]] = None,
     ) -> Response:
         """Async version of input()."""
-        return await self._stream_input(prompt, timeout, on_onboard, images, files)
+        return await self._stream_input(
+            prompt, timeout, on_onboard, images, files,
+            on_approval=on_approval, on_ask=on_ask,
+        )
 
     def call(self, tool: str, timeout: float = 60.0, **args) -> ExecResult:
         """Run one of the remote agent's tools directly — no LLM, no thinking.
@@ -740,6 +870,9 @@ class RemoteAgent:
         self._current_session = None
         self._ui_events = []
         self._status = "idle"
+        self._session_id = None
+        self._last_event_id = None
+        self._pending_request = None
 
     def _ways_to_reach(self) -> list:
         """Where to try, best first: the agent itself, then the relay behind it.
@@ -841,164 +974,379 @@ class RemoteAgent:
         on_onboard: Optional[Callable[[List[str], Optional[float]], Dict[str, Any]]] = None,
         images: Optional[List[str]] = None,
         files: Optional[List[Dict[str, Any]]] = None,
+        on_approval: Optional[Callable[[Dict[str, Any]], Any]] = None,
+        on_ask: Optional[Callable[[Dict[str, Any]], Any]] = None,
     ) -> Response:
-        """Send prompt via WebSocket and stream events."""
+        """Send prompt via WebSocket and stream events until the turn ends."""
+        pending = self._pending_request
+        if pending is not None and pending.get("type") == "approval_needed":
+            # A new INPUT would reach the Host as runtime input to a turn that
+            # is blocked on this approval, and nothing would ever answer it.
+            raise self._approval_pending(pending)
+        self._status = "working"
+        await self._try_resolve_endpoint()
+        self._add_ui_event({"type": "user", "content": prompt})
+        turn = _Turn(
+            prompt, images, files, on_onboard, on_approval, on_ask,
+            deadline=asyncio.get_running_loop().time() + timeout, timeout=timeout,
+        )
+        if pending is not None:
+            # The agent is still inside the turn that asked, blocked on
+            # ask_user. Sent as a new INPUT this started a fresh session and
+            # left that turn waiting for ever; it is the answer.
+            turn.resume_with({"type": "ASK_USER_RESPONSE", "answer": prompt}, pending)
+        return await self._drive(turn)
+
+    def respond_to_approval(
+        self,
+        approved: bool = True,
+        scope: str = "once",
+        timeout: float = 60.0,
+        on_approval: Optional[Callable[[Dict[str, Any]], Any]] = None,
+        on_ask: Optional[Callable[[Dict[str, Any]], Any]] = None,
+    ) -> Response:
+        """Answer the approval an earlier input() raised ApprovalPendingError for.
+
+        Reopens the session, sends the answer naming its request, and streams
+        the rest of that turn: the Response input() would have returned.
+        """
+        self._refuse_inside_event_loop("respond_to_approval")
+        return asyncio.run(self.respond_to_approval_async(
+            approved, scope, timeout, on_approval=on_approval, on_ask=on_ask,
+        ))
+
+    async def respond_to_approval_async(
+        self,
+        approved: bool = True,
+        scope: str = "once",
+        timeout: float = 60.0,
+        on_approval: Optional[Callable[[Dict[str, Any]], Any]] = None,
+        on_ask: Optional[Callable[[Dict[str, Any]], Any]] = None,
+    ) -> Response:
+        """Async version of respond_to_approval()."""
+        pending = self._pending_request
+        if pending is None or pending.get("type") != "approval_needed":
+            raise RuntimeError("There is no approval pending to answer.")
+        self._status = "working"
+        await self._try_resolve_endpoint()
+        turn = _Turn(
+            None, None, None, None, on_approval, on_ask,
+            deadline=asyncio.get_running_loop().time() + timeout, timeout=timeout,
+        )
+        turn.resume_with(
+            {"type": "APPROVAL_RESPONSE", "approved": bool(approved), "scope": scope},
+            pending,
+        )
+        return await self._drive(turn)
+
+    def stop(self, timeout: float = 30.0) -> bool:
+        """Interrupt the turn this agent is running; False if none is running.
+
+        Reaches a turn in flight on this object (from another thread or task),
+        and one an earlier call left running on the Host -- after a
+        TimeoutError, or an ApprovalPendingError nobody is going to answer.
+        """
+        self._refuse_inside_event_loop("stop")
+        return asyncio.run(self.stop_async(timeout))
+
+    async def stop_async(self, timeout: float = 30.0) -> bool:
+        """Async version of stop()."""
+        live = self._live
+        if live is not None:
+            loop, ws, is_direct = live
+            frame = json.dumps(self._build_command_message({"type": "INTERRUPT"}, is_direct))
+            if loop is asyncio.get_running_loop():
+                await ws.send(frame)
+            else:
+                # input() is running on its own loop in another thread, and the
+                # socket belongs to that loop, so the send has to happen there.
+                sent = asyncio.run_coroutine_threadsafe(ws.send(frame), loop)
+                await asyncio.wait_for(asyncio.wrap_future(sent), timeout)
+            # That call returns the OUTPUT the interrupted turn ends with.
+            return True
+        if not self._known_session_id():
+            return False
+        try:
+            return await asyncio.wait_for(self._interrupt_by_reattaching(), timeout)
+        except asyncio.TimeoutError:
+            raise TimeoutError(
+                f"stop() got no answer within {timeout}s; the turn in session "
+                f"{self._known_session_id()} may still be running"
+            ) from None
+
+    async def _interrupt_by_reattaching(self) -> bool:
+        """Open the session, INTERRUPT its running turn, wait for that turn's OUTPUT."""
         import websockets
 
-        self._status = "working"
-
-        # Try endpoint resolution (once, cached)
         await self._try_resolve_endpoint()
-
-        # Add user event to UI
-        self._add_ui_event({
-            "type": "user",
-            "content": prompt
-        })
-
-        # Generate input_id for routing/response matching
-        input_id = str(uuid.uuid4())
-
-        # The agent itself when it answers, the relay behind it when it does not.
         connection, is_direct = await self._open_best_connection(websockets)
+        async with connection as ws:
+            await ws.send(json.dumps(
+                self._build_connect_message(is_direct, last_msg_id=self._last_event_id)
+            ))
+            event = await self._next_frame(ws, until="CONNECTED")
+            if event.get("status") != "running":
+                return False
+            await ws.send(json.dumps(self._build_command_message({"type": "INTERRUPT"}, is_direct)))
+            # True means the turn ended, not merely that a frame went out.
+            event = await self._next_frame(ws, until="OUTPUT")
+        self._current_session = event.get("session") or self._current_session
+        self._pending_request = None
+        self._status = "idle"
+        return True
 
-        # Build the CONNECT and INPUT messages -- after opening, because both are
-        # shaped by which way answered and a relay-bound frame is not a direct one.
-        connect_msg = self._build_connect_message(is_direct)
-        input_msg = self._build_input_message(prompt, input_id, is_direct, images, files)
+    async def _next_frame(self, ws, until: str) -> Dict[str, Any]:
+        """Read to the next `until` frame, answering PINGs; an ERROR is raised."""
+        while True:
+            event = json.loads(await ws.recv())
+            if event.get("type") == until:
+                return event
+            if event.get("type") == "PING":
+                await ws.send(json.dumps({"type": "PONG"}))
+            elif event.get("type") == "ERROR":
+                raise ConnectionError(f"stop refused: {event.get('message', event.get('error'))}")
 
+    async def _drive(self, turn: "_Turn") -> Response:
+        """Run one turn to its end, reopening the session if the socket closes.
+
+        Once the Host has the turn, a closed socket is reopened on the same
+        session and the stream picked up where it stopped. The prompt is never
+        sent again: running it twice could repeat its tool calls.
+        """
+        import websockets
+
+        failures = 0
         try:
-            async with connection as ws:
-                # Authenticate first
-                await ws.send(json.dumps(connect_msg))
-
-                # Wait for CONNECTED
-                while True:
-                    raw = await asyncio.wait_for(ws.recv(), timeout=30)
-                    event = json.loads(raw)
-                    if event.get("type") == "CONNECTED":
-                        self._consume_connected_mode_state(event)
-                        break
-                    elif event.get("type") == "ERROR":
-                        self._status = "idle"
-                        raise ConnectionError(f"Auth error: {event.get('message', event.get('error'))}")
-                    elif event.get("type") == "ONBOARD_REQUIRED":
-                        # Handle onboard during connect
-                        methods = event.get("methods", [])
-                        payment_amount = event.get("payment_amount")
-                        self._add_ui_event({"type": "onboard_required", "methods": methods, "payment_amount": payment_amount})
-                        if on_onboard:
-                            credentials = on_onboard(methods, payment_amount)
-                        else:
-                            credentials = self._prompt_onboard(methods, payment_amount)
-                        submit_msg = self._build_onboard_submit(credentials)
-                        await ws.send(json.dumps(submit_msg))
-                        # Continue waiting for CONNECTED or ONBOARD_SUCCESS
-
-                # Now send INPUT
-                await ws.send(json.dumps(input_msg))
-
-                # Stream events until OUTPUT or timeout
-                result_text = ""
-                done = True
-
-                while True:
-                    # Wrap recv in timeout to prevent hanging indefinitely
-                    msg = await asyncio.wait_for(ws.recv(), timeout=timeout)
-                    event = json.loads(msg)
-                    event_type = event.get("type")
-
-                    if event_type == "OUTPUT":
-                        # Final result
-                        result_text = event.get("result", "")
-                        self._current_session = event.get("session")
-                        self._status = "idle"
-
-                        # Add agent response to UI
-                        self._add_ui_event({
-                            "type": "agent",
-                            "content": result_text
-                        })
-                        break
-
-                    elif event_type == "ERROR":
-                        self._status = "idle"
-                        raise ConnectionError(f"Agent error: {event.get('message', event.get('error'))}")
-
-                    elif event_type == "ONBOARD_REQUIRED":
-                        # Agent requires onboarding (invite code or payment)
-                        methods = event.get("methods", [])
-                        payment_amount = event.get("payment_amount")
-
-                        # Add onboard_required event to UI
-                        self._add_ui_event({
-                            "type": "onboard_required",
-                            "methods": methods,
-                            "payment_amount": payment_amount
-                        })
-
-                        # Get credentials from callback or prompt interactively
-                        if on_onboard:
-                            credentials = on_onboard(methods, payment_amount)
-                        else:
-                            credentials = self._prompt_onboard(methods, payment_amount)
-
-                        # Send ONBOARD_SUBMIT
-                        submit_msg = self._build_onboard_submit(credentials)
-                        await ws.send(json.dumps(submit_msg))
-                        # Continue loop to wait for ONBOARD_SUCCESS
-
-                    elif event_type == "ONBOARD_SUCCESS":
-                        # Onboard successful - add to UI
-                        self._add_ui_event({
-                            "type": "onboard_success",
-                            "level": event.get("level", "contact"),
-                            "message": event.get("message", "Onboard successful")
-                        })
-
-                        # Retry the original prompt
-                        retry_input_id = str(uuid.uuid4())
-                        retry_msg = self._build_input_message(prompt, retry_input_id, is_direct)
-                        await ws.send(json.dumps(retry_msg))
-                        # Continue loop to wait for OUTPUT
-
-                    elif event_type == "ask_user":
-                        # Agent is asking a question - return done=False so caller sends another input()
-                        #
-                        # `question` is the field the tool sends. This read `text`,
-                        # which no producer has ever sent -- useful_tools/ask_user.py
-                        # and diff_writer.py both send `question` -- so every
-                        # multi-turn conversation over the network arrived with the
-                        # question missing and the options intact, the one field
-                        # both sides happened to spell alike. `text` stays accepted
-                        # for anything built against the old shape.
-                        self._status = "waiting"
-                        done = False
-                        result_text = event.get("question") or event.get("text") or ""
-
-                        # multi_select and fields were dropped: a client could not
-                        # tell one answer from many, and a form asked for over the
-                        # network could not be rendered at all.
-                        asked = {
-                            "type": "ask_user",
-                            "text": result_text,
-                            "options": event.get("options"),
-                            "multi_select": event.get("multi_select"),
-                        }
-                        if event.get("fields") is not None:
-                            asked["fields"] = event["fields"]
-                        self._add_ui_event(asked)
-                        break
-
-                    else:
-                        # Stream event (tool_call, tool_result, thinking, etc.)
-                        self._handle_stream_event(event)
-
-                return Response(text=result_text, done=done)
-
+            while True:
+                try:
+                    connection, is_direct = await asyncio.wait_for(
+                        self._open_best_connection(websockets), turn.remaining()
+                    )
+                except OSError as refused:
+                    if not turn.started:
+                        raise
+                    failure = f"could not reconnect: {refused}"
+                else:
+                    try:
+                        return await self._run_on_socket(connection, is_direct, turn)
+                    except websockets.exceptions.ConnectionClosed as closed:
+                        if not turn.started:
+                            raise ConnectionError(
+                                f"The connection to the agent closed before the prompt "
+                                f"was sent ({closed}). Nothing ran; it is safe to retry."
+                            ) from closed
+                        turn.closed = turn.closed or str(closed)
+                        failure = "the connection closed again"
+                if failures >= len(_RECONNECT_DELAYS):
+                    raise self._turn_lost(turn, failure)
+                await asyncio.sleep(min(_RECONNECT_DELAYS[failures], turn.remaining()))
+                failures += 1
         except asyncio.TimeoutError:
             self._status = "idle"
-            raise TimeoutError(f"Request timed out after {timeout}s")
+            sid = self._known_session_id()
+            raise TurnTimeoutError(
+                f"No result within {turn.timeout}s (a deadline for the whole call, "
+                f"not per message). The turn may still be running on the host in "
+                f"session {sid}: agent.stop() interrupts it.",
+                session_id=sid,
+            ) from None
+        finally:
+            self._live = None
+
+    async def _run_on_socket(self, connection, is_direct: bool, turn: "_Turn") -> Response:
+        """CONNECT, send the prompt or the answer, then stream until the turn ends."""
+        async with connection as ws:
+            await ws.send(json.dumps(self._build_connect_message(
+                is_direct, last_msg_id=self._last_event_id if turn.started else None,
+            )))
+            status = await self._wait_for_connected(ws, turn)
+            if turn.started and status != "running":
+                self._pending_request = None
+                raise self._turn_lost(
+                    turn, "the host no longer has it running (it restarted, or the "
+                    "turn ended while this client was away)",
+                )
+            self._live = (asyncio.get_running_loop(), ws, is_direct)
+            if not turn.started:
+                await ws.send(json.dumps(self._build_input_message(
+                    turn.prompt, str(uuid.uuid4()), is_direct, turn.images, turn.files,
+                )))
+                turn.started = True
+            elif turn.answer is not None:
+                await ws.send(json.dumps(self._build_command_message(turn.answer, is_direct)))
+                turn.answer = None
+                self._pending_request = None
+            return await self._stream_events(ws, is_direct, turn)
+
+    async def _wait_for_connected(self, ws, turn: "_Turn") -> Optional[str]:
+        """Authenticate (onboarding if asked) and return CONNECTED's status."""
+        while True:
+            # CONNECTED keeps its own 30 s bound inside the call's deadline.
+            limit = min(turn.deadline, asyncio.get_running_loop().time() + 30)
+            event = json.loads(await _recv_before(ws, limit))
+            event_type = event.get("type")
+            if event_type == "CONNECTED":
+                self._consume_connected_mode_state(event)
+                self._session_id = event.get("session_id") or self._session_id
+                return event.get("status")
+            if event_type == "PING":
+                await ws.send(json.dumps({"type": "PONG"}))
+            elif event_type == "ERROR":
+                self._status = "idle"
+                raise ConnectionError(f"Auth error: {event.get('message', event.get('error'))}")
+            elif event_type == "ONBOARD_REQUIRED":
+                await ws.send(json.dumps(self._build_onboard_submit(
+                    self._onboard_credentials(event, turn.on_onboard)
+                )))
+                # Continue waiting for CONNECTED or ONBOARD_SUCCESS
+
+    def _onboard_credentials(self, event: Dict[str, Any], on_onboard) -> Dict[str, Any]:
+        """Credentials from the callback, or asked for in the terminal."""
+        methods = event.get("methods", [])
+        payment_amount = event.get("payment_amount")
+        self._add_ui_event({"type": "onboard_required", "methods": methods, "payment_amount": payment_amount})
+        if on_onboard:
+            return on_onboard(methods, payment_amount)
+        return self._prompt_onboard(methods, payment_amount)
+
+    async def _stream_events(self, ws, is_direct: bool, turn: "_Turn") -> Response:
+        """Consume the turn's events until OUTPUT, or a request nobody here can answer."""
+        while True:
+            event = json.loads(await _recv_before(ws, turn.deadline))
+            event_type = event.get("type")
+            if isinstance(event.get("id"), str):
+                # Where to pick the stream up if this socket closes.
+                self._last_event_id = event["id"]
+
+            if event_type == "PING":
+                # Unanswered, a keepalive is the Host's evidence this client is gone.
+                await ws.send(json.dumps({"type": "PONG"}))
+
+            elif event_type == "OUTPUT":
+                result_text = event.get("result", "")
+                self._current_session = event.get("session")
+                self._session_id = event.get("session_id") or self._session_id
+                self._pending_request = None
+                self._status = "idle"
+                self._add_ui_event({"type": "agent", "content": result_text})
+                return Response(text=result_text, done=True)
+
+            elif event_type == "ERROR":
+                self._status = "idle"
+                raise ConnectionError(f"Agent error: {event.get('message', event.get('error'))}")
+
+            elif event_type == "ONBOARD_REQUIRED":
+                await ws.send(json.dumps(self._build_onboard_submit(
+                    self._onboard_credentials(event, turn.on_onboard)
+                )))
+
+            elif event_type == "ONBOARD_SUCCESS":
+                self._add_ui_event({
+                    "type": "onboard_success",
+                    "level": event.get("level", "contact"),
+                    "message": event.get("message", "Onboard successful")
+                })
+                # Retry the original prompt
+                await ws.send(json.dumps(self._build_input_message(
+                    turn.prompt, str(uuid.uuid4()), is_direct,
+                )))
+
+            elif event_type in ("approval_needed", "ask_user"):
+                if event.get("id") is not None and event.get("id") in turn.answered:
+                    continue  # replayed on reattach; already answered
+                answer = await self._answer_request(event, turn)
+                if answer is None:
+                    # Nobody here can answer it. The turn waits on the Host,
+                    # and waiting here as well was the 519-second hang.
+                    self._pending_request = event
+                    self._status = "waiting"
+                    if event_type == "approval_needed":
+                        raise self._approval_pending(event)
+                    return Response(text=_ask_text(event), done=False)
+                turn.answered.add(event.get("id"))
+                await ws.send(json.dumps(self._build_command_message(answer, is_direct)))
+
+            else:
+                # Stream event (tool_call, tool_result, thinking, etc.)
+                self._handle_stream_event(event)
+
+    async def _answer_request(self, event: Dict[str, Any], turn: "_Turn") -> Optional[Dict[str, Any]]:
+        """The caller's answer as a response frame; None when there is no callback."""
+        if event.get("type") == "approval_needed":
+            self._add_ui_event({
+                "type": "approval_needed",
+                "tool": event.get("tool"),
+                "arguments": event.get("arguments"),
+            })
+            if turn.on_approval is None:
+                return None
+            decision = await _maybe_await(turn.on_approval(event))
+            if isinstance(decision, dict):
+                frame = {
+                    "type": "APPROVAL_RESPONSE",
+                    "approved": decision.get("approved") is True,
+                    "scope": decision.get("scope", "once"),
+                }
+            else:
+                frame = {"type": "APPROVAL_RESPONSE", "approved": bool(decision), "scope": "once"}
+        else:
+            # multi_select and fields were dropped once: a client could not
+            # tell one answer from many, and a form could not be rendered.
+            asked = {
+                "type": "ask_user",
+                "text": _ask_text(event),
+                "options": event.get("options"),
+                "multi_select": event.get("multi_select"),
+            }
+            if event.get("fields") is not None:
+                asked["fields"] = event["fields"]
+            self._add_ui_event(asked)
+            if turn.on_ask is None:
+                return None
+            frame = {"type": "ASK_USER_RESPONSE", "answer": await _maybe_await(turn.on_ask(event))}
+        if event.get("id") is not None:
+            # A Host from #1692 on delivers an answer only to the request it names.
+            frame["request_id"] = event["id"]
+        return frame
+
+    def _approval_pending(self, event: Dict[str, Any]) -> "ApprovalPendingError":
+        sid = self._known_session_id()
+        return ApprovalPendingError(
+            f"The agent is waiting for approval to run {event.get('tool')!r} with "
+            f"{json.dumps(event.get('arguments'), default=str)[:200]} in session {sid}. "
+            f"Answer it with agent.respond_to_approval(True) or (False), pass "
+            f"on_approval= to input() to answer such requests as they come, or "
+            f"call agent.stop() to end the turn.",
+            session_id=sid,
+            request=event,
+        )
+
+    def _turn_lost(self, turn: "_Turn", why: str) -> "TurnLostError":
+        sid = self._known_session_id()
+        self._status = "idle"
+        return TurnLostError(
+            f"The connection to the agent closed mid-turn ({turn.closed or 'no reason given'}) "
+            f"and the turn could not be picked up again: {why}. Session {sid}. The "
+            f"prompt was not sent again, because running it twice could repeat its "
+            f"tool calls; input() continues the session.",
+            session_id=sid,
+        )
+
+    def _known_session_id(self) -> Optional[str]:
+        if isinstance(self._current_session, dict) and self._current_session.get("session_id"):
+            return self._current_session["session_id"]
+        return self._session_id
+
+    @staticmethod
+    def _refuse_inside_event_loop(name: str) -> None:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        raise RuntimeError(
+            f"{name}() cannot be used inside async context. "
+            f"Use 'await agent.{name}_async()' instead."
+        )
 
     async def _wait_for_mode_connected(self, ws) -> Dict[str, Any]:
         while True:
@@ -1082,8 +1430,14 @@ class RemoteAgent:
             set_mode(self._current_session, current, turns_left=turns_left)
         return state
 
-    def _build_connect_message(self, is_direct: bool = False) -> Dict[str, Any]:
-        """Build CONNECT message with signing."""
+    def _build_connect_message(
+        self, is_direct: bool = False, last_msg_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Build CONNECT message with signing.
+
+        `last_msg_id` reattaches to a running turn from just after the last
+        event this client saw, so nothing it already handled is replayed.
+        """
         connect_msg: Dict[str, Any] = {
             "type": "CONNECT",
             "timestamp": int(time.time())
@@ -1092,8 +1446,12 @@ class RemoteAgent:
         if not is_direct:
             connect_msg["to"] = self.address
 
-        if self._current_session and self._current_session.get("session_id"):
-            connect_msg["session_id"] = self._current_session["session_id"]
+        # CONNECTED's id counts too: a turn that has not produced an OUTPUT
+        # yet is still in that session, and reopening it needs the id.
+        if self._known_session_id():
+            connect_msg["session_id"] = self._known_session_id()
+        if last_msg_id:
+            connect_msg["last_msg_id"] = last_msg_id
 
         # Send conversation history with CONNECT
         if self._current_session:

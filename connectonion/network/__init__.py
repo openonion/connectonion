@@ -21,7 +21,10 @@ This module contains:
 
 from . import announce, relay
 from .announce import create_announce_message
-from .connect import ExecResult, PermissionModeError, RemoteAgent, Response, connect
+from .connect import (
+    ApprovalPendingError, ExecResult, PermissionModeError, RemoteAgent, Response,
+    TurnLostError, TurnTimeoutError, connect,
+)
 from .host import (
     HTTPRequest,
     HTTPResponse,
@@ -49,6 +52,9 @@ __all__ = [
     "Response",
     "ExecResult",
     "PermissionModeError",
+    "TurnTimeoutError",
+    "TurnLostError",
+    "ApprovalPendingError",
     "HTTPRequest",
     "HTTPResponse",
     "HTTPRoute",
