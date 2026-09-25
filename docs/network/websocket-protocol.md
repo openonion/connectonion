@@ -31,10 +31,14 @@ The descriptor-less reader remains through 1.7.x and may be removed no earlier
 than 1.8.0a1, 2026-09-15, and two previews after compatibility telemetry no
 longer observes it, whichever is later.
 
-Host emits one content-free `OIP_COMPAT` record for CONNECT/reattach. It contains
-only `transport=direct|relay|unknown`, `peer=legacy|oip/0.1|unsupported`, and
-`outcome=accepted|rejected`; it never copies peer strings, prompts, credentials,
-addresses, session IDs, or paths.
+Host emits one content-free `OIP_COMPAT` record for CONNECT/reattach, at debug
+level on the `connectonion.network.host.ws_router.connect` logger (off unless
+you turn debug logging on). It contains only `transport=direct|relay|unknown`,
+`peer=undeclared|oip/0.1|unsupported`, and `outcome=accepted|rejected`; it
+never copies peer strings, prompts, credentials, addresses, session IDs, or
+paths. `undeclared` means the CONNECT carried no protocol descriptor — older
+readers, and also the current Python `connect()` client, which does not send
+one — so it cannot by itself show that old readers are gone.
 
 ---
 

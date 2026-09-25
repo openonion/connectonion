@@ -231,15 +231,18 @@ async def test_connect_rejects_unsupported_oip_once_without_creating_session():
 @pytest.mark.parametrize("transport", ["direct", "relay"])
 @pytest.mark.parametrize("protocol", [None, {"name": "oip", "version": "0.1"}])
 async def test_rolling_oip_readers_have_direct_and_relay_parity(
-    transport, protocol, monkeypatch
+    transport, protocol, monkeypatch, caplog
 ):
+    import logging
+
     from connectonion.network.host.ws_router import connect
 
     sent = []
-    telemetry = []
+    printed = []
     storage = Mock(); storage.get.return_value = None
     registry = Mock(); registry.get.return_value = None
-    monkeypatch.setattr(connect.console, "print", telemetry.append)
+    monkeypatch.setattr(connect.console, "print", printed.append)
+    caplog.set_level(logging.DEBUG, logger=connect.logger.name)
     frame = {} if protocol is None else {"protocol": protocol}
 
     await connect.establish_connection(
@@ -252,10 +255,16 @@ async def test_rolling_oip_readers_have_direct_and_relay_parity(
     )
 
     assert sent[0]["type"] == "CONNECTED"
-    assert telemetry[0] == (
-        f"[dim]OIP_COMPAT transport={transport} "
-        f"peer={'legacy' if protocol is None else 'oip/0.1'} outcome=accepted[/dim]"
+    # Debug only: 1.8.8b9 printed this on the host terminal for every stranger,
+    # and called a same-version Python client "legacy" because it sends no
+    # `protocol` field. Undeclared is all the host can know.
+    records = [r for r in caplog.records if r.getMessage().startswith("OIP_COMPAT")]
+    assert [r.levelno for r in records] == [logging.DEBUG]
+    assert records[0].getMessage() == (
+        f"OIP_COMPAT transport={transport} "
+        f"peer={'undeclared' if protocol is None else 'oip/0.1'} outcome=accepted"
     )
+    assert not any("OIP_COMPAT" in str(line) for line in printed)
 
 
 def test_oip_compatibility_telemetry_never_copies_untrusted_wire_values():

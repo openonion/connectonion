@@ -378,3 +378,21 @@ class TestAYamlErrorNamesThePolicyFile:
             TrustAgent(str(policy))
 
         assert "custom.md" in str(exc.value)
+
+
+class TestAStrangersOnboardingIsQuietOnTheHostTerminal:
+    """1.8.8b9: every stranger's CONNECT printed "[FAST_RULES] Evaluating
+    client_id=... / No match / Returning None (needs LLM)" at warning level,
+    which is what a host terminal shows. The rule engine's reasoning is debug."""
+
+    def test_nothing_reaches_warning_while_a_stranger_is_evaluated(self, temp_co_dir, caplog):
+        import logging
+
+        caplog.set_level(logging.DEBUG, logger="connectonion.trust.fast_rules")
+        config = {"allow": ["admin", "whitelisted", "contact"], "default": "ask"}
+
+        assert evaluate_request(config, "0x" + "b" * 64, {}, co_dir=temp_co_dir) is None
+
+        levels = {r.levelno for r in caplog.records if r.name == "connectonion.trust.fast_rules"}
+        assert levels == {logging.DEBUG}
+        assert any("needs LLM" in r.getMessage() for r in caplog.records), "still there for debugging"
