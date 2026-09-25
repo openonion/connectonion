@@ -409,6 +409,14 @@ def claude_run(
         raise typer.Exit(1)
 
 
+def _closes_only(args: List[str]) -> bool:
+    """`close`, `-t NAME close` or `tab close NAME`: verbs that never open a window."""
+    from .commands.browser_commands import _extract_tab
+
+    _, verb = _extract_tab(args)
+    return bool(verb) and (verb[0] == "close" or verb[:2] == ["tab", "close"])
+
+
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def browser(
     headless: Optional[bool] = typer.Option(
@@ -442,8 +450,10 @@ def browser(
     # so with no display it was quietly launched headless — and headless Chrome
     # says `HeadlessChrome` in its User-Agent, which is what the caller was
     # avoiding by asking for a window. Asked for a window, get one or a refusal
-    # (#1339).
-    if headless is False and not has_display():
+    # (#1339). Only a command that can open a window is refused: closing a
+    # browser or a tab opens nothing, and refusing it left a headless box with
+    # a running browser that `--no-headless close` could not reach.
+    if headless is False and not has_display() and not _closes_only(args or []):
         print("--no-headless needs a display, and this machine has none "
               "(DISPLAY and WAYLAND_DISPLAY are unset).")
         print("Give it a virtual one:  xvfb-run -a co browser --no-headless <command>")

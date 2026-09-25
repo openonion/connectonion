@@ -54,7 +54,7 @@ from .artifacts import ArtifactStager, StagedArtifact
 def default_sock_path() -> str:
     """The daemon endpoint address (cross-platform).
 
-    POSIX: a Unix-socket path ($CO_BROWSER_SOCK, else $XDG_RUNTIME_DIR/co, else $TMPDIR/co).
+    POSIX: a Unix-socket path ($CO_BROWSER_SOCK, else <per-user temp dir>/co-<user>/browser.sock).
     Windows: a per-user named pipe. See transport.default_address().
     """
     return transport.default_address()

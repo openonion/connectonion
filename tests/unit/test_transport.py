@@ -64,7 +64,7 @@ def test_pid_alive():
 @pytest.fixture
 def keydir(monkeypatch, tmp_path):
     """Isolate the sidecar dir away from the real runtime dirs."""
-    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.setattr(tp, "_endpoint_dir", lambda: tmp_path / "co")
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     return tmp_path / "co"
 
@@ -285,11 +285,14 @@ class TestTheRuntimeDirIsPerUser:
 
         assert alice != bob
 
-    def test_a_session_runtime_dir_is_left_alone(self, tmp_path, monkeypatch):
-        """XDG_RUNTIME_DIR is already per-user; scoping it again would be noise."""
-        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    def test_a_session_runtime_dir_does_not_move_it(self, tmp_path, monkeypatch):
+        """$XDG_RUNTIME_DIR depends on how the user logged in, so it is ignored:
+        honouring it gave one user two daemons over one profile."""
+        monkeypatch.setattr(tp, "_user_temp_dir", lambda: tmp_path)
+        monkeypatch.setattr(tp, "_current_user", lambda: "alice")
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "session"))
 
-        assert tp._sidecar_dir().name == "co"
+        assert tp._sidecar_dir() == tmp_path / "co-alice"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="named pipes do not depend on env")
@@ -310,14 +313,6 @@ class TestACronJobFindsTheLoginShellsDaemon:
         cron = tp.default_address()
 
         assert cron == login_shell
-
-    def test_a_run_user_dir_that_is_not_ours_is_not_used(self, tmp_path, monkeypatch):
-        run_user = tmp_path / "run-user"
-        run_user.mkdir()
-        monkeypatch.setattr(tp, "_RUN_USER_ROOT", run_user)   # no dir for our uid
-        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
-
-        assert tp._user_runtime_dir() is None
 
     @pytest.mark.skipif(sys.platform != "darwin", reason="macOS per-user temp dir")
     def test_macos_with_no_environment_resolves_the_same_endpoint(self):

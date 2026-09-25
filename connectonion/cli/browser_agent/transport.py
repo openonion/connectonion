@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [os, time, getpass, subprocess, tempfile, hashlib, binascii, threading, multiprocessing.connection, pathlib | lazy: fcntl/msvcrt, ctypes] | imported by [browser_agent/daemon.py, browser_agent/client.py] | tested by [tests/unit/test_transport.py, tests/e2e/cli/test_browser_daemon.py]
   Data flow: daemon/client call default_address() for the ordinary endpoint or namespaced_address() for a short hashed private endpoint → POSIX returns a Unix-socket filesystem path, Windows returns a per-user named pipe \\.\pipe\co-browser-<hash> | pid_path()/lock_path() resolve filesystem sidecars | Windows wire: win_listener() creates the pipe WITHOUT an authkey and accept_authenticated() runs the mutual HMAC challenge under a hard deadline before the daemon submits the connection to its asyncio runtime; win_connect() is a normal authenticated mpc.Client | POSIX binding is handed to asyncio.start_unix_server after the same stale-owner checks
   State/Effects: default_address()/_sidecar_dir() may mkdir the runtime dir (and chmod 0700 on POSIX — the socket dir IS the POSIX trust boundary, so a chmod failure raises loudly) | load_or_create_authkey() creates a 0600 key file in the sidecar dir (only used on Windows) and atomically replaces a persistently-corrupt one | acquire_singleton_lock() holds an OS lock (fcntl.flock POSIX / msvcrt.locking Windows) for the daemon's lifetime, released by the OS on death | spawn_detached() launches the daemon fully detached
-  Integration: exposes IS_WINDOWS, AuthenticationError (= mpc's class), HANDSHAKE_TIMEOUT, default_address(), namespaced_address(), ensure_endpoint_parent(), pid_path(), lock_path(), load_or_create_authkey(), pid_alive(), acquire_singleton_lock(), spawn_detached(), win_listener(), win_connect(), bounded_io(), accept_authenticated() | daemon.py owns asyncio admission/backpressure; this module preserves native platform security and blocking-pipe primitives
+  Integration: exposes IS_WINDOWS, AuthenticationError (= mpc's class), HANDSHAKE_TIMEOUT, default_address() (where a new daemon binds), running_address() (what a client dials: the stable address, or an older client's address while its daemon runs), namespaced_address(), ensure_endpoint_parent(), pid_path(), lock_path(), load_or_create_authkey(), pid_alive(), acquire_singleton_lock(), spawn_detached(), win_listener(), win_connect(), bounded_io(), accept_authenticated() | daemon.py owns asyncio admission/backpressure; this module preserves native platform security and blocking-pipe primitives
   Performance: all helpers are cheap local ops | authkey is a 64-byte file read | bounded_io adds one short-lived thread per bounded pipe operation (handshake/read/reply — never touches Playwright)
   Errors: acquire_singleton_lock returns None when the lock is held (caller exits 0) | pid_alive treats EPERM/access-denied as ALIVE (the pid exists — same lesson as browser.py's _pid_alive) | load_or_create_authkey converges on ONE key under the O_EXCL create race, atomically replaces a file that stays invalid past the writers' microsecond window, and RAISES if no valid key can be produced — it never falls back to a fixed key, which would silently disable authentication | bounded_io raises TimeoutError on deadline (after closing the connection so the helper unblocks) and re-raises the operation's own exception otherwise | accept_authenticated returns None on a bad key, a stalled handshake, or a vanished client (the daemon keeps serving); a closed listener still raises out of accept() so a dying daemon exits instead of spinning
 """
@@ -14,6 +14,7 @@ import getpass
 import hashlib
 import multiprocessing.connection as mpc
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -41,44 +42,103 @@ def _current_user() -> str:
         return "user"
 
 
-# The same directory however the process was started (#1475). The endpoint used
-# to come from $XDG_RUNTIME_DIR, else $TMPDIR — and cron, launchd and systemd
-# units without PAM have neither. A login shell and a scheduled job on the same
-# machine, as the same user, then looked for the daemon in two places; the job
-# started a second daemon, which died on the profile the first one held:
+# One address per user, however the process was started. The endpoint has
+# moved twice for the same reason: it was read from session variables, and
+# which variables a process has depends on how its user logged in.
 #
-#     ssh / tmux login   ->  /run/user/1000/co/browser.sock
-#     cron / launchd     ->  /tmp/co-onion/browser.sock
+#   before #1475:  $XDG_RUNTIME_DIR/co, else $TMPDIR/co-<user>
+#                  (cron has neither, so it started a second daemon)
+#   #1475:         $XDG_RUNTIME_DIR/co, else /run/user/<uid>/co, else the
+#                  per-user temp dir
+#                  (an `ssh` login without pam_systemd has no /run/user/<uid>,
+#                  a desktop session does — two daemons again, one profile)
 #
-# Each answer below is what a login session's variable already says, so an
-# interactive daemon keeps its address and the scheduled job now finds it.
+# Now no variable is consulted. Linux uses the literal /tmp (not $TMPDIR) and
+# macOS the per-user temp dir the OS reports (what $TMPDIR is *meant* to hold,
+# but a profile can set TMPDIR to anything). The directory is scoped by user
+# name and chmod 0700, which fails loudly if someone else created it first.
+#
+# Daemons started by an older client still sit at the old addresses, and a
+# client that cannot see them spawns a rival over the same profile and leaves
+# the old one unreachable by `close`. running_address() follows them there.
 _CS_DARWIN_USER_TEMP_DIR = 65537  # <unistd.h>; Python's confstr has no name for it
+_IS_DARWIN = sys.platform == "darwin"
+_STABLE_TEMP_ROOT = Path("/tmp")
 
 
-def _user_runtime_dir() -> Path | None:
-    """Linux's per-user runtime dir, with or without $XDG_RUNTIME_DIR.
-
-    A login session's variable points at /run/user/<uid>; a cron job has no
-    variable but the same directory is there, so fall back to it.
-    """
-    runtime = os.environ.get("XDG_RUNTIME_DIR")
-    if runtime:
-        return Path(runtime)
-    run_user = _RUN_USER_ROOT / str(os.getuid())
-    if run_user.is_dir() and run_user.stat().st_uid == os.getuid():
-        return run_user
-    return None
+def _darwin_user_temp_dir() -> Path:
+    return Path(os.confstr(_CS_DARWIN_USER_TEMP_DIR))
 
 
 def _user_temp_dir() -> Path:
-    """macOS's per-user temp dir: what $TMPDIR holds in a login session.
+    """The per-user parent of the endpoint dir. Reads no environment variable."""
+    return _darwin_user_temp_dir() if _IS_DARWIN else _STABLE_TEMP_ROOT
 
-    launchd sets TMPDIR from this for a GUI session; cron and bare launchd jobs
-    get no TMPDIR, and tempfile fell back to the shared /tmp.
+
+def _endpoint_dir() -> Path:
+    return _user_temp_dir() / f"co-{_current_user()}"
+
+
+def _legacy_endpoint_dirs() -> list[Path]:
+    """Where older clients put the ordinary daemon, most recent layout first."""
+    dirs = []
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime:
+        dirs.append(Path(runtime) / "co")
+    if not _IS_DARWIN:
+        dirs.append(_RUN_USER_ROOT / str(os.getuid()) / "co")
+    tmpdir = os.environ.get("TMPDIR")
+    if tmpdir:
+        dirs.append(Path(tmpdir) / f"co-{_current_user()}")
+    dirs.append(Path(tempfile.gettempdir()) / f"co-{_current_user()}")
+    stable = _endpoint_dir()
+    seen, out = set(), []
+    for d in dirs:
+        if d != stable and d not in seen:
+            seen.add(d)
+            out.append(d)
+    return out
+
+
+def _is_private_dir(path: Path) -> bool:
+    """Ours and closed to everyone else: the only kind of dir we trust a socket in.
+
+    An old address is followed without having created it, so it must pass the
+    check the 0700 chmod enforces for the current one — otherwise another local
+    user could plant a socket where an old client used to look.
     """
-    if sys.platform == "darwin":
-        return Path(os.confstr(_CS_DARWIN_USER_TEMP_DIR))
-    return Path(tempfile.gettempdir())
+    try:
+        st = path.lstat()
+    except OSError:
+        return False
+    return (stat.S_ISDIR(st.st_mode) and st.st_uid == os.getuid()
+            and st.st_mode & 0o077 == 0)
+
+
+def _owner_running(address: str) -> bool:
+    try:
+        raw = Path(pid_path(address)).read_text(encoding="utf-8").strip()
+    except OSError:
+        return False
+    return raw.isdigit() and pid_alive(int(raw))
+
+
+def running_address() -> str:
+    """The address a client should use: the stable one, or an old one in use.
+
+    The stable address wins whenever its daemon is running or no older daemon
+    is. A daemon started by an older client at an old address is used — and so
+    can be closed — until it exits; the next one starts at the stable address.
+    """
+    stable = default_address()
+    if IS_WINDOWS or os.environ.get("CO_BROWSER_SOCK") or _owner_running(stable):
+        return stable
+    for d in _legacy_endpoint_dirs():
+        candidate = str(d / "browser.sock")
+        if (_is_private_dir(d) and os.path.exists(candidate)
+                and _owner_running(candidate)):
+            return candidate
+    return stable
 
 
 def _sidecar_dir() -> Path:
@@ -93,18 +153,13 @@ def _sidecar_dir() -> Path:
         base = Path(os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()) / "co"
         base.mkdir(parents=True, exist_ok=True)
     else:
-        runtime = _user_runtime_dir()
-        if runtime:
-            # Already per-user; the kernel gives each session its own.
-            base = runtime / "co"
-        else:
-            # The shared temp dir is not. Combined with the 0700 below, whoever
-            # created it first owns it and every other user on the box gets
-            # `PermissionError: [Errno 1] Operation not permitted: '/tmp/co'` —
-            # which is what a deployed agent hit after it stopped running as
-            # root and found root's directory in its way. Scoped by username,
-            # for the same reason the Windows pipe name is.
-            base = _user_temp_dir() / f"co-{_current_user()}"
+        # /tmp is shared. Combined with the 0700 below, an unscoped dir was
+        # owned by whoever created it first and every other user on the box got
+        # `PermissionError: [Errno 1] Operation not permitted: '/tmp/co'` —
+        # which is what a deployed agent hit after it stopped running as root
+        # and found root's directory in its way. Scoped by username, for the
+        # same reason the Windows pipe name is.
+        base = _endpoint_dir()
         base.mkdir(parents=True, exist_ok=True)
         # This dir is the POSIX trust boundary (any local user who can reach the
         # socket can drive the browser) — a failed chmod must be loud, not skipped.
@@ -115,8 +170,10 @@ def _sidecar_dir() -> Path:
 def default_address() -> str:
     """The daemon endpoint. $CO_BROWSER_SOCK overrides on both platforms.
 
-    POSIX: a Unix-socket path under the per-user runtime dir (see _user_runtime_dir),
-    else the per-user temp dir — the same for a login shell and a cron job (#1475).
+    POSIX: <per-user temp dir>/co-<user>/browser.sock — /tmp on Linux, the OS's
+    per-user temp dir on macOS — read from no session variable, so a desktop
+    login, ssh, su and cron agree. Clients use running_address(), which also
+    finds a daemon an older client started elsewhere.
     Windows: a per-user named pipe (the pipe namespace is machine-global, so it is
     scoped by username to avoid cross-user collisions).
     """
