@@ -723,3 +723,45 @@ def test_a_finished_extraction_is_reused_when_only_the_maintainer_failed(tmp_pat
     assert retry["outcome"] == "completed" and extractions == [40]
     assert retry["runner_attempts"] == 1 and "fact 3" in maintained[0]["text"]
     assert run_sync(root, runner=fail, extractor=extractor)["outcome"] == "no_change"
+
+
+@pytest.mark.parametrize("change", [
+    ["runner", "claude-code"],
+    ["model", "gpt-other"],
+    ["schedule.times", "03:00"],
+])
+def test_start_asks_again_when_what_the_summary_shows_has_changed(tmp_path, monkeypatch, change):
+    """A re-tester approved Codex, stopped, switched the runner to Claude Code
+    and answered `n` to start: it printed Started: Yes and reinstalled the job
+    without showing the summary. Consent covers what was shown; if any of it
+    changed -- runner, model, permissions, schedule, sources -- ask again."""
+    from connectonion.wiki.service import start, stop
+    root, sessions = tmp_path / "wiki", tmp_path / "sessions"
+    monkeypatch.setattr("connectonion.wiki.service.codex_sessions_root", lambda: sessions)
+    monkeypatch.setattr("connectonion.wiki.service.now", lambda: datetime(2026, 9, 7, 12, tzinfo=timezone.utc))
+    rollout(sessions / "rollout-a.jsonl", [("user", "hello")])
+    calls, scheduler = [], FakeScheduler()
+    start(root, confirm=lambda s: True, scheduler=scheduler, runner=_runner_recording(calls))
+    stop(root, scheduler=scheduler)
+    set_config(root, change)
+    shown = []
+    declined = start(root, confirm=lambda s: shown.append(s) or False,
+                     scheduler=scheduler, runner=_runner_recording(calls))
+    assert declined["started"] is False and len(shown) == 1
+    assert scheduler.installed == [root.resolve()]  # only the first start installed
+    # Once agreed, the same summary is not asked about again.
+    start(root, confirm=lambda s: True, scheduler=scheduler, runner=_runner_recording(calls))
+    again = start(root, confirm=lambda s: pytest.fail("asked about an unchanged summary"),
+                  scheduler=scheduler, runner=_runner_recording(calls))
+    assert again["started"] is True
+
+
+@pytest.mark.parametrize("runner, login", [("codex", "Codex"), ("claude-code", "Claude Code")])
+def test_the_consent_summary_names_the_login_the_runner_actually_uses(tmp_path, runner, login):
+    from connectonion.wiki.service import consent_summary
+    prepare(tmp_path)
+    set_config(tmp_path, ["runner", runner])
+    receives = consent_summary(tmp_path)["model_receives"]
+    assert f"your own {login} login" in receives
+    other = "Claude Code" if login == "Codex" else "Codex"
+    assert other not in receives

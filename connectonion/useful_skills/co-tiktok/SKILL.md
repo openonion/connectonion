@@ -33,8 +33,9 @@ with exit 1 and `code: submit_unavailable`. As of 2026-09-05 the real Studio URL
 redirected to login. The upload form, account identity, caption editor, privacy
 choices, upload-complete state and final publish control have not been observed,
 so no submission adapter is shipped. Local plan acceptance is not publication
-approval. The post preview points to `co browser tab ls` so the agent can find
-its owned tab without guessing a name.
+approval. The post preview points to `co tiktok inspect --help`, the read-only
+readiness check; an invalid file, caption or handle points back to
+`co tiktok post --help`.
 
 ## Browser evidence workflow
 
@@ -90,8 +91,8 @@ whole still returns `ok: false, reason: login_required`. Any other page is
 
 | Exit | Meaning | Next command |
 |---|---|---|
-| 0 | Local preview | `co browser tab ls` |
-| 1 | Invalid file, caption or handle; changed confirmation; unsupported submit | Printed recovery, usually `co browser tab ls` |
+| 0 | Local preview | `co tiktok inspect --help` |
+| 1 | Invalid file, caption or handle; changed confirmation; unsupported submit | Printed recovery, usually `co tiktok post --help` |
 | 1 | Browser ownership/evidence failure | `co browser tab ls` |
 | 1 | TikTok login or unknown upload surface | Printed `co browser -t <owned-tab> get_current_url`; the user logs in, then inspect again |
 | 2 | Missing argument, invalid option, unknown command | `co tiktok --help` |

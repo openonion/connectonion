@@ -14,6 +14,9 @@ def handle_tiktok_post(path: str, caption: str, account: str, dry_run: bool = Fa
         if confirm is not None:
             confirm_plan(plan, confirm)
             raise CreatorError("submit_unavailable", "TikTok submission is not implemented: the logged-in upload form and final publish gate still need validation. No file was uploaded.")
-        command = "co browser tab ls"
-        return {"mode": "preview", "plan": plan, "note": "Local plan only; no TikTok draft, upload, or post was created."}, command, f"Find your task's TikTok tab: {command}"
-    run("tiktok", action, json_output, recovery="co browser tab ls")
+        # A plan touches no browser, and neither does a bad caption or handle:
+        # pointing both at `co browser tab ls` sent people to a tab board that
+        # had nothing to do with what they had just done.
+        command = "co tiktok inspect --help"
+        return {"mode": "preview", "plan": plan, "note": "Local plan only; no TikTok draft, upload, or post was created."}, command, f"Check a TikTok tab is ready (nothing is uploaded): {command}"
+    run("tiktok", action, json_output, recovery="co tiktok post --help")
