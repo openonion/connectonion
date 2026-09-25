@@ -25,6 +25,18 @@ user's call; not being able to see the size is what stops them making it.
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _standing_in_an_empty_project(tmp_path, monkeypatch):
+    """The note also reads the project's .co/evals, found by walking up from the
+    cwd. Left alone that is the repo's, which other xdist workers' agents are
+    writing and trimming during a full run (#1653) — so these tests read a
+    directory they did not make, whose size and contents change under them.
+    Standing in a project of our own makes the note see only what the test wrote."""
+    project = tmp_path / "project"
+    (project / ".co").mkdir(parents=True)
+    monkeypatch.chdir(project)
+
+
 @pytest.fixture
 def co_dir(tmp_path, monkeypatch):
     """A ~/.co with evals of a known size."""
@@ -109,3 +121,63 @@ class TestItIsNotAProblem:
 
         assert "problem" not in note.lower()
         assert "✗" not in note
+
+
+class TestAnAgentTrimmingItsEvalsMeanwhile:
+    """#1653. The logger trims old runs after every write, so a running agent
+    deletes files and run directories under .co/evals while doctor walks it.
+    The full suite does exactly that: other workers' agents write and trim the
+    repo's .co/evals, which this note also reads. An entry listed and then gone
+    by the time it is opened must be skipped, not crash `co doctor`."""
+
+    def _vanish_after_listing(self, monkeypatch, victim):
+        import os
+
+        real = os.scandir
+
+        def remove(path):
+            # Not shutil.rmtree: it walks with os.scandir, which is patched here.
+            if path.is_dir():
+                for name in os.listdir(path):
+                    os.unlink(path / name)
+                path.rmdir()
+            else:
+                path.unlink()
+
+        class Listing:
+            def __init__(self, path):
+                self._it = real(path)
+                self._entries = list(self._it)
+
+            def __enter__(self):
+                return self
+
+            def __iter__(self):
+                # Listed; now the agent trims it, before anyone opens or stats it.
+                if victim.exists():
+                    remove(victim)
+                return iter(self._entries)
+
+            def __exit__(self, *exc):
+                self._it.close()
+
+        monkeypatch.setattr("connectonion.cli.commands.doctor_commands.os.scandir", Listing)
+
+    def test_a_run_directory_removed_mid_walk_is_skipped(self, co_dir, monkeypatch):
+        from connectonion.cli.commands.doctor_commands import disk_usage_note
+
+        _make_evals(co_dir, count=40, kilobytes_each=1024)
+        runs = co_dir / "evals" / "eval_0"
+        runs.mkdir()
+        (runs / "run_1.yaml").write_text("old run")
+        self._vanish_after_listing(monkeypatch, runs)
+
+        assert "40" in disk_usage_note()
+
+    def test_a_file_removed_mid_walk_is_skipped(self, co_dir, monkeypatch):
+        from connectonion.cli.commands.doctor_commands import disk_usage_note
+
+        _make_evals(co_dir, count=41, kilobytes_each=1024)
+        self._vanish_after_listing(monkeypatch, co_dir / "evals" / "eval_40.yaml")
+
+        assert disk_usage_note()

@@ -202,16 +202,30 @@ def _evals_note(label: str, evals: Path) -> "str | None":
     # this does not stat() every file. 0.05s against 0.145s on the 227 MB that
     # prompted this — and the cost grows with the directory, which is exactly the
     # case this note exists for.
+    #
+    # The directory is live: the logger trims old runs after every write, so an
+    # agent running beside `co doctor` removes files and run directories between
+    # our listing them and opening them (#1653 — the test suite's parallel
+    # workers do exactly this to the repo's .co/evals). Something already gone
+    # takes no space; skip it rather than fail the whole diagnostic.
     total = 0
     count = 0
     stack = [str(evals)]
     while stack:
-        with os.scandir(stack.pop()) as entries:
+        try:
+            entries = os.scandir(stack.pop())
+        except FileNotFoundError:
+            continue
+        with entries:
             for entry in entries:
                 if entry.is_dir(follow_symlinks=False):
                     stack.append(entry.path)
                 elif entry.is_file(follow_symlinks=False):
-                    total += entry.stat().st_size
+                    try:
+                        size = entry.stat().st_size
+                    except FileNotFoundError:
+                        continue
+                    total += size
                     if entry.name.endswith(".yaml") and Path(entry.path).parent == evals:
                         count += 1
 
