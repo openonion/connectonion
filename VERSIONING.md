@@ -375,15 +375,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b2
+## Current Version: 1.8.9b3
 
-1.8.9b2 is the second preview of the 1.8.9 fix line (#1722). Every `co`
-command outside `co wiki` now has help an agent can act on (#1721): an
-example, what the command changes, and the way back to its parent, enforced
-for every page by `tests/unit/test_cli_help_contract.py` (#1657). A
-fresh-agent test finds 13 of 13 single-step goals from help alone. Stable is
-1.8.8.
+1.8.9b3 is the third preview of the 1.8.9 fix line (#1722). `co ai` can
+search the web and read a page (#1724): `web_search` and `web_fetch` are
+default tools and `co search` / `co fetch` commands. Managed search is Gemini
+grounded in Google Search, $0.02 of credits per Google query, verified against
+production; out of credits it falls back to free DuckDuckGo and says so.
+Stable is 1.8.8.
 
+- 1.8.9b3 (web_search / web_fetch in co ai and as co search / co fetch; managed Gemini-grounded search on credits with a DuckDuckGo fallback; SSRF-guarded Markdown fetch; skills plugin lists skills to a plain Agent #1736; durable write #1740; key ownership errors #1739; Outlook Teams guard #1738; deploy upload exclusions #1737.)
 - 1.8.9b2 (help contract for 264 commands: examples, what each changes, a generated Back line; CI gate with no exceptions; discovery fixes for co status, co trust, co env set, co skills and co sub; co auth feishu/lark says it creates a Feishu application; co keys --write names ~/.co/ssh/; opt-in fresh-agent discovery test.)
 
 Earlier in this line:

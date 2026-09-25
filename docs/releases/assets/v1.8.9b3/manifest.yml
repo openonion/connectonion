@@ -1,0 +1,9 @@
+version: v1.8.9b3
+images:
+  - file: co-search-managed.png
+    alt: "Terminal output of co search \"latest stable rust version\" --engine co -n 3: an answer, three sources with real URLs, and the next step"
+    caption: "The managed engine against production: Gemini's answer grounded in Google Search, then the pages it cites, redirect links resolved to real URLs, each source on one short line, and Next: co fetch the first source."
+    scenario: "python scripts/capture_189b3_release_cli.py: a live co search --engine co under the maintainer's login, unedited"
+    viewport: "terminal, 96 columns"
+    commit: e70814bd
+    source_run: "scripts/capture_189b3_release_cli.py"
