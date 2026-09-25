@@ -2311,7 +2311,9 @@ def outlook_search(
 
 # Subscription command group. `co sub` (no args) syncs every subscription.
 # `co sub sync <addr>` syncs one. `list` and `remove` are the secondary verbs.
-sub_app = _typer_app(help="Subscribe to published agents — sync skills from the relay into your coding agents")
+sub_app = _typer_app(
+    help="Follow public skills: co sub sync <0xaddress> once; co sub refreshes all saved publishers"
+)
 app.add_typer(sub_app, name="sub")
 
 
@@ -2320,7 +2322,7 @@ def sub_callback(
     ctx: typer.Context,
     relay: Optional[str] = typer.Option(None, "--relay", help="Relay URL (default: configured backend)"),
 ):
-    """With no subcommand, sync every subscription in ~/.co/subscriptions.txt."""
+    """Refresh every saved subscription; stop and report the first failure."""
     if ctx.invoked_subcommand is None:
         from .commands.sub_commands import handle_sub_sync_all
         handle_sub_sync_all(relay=relay)
@@ -2331,7 +2333,11 @@ def sub_sync(
     target: str = typer.Argument(..., help="0x address (or locally-pinned alias) to sync"),
     relay: Optional[str] = typer.Option(None, "--relay", help="Relay URL (default: configured backend)"),
 ):
-    """Sync one publisher: fetch profile, mirror skills, fan out to coding agents.
+    """Follow or refresh one publisher's public skills.
+
+    First follow needs the full 0x address from the publisher. A local alias
+    works only after that address is saved; see `co sub list` for saved aliases.
+    Public subscriptions need no local signing key or publisher acceptance.
 
     The publisher's Ed25519 profile-v2 signature and monotonic revision are
     verified before anything is written. Unsigned, profile-v1, rolled-back, or
@@ -2339,7 +2345,8 @@ def sub_sync(
     fanned out to ~/.claude, ~/.codex, ~/.openclaw, ~/.cursor and ~/.kiro.
 
     A subscribed skill's `tools:` grant is removed on sync, so it cannot
-    pre-authorise anything (#654). Its instructions are kept.
+    pre-authorise anything (#654). Its instructions are kept. Read mirrored
+    and installed counts: zero installed skills means no agent restart is needed.
     """
     from .commands.sub_commands import handle_sub_sync_one
     handle_sub_sync_one(target, relay=relay)
@@ -2347,14 +2354,18 @@ def sub_sync(
 
 @sub_app.command("list")
 def sub_list():
-    """List subscriptions (local only — no relay calls)."""
+    """List locally pinned addresses and aliases; no relay calls.
+
+    The Skills column counts profile entries, including withheld bodies. Use
+    the last sync's installed count to see what reached coding agents.
+    """
     from .commands.sub_commands import handle_sub_list
     handle_sub_list()
 
 
 @sub_app.command("remove")
 def sub_remove(target: str = typer.Argument(..., help="Alias or 0x address to unsubscribe from")):
-    """Unsubscribe: drop record, uninstall fanout, remove mirrored bundle."""
+    """Unsubscribe locally; keep the signed revision history for future safety."""
     from .commands.sub_commands import handle_sub_remove
     handle_sub_remove(target)
 
