@@ -29,20 +29,23 @@ execution and recovery. Record actual test results, not just design principles.
 
 ## What CI enforces on every `co` command
 
-`tests/unit/test_cli_help_contract.py` (#1657) checks every registered command
-outside `co wiki` (which is held to its own verbatim pages by
-`tests/e2e/cli/test_wiki_help_contract.py`). There is no baseline and no
-waiver: a new command fails CI until its page passes. Offline, under an empty
-HOME and cwd, `co <cmd> --help` must:
+`tests/unit/test_cli_help_contract.py` (#1657) runs `co audit`'s engine, which
+never reads the source: it runs `co --help`, opens every command a page lists,
+and judges each page from what it printed, the way an agent meets it. `co wiki`
+is walked but held to its own verbatim pages by
+`tests/e2e/cli/test_wiki_help_contract.py`. There is no baseline and no
+waiver: a new command fails CI until its page passes. Printed by a real `co` in
+an empty HOME and cwd, `co <cmd> --help` must:
 
 | check | how to pass it |
 |---|---|
 | exit 0 and write nothing | help never loads credentials, opens a network connection or creates a file |
-| `Usage:` | Typer prints it; a hand-written page (`co proxy`) must be listed in the test |
+| `Usage:` | Typer prints it; a hand-written page (`co proxy`) opens with its own name instead |
 | `Example:` line | `@app.command("send", epilog="Example:  co gmail send you@example.com \"Hi\" \"Note\"")`. Separate several with `  \|  `. Every flag in it must exist on that command; placeholders are `<#>`, `<message-id>`, `0xabc...`, `you@example.com`, never a real address or id |
 | says what it changes | one of these exact words, which the gate finds anywhere on the page; put it in the docstring's first line, the one an agent reads: `Read-only`, `Writes`, `Sends`, `Deletes`, `Removes`, `Creates`, `Changes`, `Charges`, `Deploys`, `Installs`, `Uploads`, `Publishes`, `Starts`, `Stops`, `Runs` |
 | a way back | **do not write it.** `name_the_way_back(app)` in `cli/typer_groups.py` appends `Back: <parent> --help` to every page from the command tree |
-| real references | every `co …` in an Example, Next or Back line must resolve through `connectonion.cli.discovery.check` |
+| real references | every `co …` in an Example, Next or Back line must be a command some page lists, and every flag in an Example must appear on the page of the command it runs |
+| reachable | every command `co commands` lists must be listed on a page reachable from `co --help`; a label or subcommand that only the source knows does not count |
 
 Two other register tests apply to every leaf:
 `test_every_command_has_a_next_step.py` needs an entry in `command_tips.NEXT`
