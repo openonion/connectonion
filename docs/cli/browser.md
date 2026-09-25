@@ -174,7 +174,7 @@ as non-editable; closed shadow roots cannot be inspected. These cases fail safe:
 target the field by selector, or use the explicit override only after verifying
 the frame and intended page-level action.
 
-> **Use absolute paths for files.** The daemon resolves relative paths against *its own* working directory (where it was first started), not the directory you run each command from. `take_screenshot /tmp/shot.png` is predictable; a bare `shot.png` lands in the daemon's `.tmp/` folder.
+> **Use absolute paths for files the browser reads.** `upload_file_by_selector` and `run_page_script` resolve a relative path against the *daemon's* working directory (where it was first started), not the directory you run each command from. Screenshots are the exception: the image is streamed back and saved by your own command, so its path is relative to where you ran it.
 
 ## Screenshots
 
@@ -185,11 +185,11 @@ $ co browser take_screenshot /tmp/shot.png
 Screenshot saved to: /tmp/shot.png
 ```
 
-Omit the path and it auto-names the file under the daemon's `.tmp/` folder:
+A relative path is resolved against the directory you ran the command in. Omit the path and it is named for you under `.tmp/screenshots/` in that directory:
 
 ```bash
 $ co browser take_screenshot
-Screenshot saved to: /Users/you/project/.tmp/step_20260630_142927.png
+Screenshot saved to: /Users/you/project/.tmp/screenshots/screenshot-3f9a1c2b7d4e.png
 ```
 
 Add `--full-page` to capture the entire scrollable height instead of just the viewport.
@@ -198,7 +198,7 @@ Add `--full-page` to capture the entire scrollable height instead of just the vi
 
 ## Scripting
 
-Output is clean stdout, errors go to stderr, and the exit code is `0` on success / `1` when the action failed (a selector that matched nothing included) / `2` for a usage error (including a `go_to` address that is not a web URL) / `3` when there is nothing to act on (no browser open yet, or an unknown `-t` tab) / `4` when another agent holds the tab — so commands compose like any Unix tool:
+Output is clean stdout, errors go to stderr, and the exit code is `0` on success / `1` when the action failed (a selector that matched nothing, a missing script, a page index that does not exist, or a command that ran out of its 120-second deadline) / `2` for a usage error (wrong arguments for a function, or a `go_to` address that is not a web URL) / `3` when there is nothing to act on (no browser open yet, or an unknown `-t` tab) / `4` when another agent holds the tab / `5` when `do` has no account or credentials to run its model (`co auth`) / `6` when the running daemon is pinned to a different engine — so commands compose like any Unix tool:
 
 ```bash
 # Capture a value
@@ -233,7 +233,7 @@ co browser tab ls
 ```
 Tabs (2):
    [scrape] https://example.com/pricing  who=alice  purpose='scrape pricing'  open 3m
-      last: "get_text" · 12s ago
+      last: get_text · 12s ago
       owner expects to finish by 14:20 (7m left) — leave it alone until then
    [stale] https://...  who=bob  purpose='check stock'  open 2h
       owner expected to finish by 12:30 (1h ago) — free for another agent to close
@@ -267,7 +267,7 @@ co browser --headless go_to example.com    # no window
 co browser go_to example.com               # visible window (default)
 ```
 
-The mode is fixed when the daemon starts (the first command). To switch modes, `co browser close` first, then start again with the mode you want.
+The mode is fixed when the daemon starts (the first command that needs one — a read such as `get_current_url` with nothing running answers exit 3 without starting it). A `--headless` that reaches a daemon already showing a window prints a note on stderr instead of being ignored. To switch modes, `co browser close` first, then start again with the mode you want.
 
 ## Natural Language Agent
 
@@ -299,10 +299,16 @@ python -m patchright install chrome     # branded Chrome: best stealth, system i
 - One async browser runtime per machine, backed by a persistent profile at `~/.co/browser_profile/` — so logins survive restarts.
 - The daemon endpoint: a Unix socket at `/tmp/co-<user>/browser.sock` on Linux and `<per-user temp dir>/co-<user>/browser.sock` on macOS — the same however you logged in, since no session variable moves it — and a per-user named pipe on Windows (native, 1.2.1+ — no WSL). Override with `$CO_BROWSER_SOCK`. A daemon an older version started at `$XDG_RUNTIME_DIR/co/`, `/run/user/<uid>/co/` or `$TMPDIR/co-<user>/` is still found until it is closed.
 - Client work is bounded: 1 MiB request cap, 120-second read/reply deadlines,
-  32 admitted connections (a command beyond them is told the daemon is busy at
-  connection capacity), and eight blocking transport workers on Windows. The
-  after-reply liveness check runs once the connection is closed and gives
-  Chrome 3 seconds; no answer is never read as a dead browser.
+  a 120-second deadline on the command itself (cancelled past it, which frees
+  its tab), 32 admitted connections (a command beyond them is told the daemon is
+  busy at connection capacity — except `status`, `close`, `tab ls` and
+  `tab close`, which have eight connections of their own), and eight blocking
+  transport workers on Windows. A client that disconnects takes its command
+  with it. The after-reply liveness check runs once the connection is closed
+  and gives Chrome 3 seconds; no answer is never read as a dead browser.
+- The client waits 30 seconds for `status`/`tab ls` and 150 seconds for other
+  commands; a daemon that says nothing in that time (stopped, wedged) is
+  reported as not answering, and `co browser close` stops it by force.
 - On Windows, `co browser close` returns only after the serving daemon exits, so
   an immediate next command can safely start a fresh daemon.
 - For an isolated automation run, set `$CO_BROWSER_PROFILE_DIR` to a dedicated absolute directory and `$CO_BROWSER_SOCK` to a dedicated socket. Keep the real `$HOME`; replacing it can break OS-backed browser behavior and credentials.
@@ -341,10 +347,19 @@ The first word didn't match any browser function. List them with `co browser hel
 **Wrong arguments**
 ```bash
 $ co browser go_to
-TypeError: BrowserAutomation.go_to() missing 1 required positional argument: 'url'
-usage: go_to(url)
+go_to: missing a required argument: 'url'
+usage: co browser go_to(url, purpose='', who='', hours=0.0)
 ```
-The function exists but the arguments don't fit. The `usage:` line shows the exact signature — pass the missing argument: `co browser go_to example.com`.
+The function exists but the arguments don't fit, so it exits `2` (usage) without running. The `usage:` line shows the exact signature — pass the missing argument: `co browser go_to example.com`. A value of the wrong type (`wait abc`) is the same kind of error.
+
+**Ran out of time**
+```bash
+$ co browser cookies --all
+cookies did not finish within 120s — it was waiting on Chrome's cookie store — on macOS it waits on a Keychain prompt until someone answers it (look behind other windows).
+It was cancelled; tab 'main' is free again.
+Next: retry once that answers, or start over (logins are kept): co browser close
+```
+Every command is answered within 120 seconds (longer only when its own `--timeout` asks for more). A driver timeout reads the same way — `go_to timed out: Timeout 30000ms exceeded.` — with a next step, not an exception name and a call log.
 
 **Authentication required** (only for `do`)
 ```bash

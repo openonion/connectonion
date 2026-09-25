@@ -489,7 +489,7 @@ def handle_proxy(args) -> int:
         ttl = int(args[index + 1])
         del args[index : index + 2]
 
-    if not args:
+    if not args or args[0] in ("--help", "-h", "help"):
         print(USAGE)
         return 0
 
@@ -513,6 +513,13 @@ def handle_proxy(args) -> int:
     target = rest[0] if rest else configured_address()
     if not target:
         print(NOT_CONFIGURED, file=sys.stderr)
+        return 2
+    if verb == "stop" and rest and not AGENT_ADDRESS.match(target):
+        # Looked up as-is, any word answered "You are not sharing your
+        # connection with notanaddress" — true, and no help at all.
+        print(f"{target!r} is not an agent address — one looks like 0x followed by "
+              "64 hex characters.", file=sys.stderr)
+        print("See your shares with: co proxy status", file=sys.stderr)
         return 2
     if verb == "share":
         return _share(target, as_json, ttl)

@@ -297,12 +297,13 @@ def test_dispatch_unknown_command(tmp_path):
 
 
 def test_dispatch_wrong_args_shows_signature(tmp_path):
-    """A TypeError from wrong args must include the function's usage so an agent can fix it."""
+    """Wrong args are a usage error (exit 2) that shows the function's signature."""
     daemon = make_daemon(str(tmp_path / "s.sock"))
     ok, payload = daemon.dispatch("go_to")  # missing required `url`
-    assert ok is False
-    assert "TypeError" in payload
-    assert "usage: go_to(url" in payload
+    assert ok == 2
+    assert "TypeError" not in payload
+    assert "missing a required argument: 'url'" in payload
+    assert "usage: co browser go_to(url" in payload
 
 
 def test_dispatch_empty(tmp_path):
@@ -645,7 +646,7 @@ def test_close_stops_a_fresh_async_daemon_without_launching_chrome(short_sock, m
 
     assert code == 0
     # Nothing was ever opened, so there is no session to have saved.
-    assert payload.startswith("No browser was open")
+    assert payload.startswith("No browser is open")
     server.join(timeout=2)
     assert not server.is_alive()
 
@@ -739,7 +740,9 @@ def test_navigation_timeout_keeps_daemon_available_for_recovery(short_sock, monk
     _wait_until_listening(sock_path)
 
     assert c.send("go_to http://127.0.0.1:3100", headless=True) == 1
-    assert "TimeoutError: Page.goto" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "go_to timed out: Timeout 30000ms exceeded." in err
+    assert "TimeoutError" not in err and "Page.goto" not in err
     assert browser.liveness_calls == 0
 
     assert c.send("keyboard_press Escape", headless=True) == 0

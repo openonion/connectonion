@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: one asyncio-owned AsyncBrowserCore and persistent context | private mode starts its gateway, canonical credential file, and fixed paid launch policy before IPC bind; gateway loss rejects before browser mutation; shutdown closes browser, removes credentials, then stops gateway | independent tab tasks interleave behind per-tab locks | bounded POSIX/Windows transports and lifetime ownership sidecars preserve admission and cleanup
   Integration: launched detached via `python -m connectonion.cli.browser_agent.daemon <address> [--headless] [--engine=MODE] [--profile-dir=PATH] [--authkey-file=PATH] [--remote-egress]`; dispatch() remains the non-loop compatibility seam
   Performance: page operations on separate tabs overlap; same-tab work queues; browser/model/image blocking work never owns the event-loop thread; first browser launch remains 1-3s
-  Errors: malformed/oversized/stalled clients are bounded at their own connection boundary; cancellation clears only its request lease; vanished readers are logged and cannot stop the daemon; launch failure or closed shared runtime releases the endpoint
+  Errors: malformed/oversized/stalled clients are bounded at their own connection boundary; every command is cancelled past OPERATION_TIMEOUT (or its own longer --timeout) and when its POSIX client disconnects; status/close/tab ls/tab close keep RESERVED_SLOTS past capacity; cancellation clears only its request lease; vanished readers are logged and cannot stop the daemon; launch failure or closed shared runtime releases the endpoint
 """
 
 import argparse
@@ -132,9 +132,21 @@ _ACTION_FAILED = (
     "Could not find element matching:",
     "Could not find target near anchor",
     "File not found:",
+    "Path is not a file:",
     "Script not found:",
+    "No file input found for selector:",
+    "No upload trigger found for selector:",
+    # switch_page: an index the browser does not have is a failed switch, and
+    # exiting 0 on it let the next command drive the page you were already on.
+    "no page ",
+    "page index must be a number",
 )
-_INDEX_OUT_OF_RANGE = re.compile(r"^Selector matched \d+ elements.*; index -?\d+ is out of range$")
+_INDEX_OUT_OF_RANGE = re.compile(r"^Selector matched \d+ .*; index -?\d+ is out of range$")
+_PAGE_DRIVEN_ELSEWHERE = re.compile(r"^page \d+ is being driven by ")
+# run_page_script returns the page's value as JSON, so its answer always starts
+# with a JSON token. These sentences come from reading the script file before
+# anything reaches the page, and so can only mean the script never ran.
+_SCRIPT_NOT_RUN = ("Script not found:", "Script path is not a file:", "Invalid args_json:")
 # These return what is on the page. A page may say anything, including one of
 # the sentences above, so for them only "no browser at all" is a failure.
 _PAGE_CONTENT_VERBS = frozenset({
@@ -155,11 +167,57 @@ def _result_code(verb: str, payload, tab) -> tuple:
     flag = "" if tab is None else f" -t {shlex.quote(str(tab))}"
     if payload == "Browser not open":
         return 3, f"the browser is not open. Next: co browser{flag} go_to <url>"
+    if verb in ("run_page_script", "run_frame_script") and payload.startswith(_SCRIPT_NOT_RUN):
+        return False, payload
     if verb in _PAGE_CONTENT_VERBS:
         return True, payload
-    if payload.startswith(_ACTION_FAILED) or _INDEX_OUT_OF_RANGE.match(payload):
+    if (
+        payload.startswith(_ACTION_FAILED)
+        or _INDEX_OUT_OF_RANGE.match(payload)
+        or _PAGE_DRIVEN_ELSEWHERE.match(payload)
+    ):
         return False, payload
     return True, payload
+
+
+# The API prefix a driver error starts with ("Page.goto: ", "Locator.click: ").
+# It names the driver's internals, not anything the caller typed.
+_DRIVER_API_PREFIX = re.compile(r"^[A-Z]\w*\.\w+: ")
+
+
+def _driver_error_text(verb: str, exc: BaseException, tab) -> str | None:
+    """A driver exception as a sentence with a next step, or None to leave it alone.
+
+    Patchright raises `TimeoutError: Page.goto: Timeout 30000ms exceeded.
+    Call log: ...` and `Error: Page.evaluate: SyntaxError: ...`. The class
+    name, the API prefix and the call log all describe the driver; what the
+    caller needs is which command failed and what to run next.
+    """
+    name = type(exc).__name__
+    module = type(exc).__module__ or ""
+    from_driver = module.startswith(("patchright", "playwright", "onionwright"))
+    if name != "TimeoutError" and not (from_driver and name == "Error"):
+        return None
+    text = str(exc).split("Call log:", 1)[0].strip()
+    text = _DRIVER_API_PREFIX.sub("", text.splitlines()[0] if text else "")
+    flag = "" if tab is None else f" -t {shlex.quote(str(tab))}"
+    if name == "TimeoutError":
+        return (f"{verb} timed out: {text or 'no answer'}\n"
+                f"Next: retry; co browser{flag} get_current_url shows where the tab is")
+    if verb in ("run_page_script", "run_frame_script"):
+        next_step = "fix the script, then run it again"
+    else:
+        next_step = f"co browser{flag} get_current_url shows where the tab is; then retry"
+    return f"{verb} failed in the page: {text}\nNext: {next_step}"
+
+
+# What a command was waiting on when it ran out of time, where that is worth
+# saying. The cookie verbs read Chrome's cookie store, which on macOS waits on
+# a Keychain prompt for as long as nobody answers it — a stall no one can guess
+# from "timed out".
+_KEYCHAIN = ("Chrome's cookie store — on macOS it waits on a Keychain prompt "
+             "until someone answers it (look behind other windows)")
+_WAITS_ON = {"cookies": _KEYCHAIN, "save_state": _KEYCHAIN, "go_to": "the page to load"}
 
 
 def _is_verb(browser, name: str) -> bool:
@@ -200,8 +258,24 @@ GUARD_WINDOW = 120  # seconds a tab's last claim keeps excluding other callers
 
 REQUEST_TIMEOUT = 120.0
 REPLY_TIMEOUT = 120.0
+# The same 120 seconds for the command itself, from admission to answer. The
+# docs promised it and nothing enforced it: on a Mac whose cookie store waited
+# on the Keychain, `cookies --all` and `save_state` waited forever, held their
+# tab's lock forever, and every later command on that tab queued behind them.
+# A command whose own --timeout is longer gets that plus OPERATION_MARGIN.
+OPERATION_TIMEOUT = 120.0
+OPERATION_MARGIN = 15.0
+# How long a cancelled command gets to unwind before its caller is answered
+# anyway. Cleanup can shield itself from cancellation; the answer cannot wait.
+CANCEL_GRACE = 5.0
+# How often a running command checks that its client is still connected.
+DISCONNECT_POLL = 0.25
 MAX_REQUEST_BYTES = 1024 * 1024
 MAX_IN_FLIGHT = 32
+# Connections kept back for the commands people run when everything else is
+# stuck. A full daemon answered `close` "busy" — the one command that fixes it.
+RESERVED_SLOTS = 8
+_ALWAYS_ANSWERED = (["status"], ["close"], ["tab", "ls"], ["tab", "list"], ["tab", "close"])
 # How long the daemon waits for Chrome to answer "are you still there?". The
 # answer is a round trip (see AsyncBrowserCore.is_alive), and on macOS the
 # cookie store it reads can sit behind a Keychain prompt for as long as nobody
@@ -424,6 +498,11 @@ class BrowserDaemon:
         # Neither may hold one of the MAX_IN_FLIGHT client slots.
         self._health_tasks = set()
         self._shed_tasks = set()
+        # status/close/tab ls/tab close served past capacity, at most RESERVED_SLOTS.
+        self._reserved_tasks = set()
+        # Every command running right now, so a bare `close` can cancel them
+        # instead of waiting behind one that will never finish.
+        self._operations = {}
         self._alive_probe = None  # the one liveness round trip in flight, shared
         self._transport_pool = None
         artifact_root = (
@@ -547,13 +626,133 @@ class BrowserDaemon:
         artifact_stager: ArtifactStager | None = None,
         request_id: str | None = None,
     ) -> tuple:
-        """Run one request without blocking unrelated tabs.
+        """Run one request without blocking unrelated tabs, within its deadline.
 
         Returns ``(ok, payload)``; ok is True, False, or an integer error code
         mirrored by the client (2 usage · 3 unknown tab or no browser open · 4 tab busy).
         Claim admission and active-request audit leases are atomic even though the
         browser operation itself may overlap work on independent tabs.
+
+        Every request is answered within its deadline (OPERATION_TIMEOUT, or a
+        longer --timeout of its own plus a margin). Past it the work is
+        cancelled — which releases its tab and its active-request entry — and
+        the caller hears what it was waiting on. Cancelling this coroutine (the
+        client hung up) cancels the work the same way.
         """
+        request_id = request_id or uuid.uuid4().hex
+        operations = self.__dict__.setdefault("_operations", {})  # tests may use __new__
+        work = asyncio.ensure_future(self._dispatch_unbounded(
+            raw, artifact_stager=artifact_stager, request_id=request_id,
+        ))
+        operations[request_id] = work
+        deadline = self._deadline_for(raw)
+        try:
+            done, _ = await asyncio.wait({work}, timeout=deadline)
+        except asyncio.CancelledError:
+            await self._abandon(work)
+            raise
+        finally:
+            if operations.get(request_id) is work and work.done():
+                operations.pop(request_id, None)
+        if work in done:
+            if work.cancelled():  # a bare `close` stopped it
+                return 1, ("cancelled: the browser was closed while this command ran. "
+                           "Next: run it again — the next command starts the browser")
+            return work.result()
+        # Read who else is on the tab before cancelling: the cancelled work's
+        # own entry leaves the board as it unwinds.
+        report = await self._deadline_report(raw, request_id, deadline)
+        await self._abandon(work)
+        operations.pop(request_id, None)
+        return report
+
+    async def _abandon(self, work: asyncio.Future) -> None:
+        """Cancel `work` and give it CANCEL_GRACE to unwind; never wait longer."""
+        work.cancel()
+        await asyncio.wait({work}, timeout=CANCEL_GRACE)
+        # Whatever it ends with, nobody is left to read it; say so to asyncio
+        # rather than have it log "exception was never retrieved".
+        work.add_done_callback(lambda task: task.cancelled() or task.exception())
+
+    def _deadline_for(self, raw: str) -> float:
+        """OPERATION_TIMEOUT, or a longer --timeout the command asked for plus a margin."""
+        try:
+            _, _, _, line, _, _ = self._parse_envelope(raw)
+            tokens = shlex.split(line)
+            method = getattr(self.browser, tokens[0], None) if tokens else None
+            if not callable(method):
+                return OPERATION_TIMEOUT
+            params = [p for p in inspect.signature(method).parameters.values() if p.name != "self"]
+            positional, kwargs = _split_tokens(tokens[1:], params)
+            bound = dict(zip((p.name for p in params), positional))
+            bound.update(kwargs)
+            if "timeout" in bound:
+                asked = float(bound["timeout"])
+            elif "timeout_ms" in bound:
+                asked = float(bound["timeout_ms"]) / 1000
+            else:
+                return OPERATION_TIMEOUT
+        except (ValueError, TypeError, IndexError):
+            return OPERATION_TIMEOUT  # the command itself will say what is wrong
+        return max(OPERATION_TIMEOUT, asked + OPERATION_MARGIN)
+
+    async def _deadline_report(self, raw: str, request_id: str, deadline: float) -> tuple:
+        """What to tell a caller whose command ran out of time."""
+        try:
+            _, _, tab, line, _, _ = self._parse_envelope(raw)
+            verb = (shlex.split(line) or [""])[0]
+        except (ValueError, TypeError):
+            tab, line, verb = None, raw, ""
+        label = _tab_label(_key(tab))
+        # Queued behind another command on the same tab: that one is what is
+        # stuck, and this one never ran. That is "tab busy", exit 4.
+        meta = getattr(self.browser, "_tab_meta", {}).get(_key(tab)) or {}
+        mine = (meta.get("active_requests") or {}).get(request_id)
+        ahead = [
+            request for rid, request in (meta.get("active_requests") or {}).items()
+            if rid != request_id and (mine is None or request["started_at"] <= mine["started_at"])
+        ]
+        if ahead:
+            first = min(ahead, key=lambda request: request["started_at"])
+            return 4, (
+                f"tab '{label}' is still running an earlier command — {first['line']} "
+                f"(by {first['caller'] or 'an anonymous caller'}, started "
+                f"{_ago(time.time() - first['started_at'])}) — so `{line}` waited "
+                f"{deadline:g}s and was cancelled without running.\n"
+                f"Next: co browser tab ls   (who is running what)   ·   "
+                f"or open your own tab: co browser tab open <name>   ·   "
+                f"or start over: co browser close"
+            )
+        what = _WAITS_ON.get(verb, "the browser, which did not answer")
+        return 1, (
+            f"{verb or 'the command'} did not finish within {deadline:g}s — it was "
+            f"waiting on {what}.\n"
+            f"It was cancelled; tab '{label}' is free again.\n"
+            f"Next: retry once that answers, or start over (logins are kept): "
+            f"co browser close"
+        )
+
+    async def _cancel_operations(self, keep: str | None) -> None:
+        """Cancel every running command except `keep`, before a whole-browser close.
+
+        Close waited for every running command to finish first, and a command
+        waiting on the Keychain never finishes — so `close` hung behind it.
+        """
+        operations = self.__dict__.setdefault("_operations", {})
+        running = [work for rid, work in operations.items() if rid != keep and not work.done()]
+        for work in running:
+            work.cancel()
+        if running:
+            await asyncio.wait(running, timeout=CANCEL_GRACE)
+
+    async def _dispatch_unbounded(
+        self,
+        raw: str,
+        *,
+        artifact_stager: ArtifactStager | None = None,
+        request_id: str | None = None,
+    ) -> tuple:
+        """The request itself; dispatch_async bounds it."""
         try:
             caller, _caller_account, tab, line, raw_result, requested_engine = self._parse_envelope(raw)
             tokens = shlex.split(line)
@@ -609,6 +808,7 @@ class BrowserDaemon:
         # `close` with no -t is a deliberate whole-browser shutdown (unguarded). `-t X close`
         # closes ONE tab and so must pass the same ownership guard as any destructive write.
         if verb == "close" and session is None:
+            await self._cancel_operations(keep=request_id)
             return await self._call_verb_async("close", tokens[1:])
 
         # A command that would execute nothing must not acquire anything: reject an
@@ -718,14 +918,32 @@ class BrowserDaemon:
         method = getattr(self.browser, verb)
         params = list(inspect.signature(method).parameters.values())
         positional, kwargs = _split_tokens(raw_args, params)
+        usage = f"usage: co browser {verb}{signature_str(method)}"
 
-        args = [_coerce(v, params[i].annotation if i < len(params) else str)
-                for i, v in enumerate(positional)]
-        kw = {}
         param_by_name = {p.name: p for p in params}
-        for k, v in kwargs.items():
-            ann = param_by_name[k].annotation if k in param_by_name else str
-            kw[k] = v if v is True else _coerce(v, ann)
+        kw = {}
+        try:
+            args = [_coerce(v, params[i].annotation if i < len(params) else str)
+                    for i, v in enumerate(positional)]
+            for k, v in kwargs.items():
+                ann = param_by_name[k].annotation if k in param_by_name else str
+                kw[k] = v if v is True else _coerce(v, ann)
+        except ValueError:
+            # `wait abc` answered "could not convert string to float: 'abc'",
+            # which names Python's conversion rather than the argument.
+            wanted = [
+                f"{p.name} is a number" for p in params
+                if p.annotation in (int, float)
+            ]
+            return 2, (f"{verb}: {' and '.join(wanted) or 'an argument has the wrong type'}"
+                       f" — got {' '.join(raw_args)!r}\n{usage}")
+        try:
+            # Checked before the call, so a wrong-argument call is a usage error
+            # (exit 2) that shows the signature, and a TypeError raised inside a
+            # function still reads as the bug it is.
+            inspect.signature(method).bind(*args, **kw)
+        except TypeError as exc:
+            return 2, f"{verb}: {exc}\n{usage}"
 
         staged_path = None
         if artifact_stager is not None and verb == "take_screenshot":
@@ -757,13 +975,19 @@ class BrowserDaemon:
             code = getattr(exc, "exit_code", None)
             if isinstance(code, int):
                 return code, str(exc)  # a refusal that names its own exit code (usage: 2)
+            key = getattr(self.browser, "_bound_session_key", lambda: None)()
+            friendly = _driver_error_text(verb, exc, None if key is None else key)
+            if friendly is not None:
+                return False, friendly
             # On wrong arguments, show the expected signature so an agent can self-correct.
             hint = f"\nusage: {verb}{signature_str(method)}" if isinstance(exc, TypeError) else ""
             if type(exc) is ValueError:
                 # Our own refusals are written as sentences with a Next step;
                 # "ValueError: " in front of one read as a crash. Other classes
-                # keep their names: TimeoutError and TargetClosedError are what
-                # the health check reads, and a real crash should look like one.
+                # keep their names: TargetClosedError is what the health check
+                # reads, and a real crash should look like one. (Timeouts and
+                # driver errors are rewritten above; _should_stop reads the
+                # "<verb> timed out" form.)
                 return False, f"{exc}{hint}"
             return False, f"{type(exc).__name__}: {exc}{hint}"
 
@@ -1039,13 +1263,16 @@ class BrowserDaemon:
     def _tab_busy(self, key, meta) -> str:
         """Error-as-documentation: another agent owns this tab right now — get your own."""
         who = meta.get("who") or meta.get("caller") or "someone"
-        last = (meta.get("last_line") or "")[:60]
         ago = _ago(time.time() - (meta.get("claim_at") or meta.get("last_at") or time.time()))
         left = _declared_hold(meta)
         window = (f" · declared for {_fmt_duration(left)} more" if left
                   else "")
+        # The line is already shell-quoted; wrapping it in quotes of our own
+        # made `"go_to 'data:…'"`, and a tab opened but not yet used showed `last: ""`.
+        last = _short_line(meta.get("last_line") or "")
+        doing = f"last: {last} · {ago}" if last else f"claimed {ago}, no command yet"
         return (
-            f"tab '{_tab_label(key)}' is in use by {who} — last: \"{last}\" · {ago}{window}\n\n"
+            f"tab '{_tab_label(key)}' is in use by {who} — {doing}{window}\n\n"
             f"You are a second agent on this browser. Two agents cannot share one tab.\n"
             f"Run your task in your own tab — three commands:\n"
             f"  1. co browser tab open <name> --who <your-name> --for \"<what you are doing>\"\n"
@@ -1106,8 +1333,20 @@ class BrowserDaemon:
             f"when finished:    co browser tab close {name}"
         )
 
+    async def _board_or_note(self) -> str:
+        """The tab board, or a note saying why it could not be read in time.
+
+        The board waits for tab locks, and a stuck command holds one; an error
+        message that waited on it inherited the stuck command's wait.
+        """
+        try:
+            return await asyncio.wait_for(self._browser_tab_status(), STATUS_STEP_TIMEOUT)
+        except asyncio.TimeoutError:
+            return ("Tabs: not read — a command that is still running holds its tab. "
+                    "co browser tab ls --json lists what is running")
+
     async def _unknown_tab_async(self, name: str) -> str:
-        board = await self._browser_tab_status()
+        board = await self._board_or_note()
         return (
             f"no tab named '{name}'\n\n"
             f"{board}\n\n"
@@ -1163,14 +1402,18 @@ class BrowserDaemon:
             if key not in self.browser._pages and meta is None:
                 if key is None:  # main always exists conceptually; nothing to release is fine
                     return True, "main is already free — nothing to close."
-                return 3, await self._unknown_tab_async(target)
+                # Not the unknown-tab text every other verb gets: "create it
+                # first: tab open Y" is the wrong advice to someone closing Y.
+                return 3, (f"no tab named '{target}' — nothing to close.\n\n"
+                           f"{await self._board_or_note()}")
             # Closing someone else's tab is fine once the time they asked for has
             # passed — every agent here is cooperative, and a declaration that
             # elapsed with the tab still open means its owner is gone, not busy.
             # Before that, refuse: 120s of silence is not evidence a task ended.
             if meta and _held_by_other(meta, caller):
                 return 4, self._tab_busy(key, meta)
-            self.last_command = {"line": "closetab " + target, "at": time.time()}
+            # What the person typed, not the legacy verb it is routed through.
+            self.last_command = {"line": "tab close " + shlex.quote(target), "at": time.time()}
             # close_tab releases the page, registration/claim, and remembered URL.
             result = self.browser.close_tab(_tab_label(key))
             message = await result if inspect.isawaitable(result) else result
@@ -1184,6 +1427,7 @@ class BrowserDaemon:
 
     async def serve_async(self):
         self._loop = asyncio.get_running_loop()
+        self._loop.set_exception_handler(_quiet_closed_targets)
         try:
             # Bind before preparing the runtime, not after. `_bind` takes the
             # singleton lock and a loser exits there; preparing first meant a
@@ -1303,7 +1547,18 @@ class BrowserDaemon:
                 header = await asyncio.wait_for(reader.readexactly(4), SHED_READ_TIMEOUT)
                 size = frame_size_from_header(prefix + header)
                 body = await asyncio.wait_for(reader.readexactly(size), SHED_READ_TIMEOUT)
-                request_id = decode_frame(prefix + header + body).request_id
+                envelope = decode_frame(prefix + header + body)
+                request_id = envelope.request_id
+                reserved = self.__dict__.setdefault("_reserved_tasks", set())
+                if self._always_answered(envelope) and len(reserved) < RESERVED_SLOTS:
+                    # `close` and `status` are how a person gets out of a full
+                    # daemon; answering them "busy" left no way out but kill.
+                    task = asyncio.current_task()
+                    self._shed_tasks.discard(task)
+                    reserved.add(task)
+                    task.add_done_callback(reserved.discard)
+                    await self._handle_posix_client(reader, writer, request=envelope)
+                    return
             else:
                 legacy = True
         except (asyncio.TimeoutError, asyncio.IncompleteReadError, ProtocolError, ValueError):
@@ -1381,11 +1636,13 @@ class BrowserDaemon:
                 )
             chunks.append(chunk)
 
-    async def _handle_posix_client(self, reader, writer) -> None:
-        request = ""
+    async def _handle_posix_client(self, reader, writer, request=None) -> None:
+        """Serve one connection; `request` is given when it was already read (reserved slot)."""
         answered = None  # (ok, payload) once a reply went out
         try:
-            request = await self._read_posix_request(reader)
+            if request is None:
+                request = ""
+                request = await self._read_posix_request(reader)
             if isinstance(request, oip_wire.Envelope):
                 async def send_frame(frame):
                     writer.write(encode_frame(frame))
@@ -1396,7 +1653,17 @@ class BrowserDaemon:
                         read_async_frame(reader), timeout=REQUEST_TIMEOUT
                     )
 
-                answered = await self._serve_oip_command(request, send_frame, receive_frame)
+                async def client_gone():
+                    # An OIP client sends nothing between its command and the
+                    # reply, and never half-closes, so EOF here means it is gone
+                    # (killed, or timed out and hung up). The transport keeps
+                    # reading while nobody awaits the reader, so this sees it.
+                    while not reader.at_eof() and reader.exception() is None:
+                        await asyncio.sleep(DISCONNECT_POLL)
+
+                answered = await self._serve_oip_command(
+                    request, send_frame, receive_frame, client_gone=client_gone
+                )
             else:
                 ok, payload = await self._dispatch_boundary(request)
                 writer.write(self._reply_bytes(ok, payload))
@@ -1516,7 +1783,46 @@ class BrowserDaemon:
         except Exception as exc:
             return False, f"{type(exc).__name__}: {exc}"
 
-    async def _serve_oip_command(self, request, send_frame, receive_frame):
+    async def _dispatch_while_connected(self, raw: str, request_id: str, argv, client_gone):
+        """dispatch_async, cancelled if the client leaves first. None when it left.
+
+        A killed client used to leave its command running: the request stayed
+        on `tab ls --json` under active_requests, its tab stayed locked, and
+        the connection's file descriptor stayed open, for as long as the
+        command took — forever, when it waited on the Keychain.
+        """
+        dispatch = asyncio.ensure_future(self.dispatch_async(
+            raw, artifact_stager=self._artifact_stager, request_id=request_id,
+        ))
+        if client_gone is None:
+            return await dispatch
+        watcher = asyncio.ensure_future(client_gone())
+        try:
+            await asyncio.wait({dispatch, watcher}, return_when=asyncio.FIRST_COMPLETED)
+        except asyncio.CancelledError:
+            dispatch.cancel()
+            raise
+        finally:
+            watcher.cancel()
+        if dispatch.done():
+            return dispatch.result()
+        dispatch.cancel()
+        await asyncio.wait({dispatch}, timeout=CANCEL_GRACE + 1)
+        dispatch.add_done_callback(lambda task: task.cancelled() or task.exception())
+        print(f"client left before its reply; cancelled {shlex.join(argv)!r}",
+              file=sys.stderr, flush=True)
+        return None
+
+    def _always_answered(self, request) -> bool:
+        """status, bare close, tab ls, tab close: served even when the daemon is full."""
+        if not isinstance(request, oip_wire.Envelope) or request.WhichOneof("frame") != "command":
+            return False
+        argv = list(request.command.argv)
+        if argv == ["close"] and request.command.has_tab:
+            return False  # `-t X close` drives a tab like any other command
+        return any(argv[: len(prefix)] == prefix for prefix in _ALWAYS_ANSWERED)
+
+    async def _serve_oip_command(self, request, send_frame, receive_frame, client_gone=None):
         """Serve one typed command and any artifact streams on the same channel.
 
         Returns (ok, text) once the reply is out, for the caller to run the health
@@ -1540,11 +1846,12 @@ class BrowserDaemon:
                     "engine": command.engine or "auto",
                 }
             )
-            ok, payload = await self.dispatch_async(
-                raw,
-                artifact_stager=self._artifact_stager,
-                request_id=request.request_id,
+            outcome = await self._dispatch_while_connected(
+                raw, request.request_id, command.argv, client_gone
             )
+            if outcome is None:
+                return None  # the client left; there is nobody to answer
+            ok, payload = outcome
             staged = payload if isinstance(payload, StagedArtifact) else None
             exit_code = 0 if ok is True else (1 if ok is False else int(ok))
             result_text = "" if staged is not None else str(payload)
@@ -1623,11 +1930,13 @@ class BrowserDaemon:
     async def _should_stop(self, ok, payload: str) -> bool:
         """Serialize shared runtime health transitions after concurrent replies."""
         async with self._health_lock:
-            if ok is False and payload.startswith("TimeoutError:"):
+            if ok is False and re.match(r"^(TimeoutError:|\w+ timed out: )", payload):
                 self._had_browser = True
                 self._defer_context_probe = True
                 return False
-            closed = payload.startswith(("Browser closed", "No browser was open")) or (
+            closed = payload.startswith(
+                ("Browser closed", "No browser is open", "No browser was open")
+            ) or (
                 ok is False
                 and (
                     payload.startswith("TargetClosedError:")
@@ -1730,7 +2039,12 @@ class BrowserDaemon:
         self._client_tasks.clear()
         background = [
             task
-            for task in (*self._health_tasks, *self._shed_tasks, self._alive_probe)
+            for task in (
+                *self._health_tasks,
+                *self._shed_tasks,
+                *self.__dict__.get("_reserved_tasks", ()),
+                self._alive_probe,
+            )
             if task is not None and task is not current and not task.done()
         ]
         for task in background:
@@ -1926,6 +2240,30 @@ def _ago(seconds: float) -> str:
     if seconds < 86400:
         return f"{seconds // 3600}h ago"
     return f"{seconds // 86400}d ago"
+
+
+def _quiet_closed_targets(loop, context) -> None:
+    """Drop "Future exception was never retrieved" for a closed page; log the rest.
+
+    When a page or the browser closes, the driver fails every future it had
+    waiting on that page — including ones only the driver created and nobody
+    awaits. Each was logged with a traceback header, so browser.log filled
+    with TargetClosedError about pages that were closed on purpose. The
+    exception is retrieved here, which is the whole of what asyncio asks.
+    """
+    exc = context.get("exception")
+    if (
+        type(exc).__name__ == "TargetClosedError"
+        and context.get("message", "").startswith(("Future exception was never retrieved",
+                                                   "Task exception was never retrieved"))
+    ):
+        return
+    loop.default_exception_handler(context)
+
+
+def _short_line(line: str, limit: int = 60) -> str:
+    """A command line cut to `limit` characters, marked as cut when it was."""
+    return line if len(line) <= limit else line[: limit - 1] + "…"
 
 
 def _recv_all(conn) -> bytes:

@@ -512,6 +512,9 @@ def remote_browser(
 @app.command(
     "proxy",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    # --help belongs to handle_proxy: Click's own printed the generic help for
+    # `co proxy diagnose --help`, though `co proxy` promises that diagnose has one.
+    add_help_option=False,
 )
 def proxy(
     args: List[str] = typer.Argument(

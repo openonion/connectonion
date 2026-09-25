@@ -60,11 +60,111 @@ def _owner_alive(sock_path: str) -> bool:
     return _owner_pid(sock_path) is not None
 
 
+def _not_answering(sock_path: str, what: str) -> str:
+    """Say the daemon is stuck, and the one command that ends it."""
+    pid = _owner_pid(sock_path)
+    who = f"the browser daemon (pid {pid})" if pid else "the browser daemon"
+    return (
+        f"{who} is running but did not {what} — it is stopped or stuck.\n"
+        "Next: co browser close   (it stops a daemon that does not answer by force; "
+        "logins are kept in the profile)"
+    )
+
+
+_mode_warned = False
+
+
+def _daemon_headless(pid) -> bool | None:
+    """Whether the daemon `pid` was started --headless, from its command line.
+
+    None when that cannot be read. The pid file holds only a pid (older
+    clients read anything else as a dead daemon), so the command line is the
+    one place the mode is recorded without changing a file they share.
+    """
+    if pid is None:
+        return None
+    if transport.IS_WINDOWS:
+        try:
+            import psutil
+
+            args = psutil.Process(pid).cmdline()
+        except Exception:
+            return None  # psutil is optional; without it there is no warning
+    else:
+        try:
+            args = subprocess.run(["ps", "-o", "args=", "-p", str(pid)],
+                                  capture_output=True, text=True, timeout=5).stdout.split()
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+    if not any("browser_agent" in arg for arg in args):
+        return None  # not our daemon (a recycled pid): say nothing rather than guess
+    return "--headless" in args
+
+
+def _warn_if_headed(sock_path: str) -> None:
+    """Say so when --headless reaches a daemon that already runs with a window.
+
+    The window mode is fixed when the daemon starts. `--headless` on a later
+    command was ignored without a word, and a window opened on a machine
+    whose user had asked for none.
+    """
+    global _mode_warned
+    if _mode_warned:
+        return
+    if sys.platform.startswith("linux") and not (
+        os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
+    ):
+        return  # with no display the daemon is headless whatever it was told
+    pid = _owner_pid(sock_path)
+    if pid is None or pid == os.getpid() or _daemon_headless(pid) is not False:
+        return
+    _mode_warned = True
+    print(
+        "note: --headless has no effect here — the browser daemon already running "
+        "was started with a visible window, and the first command decides.\n"
+        "      To switch: co browser close, then run this again with --headless.",
+        file=sys.stderr,
+    )
+
+
+def _reply_deadline(argv: list) -> float:
+    """How long to wait for this command's answer before calling the daemon stuck."""
+    if argv[:1] == ["status"] or argv[:2] in (["tab", "ls"], ["tab", "list"]):
+        return QUICK_REPLY_DEADLINE
+    asked = 0.0
+    for index, token in enumerate(argv):
+        name, eq, value = token.partition("=")
+        if name not in ("--timeout", "--timeout-ms", "--timeout_ms"):
+            continue
+        if not eq and index + 1 < len(argv):
+            value = argv[index + 1]
+        try:
+            seconds = float(value)
+        except ValueError:
+            continue  # the daemon answers a bad value with a usage error
+        asked = max(asked, seconds / 1000 if name != "--timeout" else seconds)
+    return REPLY_DEADLINE + asked
+
+
 # How long `co browser close` waits for the daemon to answer before it stops
 # the daemon's processes itself. Closing a paid browser is a clock that keeps
 # running: a close that hung for 3h 12m billed the whole time (#1496).
 CLOSE_DEADLINE = 60
 CLOSE_GRACE = 10  # seconds the tree gets to exit on its own after the daemon
+# How long a client waits for any other answer. The daemon answers every
+# command within its own 120 s deadline (daemon.OPERATION_TIMEOUT, not imported:
+# direct verbs must not load the browser-owning module), so silence past this
+# means the daemon itself is stopped or stuck — `kill -STOP` made `status` wait
+# more than five minutes. A command with a longer --timeout gets it added.
+REPLY_DEADLINE = 150
+# `status` and `tab ls` answer from the daemon's own bookkeeping with deadlines
+# of their own (about 20 s at worst), so they need not wait as long.
+QUICK_REPLY_DEADLINE = 30
+CONNECT_DEADLINE = 10
+
+
+class _DaemonNotAnswering(RuntimeError):
+    """The daemon's process is alive but it does not accept or answer."""
 
 
 class _Proc:
@@ -235,9 +335,18 @@ def _connect_posix(sock_path: str):
         return None
     for attempt in range(20):  # ~2s of ECONNREFUSED tolerance for a busy daemon
         conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        # A connect to a live socket whose backlog is full blocks on Linux for
+        # as long as the daemon does not accept — forever, if it is stopped.
+        conn.settimeout(CONNECT_DEADLINE)
         try:
             conn.connect(sock_path)
+            conn.settimeout(None)
             return conn
+        except socket.timeout:
+            conn.close()
+            if not _owner_alive(sock_path):
+                return None
+            raise _DaemonNotAnswering(_not_answering(sock_path, f"accept a connection within {CONNECT_DEADLINE}s"))
         except ConnectionRefusedError:
             conn.close()
             if not _owner_alive(sock_path):
@@ -362,6 +471,16 @@ def _caller_account() -> str:
 # Verbs that never launch Chrome: no point provisioning a browser for them.
 PAGELESS_VERBS = {
     "status", "engine_status", "tab", "help", "use", "switch", "close", "closetab",
+}
+# Verbs that read or act on a page that is already open and never open one
+# (only go_to, newtab and open_browser do). With no daemon running, each can
+# only answer "the browser is not open", so none of them starts a daemon.
+READ_VERBS = {
+    "get_current_url", "get_text", "list_pages", "switch_page", "save_state",
+    "cookies", "take_screenshot", "save_page_context", "get_focused_element",
+    "extract_items_by_selector", "extract_data", "get_links_from_page",
+    "count_elements_by_selector", "get_element_text_by_selector",
+    "run_page_script", "run_frame_script",
 }
 
 # The Host adapters still return OIP 0.1 text to their remote caller. Returning
@@ -509,6 +628,8 @@ def _request_with_identity(
     owner_pid = None
     closing = tab is None and line.split() == ["close"]
     watched = []
+    spawned = False
+    reply_deadline = _reply_deadline(list(request_frame.command.argv))
     try:
         conn = _connection
         if conn is None:
@@ -537,10 +658,13 @@ def _request_with_identity(
                 _connection=conn,
             )
             if probe_code:
+                # Stop this daemon, by the pid it recorded beside its socket —
+                # `pkill -f` on the module name stopped every daemon this user
+                # had, isolated test and automation daemons included.
                 return 1, (
                     "the running browser daemon predates 1.8 engine pinning. "
                     "Restart it before using this client: "
-                    "pkill -f 'connectonion.cli.browser_agent[.]daemon'"
+                    f"kill \"$(cat {shlex.quote(transport.pid_path(sock_path))})\""
                 )
             conn = (
                 _connect(sock_path, authkey_path=authkey_path)
@@ -586,8 +710,17 @@ def _request_with_identity(
                 if _owner_alive(sock_path):
                     return 0, "Browser daemon: running, busy at connection capacity — try again shortly"
                 return 0, "Browser daemon: not running — the next page command starts one"
+            verb = line.split()[:1]
+            if target is None and verb and verb[0] in READ_VERBS and not _owner_alive(sock_path):
+                # With no daemon there is no browser, and the answer is the one
+                # the daemon would give. Starting a daemon to give it also
+                # fixed its window mode: `get_current_url` started a headed
+                # one, and the `--headless go_to` after it opened a window.
+                flag = "" if tab is None else f" -t {shlex.quote(tab)}"
+                return 3, f"the browser is not open. Next: co browser{flag} go_to <url>"
             if effective_engine != "onion":
                 _ensure_browser_ready(line)  # system or auto fallback needs this
+            spawned = True
             if target is None and effective_engine == "auto":
                 # Keep the long-standing local auto-mode embedding seam: small
                 # test/host adapters may implement the original two arguments.
@@ -615,6 +748,20 @@ def _request_with_identity(
             if not transport.IS_WINDOWS:
                 # The teardown path must not be able to hang (#1496).
                 conn.settimeout(CLOSE_DEADLINE)
+        elif not transport.IS_WINDOWS and hasattr(conn, "settimeout"):
+            # (Embedding adapters and test doubles may hand over a connection
+            # object without socket timeouts; those bring their own bounds.)
+            conn.settimeout(reply_deadline)
+        if headless and not spawned and target is None:
+            _warn_if_headed(sock_path)
+    except _DaemonNotAnswering as exc:
+        if closing:
+            # The one command that must work on a stuck daemon: stop it.
+            owner_pid = _owner_pid(sock_path)
+            watched = _process_tree(None if owner_pid == os.getpid() else owner_pid)
+            if watched:
+                return _finish_close(owner_pid, watched, answered=False, reason=str(exc))
+        return 1, str(exc)
     except RuntimeError as exc:
         # Setup failures (authkey mismatch/corruption, daemon didn't start) must exit
         # with a clean one-line error, NEVER a traceback: typer's pretty exceptions
@@ -623,6 +770,10 @@ def _request_with_identity(
 
     def receive_frame():
         if transport.IS_WINDOWS:
+            wait = CLOSE_DEADLINE if closing else reply_deadline
+            poll = getattr(conn, "poll", None)  # absent on test doubles
+            if poll is not None and not poll(wait):
+                raise TimeoutError(f"no answer within {wait:g}s")
             return decode_frame(conn.recv_bytes())
         return recv_socket_frame(conn)
 
@@ -697,6 +848,10 @@ def _request_with_identity(
         if closing and watched:
             return _finish_close(owner_pid, watched, answered=False,
                                  reason=f"no answer within {CLOSE_DEADLINE}s ({exc})")
+        if isinstance(exc, TimeoutError):  # socket.timeout is TimeoutError since 3.10
+            wait = CLOSE_DEADLINE if closing else reply_deadline
+            verb = " ".join(request_frame.command.argv[:2 if line.startswith("tab ") else 1])
+            return 1, _not_answering(sock_path, f"answer `{verb}` within {wait:g}s")
         return 1, (
             "browser daemon closed or rejected the OIP stream — "
             f"restart it and retry ({exc})"
