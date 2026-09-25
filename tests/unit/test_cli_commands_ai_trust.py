@@ -62,6 +62,30 @@ def test_handle_ai_calls_start_server(monkeypatch):
     assert created["extra_plugins"] == ()
 
 
+@pytest.mark.parametrize("in_project", [True, False])
+def test_co_ai_records_its_runs_in_the_project_it_ran_in(tmp_path, monkeypatch, in_project):
+    # 1.8.8b9: `co ai "..."` inside a project wrote its eval to ~/.co/evals/,
+    # while Agent() and python agent.py there wrote to .co/evals/. The
+    # configuration stays global (co_dir); the record of the run follows cwd.
+    created = {}
+    monkeypatch.setattr("connectonion.cli.co_ai.agent.create_agent",
+                        lambda **kwargs: created.update(kwargs) or object())
+    monkeypatch.delenv("CONNECTONION_LOG", raising=False)
+    project = tmp_path / "proj"
+    (project / "src").mkdir(parents=True)
+    if in_project:
+        (project / ".co").mkdir()
+    monkeypatch.chdir(project / "src")
+
+    ai_mod._create_agent("m", 3, False, None)
+
+    assert created["co_dir"] == GLOBAL_CO_DIR
+    if in_project:
+        assert Path(created["state_dir"]).resolve() == (project / ".co").resolve()
+    else:
+        assert created["state_dir"] is None
+
+
 def test_handle_ai_passes_invocation_invite_to_web_server(monkeypatch):
     called = {}
 

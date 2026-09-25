@@ -245,6 +245,30 @@ class TestPrintBanner:
         assert "1 tools" not in output
 
     @patch('connectonion.console._rich_console.print')
+    def test_print_banner_says_how_many_skills_are_the_projects_own(self, mock_print):
+        """1.8.8b9: the banner said "10 skills" while /info said "skills": [].
+        /info publishes only project skills; the banner now says how many those are."""
+        from types import SimpleNamespace
+
+        skills = [SimpleNamespace(name=f"b{i}", location="builtin") for i in range(9)]
+        skills.append(SimpleNamespace(name="reimbursement", location="project"))
+        c = console_mod.Console()
+        c.print_banner(agent_name="test", model="gpt-4", tools=1, skills=skills)
+
+        assert "10 skills, 1 project" in _collect_print_output(mock_print)
+
+    @patch('connectonion.console._rich_console.print')
+    def test_print_banner_only_project_skills_needs_no_split(self, mock_print):
+        from types import SimpleNamespace
+
+        c = console_mod.Console()
+        c.print_banner(agent_name="test", model="gpt-4", tools=1,
+                       skills=[SimpleNamespace(name="refund", location="project")])
+
+        output = _collect_print_output(mock_print)
+        assert "1 skill (refund)" in output and "project" not in output
+
+    @patch('connectonion.console._rich_console.print')
     def test_print_banner_shows_log_dir(self, mock_print):
         """Banner shows log directory paths when provided."""
         c = console_mod.Console()

@@ -30,6 +30,14 @@ from .suite import Case, Suite
 JUDGE_TEXT_LIMIT = 4000
 TOOL_TEXT_LIMIT = 600
 
+# Steps (LLM calls) one attempt may take before it is stopped. The co create
+# template allows 100: on 1.8.8b9 a first benchmark whose cases carried no data
+# let the coding agent search the workspace for invoices for up to 26 steps a
+# case, and five cases cost a new user $1 of their $5. A case written with its
+# data in the input is answered in a few steps, so 10 stops only the search.
+# `co eval run --max-iterations N` raises it for a task that really needs more.
+DEFAULT_MAX_ITERATIONS = 10
+
 
 class RunnerError(RuntimeError):
     """The run could not happen as asked, and is never counted as a pass.
@@ -256,7 +264,8 @@ def _live_flag(live: bool):
 
 
 def run(suite: Suite, agent, *, agent_path: str, skill: Optional[dict] = None, invoke: str = "auto",
-        runs: int = 1, live: bool = False, judge_model: str, judge_call: Optional[Callable] = None) -> dict:
+        runs: int = 1, live: bool = False, judge_model: str, judge_call: Optional[Callable] = None,
+        max_iterations: int = DEFAULT_MAX_ITERATIONS) -> dict:
     """Every case `runs` times on a fresh session. Returns the report dict; saving is the caller's."""
     if invoke not in ("auto", "explicit"):
         raise RunnerError(f"--invoke must be auto or explicit, not {invoke!r}", code=2)
@@ -264,12 +273,15 @@ def run(suite: Suite, agent, *, agent_path: str, skill: Optional[dict] = None, i
         raise RunnerError("--invoke explicit sends /<skill> <input>, so it needs --skill NAME", code=2)
     if runs < 1:
         raise RunnerError("--runs must be a positive integer", code=2)
+    if max_iterations < 1:
+        raise RunnerError("--max-iterations must be a positive integer", code=2)
     started = time.time()
     cases = []
-    with _live_flag(live):
+    with _live_flag(live), _step_ceiling(agent, max_iterations):
         for case in suite.cases:
             cases.append(_run_case(case, agent, skill=skill, invoke=invoke, runs=runs,
-                                   judge_model=judge_model, judge_call=judge_call))
+                                   judge_model=judge_model, judge_call=judge_call,
+                                   max_iterations=max_iterations))
     report = {
         "benchmark": suite.name,
         "benchmark_path": str(suite.path),
@@ -280,6 +292,7 @@ def run(suite: Suite, agent, *, agent_path: str, skill: Optional[dict] = None, i
         "skill": {k: v for k, v in skill.items() if k != "instructions"} if skill else None,
         "invoke": invoke,
         "runs": runs,
+        "max_iterations": max_iterations,
         "live": live,
         "judge_model": judge_model,
         "cases": cases,
@@ -288,24 +301,53 @@ def run(suite: Suite, agent, *, agent_path: str, skill: Optional[dict] = None, i
     return report
 
 
-def _run_case(case: Case, agent, *, skill, invoke, runs, judge_model, judge_call) -> dict:
+@contextlib.contextmanager
+def _step_ceiling(agent, max_iterations: int):
+    """The Agent's own max_iterations, lowered for the run and restored after,
+    so the ceiling is the loop's real limit rather than a guess from outside."""
+    before = getattr(agent, "max_iterations", None)
+    agent.max_iterations = max_iterations
+    try:
+        yield
+    finally:
+        agent.max_iterations = before
+
+
+def _turn_result(session: dict) -> dict:
+    results = [e for e in session.get("trace") or [] if e.get("type") == "turn_result"]
+    return results[-1] if results else {}
+
+
+def _run_case(case: Case, agent, *, skill, invoke, runs, judge_model, judge_call,
+              max_iterations: int = DEFAULT_MAX_ITERATIONS) -> dict:
     sent = effective_input(case, skill, invoke)
     attempts = []
     for number in range(1, runs + 1):
         attempt = {"n": number, "output": "", "activation": None, "indicators": [], "passed": False,
-                   "error": None, "trace": []}
+                   "error": None, "stopped": None, "cost": None, "trace": []}
         try:
             agent.reset_conversation()
             attempt["output"] = str(agent.input(sent) or "")
             session = agent.current_session or {}
             attempt["trace"] = list(session.get("trace") or [])
+            ended = _turn_result(session)
+            attempt["cost"] = (ended.get("usage") or {}).get("cost")
             attempt["activation"] = activation(skill, invoke, session, sent)
-            attempt["indicators"] = judge(case, attempt["output"], tool_evidence(session),
-                                          model=judge_model, call=judge_call)
+            if ended.get("reason") == "max_iterations":
+                # Not judged: the answer is "Task incomplete", and judging it
+                # would spend a judge call to say so. Not a runner error either:
+                # nothing broke, the Agent just did not finish inside the ceiling.
+                attempt["stopped"] = (f"stopped after {max_iterations} steps without an answer. If the case "
+                                      f"carries the data it needs, this is the skill's to fix; if the task "
+                                      f"really takes more steps, rerun with --max-iterations N")
+            else:
+                attempt["indicators"] = judge(case, attempt["output"], tool_evidence(session),
+                                              model=judge_model, call=judge_call)
         except Exception as error:  # the Agent or the judge broke: a runner error, never a pass
             attempt["error"] = f"{type(error).__name__}: {error}"
         activated = attempt["activation"] is None or attempt["activation"]["status"] == "PASS"
-        attempt["passed"] = (attempt["error"] is None and activated and bool(attempt["indicators"])
+        attempt["passed"] = (attempt["error"] is None and attempt["stopped"] is None and activated
+                             and bool(attempt["indicators"])
                              and all(i["verdict"] == "PASS" for i in attempt["indicators"]))
         attempts.append(attempt)
     passed = sum(1 for a in attempts if a["passed"])
@@ -320,6 +362,8 @@ def summarise(report: dict) -> dict:
     failed = sum(1 for i in indicators if i["verdict"] == "FAIL")
     unverified = sum(1 for i in indicators if i["verdict"] == "UNVERIFIED")
     not_activated = sum(1 for a in attempts if a["activation"] and a["activation"]["status"] != "PASS")
+    stopped = sum(1 for a in attempts if a.get("stopped"))
+    costs = [a["cost"] for a in attempts if isinstance(a.get("cost"), (int, float))]
     # Checks = every expectation plus, when a skill was named, "did it run" per
     # attempt. The score is taken over checks: on the first real run every
     # expectation passed while the skill never ran once, and an expectation-only
@@ -328,7 +372,7 @@ def summarise(report: dict) -> dict:
     passed_indicators = sum(1 for i in indicators if i["verdict"] == "PASS")
     if runner_errors:
         exit_code = 3
-    elif failed or unverified or not_activated or not attempts:
+    elif failed or unverified or not_activated or stopped or not attempts:
         exit_code = 1
     else:
         exit_code = 0
@@ -345,6 +389,10 @@ def summarise(report: dict) -> dict:
         "unverified": unverified,
         "forbidden_failures": sum(1 for i in indicators if i["kind"] == "must_not" and i["verdict"] == "FAIL"),
         "not_activated": not_activated,
+        "stopped": stopped,
+        # What the Agent's own model calls cost, as measured; None when no
+        # attempt reported usage. The judge's calls are not in it.
+        "agent_cost": round(sum(costs), 4) if costs else None,
         "runner_errors": runner_errors,
         "exit_code": exit_code,
     }

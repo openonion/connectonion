@@ -32,10 +32,13 @@ def _record_oip_compatibility(data, conn):
     record = oip_compatibility_record(
         data.get("protocol"), conn.get("transport", "unknown")
     )
-    console.print(
-        "[dim]OIP_COMPAT "
-        f"transport={record['transport']} peer={record['peer']} "
-        f"outcome={record['outcome']}[/dim]"
+    # Debug, not the host terminal: printed on every CONNECT, it was the first
+    # thing an operator saw when a stranger arrived, and it said nothing they
+    # could act on. `logging.getLogger("connectonion").setLevel(logging.DEBUG)`
+    # brings it back.
+    logger.debug(
+        "OIP_COMPAT transport=%s peer=%s outcome=%s",
+        record['transport'], record['peer'], record['outcome'],
     )
 
 

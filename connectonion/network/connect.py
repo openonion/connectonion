@@ -444,6 +444,9 @@ class RemoteAgent:
         # an unsigned client cannot talk to a default agent. False means "no
         # keys, deliberately", which trust: open accepts and people use in dev.
         self._keys = _this_callers_identity() if keys is None else (keys or None)
+        # Looked for an identity and found none (a fresh HOME, no `co init`),
+        # as opposed to keys=False. Only the first can be told how to get one.
+        self._found_no_identity = keys is None and self._keys is None
         if relay_url is None:
             from ..backend import backend_ws_url
             relay_url = backend_ws_url()
@@ -1193,7 +1196,7 @@ class RemoteAgent:
                 await ws.send(json.dumps({"type": "PONG"}))
             elif event_type == "ERROR":
                 self._status = "idle"
-                raise ConnectionError(f"Auth error: {event.get('message', event.get('error'))}")
+                raise self._auth_error(event)
             elif event_type == "ONBOARD_REQUIRED":
                 await ws.send(json.dumps(self._build_onboard_submit(
                     self._onboard_credentials(event, turn.on_onboard)
@@ -1362,9 +1365,24 @@ class RemoteAgent:
             if event_type == "PING":
                 await ws.send(json.dumps({"type": "PONG"}))
             elif event_type == "ERROR":
-                raise ConnectionError(
-                    f"Auth error: {event.get('message', event.get('error'))}"
-                )
+                raise self._auth_error(event)
+
+    def _auth_error(self, event: dict) -> ConnectionError:
+        """The host's refusal, plus the way out when the refusal is our missing identity.
+
+        From a HOME with no ~/.co, 1.8.8b9 raised only "Auth error:
+        unauthorized: signed request required" -- true, and no help to someone
+        who never ran `co init` and does not know a client needs keys at all.
+        """
+        detail = event.get('message', event.get('error'))
+        message = f"Auth error: {detail}"
+        if self._found_no_identity and "signed request required" in str(detail):
+            message += (
+                ". This agent answers only signed requests, and there is no identity "
+                "here to sign with: no .co/keys in this project and none in ~/.co. "
+                "Run `co init` once to create one, or pass keys= to connect()."
+            )
+        return ConnectionError(message)
 
     async def _wait_for_mode_response(
         self, ws, expected_mode: str,

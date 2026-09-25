@@ -218,3 +218,45 @@ def test_live_is_off_during_a_run_unless_asked_and_restored_after(project, monke
 
     assert seen == ["0", "1"]
     assert os.environ["CO_EVAL_LIVE"] == "outer"
+
+
+# ---- a run a new user can afford ---------------------------------------------------------
+
+def test_an_agent_that_keeps_searching_is_stopped_at_the_ceiling_not_judged_and_not_a_pass(project):
+    # 1.8.8b9: cases without their data let the template agent search the
+    # workspace for 26 steps a case. The ceiling is the Agent's own loop limit.
+    calls = []
+
+    def look(pattern: str) -> str:
+        """Search the workspace."""
+        calls.append(pattern)
+        return "nothing here"
+
+    def complete(messages, tools):
+        return LLMResponse(content=None, raw_response=None, usage=TokenUsage(),
+                           tool_calls=[ToolCall(name="look", arguments={"pattern": "*"}, id=f"t{len(calls)}")])
+
+    bot = Agent("searcher", tools=[look], llm=MockLLM(on_complete=complete), log=False, max_iterations=100)
+    judged = []
+
+    def judge(prompt, output, model):
+        judged.append(prompt)
+        return output(verdicts=[])
+
+    report = run(project, bot, skill_name=None, judge=judge, max_iterations=3)
+
+    attempt = report["cases"][0]["attempts"][0]
+    assert len(calls) == 3
+    assert attempt["passed"] is False and "stopped after 3 steps" in attempt["stopped"]
+    assert "--max-iterations" in attempt["stopped"]
+    assert judged == [], "an unfinished attempt costs no judge call"
+    assert report["summary"]["stopped"] == 1 and report["summary"]["exit_code"] == 1
+    assert report["max_iterations"] == 3
+    assert bot.max_iterations == 100, "the Agent's own limit is back after the run"
+
+
+def test_the_default_ceiling_is_far_below_the_template_limit(project):
+    assert runner.DEFAULT_MAX_ITERATIONS <= 10
+    report = run(project, agent(True))
+    assert report["max_iterations"] == runner.DEFAULT_MAX_ITERATIONS
+    assert report["summary"]["stopped"] == 0 and report["summary"]["exit_code"] == 0

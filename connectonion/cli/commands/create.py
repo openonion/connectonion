@@ -285,7 +285,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         is_valid, error_msg = validate_project_name(name)
         if not is_valid:
             console.print(f"[red]❌ {error_msg}[/red]")
-            return
+            return False
 
     # Create new project directory. CLI calls use cwd; template deploy can pass
     # a temporary parent without changing the process-wide working directory.
@@ -303,7 +303,9 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
 
         # Show error with suggestion
         console.print(f"\n[red]❌ '{base_name}' exists. Try: [bold]co create {suggested_name}[/bold][/red]\n")
-        return
+        # False, not None: the caller turns only False into exit 1, and 1.8.8b9
+        # exited 0 here, so a script read "created" for a project it never made.
+        return False
 
     # Create project directory
     project_dir.mkdir(parents=True, exist_ok=True)

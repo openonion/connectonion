@@ -27,7 +27,7 @@ from connectonion.cli.commands import doctor_commands
 def out(monkeypatch):
     buffer = io.StringIO()
     monkeypatch.setattr(doctor_commands, "console", Console(file=buffer, width=240, color_system=None))
-    monkeypatch.setattr(doctor_commands, "_path_co_version", lambda path: None, raising=False)
+    monkeypatch.setattr(doctor_commands, "_path_co_version", lambda path: (None, None), raising=False)
     return buffer
 
 
@@ -97,7 +97,7 @@ def test_a_co_on_path_from_another_version_is_named(out, monkeypatch, tmp_path):
     monkeypatch.delenv("OPENONION_API_KEY", raising=False)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(doctor_commands.shutil, "which", lambda name: "/home/u/.local/bin/co")
-    monkeypatch.setattr(doctor_commands, "_path_co_version", lambda path: "1.8.8b3")
+    monkeypatch.setattr(doctor_commands, "_path_co_version", lambda path: ("1.8.8b3", None))
 
     _run()
 
@@ -111,10 +111,64 @@ def test_the_version_is_read_from_the_co_on_path(monkeypatch):
     import subprocess
 
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: Mock(returncode=0, stdout="co 1.8.8b3\n"))
-    assert doctor_commands._path_co_version("/x/co") == "1.8.8b3"
+    assert doctor_commands._path_co_version("/x/co") == ("1.8.8b3", None)
 
     def missing(*a, **k):
         raise FileNotFoundError("/x/co")
 
     monkeypatch.setattr(subprocess, "run", missing)
-    assert doctor_commands._path_co_version("/x/co") is None
+    version, failure = doctor_commands._path_co_version("/x/co")
+    assert version is None and "FileNotFoundError" in failure
+
+    crashed = Mock(returncode=1, stdout="", stderr="Traceback...\nImportError: no module named rich\n")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: crashed)
+    version, failure = doctor_commands._path_co_version("/x/co")
+    assert version is None and "exited 1" in failure and "ImportError" in failure
+
+
+# ---- 1.8.8b9 re-test: the last line and the rows say what the body shows --------------------
+
+def test_a_warning_row_is_counted_in_the_last_line(out, monkeypatch, tmp_path):
+    # 1.8.8b9: "○ ~/.local/bin/co is co 1.8.8b3 ..." and, under it, "nothing wrong".
+    monkeypatch.delenv("OPENONION_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(doctor_commands.shutil, "which", lambda name: "/home/u/.local/bin/co")
+    monkeypatch.setattr(doctor_commands, "_path_co_version", lambda path: ("1.8.8b3", None))
+
+    code = doctor_commands.handle_doctor()
+
+    text = out.getvalue()
+    assert "nothing wrong" not in text
+    assert "1 warning" in text and "co` on PATH is 1.8.8b3" in text
+    assert code == 0 or "problem" in text, "a warning alone does not fail the exit code"
+
+
+def test_a_co_on_path_that_does_not_run_is_a_cross_not_a_tick(out, monkeypatch, tmp_path):
+    monkeypatch.delenv("OPENONION_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(doctor_commands.shutil, "which", lambda name: "/home/u/.local/bin/co")
+    monkeypatch.setattr(doctor_commands, "_path_co_version",
+                        lambda path: (None, "`co --version` exited 1: ImportError"))
+
+    code = doctor_commands.handle_doctor()
+
+    rows = [line for line in out.getvalue().splitlines() if "Command" in line]
+    assert rows and "✗" in rows[0] and "does not run" in rows[0] and "✓" not in rows[0]
+    assert code == 1
+
+
+def test_the_model_row_is_not_called_config(out, monkeypatch, tmp_path):
+    # Two rows called "Config", ✓ .co/host.yaml and ○ Not found (optional):
+    # the second was about MODEL, and read as the file being missing.
+    monkeypatch.delenv("OPENONION_API_KEY", raising=False)
+    monkeypatch.delenv("MODEL", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".co").mkdir()
+    (tmp_path / ".co" / "host.yaml").write_text("name: a\n")
+
+    doctor_commands.handle_doctor()
+
+    rows = [line for line in out.getvalue().splitlines() if line.startswith("│") and " Config " in line]
+    assert len(rows) == 1 and "host.yaml" in rows[0]
+    assert "Not found (optional)" not in out.getvalue()
+    assert any("Model" in line and "not set" in line for line in out.getvalue().splitlines())

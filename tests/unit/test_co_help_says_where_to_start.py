@@ -52,3 +52,18 @@ def test_bare_co_does_not_label_stable_commands():
     rows = _bare_rows()
     for name in ("browser", "whatsapp", "gmail", "create"):
         assert "Experimental" not in rows[name], rows[name]
+
+
+def test_bare_co_and_help_give_the_same_start_and_nothing_wraps():
+    # 1.8.8b9: `co --help` said init/create/auth, bare `co` said
+    # init/create/run/benchmark/eval, and at 80 columns bare co's eval line
+    # wrapped into a stray "rerun" on a line of its own.
+    narrow = _ANSI.sub("", CliRunner().invoke(cli_main.app, [], env={"COLUMNS": "80"}).output)
+    helped = _output(["--help"])
+
+    for title, lines in cli_main.START_HERE:
+        assert title in narrow and title in helped
+        for line in lines:
+            assert line in narrow, line
+            assert line in helped, line
+    assert "Quick Start" not in narrow

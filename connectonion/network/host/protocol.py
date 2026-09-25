@@ -55,9 +55,13 @@ def supports_oip(value):
 
 
 def oip_compatibility_record(value, transport):
-    """Classify one CONNECT without copying peer-controlled strings to logs."""
+    """Classify one CONNECT without copying peer-controlled strings to logs.
+
+    A CONNECT with no `protocol` is "undeclared", not "legacy": the Python
+    connect() client has never sent one, so 1.8.8b9's host called a 1.8.8b9
+    client legacy. All the host knows is that it did not say."""
     if value is None:
-        peer = "legacy"
+        peer = "undeclared"
     elif supports_oip(value):
         peer = f"{OIP_NAME}/{OIP_VERSION}"
     else:

@@ -931,13 +931,33 @@ PROVIDER_TO_ENV = {
 }
 
 
-def _internal_docs(docs_source: Path) -> set:
-    """Paths under docs/ named in docs/.package-ignore: test runs and release
-    evidence recorded on a maintainer's machine, never meant for a user's project.
-    `archive` is always among them, as it was before the file was read."""
+def package_ignore_patterns(docs_source: Path) -> list:
+    """The pattern lines of docs/.package-ignore, in order, comments dropped."""
     listing = docs_source / ".package-ignore"
     lines = listing.read_text(encoding="utf-8").splitlines() if listing.exists() else []
-    named = {line.strip().rstrip("/") for line in lines if line.strip() and not line.startswith("#")}
+    return [line.strip().rstrip("/") for line in lines if line.strip() and not line.startswith("#")]
+
+
+def _internal_docs(docs_source: Path) -> set:
+    """Paths under docs/ that docs/.package-ignore keeps out of a user's project:
+    test runs, release evidence, planning notes, uncited design decisions.
+    `archive` is always among them, as it was before the file was read.
+
+    The file uses two of the wheel's gitignore patterns and no more: `dir/*`
+    (every entry in dir) and `!path` (except this one). They are expanded to
+    concrete paths here so copy_docs() can keep its exact-path check."""
+    patterns = package_ignore_patterns(docs_source)
+    kept = {p[1:] for p in patterns if p.startswith("!")}
+    named = set()
+    for pattern in patterns:
+        if pattern.startswith("!"):
+            continue
+        if pattern.endswith("/*"):
+            folder = pattern[:-2]
+            children = (docs_source / folder).iterdir() if (docs_source / folder).is_dir() else ()
+            named |= {f"{folder}/{child.name}" for child in children} - kept
+        else:
+            named.add(pattern)
     return named | {"archive"}
 
 

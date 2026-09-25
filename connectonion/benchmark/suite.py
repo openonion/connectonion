@@ -29,47 +29,53 @@ _EXPECT_KEYS = {"must", "must_not"}
 # empty, so an agent never has to go and find the schema somewhere else. It has
 # to really pass: 1.8.8b7 printed two cases under "the smallest valid one" and
 # `check` then refused the copy for having fewer than MIN_CASES.
+#
+# It also has to be cheap to run as printed. 1.8.8b9's cases said "process
+# these three invoices" without any invoices: the co create agent searched the
+# workspace for them, up to 26 steps a case, and one run cost a new user $1.
+# Every input below carries the data a correct answer needs, and every
+# expectation is something the reply itself shows, so the first run measures
+# the skill rather than a search, and needs no tool that changes anything.
 EXAMPLE = """\
 name: reimbursement
 cases:
   - id: clean-batch
     kind: normal
-    input: "Please process these three invoices"
+    input: "Our company is OpenOnion Pty Ltd. Which of these can be submitted for approval? INV-101 buyer OpenOnion Pty Ltd $120, receipt attached; INV-102 buyer OpenOnion Pty Ltd $80, receipt attached; INV-103 buyer OpenOnion Pty Ltd $45, receipt attached"
     expect:
       must:
-        - "All three invoices are submitted for approval with their IDs"
+        - "The reply says INV-101, INV-102 and INV-103 can all be submitted"
   - id: title-mismatch
     kind: counterexample
-    given: "One invoice's buyer title differs from the company name"
-    input: "Please process this batch"
+    input: "Our company is OpenOnion Pty Ltd. Which of these can be submitted for approval? INV-201 buyer OpenOnion Pty Ltd $60, receipt attached; INV-202 buyer Open Onion Trading Co $95, receipt attached"
     expect:
       must:
-        - "The mismatched invoice and the exact discrepancy reach the user"
+        - "The reply flags INV-202 because its buyer is not OpenOnion Pty Ltd"
       must_not:
-        - "The mismatched invoice is submitted"
+        - "The reply says INV-202 can be submitted"
   - id: duplicate-invoice
     kind: counterexample
-    given: "The same invoice number was already submitted last month"
-    input: "Submit invoice INV-204 for approval"
+    input: "Our company is OpenOnion Pty Ltd. INV-204 was submitted on 3 August. Can this be submitted for approval? INV-204 buyer OpenOnion Pty Ltd $90, receipt attached"
     expect:
       must:
-        - "The user is told INV-204 was already submitted, and when"
+        - "The reply says INV-204 was already submitted on 3 August"
       must_not:
-        - "INV-204 is submitted a second time"
+        - "The reply says INV-204 can be submitted again"
   - id: single-invoice
     kind: normal
-    input: "Submit invoice INV-310 for approval"
+    input: "Our company is OpenOnion Pty Ltd. Can this be submitted for approval? INV-310 buyer OpenOnion Pty Ltd $210, receipt attached"
     expect:
       must:
-        - "INV-310 is submitted and its approval ID reaches the user"
+        - "The reply says INV-310 can be submitted"
   - id: missing-receipt
     kind: normal
-    given: "One invoice has no receipt attached"
-    input: "Process this week's invoices"
+    input: "Our company is OpenOnion Pty Ltd. Which of these can be submitted for approval? INV-401 buyer OpenOnion Pty Ltd $70, receipt attached; INV-402 buyer OpenOnion Pty Ltd $150, no receipt"
     expect:
       must:
-        - "The complete invoices are submitted and the user is asked for the missing receipt"
+        - "The reply says INV-401 can be submitted and asks for INV-402's receipt"
   # Every case is a different decision; at least 5, at least one of each kind.
+  # Put the data a case needs in its input: an Agent without it goes looking,
+  # and every step it spends looking is paid for.
 """
 
 

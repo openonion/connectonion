@@ -86,7 +86,32 @@ def env_file_callback(ctx: typer.Context, value: Optional[Path]):
     return value
 
 
-@app.callback(invoke_without_command=True)
+# One text for both first screens. `co --help` said Start here: init, create,
+# auth, and bare `co` said Quick Start: init, create, run, benchmark, eval -- two
+# answers to "where do I start", and Rich wrapped bare co's eval line mid-sentence.
+# Both now print these lines as they are, so they cannot drift apart again.
+START_HERE = (
+    ("Start here:", (
+        "co init                  Set up your identity and keys (~/.co/keys.env)",
+        "co create my-agent       New project; then: cd my-agent && python agent.py",
+        "co auth                  Log in to OpenOnion for managed models and credits",
+    )),
+    ("Build or improve a skill:", (
+        "1. Define the standard first: co benchmark --help",
+        "2. Write/check >=5 distinct cases; then edit .co/skills/<name>/SKILL.md",
+        "3. Run and score the real Agent: co eval --help",
+        "4. Inspect failures, edit the skill, rerun the SAME benchmark",
+    )),
+)
+
+
+def _start_here_help() -> str:
+    """START_HERE as Click help: \\b keeps each block from being re-wrapped."""
+    blocks = ["\b\n" + title + "\n" + "\n".join("  " + line for line in lines) for title, lines in START_HERE]
+    return "ConnectOnion - A simple Python framework for creating AI agents.\n\n" + "\n\n".join(blocks)
+
+
+@app.callback(invoke_without_command=True, help=_start_here_help())
 def main(
     ctx: typer.Context,
     version: bool = typer.Option(False, "--version", "-v", callback=version_callback, is_eager=True),
@@ -95,21 +120,7 @@ def main(
     no_tips: bool = typer.Option(False, "--no-tips",
         help="Do not print the Next: line after the command (CO_TIPS=off does the same for every run)."),
 ):
-    """ConnectOnion - A simple Python framework for creating AI agents.
-
-    \b
-    Start here:
-      co init                  Set up your identity and keys (~/.co/keys.env)
-      co create my-agent       New project; then: cd my-agent && python agent.py
-      co auth                  Log in to OpenOnion for managed models and credits
-
-    \b
-    Build or improve a skill:
-      1. Define the standard first: co benchmark --help
-      2. Write/check >=5 distinct cases; then edit .co/skills/<name>/SKILL.md
-      3. Run and score the real Agent: co eval --help
-      4. Inspect failures, edit the skill, rerun the SAME benchmark
-    """
+    """The root of every co command; its help text is START_HERE."""
     from ..environment import selection_error
     error = selection_error()
     if error is not None and ctx.invoked_subcommand != "env":
@@ -130,16 +141,15 @@ def _show_help():
     console.print()
     console.print("A simple Python framework for creating AI agents.")
     console.print()
-    console.print("[bold]Quick Start:[/bold]")
-    console.print("  co init                          Set up global credentials", markup=False)
-    console.print("  [cyan]co create my-agent[/cyan]               Create a project")
-    console.print("  [cyan]cd my-agent && python agent.py[/cyan]    Run your agent")
     # The workflow, not just the commands: an agent handed "improve this skill"
     # must find that the test cases come first without being told a command
     # name (#1642). `co skills` manages skills and says so.
-    console.print("  co benchmark --help              Build a skill: write >=5 test cases first", markup=False)
-    console.print("  co eval --help                   Then score the real Agent, edit the skill, rerun", markup=False)
-    console.print()
+    for title, lines in START_HERE:
+        console.print(f"[bold]{title}[/bold]")
+        for line in lines:
+            # soft_wrap: Rich folded the eval line at 80 columns into a stray "rerun".
+            console.print(f"  {line}", markup=False, highlight=False, soft_wrap=True)
+        console.print()
     # The register, not a selection. This list used to be typed by hand and
     # named 16 of 24 commands — ai, announce, call, reset, server, setup,
     # skills and sub were real and absent, and a hand-typed list has no way
@@ -244,7 +254,10 @@ def deploy(
         raise typer.Exit(2)
 
     from .commands.deploy_commands import handle_deploy
-    handle_deploy(template=template, skills=skills, name=name)
+    # Every refusal and failure in handle_deploy returns False; 1.8.8b9 dropped
+    # it here, so "Entrypoint not found" exited 0.
+    if handle_deploy(template=template, skills=skills, name=name) is False:
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -670,7 +683,7 @@ skill: field — the same cases must be able to compare two of them.
 \b
 Next after `co benchmark check <name>` passes:
   1. write or edit .co/skills/<skill>/SKILL.md (the skill is the deliverable)
-  2. co eval run <name> --agent agent.py --skill <skill> --runs 3
+  2. co eval run <name> --agent agent.py --skill <skill> --runs 1
   3. co eval report <name> --latest, edit only the skill, rerun the same benchmark
 """
 
@@ -720,6 +733,7 @@ EVAL_HELP = """Run a benchmark with the real Agent and inspect scored reports.
 
 \b
   co eval run <name> --agent agent.py [--skill NAME] [--invoke auto|explicit] [--runs N]
+              [--max-iterations N]
   co eval report <name> [--latest | --run ID]
 
 \b
@@ -758,7 +772,10 @@ def eval_run(
     invoke: str = typer.Option("auto", "--invoke",
                                help="auto: send the input unchanged, the Agent must choose the skill. "
                                     "explicit: send /<skill> <input>"),
-    runs: int = typer.Option(1, "--runs", min=1, help="Repeat each case on a fresh session"),
+    runs: int = typer.Option(1, "--runs", min=1, help="Repeat each case on a fresh session. Start with 1"),
+    max_iterations: Optional[int] = typer.Option(
+        None, "--max-iterations", min=1,
+        help="Steps one attempt may take before it is stopped (default 10); each step is paid for"),
     json_out: bool = typer.Option(False, "--json", help="Summary and report path as JSON"),
     live: bool = typer.Option(False, "--live",
                               help="Allow outside effects. Without it the run sets CO_EVAL_LIVE=0 "
@@ -767,12 +784,13 @@ def eval_run(
 ):
     """Run every case on the real Agent and score each expectation. Saves an immutable report.
 
-    Exit 0 all expectations pass; 1 any FAIL, UNVERIFIED or skill not invoked;
+    Exit 0 all expectations pass; 1 any FAIL, UNVERIFIED, STOPPED or skill not invoked;
     2 bad benchmark, agent path, skill or option; 3 the Agent or runner broke (never a pass).
     """
     from .commands.benchmark_commands import handle_eval_run
     raise typer.Exit(code=handle_eval_run(name, agent, skill_name=skill, invoke=invoke, runs=runs,
-                                          as_json=json_out, live=live, judge_model=judge_model))
+                                          as_json=json_out, live=live, judge_model=judge_model,
+                                          max_iterations=max_iterations))
 
 
 @eval_app.command("report")
