@@ -95,7 +95,9 @@ def check(app: typer.Typer, phrase: str) -> Optional[str]:
     words = phrase.split()
     if words[:1] != ["co"]:
         return f"{phrase!r} does not start with `co`"
-    node = typer.main.get_command(app)
+    # A built command tree is accepted too, so a caller checking hundreds of
+    # phrases builds it once (co audit), not once per phrase.
+    node = app if hasattr(app, "commands") else typer.main.get_command(app)
     for i, word in enumerate(words[1:], start=1):
         children = _children(node)
         if not children:
