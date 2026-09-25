@@ -167,9 +167,13 @@ co feishu receive --no-start     # wait for a message but never start a listener
 co feishu consume -- ./answer.sh   # the loop: receive, run the command, reply with its stdout
 ```
 
-`receive` starts a background `listen` if none is running, so there is no
-daemon to remember; if that listener dies within a second (no SDK, bad
-credentials) `receive` exits 1 and points at `log`. `listen` in the foreground is for watching it work and
+`receive` takes a message that is already queued without needing a listener;
+when the queue is empty it starts a background `listen` if none is running, so
+there is no daemon to remember. If that listener exits at once (no SDK,
+credentials the platform refused), `receive` and `consume` print the reason from
+the log and exit with the listener's own code: 3 when a person has to act, 1
+otherwise. A listener that dies later, while `receive` waits, is noticed within
+a second rather than at the end of the timeout. `listen` in the foreground is for watching it work and
 for a service manager; one listener per directory. A second `listen` on the
 same directory says `already listening (pid N)` and exits 1.
 
@@ -179,7 +183,7 @@ Exit codes, the same on every verb:
 |---|---|---|
 | 0 | done | |
 | 1 | the platform or the listener refused; its own sentence is on stderr | read it; `log` has the same line |
-| 2 | usage: unknown flag, nothing to send | `--help` |
+| 2 | usage: unknown flag, nothing to send | `co feishu <verb> --help` |
 | 3 | not configured: a credential, the SDK, or the bot capability is missing | `check` names the item |
 | 124 | `receive -t N` saw nothing in N seconds | the same as `timeout(1)` |
 
@@ -194,7 +198,10 @@ every two minutes.
 refuses to answer the same message twice unless you pass `--again`, so a loop
 that re-runs cannot double-post. A taken message that is neither replied to
 nor marked `done` comes back to `new/` after an hour, on the assumption that
-its consumer died; `done` is how a consumer says it chose silence. `send` and `reply` print the id Feishu gave
+its consumer died; `done` is how a consumer says it chose silence. `done`
+refuses an id this inbox never received (exit 1, `Next: co feishu ls`): the id
+would otherwise be recorded as finished, and the real message with that id
+dropped the day it arrived. `send` and `reply` print the id Feishu gave
 the new message and exit 1 with Feishu's own reason if it was refused.
 
 ### Changing a message after it has gone out
@@ -297,8 +304,9 @@ co feishu consume -- ./answer.sh
 `CO_CHAT_DIR` (a per-chat directory the command may keep its own state in).
 Non-empty stdout is sent back as the reply and the message is done. Empty
 stdout with exit 0 is the command choosing silence: also done, noted in
-`log`. A non-zero exit, or a reply Feishu refused, sends nothing and leaves
-the message taken: it comes back to `new/` in an hour, the same as a
+`log`. A non-zero exit, or a reply Feishu refused, sends nothing, is reported
+on stderr with the message id while the loop carries on, and leaves the
+message taken: it comes back to `new/` in an hour, the same as a
 consumer that died, so a transient failure is retried and a question is
 never silently consumed. A command that cannot be run at all (`./answer.sh`
 without its exec bit) is refused with exit 2 before any message is taken.

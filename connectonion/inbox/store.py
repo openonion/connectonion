@@ -235,6 +235,10 @@ class Inbox:
             os.chmod(self.root, 0o700)
         self._seen: Optional[set] = None
         self._lock_handle = None
+        # The background listener this process started, if any, and how it
+        # ended when it did not live long enough to be called started.
+        self._child = None
+        self.listener_exit_code: Optional[int] = None
 
     # ---- inbound -----------------------------------------------------------
 
@@ -392,6 +396,10 @@ class Inbox:
         """
         return sum(1 for record in self._records(self.handouts)
                    if record.get("id") == message_id)
+
+    def known(self, message_id: str) -> bool:
+        """Whether this inbox ever received the id: queued, taken, or logged."""
+        return self._queued(message_id) or self.lookup(message_id) is not None
 
     def _queued(self, message_id: str) -> bool:
         wanted = _safe(message_id)
@@ -663,10 +671,20 @@ class Inbox:
         self._lock_handle.close()
         self._lock_handle = None
 
-    def ensure_listener(self) -> Optional[int]:
+    def ensure_listener(self, settle: float = 0.0) -> Optional[int]:
         """Start `co <provider> listen` in the background if none is running.
         Returns the pid of the listener that is now running, or None if the
-        one we started died within a second (its reason is in the log)."""
+        one we started died at once (its reason is in the log, its exit code
+        in `listener_exit_code`).
+
+        `settle` is how long to go on watching a listener that has taken the
+        lock but not yet said whether its connection is up. Taking the lock is
+        the first thing `listen` does; asking the platform whether the token is
+        any good comes after. A revoked Telegram or Discord token took the lock,
+        was refused a second later and exited 3 — by which time `receive` had
+        been told "started" and settled down to wait forever for a listener that
+        no longer existed (the tester's `co telegram receive`, 2026-09-25).
+        """
         pid = self.listener_pid()
         if pid is not None:
             return pid
@@ -689,6 +707,8 @@ class Inbox:
         # long-lived `serve` does not hold one open log handle per restart.
         with self.logfile.open("ab") as log_handle:
             process = subprocess.Popen(argv, stdout=log_handle, **kwargs)
+        self._child = process
+        self.listener_exit_code = None
         # Wait for the child to take the lock, for it to exit, or for a few
         # seconds of interpreter start-up, whichever comes first.
         deadline = time.monotonic() + 5.0
@@ -696,8 +716,10 @@ class Inbox:
             if process.poll() is not None:
                 break
             if self.listener_pid() == process.pid:
-                self.log(f"listener started pid {process.pid}")
-                return process.pid
+                if self._settled(process, settle):
+                    self.log(f"listener started pid {process.pid}")
+                    return process.pid
+                break
             time.sleep(0.1)
         if process.poll() is None:
             self.log(f"listener started pid {process.pid} (lock not yet seen)")
@@ -707,8 +729,44 @@ class Inbox:
         pid = self.listener_pid()
         if pid is not None:
             return pid
+        self.listener_exit_code = process.returncode
         self.log(f"listener exited at once with {process.returncode}; see the lines above")
         return None
+
+    def _settled(self, process, settle: float) -> bool:
+        """False if the listener we just started said "stopped" or exited within
+        `settle` seconds; True once it said anything else, or stayed quiet.
+
+        Quiet is not failure: Feishu records no connection state at all, and a
+        slow network is not a bad token. Only the listener's own "stopped",
+        about its own pid, or its exit, counts against it.
+        """
+        deadline = time.monotonic() + settle
+        while True:
+            if process.poll() is not None:
+                return False
+            state = self.connection_state()
+            if state.get("pid") == process.pid:
+                if state.get("state") != "stopped":
+                    return True
+                # It has said why and is on its way out; let it finish so the
+                # exit code is the one it chose (3: a person has to act).
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    return True
+                return False
+            if time.monotonic() >= deadline:
+                return True
+            time.sleep(0.1)
+
+    def exited_listener(self) -> Optional[int]:
+        """The exit code of the listener this process started, if it has exited
+        and nobody else holds the lock now; None while there is a listener."""
+        child = self._child
+        if child is None or child.poll() is None or self.listener_pid() is not None:
+            return None
+        return child.returncode
 
     # ---- internals ----------------------------------------------------------
 

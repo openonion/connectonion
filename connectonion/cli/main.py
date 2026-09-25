@@ -39,7 +39,7 @@ from ..core.usage import DEFAULT_MODEL
 console = Console()
 
 
-from .typer_groups import _OneSuggestion
+from .typer_groups import NegativeIds, _OneSuggestion
 
 
 def _typer_app(**kwargs) -> typer.Typer:
@@ -1476,7 +1476,9 @@ app.add_typer(telegram_app, name="telegram",
               short_help="Telegram bot: send, plus experimental listen, receive and reply.")
 
 
-@telegram_app.command("send")
+# NegativeIds: a Telegram group is `-100123`, and `send -100123 hi` was
+# "No such option: -1".
+@telegram_app.command("send", cls=NegativeIds)
 def telegram_send(
     chat: str = typer.Argument(..., help="Chat id, or @channelname for a channel"),
     message: str = typer.Argument(..., help="The text to send"),
@@ -1529,9 +1531,11 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         handle_send(name, chat, text, reply_to=reply_to, plain=plain)
 
     if with_send:
-        group.command("send")(_send)
+        group.command("send", cls=NegativeIds)(_send)
 
-    @group.command("reply")
+    # Every verb that takes a chat or message id parses with NegativeIds:
+    # Telegram ids start with "-" for groups and channels.
+    @group.command("reply", cls=NegativeIds)
     def _reply(
         message_id: str = typer.Argument(..., help="Id of a received message"),
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
@@ -1542,7 +1546,7 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         from .commands.listen_commands import handle_reply
         handle_reply(name, message_id, text, again=again, plain=plain)
 
-    @group.command("edit", help=refuses)
+    @group.command("edit", cls=NegativeIds, help=refuses)
     def _edit(
         message_id: str = typer.Argument(..., help="Id of a message this account sent"),
         text: Optional[str] = typer.Argument(None, help="The new text; omitted means stdin"),
@@ -1552,13 +1556,13 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         from .commands.listen_commands import handle_edit
         handle_edit(name, message_id, text, plain=plain)
 
-    @group.command("delete", help=refuses)
+    @group.command("delete", cls=NegativeIds, help=refuses)
     def _delete(message_id: str = typer.Argument(..., help="Id of a message to delete for everyone")):
         """Delete a message for everyone. Prints the deletion's id."""
         from .commands.listen_commands import handle_delete
         handle_delete(name, message_id)
 
-    @group.command("react", help=refuses)
+    @group.command("react", cls=NegativeIds, help=refuses)
     def _react(
         message_id: str = typer.Argument(..., help="Id of any message, received or sent"),
         emoji: str = typer.Argument(..., help='The emoji; "" removes our reaction'),
@@ -1567,7 +1571,7 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         from .commands.listen_commands import handle_react
         handle_react(name, message_id, emoji)
 
-    @group.command("done")
+    @group.command("done", cls=NegativeIds)
     def _done(message_id: str = typer.Argument(..., help="Id of a taken message")):
         """Forget a taken message without replying, so it does not come back in an hour."""
         from .commands.listen_commands import handle_done

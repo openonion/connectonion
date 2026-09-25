@@ -63,6 +63,10 @@ MEDIA_MAX_BYTES = 64 * 1024 * 1024
 
 # How long `send` waits for the listener to pick the request up and answer.
 SEND_TIMEOUT_SECONDS = 30.0
+# A request older than the sender's wait plus this has no sender left: it gave
+# up (and said so), or was killed. The listener throws it away rather than
+# sending a message somebody was told had failed — and may have sent again.
+ABANDONED_AFTER_SECONDS = SEND_TIMEOUT_SECONDS + 5.0
 _SEND_POLL = 0.05
 
 
@@ -338,10 +342,37 @@ def _collect(path: Path) -> Optional[dict]:
     return payload
 
 
+def _await(answer: Path, seconds: float) -> Optional[dict]:
+    """The listener's answer, consumed, or None if it did not come in time."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        result = _collect(answer)
+        if result is not None:
+            return result
+        time.sleep(_SEND_POLL)
+    return None
+
+
+def _abandoned(name: str) -> bool:
+    """Whether an outbox request is older than any sender still waits.
+
+    The ticket starts with the milliseconds it was written at. A name without
+    one is not a request `send` wrote, and is treated as abandoned too.
+    """
+    stamp = name.split("-", 1)[0]
+    if not stamp.isdigit():
+        return True
+    return time.time() - int(stamp) / 1000 > ABANDONED_AFTER_SECONDS
+
+
 class WhatsApp:
     """One WhatsApp number linked as a companion device."""
 
     name = "whatsapp"
+    # Every send rides the listener's socket, so a send with no listener
+    # running needs what the listener needs: the command layer checks
+    # listen_requirements() for it and exits 3 instead of waiting 30 s.
+    via_listener = True
 
     def __init__(self):
         configured = os.environ.get("WHATSAPP_SESSION", "")
@@ -1016,22 +1047,42 @@ class WhatsApp:
         answer = spool / f"{ticket}.result"
         _publish(request, payload)
 
-        deadline = time.monotonic() + SEND_TIMEOUT_SECONDS
-        while time.monotonic() < deadline:
-            result = _collect(answer)
-            if result is not None:
-                if result.get("error"):
-                    raise RuntimeError(result["error"])
-                return result
-            time.sleep(_SEND_POLL)
-
-        request.unlink(missing_ok=True)
-        answer.unlink(missing_ok=True)
-        raise RuntimeError(
-            f"No listener answered in {int(SEND_TIMEOUT_SECONDS)}s. WhatsApp allows one connection per linked "
-            "device, so sending goes through the listener rather than opening a second "
-            "one. Next: co whatsapp listen"
-        )
+        try:
+            result = _await(answer, SEND_TIMEOUT_SECONDS)
+        except BaseException:
+            # Ctrl-C or a signal while waiting: the caller is about to be told
+            # nothing was sent, so nothing may be.
+            request.unlink(missing_ok=True)
+            raise
+        if result is None:
+            # Withdraw, in one atomic step. The listener claims a request by
+            # renaming it; exactly one of that rename and this unlink can
+            # succeed, so either the request is gone for good before the
+            # failure is reported, or the listener already has it and the
+            # truthful answer is to wait for what it says. Before this, the
+            # request could be picked up between "gave up" and the cleanup
+            # and go out after the caller was told it had failed.
+            try:
+                os.unlink(request)
+            except FileNotFoundError:
+                result = _await(answer, SEND_TIMEOUT_SECONDS)
+                if result is None:
+                    answer.unlink(missing_ok=True)
+                    raise RuntimeError(
+                        f"The listener took the message but has not said in "
+                        f"{int(2 * SEND_TIMEOUT_SECONDS)}s whether it went out; it may have. "
+                        "Look before sending it again. Next: co whatsapp log"
+                    ) from None
+            else:
+                answer.unlink(missing_ok=True)
+                raise RuntimeError(
+                    f"No listener answered in {int(SEND_TIMEOUT_SECONDS)}s, so nothing was sent. "
+                    "WhatsApp allows one connection per linked device, so sending goes through the "
+                    "listener rather than opening a second one. Next: co whatsapp listen"
+                )
+        if result.get("error"):
+            raise RuntimeError(result["error"])
+        return result
 
     def _drain_outbox(self, inbox: Inbox, stop: threading.Event) -> None:
         """Send what other processes queued. Runs in the listener."""
@@ -1039,10 +1090,24 @@ class WhatsApp:
         spool.mkdir(parents=True, exist_ok=True)
         while not stop.is_set():
             for request in sorted(spool.glob("*.json")):
-                payload = _collect(request)
+                # Claim before reading, by rename: the sender withdraws by
+                # unlinking the same name, and only one of the two can win.
+                taken = request.with_suffix(".taken")
+                try:
+                    os.rename(request, taken)
+                except FileNotFoundError:
+                    continue  # withdrawn by a sender that gave up
+                if _abandoned(request.name):
+                    # Its sender stopped waiting long ago and told its caller
+                    # it failed. A listener started nine minutes later sent it
+                    # anyway, the tester found; it must not.
+                    taken.unlink(missing_ok=True)
+                    inbox.log(f"outbox request {request.name} abandoned by its sender; not sent")
+                    continue
+                payload = _collect(taken)
                 if payload is None:
                     # Not ours, or not written by `send`. One log line, gone.
-                    request.unlink(missing_ok=True)
+                    taken.unlink(missing_ok=True)
                     inbox.log(f"outbox file {request.name} is not a send request; discarded")
                     continue
                 answer = request.with_suffix(".result")
