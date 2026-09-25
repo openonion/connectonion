@@ -1,5 +1,7 @@
 # co tiktok
 
+> **Experimental.** Nothing is uploaded or posted: `--confirm` checks the plan and then refuses.
+
 Prepare a local TikTok post plan and inspect the current browser page. This
 slice does not upload a file, create a TikTok draft, or publish a post.
 
