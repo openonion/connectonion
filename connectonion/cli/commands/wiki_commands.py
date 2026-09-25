@@ -455,11 +455,21 @@ def make_wiki_app(factory):
 
     @wiki.command("show", cls=V("co wiki show"))
     def show_record(ctx: typer.Context, record: str = typer.Argument(...)):
-        from ...wiki.files import CATEGORIES, Notebook
+        from ...wiki.files import CATEGORIES, Notebook, WikiError, read_json, state_path
         category = record.split("/")[0]
         recovery = ["list", category] if category in CATEGORIES else ["list"]
         def operation(root):
-            text = Notebook(root).read(record)
+            nonlocal category
+            page = record
+            if record == "me":
+                # The same owner `investigate me` uses; `show me` used to be
+                # read as a page called "me" and refused.
+                page = (read_json(state_path(root, "map.json"), {}).get("owner") or {}).get("record")
+                if not page:
+                    raise WikiError("No page for you yet: init makes it from a connected mailbox or from your "
+                                    "name. Run `co wiki init --name \"Your Name\"`")
+                category = page.split("/")[0]
+            text = Notebook(root).read(page)
             return text, (["investigate", record] if "Unknown" in text else ["list", category])
         _handle(ctx, operation, recovery)
 

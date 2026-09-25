@@ -157,6 +157,8 @@ def render(report: dict, comparison: Optional[dict] = None) -> str:
                 continue
             if attempt.get("stopped"):  # .get: reports saved before the step ceiling have no such key
                 lines.append(f"{prefix}STOPPED  {attempt['stopped']}")
+            if attempt.get("invalid"):  # .get: reports saved before 1.8.8b12 have no such key
+                lines.append(f"{prefix}INVALID  {attempt['invalid']}")
             if attempt["activation"]:
                 lines.append(f"{prefix}{attempt['activation']['status']:<10} skill: {attempt['activation']['evidence']}")
             for indicator in attempt["indicators"]:
@@ -170,6 +172,7 @@ def render(report: dict, comparison: Optional[dict] = None) -> str:
                  f"expectations {s['passed_indicators']}/{s['indicators']} · failed {s['failed']} · "
                  f"unverified {s['unverified']} · forbidden {s['forbidden_failures']} · "
                  f"not activated {s['not_activated']} · stopped {s.get('stopped', 0)} · "
+                 f"invalid {s.get('invalid', 0)} · "
                  f"runner errors {s['runner_errors']}")
     if s.get("agent_cost") is not None:
         ceiling = f", at most {report['max_iterations']} steps an attempt" if report.get("max_iterations") else ""

@@ -183,6 +183,21 @@ def _profile_dir() -> Path:
     return Path.home() / ".co" / "browser_profile"
 
 
+def _paid_profile_dir():
+    """Where the paid engine keeps its profile: inside CO_BROWSER_PROFILE_DIR
+    when that is set, or True for onionwright's own per-address default.
+
+    1.8.8b11 always passed True, so an isolated run's paid browser wrote
+    ~/.onionwright/profiles/<addr> under the real HOME. A subdirectory, not the
+    directory itself: the paid engine is a different Chromium build from the
+    system Chrome the free engine opens there, and one profile opened by two
+    Chrome versions can be upgraded out from under the older one.
+    """
+    if os.environ.get("CO_BROWSER_PROFILE_DIR"):
+        return _profile_dir() / "onion"
+    return True
+
+
 def has_display() -> bool:
     """Whether a headed browser can open a window here."""
     if platform.system() != "Linux":
@@ -774,7 +789,8 @@ class AsyncBrowserCore:
                         playwright,
                         self._paid_idempotency_key,
                         user_data_dir=(
-                            policy.profile_dir if policy is not None else True
+                            policy.profile_dir if policy is not None
+                            else _paid_profile_dir()
                         ),
                         **launch_options,
                     )

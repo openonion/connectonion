@@ -73,3 +73,17 @@ def test_an_existing_directory_is_refused_before_any_identity_or_account(tmp_pat
 
     assert result.exit_code == 1, result.output
     assert "co create my-agent-2" in _plain(result.output)
+
+
+def test_create_dot_suggests_a_real_name_not_dot_dash_2(tmp_path, monkeypatch):
+    # 1.8.8b11: `co create .` in a non-empty folder said "Try: co create .-2".
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "notes.txt").write_text("already here")
+    (tmp_path / "my-agent").mkdir()
+
+    result = CliRunner().invoke(app, ["create", ".", "--yes"])
+    out = _plain(result.output)
+
+    assert result.exit_code == 1, out
+    assert ".-2" not in out
+    assert "co create my-agent-2" in out and "co init ./ --template co-ai --yes" in out

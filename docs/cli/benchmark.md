@@ -92,6 +92,21 @@ model calls cost (the judge's are not included). Put the data a case needs in
 its `input` — the invoices, the prior submission — so a correct Agent answers
 without searching; the example `co benchmark list` prints does this.
 
+### The Agent cannot read the answers
+
+The benchmark file holds every `must` and `must_not`, and it sits in the
+project the Agent works in. On 1.8.8b11 the `co create` agent answered four of
+five cases by running `glob("**/*")` and then reading
+`.co/benchmarks/reimbursement.yaml`, and scored 5/5. So, for the length of a
+run:
+
+- any tool call that names `.co/benchmarks`, `eval-runs` or the benchmark's
+  own file name is **refused** before it runs, and the Agent is told why. A
+  case's declared `fixture:` stays readable.
+- an attempt whose tool results contain any expectation text anyway — a grep
+  over the workspace, a shell pipeline, a sub-agent — is **INVALID**: not
+  judged, never a pass, exit 1.
+
 ### How a verdict is reached
 
 After each attempt a judge model (`co/gemini-3.8-flash` unless
@@ -123,7 +138,7 @@ safe environment, as the demo below does with a local ledger.
 | exit | meaning |
 |---|---|
 | 0 | every expectation passed and, with `--skill`, the skill ran every time |
-| 1 | any FAIL, UNVERIFIED, STOPPED, or a skill that did not run |
+| 1 | any FAIL, UNVERIFIED, STOPPED, INVALID, or a skill that did not run |
 | 2 | bad benchmark, agent path, skill or option — nothing was run |
 | 3 | the Agent or the runner broke — never counted as a pass |
 
