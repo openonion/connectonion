@@ -1,0 +1,9 @@
+version: v1.8.8b10
+images:
+  - file: exit-codes-that-mean-it.png
+    alt: "Terminal: co trust add not-an-address prints that it is not an agent address, names co trust add --help, and echo prints 2; co create my-agent into an existing folder prints that my-agent exists and suggests my-agent-2, and echo prints 1"
+    caption: "Two refusals that used to exit 0, which a script reads as success: co trust add stored any text as a contact, and co create reported an existing folder only after a first run had made a keypair and an account. Both now exit non-zero and stop before doing anything (PRs 1707 and 1708, and this release)."
+    scenario: "python scripts/capture_188b10_release_cli.py on the release branch: a live run of this checkout's co entry point in a throwaway HOME and directory, no network, NO_COLOR and 96 columns"
+    viewport: "terminal, 96 columns"
+    commit: 4b44344b
+    source_run: "co trust add not-an-address and co create my-agent, 25 September 2026, the release/1.8.8b10 branch built on main after PR 1709"

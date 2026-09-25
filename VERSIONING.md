@@ -353,7 +353,20 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.8b9
+## Current Version: 1.8.8b10
+
+1.8.8b10 is an opt-in preview after 1.8.8b9: what a second walk through the
+same five areas found on b9 as published. Every `co browser` command ends
+within its deadline and `close` is never refused (#1709, #1704); a device that
+joins right after the host starts sees the next turn, and a host restart gives
+`TurnLostError` (#1708); a first benchmark no longer spends a dollar and
+refusals exit non-zero (#1707); `co wiki start` asks again when what it showed
+changed, and `co claude run` stops the child it started (#1706). Stable
+remains 1.8.7.
+
+- 1.8.8b10 (per-command daemon deadlines with cancellation, reserved slots for status/close/tab, client-side connect and read deadlines, read commands no longer start a daemon; viewer joins before the Home snapshot, relay "agent not connected" during resume becomes TurnLostError, slow on_approval declined at the deadline, co trust validates addresses; benchmark example self-contained, co eval run --max-iterations (10) and a spend notice, co create/co deploy refusals exit 1 and co create refuses an existing folder before any setup, internal docs out of the wheel; consent fingerprint re-asks on any change, co claude run stops its child on SIGTERM, co wiki init --name makes the owner page.)
+
+Earlier in this line:
 
 1.8.8b9 is an opt-in preview after 1.8.8b8. It gives the scheduler a command
 and a manual: `co schedule` lists, checks, runs, pauses and resumes the
