@@ -4,7 +4,7 @@
 import pytest
 
 from connectonion.wiki.config import prepare, read_config, set_config
-from connectonion.wiki.files import CATEGORIES, Notebook, WikiError, maintenance_lock
+from connectonion.wiki.files import CATEGORIES, MAX_NOTE_BYTES, Notebook, WikiError, maintenance_lock
 
 
 def test_inspection_does_not_initialize(tmp_path):
@@ -233,3 +233,32 @@ def test_a_digest_chunk_is_no_larger_than_one_investigate_turn():
     from connectonion.wiki.config import default_config
     limits = default_config()["limits"]
     assert limits["extract_chars_per_batch"] <= limits["input_chars_per_batch"]
+
+
+@pytest.mark.parametrize("stray", ["people/._alice.md", "people/.~lock.alice.md#", "people/.#alice.md",
+                                   "notes/.obsidian/workspace.md", "people/.~lock.x#"])
+def test_one_stray_file_from_an_editor_or_finder_does_not_break_the_notebook(tmp_path, stray):
+    """macOS writes `._x.md` beside a page copied to a non-Apple disk; LibreOffice and
+    Emacs leave lock files. Each one made every wiki command refuse the whole notebook."""
+    prepare(tmp_path)
+    note = Notebook(tmp_path)
+    note.write("people/alice.md", "# Alice\nA colleague.")
+    (tmp_path / stray).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / stray).write_bytes(b"\x00\x05\x16\x07 AppleDouble")
+    assert note.list() == ["people/alice.md"]
+    assert [hit["record"] for hit in note.search("colleague")] == ["people/alice.md"]
+
+
+def test_a_page_over_one_megabyte_is_skipped_with_a_warning_naming_it(tmp_path, capsys):
+    prepare(tmp_path)
+    note = Notebook(tmp_path)
+    note.write("people/alice.md", "# Alice\nA colleague.")
+    (tmp_path / "notes/pasted-log.md").write_text("x" * (MAX_NOTE_BYTES + 1), encoding="utf-8")
+    assert note.list() == ["people/alice.md"]
+    assert note.list() == ["people/alice.md"]
+    assert [hit["record"] for hit in note.search("colleague")] == ["people/alice.md"]
+    warning = capsys.readouterr().err
+    assert "notes/pasted-log.md" in warning and "1 MB" in warning
+    assert warning.count("notes/pasted-log.md") == 1  # once, not once per listing
+    with pytest.raises(WikiError, match="notes/pasted-log.md"):
+        note.read("notes/pasted-log.md")

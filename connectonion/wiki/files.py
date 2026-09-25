@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
@@ -107,6 +108,23 @@ def maintenance_lock(root: Path):
         os.close(fd)
 
 
+_WARNED: set = set()
+
+
+def _warn_oversized(record: str, size: int) -> None:
+    """Name the page once per process and carry on without it.
+
+    A pasted log saved as a page used to fail every command, including the ones
+    that would have let the user find and fix it. Listing is how every command
+    starts, so it warns once rather than on each of a command's listings.
+    """
+    if (record, size) in _WARNED:
+        return
+    _WARNED.add((record, size))
+    print(f"Wiki: skipped {record}: {size / 1_000_000:.1f} MB is over the 1 MB page limit; "
+          "split or trim it to include it", file=sys.stderr)
+
+
 def _today() -> str:
     from datetime import date
     return date.today().isoformat()
@@ -141,9 +159,18 @@ class Notebook:
             directory = safe_path(self.root, name)
             for path in sorted(directory.rglob("*.md")):
                 record = path.relative_to(self.root).as_posix()
+                # Not pages: Finder's `._x.md` AppleDouble files, Emacs `.#x.md` lock
+                # links, an editor's hidden settings folder. Each one used to make
+                # every command refuse the whole notebook as a "hidden path".
+                if any(part.startswith(".") for part in PurePosixPath(record).parts):
+                    continue
                 self.path(record)
-                if path.is_file():
-                    result.append(record)
+                if not path.is_file():
+                    continue
+                if path.stat().st_size > MAX_NOTE_BYTES:
+                    _warn_oversized(record, path.stat().st_size)
+                    continue
+                result.append(record)
         return result
 
     PERSON_SECTIONS = ("Who they are", "Why they are here", "Our relationship",
@@ -345,7 +372,7 @@ class Notebook:
         if not path.is_file():
             raise WikiError("Record not found; list the notebook for current record paths")
         if path.stat().st_size > MAX_NOTE_BYTES:
-            raise WikiError("Record exceeds the one-megabyte reading limit")
+            raise WikiError(f"{record} is larger than 1 MB, the page limit; split or trim it to use it")
         return path.read_text(encoding="utf-8")
 
     def write(self, record: str, content: str) -> bool:
