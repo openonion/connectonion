@@ -1,4 +1,5 @@
 import asyncio
+import copy
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -68,6 +69,29 @@ def test_claude_auto_default_keeps_accept_edits_as_a_narrower_choice():
     assert options["claude:accept-edits"]["nativeProfileId"] == "acceptEdits"
     assert options["claude:accept-edits"]["selectable"] is True
     assert options["claude:bypass-permissions"]["selectable"] is False
+
+
+def test_station_rejects_permission_profile_changes(tmp_path):
+    storage = _storage(tmp_path)
+
+    def add_station(current):
+        session = copy.deepcopy(current.session)
+        session["trace"].append({
+            "type": "provider_invocation",
+            "invocationId": "claude_code:station:session-1",
+            "workroomId": "claude_code:station:session-1",
+            "provider": "claude_code",
+            "stateRevision": 1,
+        })
+        return current.model_copy(update={"session": session})
+
+    storage.atomic_update("owned-session", add_station)
+    with pytest.raises(ProviderPermissionError) as error:
+        commit_provider_permission(
+            storage, "owned-session", "0xowner", "claude_code:station:session-1",
+            1, "claude:auto", request_id="permission-1", confirm_risk=False,
+        )
+    assert error.value.code == "unsupported_option"
 
 
 def test_commit_is_revision_bound_persisted_and_applies_to_subsequent_work(tmp_path):
