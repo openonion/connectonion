@@ -95,11 +95,19 @@ def neonize(monkeypatch):
     monkeypatch.setitem(sys.modules, "neonize.utils.jid", jid)
 
 
-def _drain(bot, inbox, seconds=0.5):
+def _drain(bot, inbox):
+    """Run the listener's sender thread until it has dealt with every request.
+
+    Stops on the spool being empty, not after a fixed sleep: on a loaded
+    runner a sleep can end before the thread's first pass, and "nothing was
+    sent" would then pass for the wrong reason."""
     stop = threading.Event()
     thread = threading.Thread(target=bot._drain_outbox, args=(inbox, stop), daemon=True)
     thread.start()
-    time.sleep(seconds)
+    spool = inbox.root / "outbox"
+    deadline = time.monotonic() + 10
+    while list(spool.glob("*.json")) + list(spool.glob("*.taken")) and time.monotonic() < deadline:
+        time.sleep(0.01)
     stop.set()
     thread.join(timeout=5)
 
@@ -134,11 +142,30 @@ def test_a_request_the_listener_took_at_the_deadline_is_waited_for_not_reported_
     sender gives up. Reporting failure there is the bug — the message is on its
     way. Withdrawing is one atomic step, so exactly one side owns the request:
     if the sender cannot withdraw it, the listener has it, and the sender waits
-    for the answer instead of saying it failed."""
+    for the answer instead of saying it failed.
+
+    Ordered with events, not sleeps: the first version slept its way to the
+    deadline and failed on slower CI runners, where the second wait ran out
+    before a sleep-timed answer arrived. Here the sender's first wait ends
+    ("the deadline passed") only after the listener has claimed the request,
+    and the answer is written only once the sender is in its second wait.
+    """
     from connectonion.inbox import whatsapp
 
-    monkeypatch.setattr(whatsapp, "SEND_TIMEOUT_SECONDS", 0.3)
     spool = Inbox("whatsapp").root / "outbox"
+    real_await = whatsapp._await
+    claimed, second_wait = threading.Event(), threading.Event()
+    waits = []
+
+    def ordered_await(answer, seconds):
+        waits.append(seconds)
+        if len(waits) == 1:
+            assert claimed.wait(10), "the listener never claimed the request"
+            return None  # the sender's deadline passed with no answer yet
+        second_wait.set()
+        return real_await(answer, 10)
+
+    monkeypatch.setattr(whatsapp, "_await", ordered_await)
     outcome = {}
 
     def ask():
@@ -149,20 +176,21 @@ def test_a_request_the_listener_took_at_the_deadline_is_waited_for_not_reported_
 
     caller = threading.Thread(target=ask, daemon=True)
     caller.start()
-    deadline = time.monotonic() + 5
+    deadline = time.monotonic() + 10
     while not list(spool.glob("*.json")) and time.monotonic() < deadline:
         time.sleep(0.01)
     (request,) = list(spool.glob("*.json"))
     ticket = request.name[:-len(".json")]
-    time.sleep(0.25)
-    # The listener's claim, just before the sender's deadline...
+    # The listener's claim, at the sender's deadline...
     os.rename(request, spool / f"{ticket}.taken")
-    time.sleep(0.3)
-    # ...and its answer, after it.
+    claimed.set()
+    # ...and its answer, after the sender found it could not withdraw.
+    assert second_wait.wait(10), "the sender reported instead of waiting for the listener"
     (spool / f"{ticket}.result").write_text(json.dumps({"id": "3EB0LATE"}))
     caller.join(timeout=10)
 
     assert outcome == {"id": "3EB0LATE"}
+    assert len(waits) == 2
 
 
 def test_a_withdrawn_request_is_gone_before_the_failure_is_reported(whatsapp_home, monkeypatch):
