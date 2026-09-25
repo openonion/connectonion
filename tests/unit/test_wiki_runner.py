@@ -35,9 +35,22 @@ def delegate(monkeypatch):
         return SimpleNamespace(returncode=0, stdout=json.dumps({
             "outcome": "natural", "result": "done", "usage": {"input_tokens": 13}}), stderr="")
 
-    monkeypatch.setattr("connectonion.wiki.runner.shutil.which", lambda name: "/opt/bin/co")
+    monkeypatch.setattr("connectonion.wiki.runner.co_command", lambda: ["/opt/bin/co"])
     monkeypatch.setattr("connectonion.wiki.runner.subprocess.run", run)
     return calls
+
+
+def test_model_runs_use_the_running_installation_not_the_first_co_on_path(notebook, monkeypatch):
+    """`venv/bin/co wiki ...` from a non-activated venv, with an older co earlier
+    on PATH, sent every model turn to that older `co ai` (seen on 1.8.8b7)."""
+    import sys
+    calls = []
+    monkeypatch.setattr("shutil.which", lambda name: "/elsewhere/bin/co")
+    monkeypatch.setattr(sys, "executable", "/work/venv/bin/python")
+    monkeypatch.setattr("connectonion.wiki.runner.subprocess.run", lambda argv, **kw: calls.append(argv) or
+                        SimpleNamespace(returncode=0, stdout='{"outcome": "natural"}', stderr=""))
+    run_stage(notebook, [], default_config())
+    assert calls[0][:5] == ["/work/venv/bin/python", "-m", "connectonion.cli.main", "ai", "--json"]
 
 
 @pytest.mark.parametrize("stage", ["maintain", "investigate", "abstract", "init"])
@@ -57,10 +70,16 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
     assert options["timeout"] == seconds + (0 if harness == "coai" else 15)
     if harness != "coai":
         assert argv[argv.index("--timeout") + 1] == str(seconds)
+    # Every stage, not only investigation: all of them read source text a
+    # correspondent could have written, and none needs a shell or the network.
     if harness == "claude-code":
-        assert argv[argv.index("--permission-mode") + 1] == "bypassPermissions"
+        assert argv[argv.index("--permission-mode") + 1] == "acceptEdits"
     else:
         assert "--permission-mode" not in argv
+    if harness == "codex":
+        assert argv[argv.index("--sandbox") + 1] == "workspace-write"
+    else:
+        assert "--sandbox" not in argv
     material = next((notebook.root / ".state/tasks").glob("*/material.json"))
     assert json.loads(material.read_text()) == [item]
     assert result["usage"] == {"input_tokens": 13}

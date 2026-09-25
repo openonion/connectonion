@@ -27,7 +27,7 @@ class Calls:
 def make(tmp_path, monkeypatch):
     monkeypatch.setattr("shutil.which", lambda name: "/opt/codex/bin/codex" if name == "codex" else None)
     calls = Calls()
-    scheduler = Launchd(agents_dir=tmp_path / "LaunchAgents", uid=501, run=calls, executable="/venv/bin/co")
+    scheduler = Launchd(agents_dir=tmp_path / "LaunchAgents", uid=501, run=calls, command=["/venv/bin/co"])
     return scheduler, calls
 
 
@@ -88,3 +88,17 @@ def test_job_ticks_on_an_interval_and_never_relies_on_calendar_triggers(tmp_path
     assert "StartCalendarInterval" not in plist
     assert plist["RunAtLoad"] is False  # the first tick catches up; no batch races the foreground one
     assert plist["ProgramArguments"][-2:] == ["sync", "--scheduled"]
+
+
+def test_the_job_runs_the_installation_that_installed_it_not_the_first_co_on_path(tmp_path, monkeypatch):
+    """A tester ran `venv/bin/co wiki start --yes` from a non-activated venv with an
+    older co (1.8.8b3) in ~/.local/bin earlier on PATH: the job ran the old one."""
+    import sys
+    monkeypatch.setattr("shutil.which", lambda name: "/Users/someone/.local/bin/co")
+    monkeypatch.setattr(sys, "executable", "/work/venv/bin/python")
+    scheduler = Launchd(agents_dir=tmp_path / "LaunchAgents", uid=501, run=Calls())
+    root = tmp_path / "wiki"
+    plist = plistlib.loads(scheduler.render(root, default_config()).encode())
+    assert plist["ProgramArguments"] == ["/work/venv/bin/python", "-m", "connectonion.cli.main",
+                                         "wiki", "--root", str(root), "sync", "--scheduled"]
+    assert plist["EnvironmentVariables"]["PATH"].startswith("/work/venv/bin:")

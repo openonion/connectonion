@@ -230,12 +230,33 @@ those turns under one workspace in its history. Inputs, review results and
 disposable page copies live in per-run subdirectories there;
 the runner validates a candidate before promoting it to the notebook.
 
-Codex extraction/maintenance/abstraction use workspace-write. Initialization
-and investigation retain the existing danger-full-access setting for source
-and browser access. When explicitly selected as the Wiki runner, Claude Code
-uses `bypassPermissions` so its headless task can write candidate pages and
-run source commands; the generic `co ai --harness claude-code` default remains
-manual. Wiki removes an ambient `ANTHROPIC_API_KEY` from Claude's subprocess
+Every Wiki stage reads text other people wrote -- mail bodies and PDF, DOCX
+and XLSX attachments -- and the daily job `co wiki start` installs runs with
+nobody watching. So every stage, scheduled or started by hand, runs confined:
+
+| Runner | Flags Wiki passes to `co ai` | What the model can do |
+|---|---|---|
+| `codex` | `--sandbox workspace-write` | Read files; write only inside `.state/tasks/` and TMPDIR; no network |
+| `claude-code` | `--permission-mode acceptEdits` | Read and write inside `.state/tasks/`; commands, web fetch/search and reads elsewhere are denied, since nobody is there to approve them |
+
+`co wiki start` shows the row for the configured runner in its consent
+summary, as `model_permissions`, before you approve the schedule.
+
+Model turns and the launchd job both run the installation that is running
+`co wiki` -- `<its python> -m connectonion.cli.main` -- not the first `co` on
+PATH. Starting from a non-activated venv with an older `co` in `~/.local/bin`
+used to install a job, and route every model turn, through the older one.
+
+Wiki's own code fetches the mail and attachments before the model starts, so
+the model needs nothing more than to read that material and write the page
+copy it is given. The cost is the web: investigation no longer looks up a
+role or a switchboard number with `co browser`, and says so in the page's
+`Uncertainties`. Before 1.8.8 investigation ran Codex with
+`danger-full-access` and Claude with `bypassPermissions`, which gave anyone
+who could email the user an unattended agent with a shell, the network and
+the user's mailbox; a line in the prompt was the only defence.
+
+Wiki removes an ambient `ANTHROPIC_API_KEY` from Claude's subprocess
 environment so the run uses the selected account's subscription rather than
 silently billing the API. Skills govern what the task should do; they are not
 OS permission enforcement.

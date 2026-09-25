@@ -38,14 +38,16 @@ def co(root, *args, env):
     return result.returncode, payload, result.stderr
 
 
-def test_missing_co_names_install(consented, tmp_path):
+def test_no_co_on_path_still_runs_this_installation(consented, tmp_path):
+    """Model turns go to the running installation's `co ai`, so a PATH without
+    any `co` no longer matters; the failure here is COAI's own, not a lookup."""
     env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path),
            "PYTHONPATH": str(Path(__file__).resolve().parents[3])}
     code, payload, stderr = co(consented, "sync", env=env)
     assert code == 1, stderr
-    assert "co CLI is missing" in payload["data"], payload
-    assert "co wiki" in payload["next"]
-    assert not list((consented / ".state").glob("runs/*.json"))
+    record = json.loads(next((consented / ".state" / "runs").glob("*.json")).read_text())
+    assert "codex CLI not found" in record["error"], record
+    assert not (consented / ".state" / "progress.json").exists()
 
 
 def test_second_sync_while_one_runs_says_busy(consented, tmp_path):
@@ -68,7 +70,10 @@ def test_second_sync_while_one_runs_says_busy(consented, tmp_path):
 
 
 def test_a_batch_that_fails_past_preflight_exits_nonzero_and_is_logged(consented, tmp_path):
-    """COAI owns login errors; Wiki records the failed attempt and preserves progress."""
+    """COAI owns provider errors; Wiki records the failed attempt and preserves progress.
+
+    The `co` earlier on PATH is a decoy: it must not answer. A tester's older
+    ~/.local/bin/co did answer every model turn on 1.8.8b7 (see co_command)."""
     binary = tmp_path / "bin"
     binary.mkdir()
     (binary / "co").write_text(
@@ -84,5 +89,5 @@ def test_a_batch_that_fails_past_preflight_exits_nonzero_and_is_logged(consented
     runs = list((consented / ".state" / "runs").glob("*.json"))
     record = json.loads(runs[0].read_text())
     assert len(runs) == 1 and record["outcome"] == "failed"
-    assert "codex login" in record["error"]
+    assert "codex CLI not found" in record["error"] and "codex login" not in record["error"]
     assert not (consented / ".state" / "progress.json").exists()

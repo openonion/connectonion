@@ -653,6 +653,7 @@ def make_wiki_app(factory):
 
         from ...wiki.config import read_config, validate
         from ...wiki.files import WikiError
+        from ...wiki.runner import co_command
         from ...wiki.service import mail_available, status, subscriptions
 
         def operation(root):
@@ -665,7 +666,7 @@ def make_wiki_app(factory):
                     wiki_fixes.append(wiki_fix)
                 checks.append({"check": name, "ok": ok, "detail": detail, **({"fix": fix} if not ok else {})})
 
-            check("co CLI", bool(shutil.which("co")), shutil.which("co") or "not on PATH",
+            check("co CLI", True, " ".join(co_command()),
                   "python -m pip install --upgrade --pre connectonion")
             config = None
             try:
