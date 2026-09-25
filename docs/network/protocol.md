@@ -135,7 +135,9 @@ match data["type"]:
     "CONNECT"        → handle_connect(...)        # in connect.py
     "INPUT"          → if existing running agent: push runtime_input + ACK (inline)
                        else: start_agent(...)     # in agent_io.py
-    else (with active_io) → active_io.send_to_agent(data)   # ASK_USER_RESPONSE, APPROVAL_RESPONSE, etc.
+    "APPROVAL_RESPONSE" / "ASK_USER_RESPONSE"
+                     → active_io.answer_request(data)   # only to the request its request_id names
+    else (with active_io) → active_io.send_to_agent(data)   # mode_change, etc.
 ```
 
 `CONNECT` must come first — it authenticates and populates `conn`. `INPUT` and most others require `conn["authenticated"] == True`.

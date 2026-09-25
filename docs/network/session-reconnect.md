@@ -279,7 +279,9 @@ T+10   New WebSocket connects → CONNECT { session_id, last_msg_id }
             resume_forwarding() spawns new forward_task on same io
        → Server replays any agent events the old client missed
        → Client sees the approval_needed UI again, user clicks Approve
-       → APPROVAL_RESPONSE arrives → send_to_agent puts it in _msgs_from_client
+       → APPROVAL_RESPONSE arrives naming the replayed event's id
+         → answer_request puts it in _msgs_from_client (the id still
+           names the pending request: a replay keeps its id)
        → Agent's io.receive() unblocks with the response → continues
 ```
 

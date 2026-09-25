@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [network/io/base.IO, asyncio, threading, time, uuid] | imported by [network/host/ws_router/agent_io.py] | tested by [tests/unit/test_io.py, tests/unit/test_io_image_support.py]
   Data flow: agent calls io.send(event) → auto-stamps id (UUID) and ts if missing → enqueues for async forwarder | Agent._record_trace() calls internal _send_persisted_trace(event) → queues a private dict subtype as Host-local provenance | client message → enqueued for agent | read_msgs_from_agent() async-iterates outgoing for forwarding to client | send_to_agent() pushes incoming messages to agent
   State/Effects: maintains incoming + outgoing channels (async-safe) | finished flag prevents sends after close | unblocks agent's blocking receive on close
-  Integration: exposes WebSocketIO() implementing IO interface | send/receive for agent-side, internal persisted-trace provenance queried by Host forwarder, read_msgs_from_agent/send_to_agent for transport-side, push_runtime_input/pop_runtime_inputs/finish_runtime_inputs for lossless mid-execution interjection, rewind_to(last_msg_id) for replay on reconnect, mark_agent_done() to terminate
+  Integration: exposes WebSocketIO() implementing IO interface | send/receive for agent-side, internal persisted-trace provenance queried by Host forwarder, read_msgs_from_agent/send_to_agent for transport-side, push_runtime_input/pop_runtime_inputs/finish_runtime_inputs for lossless mid-execution interjection, rewind_to(last_msg_id) for replay on reconnect, answer_request() delivers an approval/ask answer only to the request its request_id names, mark_agent_done() to terminate
   Performance: queue-based coordination between sync agent thread and async transport | blocking receive() is intended for agent thread | _wait_for_msgs_from_agent waits at most ~1s so idle-session forwarders don't pin executor-pool threads
   Errors: closed IO unblocks pending receive() so agent thread doesn't hang | no exceptions raised — channel coordination handled internally
 """
@@ -17,6 +17,12 @@ from dataclasses import dataclass
 from typing import Any, Dict
 
 from .base import IO
+
+# The client frame that answers each interactive request the agent can send.
+_ANSWER_TYPES = {
+    "approval_needed": "APPROVAL_RESPONSE",
+    "ask_user": "ASK_USER_RESPONSE",
+}
 
 
 class _PersistedTraceEvent(dict):
@@ -90,7 +96,12 @@ class WebSocketIO(IO):
         self._accepting_runtime_inputs = False
 
         self._closed = False
-        self._pending_permission: Dict[str, Any] | None = None
+        # The one approval or question the agent is blocked on, by the `id`
+        # stamped on the event the client was shown. An answer is delivered
+        # only against it: with a session open on two devices, the one that
+        # did not answer first still shows a request that is over, and its
+        # answer must not become the answer to whatever the agent asks next.
+        self._pending_request: Dict[str, Any] | None = None
         self._interrupt_requested = False
 
     # ═══════════════════════════════════════════════════════
@@ -121,9 +132,24 @@ class WebSocketIO(IO):
             if 'ts' not in message:
                 message['ts'] = time.time()
             self._track_provider_invocation(message)
+            self._track_pending_request(message)
             with self._agent_condition:
                 self._msgs_from_agent.append(message)
                 self._agent_condition.notify_all()
+
+    def _track_pending_request(self, message: Dict[str, Any]) -> None:
+        """Remember the request a live approval_needed / ask_user asks.
+
+        Recorded here, when the agent sends it, rather than when a forwarder
+        delivers it: several devices forward the same event at different
+        times, and an answer arriving between two of those deliveries must
+        still be judged against what the agent is actually waiting for.
+        """
+        answer_type = _ANSWER_TYPES.get(message.get("type"))
+        if answer_type is None or self.is_persisted_trace_event(message):
+            return
+        with self._client_condition:
+            self._pending_request = {"id": message["id"], "answer_type": answer_type}
 
     def _track_provider_invocation(self, message: Dict[str, Any]) -> None:
         """Keep the transport-side index aligned with typed provider lifecycle frames."""
@@ -334,6 +360,8 @@ class WebSocketIO(IO):
 
     def mark_agent_done(self):
         """Signal that agent is done producing messages."""
+        with self._client_condition:
+            self._pending_request = None
         with self._provider_condition:
             self._live_provider_invocations.clear()
             self._live_provider_names.clear()
@@ -371,39 +399,35 @@ class WebSocketIO(IO):
             self._client_condition.notify_all()
             return True
 
-    def register_permission_request(
-        self,
-        event: Dict[str, Any],
-        session_id: str,
-    ) -> bool:
-        """Bind one replayable approval event to this session's live mailbox."""
+    def answer_request(self, response: Dict[str, Any], *, sole_viewer: bool = True) -> str | None:
+        """Deliver one APPROVAL_RESPONSE / ASK_USER_RESPONSE to the request it names.
 
-        request_id = event.get("id")
-        if not isinstance(request_id, str) or not request_id:
-            return False
-        pending = {
-            "request_id": request_id,
-            "session_id": session_id,
-            "tool_call_id": event.get("tool_call_id"),
-        }
+        Returns None when delivered, or why it was dropped. `request_id` is the
+        `id` of the approval_needed / ask_user event being answered. An answer
+        that names a request the agent is no longer waiting on is dropped, never
+        moved to the one it is waiting on now: that is how a stale "approve"
+        on a phone became approval of a command only the laptop had seen.
+
+        An answer naming nothing is what clients before `request_id` send. It
+        is accepted only when `sole_viewer` says no other device could have
+        answered first; otherwise there is no telling which request it meant.
+        """
+        request_id = response.get("request_id")
         with self._client_condition:
-            if self._pending_permission is None:
-                self._pending_permission = pending
-                return True
-            return self._pending_permission == pending
-
-    def resolve_legacy_permission(self, response: Dict[str, Any]) -> bool:
-        """Bind a rolling-upgrade legacy answer to the one pending request."""
-
-        with self._client_condition:
-            if self._pending_permission is None:
-                return False
-            self._pending_permission = None
-            self._msgs_from_client.append(
-                self._normalized_legacy_permission(response)
-            )
+            pending = self._pending_request
+            if pending is None or pending["answer_type"] != response.get("type"):
+                return "stale"
+            if request_id is None:
+                if not sole_viewer:
+                    return "request_id_required"
+            elif request_id != pending["id"]:
+                return "stale"
+            self._pending_request = None
+            if response.get("type") == "APPROVAL_RESPONSE":
+                response = self._normalized_legacy_permission(response)
+            self._msgs_from_client.append(response)
             self._client_condition.notify_all()
-            return True
+            return None
 
     @staticmethod
     def _normalized_legacy_permission(response: Dict[str, Any]) -> Dict[str, Any]:
