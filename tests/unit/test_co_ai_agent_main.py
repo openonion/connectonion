@@ -26,6 +26,10 @@ from connectonion.cli.co_ai.plugins.native_coding_agent_routing import (
 from connectonion.useful_plugins import eval as eval_plugin
 from connectonion.useful_plugins.tool_approval.approval import load_permission_patterns
 
+# Agents and hosts built here write .co/ under the working directory; each
+# test gets its own, not the repository's shared one (tests/conftest.py).
+pytestmark = pytest.mark.usefixtures("own_project")
+
 
 @pytest.fixture(autouse=True)
 def avoid_real_global_owner_setup(monkeypatch):

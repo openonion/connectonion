@@ -21,6 +21,10 @@ from connectonion import Agent, Memory
 from tests.utils.mock_helpers import MockLLM
 from unittest.mock import Mock, MagicMock
 
+# Agents and hosts built here write .co/ under the working directory; each
+# test gets its own, not the repository's shared one (tests/conftest.py).
+pytestmark = pytest.mark.usefixtures("own_project")
+
 
 @pytest.fixture
 def memory_instance():

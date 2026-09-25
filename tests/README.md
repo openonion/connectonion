@@ -43,6 +43,7 @@ the thing it forbids happened and cost a day.
 | `_no_leaked_threads` | A thread still alive after the test fails it, by name | 39 `registry-cleanup` threads leaked by four modules, which later starved the main thread until the timeout (#1246) |
 | `_never_touch_the_real_home` | HOME and `~/.co` are a fresh tmp dir per test | A test overwrote a live Outlook token with a fake one |
 | `_no_stray_project_above_the_test` | A `.co/` above the working directory is a failure, not a wrong answer | Unit tests reading `/private/tmp/.co` |
+| `_nothing_written_into_the_repos_own_project` | An audit hook fails any test that writes under the repository's own `.co/`, naming the paths; use the `own_project` fixture (a tmp working directory) instead | ~90 tests in 17 files writing evals, logs, `admins.txt` and a session store into the checkout, shared by every xdist worker |
 | `_restore_excepthook` | `sys.excepthook` installed by a test does not outlive it | |
 | `_isolate_selected_environment` | Provider selection cannot leak between tests | |
 | import time | `FORCE_COLOR` and friends are stripped so output matches CI | 43 local-only failures from ANSI codes in asserted text |

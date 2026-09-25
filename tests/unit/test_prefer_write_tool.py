@@ -11,6 +11,10 @@ from connectonion.useful_plugins.prefer_write_tool import (
     remind_read_file,
 )
 
+# Agents and hosts built here write .co/ under the working directory; each
+# test gets its own, not the repository's shared one (tests/conftest.py).
+pytestmark = pytest.mark.usefixtures("own_project")
+
 
 # ── File creation detection ──────────────────────────────────────────
 

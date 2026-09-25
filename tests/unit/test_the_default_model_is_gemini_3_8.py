@@ -19,6 +19,11 @@ from connectonion.core.usage import (
     DEFAULT_MODEL,
     FREE_MANAGED_MODELS,
 )
+import pytest
+
+# Agents and hosts built here write .co/ under the working directory; each
+# test gets its own, not the repository's shared one (tests/conftest.py).
+pytestmark = pytest.mark.usefixtures("own_project")
 
 
 MANAGED_DEFAULT = "co/gemini-3.8-flash"

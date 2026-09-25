@@ -11,6 +11,11 @@ from pathlib import Path
 
 from connectonion.network.trust import tools
 from connectonion.network.trust.trust_agent import TrustAgent
+import pytest
+
+# Agents and hosts built here write .co/ under the working directory; each
+# test gets its own, not the repository's shared one (tests/conftest.py).
+pytestmark = pytest.mark.usefixtures("own_project")
 
 DOC = Path(__file__).resolve().parents[2] / "docs" / "concepts" / "onboarding.md"
 

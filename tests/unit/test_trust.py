@@ -25,6 +25,10 @@ from connectonion.network.host import (
 )
 from connectonion.network.trust import TrustAgent, validate_trust_level, TRUST_LEVELS
 
+# Agents and hosts built here write .co/ under the working directory; each
+# test gets its own, not the repository's shared one (tests/conftest.py).
+pytestmark = pytest.mark.usefixtures("own_project")
+
 
 @pytest.fixture
 def mock_llm():
