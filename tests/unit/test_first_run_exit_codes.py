@@ -57,3 +57,19 @@ def test_init_in_an_empty_directory_says_what_to_create_before_deploy(tmp_path, 
     assert not (project / "agent.py").exists()
     assert "Deploy it when it works" not in out
     assert "create agent.py" in out and "co init ./ --template co-ai --yes" in out
+
+
+def test_an_existing_directory_is_refused_before_any_identity_or_account(tmp_path, monkeypatch):
+    # Found capturing 1.8.8b10: on a first run the "exists" refusal came after
+    # a keypair was generated and an OpenOnion account signed up.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("connectonion.cli.commands.create.authenticate",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("signed up")))
+    monkeypatch.setattr("connectonion.cli.commands.create.ensure_global_config",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("made an identity")))
+    (tmp_path / "my-agent").mkdir()
+
+    result = CliRunner().invoke(app, ["create", "my-agent", "--yes"])
+
+    assert result.exit_code == 1, result.output
+    assert "co create my-agent-2" in _plain(result.output)

@@ -85,10 +85,31 @@ def template_dir_for(template: str) -> Path:
     return TEMPLATES_DIR / template
 
 
+def _refuse_existing(base_dir: Path, name: str) -> bool:
+    """Say the folder exists and suggest a free name; True when it does.
+
+    The caller returns False, not None: only False becomes exit 1, and 1.8.8b9
+    exited 0 here, so a script read "created" for a project it never made.
+    """
+    if not (base_dir / name).exists():
+        return False
+    counter = 2
+    while (base_dir / f"{name}-{counter}").exists():
+        counter += 1
+    console.print(f"\n[red]❌ '{name}' exists. Try: [bold]co create {name}-{counter}[/bold][/red]\n")
+    return True
+
+
 def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
                   template: Optional[str], description: Optional[str], yes: bool,
                   parent_dir: Optional[Path] = None):
     """Create a new ConnectOnion project in a new directory."""
+    # A name that is already a folder fails before anything else happens. The
+    # check below used to be the first one, after a first run had generated a
+    # keypair and signed up for an account (found capturing 1.8.8b10).
+    if name and _refuse_existing(Path.cwd() if parent_dir is None else parent_dir, name):
+        return False
+
     # Ensure global config exists first
     ensure_global_config()
 
@@ -292,19 +313,8 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     base_dir = Path.cwd() if parent_dir is None else parent_dir
     project_dir = base_dir / name
 
-    # Check if directory exists and suggest alternative
-    if project_dir.exists():
-        base_name = name
-        counter = 2
-        suggested_name = f"{base_name}-{counter}"
-        while (base_dir / suggested_name).exists():
-            counter += 1
-            suggested_name = f"{base_name}-{counter}"
-
-        # Show error with suggestion
-        console.print(f"\n[red]❌ '{base_name}' exists. Try: [bold]co create {suggested_name}[/bold][/red]\n")
-        # False, not None: the caller turns only False into exit 1, and 1.8.8b9
-        # exited 0 here, so a script read "created" for a project it never made.
+    # Again here: an interactive or AI-suggested name is only known now.
+    if _refuse_existing(base_dir, name):
         return False
 
     # Create project directory
