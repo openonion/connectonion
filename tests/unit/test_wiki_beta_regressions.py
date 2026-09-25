@@ -59,3 +59,22 @@ def test_skill_source_refresh_retains_authored_description(tmp_path):
     map_skills(nb,[source.parent.parent]);page=nb.read(record)
     assert 'My own explanation' in page and '## Current installed metadata\nSecond' in page
     map_skills(nb,[source.parent.parent]);assert nb.read(record)==page
+
+
+def test_show_me_shows_the_owners_page(tmp_path):
+    # 1.8.8b11: `investigate me` worked and `show me` said "expected a Markdown
+    # record inside a Wiki category".
+    from connectonion.wiki.files import state_path, write_json
+    root=tmp_path/'wiki';prepare(root)
+    Notebook(root).write('people/ada.md','# Ada Lovelace\n\n- Email: ada@example.com\n')
+    write_json(state_path(root,'map.json'),{'owner':{'record':'people/ada.md','addresses':['ada@example.com']}})
+    result=CliRunner().invoke(app,['wiki','--root',str(root),'show','me'])
+    assert result.exit_code==0, result.output
+    assert '# Ada Lovelace' in result.output
+
+
+def test_show_me_before_init_says_how_to_get_a_page(tmp_path):
+    root=tmp_path/'wiki';prepare(root)
+    result=CliRunner().invoke(app,['wiki','--root',str(root),'show','me'])
+    assert result.exit_code!=0
+    assert 'co wiki init' in result.output and 'expected a Markdown record' not in result.output
