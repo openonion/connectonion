@@ -185,6 +185,7 @@ calendar.create_event(
 )
 
 # Create Teams meeting (with auto-generated meeting link)
+# Work or school accounts only: on a personal account it raises before creating anything.
 calendar.create_teams_meeting(
     title="Project Sync",
     start_time="2025-01-15 14:00",
