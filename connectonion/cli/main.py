@@ -372,9 +372,13 @@ def claude_interactive(
     if ctx.invoked_subcommand is not None:
         return
     if share:
-        from .co_ai.claude_station import launch_claude_station
+        from .co_ai.claude_station import StationFailed, launch_claude_station
 
-        exit_code, owned_session = launch_claude_station(cwd, session_id, model)
+        try:
+            exit_code, owned_session = launch_claude_station(cwd, session_id, model)
+        except StationFailed as exc:
+            print(f"co claude: {exc}", file=sys.stderr)
+            raise typer.Exit(1) from exc
     else:
         from ..useful_tools.claude_code import run_interactive_claude
 

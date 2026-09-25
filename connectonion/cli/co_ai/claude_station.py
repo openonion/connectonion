@@ -24,6 +24,10 @@ from connectonion.network.trust import TrustAgent
 from connectonion.useful_tools.claude_code import run_interactive_claude
 
 
+class StationFailed(RuntimeError):
+    """Claude's terminal could not run; the message is the reason, as --no-share says it."""
+
+
 class ClaudeStation:
     """A terminal owner whose durable OIP session can be claimed by one browser."""
 
@@ -271,8 +275,13 @@ class ClaudeStation:
                     skip_existing_messages=returning_from_browser,
                 )
             except (OSError, ValueError) as exc:
+                # The link and pairing code are already on screen. Close the
+                # Work Room and void the code so neither outlives the failure,
+                # then report the reason the way --no-share does, not as a
+                # traceback that ends "Claude Station terminal failed".
+                self._pairing_hash = b""
                 self._transition("failed", status="done")
-                raise RuntimeError("Claude Station terminal failed") from exc
+                raise StationFailed(str(exc)) from exc
             with self._condition:
                 self.claude_session_id = session_id
             if not self._stop_local.is_set():
