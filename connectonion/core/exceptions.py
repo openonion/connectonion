@@ -4,7 +4,7 @@ ConnectOnion exceptions.
 Purpose: Custom exceptions for ConnectOnion framework with formatted, actionable error messages
 LLM-Note:
   Dependencies: usage (FREE_MANAGED_MODELS, for the list PaidModelRequiredError offers) | imported by [llm.py] | tested by [test_a_paid_model_says_which_ones_are_free.py]
-  Data flow: OpenOnionLLM._call catches openai.APIStatusError → 402 becomes InsufficientCreditsError, 503 becomes ProviderServiceError, 403 with error='paid_account_required' becomes PaidModelRequiredError; any other status is logged and re-raised
+  Data flow: OpenOnionLLM._call catches openai.APIStatusError → 402 becomes InsufficientCreditsError, 503 becomes ProviderServiceError, 403 with error='paid_account_required' becomes PaidModelRequiredError, 401 becomes LLMAuthenticationError whose message names the caller's key unless oo-api labelled the 401 as an upstream provider's; any other status is logged and re-raised
   State/Effects: parses error detail from API response | formats a message naming what to do next | preserves original error in __cause__
   Integration: exposes InsufficientCreditsError, PaidModelRequiredError, ProviderServiceError and the LLM* error family
   Performance: lightweight exception creation | formats string message once on init
@@ -26,6 +26,36 @@ class LLMProviderError(Exception):
     """
 
 
+# oo-api answers a co/ model's 401 in two different situations with the same
+# status. Its auth dependency rejects the caller's own token with a bare detail
+# ("Invalid token", "Token expired. ..."); a 401 from the upstream provider is
+# passed through with a label naming it ("Anthropic API error: 401 - ...",
+# "Upstream proxy error 401: ..."). Every co/ 401 used to be reported as the
+# second, so a mistyped key sent people to wait or open a support ticket (#1728).
+_UPSTREAM_LABELS = ("API error", "Upstream proxy error")
+
+
+def _managed_auth_message(original_error, model: str) -> str:
+    body = getattr(original_error, "body", None)
+    detail = body.get("detail") if isinstance(body, dict) else None
+    detail = detail if isinstance(detail, str) else ""
+    if any(label in detail for label in _UPSTREAM_LABELS):
+        return (
+            f"The managed provider credential for {model} was rejected. "
+            "This is a service-side configuration problem; retry later or "
+            "contact OpenOnion support."
+        )
+    # Any other 401 comes from oo-api checking the caller's token, so name the
+    # caller's fix. oo-api's own reason is short and never echoes the token;
+    # it is kept because "expired" and "moved to <address>" need different
+    # next steps. Upstream text is not echoed: it can carry provider internals.
+    reason = f" ({detail.rstrip('.')})" if detail else ""
+    return (
+        f"Your OpenOnion API key was rejected{reason}. Run `co auth` to get a "
+        "fresh one, or check the api_key you passed and OPENONION_API_KEY."
+    )
+
+
 class LLMAuthenticationError(LLMProviderError):
     """The provider rejected the credentials (401/403)."""
 
@@ -33,11 +63,7 @@ class LLMAuthenticationError(LLMProviderError):
         self.model = model
         self.status_code = getattr(original_error, "status_code", None)
         if model.startswith("co/"):
-            message = (
-                f"The managed provider credential for {model} was rejected. "
-                "This is a service-side configuration problem; retry later or "
-                "contact OpenOnion support."
-            )
+            message = _managed_auth_message(original_error, model)
         else:
             message = (
                 f"Authentication failed for {model}. Check the API key for this "

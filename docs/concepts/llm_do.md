@@ -249,6 +249,13 @@ except Exception as e:
     print(f"LLM call failed: {e}")
 ```
 
+A rejected key raises `LLMAuthenticationError` (from
+`connectonion.core.exceptions`). With a managed `co/` model the message says
+whose key it was: "Your OpenOnion API key was rejected" means the key you
+passed or `OPENONION_API_KEY` is wrong or expired — run `co auth`. Only when
+OpenOnion's own upstream provider key fails does it say "service-side
+configuration problem", and then retrying later is the right move.
+
 ## Next Steps
 
 - Learn about [Agents](agent.md) for multi-step workflows

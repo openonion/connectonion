@@ -1542,10 +1542,11 @@ class OpenOnionLLM(LLM):
                 # would tell a suspended account to go buy credits.
                 raise PaidModelRequiredError(e) from e
             elif e.status_code == 401:
-                # Managed-provider credentials live on oo-api, not on the
-                # caller's machine. Still use the shared provider-error family
-                # so library and CLI callers can handle this without depending
-                # on an OpenAI-compatible transport implementation.
+                # Either the caller's OpenOnion key or oo-api's own upstream
+                # credential was rejected; LLMAuthenticationError reads the body
+                # to say which (#1728). Still use the shared provider-error
+                # family so library and CLI callers can handle this without
+                # depending on an OpenAI-compatible transport implementation.
                 raise LLMAuthenticationError(e, model=f"co/{self.model}") from e
             logger.error(f"APIStatusError: status={e.status_code}, message={e.message}, body={getattr(e, 'body', None)}")
             raise

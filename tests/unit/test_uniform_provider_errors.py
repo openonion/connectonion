@@ -32,6 +32,14 @@ def _anthropic_error(cls, code):
     return cls("denied", response=response, body=None)
 
 
+def _oo_api_401(detail):
+    """A 401 exactly as oo-api sends it: FastAPI's {"detail": ...} body."""
+    request = httpx.Request("POST", "https://oo.openonion.ai/v1/chat/completions")
+    body = {"detail": detail}
+    response = httpx.Response(401, request=request, json=body)
+    return openai.AuthenticationError(f"Error code: 401 - {body}", response=response, body=body)
+
+
 def _make_fail(llm, exc):
     """Make the next provider call raise, whichever client shape it uses."""
     raiser = lambda **kw: (_ for _ in ()).throw(exc)
@@ -76,9 +84,12 @@ class TestAuthFailsTheSameWayEverywhere:
         with pytest.raises(LLMAuthenticationError):
             llm.complete([{"role": "user", "content": "hi"}])
 
-    def test_managed_provider_auth_is_a_service_error_for_the_user(self):
+    def test_managed_upstream_credential_failure_is_a_service_error(self):
+        """oo-api forwards an upstream provider's 401 with its own label
+        ("Anthropic API error: 401 - ..."). That really is OpenOnion's key,
+        so the user can do nothing but wait or report it."""
         llm = create_llm("co/claude-sonnet-4", api_key="caller-token")
-        original = _openai_error(openai.AuthenticationError, 401)
+        original = _oo_api_401("Anthropic API error: 401 - invalid x-api-key")
         _make_fail(llm, original)
 
         with pytest.raises(LLMAuthenticationError) as caught:
@@ -88,6 +99,48 @@ class TestAuthFailsTheSameWayEverywhere:
         assert "service-side configuration" in str(caught.value)
         assert "caller-token" not in str(caught.value)
         assert caught.value.__cause__ is original
+
+
+class TestAManagedKeySaysWhoseItIs:
+    """#1728: llm_do("say hi", api_key="bad-key") told the caller the problem was
+    on OpenOnion's side and to retry later, so they waited instead of fixing
+    their own key. oo-api rejects the caller's token with a bare 401 from its
+    auth dependency; only an upstream provider's 401 carries an "API error" or
+    "Upstream proxy error" label. The message must follow whose key it was."""
+
+    def _llm_do_fails_with(self, monkeypatch, original):
+        from openai.resources.chat.completions import Completions
+        from connectonion import llm_do
+
+        def reject(self, **kwargs):
+            raise original
+
+        monkeypatch.setattr(Completions, "create", reject)
+        with pytest.raises(LLMAuthenticationError) as caught:
+            llm_do("say hi", api_key="bad-key")
+        return caught.value
+
+    def test_a_rejected_caller_key_names_the_callers_fix(self, monkeypatch):
+        error = self._llm_do_fails_with(monkeypatch, _oo_api_401("Invalid token"))
+
+        message = str(error)
+        assert "service-side" not in message
+        assert "retry later" not in message
+        assert "Your OpenOnion API key was rejected" in message
+        assert "co auth" in message
+        assert "OPENONION_API_KEY" in message
+        assert "bad-key" not in message
+
+    def test_the_servers_reason_is_kept(self, monkeypatch):
+        """An expired token and a moved account need different next steps;
+        oo-api says which, so pass that on rather than flatten it."""
+        error = self._llm_do_fails_with(
+            monkeypatch,
+            _oo_api_401("Token expired. Authenticate again with /api/v1/auth"),
+        )
+
+        assert "Token expired" in str(error)
+        assert "co auth" in str(error)
 
 
 class TestRateLimit:
