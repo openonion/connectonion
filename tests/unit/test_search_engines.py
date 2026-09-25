@@ -116,3 +116,13 @@ def test_a_network_failure_on_the_last_engine_is_a_message_not_a_crash(web):
     web.routes["html.duckduckgo.com"] = down
 
     assert engines.web_search("q", engine="ddg") == "Search failed (network_error): ddg: could not connect (ConnectError)."
+
+
+def test_a_multiline_markdown_snippet_prints_as_one_short_line():
+    snippet = "The **latest** is 1.98.1\n\n### Key Facts:\n```bash\nrustup update\n```\n" + "more " * 80
+    text = engines.format_results({"engine": "co", "answer": "", "notes": [],
+                                   "results": [{"title": "rust-lang.org", "url": "https://r.example", "snippet": snippet}]})
+
+    line = text.splitlines()[-1].strip()
+    assert line.startswith("The latest is 1.98.1 ### Key Facts: bash rustup update") and line.endswith("…")
+    assert len(line) <= engines.SNIPPET_CHARS and len(text.splitlines()) == 4

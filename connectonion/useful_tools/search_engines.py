@@ -157,8 +157,19 @@ def search(query: str, engine: str = "auto", count: int = 10) -> dict:
     raise AssertionError("unreachable: the last engine either returns or raises")
 
 
+SNIPPET_CHARS = 200
+
+
+def _one_line(snippet: str) -> str:
+    # Managed-search snippets are the passages of Gemini's answer a page
+    # supports, markdown and code fences included; printed raw, a source
+    # spilled over a dozen lines and repeated the answer above it.
+    text = " ".join(snippet.replace("**", "").replace("```", "").split())
+    return text if len(text) <= SNIPPET_CHARS else text[:SNIPPET_CHARS - 1].rstrip() + "…"
+
+
 def format_results(found: dict) -> str:
-    lines = [f"{i}. {r['title']}\n   {r['url']}\n   {r['snippet']}".rstrip()
+    lines = [f"{i}. {r['title']}\n   {r['url']}\n   {_one_line(r['snippet'])}".rstrip()
              for i, r in enumerate(found["results"], 1)]
     body = "\n".join(lines) if lines else "No results."
     notes = "".join(f"\nNote: {note}" for note in found["notes"])

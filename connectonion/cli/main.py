@@ -680,7 +680,7 @@ def copy(
 # The same two tools co ai carries, as commands, so a skill written for Claude
 # Code or Codex that needs the web has something to run from bash.
 
-@app.command()
+@app.command(epilog='Example:  co search "python json indent"  |  co search "rust 1.99 release" --engine ddg --json')
 def search(
     query: str = typer.Argument(..., help="What to search for"),
     engine: str = typer.Option("auto", "--engine", "-e",
@@ -690,14 +690,16 @@ def search(
 ):
     """Search the web. `co`: Gemini's answer grounded in Google Search plus its sources, per query from credits; `ddg` is free.
 
-    Out of credits, `auto` answers from DuckDuckGo and says so. Exit 0 with
-    results; 1 when the engine could not answer, naming a free one.
+    Charges your ConnectOnion credits once per Google query on the `co` engine;
+    every other engine is read-only here. Out of credits, `auto` answers from
+    DuckDuckGo and says so. Exit 0 with results; 1 when the engine could not
+    answer, naming a free one.
     """
     from .commands.web_commands import handle_search
     raise typer.Exit(code=handle_search(query, engine, count, as_json=json_out))
 
 
-@app.command()
+@app.command(epilog='Example:  co fetch https://docs.python.org/3/library/json.html  |  co fetch <url> --prompt "What does indent do?"')
 def fetch(
     url: str = typer.Argument(..., help="A public http(s) page; private and local addresses are refused"),
     prompt: str = typer.Option("", "--prompt", "-p", help="Question about the page; a small model answers from it"),
@@ -706,6 +708,7 @@ def fetch(
 ):
     """Fetch a web page as Markdown. Pages that need JavaScript: co browser.
 
+    Read-only; --prompt also Charges one small-model call to your credits.
     Exit 0 with the page (or the redirect it points to); 1 when it could not be fetched.
     """
     from .commands.web_commands import handle_fetch
