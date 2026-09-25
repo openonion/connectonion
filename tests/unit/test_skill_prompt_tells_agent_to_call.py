@@ -22,6 +22,7 @@ class FakeAgent:
 
     def __init__(self, skills):
         self.skills = skills
+        self.tools = {"skill"}  # the section is only added when the tool exists
         self.system_prompt = "BASE."
 
     @property

@@ -12,6 +12,8 @@ it is sent — and acts on them.
 LLM-Note: Tests for connectonion/useful_plugins/skills.py (setup_skills prompt injection)
 """
 
+import re
+
 import pytest
 
 from connectonion.benchmark import runner
@@ -112,3 +114,18 @@ def test_co_eval_run_invoke_auto_can_pass_on_a_skill(project):
 
     assert report["cases"][0]["attempts"][0]["activation"]["status"] == "PASS"
     assert report["summary"]["exit_code"] == 0
+
+
+def test_without_the_skill_tool_the_prompt_is_unchanged_and_the_operator_is_told(project, capsys):
+    """The section says "your first action is skill(name=...)". Without the tool
+    that is an instruction to call something that does not exist."""
+    seen = []
+    agent = Agent("x", plugins=[skills], system_prompt="BASE.",
+                  llm=MockLLM(on_complete=choosing_model(seen)), log=False)
+
+    assert agent.system_prompt == "BASE."
+    out = re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().err)  # Rich prints to stderr
+    assert out.count("tools=[skill]") == 1
+
+    agent.input("Please reimburse INV-301")
+    assert "Available Skills" not in seen[0]

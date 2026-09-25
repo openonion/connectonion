@@ -861,6 +861,18 @@ def _inject_skills_to_system_prompt(agent: 'Agent') -> None:
     # only spend tokens, so an existing section is left as the one list.
     if SKILLS_SECTION_HEADING in agent.system_prompt:
         return
+    # The section tells the model its first action is skill(name=...). Without
+    # a `skill` tool that is an instruction to call a tool that does not exist,
+    # so the prompt stays as it was and the operator is told what to add;
+    # /name invocation still works without the tool.
+    if 'skill' not in agent.tools:
+        agent.logger.print(
+            f"[yellow]⚠ The skills plugin found {len(skills_list)} skill(s) but this "
+            "Agent has no `skill` tool, so the model is not told about them. "
+            "Add tools=\\[skill] (from connectonion.useful_plugins import skill) "
+            "to let it choose one.[/yellow]"
+        )
+        return
 
     # Project skills first: with dozens installed, the one that lives in this
     # repository is the one meant to win when several could apply, and order is

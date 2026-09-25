@@ -89,7 +89,9 @@ Skills are discovered from three locations (priority order):
 
 Skills are loaded once at agent creation, and each one's name and description is
 appended to the system prompt under `# Available Skills` — for a plain
-`Agent(tools=[skill], plugins=[skills])` too, not only `co ai`. Before 1.8.9 a
+`Agent(tools=[skill], plugins=[skills])` too, not only `co ai`. The list is only
+added when the Agent has the `skill` tool to load one; without it the plugin
+warns once and leaves the prompt alone. Before 1.8.9 a
 plain Agent discovered them and never said so, and a model cannot choose a skill
 it was never told about.
 
