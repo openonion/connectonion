@@ -16,13 +16,6 @@ from connectonion.network.host import schedule as sched
 from connectonion.network.host.ws_router import dashboard
 
 
-@pytest.fixture(autouse=True)
-def clean_registry():
-    sched.running_entries().clear()
-    yield
-    sched.running_entries().clear()
-
-
 def setup_page(tmp_path, monkeypatch, body):
     """Point the page at a project dir holding one schedule entry."""
     co = tmp_path / ".co"
