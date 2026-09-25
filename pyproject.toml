@@ -162,17 +162,36 @@ connectonion = "connectonion.cli.main:cli"
 # docs folder added later ships without anyone remembering to list it.
 only-include = ["connectonion", "docs"]
 sources = { "docs" = "connectonion/docs" }
-# Internal-only trees: test runs and release evidence, written on a maintainer's
+# Internal-only docs: test runs and release evidence, written on a maintainer's
 # machine and full of its paths and screenshots (releases/assets alone was 5 MB
-# of the 9 MB wheel). design-decisions/ keeps shipping on purpose: it explains
-# why, which is what an agent reading .co/docs/ needs. Keep this list equal to
-# docs/.package-ignore, which copy_docs() reads for editable installs;
+# of the 9 MB wheel), planning and positioning notes (the 1.8 plan, PRODUCT,
+# SELLING_POINTS, superpowers/), and the design decisions no shipped doc cites.
+# 1.8.8b9 still shipped all of those into every project's .co/docs/. The `!`
+# lines re-include the decisions a user-facing doc links to. Keep this list
+# equal to docs/.package-ignore, which copy_docs() reads for editable installs;
 # tests/unit/test_the_wheel_ships_only_public_docs.py holds them together.
 exclude = [
     "docs/archive",
     "docs/testing",
     "docs/acceptance",
     "docs/releases/assets",
+    "docs/superpowers",
+    "docs/1.8-development-plan.md",
+    "docs/SELLING_POINTS.md",
+    "docs/PRODUCT.md",
+    "docs/design-decisions/*",
+    "!docs/design-decisions/012-tool-execution-separation.md",
+    "!docs/design-decisions/014-hook-system-design.md",
+    "!docs/design-decisions/018-event-api-naming.md",
+    "!docs/design-decisions/019-agent-lifecycle-design.md",
+    "!docs/design-decisions/053-oip-only-browser-and-native-coding-adapters.md",
+    "!docs/design-decisions/054-one-async-browser-runtime.md",
+    "!docs/design-decisions/055-owner-bound-remote-browser-lifecycle.md",
+    "!docs/design-decisions/056-remote-browser-egress-gateway.md",
+    "!docs/design-decisions/063-one-directory-three-verbs.md",
+    "!docs/design-decisions/068-gmail-mailbox-pages-and-downloads.md",
+    "!docs/design-decisions/070-synology-inspections-and-durable-operations.md",
+    "!docs/design-decisions/071-control-center-revisions-and-runtime-approval.md",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -182,12 +201,29 @@ include = [
     "README.md",
     "LICENSE",
 ]
-# The sdist is on PyPI too; the same internal trees stay out of it.
+# The sdist is on PyPI too; the same internal docs stay out of it.
 exclude = [
     "docs/archive",
     "docs/testing",
     "docs/acceptance",
     "docs/releases/assets",
+    "docs/superpowers",
+    "docs/1.8-development-plan.md",
+    "docs/SELLING_POINTS.md",
+    "docs/PRODUCT.md",
+    "docs/design-decisions/*",
+    "!docs/design-decisions/012-tool-execution-separation.md",
+    "!docs/design-decisions/014-hook-system-design.md",
+    "!docs/design-decisions/018-event-api-naming.md",
+    "!docs/design-decisions/019-agent-lifecycle-design.md",
+    "!docs/design-decisions/053-oip-only-browser-and-native-coding-adapters.md",
+    "!docs/design-decisions/054-one-async-browser-runtime.md",
+    "!docs/design-decisions/055-owner-bound-remote-browser-lifecycle.md",
+    "!docs/design-decisions/056-remote-browser-egress-gateway.md",
+    "!docs/design-decisions/063-one-directory-three-verbs.md",
+    "!docs/design-decisions/068-gmail-mailbox-pages-and-downloads.md",
+    "!docs/design-decisions/070-synology-inspections-and-durable-operations.md",
+    "!docs/design-decisions/071-control-center-revisions-and-runtime-approval.md",
 ]
 
 # Include all non-Python files (md, txt, etc.) in the package

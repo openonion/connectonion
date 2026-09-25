@@ -23,7 +23,10 @@ pytestmark = pytest.mark.slow
 REPO = Path(__file__).resolve().parents[2]
 PLACEHOLDER_HOMES = {"you", "me", "name", "user", "User"}
 INTERNAL = ("connectonion/docs/testing/", "connectonion/docs/acceptance/",
-            "connectonion/docs/releases/assets/", "connectonion/docs/archive/")
+            "connectonion/docs/releases/assets/", "connectonion/docs/archive/",
+            "connectonion/docs/superpowers/", "connectonion/docs/1.8-development-plan.md",
+            "connectonion/docs/SELLING_POINTS.md", "connectonion/docs/PRODUCT.md",
+            "connectonion/docs/design-decisions/001-")
 
 
 @pytest.fixture(scope="module")
@@ -42,7 +45,8 @@ def wheel(tmp_path_factory):
 
 def test_public_docs_ship(wheel):
     assert "connectonion/docs/quickstart.md" in wheel
-    assert any(name.startswith("connectonion/docs/design-decisions/") for name in wheel)
+    # Cited by docs/cli/whatsapp.md, so re-included past `design-decisions/*`.
+    assert "connectonion/docs/design-decisions/063-one-directory-three-verbs.md" in wheel
 
 
 def test_internal_docs_do_not_ship(wheel):

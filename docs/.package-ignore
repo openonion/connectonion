@@ -1,10 +1,34 @@
 # Paths under docs/ that stay out of the wheel and out of a project's .co/docs/.
 # They are internal: test runs and release evidence recorded on a maintainer's
-# machine, with its absolute paths in them. One path per line, relative to docs/.
-# pyproject.toml's [tool.hatch.build.targets.wheel] exclude must list the same
-# paths (prefixed with docs/); a unit test compares the two.
+# machine with its absolute paths in them, product planning and positioning
+# notes, and design records written for maintainers. One pattern per line,
+# relative to docs/. `dir/*` leaves out everything in dir except the `!dir/file`
+# lines after it, which ship because a user-facing doc links to them.
+# pyproject.toml's wheel and sdist `exclude` must list the same patterns
+# (prefixed with docs/); a unit test compares them and checks the links.
 
 archive
 testing
 acceptance
 releases/assets
+superpowers
+1.8-development-plan.md
+SELLING_POINTS.md
+PRODUCT.md
+
+# Design decisions: only the ones the shipped docs cite. A new one stays
+# internal until a user-facing doc links to it; then add its `!` line here and
+# in pyproject.toml, or the link test fails.
+design-decisions/*
+!design-decisions/012-tool-execution-separation.md
+!design-decisions/014-hook-system-design.md
+!design-decisions/018-event-api-naming.md
+!design-decisions/019-agent-lifecycle-design.md
+!design-decisions/053-oip-only-browser-and-native-coding-adapters.md
+!design-decisions/054-one-async-browser-runtime.md
+!design-decisions/055-owner-bound-remote-browser-lifecycle.md
+!design-decisions/056-remote-browser-egress-gateway.md
+!design-decisions/063-one-directory-three-verbs.md
+!design-decisions/068-gmail-mailbox-pages-and-downloads.md
+!design-decisions/070-synology-inspections-and-durable-operations.md
+!design-decisions/071-control-center-revisions-and-runtime-approval.md
