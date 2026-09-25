@@ -258,7 +258,21 @@ def session_to_chat_items(session: dict) -> list[dict]:
             # Structural, not a regex over content: a message the system injected
             # carries `internal`, and a user who literally types
             # "<system-reminder>" must see their own words back unchanged.
-            if not msg.get('internal'):
+            if isinstance(msg.get('watch_event'), dict):
+                event = msg['watch_event']
+                items_ui.append({
+                    'id': event.get('event_id') or f"watch-{msg_idx}",
+                    'type': 'tool_call',
+                    'name': 'Watch observation',
+                    'status': 'done',
+                    'args': {'watch_id': event.get('watch_id'), 'kind': event.get('kind')},
+                    'result': event.get('summary'),
+                    'source': 'watch_event',
+                    'watch_id': event.get('watch_id'),
+                    'kind': event.get('kind'),
+                    'observed_at': event.get('observed_at'),
+                })
+            elif not msg.get('internal'):
                 items_ui.append({'id': f"msg-{msg_idx}", 'type': 'user', 'content': content})
 
             # Counted either way. The bubble is suppressed; the TURN is not — an

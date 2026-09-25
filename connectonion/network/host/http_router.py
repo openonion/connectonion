@@ -55,7 +55,7 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
                   session: dict | None = None, connection=None, images: list[str] | None = None,
                   files: list[dict] | None = None, requester: dict | None = None,
                   mode_policy: HostPermissionPolicy | None = None,
-                  is_admin: bool = False) -> dict:
+                  is_admin: bool = False, watch_event: dict | None = None) -> dict:
     """POST /input (and WebSocket /ws) with session merge and UI conversion."""
     session = session or {}
     session_id = session.get('session_id')
@@ -87,6 +87,12 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
             agent = create_agent()
         agent.io = connection
         agent.storage = storage
+        agent._watch_store = getattr(storage, "watch_store", None)
+        prior_mode = None
+        if watch_event is not None:
+            from ...core.mode import READ_ONLY, mode_of, set_mode
+            prior_mode = mode_of(session)
+            set_mode(session, READ_ONLY)
         if mode_policy is not None:
             if hasattr(agent, "_full_access_turns"):
                 agent._full_access_turns = None
@@ -95,7 +101,8 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
             agent._host_full_access_turns_ceiling = mode_policy.full_access_turns
 
         result = agent.input(
-            prompt, session=session, images=images, files=files
+            prompt, session=session, images=images, files=files,
+            _watch_event=watch_event,
         )
         duration_ms = int((time.time() - start) * 1000)
 
@@ -106,6 +113,9 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
                 mode_policy=mode_policy,
                 is_admin=is_admin,
             )
+        if watch_event is not None:
+            from ...core.mode import AUTO, READ_ONLY, set_mode
+            set_mode(agent.current_session, READ_ONLY if prior_mode == READ_ONLY else AUTO)
 
         agent.current_session['updated'] = time.time()
 
@@ -113,6 +123,10 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
         record.result = result
         record.duration_ms = duration_ms
         record.session = agent.current_session
+        if getattr(storage, "watch_store", None) is not None:
+            watch_expiry = storage.watch_store.latest_expiry(session_id)
+            if watch_expiry is not None:
+                record.expires = max(record.expires or 0, watch_expiry)
         storage.save(record)
     except Exception:
         # The claim is already durable. Always terminate it so a factory/model

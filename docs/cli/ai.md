@@ -200,6 +200,31 @@ The agent has a full suite of tools for coding tasks:
 
 **Task management**
 - Create and track todos, run background tasks, get task output
+- In a running Host session, watch a background task or check Gmail periodically
+
+### Session watches
+
+The Host can return to the same session after the current Agent turn ends. Ask
+`co ai` to start a long task and report its result; the Agent calls
+`run_background(...)` and `watch_task(task_id)`. The task's completion, failure,
+or cancellation creates a watch observation, followed by a new Agent turn in
+the same conversation. A Host restart reports an unknown outcome if it cannot
+verify the task's final status.
+
+For repeating checks, the Agent can call
+`watch_every(minutes=30, probe="gmail_search", query="subject:CRCD")`. The Host
+checks Gmail without a model call on unchanged results. New matching messages
+create one observation and wake the session. `list_watches()` shows current
+watches; `cancel_watch(watch_id)` stops one. Repeating watches expire after seven
+days by default, with intervals from 1 minute to 24 hours and at most 10 active
+watches per session. A failed probe pauses its watch and reports the error; cancel
+and recreate it after fixing the source.
+
+Watches require a long-lived `co ai` Host session and its authenticated owner.
+One-shot `co ai "..."` exits after its answer and cannot keep a watch running.
+Watch-triggered Agent turns start in Read only mode, with no inherited Full
+access grant. The observation is source data; the Agent's later answer is its
+own conclusion.
 
 **Codex delegation**
 - Hand a scoped coding task to the installed Codex CLI

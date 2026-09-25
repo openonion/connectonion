@@ -63,6 +63,10 @@ from .tools import (
     load_guide,
     run_background,
     task_output,
+    watch_task,
+    watch_every,
+    list_watches,
+    cancel_watch,
 )
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
@@ -140,6 +144,10 @@ def create_agent(
         todo,
         skill,
         *([run_background, task_output, kill_task] if background_tools else []),
+        watch_task,
+        watch_every,
+        list_watches,
+        cancel_watch,
         load_guide,
         ask_user,
     ]
