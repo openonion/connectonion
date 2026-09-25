@@ -209,7 +209,7 @@ The deployed agent loads skills from `.co/skills/` via the normal loader.
   contents copied into `.co/skills/`. Your working tree is untouched; on a
   name clash, later paths win:
   ```bash
-  co deploy --skills /Users/changxing/project/OnCourse/platform/social-media-management-skills
+  co deploy --skills ~/projects/social-media-management-skills
   co deploy --skills ~/skills/linkedin-login --skills ~/skills/linkedin-post-submit
   ```
 

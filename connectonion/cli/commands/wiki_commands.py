@@ -651,6 +651,7 @@ def make_wiki_app(factory):
     def doctor(ctx: typer.Context):
         import shutil
 
+        from ..._version import __version__
         from ...wiki.config import read_config, validate
         from ...wiki.files import WikiError
         from ...wiki.runner import co_command
@@ -667,7 +668,9 @@ def make_wiki_app(factory):
                 checks.append({"check": name, "ok": ok, "detail": detail, **({"fix": fix} if not ok else {})})
 
             check("co CLI", True, " ".join(co_command()),
-                  "python -m pip install --upgrade --pre connectonion")
+                  # This exact version, never `--pre`, which also takes pre-release
+                  # dependencies (httpx 1.0.dev6 crashed 1.8.8b7).
+                  f"python -m pip install --upgrade 'connectonion=={__version__}'")
             config = None
             try:
                 config = read_config(root)

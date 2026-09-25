@@ -2,22 +2,22 @@
   {
     "role": "page",
     "record": "projects/atlas-58b543867f.md",
-    "text": "The page as it stands, at projects/atlas-58b543867f.md. Fill its Unknowns, update what has moved, keep what is right:\n\n# atlas\n\n## What it is\n- Unknown — not investigated yet\n\n## Overview\n- Unknown — not investigated yet\n\n## Try it\n- Unknown — not investigated yet\n\n## Where it stands\n- Unknown — not investigated yet\n\n## Latest issues\n- Unknown — not investigated yet\n\n## People and ownership\n- Unknown — not investigated yet\n\n## Getting started\n- Unknown — not investigated yet\n\n## Why it exists\n- Unknown — not investigated yet\n\n## Key decisions\n- Unknown — not investigated yet\n\n## How it is built\n- Unknown — not investigated yet\n\n## Architecture map\n- Unknown — not investigated yet\n\n## Paths\n- /Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas\n- Sessions: 1\n- First seen: 2026-09-22\n- Last seen: 2026-09-22\n\n## Open threads\n- Unknown — not investigated yet\n\n## Uncertainties\n- Unknown — not investigated yet\n\n## Sources\n- (none yet)\n\nInvestigation: mapped 2026-09-22 · not investigated yet\n",
+    "text": "The page as it stands, at projects/atlas-58b543867f.md. Fill its Unknowns, update what has moved, keep what is right:\n\n# atlas\n\n## What it is\n- Unknown — not investigated yet\n\n## Overview\n- Unknown — not investigated yet\n\n## Try it\n- Unknown — not investigated yet\n\n## Where it stands\n- Unknown — not investigated yet\n\n## Latest issues\n- Unknown — not investigated yet\n\n## People and ownership\n- Unknown — not investigated yet\n\n## Getting started\n- Unknown — not investigated yet\n\n## Why it exists\n- Unknown — not investigated yet\n\n## Key decisions\n- Unknown — not investigated yet\n\n## How it is built\n- Unknown — not investigated yet\n\n## Architecture map\n- Unknown — not investigated yet\n\n## Paths\n- ~/projects/.worktree/wiki-investigate-0922-fixture/atlas\n- Sessions: 1\n- First seen: 2026-09-22\n- Last seen: 2026-09-22\n\n## Open threads\n- Unknown — not investigated yet\n\n## Uncertainties\n- Unknown — not investigated yet\n\n## Sources\n- (none yet)\n\nInvestigation: mapped 2026-09-22 · not investigated yet\n",
     "timestamp": "2026-09-22T01:25:47.149703+00:00",
     "source": "investigation:page"
   },
   {
     "role": "coverage",
-    "text": "Sources searched for handles /Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas, Atlas:\ncodex: 1 messages in window, 1 related to subject (handle or project match)",
+    "text": "Sources searched for handles ~/projects/.worktree/wiki-investigate-0922-fixture/atlas, Atlas:\ncodex: 1 messages in window, 1 related to subject (handle or project match)",
     "timestamp": "2026-09-22T01:25:47.149703+00:00",
     "source": "investigation:coverage"
   },
   {
     "role": "user",
-    "text": "Atlas counts words locally. README.md, count.py, draft.txt and output.txt are in /Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas. Please consider publishing a hosted website later. This is a request, not a completed deployment. Keep the Wiki page in English.",
+    "text": "Atlas counts words locally. README.md, count.py, draft.txt and output.txt are in ~/projects/.worktree/wiki-investigate-0922-fixture/atlas. Please consider publishing a hosted website later. This is a request, not a completed deployment. Keep the Wiki page in English.",
     "timestamp": "2026-09-22T01:25:46.778615+00:00",
     "source": "codex:atlas-synthetic:175",
-    "reference": "file:///Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/sessions/rollout-atlas.jsonl",
-    "project": "/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas"
+    "reference": "file://~/projects/.worktree/wiki-investigate-0922-fixture/sessions/rollout-atlas.jsonl",
+    "project": "~/projects/.worktree/wiki-investigate-0922-fixture/atlas"
   }
 ]

@@ -5,8 +5,11 @@ ConnectOnion has two release channels:
 - **Stable** is the default `pip install connectonion` channel for production.
 - **Preview** contains opt-in alpha, beta, and release-candidate builds.
 
-Preview releases never replace the stable recommendation. Install one with
-`--pre` or pin its exact version.
+Preview releases never replace the stable recommendation. Install one by
+pinning its exact version: `pip install --upgrade 'connectonion==X.YbN'`. The
+pin alone lets pip take that one preview. Do not add `--pre`: it applies to
+every dependency too, and under it 1.8.8b7 resolved httpx 1.0.dev6, which has
+no `AsyncClient`, and every remote agent call crashed.
 
 ## Current release
 
@@ -28,7 +31,7 @@ terminal. See [1.8.8b4 release notes](releases/1.8.8b4.md) for tested scope
 and current limits.
 
 ```bash
-python -m pip install --upgrade --pre 'connectonion==1.8.8b4'
+python -m pip install --upgrade 'connectonion==1.8.8b4'
 co claude --cwd /path/to/project
 ```
 
@@ -215,7 +218,6 @@ disclosure.
 Normal upgrades stay on stable. Preview testers opt in explicitly:
 
 ```bash
-python -m pip install --pre --upgrade connectonion
 python -m pip install connectonion==1.7.0a13
 ```
 

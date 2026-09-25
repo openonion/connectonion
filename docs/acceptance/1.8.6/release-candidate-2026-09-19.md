@@ -5,7 +5,7 @@ Every command below was run with `PYTHONSAFEPATH=1` so `python -c` could not
 prepend the working directory and import the source tree instead:
 
 ```
-/Users/changxing/.../.venv/lib/python3.14/site-packages/connectonion/__init__.py
+/Users/you/.../.venv/lib/python3.14/site-packages/connectonion/__init__.py
 1.8.6a9
 ```
 
@@ -27,7 +27,7 @@ mention-only triggering, replies, reconnect behaviour.
 
 ```
 $ co whatsapp check
-✓ whatsapp configured · listener pid 83467 · 0 unread · /Users/changxing/.co/inbox/whatsapp
+✓ whatsapp configured · listener pid 83467 · 0 unread · /Users/you/.co/inbox/whatsapp
 ✓ connected as 61410724095 since 2026-09-19T04:00:47Z
 ```
 

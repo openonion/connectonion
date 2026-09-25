@@ -1,6 +1,10 @@
-# Folders/files to exclude from pip package
-# These are for internal use only, not shipped with connectonion
+# Paths under docs/ that stay out of the wheel and out of a project's .co/docs/.
+# They are internal: test runs and release evidence recorded on a maintainer's
+# machine, with its absolute paths in them. One path per line, relative to docs/.
+# pyproject.toml's [tool.hatch.build.targets.wheel] exclude must list the same
+# paths (prefixed with docs/); a unit test compares the two.
 
 archive
-design-decisions
-roadmap.md
+testing
+acceptance
+releases/assets

@@ -24,6 +24,8 @@ from dataclasses import dataclass
 
 from packaging.version import InvalidVersion, Version
 
+from ..._version import __version__
+
 # The floor, not a pin. A newer client is expected to keep working against the
 # catalogue: oo-api records `minimum_client_version` per artifact and refuses a
 # client below it, which is the check that actually protects a paid download.
@@ -87,7 +89,9 @@ def _install_failure_advice(completed, break_system_packages: bool) -> str:
             "  co browser install-onion --break-system-packages\n\n"
             "Or put both in a virtualenv, where nothing needs the flag:\n"
             "  python3 -m venv ~/.co/venv\n"
-            "  ~/.co/venv/bin/pip install --pre connectonion"
+            # The exact version running now, not `--pre`: `--pre` lets pip take
+            # pre-release dependencies too (httpx 1.0.dev6 crashed 1.8.8b7).
+            f"  ~/.co/venv/bin/pip install 'connectonion=={__version__}'"
             f"{tail}"
         )
     return f"pip could not install Onionwright (exit {completed.returncode}).{tail}"
