@@ -45,7 +45,7 @@ def test_bare_co_labels_the_same_commands_experimental():
     rows = _bare_rows()
     for name in ("wiki", "claude", "discord", "tiktok"):
         assert "Experimental:" in rows[name], rows[name]
-    assert "Experimental: listen" in rows["telegram"], rows["telegram"]
+    assert "plus experimental listen" in rows["telegram"], rows["telegram"]
 
 
 def test_bare_co_does_not_label_stable_commands():
