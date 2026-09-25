@@ -127,10 +127,24 @@ parsing prose:
 | Code | Meaning |
 |------|---------|
 | `0`  | success |
-| `1`  | the action failed (e.g. selector not found) |
-| `2`  | usage error (bad flags, empty `-t`, `tab` misuse) |
-| `3`  | unknown tab (`-t` names a tab that was never `tab open`ed) |
+| `1`  | the action failed (e.g. a selector matched nothing, a file to upload is missing), or the daemon is busy at connection capacity |
+| `2`  | usage error (bad flags, empty `-t`, `tab` misuse, a `go_to` address that is not a web URL) |
+| `3`  | nothing to act on: unknown tab (`-t` names a tab that was never `tab open`ed), or no browser is open yet — the message names the `go_to` that opens one |
 | `4`  | tab busy (another agent is mid-task on that tab) |
+
+A selector that matches nothing is a failure for the functions that act on it
+(`click_element_by_selector`, `type_text_by_selector`, `fill_text_by_selector`)
+and for `get_element_text_by_selector`, which would otherwise print the error
+sentence to stdout as if it were the element's text. `count_elements_by_selector`
+answering `0 elements` is an answer, exit `0`. Functions that return page
+content (`get_text`, `extract_*`, `run_page_script`, …) exit `0` whatever the
+page says.
+
+`go_to` refuses an address it cannot load before starting anything, with exit
+`2`: a scheme other than `http`, `https`, `file`, `data`, `about` or `chrome`
+(`javascript:`, `mailto:`, a typo like `htp://`), or text that is not a host
+name (`"not a url"`). A bare host still gets a scheme, as always:
+`example.com` → `https://example.com`, `localhost:8000` → `http://localhost:8000`.
 
 ## Command Reference
 
@@ -162,8 +176,12 @@ co browser save_state auth.json                  # export cookies/localStorage (
 ```
 
 Function arguments follow the shell: positional args in order, options as
-`--flag=value` (e.g. `take_screenshot --full-page=true`). Calling a function with
-the wrong arguments returns its usage line so a script (or agent) can self-correct.
+`--flag=value` or `--flag value` (e.g. `take_screenshot --full-page=true` or
+`take_screenshot --full-page true`). A boolean flag alone (`--full-page`) means
+true; a word after it that is not `true`/`false`/`yes`/`no`/`on`/`off`/`1`/`0`
+stays positional, so `take_screenshot --full-page shot.png` still names the
+file. Calling a function with the wrong arguments returns its usage line so a
+script (or agent) can self-correct.
 
 ### Network: what the page sent, and a HAR of it
 
@@ -182,11 +200,14 @@ co browser -t shop network request 7 --raw                   # with header value
 co browser -t shop network clear                             # then one action, to isolate it
 ```
 
-`requests` is the index — method, status, kind, size, duration, URL, newest
-last, id first so `cut -f1` feeds `request`. `--status` takes `200`, `2xx` or
-`400-499`; a spec that is none of those is an error, not an empty list, so a
-typo cannot read as "no errors". `request <n>` opens one: request headers,
-request body, response headers, response body.
+`requests` is the index — a header line, then method, status, kind, size,
+duration, URL, newest last, id first so `cut -f1` feeds `request`. `--status`
+takes `200`, `2xx` or `400-499`, and `--type` a comma list of Playwright's
+resource types (`document`, `xhr`, `fetch`, `script`, `image`, …); a value that
+is neither is an error, not an empty list, so a typo cannot read as "no
+errors". `request <n>` opens one: request headers, request body, response
+headers, response body; a request that never got a response says
+`status=no response`.
 
 To see what **one action** did, clear first:
 
@@ -337,7 +358,17 @@ The daemon records its pid next to the socket, so a daemon that is merely **busy
 (for example, its bounded connection capacity is full) is never mistaken for a
 dead one: clients wait briefly and report capacity instead of spawning a rival
 daemon over a live browser. Each request is capped at 1 MiB, reads and replies
-have absolute 120-second deadlines, and at most 32 client tasks are admitted.
+have absolute 120-second deadlines, and at most 32 client tasks are admitted; a
+command beyond that is answered at once with "browser daemon is busy at
+connection capacity (32 commands in flight) — try again shortly" (exit 1).
+
+After each reply the daemon checks that the browser is still alive — after the
+connection has closed, so the check never holds a slot. The check is one round
+trip to Chrome shared by everyone asking, with a 3-second deadline. Chrome
+answers it by reading its cookie store, which on macOS can wait on a Keychain
+prompt; no answer is read as "unknown", never as "dead", so a slow Chrome is not
+torn down. `co browser status` has deadlines of its own and says which question
+went unanswered instead of hanging.
 Cancellation or disconnect clears that request's active audit lease without
 erasing another task's tab ownership. Startup itself is race-proof: a kernel lock
 makes two terminals' simultaneous first commands elect exactly one daemon — the
@@ -375,9 +406,13 @@ downgrading so an older client never talks to a newer daemon.
 - **"Chrome failed to start"** — usually running over ssh/cron without a desktop
   session (start from a logged-in Terminal, or use `--headless`), or a leftover
   Chrome still holds the profile. The full launch log is in `~/.co/browser.log`.
-- **"daemon is … at connection capacity" after ~15s** — 32 clients are already
-  admitted (or all bounded Windows transport workers are occupied). Retry shortly;
+- **"browser daemon is busy at connection capacity"** — 32 commands are in
+  flight (or all bounded Windows transport workers are occupied). Retry shortly;
   an unrelated slow browser action on another named tab no longer blocks yours.
+- **`status` says "Chrome did not answer a liveness check"** — the browser is up
+  but its cookie store is not answering; on macOS that is usually a Keychain
+  prompt waiting behind another window. Answer it, or `co browser close` and
+  start again (logins are kept).
 - **Nuclear option** — kill the daemon and let the next command start fresh
   (logins survive: they live in the profile, not the daemon):
 

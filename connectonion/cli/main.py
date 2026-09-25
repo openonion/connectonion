@@ -438,7 +438,10 @@ def browser(
     args: List[str] = typer.Argument(None, help="Browser function + args, or: do \"<instruction>\""),
 ):
     """Drive one persistent browser. Run a function directly (co browser go_to x.com),
-    use `do` for the AI agent (co browser do "..."), or `co browser help` to list functions."""
+    use `do` for the AI agent (co browser do "..."), or `co browser help` to list functions.
+
+    Also: -t TAB to target your own tab · tab open|ls|close · status · network ·
+    cookies · close. `co browser help` shows how to use each one."""
     # `config` is a setting, not a browser verb: it must not reach the daemon
     # or start anything, so it is answered before the engine is resolved.
     if args and args[0] == "config":
