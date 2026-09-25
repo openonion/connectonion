@@ -107,7 +107,7 @@ class TestSyncNeverTouchesState:
 
         argv = self._rsync_argv(run)
         pairs = [(argv[i], argv[i + 1]) for i in range(len(argv) - 1)]
-        assert ("--exclude", ".venv/") in pairs
+        assert ("--exclude", ".venv") in pairs
         assert ("--exclude", ".git/") in pairs
 
     def test_rsync_honours_the_projects_gitignore(self, project):

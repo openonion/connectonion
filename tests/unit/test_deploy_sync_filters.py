@@ -159,6 +159,25 @@ def test_a_local_key_cannot_take_over_the_server(tmp_path):
     assert (server / ".co" / "keys" / "agent.key").read_text() == "SERVER"
 
 
+def test_a_symlinked_venv_on_the_server_survives(tmp_path):
+    """#1699. A server that keeps its venv outside /srv/<agent> behind a
+    `.venv` symlink lost it on the next deploy: `.venv/` with a trailing slash
+    matches directories only, a symlink is not one, and `--delete` removed it.
+    pip then failed, and every timer starting `.venv/bin/python` would have too."""
+    local, server, real = tmp_path / "local", tmp_path / "server", tmp_path / "venvs" / "abc"
+    local.mkdir()
+    (local / "agent.py").write_text("print('hi')\n")
+    (real / "bin").mkdir(parents=True)
+    server.mkdir()
+    (server / ".venv").symlink_to(real)
+
+    subprocess.run(
+        ["rsync", "-a", "--delete", *RSYNC_FILTERS, f"{local}/", f"{server}/"],
+        check=True, capture_output=True,
+    )
+    assert (server / ".venv").is_symlink(), "deploy deleted the server's venv symlink"
+
+
 def test_a_local_schedule_state_does_not_rewind_the_servers(tmp_path):
     """`co schedule pause` on a laptop, then a deploy: the server keeps its own
     record of what ran and what is paused (#1685). Protect-from-delete is not
