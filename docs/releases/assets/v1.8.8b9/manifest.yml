@@ -1,0 +1,9 @@
+version: v1.8.8b9
+images:
+  - file: help-start-here.png
+    alt: "Terminal output of co --help above its options box: usage, a Start here block listing co init, co create my-agent and co auth with what each does, then the four steps for building a skill"
+    caption: "A new user's first co --help now starts with how to begin — init, create, auth — before the skill-benchmark guidance that used to be the only block (PR 1697, found by the first-run tester on 1.8.8b7)."
+    scenario: "python scripts/capture_188b9_release_cli.py on the release branch: a live run of this checkout's co entry point with NO_COLOR and 100 columns, cut above the options box as the command line shows"
+    viewport: "terminal, 100 columns"
+    commit: d4cefbd6
+    source_run: "co --help, 25 September 2026, the release/1.8.8b9 branch built on main after PR 1704"

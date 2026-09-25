@@ -353,7 +353,21 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.8b8
+## Current Version: 1.8.8b9
+
+1.8.8b9 is an opt-in preview after 1.8.8b8: what five testers found using
+1.8.8b7 from PyPI in fresh profiles, fixed. A stale approval on a second device
+can no longer approve the next request (#1692); headless Claude Code runs no
+longer load a cloned repo's settings (#1687); Wiki runs are confined (#1691);
+a visitor's Home shows only their own runs (#1702); the preview install line no
+longer pulls pre-release httpx and the wheel ships only user docs (#1696); and
+first run, the browser daemon, the Python client, the inboxes and the Wiki
+were fixed where they failed a new user (#1697, #1684, #1704, #1700, #1698,
+#1690, #1688). Stable remains 1.8.7.
+
+- 1.8.8b9 (APPROVAL_RESPONSE/ASK_USER_RESPONSE carry request_id and stale answers are refused; Claude Code bridge launches pass --setting-sources user --strict-mcp-config and Station turns use manual mode; Wiki Codex runs workspace-write without network and Claude acceptEdits, pinned to the running co; dashboard snapshot per viewer and bare strangers refused without an LLM call; httpx<1 and pydantic<3, no --pre in install lines, docs/testing out of the wheel; host() reads the project .env and checks its port; browser liveness check bounded, action failures exit 1, bad URLs refused; connect().input timeout is a deadline with on_approval/on_ask/stop(); inbox failed sends withdrawn, negative ids, dead listeners reported; Wiki mail past 200 a week, no double billing, stray files skipped, openpyxl in the wiki extra; co schedule list/check/run/pause/resume.)
+
+Earlier in this line:
 
 1.8.8b8 is an opt-in preview after 1.8.8b7. `co wiki` gets the command
 surface agreed as its help pages (#1656): fourteen commands in four groups,
