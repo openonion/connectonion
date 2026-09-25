@@ -21,8 +21,16 @@ run the example? Is the page simple? On its first run it flagged `co trust add`
 for saying `trust='strict'`, which is our code's spelling and not a reader's.
 No regular expression would have caught that.
 
-Two costs were found and cut on the way. Building the command tree once per
-check made a full audit take 1 minute 43 seconds. Building it once per run
-takes 17. And because a model's verdict varies between runs, it never blocks
-a merge: the rules gate every PR, and the review writes its suggestions to
-the job summary for the pages that PR changed.
+The last correction was about where the rules look. The first engine read the
+command registrations in the source. The maintainer asked why: just run `co`
+and judge what it prints, because that is all an agent ever sees. The
+rewritten audit does exactly that. It starts `co --help`, opens every command
+the page lists, and walks down, then compares what it reached with the full
+list `co commands` prints. The first run found two things the source-based
+check had passed. `co --help` itself had no example. And `co proxy`'s label
+lived in a docstring that its hand-written help never prints. An agent could
+not see either. Now the check cannot either.
+
+A model's verdict varies between runs, so it never blocks a merge. The rules
+gate every PR, and the review writes its suggestions to the job summary for
+the pages that PR changed.

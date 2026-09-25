@@ -43,7 +43,7 @@ JOURNEYS = [
 
 @pytest.mark.parametrize("goal,accepted", JOURNEYS)
 def test_a_fresh_agent_finds_the_command(goal, accepted):
-    answer, read = audit.walk(app, goal, DEFAULT_MODEL)
+    answer, read = audit.walk(goal, DEFAULT_MODEL)
     assert answer, f"no command after reading {read}"
     assert any(answer.startswith(prefix) for prefix in accepted), f"{answer!r} after reading {read}"
     words = [w for w in answer.split() if re.fullmatch(r"co|[a-z][a-z0-9_-]*", w)]

@@ -61,6 +61,7 @@ app = _typer_app(
     add_completion=False,
     no_args_is_help=False,
     pretty_exceptions_show_locals=False,
+    epilog="Example:  co create my-agent  |  co status  |  co gmail --help",
 )
 
 

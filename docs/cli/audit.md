@@ -4,8 +4,13 @@ For an agent, a `co` help page is the prompt that describes the tool. `co audit`
 checks every page against the contract in #1643: hard rules first, a model's
 judgement last.
 
+It never reads the source. It runs `co --help`, opens every command that page
+lists, and keeps going down, exactly as an agent would, then judges each page
+from what it printed. A label that exists in a docstring but never prints does
+not count.
+
 ```bash
-co audit                              # every command, hard rules only (about 20 s)
+co audit                              # every page, hard rules only (about 30 s)
 co audit gmail send                   # one command or group
 co audit gmail send --review          # then a model judges the page
 co audit --inventory > base.json      # fingerprint every page
@@ -17,7 +22,8 @@ Exit 0 means no problem was found; exit 1 lists each problem with its fix.
 
 ## Hard rules (free, deterministic, offline)
 
-Each page is read under an empty HOME and working directory.
+Each page is printed by a real `co` process in an empty HOME and working
+directory, many at once.
 
 | rule | fails when |
 |---|---|
@@ -26,12 +32,12 @@ Each page is read under an empty HOME and working directory.
 | `usage` | no `Usage:` line (hand-written pages such as `co proxy` are exempt) |
 | `example` | no `Example:` line |
 | `self_example` | no example runs this command itself |
-| `flags` | an example uses a flag the command does not have (skipped for commands that parse their own arguments) |
-| `refs` | an Example, Next or Back line names a `co` command that does not exist |
+| `flags` | an example uses a flag that the page of the command it runs does not document |
+| `refs` | an Example, Next or Back line names a `co` command no page lists |
 | `side_effect` | the page never says what it changes: Read-only, Writes, Sends, Deletes, Removes, Creates, Changes, Charges, Deploys, Installs, Uploads, Publishes, Starts, Stops or Runs |
 | `back` | no `Back:` line (generated for every page, so this means the page was hand-written) |
 | `private` | an example contains a real home path or a full 0x address |
-| `lists_children` | a group page does not list every subcommand. Because `co --help` is a group page, this rule is what makes every command reachable by following printed names from the top |
+| `unreachable` | `co commands` lists a command that no page reachable from `co --help` lists, so an agent reading pages can never find it |
 
 CI runs the same rules on every PR, through `tests/unit/test_cli_help_contract.py`,
 and a failure blocks the merge. The command and the test share one engine
