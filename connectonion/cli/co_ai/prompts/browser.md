@@ -1,5 +1,9 @@
 ## Using the Browser
 
+To look something up or read a page, use `web_search` and `web_fetch` first:
+one call each, no browser. The browser is for pages that need JavaScript, a
+login, or interaction.
+
 You drive a real browser through the `co browser` CLI, with `bash`. There is no
 in-process browser tool — every browser action is a shell command:
 

@@ -677,13 +677,14 @@ def copy(
 def search(
     query: str = typer.Argument(..., help="What to search for"),
     engine: str = typer.Option("auto", "--engine", "-e",
-                               help="auto (your key, else ConnectOnion credits, else free), co, serper, brave, ddg (free, no key)"),
+                               help="auto (your own key, else ConnectOnion credits, else free), co, serper, brave, ddg (free, no key)"),
     count: int = typer.Option(10, "--count", "-n", min=1, max=20, help="Number of results"),
     json_out: bool = typer.Option(False, "--json", help="Structured results for scripts and agents"),
 ):
-    """Search the web. `co` is Google results billed to your credits; `ddg` is free.
+    """Search the web. `co`: Gemini's answer grounded in Google Search plus its sources, per query from credits; `ddg` is free.
 
-    Exit 0 with results; 1 when the engine could not answer, naming a free one.
+    Out of credits, `auto` answers from DuckDuckGo and says so. Exit 0 with
+    results; 1 when the engine could not answer, naming a free one.
     """
     from .commands.web_commands import handle_search
     raise typer.Exit(code=handle_search(query, engine, count, as_json=json_out))
