@@ -15,6 +15,10 @@ from connectonion.network.host.ws_router.dashboard import (
     send_dashboard,
 )
 
+# These tests are about the file, not about who reads it; render as an admin
+# viewer so nothing is filtered away (test_dashboard_visitor_privacy covers that).
+OWNER_VIEW = dashboard_module.viewer_for("0x" + "a" * 64, is_admin=True)
+
 
 @pytest.fixture(autouse=True)
 def no_personal_starter(tmp_path, monkeypatch):
@@ -52,23 +56,23 @@ def test_no_file_means_the_starter_not_no_home(in_tmp):
     boot — and why every agent's Home then froze at that version."""
     ensure_dashboard({"name": "Lisa", "skills": []})
 
-    frame = read_dashboard_snapshot()
+    frame = read_dashboard_snapshot(viewer=OWNER_VIEW)
     assert frame and "Lisa" in frame["html"]
-    assert read_dashboard_snapshot("sid")["session_id"] == "sid"
+    assert read_dashboard_snapshot("sid", viewer=OWNER_VIEW)["session_id"] == "sid"
 
 
 def test_read_snapshot_returns_frame(in_tmp):
     (in_tmp / "dashboard.html").write_text("<h1>hi</h1>", encoding="utf-8")
-    frame = read_dashboard_snapshot()
+    frame = read_dashboard_snapshot(viewer=OWNER_VIEW)
     assert frame == {"type": "DASHBOARD_SNAPSHOT", "html": "<h1>hi</h1>"}
 
 
 def test_read_snapshot_stamps_session_id(in_tmp):
     (in_tmp / "dashboard.html").write_text("<h1>hi</h1>", encoding="utf-8")
-    frame = read_dashboard_snapshot("abc")
+    frame = read_dashboard_snapshot("abc", viewer=OWNER_VIEW)
     assert frame["session_id"] == "abc"
     # No session_id when not provided (direct path)
-    assert "session_id" not in read_dashboard_snapshot()
+    assert "session_id" not in read_dashboard_snapshot(viewer=OWNER_VIEW)
 
 
 def test_the_starter_is_what_an_uncustomised_agent_serves(in_tmp):
@@ -77,7 +81,7 @@ def test_the_starter_is_what_an_uncustomised_agent_serves(in_tmp):
         {"name": "meeting_prep", "description": "d", "location": "project"},
     ]}
     ensure_dashboard(meta)
-    html = read_dashboard_snapshot()["html"]
+    html = read_dashboard_snapshot(viewer=OWNER_VIEW)["html"]
     assert "Lisa" in html
     assert 'data-ochat-skill="daily-brief"' in html
     assert 'data-ochat-skill="meeting_prep"' in html
@@ -332,20 +336,20 @@ async def test_forward_sends_snapshot_after_output(in_tmp):
 def test_read_snapshot_explains_oversized_file(in_tmp, monkeypatch):
     monkeypatch.setattr(dashboard_module, "MAX_DASHBOARD_BYTES", 1024)
     (in_tmp / "dashboard.html").write_text("x" * (dashboard_module.MAX_DASHBOARD_BYTES + 1), encoding="utf-8")
-    assert "128 MiB" in read_dashboard_snapshot()["html"]
+    assert "128 MiB" in read_dashboard_snapshot(viewer=OWNER_VIEW)["html"]
 
 
 def test_read_snapshot_accepts_file_at_the_limit(in_tmp, monkeypatch):
     monkeypatch.setattr(dashboard_module, "MAX_DASHBOARD_BYTES", 1024)
     (in_tmp / "dashboard.html").write_text("x" * dashboard_module.MAX_DASHBOARD_BYTES, encoding="utf-8")
-    assert read_dashboard_snapshot()["html"] == "x" * dashboard_module.MAX_DASHBOARD_BYTES
+    assert read_dashboard_snapshot(viewer=OWNER_VIEW)["html"] == "x" * dashboard_module.MAX_DASHBOARD_BYTES
 
 
 def test_read_snapshot_survives_an_unreadable_path(in_tmp, capsys):
     # dashboard.html is agent-authored, so it can be a directory, a broken symlink,
     # or binary. stat() succeeds on some of those; the read is what fails.
     (in_tmp / "dashboard.html").mkdir()
-    assert "Could not read" in read_dashboard_snapshot()["html"]
+    assert "Could not read" in read_dashboard_snapshot(viewer=OWNER_VIEW)["html"]
     assert "Could not read" in capsys.readouterr().err
 
 
@@ -431,7 +435,7 @@ def test_starter_has_no_buttons_for_unpublished_skills(in_tmp):
         {"name": "my-notes", "description": "", "location": "user"},
         {"name": "dashboard", "description": "", "location": "builtin"},
     ]})
-    html = read_dashboard_snapshot()["html"]
+    html = read_dashboard_snapshot(viewer=OWNER_VIEW)["html"]
     assert 'data-ochat-skill="' not in html
     assert ".co/skills/" in html  # falls back to the empty state
 
@@ -479,7 +483,7 @@ def test_ensure_dashboard_anchors_the_directory_against_later_chdir(in_tmp, tmp_
     elsewhere.mkdir(exist_ok=True)
     monkeypatch.chdir(elsewhere)  # a tool or plugin wanders off
 
-    assert "Anchored" in read_dashboard_snapshot()["html"]
+    assert "Anchored" in read_dashboard_snapshot(viewer=OWNER_VIEW)["html"]
 
 
 def test_ensure_dashboard_takes_an_explicit_project_dir(tmp_path, monkeypatch):
@@ -503,7 +507,7 @@ def test_a_read_only_project_still_gets_a_home(in_tmp, monkeypatch):
 
     ensure_dashboard({"name": "Locked", "skills": []})
 
-    assert "Locked" in read_dashboard_snapshot()["html"]
+    assert "Locked" in read_dashboard_snapshot(viewer=OWNER_VIEW)["html"]
 
 
 def test_the_starter_template_ships_in_the_wheel():
@@ -557,7 +561,7 @@ def test_an_existing_root_dashboard_is_still_served(in_tmp):
     ensure_dashboard({"name": "Lisa", "skills": []})
 
     assert dashboard_module.dashboard_path() == in_tmp / "dashboard.html"
-    assert read_dashboard_snapshot()["html"] == "<h1>mine</h1>"
+    assert read_dashboard_snapshot(viewer=OWNER_VIEW)["html"] == "<h1>mine</h1>"
     assert not (in_tmp / ".co" / "dashboard.html").exists()  # not moved, not copied
 
 
@@ -566,14 +570,14 @@ def test_the_co_copy_wins_when_both_exist(in_tmp):
     (in_tmp / "dashboard.html").write_text("<h1>old</h1>", encoding="utf-8")
     (in_tmp / ".co" / "dashboard.html").write_text("<h1>current</h1>", encoding="utf-8")
 
-    assert read_dashboard_snapshot()["html"] == "<h1>current</h1>"
+    assert read_dashboard_snapshot(viewer=OWNER_VIEW)["html"] == "<h1>current</h1>"
 
 
 def test_an_agent_outside_a_project_still_gets_a_home(in_tmp):
     """No .co/ anywhere above, and nowhere to write one — still a Home."""
     ensure_dashboard({"name": "Loose", "skills": []})
 
-    assert "Loose" in read_dashboard_snapshot()["html"]
+    assert "Loose" in read_dashboard_snapshot(viewer=OWNER_VIEW)["html"]
 
 
 def test_a_personal_starter_template_replaces_the_bundled_one(in_tmp, monkeypatch, tmp_path):
@@ -695,14 +699,14 @@ def test_dashboard_above_old_limit_preserves_unicode_and_scripts(in_tmp):
     html = '<!doctype html><style>.x{color:red}</style><script>let a=1;</script>' + '房源价格🌍' * 300000
     assert len(html.encode()) > 2 * 1024 * 1024
     (in_tmp / 'dashboard.html').write_text(html, encoding='utf-8')
-    frame = read_dashboard_snapshot('large')
+    frame = read_dashboard_snapshot('large', viewer=OWNER_VIEW)
     assert frame == {'type': 'DASHBOARD_SNAPSHOT', 'html': html, 'session_id': 'large'}
 
 
 def test_encoding_expansion_returns_visible_error(in_tmp, monkeypatch):
     monkeypatch.setattr(dashboard_module, 'MAX_WEBSOCKET_MESSAGE_BYTES', 65540)
     (in_tmp / 'dashboard.html').write_text('<p>large envelope</p>')
-    assert 'transport envelope' in read_dashboard_snapshot()['html']
+    assert 'transport envelope' in read_dashboard_snapshot(viewer=OWNER_VIEW)['html']
 
 
 @pytest.mark.asyncio

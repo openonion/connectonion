@@ -244,7 +244,7 @@ NEXT = {
     "co telegram log": "co telegram ls",
     "co telegram consume": "co telegram ls",
     "co trust list": "Check one address:  co trust level <address>",
-    "co trust level": "Make it a contact:  co trust add <address>",
+    "co trust level": HANDLER,  # the next step depends on the level it printed
     "co trust add": "See every list:  co trust list",
     "co trust remove": "See every list:  co trust list",
     "co trust block": "See every list:  co trust list",

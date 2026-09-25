@@ -9,6 +9,13 @@ a current day-zero view—identity, quick actions, recent activity, searchable
 capabilities, and diagnostics—before you type anything.
 Custom pages keep the stable filename `.co/dashboard.html` for compatibility.
 
+**Each client sees its own activity.** The starter's "Recent" list is rendered
+for the connecting client's verified address: it shows the runs that address
+started and nobody else's, admins included. The "Scheduled" section is operator
+configuration and is shown only to an admin. A custom `.co/dashboard.html` is
+served as written to every client, so do not put anything in it that a visitor
+should not read.
+
 The HTML snapshot is not the source of truth for a running task. It does not receive
 thinking, approval, input-wait, Stop, failure, or completion frames. The client owns
 that live status and renders it outside the sandboxed page, while the starter directs
@@ -249,12 +256,12 @@ See [websocket-protocol.md](websocket-protocol.md) for the full frame reference.
 
 | Function | Purpose |
 |----------|---------|
-| `read_dashboard_snapshot(session_id=None)` | Build the frame, or `None` if the file is missing, too large, unreadable, or not UTF-8 |
-| `send_dashboard(send_msg, session_id, conn=None)` | Send it unless this connection already has the current file; reads off the event loop |
+| `read_dashboard_snapshot(session_id=None, *, viewer)` | Build the frame for `viewer` (`viewer_for(address, is_admin)`), or `None` if the file is missing, too large, unreadable, or not UTF-8 |
+| `send_dashboard(send_msg, session_id, conn, force=False)` | Send it, rendered for `conn`'s verified address, unless this connection already has the current file; reads off the event loop |
 | `ensure_dashboard(agent_metadata, project_dir=None)` | Anchor the project and metadata used to render the starter; writes no file |
 | `project_root(start=None)` | Walk up for `.co/`; the project, not the cwd |
 | `dashboard_path()` | `.co/dashboard.html`, or a legacy root one if that is what exists |
-| `render_starter(agent_metadata)` | The day-zero HTML, from `starter.html` |
+| `render_starter(agent_metadata, viewer=EVERYONE)` | The day-zero HTML, from `starter.html`; `EVERYONE` is for in-process rendering only |
 | `published_skills(skills)` | The project-tree skills a starter may offer as buttons |
 | `group_skills(skills)` | `(families, loose)` split by name prefix, for long lists |
 | `MAX_DASHBOARD_BYTES` | 128 MiB HTML cap; 256 MiB transport envelope |

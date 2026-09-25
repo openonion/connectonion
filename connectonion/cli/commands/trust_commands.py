@@ -129,6 +129,15 @@ def handle_trust_level(address: str):
     color = level_colors.get(level, "white")
 
     console.print(f"\n{address}: [{color}]{level}[/{color}]\n")
+    # One static tip said "Make it a contact" to every address, including the
+    # contact that had just been made one. What comes next depends on where it is.
+    from .command_tips import print_tip
+    print_tip({
+        "stranger": f"Next: co trust add {address}   (make it a contact)",
+        "contact": f"Next: co trust add -w {address}   (whitelist it), or co trust remove {address}",
+        "whitelist": f"Next: co trust remove {address}   (back to stranger)",
+        "blocked": f"Next: co trust unblock {address}",
+    }.get(level, "Next: co trust list"))
 
 
 def handle_trust_add(address: str, whitelist: bool = False):

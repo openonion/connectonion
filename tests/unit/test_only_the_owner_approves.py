@@ -280,3 +280,16 @@ default: deny
         check_approval(agent)
 
         assert io.sent[0]['type'] == 'approval_needed'
+
+
+def test_a_refused_read_says_read_not_write():
+    """`read_file .co/host.yaml` was refused with "the agent does not get to
+    write it" -- true of a write, and a puzzle for a read, which the agent
+    then retried as if the refusal were about something else."""
+    from connectonion.useful_plugins.tool_approval.approval import _refuse_control_file
+
+    read = _refuse_control_file('read_file', {'path': '.co/host.yaml'})
+    write = _refuse_control_file('write', {'path': '.co/host.yaml'})
+
+    assert 'read it' in read and 'write' not in read
+    assert 'write it' in write

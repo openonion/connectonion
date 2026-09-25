@@ -4,7 +4,7 @@ Purpose: Translate ASGI websocket events into the JSON message contract consumed
 LLM-Note:
   Dependencies: imports from [json, rich.console, .http.pydantic_json_encoder, ..host.ws_router.run_ws_session] | imported by [network/asgi/__init__.py (create_app), network/host/server.py via the ASGI app it builds] | tested by [tests/unit/test_asgi.py]
   Data flow: ASGI scope/receive/send for path "/ws" → accept handshake → wrap receive/send into recv_msg() / send_msg() that JSON-decode/encode payloads (using pydantic_json_encoder for Pydantic models) → delegate to run_ws_session(...) which drives CONNECT → CONNECTED → INPUT → streaming events → OUTPUT
-  State/Effects: prints connect/disconnect lines via rich.Console with active session count from registry | rejects non-/ws paths with close code 4004 | sends ERROR frame back to client on JSON decode failure (with snippet, max 200 chars)
+  State/Effects: prints connect/disconnect lines via rich.Console with the count of open sockets (module-level, decremented in finally) | rejects non-/ws paths with close code 4004 | sends ERROR frame back to client on JSON decode failure (with snippet, max 200 chars)
   Integration: exposes handle_websocket(scope, receive, send, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None) | the ws_router contract is owned by host/ws_router/__init__.py
   Performance: per-connection async loop; one task per websocket | JSON decode is per-message
   Errors: malformed JSON returns ERROR frame with parse details and offending snippet — does not raise | downstream errors bubble from run_ws_session
@@ -41,7 +41,31 @@ async def handle_websocket(
 
     await send({"type": "websocket.accept"})
     client_ip = scope.get('client', ('?',))[0]
-    console.print(f"[dim]⚡ ws+[/dim] [green]{client_ip}[/green] [dim]({registry.count()} active)[/dim]")
+    # Open sockets, counted here. This printed registry.count(), which is
+    # sessions -- and a finished session stays registered for ten minutes so a
+    # client can reattach -- so the number only climbed as sockets closed. The
+    # `ws-` line also sat after the session, where a socket that closed before
+    # its first frame, or a session that raised, never reached it.
+    global _open_sockets
+    _open_sockets += 1
+    console.print(f"[dim]⚡ ws+[/dim] [green]{client_ip}[/green] [dim]({_open_sockets} active)[/dim]")
+    try:
+        await _serve_socket(send, receive, route_handlers=route_handlers, storage=storage,
+                            registry=registry, trust=trust, blacklist=blacklist,
+                            whitelist=whitelist)
+    finally:
+        _open_sockets -= 1
+        console.print(f"[dim]⚡ ws-[/dim] [dim]({_open_sockets} active)[/dim]")
+
+
+# One event loop per host process, so a plain int is enough: every change
+# happens on that loop, between awaits.
+_open_sockets = 0
+
+
+async def _serve_socket(send, receive, *, route_handlers, storage, registry, trust,
+                        blacklist, whitelist):
+    """Everything after accept: seal or pass, then the router."""
 
     async def send_msg(data):
         await send({"type": "websocket.send", "text": json.dumps(data, default=pydantic_json_encoder, ensure_ascii=False)})
@@ -91,5 +115,3 @@ async def handle_websocket(
         transport="direct",
         sealed_by=sealed_by,
     )
-
-    console.print(f"[dim]⚡ ws-[/dim] [dim]({registry.count()} active)[/dim]")

@@ -266,3 +266,38 @@ class TestTrustAdminCommand:
 
         assert result.exit_code == 0
         assert "already an admin" in result.output
+
+
+class TestTrustLevelNamesTheNextStep:
+    """`co trust level` on a contact used to say "Make it a contact: co trust
+    add <address>" -- the step already taken. The next step depends on the level."""
+
+    @pytest.fixture(autouse=True)
+    def _agent_project(self, tmp_path, monkeypatch):
+        (tmp_path / ".co").mkdir()
+        monkeypatch.chdir(tmp_path)
+        self.runner = ArgparseCliRunner()
+
+    def level(self, addr):
+        import re
+        from connectonion.cli.main import cli
+        out = self.runner.invoke(cli, ['trust', 'level', addr]).output
+        return re.sub(r"\x1b\[[0-9;]*m", "", out)
+
+    def test_a_stranger_is_told_how_to_make_it_a_contact(self):
+        assert "co trust add 0xnew" in self.level("0xnew")
+
+    def test_a_contact_is_not_told_to_become_one(self):
+        from connectonion.cli.main import cli
+        self.runner.invoke(cli, ['trust', 'add', '0xfriend'])
+
+        out = self.level("0xfriend")
+
+        assert "Make it a contact" not in out
+        assert "co trust add -w 0xfriend" in out
+
+    def test_a_blocked_address_is_told_how_to_unblock(self):
+        from connectonion.cli.main import cli
+        self.runner.invoke(cli, ['trust', 'block', '0xbad'])
+
+        assert "co trust unblock 0xbad" in self.level("0xbad")

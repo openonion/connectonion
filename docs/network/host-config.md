@@ -132,7 +132,10 @@ trust:
     payment: 10  # Minimum credits required
 
   # What to do with strangers without credentials
-  # Options: "allow", "deny", "ask" (ask = use LLM to evaluate)
+  # Options: "allow", "deny", "ask". With "ask", a stranger is still refused
+  # without a model call (the model would be shown only their address and the
+  # level "stranger" -- nothing to judge); the LLM decides only for a known
+  # level this policy does not admit outright.
   default: ask
 ```
 
@@ -140,7 +143,9 @@ trust:
 1. Check `deny` list → reject if blocked
 2. Check `allow` list → accept if whitelisted/contact
 3. Check `onboard` credentials → promote and accept if valid
-4. Apply `default` action → allow/deny/ask LLM
+4. Apply `default` action → allow/deny; `ask` refuses a bare stranger with
+   `co trust add <address>` as the next step, and asks the LLM only about a
+   known level the `allow` list leaves out
 
 #### Access Control Lists
 
@@ -586,7 +591,7 @@ trust:
     invite_code: [$CO_INVITE_CODE]
     payment: $CO_PAYMENT
 
-  default: ask  # Use LLM for unknown users
+  default: ask  # strangers refused without an LLM call; see Fast Rules Flow
 
 port: 8000
 workers: 2
