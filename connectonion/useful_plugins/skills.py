@@ -221,7 +221,7 @@ def _warn_ignored_allowed_tools(path: Path, frontmatter: dict) -> None:
     import warnings
     warnings.warn(
         f"Skill {path} declares Claude Code allowed-tools; those permissions "
-        "are not auto-approved by ConnectOnion 1.6.9. Review the tool names "
+        "are not auto-approved by ConnectOnion. Review the tool names "
         "and add a ConnectOnion tools: declaration if the grants are intended.",
         UserWarning,
         stacklevel=2,
@@ -508,7 +508,7 @@ def _why_the_skill_cannot_be_read(skill_md: Path) -> Optional[str]:
         recovered = _read_frontmatter(yaml_text)
         # Neither permission spelling is recovered from malformed YAML. The
         # doctor names `allowed-tools` separately because valid declarations are
-        # also deliberately fail-closed in 1.6.9, rather than guessed into a
+        # also deliberately fail-closed (since 1.6.9), rather than guessed into a
         # different tool vocabulary.
         declared_keys = {
             line.split(':', 1)[0].strip()
@@ -523,7 +523,7 @@ def _why_the_skill_cannot_be_read(skill_md: Path) -> Optional[str]:
                         if recovered.get('description') else '')
             return (f'SKILL.md frontmatter is not valid YAML{where}: {detail} '
                     '— its Claude Code allowed-tools declaration is ignored by '
-                    f'ConnectOnion 1.6.9{survived}')
+                    f'ConnectOnion{survived}')
         if recovered.get('description'):
             return (f'SKILL.md frontmatter is not valid YAML{where}: {detail} '
                     f'— name and description were still read')
@@ -538,7 +538,7 @@ def _why_the_skill_cannot_be_read(skill_md: Path) -> Optional[str]:
 
     if 'allowed-tools' in frontmatter and 'tools' not in frontmatter:
         return ('Claude Code allowed-tools permissions are not auto-approved by '
-                'ConnectOnion 1.6.9; review the tool names and add tools: if intended')
+                'ConnectOnion; review the tool names and add tools: if intended')
 
     return None
 

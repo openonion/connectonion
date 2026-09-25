@@ -9,6 +9,7 @@ Policy fixtures (autouse, apply to every test):
 - _never_touch_the_real_home: HOME and ~/.co are a fresh tmp dir per test
 - _restore_excepthook: sys.excepthook installed by a test does not outlive it
 - _no_network: any test in the default run that opens a non-loopback socket fails
+- _host_ports_do_not_depend_on_this_machine: host()'s port-in-use check says free
 - _no_leaked_threads: a test that leaves a thread running fails in teardown
 - _retire_legacy_browser_workers: legacy browser worker threads are retired after each test
 - _forget_seen_signatures: CONNECT replay memory is cleared between tests
@@ -124,6 +125,18 @@ def _is_loopback(address) -> bool:
     if not isinstance(host, str):
         return True
     return host in _LOOPBACK_HOSTS or host.startswith("127.") or host.endswith(".localhost")
+
+
+@pytest.fixture(autouse=True)
+def _host_ports_do_not_depend_on_this_machine(monkeypatch):
+    """host() refuses a port something already listens on, before its banner.
+
+    Dozens of tests drive host() with uvicorn.run mocked on the default port
+    8000; whether they pass must not depend on what else this machine is
+    running. Tests about that check itself restore the real one.
+    """
+    from connectonion.network.host import server
+    monkeypatch.setattr(server, "_port_in_use", lambda port: False)
 
 
 @pytest.fixture(autouse=True)

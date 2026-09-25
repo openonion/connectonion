@@ -104,7 +104,7 @@ NEXT = {
     "co copy": HANDLER,               # "co copy --list" after a copy; --list ends with usage
     "co create": HANDLER,             # "co deploy" after the resources block
     "co deploy": HANDLER,             # cloud: "co status"; --to: the journalctl line
-    "co doctor": HANDLER,             # "Run 'co auth' if you need to authenticate"
+    "co doctor": HANDLER,             # "run 'co auth'" only when not authenticated
     "co benchmark list": HANDLER,     # empty: the schema and "check"; else "check <first invalid>"
     "co benchmark check": HANDLER,    # valid: "co eval run <name> ..."; invalid: "check <name>" again
     "co eval run": HANDLER,           # "co eval report <name> --latest"

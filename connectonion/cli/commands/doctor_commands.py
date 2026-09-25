@@ -328,7 +328,15 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
 
     # Command location
     co_path = shutil.which('co')
-    if co_path:
+    path_version = _path_co_version(co_path) if co_path else None
+    if path_version and path_version != __version__:
+        # Found on a first run: ~/.local/bin/co was 1.8.8b3 while this was
+        # 1.8.8b8, so every `co` the user typed ran code this report never saw.
+        # A warning, not a failure: running a venv's co by path is legitimate.
+        system_table.add_row("Command", f"[yellow]○[/yellow] {co_path} is co {path_version}, "
+                             f"but this is {__version__} — `co` runs the other one; "
+                             f"reinstall it or put this environment's bin first on PATH")
+    elif co_path:
         system_table.add_row("Command", f"[green]✓[/green] {co_path}")
     else:
         system_table.add_row("Command", "[red]✗[/red] 'co' not found in PATH")
@@ -545,9 +553,20 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
     if not counts:
         skills_table.add_row("Skills", "[dim]none found[/dim]")
 
+    # One row per finding, not per skill: a machine with ~40 Claude Code skills
+    # that declare allowed-tools printed ~40 identical rows and buried the rest.
+    grouped: dict = {}
     for location, name, reason in problems:
-        skills_table.add_row(f"{location}/{name}", f"[red]✗[/red] {reason}")
-        found.append(f"skill {location}/{name}: {reason}")
+        grouped.setdefault((location, reason), []).append(name)
+    for (location, reason), names in grouped.items():
+        if len(names) == 1:
+            label = f"{location}/{names[0]}"
+        else:
+            names = sorted(names)
+            shown = ", ".join(names[:3]) + (", …" if len(names) > 3 else "")
+            label = f"{location} ({len(names)} skills: {shown})"
+        skills_table.add_row(label, f"[red]✗[/red] {reason}")
+        found.append(f"skill {label}: {reason}")
 
     _add_skill_preflight_rows(skills_table, found, skills)
 
@@ -555,6 +574,7 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
     console.print()
 
     # Connectivity checks (only if API key exists)
+    authenticated = False
     if api_key:
         connectivity_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 1))
         connectivity_table.add_column("Check", style="cyan")
@@ -604,6 +624,7 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
             else:
                 if response.status_code == 200:
                     connectivity_table.add_row("Authentication", "[green]✓[/green] Valid credentials")
+                    authenticated = True
                 else:
                     connectivity_table.add_row("Authentication", f"[red]✗[/red] Failed (status {response.status_code})")
                     found.append(f"authentication failed (status {response.status_code})")
@@ -612,5 +633,24 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
         console.print()
 
     code = verdict(found)
-    console.print("[dim]Run 'co auth' if you need to authenticate[/dim]\n")
+    # Only when it is true: this line used to follow "✓ Valid credentials".
+    if not authenticated:
+        console.print("[dim]Not authenticated with OpenOnion — run 'co auth' for managed models[/dim]\n")
     return code
+
+
+def _path_co_version(co_path: str) -> "str | None":
+    """The version the `co` on PATH reports, or None when it cannot say."""
+    import subprocess
+
+    # The usual case is doctor run *as* that co: same program, same version,
+    # no reason to start a second interpreter to be told so.
+    if Path(co_path).resolve() == Path(sys.argv[0]).resolve():
+        from ... import __version__
+        return __version__
+    try:
+        result = subprocess.run([co_path, "--version"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    words = result.stdout.split()
+    return words[-1] if result.returncode == 0 and words else None

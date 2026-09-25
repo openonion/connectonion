@@ -98,6 +98,12 @@ def main(
     """ConnectOnion - A simple Python framework for creating AI agents.
 
     \b
+    Start here:
+      co init                  Set up your identity and keys (~/.co/keys.env)
+      co create my-agent       New project; then: cd my-agent && python agent.py
+      co auth                  Log in to OpenOnion for managed models and credits
+
+    \b
     Build or improve a skill:
       1. Define the standard first: co benchmark --help
       2. Write/check >=5 distinct cases; then edit .co/skills/<name>/SKILL.md

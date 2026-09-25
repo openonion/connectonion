@@ -41,6 +41,12 @@ co --env-file /path/to/project/.env env # the project file, same selector rule
 co env set OPENAI_API_KEY sk-...
 ```
 
+A hosted agent adds one layer: `host()` (what `python agent.py` runs) also
+reads the project's own `.env`, below the process environment and above
+`~/.co/keys.env`. That is where `co create` writes the agent's
+`CO_INVITE_CODE`. `co` commands themselves still never pick up a `.env` from
+the directory they are run in. See [host()](../network/host.md).
+
 Inherited process variables take precedence over file settings. For Google and
 Microsoft, supplying any access-token, refresh-token, expiry, scope or email
 variable selects the **whole process record**. Missing fields remain missing;
