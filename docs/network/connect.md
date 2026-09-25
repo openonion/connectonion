@@ -217,12 +217,15 @@ curl https://oo.openonion.ai/api/agents/0x3d4017c3...
 
 ## Connection Reliability & Recovery
 
-The ConnectOnion client (TypeScript/Python) automatically handles connection failures and recovers results seamlessly.
+The two clients recover differently. The TypeScript client polls for a result;
+the Python client reopens the session on a new WebSocket. Both are described
+below, each under its own name.
 
 ### Automatic Keep-Alive
 
 **Server sends PING every 30 seconds:**
-- Client automatically responds with PONG
+- Client automatically responds with PONG (the Python client did not until
+  1.8.8)
 - Keeps connection alive through proxies and firewalls
 - Detects dead connections within 60 seconds
 
@@ -230,7 +233,11 @@ No configuration needed - handled automatically by the SDK.
 
 ### Extended Timeout
 
-**Default timeout: 10 minutes** (600 seconds)
+**TypeScript default timeout: 10 minutes** (600 seconds). **Python:**
+`input(prompt, timeout=60.0)`: a deadline for the whole call. Stream frames
+and keepalives do not extend it. When it passes, `TurnTimeoutError` (a
+`TimeoutError`) names the session. The turn may still be running there, and
+`agent.stop()` interrupts it.
 
 Long-running agent tasks have plenty of time to complete:
 
@@ -242,9 +249,30 @@ const response = await agent.input("Analyze this large dataset");
 const response = await agent.input("Quick task", 300000);
 ```
 
-### Automatic Session Recovery
+### Session Recovery (Python)
 
-If the WebSocket connection fails (network drop, timeout, page refresh), the SDK **automatically polls** the server to retrieve your result:
+When the socket closes after the prompt was sent (network drop, relay
+reconnect, host restart), `input()` reopens the session. It sends
+`CONNECT {session_id, last_msg_id}` up to three times, 0.5 s, 1 s and 2 s
+apart, within the call's deadline:
+
+- If `CONNECTED` says `status: "running"`, the Host still has the turn. The
+  stream resumes after the last event this client saw, and `input()` returns
+  the turn's OUTPUT as if nothing happened.
+- If it says anything else, the Host no longer has the turn: it restarted, or
+  the turn ended while the client was away. The call raises `TurnLostError` (a
+  `ConnectionError`) naming the session id and the original close reason. It
+  also raises that when the Host cannot be reached again.
+
+The prompt is **never sent again**. Running it twice could repeat its tool
+calls. The Python client does not poll `GET /sessions/{id}`: a Host that
+restarted has lost the running turn, so there is no result to poll for. The
+conversation up to the last completed turn is kept, and the next `input()`
+continues it.
+
+### Automatic Session Recovery (TypeScript)
+
+If the WebSocket connection fails (network drop, timeout, page refresh), the TypeScript SDK **automatically polls** the server to retrieve your result:
 
 ```
 1. Connection fails or times out
@@ -384,7 +412,8 @@ try {
 | `tool_call` | Tool execution started `{id, name, args, status: "running"}` |
 | `tool_result` | Tool completed `{id, result, status: "done"}` |
 | `thinking` | Agent is processing |
-| `ask_user` | Agent needs input `{text, options, multi_select}` → `done: false` |
+| `ask_user` | Agent needs input `{id, question, options, multi_select}`. Answered by `on_ask`, else `done: false` and the next `input()` is sent as `ASK_USER_RESPONSE {request_id, answer}` |
+| `approval_needed` | Agent wants to run a gated tool `{id, tool, arguments}`. Answered by `on_approval`, else `ApprovalPendingError` at once; answer with `respond_to_approval()` |
 
 Note: Relay /ws/input does not forward streaming events. Use direct host /ws for real-time events.
 
@@ -763,8 +792,12 @@ agent = connect("0x...", relay_url="ws://localhost:8000/ws/announce")
 
 ```python
 class RemoteAgent:
-    # Actions
-    def input(self, prompt: str) -> Response
+    # Actions (each has an *_async twin)
+    def input(self, prompt: str, timeout: float = 60.0, on_onboard=None,
+              images=None, files=None, *, on_approval=None, on_ask=None) -> Response
+    def respond_to_approval(self, approved: bool = True, scope: str = "once",
+                            timeout: float = 60.0) -> Response
+    def stop(self, timeout: float = 30.0) -> bool
     def set_session_mode(self, mode: str, timeout: float = 30.0) -> None
     def reset(self) -> None
 
@@ -774,6 +807,32 @@ class RemoteAgent:
     ui: List[UIEvent]        # Shortcut to current_session['trace']
     status: str              # 'idle' | 'working' | 'waiting'
 ```
+
+`input()` waits for one turn, and `timeout` bounds the whole call. The agent
+may stop partway to ask for something:
+
+```python
+def approve(event):             # {"id", "tool", "arguments", ...}
+    return event["tool"] != "bash"   # or {"approved": True, "scope": "session"}
+
+response = agent.input("tidy the logs", on_approval=approve,
+                       on_ask=lambda event: "yes")   # event["question"]
+```
+
+Every answer carries `request_id`, the `id` of the event it answers. A Host
+from 1.8.8 on delivers an answer only to the request it names. With no
+`on_approval`, a pending approval raises `ApprovalPendingError` straight away.
+It carries `.request` and `.session_id`. The turn keeps waiting on the Host
+until `agent.respond_to_approval(True)` or `(False)` answers it and returns the
+rest of the turn, or `agent.stop()` ends it. With no `on_ask`, a question
+returns `Response(done=False)`, and the next `input()` is its answer.
+
+`stop()` sends `INTERRUPT` to the running turn and returns `True`. It works on
+a turn in flight on this object, from another thread or task; that `input()`
+call returns the interrupted turn's OUTPUT. It also works on a turn an earlier
+call left running after a timeout or a pending approval: it reopens the
+session, interrupts the turn and waits for the turn to end. It returns `False`
+when nothing is running.
 
 `set_session_mode()` uses one timeout budget for endpoint resolution,
 CONNECT, PING handling, and the owned OIP mode response. If it raises
