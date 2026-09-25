@@ -140,6 +140,17 @@ def handle_auth():
     console.print("Next: co status")
 
 
+_OAUTH_STATUS_TEXT = {
+    "connected": "connected",
+    "missing": "missing",
+    "expired": "expired",
+    "refresh available": "refresh available",
+    "invalid expiry": "invalid expiry",
+    "incomplete (tokens missing)": "incomplete (tokens missing)",
+    "incomplete (scopes missing)": "incomplete (scopes missing)",
+}
+
+
 def handle_auth_status():
     """Report sign-in state without signing in, minting a key, or calling the network.
 
@@ -165,13 +176,16 @@ def handle_auth_status():
         claimed = account_in_token(token)
         if claimed and claimed.casefold() != identity["address"].casefold():
             print(f"! The token is for {claimed}, not this identity; co auth login replaces it.")
+    # Every word printed here is one of these literals, chosen by the row's
+    # state: this command's point is that it only looks, and nothing read from
+    # a credential file is echoed back — `co status` shows where each came from.
     for row in _oauth_rows():
-        print(f"{row['provider']}: {row['status']}" + ("" if row["status"] == "missing" else f" ({row['source']})"))
+        print(f"{row['provider']}: {_OAUTH_STATUS_TEXT.get(row['status'], 'unknown')}")
     chat_apps = {}
     for _source, values in _credential_sources(supported_names={"FEISHU_APP_ID", "LARK_APP_ID"}):
         chat_apps = {**values, **chat_apps}
     for name, label in (("FEISHU_APP_ID", "Feishu app"), ("LARK_APP_ID", "Lark app")):
-        print(f"{label}: {chat_apps[name] if chat_apps.get(name) else 'missing'}")
+        print(f"{label}: {'configured' if chat_apps.get(name) else 'missing'}")
     if not (identity and has_token):
         print("Not signed in to OpenOnion.")
         print_tip("Next: co auth login")
