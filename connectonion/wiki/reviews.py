@@ -56,25 +56,41 @@ def context(root: Path, subject: str = "") -> list[dict]:
             for r in listing(root) if r['status'] != 'pending' and (not subject or subject in r['subjects'])]
 
 
+def _problem(root: Path, candidate) -> str:
+    """Why a proposed review cannot be kept, or '' when it can."""
+    if not isinstance(candidate, dict) or set(candidate) != {'kind', 'subjects', 'question', 'basis'}:
+        return 'Invalid review candidate fields'
+    kind, subjects = candidate['kind'], candidate['subjects']
+    if kind not in ('question', 'link') or not isinstance(subjects, list) or any(not isinstance(s, str) for s in subjects):
+        return 'Invalid review candidate type or subjects'
+    if len(subjects) != (2 if kind == 'link' else 1) or len(subjects) != len(set(subjects)):
+        return 'Invalid number of review subjects'
+    if any(not isinstance(candidate[k], str) or not candidate[k].strip() for k in ('question', 'basis')):
+        return 'Candidate needs a question and evidence basis'
+    if any(not Notebook(root).path(subject).is_file() for subject in subjects):
+        return 'Candidate points to a missing notebook page'
+    return ''
+
+
 def ingest(root: Path, candidates: list[dict]) -> list[dict]:
-    """Caller holds maintenance lock; validate the entire batch before writing."""
-    if not isinstance(candidates, list) or len(candidates) > 2:
-        raise WikiError('A pass may propose at most two review candidates')
+    """Caller holds maintenance lock. Keep the valid proposals; drop the rest, saying why.
+
+    A proposed question is an optional by-product of a pass. On a real notebook
+    one malformed proposal -- a link with one subject -- failed a maintenance
+    batch whose pages had already been written, and a failed batch does not
+    advance, so the same material would be worked again on every run. Each
+    proposal is checked exactly as before; only a bad one is dropped.
+    """
+    if not isinstance(candidates, list):
+        candidates = []
     rows = listing(root)
-    created = []
-    for candidate in candidates:
-        if not isinstance(candidate, dict) or set(candidate) != {'kind', 'subjects', 'question', 'basis'}:
-            raise WikiError('Invalid review candidate fields')
+    created, dropped = [], []
+    for candidate in candidates[:2]:
+        problem = _problem(root, candidate)
+        if problem:
+            dropped.append({'candidate': candidate, 'reason': problem})
+            continue
         kind, subjects = candidate['kind'], candidate['subjects']
-        if kind not in ('question', 'link') or not isinstance(subjects, list) or any(not isinstance(s, str) for s in subjects):
-            raise WikiError('Invalid review candidate type or subjects')
-        if len(subjects) != (2 if kind == 'link' else 1) or len(subjects) != len(set(subjects)):
-            raise WikiError('Invalid number of review subjects')
-        if any(not isinstance(candidate[k], str) or not candidate[k].strip() for k in ('question', 'basis')):
-            raise WikiError('Candidate needs a question and evidence basis')
-        for subject in subjects:
-            if not Notebook(root).path(subject).is_file():
-                raise WikiError('Candidate points to a missing notebook page')
         if any(r['kind'] == kind and set(r['subjects']) == set(subjects) and r['question'] == candidate['question'] for r in rows):
             continue
         row = dict(candidate, id=uuid.uuid4().hex, status='pending', created_at=datetime.now(timezone.utc).isoformat())
@@ -82,4 +98,6 @@ def ingest(root: Path, candidates: list[dict]) -> list[dict]:
         created.append(row)
     if created:
         write_json(state_path(root, 'reviews.json'), rows)
+    if dropped:
+        write_json(state_path(root, 'reviews-dropped.json'), read_json(state_path(root, 'reviews-dropped.json'), []) + dropped)
     return created
