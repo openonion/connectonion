@@ -43,6 +43,7 @@ Example:
 """
 
 import os
+import re
 import shlex
 from urllib.parse import urlsplit
 from datetime import datetime, timedelta, timezone
@@ -51,6 +52,18 @@ from pathlib import Path
 import httpx
 
 from ..backend import backend_url
+
+# Graph writes event times with seven fractional-second digits
+# ("2026-09-28T06:00:00.0000000"); datetime.fromisoformat takes three or six
+# before Python 3.11. On 3.10, which pyproject supports, every calendar read
+# failed as soon as the calendar held one event (#1717).
+_FRACTION = re.compile(r"\.(\d+)")
+
+
+def _graph_datetime(value: str) -> datetime:
+    """Parse a Graph (or ISO) time on every supported Python: fraction to six digits."""
+    value = value.replace("Z", "+00:00")
+    return datetime.fromisoformat(_FRACTION.sub(lambda m: "." + (m.group(1) + "000000")[:6], value, count=1))
 from ..credentials import require_ambient_api_key
 from ..provider_credentials import resolve_provider_credentials, refresh_credentials, token_expiry
 
@@ -142,7 +155,7 @@ class MicrosoftCalendar:
 
     def _format_datetime(self, dt_str: str) -> str:
         """Format datetime string to readable format."""
-        dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+        dt = _graph_datetime(dt_str)
         return dt.strftime('%Y-%m-%d %I:%M %p')
 
     def _parse_time(self, time_str: str) -> datetime:
@@ -154,7 +167,7 @@ class MicrosoftCalendar:
         ten hours late. Same contract as GoogleCalendar.
         """
         try:
-            parsed = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+            parsed = _graph_datetime(time_str)
         except ValueError:
             parsed = None
         if parsed is not None:
@@ -569,8 +582,8 @@ class MicrosoftCalendar:
             if not event_start_str or not event_end_str:
                 continue
 
-            event_start = datetime.fromisoformat(event_start_str.replace('Z', '+00:00')).replace(tzinfo=None)
-            event_end = datetime.fromisoformat(event_end_str.replace('Z', '+00:00')).replace(tzinfo=None)
+            event_start = _graph_datetime(event_start_str).replace(tzinfo=None)
+            event_end = _graph_datetime(event_end_str).replace(tzinfo=None)
 
             if (event_start - current_time).total_seconds() >= duration_minutes * 60:
                 free_slots.append(f"{current_time.strftime('%I:%M %p')} - {event_start.strftime('%I:%M %p')}")

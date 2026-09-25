@@ -27,8 +27,12 @@ def microsoft_errors(next_command: str):
                 cause, recovery = str(error), "co --help"
             except (httpx.HTTPError, OSError):
                 cause = "Microsoft connection or local I/O failed; inspect state before retrying a write."
-            except ValueError:
-                cause = "Invalid input or Microsoft request failed; check the command arguments."
+            except ValueError as error:
+                # The error's own words: a blanket "check the command arguments"
+                # sent #1717's reporter hunting through valid events for a
+                # local parsing bug. Validation errors raised on purpose already
+                # say what to change.
+                cause = str(error) or "Invalid input; check the command arguments."
             from ...environment import selected_command
             recovery = selected_command(recovery)
             # stderr, because these handlers also print the answer. `co outlook
