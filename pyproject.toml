@@ -71,7 +71,6 @@ dependencies = [
     "pypdf>=4.0.0",
     "python-pptx>=1.0.0",
     "python-docx>=1.1.0",
-    "openpyxl>=3.1.0",
     "packaging>=23.0",
     # uv.lock protects this repository, but it is not installed with the library.
     # Publish the audited transitive floors too, so an existing user environment
@@ -109,7 +108,16 @@ synology = [
 whatsapp = [
     "neonize==0.4.3.post0",
 ]
+# Spreadsheet attachments in the Personal Wiki. An extra because nothing else
+# reads XLSX, and every install was carrying it (with et-xmlfile) for the few
+# who investigate mail with spreadsheets attached. Without it an XLSX
+# attachment is named, not read, and the note says how to install this.
+wiki = [
+    "openpyxl>=3.1.0",
+]
 dev = [
+    # The wiki extra, so the spreadsheet tests run rather than skip.
+    "openpyxl>=3.1.0",
     "pytest>=9.0.3",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.0.0",

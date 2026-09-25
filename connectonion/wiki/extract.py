@@ -1,9 +1,11 @@
 """Digest a batch through the same COAI CLI used by every Wiki stage."""
 
+import hashlib
+import json
 import tempfile
 from pathlib import Path
 
-from .files import state_path
+from .files import read_json, state_path, write_json
 from .runner import RunFailed, instructions, run_task, task_prompt
 
 NOTHING = "Nothing worth keeping."
@@ -26,6 +28,33 @@ def extraction_item(notes: str, items: list[dict]) -> dict:
             # these, not the digest: without them a page about anyone with
             # enough mail to need a digest could not cite a single message.
             "sources": sorted({item["source"] for item in items if item.get("source")})}
+
+
+def _batch_key(items: list[dict], kind: str) -> str:
+    return hashlib.sha256(json.dumps([kind, [item["source"] for item in items]]).encode()).hexdigest()
+
+
+def finished_digest(root: Path, items: list[dict], kind: str) -> str | None:
+    """Notes an earlier run already paid to extract from exactly this batch.
+
+    A batch whose maintainer failed keeps its cursor, so the next run gathers the
+    same material. Extraction is the expensive pass and its notes are already on
+    disk; reading the batch through it again bought the same notes twice.
+    """
+    saved = read_json(state_path(root, "extracts/unmaintained.json"), {})
+    if saved.get("key") != _batch_key(items, kind):
+        return None
+    notes = state_path(root, saved.get("notes", ""))
+    return notes.read_text(encoding="utf-8").strip() if notes.is_file() else None
+
+
+def remember_digest(root: Path, items: list[dict], kind: str, notes: str) -> None:
+    """Called once the notes are on disk; `forget_digest` once a maintainer has used them."""
+    write_json(state_path(root, "extracts/unmaintained.json"), {"key": _batch_key(items, kind), "notes": notes})
+
+
+def forget_digest(root: Path) -> None:
+    state_path(root, "extracts/unmaintained.json").unlink(missing_ok=True)
 
 
 def run_extract(items: list[dict], config: dict, kind: str = "", *, root: Path) -> dict:

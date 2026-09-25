@@ -38,7 +38,7 @@ AUTOMATED_SENDER = re.compile(r"(no-?reply|do-?not-?reply|notification|notificat
                               r"|@(?:[a-z0-9-]+\.)*(?:substack\.com|beehiiv\.com)$",
                               re.IGNORECASE)
 LISTING_WINDOW = timedelta(days=7)   # one listing call covers this much of the timeline
-LISTING_LIMIT = 200                  # per window; a busier week continues on the next pass
+LISTING_LIMIT = 200                  # per call; a fuller window is split until each half fits
 MAX_BODY_CHARS = 8_000               # a mail body beyond this is a pasted log or a marketing template
 SELF = "me"                          # the correspondent of a mail the user sent only to themselves
 # Where the quoted thread below a reply begins. Those mails were already read on
@@ -165,7 +165,7 @@ def _scan(subscription: dict, progress: dict, client, mine: set, end: datetime) 
     window_start = scanned
     while window_start < end:
         window_end = min(window_start + LISTING_WINDOW, end)
-        listing = client.list_between(window_start.isoformat(), window_end.isoformat(), LISTING_LIMIT)
+        listing = _list_all(client, window_start, window_end)
         rows = sorted(({**row, "when": timestamp(row["date"])} for row in listing), key=lambda r: (r["when"], r["id"]))
         for row in rows:
             if row["when"] < scanned or (row["when"] == scanned and row["id"] in seen):
@@ -179,6 +179,28 @@ def _scan(subscription: dict, progress: dict, client, mine: set, end: datetime) 
             scanned, seen = timestamp(updated["scanned_until"]), set(updated["seen"])
         window_start = window_end
     return updated
+
+
+def _list_all(client, start: datetime, end: datetime) -> list:
+    """Every mail in [start, end), however many there are.
+
+    A full listing means there may be more, and nothing after it asks again: a
+    week with 250 mails kept 200 and the scan moved on to the next week, so the
+    other 50 were never read and nothing said so. Which 50 depends on the
+    provider -- Outlook's cap keeps the oldest, Gmail's the newest -- so a cursor
+    from the last row would still lose Gmail's. Halving the window until each
+    half fits works for both.
+    """
+    rows = client.list_between(start.isoformat(), end.isoformat(), LISTING_LIMIT)
+    if len(rows) < LISTING_LIMIT:
+        return rows
+    # Whole seconds: Gmail's search takes epoch seconds, so a finer split asks the same question twice.
+    middle = start + timedelta(seconds=(end - start).total_seconds() // 2)
+    if middle <= start:
+        raise WikiError(f"The mailbox lists more than {LISTING_LIMIT} mails in the second at {start.isoformat()}; "
+                        "the scan stopped there rather than skip any of them")
+    unique = {row["id"]: row for row in _list_all(client, start, middle) + _list_all(client, middle, end)}
+    return list(unique.values())
 
 
 def _turns(pending: dict, max_items: int):

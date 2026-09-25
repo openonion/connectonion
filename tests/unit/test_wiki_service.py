@@ -669,3 +669,57 @@ def test_the_consent_summary_says_how_confined_the_unattended_runs_are(tmp_path,
     summary = consent_summary(tmp_path)
     assert flag in summary["model_permissions"] and "no network" in summary["model_permissions"]
     assert "co wiki stop" in summary["background"]
+
+
+def test_a_batch_that_wrote_its_pages_before_failing_is_not_run_and_paid_for_again(wiki):
+    """The maintainer wrote the page, then something after it failed. The run was
+    recorded failed and the cursor held back, so every scheduled run fed the same
+    material to the maintainer again and paid for it again."""
+    root, sessions = wiki
+    rollout(sessions / "rollout-a.jsonl", [("user", "We choose SQL")])
+    calls = []
+
+    def writes_then_fails(notebook, items, config, kind=""):
+        calls.append(items)
+        notebook.write("decisions/storage.md", "# Storage\nWe choose SQL")
+        raise OSError("disk hiccup after the page was written")
+
+    first = run_sync(root, runner=writes_then_fails)
+    assert first["outcome"] == "failed" and first["changed"] == ["decisions/storage.md"]
+    assert first["progress_advanced"] is True
+    assert run_sync(root, runner=writes_then_fails)["outcome"] == "no_change"
+    assert len(calls) == 1
+
+
+def test_a_failure_that_wrote_nothing_still_retries_the_same_material(wiki):
+    root, sessions = wiki
+    rollout(sessions / "rollout-a.jsonl", [("user", "We choose SQL")])
+
+    def fails(*args, **kwargs):
+        raise OSError("no pages written")
+
+    record = run_sync(root, runner=fails)
+    assert record["outcome"] == "failed" and record["progress_advanced"] is False
+    assert read_json(state_path(root, "progress.json"), {}) == {}
+
+
+def test_a_finished_extraction_is_reused_when_only_the_maintainer_failed(tmp_path, monkeypatch):
+    """Extraction is the expensive pass. When it finished and the maintainer failed
+    without writing, the retry read the same 40 messages through extraction again."""
+    from connectonion.wiki.runner import RunFailed
+    root = _extract_world(tmp_path, monkeypatch, 40)
+    extractions, maintained = [], []
+
+    def extractor(items, config, kind=""):
+        extractions.append(len(items))
+        return {"notes": "## Decisions\n- fact 3 — user, codex:s:0", "usage": {"input_tokens": 100}}
+
+    def fail(*args, **kwargs):
+        raise RunFailed("co ai unavailable", {"input_tokens": 3})
+
+    assert run_sync(root, runner=fail, extractor=extractor)["outcome"] == "failed"
+    retry = run_sync(root, runner=lambda nb, items, cfg, kind="": maintained.extend(items) or {"usage": None, "changed": []},
+                     extractor=extractor)
+    assert retry["outcome"] == "completed" and extractions == [40]
+    assert retry["runner_attempts"] == 1 and "fact 3" in maintained[0]["text"]
+    assert run_sync(root, runner=fail, extractor=extractor)["outcome"] == "no_change"

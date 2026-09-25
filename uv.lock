@@ -389,7 +389,6 @@ dependencies = [
     { name = "ifaddr" },
     { name = "mnemonic" },
     { name = "openai" },
-    { name = "openpyxl" },
     { name = "packaging" },
     { name = "patchright" },
     { name = "protobuf" },
@@ -417,6 +416,7 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "openpyxl" },
     { name = "psutil" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -432,6 +432,9 @@ synology = [
 ]
 whatsapp = [
     { name = "neonize" },
+]
+wiki = [
+    { name = "openpyxl" },
 ]
 wtf = [
     { name = "onionwright" },
@@ -455,7 +458,8 @@ requires-dist = [
     { name = "neonize", marker = "extra == 'whatsapp'", specifier = "==0.4.3.post0" },
     { name = "onionwright", marker = "extra == 'wtf'", specifier = ">=0.0.14" },
     { name = "openai", specifier = ">=1.0.0" },
-    { name = "openpyxl", specifier = ">=3.1.0" },
+    { name = "openpyxl", marker = "extra == 'dev'", specifier = ">=3.1.0" },
+    { name = "openpyxl", marker = "extra == 'wiki'", specifier = ">=3.1.0" },
     { name = "packaging", specifier = ">=23.0" },
     { name = "paramiko", marker = "extra == 'synology'", specifier = ">=4,<5" },
     { name = "patchright", specifier = "==1.61.2" },
@@ -489,7 +493,7 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.20.0" },
     { name = "websockets", specifier = ">=11.0.0" },
 ]
-provides-extras = ["wtf", "synology", "whatsapp", "dev"]
+provides-extras = ["wtf", "synology", "whatsapp", "wiki", "dev"]
 
 [[package]]
 name = "coverage"
