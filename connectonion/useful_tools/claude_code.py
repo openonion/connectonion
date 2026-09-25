@@ -519,7 +519,20 @@ def _stream_command(command, prompt, session_id, permission_mode, model, bridge_
     if bridge_settings is None:
         argv.append("--safe-mode")
     else:
-        argv.extend(["--settings", str(bridge_settings)])
+        # --safe-mode would also disable the scoped Hooks passed in
+        # --settings, which the bridge needs for session identity and owner
+        # approval. Without some isolation, though, a cloned repository's
+        # .claude/settings.json (hooks = arbitrary commands, a Bash
+        # allow-list), CLAUDE.md and .mcp.json take effect in a headless turn
+        # nobody is watching. Loading only the user's own settings keeps
+        # --settings and drops the project and local sources; MCP servers are
+        # refused outright, as safe mode did. Verified against Claude Code
+        # 2.1.281: a project SessionStart Hook and CLAUDE.md no longer load.
+        argv.extend([
+            "--settings", str(bridge_settings),
+            "--setting-sources", "user",
+            "--strict-mcp-config",
+        ])
     argv.extend(["--permission-mode", cli_mode])
     if session_id:
         argv.extend(["--resume", session_id])

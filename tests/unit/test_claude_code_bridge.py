@@ -69,13 +69,43 @@ def _post_hook(hook, event, *, token=None):
         assert response.status == 204
 
 
-def test_bridge_launch_adds_scoped_settings_to_native_sources(tmp_path):
+def test_bridge_launch_keeps_our_hooks_but_not_the_repository_settings(tmp_path):
+    """A cloned repo's .claude/settings.json, CLAUDE.md and .mcp.json must not load.
+
+    1.8.6 passed --safe-mode. It also disables the scoped Hooks the bridge
+    depends on, so the bridge path dropped it and headless turns loaded the
+    project's own hooks and permission allow-list. `--setting-sources user`
+    drops project and local settings while --settings (ours) still applies.
+    """
     argv = claude._stream_command(
         ["claude"], "inspect", "", "default", "haiku", tmp_path / "settings.json"
     )
     assert "--safe-mode" not in argv
-    assert "--setting-sources" not in argv
+    assert argv[argv.index("--setting-sources") + 1] == "user"
+    assert "--strict-mcp-config" in argv
     assert argv[argv.index("--settings") + 1] == str(tmp_path / "settings.json")
+    assert argv.index("--strict-mcp-config") < argv.index("--")
+
+
+def test_every_headless_co_claude_launch_excludes_repository_settings(tmp_path, monkeypatch):
+    """Pin the command line run_co_claude actually launches, not just the helper."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    monkeypatch.setattr(claude, "_claude_command", lambda: (["claude"], ""))
+    launched = []
+
+    def fake_run(argv, **_):
+        launched.append(argv)
+        raise OSError("stop after capturing argv")
+
+    monkeypatch.setattr(claude, "_run_process", fake_run)
+    claude.run_co_claude("inspect", cwd=str(workspace), workspace=workspace)
+
+    argv = launched[0]
+    assert argv[argv.index("--setting-sources") + 1] == "user"
+    assert "--strict-mcp-config" in argv
+    assert "--settings" in argv
 
 
 def test_scoped_settings_record_only_session_identity(tmp_path):

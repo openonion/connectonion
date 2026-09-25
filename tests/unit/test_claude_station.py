@@ -129,3 +129,40 @@ def test_a_long_turn_is_written_once_not_once_per_tool_call(tmp_path):
     trace = storage.get(station.session_id).session["trace"]
     assert sum(event["type"] == "provider_activity" for event in trace) == 400
     assert trace[-1]["status"] == "completed"
+
+
+def test_browser_started_turns_route_every_claude_permission_to_the_owner(tmp_path, monkeypatch):
+    """1.8.8b4 promised owner approval for edits and refusal for shell commands.
+
+    Claude's native `auto` lets its own classifier run Bash without ever asking
+    our PermissionRequest Hook, so a Station turn must launch in the manual
+    (`default`) mode whatever the Host ceiling or a Work Room pick says.
+    """
+    import json
+
+    import connectonion.plugins.coding_agents as coding_agents
+
+    seen = []
+
+    def fake_claude(**kwargs):
+        seen.append(kwargs["permission_mode"])
+        return json.dumps({"provider": "claude_code", "exit_code": 0})
+
+    monkeypatch.setattr(coding_agents, "run_co_claude", fake_claude)
+    plugin = claude_station.station_claude_plugin(tmp_path)
+    for session in (
+        {"mode": "auto"},
+        {"mode": "full-access", "turns_left": 3},
+        {
+            "mode": "full-access", "turns_left": 3,
+            "_provider_workroom_id": "room-1",
+            "_provider_permission_options": {"room-1": "claude:bypass-permissions"},
+        },
+    ):
+        agent = SimpleNamespace(
+            current_session={"_active_tool_call_id": "call-1", **session},
+            io=SimpleNamespace(log=lambda *a, **k: None),
+        )
+        plugin.claude_code("continue", cwd=str(tmp_path), agent=agent)
+
+    assert seen == ["default", "default", "default"]
