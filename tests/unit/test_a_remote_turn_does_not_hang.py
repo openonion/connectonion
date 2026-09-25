@@ -25,6 +25,7 @@ Three things were missing, and each is pinned here against a fake socket:
 import asyncio
 import json
 import sys
+import threading
 import time
 from unittest.mock import patch
 
@@ -347,3 +348,146 @@ class TestAConnectionThatClosesMidTurn:
                     asyncio.run(agent.input_async("count", timeout=5))
 
         assert "s1" in str(caught.value) and "refused" in str(caught.value)
+
+
+class AwaySocket(FakeSocket):
+    """The relay, while the Host it names is not connected to it."""
+
+    async def send(self, raw):
+        frame = json.loads(raw)
+        self.sent.append(frame)
+        if frame.get("type") == "CONNECT":
+            await self._queue.put({"type": "ERROR", "message": f"Agent not connected: {ADDRESS}"})
+
+
+class TestAHostThatRestartsMidTurn:
+    """Re-test of 1.8.8b9: kill the host mid-turn and the reattach through the
+    relay got `Agent not connected`, which the client raised as
+    `ConnectionError: Auth error: Agent not connected: 0x…` -- no session id,
+    and not the TurnLostError input() documents."""
+
+    def _no_pauses(self):
+        return patch.object(sys.modules["connectonion.network.connect"], "_RECONNECT_DELAYS", (0, 0, 0))
+
+    def test_an_agent_that_stays_away_ends_in_turn_lost(self):
+        first = FakeSocket(script=[_closed_1012()])
+        agent = _agent()
+        with patch("websockets.connect", side_effect=[first] + [AwaySocket() for _ in range(5)]):
+            with self._no_pauses():
+                with pytest.raises(TurnLostError) as caught:
+                    asyncio.run(agent.input_async("count", timeout=5))
+
+        assert caught.value.session_id == "s1"
+        message = str(caught.value)
+        assert "s1" in message and "1012" in message and "not connected" in message
+        assert "Auth error" not in message
+
+    def test_an_agent_that_comes_back_running_the_turn_is_picked_up(self):
+        first = FakeSocket(script=[_closed_1012()])
+        back = FakeSocket(connected_status="running", script=[OUTPUT])
+        agent = _agent()
+        with patch("websockets.connect", side_effect=[first, AwaySocket(), back]):
+            with self._no_pauses():
+                response = asyncio.run(agent.input_async("count", timeout=5))
+
+        assert response.text == "done"
+        assert "INPUT" not in back.types()
+
+    def test_before_the_prompt_is_sent_it_is_still_an_auth_error(self):
+        """No turn to lose yet: the agent is simply not reachable."""
+        with patch("websockets.connect", return_value=AwaySocket()):
+            with pytest.raises(ConnectionError) as caught:
+                asyncio.run(_agent().input_async("hi", timeout=5))
+
+        assert not isinstance(caught.value, TurnLostError)
+        assert "Agent not connected" in str(caught.value)
+
+
+class TestAnApprovalSlowerThanTheDeadline:
+    """Re-test of 1.8.8b9: an on_approval that took longer than the time left.
+    Its True was never delivered and the Host waited on the approval forever.
+    The decision: at the deadline the approval is declined, so the Host moves
+    on and no gated tool runs on an answer its caller stopped waiting for."""
+
+    def test_the_host_is_told_no_at_the_deadline(self):
+        ws = FakeSocket(script=[APPROVAL, ("every", 0.05, {"type": "PING"})])
+        agent = _agent()
+
+        decided = threading.Event()
+        finished = threading.Event()
+
+        def slow(event):
+            decided.wait(5)   # a person still thinking
+            finished.set()
+            return True
+
+        started = time.monotonic()
+        with patch("websockets.connect", return_value=ws):
+            with pytest.raises(TurnTimeoutError):
+                asyncio.run(agent.input_async("go", timeout=0.3, on_approval=slow))
+        elapsed = time.monotonic() - started
+        decided.set()          # the late True, after the call gave up
+        assert finished.wait(2)
+        time.sleep(0.05)       # let the callback's thread end
+
+        assert elapsed < 2, "the deadline waited for the callback"
+        answers = [f for f in ws.sent if f["type"] == "APPROVAL_RESPONSE"]
+        assert len(answers) == 1, ws.types()
+        assert answers[0]["approved"] is False and answers[0]["request_id"] == "req-7"
+
+    def test_an_answer_in_time_is_sent_even_if_the_socket_dropped_meanwhile(self):
+        """The socket closes while the caller decides; the answer goes out
+        first on the reattached socket instead of being lost."""
+        class DiesOnAnswer(FakeSocket):
+            async def send(self, raw):
+                if json.loads(raw).get("type") == "APPROVAL_RESPONSE":
+                    raise _closed_1012()
+                await super().send(raw)
+
+        first = DiesOnAnswer(script=[APPROVAL])
+        second = FakeSocket(connected_status="running",
+                            on_send={"APPROVAL_RESPONSE": [OUTPUT]})
+        agent = _agent()
+        with patch("websockets.connect", side_effect=[first, second]):
+            response = asyncio.run(agent.input_async("go", timeout=5, on_approval=lambda e: True))
+
+        assert response.text == "done"
+        answer = next(f for f in second.sent if f["type"] == "APPROVAL_RESPONSE")
+        assert answer["approved"] is True and answer["request_id"] == "req-7"
+
+    def test_status_after_a_timeout_does_not_claim_idle(self):
+        ws = FakeSocket(script=[("every", 0.05, {"type": "PING"})])
+        agent = _agent()
+        with patch("websockets.connect", return_value=ws):
+            with pytest.raises(TurnTimeoutError):
+                asyncio.run(agent.input_async("go", timeout=0.2))
+
+        assert agent.status == "unknown"
+
+
+class TestOnboardingFromAScript:
+    """Re-test of 1.8.8b9: with no on_onboard, input() printed `Enter invite
+    code:` to a script's stdout and died in a bare EOFError."""
+
+    def test_no_terminal_means_a_clear_error_naming_on_onboard(self, monkeypatch):
+        class Gate(FakeSocket):
+            async def send(self, raw):
+                frame = json.loads(raw)
+                self.sent.append(frame)
+                if frame.get("type") == "CONNECT":
+                    await self._queue.put({"type": "ONBOARD_REQUIRED", "methods": ["invite_code"]})
+
+        class Pipe:
+            def isatty(self):
+                return False
+
+            def readline(self):
+                return ""
+
+        monkeypatch.setattr(sys, "stdin", Pipe())
+        with patch("websockets.connect", return_value=Gate()):
+            with pytest.raises(ConnectionError) as caught:
+                asyncio.run(_agent().input_async("hi", timeout=5))
+
+        assert not isinstance(caught.value, EOFError)
+        assert "on_onboard" in str(caught.value) and "invite_code" in str(caught.value)

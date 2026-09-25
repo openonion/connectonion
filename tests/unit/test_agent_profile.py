@@ -294,3 +294,24 @@ async def test_no_profile_frame_without_route_handlers():
                                {}, storage, registry)
 
     assert "AGENT_PROFILE" not in [m["type"] for m in sent]
+
+
+@pytest.mark.asyncio
+async def test_a_session_with_history_is_not_new_after_a_restart():
+    """Re-test of 1.8.8b9: after a host restart CONNECTED said `status: new`
+    for a session whose history was intact, and the next turn continued it.
+    The registry is memory; the conversation is on disk."""
+    from connectonion.network.host.ws_router.connect import establish_connection
+    sent = []
+    stored = Mock()
+    stored.session = {"messages": [{"role": "user", "content": "remember LYNX-3"}],
+                      "requester": {"address": "0xvisitor"}}
+    storage = Mock(); storage.get.return_value = stored
+    registry = Mock(); registry.get.return_value = None   # a fresh process
+
+    await establish_connection({"session_id": "s1"}, "0xvisitor",
+                               AsyncMock(side_effect=sent.append), {}, storage, registry, {})
+
+    connected = next(m for m in sent if m["type"] == "CONNECTED")
+    assert connected["session_id"] == "s1"
+    assert connected["status"] == "connected"

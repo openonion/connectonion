@@ -328,7 +328,7 @@ async def test_legacy_socket_still_requires_a_signed_session_sync_command(
     messages = [connect, sync]
     sent = []
 
-    async def fake_connect(data, send, conn, *args):
+    async def fake_connect(data, send, conn, *args, **kwargs):
         conn.update(
             authenticated=True,
             agent_address=keys["address"],
@@ -372,7 +372,7 @@ async def test_unsigned_session_sync_is_rejected_on_a_legacy_socket(
     ]
     sent = []
 
-    async def fake_connect(data, send, conn, *args):
+    async def fake_connect(data, send, conn, *args, **kwargs):
         conn.update(
             authenticated=True,
             agent_address=OWNER,

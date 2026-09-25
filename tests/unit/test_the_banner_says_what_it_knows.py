@@ -97,3 +97,51 @@ class TestWhatTheBannerIsFor:
 
     def test_the_local_url_is_still_there(self, capsys):
         assert "localhost:8000" in _banner(capsys, DEFAULT_RELAY_URL)
+
+
+class TestAConfigFileThatIsNotThere:
+    """Re-test of 1.8.8b9: in a project with no .co/host.yaml the banner still
+    printed `config: <project>/.co/host.yaml`, and the port-in-use hint said
+    to change `port:` in it -- a file to edit that did not exist."""
+
+    @staticmethod
+    def _flat(text):
+        return " ".join(re.sub(r"\x1b\[[0-9;]*m", "", text).split())
+
+    def _banner_in(self, capsys, co_dir):
+        _print_host_banner(port=8000, address=ADDRESS, relay_url=None,
+                           trust="careful", trust_config={}, co_dir=co_dir)
+        return self._flat(capsys.readouterr().out)
+
+    def test_the_banner_says_there_is_none(self, capsys, tmp_path):
+        banner = self._banner_in(capsys, tmp_path / ".co")
+
+        assert "config: none (defaults)" in banner, banner
+        assert "create" in banner and "host.yaml" in banner
+
+    def test_the_banner_names_one_that_exists(self, capsys, tmp_path):
+        (tmp_path / ".co").mkdir()
+        (tmp_path / ".co" / "host.yaml").write_text("port: 8000\n")
+
+        banner = self._banner_in(capsys, tmp_path / ".co")
+
+        # Rich wraps a long temp path mid-word, so compare without the breaks.
+        assert "config: none" not in banner, banner
+        assert ".co/host.yaml" in banner.replace(" ", ""), banner
+
+    def test_the_port_hint_says_to_create_it(self, tmp_path):
+        from connectonion.network.host.server import _port_taken_message
+
+        hint = self._flat(_port_taken_message(8000, tmp_path / ".co"))
+
+        assert "does not exist yet" in hint and "port: 8001" in hint
+        assert "AGENT_PORT=8001" in hint
+
+    def test_the_port_hint_says_to_change_one_that_exists(self, tmp_path):
+        from connectonion.network.host.server import _port_taken_message
+        (tmp_path / ".co").mkdir()
+        (tmp_path / ".co" / "host.yaml").write_text("port: 8000\n")
+
+        hint = self._flat(_port_taken_message(8000, tmp_path / ".co"))
+
+        assert "Change `port:` in" in hint and "does not exist" not in hint

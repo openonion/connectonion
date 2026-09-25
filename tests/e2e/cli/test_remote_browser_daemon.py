@@ -68,7 +68,7 @@ async def _signed_start(service, monkeypatch):
     result_sent = asyncio.Event()
     sent = []
 
-    async def fake_connect(data, send, conn, *args):
+    async def fake_connect(data, send, conn, *args, **kwargs):
         conn.update(
             authenticated=True,
             agent_address=keys["address"],

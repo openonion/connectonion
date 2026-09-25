@@ -388,3 +388,76 @@ def test_a_work_room_turn_after_a_normal_turn_can_still_be_stopped(monkeypatch):
     ack = [f for f in laptop.sent if f["type"] == "PROVIDER_INTERRUPT_ACK"][0]
     assert ack["accepted"] is True, ack
     assert stopped.wait(2)
+
+
+# ── A device that joins while its Home is still rendering ─────────────────
+#
+# Re-tested on 1.8.8b9 (and 1.8.7): start the host, pair a laptop and a phone
+# on one session about 14 s later, and have the laptop ask at once. The phone
+# got CONNECTED and then nothing for the whole turn -- no user_message, no
+# stream, no OUTPUT -- and its Home arrived only afterwards (4 runs of 4). The
+# first Home snapshot of a fresh host is slow to render, and the connection
+# joined its session's viewers only once CONNECT had finished, snapshot and
+# all. A turn that started in that window had nobody to fan out to.
+
+
+def test_a_device_whose_home_is_still_rendering_sees_the_next_turn(monkeypatch):
+    from connectonion.network.host.ws_router import connect as ws_connect
+    from connectonion.network.host.ws_router import dashboard
+
+    laptop, phone = Device(), Device()
+    release = threading.Event()
+    gate = {}
+
+    def authenticate(data, *args, **kwargs):
+        return None, data["as"], None, None
+
+    async def slow_home(send_msg, session_id, conn, force=False):
+        # Only the phone's Home is slow, standing in for a fresh host's first render.
+        if send_msg == phone.send_msg:
+            await gate["rendered"].wait()
+        await send_msg({"type": "DASHBOARD_SNAPSHOT", "session_id": session_id})
+
+    class Storage:
+        def get(self, session_id):
+            return None
+
+    class Trust:
+        def is_admin(self, address):
+            return False
+
+    monkeypatch.setattr(ws_connect, "authenticate_connect_frame", authenticate)
+    monkeypatch.setattr(dashboard, "send_dashboard", slow_home)
+
+    async def main():
+        gate["rendered"] = asyncio.Event()
+        route_handlers = {"ws_input": _agent(release), "viewers": SessionViewers(),
+                          "trust_agent": Trust()}
+        registry = ActiveSessionRegistry()
+        loops = [
+            asyncio.create_task(ws_session.run_ws_session(
+                d.send_msg, d.recv_msg, route_handlers=route_handlers,
+                storage=Storage(), registry=registry, trust=None, enable_ping=False,
+            ))
+            for d in (laptop, phone)
+        ]
+        try:
+            for d in (laptop, phone):
+                await d.inbox.put({"type": "CONNECT", "as": d.address, "session_id": SESSION})
+                await d.wait_for("CONNECTED")
+            await laptop.inbox.put({"type": "INPUT", "prompt": "find flights"})
+            await laptop.wait_for("tool_call")
+            release.set()
+            await laptop.wait_for("OUTPUT")
+            await phone.wait_for("OUTPUT", timeout=2)
+        finally:
+            release.set()
+            gate["rendered"].set()
+            for d in (laptop, phone):
+                d.inbox.put_nowait(None)
+            await asyncio.wait_for(asyncio.gather(*loops), 5)
+
+    asyncio.run(main())
+
+    turn = [f["type"] for f in phone.sent if f["type"] in ("user_message", "OUTPUT")]
+    assert turn == ["user_message", "OUTPUT"], phone.types()

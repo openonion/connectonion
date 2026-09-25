@@ -561,9 +561,16 @@ def claim_identity(co_dir: Path, identity: dict, name: str) -> Optional[str]:
         f"{identity['address'][:10]}… is already served by "
         f"'{existing.get('name')}' in {existing.get('project')}, using the same "
         f"key from {source}. Two agents on one address means whichever is "
-        f"nearest answers the call, and the tools they answer with differ. A "
-        f"project created by `co create` gets its own identity and does not "
-        f"share."
+        f"nearest answers the call, and the tools they answer with differ. "
+        # This said a project made by `co create` gets its own identity. It
+        # does not: `co create` writes no key, so every such project inherits
+        # ~/.co's and lands here. A key in the project's own .co/keys/ wins
+        # over ~/.co (resolve_agent_identity), so that is the advice that works.
+        f"`co create` does not give a project its own key; they all use "
+        f"~/.co's. To give this one its own address, run in {co_dir.parent}: "
+        f"python -c \"from pathlib import Path; from connectonion import address; "
+        f"address.save(address.generate(), Path('.co'))\" -- the key in "
+        f".co/keys/ then wins over ~/.co. Clients must use the new address."
     )
 
 
@@ -621,11 +628,27 @@ def _port_in_use(port: int) -> bool:
     return False
 
 
+def _config_whereabouts(config_file: Path) -> str:
+    """The host.yaml path, and whether it is there.
+
+    The banner's `config:` line and the port hint named <project>/.co/host.yaml
+    as if it were being read, in a project that had none: an operator went
+    looking for a file to edit that did not exist. A plain `host()` runs on
+    defaults; the path is where settings would go.
+    """
+    if config_file.exists():
+        return str(config_file)
+    return (f"none (defaults) — create {config_file} to change them")
+
+
 def _port_taken_message(port: int, co_dir: Path) -> str:
     """Name the port and both ways to move it: host.yaml for good, AGENT_PORT for once."""
+    config_file = co_dir / "host.yaml"
+    where = (f"Change `port:` in {config_file}" if config_file.exists()
+             else f"Put `port: {port + 1}` in {config_file} (it does not exist yet: create it)")
     return (f"[host] Port {port} is already in use — another agent, or an earlier "
             f"`python agent.py` still running?\n"
-            f"       Change `port:` in {co_dir / 'host.yaml'}, "
+            f"       {where}, "
             f"or for one run: AGENT_PORT={port + 1} python agent.py")
 
 
@@ -686,7 +709,7 @@ def _print_host_banner(
     console.print()
 
     # Config and logs info (absolute paths)
-    console.print(f"{indent}[dim]config:[/dim] {config_file}")
+    console.print(f"{indent}[dim]config:[/dim] {_config_whereabouts(config_file)}")
     console.print(f"{indent}[dim]logs:[/dim] {logs_dir}")
     console.print()
 

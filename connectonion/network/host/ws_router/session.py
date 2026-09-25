@@ -427,7 +427,7 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                             # is a contact now and resumes its input once CONNECTED lands.
                             result = await establish_connection(
                                 pending_connect, agent_address, send_msg, conn, storage, registry,
-                                route_handlers
+                                route_handlers, on_authenticated=track_viewer,
                             )
                             if result:
                                 active_io, forward_task = result
@@ -445,7 +445,10 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
 
             elif msg_type == "CONNECT":
                 # First message: auth + session merge + maybe reattach to a running agent.
-                result = await handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist)
+                # Joins the session's viewers as soon as the identity is
+                # verified, not after the Home snapshot: see establish_connection.
+                result = await handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist,
+                                              on_authenticated=track_viewer)
                 if result:
                     active_io, forward_task = result
                 station = route_handlers.get("provider_station")

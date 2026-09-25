@@ -282,6 +282,9 @@ def test_handle_ai_does_not_hide_programmer_errors(monkeypatch):
         ai_mod.handle_ai(prompt="task")
 
 
+ADDR = "0x" + "ab" * 32
+
+
 def test_trust_commands_list_and_actions(tmp_path, monkeypatch):
     # Point CO_DIR at temp path and create lists
     co = tmp_path / ".co"
@@ -298,7 +301,7 @@ def test_trust_commands_list_and_actions(tmp_path, monkeypatch):
     trust_mod.handle_trust_list()
 
     monkeypatch.setattr(trust_mod, "get_level", lambda addr: "contact")
-    trust_mod.handle_trust_level("addr")
+    trust_mod.handle_trust_level(ADDR)
 
     monkeypatch.setattr(trust_mod, "promote_to_contact", lambda addr: "ok")
     monkeypatch.setattr(trust_mod, "promote_to_whitelist", lambda addr: "ok")
@@ -308,10 +311,10 @@ def test_trust_commands_list_and_actions(tmp_path, monkeypatch):
     monkeypatch.setattr(trust_mod, "add_admin", lambda addr: "ok")
     monkeypatch.setattr(trust_mod, "remove_admin", lambda addr: "ok")
 
-    trust_mod.handle_trust_add("addr")
-    trust_mod.handle_trust_add("addr", whitelist=True)
-    trust_mod.handle_trust_remove("addr")
-    trust_mod.handle_trust_block("addr", reason="r")
-    trust_mod.handle_trust_unblock("addr")
-    trust_mod.handle_admin_add("addr")
-    trust_mod.handle_admin_remove("addr")
+    trust_mod.handle_trust_add(ADDR)
+    trust_mod.handle_trust_add(ADDR, whitelist=True)
+    trust_mod.handle_trust_remove(ADDR)
+    trust_mod.handle_trust_block(ADDR, reason="r")
+    trust_mod.handle_trust_unblock(ADDR)
+    trust_mod.handle_admin_add(ADDR)
+    trust_mod.handle_admin_remove(ADDR)

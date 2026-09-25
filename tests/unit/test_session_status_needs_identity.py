@@ -24,7 +24,7 @@ async def _run(
     from connectonion.network.host.ws_router import session
 
     if connect_as is not None:
-        async def fake_connect(data, send, conn, *args):
+        async def fake_connect(data, send, conn, *args, **kwargs):
             conn.update(authenticated=True, agent_address=connect_as,
                         signed_commands=False, session_id="connected-session")
 
