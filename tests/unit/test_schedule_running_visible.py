@@ -8,10 +8,7 @@ every 15m whose run takes longer, that reads as a job running late.
 display state more common, not less.
 """
 
-import asyncio
 import json
-import threading
-import time
 from datetime import datetime, timedelta, timezone
 
 import pytest

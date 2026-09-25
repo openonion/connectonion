@@ -10,8 +10,6 @@ import json
 import time
 from datetime import datetime, timedelta, timezone
 
-import pytest
-
 from connectonion.network.host import schedule as sched
 from connectonion.network.host.ws_router import dashboard
 
