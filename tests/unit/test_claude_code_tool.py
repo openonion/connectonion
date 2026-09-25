@@ -801,6 +801,23 @@ def test_provider_error_and_session_mismatch_stay_structured(tmp_path):
     assert "Authentication required" in result["error"]
 
 
+def test_not_logged_in_says_how_to_log_in(tmp_path):
+    """Claude's own text points at /login, which a headless run cannot open."""
+    failed = _completed(
+        {
+            "type": "result",
+            "result": "Not logged in · Please run /login",
+            "session_id": NEW_SESSION,
+            "is_error": True,
+        },
+        returncode=1,
+    )
+    result, _ = _run(tmp_path, completed=failed)
+    assert result["status"] == "error"
+    assert "Not logged in" in result["error"]
+    assert "Run `claude` once in a terminal to log in" in result["error"]
+
+
 @pytest.mark.parametrize("payload", [None, {}, {"type": "assistant"}])
 def test_missing_result_object_is_structured(tmp_path, payload):
     completed = _completed()

@@ -4,6 +4,8 @@ import hashlib
 import json
 import os
 import secrets
+import shutil
+import signal
 import sys
 import time
 from collections import deque
@@ -11,7 +13,7 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from threading import Lock, Thread
+from threading import Lock, RLock, Thread, current_thread, main_thread
 from typing import Callable
 from urllib.parse import urlsplit
 from urllib.request import ProxyHandler, Request, build_opener
@@ -159,41 +161,85 @@ def forward_hook(url: str, token: str) -> None:
             sys.stdout.write(output.decode("utf-8"))
 
 
+# Directories holding a live Hook bearer token. Python's default SIGTERM kills
+# the process without running `finally`, so TemporaryDirectory never removed
+# them and the token outlived the run. A SIGTERM handler removes every one.
+_LIVE_TOKEN_DIRS: set[str] = set()
+_LIVE_LOCK = RLock()  # the handler may interrupt a holder on the main thread
+_previous_sigterm = None
+
+
+def _remove_token_dirs_on_sigterm(signum, frame):
+    with _LIVE_LOCK:
+        for directory in list(_LIVE_TOKEN_DIRS):
+            shutil.rmtree(directory, ignore_errors=True)
+    if callable(_previous_sigterm):
+        _previous_sigterm(signum, frame)
+    elif _previous_sigterm != signal.SIG_IGN:
+        # Default action is to die; SystemExit also unwinds the caller's own
+        # `finally` blocks, which terminate the Claude child process.
+        raise SystemExit(128 + signum)
+
+
+def _track_token_dir(directory: str, live: bool) -> None:
+    global _previous_sigterm
+    with _LIVE_LOCK:
+        (_LIVE_TOKEN_DIRS.add if live else _LIVE_TOKEN_DIRS.discard)(directory)
+        # signal.signal only works on the main thread; a directory made on a
+        # worker thread is still removed if a main-thread run installed it.
+        if current_thread() is not main_thread():
+            return
+        installed = signal.getsignal(signal.SIGTERM) is _remove_token_dirs_on_sigterm
+        if live and not installed:
+            _previous_sigterm = signal.signal(signal.SIGTERM, _remove_token_dirs_on_sigterm)
+        elif not _LIVE_TOKEN_DIRS and installed:
+            # None means a non-Python handler we cannot reinstall; use default.
+            signal.signal(signal.SIGTERM, _previous_sigterm or signal.SIG_DFL)
+
+
 @contextmanager
 def scoped_bridge_settings(permission_handler: Callable[[dict], bool] | None = None):
     """Install per-process Hooks with a private authenticated loopback receiver."""
     with TemporaryDirectory(prefix="co-claude-") as directory:
-        root = Path(directory)
-        events = root / "events.jsonl"
-        events.touch(mode=0o600)
-        settings = root / "settings.json"
-        receiver = ThreadingHTTPServer(("127.0.0.1", 0), _HookReceiver)
-        receiver.daemon_threads = True
-        receiver.token = secrets.token_urlsafe(32)
-        receiver.events = events
-        receiver.event_lock = Lock()
-        receiver.recent_events = deque()
-        receiver.permission_handler = permission_handler
-        url = f"http://127.0.0.1:{receiver.server_port}/hook"
-        hook = {
-            "type": "command", "command": sys.executable,
-            "args": [str(Path(__file__).resolve()), url, receiver.token],
-            "timeout": 5,
-        }
-        permission_hook = {**hook, "timeout": 180}
-        settings.write_text(json.dumps({
-            "hooks": {event: [{"hooks": [permission_hook if event == "PermissionRequest" else hook]}]
-                      for event in _OBSERVED_EVENTS},
-        }))
-        os.chmod(settings, 0o600)
-        thread = Thread(target=receiver.serve_forever, name="co-claude-hooks", daemon=True)
-        thread.start()
+        _track_token_dir(directory, True)
         try:
-            yield settings, events
+            yield from _serve_bridge(Path(directory), permission_handler)
         finally:
-            receiver.shutdown()
-            receiver.server_close()
-            thread.join(timeout=2)
+            _track_token_dir(directory, False)
+
+
+def _serve_bridge(root: Path, permission_handler):
+    """Serve the Hook receiver for one scoped settings directory."""
+    events = root / "events.jsonl"
+    events.touch(mode=0o600)
+    settings = root / "settings.json"
+    receiver = ThreadingHTTPServer(("127.0.0.1", 0), _HookReceiver)
+    receiver.daemon_threads = True
+    receiver.token = secrets.token_urlsafe(32)
+    receiver.events = events
+    receiver.event_lock = Lock()
+    receiver.recent_events = deque()
+    receiver.permission_handler = permission_handler
+    url = f"http://127.0.0.1:{receiver.server_port}/hook"
+    hook = {
+        "type": "command", "command": sys.executable,
+        "args": [str(Path(__file__).resolve()), url, receiver.token],
+        "timeout": 5,
+    }
+    permission_hook = {**hook, "timeout": 180}
+    settings.write_text(json.dumps({
+        "hooks": {event: [{"hooks": [permission_hook if event == "PermissionRequest" else hook]}]
+                  for event in _OBSERVED_EVENTS},
+    }))
+    os.chmod(settings, 0o600)
+    thread = Thread(target=receiver.serve_forever, name="co-claude-hooks", daemon=True)
+    thread.start()
+    try:
+        yield settings, events
+    finally:
+        receiver.shutdown()
+        receiver.server_close()
+        thread.join(timeout=2)
 
 
 def session_start(

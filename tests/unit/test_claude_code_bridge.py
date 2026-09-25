@@ -87,6 +87,24 @@ def test_bridge_launch_keeps_our_hooks_but_not_the_repository_settings(tmp_path)
     assert argv.index("--strict-mcp-config") < argv.index("--")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signal delivery")
+def test_sigterm_removes_the_directory_holding_the_hook_token():
+    """A SIGTERM used to skip TemporaryDirectory cleanup and leave the token."""
+    import os
+    import signal
+
+    before = signal.getsignal(signal.SIGTERM)
+    with pytest.raises(SystemExit) as exited:
+        with scoped_bridge_settings() as (settings, _):
+            directory = settings.parent
+            assert directory.is_dir()
+            os.kill(os.getpid(), signal.SIGTERM)
+            time.sleep(1)  # the handler runs on the next bytecode boundary
+    assert exited.value.code == 128 + signal.SIGTERM
+    assert not directory.exists()
+    assert signal.getsignal(signal.SIGTERM) == before
+
+
 def test_every_headless_co_claude_launch_excludes_repository_settings(tmp_path, monkeypatch):
     """Pin the command line run_co_claude actually launches, not just the helper."""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)

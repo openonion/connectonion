@@ -564,6 +564,10 @@ def _completed_envelope(completed, requested_session: str) -> str:
     result = _bounded_result(payload.get("result", ""), _MAX_FINAL_RESULT_CHARS)
     failed = completed.returncode != 0 or bool(payload.get("is_error"))
     error = _provider_error(payload, completed.stderr, completed.returncode) if failed else ""
+    if "not logged in" in error.lower():
+        # Claude's text says "run /login", a slash command a headless run
+        # cannot open; say where that command actually lives.
+        error += " Run `claude` once in a terminal to log in, then retry."
     if requested_session and valid_session and provider_session != requested_session:
         mismatch = (
             f"Claude Code resumed {requested_session!r} but returned a different "
