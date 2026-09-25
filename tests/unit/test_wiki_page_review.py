@@ -268,3 +268,21 @@ def test_maintenance_may_cite_the_page_that_existed_before_it():
     assert prior_context_reference(value, "people/test-person.md", items, original="# Test Person\n- Email: t@e.org")
     assert not prior_context_reference(value, "people/test-person.md", items, original="")   # a new page has no past
     assert not prior_context_reference("Outlook message 39", "people/test-person.md", items, original="# T")
+
+
+def test_a_malformed_review_proposal_is_dropped_not_the_batch(tmp_path):
+    """A real maintenance pass proposed a link with one subject; the whole batch
+    failed after its pages were written, and would have been redone every run."""
+    from connectonion.wiki.reviews import ingest, listing
+    from connectonion.wiki.files import read_json, state_path
+    prepare(tmp_path)
+    Notebook(tmp_path).stub_person('people/ody.md', 'Ody', [])
+    kept = ingest(tmp_path, [
+        {'kind': 'link', 'subjects': ['people/ody.md'], 'question': 'Same as Ody Z?', 'basis': 'name'},
+        {'kind': 'question', 'subjects': ['people/ody.md'], 'question': 'Still at OpenOnion?', 'basis': 'mail'},
+        {'kind': 'question', 'subjects': ['people/ody.md'], 'question': 'third', 'basis': 'x'},
+    ])
+    assert [row['question'] for row in kept] == ['Still at OpenOnion?']
+    assert [row['question'] for row in listing(tmp_path)] == ['Still at OpenOnion?']
+    dropped = read_json(state_path(tmp_path, 'reviews-dropped.json'), [])
+    assert dropped[0]['reason'] == 'Invalid number of review subjects'

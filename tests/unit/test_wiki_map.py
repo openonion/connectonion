@@ -404,3 +404,38 @@ def test_without_a_name_or_a_mailbox_there_is_no_owner_page(tmp_path, monkeypatc
     monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
     monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: ([], set()))
     assert 'owner' not in build_map(tmp_path, {}, {}, skill_directories=[skills])
+
+
+def test_an_upgraded_notebook_turns_the_owners_old_correspondent_page_into_the_owners_page(tmp_path, monkeypatch):
+    """A notebook mapped by an older version had made aaron@… a correspondent page:
+    titled by the address, History "Observed mail count: 1", marked unassessed.
+    Re-mapped once the address was known to be the owner's, that page was reused
+    as the owner page and left exactly as it was."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    notebook = Notebook(tmp_path)
+    notebook.stub_person('people/aaron-mail.md', 'aaron@mail.example', ['aaron@mail.example'], email='aaron@mail.example')
+    old = notebook.read('people/aaron-mail.md').replace(
+        '## History\n- Unknown — not investigated yet',
+        '## History\n- Observed mail count: 1; first: 2026-09-04; last: 2026-09-04; mailboxes: outlook. [1]').replace(
+        '## Uncertainties\n', '## Uncertainties\n- Correspondent classification unassessed; mapping does not '
+        'establish a person or employer.\n').replace(
+        '- (none yet)', '- [1] Enumeration metadata, observed 2026-09-20 — .state/map.json')
+    notebook.write('people/aaron-mail.md', old)
+
+    class Mail:
+        def my_addresses(self): return {'aaron@mail.example'}
+        def my_name(self): return ''
+
+    people = [{'name': 'Ody Zhou', 'address': 'ody@x.example', 'mails': 30, 'sent': 20, 'received': 10,
+               'one_way': False, 'boxes': ['gmail']}]
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: (people, {'aaron@mail.example'}))
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {'gmail': Mail()}, skill_directories=[skills], name='Aaron Xie')
+    assert result['owner']['record'] == 'people/aaron-mail.md'
+    page = notebook.read('people/aaron-mail.md')
+    assert page.startswith('# Aaron Xie\n')
+    assert 'Observed mail count: 1' not in page and 'Most mail with: Ody Zhou (30)' in page
+    assert 'Correspondent classification unassessed' not in page
+    assert '- Email: aaron@mail.example' in page

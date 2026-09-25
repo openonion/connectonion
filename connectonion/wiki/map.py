@@ -187,8 +187,24 @@ def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
     record = owner['record']
     page = notebook.read(record)
     original = page
-    if page.startswith('# Account owner\n') and name != 'Account owner':
-        page = f'# {name}\n' + page[len('# Account owner\n'):]
+    # A page nobody has investigated holds only what a map wrote, so the map
+    # may rewrite it. That matters on an upgraded notebook: an older map, not
+    # knowing aaron@… was the owner, made it a correspondent page -- titled by
+    # the address, History "Observed mail count: 1", marked unassessed -- and
+    # when the owner was recognised that page was reused as-is, still empty.
+    mapped_only = 'not investigated yet' in next(
+        (line for line in page.splitlines() if line.startswith('Investigation:')), '')
+    title = page.splitlines()[0][2:].strip() if page.startswith('# ') else ''
+    if name != 'Account owner' and (title == 'Account owner' or (
+            mapped_only and title.casefold() in {a.casefold() for a in owner['addresses']})):
+        page = f'# {name}\n' + page.split('\n', 1)[1]
+    if mapped_only:
+        page = re.sub(r'(## History\n)- Observed mail count:[^\n]*\[1\]\n', rf'\1{UNFILLED}\n', page, count=1)
+        page = page.replace('- Correspondent classification unassessed; mapping does not establish a person '
+                            'or employer.\n', '')
+        addresses = ', '.join(owner['addresses'])
+        for label in ('Email', 'Handles', 'Also known as'):
+            page = re.sub(rf'^- {label}: .*$', f'- {label}: {addresses}', page, count=1, flags=re.M)
     days, date = report['days'], report['started'][:10]
     own = {row['record'] for row in report['possible_own_addresses']}
     people = [row for row in report['people'] if row.get('classification') == 'unassessed'

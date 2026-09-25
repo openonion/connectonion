@@ -249,14 +249,13 @@ def test_invalid_routes_do_not_select_another_provider(root):
         inquiry.stage_config(root, {'runner': 'coai', 'model': 'local'}, 'plan')
 
 
-def test_candidate_batch_is_atomic_and_bound(root):
+def test_candidate_batch_keeps_the_valid_and_is_bound(root):
+    """Proposals are optional by-products; a bad one is dropped, not the pass (#1670)."""
     candidates = [{'kind': 'question', 'subjects': ['projects/a.md'], 'question': 'Why?', 'basis': 'A decision'},
                   {'kind': 'link', 'subjects': ['projects/a.md', 'projects/missing.md'], 'question': 'Related?', 'basis': 'A source'}]
-    with pytest.raises(WikiError):
-        reviews.ingest(root, candidates)
-    assert reviews.listing(root) == []
-    with pytest.raises(WikiError):
-        reviews.ingest(root, [candidates[0]] * 3)
+    assert [row['question'] for row in reviews.ingest(root, candidates)] == ['Why?']
+    assert [row['question'] for row in reviews.listing(root)] == ['Why?']
+    assert reviews.ingest(root, [candidates[0]] * 3) == []          # at most two read, and a repeat is not re-asked
 
 
 def test_capture_detects_changed_prefix(root):
