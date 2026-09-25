@@ -246,7 +246,9 @@ def make_wiki_app(factory):
                 result["recovery"] = "Check mailbox access with co auth status; retry init with --mail after resolving access. Completed maps are preserved."
                 _emit(ctx, result, ["init", "--mail", sorted(selected)[0]], failed=True)
                 raise typer.Exit(1)
-            return result, (["investigate", "me"] if result.get("owner") else ["investigate"])
+            # A page made from --name alone has no address for investigate me to use.
+            return result, (["investigate", "me"] if (result.get("owner") or {}).get("addresses")
+                            else ["investigate"])
         _handle(ctx, run, ["sources"])
 
     @wiki.command("investigate", cls=V("co wiki investigate"))
@@ -359,8 +361,15 @@ def make_wiki_app(factory):
             state = read_json(state_path(root, "map.json"), {})
             owner = state.get("owner") or {}
             if not owner.get("record"):
-                raise WikiError("No page for you yet: the map finds it from your connected mailboxes. Run init first")
+                raise WikiError("No page for you yet: init makes it from a connected mailbox or from your "
+                                "name. Run `co wiki init --name \"Your Name\"`")
             record = owner["record"]
+            if not owner.get("addresses") and not handle:
+                # A page made from --name alone has no address to find your own
+                # mail by, and investigating it would run a model on nothing.
+                raise WikiError(f"Your page {record} has no mail address yet, and investigate me reads what "
+                                "you sent. Connect a mailbox with co auth google or co auth microsoft, then "
+                                "run `co wiki init`")
             title = next((l[2:].strip() for l in Notebook(root).read(record).splitlines() if l.startswith("# ")),
                          "Account owner")
             result = _logged(root, record, "investigate me", lambda: investigate(
@@ -426,6 +435,16 @@ def make_wiki_app(factory):
                 counts = {name: len(notebook.list(name)) for name in CATEGORIES if notebook.list(name)}
                 return (counts, ["list", next(iter(counts))]) if counts else ([], ["init"])
             records = notebook.list(category)
+            if not records and category == "people" and not ctx.obj["json"]:
+                from ...wiki.files import state_path
+                from ...wiki.service import mail_available
+                # Right after init this said "Run init to build the map", to
+                # someone who just had. People come only from a mailbox.
+                if state_path(root, "map.json").is_file() and not any(
+                        mail_available(kind) for kind in ("gmail", "outlook")):
+                    return ("No people yet: people pages come from a connected mailbox, and none is "
+                            "connected. Connect one with co auth google or co auth microsoft, then run "
+                            + _next(ctx, ["init"]) + "."), ["sources"]
             return records, (["show", records[0]] if records else ["list"])
         _handle(ctx, operation, ["list"])
 

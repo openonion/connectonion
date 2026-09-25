@@ -584,3 +584,28 @@ def test_a_second_start_says_why_it_ran_no_batch(lifecycle):
     assert "First batch: Unknown" not in again.output
     assert "sync" in again.output.split("First batch:")[1].splitlines()[0]
     assert json.loads(invoke(root, "--json", "start", "--yes").stdout)["data"]["first_batch"] is None
+
+
+def test_init_with_only_a_name_makes_your_page_and_says_what_investigate_me_needs(tmp_path, monkeypatch):
+    """`init --name` with no mailbox made no owner page, so `investigate me`
+    said "Run init first" to someone who had; and `list people` right after
+    init said "Run init to build the map". Each now says what is true."""
+    monkeypatch.setattr('connectonion.wiki.service.subscriptions', lambda root: {})
+    monkeypatch.setattr('connectonion.wiki.service.mail_available', lambda kind: False)
+    monkeypatch.setattr('connectonion.wiki.runner.run_stage', lambda *a, **kw: pytest.fail('no model without material'))
+    empty = tmp_path / 'empty-skills'
+    empty.mkdir()
+    bare = tmp_path / 'bare'
+    assert invoke(bare, 'init', '--skills-dir', str(empty)).exit_code == 0
+    listing = invoke(bare, 'list', 'people')
+    assert 'Run init to build the map' not in listing.output
+    assert 'co auth google' in listing.output and 'mailbox' in listing.output
+
+    result = invoke(tmp_path, '--json', 'init', '--skills-dir', str(empty), '--name', 'Test User')
+    assert result.exit_code == 0, result.output
+    record = json.loads(result.output)['data']['owner']['record']
+    assert (tmp_path / record).read_text().startswith('# Test User\n')
+    me = invoke(tmp_path, 'investigate', 'me')
+    assert me.exit_code == 1
+    assert 'Run init first' not in me.output
+    assert record in me.output and 'co auth google' in me.output
