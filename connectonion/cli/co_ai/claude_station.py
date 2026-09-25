@@ -308,6 +308,17 @@ class _StationOutput:
         return getattr(self.terminal, name)
 
 
+def station_claude_plugin(workspace: Path) -> ClaudeCodePlugin:
+    """Claude tool for the turns a paired browser starts.
+
+    1.8.8b4 promised that a browser edit waits for the owner and shell
+    commands are refused. That holds only while Claude asks our Hook, so the
+    Station never follows the Host ceiling or a Work Room pick into native
+    `auto` or `bypassPermissions`.
+    """
+    return ClaudeCodePlugin(workspace=workspace, ask_owner=True)
+
+
 def launch_claude_station(workspace: Path, session_id: str, model: str) -> tuple[int, str]:
     """Serve one private OIP identity while Claude owns the foreground terminal."""
     workspace = workspace.resolve(strict=True)
@@ -328,7 +339,7 @@ def launch_claude_station(workspace: Path, session_id: str, model: str) -> tuple
             "Claude Code Station",
             llm=SimpleNamespace(model="claude-code"),
             tools=[],
-            plugins=[ClaudeCodePlugin(workspace=workspace, use_host_permissions=True)],
+            plugins=[station_claude_plugin(workspace)],
             co_dir=state_dir,
             quiet=True,
         )

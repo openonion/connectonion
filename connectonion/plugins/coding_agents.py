@@ -282,8 +282,14 @@ class ClaudeCodePlugin(_CodingAgentPlugin):
         permission_mode: PermissionMode | str = PermissionMode.AUTO,
         workspace: str | Path | None = None,
         use_host_permissions: bool = False,
+        ask_owner: bool = False,
     ) -> None:
         self.use_host_permissions = use_host_permissions
+        # ask_owner pins Claude to its manual mode, so every action that needs
+        # permission reaches our PermissionRequest Hook (owner approval for a
+        # workspace edit, refusal for shell and anything unknown). Native
+        # `auto` would let Claude's own classifier run Bash without asking.
+        self.ask_owner = ask_owner
         super().__init__(permission_mode=permission_mode, workspace=workspace)
 
     def claude_code(
@@ -317,6 +323,8 @@ class ClaudeCodePlugin(_CodingAgentPlugin):
         )
 
     def _policy(self, agent) -> tuple[str, PermissionMode]:
+        if self.ask_owner:
+            return "default", self.permission_mode
         if not self.use_host_permissions:
             return {
                 PermissionMode.READ_ONLY: "manual",
