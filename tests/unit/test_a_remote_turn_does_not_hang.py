@@ -24,6 +24,7 @@ Three things were missing, and each is pinned here against a fake socket:
 
 import asyncio
 import json
+import sys
 import time
 from unittest.mock import patch
 
@@ -339,7 +340,9 @@ class TestAConnectionThatClosesMidTurn:
         first = FakeSocket(script=[_closed_1012()])
         agent = _agent()
         with patch("websockets.connect", side_effect=[first] + [OSError("refused")] * 5):
-            with patch("connectonion.network.connect._RECONNECT_DELAYS", (0, 0, 0)):
+            # The module object, not its dotted name: connectonion.network re-exports
+            # the connect() function under the module's own name.
+            with patch.object(sys.modules["connectonion.network.connect"], "_RECONNECT_DELAYS", (0, 0, 0)):
                 with pytest.raises(TurnLostError) as caught:
                     asyncio.run(agent.input_async("count", timeout=5))
 
