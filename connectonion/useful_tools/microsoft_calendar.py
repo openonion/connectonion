@@ -383,6 +383,7 @@ class MicrosoftCalendar:
         """
         start_dt = self._parse_time(start_time)
         end_dt = self._parse_time(end_time)
+        self._require_teams_provider()
 
         event = {
             "subject": title,
@@ -427,6 +428,28 @@ class MicrosoftCalendar:
                 'Inspect the calendar before retrying creation.', 'co outlook calendar list')
 
         return f"Teams meeting created: {title}\nStart: {self._format_datetime(start_dt.isoformat())}\nTeams link: {meeting_url}\nEvent ID: {created_event['id']}"
+
+    def _require_teams_provider(self) -> None:
+        """Refuse before the POST when this calendar cannot host Teams (#1719).
+
+        On a personal Microsoft account Graph reports
+        allowedOnlineMeetingProviders ['unknown'], silently ignores
+        isOnlineMeeting, creates the event anyway, and Outlook mails every
+        attendee an invitation with no link. The post-create link check cannot
+        undo that, so the only safe place to stop is before anything is written.
+        """
+        calendar = self._request("GET", "/me/calendar",
+                                 params={"$select": "allowedOnlineMeetingProviders"})
+        providers = calendar.get("allowedOnlineMeetingProviders")
+        if isinstance(providers, list) and "teamsForBusiness" in providers:
+            return
+        from ..provider_credentials import ProviderCredentialError
+        raise ProviderCredentialError('teams_unavailable',
+            "This Microsoft account can't create Teams meetings "
+            "(Teams meetings need a work or school account; personal accounts aren't supported). "
+            "No event was created and no invitation was sent. "
+            "To book it anyway, put a link from another service in --description and use create.",
+            'co outlook calendar create --help')
 
     @staticmethod
     def _meeting_url(event: dict) -> str | None:

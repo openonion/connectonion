@@ -79,6 +79,7 @@ calendar.create_event(
 )
 
 # Create Teams meeting
+# Work or school accounts only: on a personal account it raises before creating anything.
 calendar.create_teams_meeting(
     title="Video Call",
     start_time="2024-01-15 14:00",

@@ -410,4 +410,6 @@ it themselves**, do not try to drive that flow.
 - [ ] `--from` address taken from `co email addresses`, never guessed
 - [ ] Empty search reported as "no match", not as "does not exist"
 
-If Teams creation returns an event without a usable meeting link, the command exits 1 and retains the event ID. Follow `co outlook calendar read EVENT_ID` to inspect that event; do not repeat creation. A missing event ID requires listing the calendar before another write.
+Teams meetings need a work or school Microsoft account. Before creating anything, `co outlook calendar teams` reads the calendar's `allowedOnlineMeetingProviders`; when `teamsForBusiness` is not among them (a personal outlook.com account reports `unknown`), it exits 1 with "This Microsoft account can't create Teams meetings", and no event is created and no invitation is sent. Without this check Graph would ignore the Teams request, create the event anyway and mail every attendee an invitation with no link.
+
+If Teams creation on an account that allows Teams still returns an event without a usable meeting link, the command exits 1 and retains the event ID. Follow `co outlook calendar read EVENT_ID` to inspect that event; do not repeat creation. A missing event ID requires listing the calendar before another write.
