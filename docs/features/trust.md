@@ -235,7 +235,8 @@ host(agent, trust=...)
                 │   - Apply default
                 │
                 └── LLM Fallback (only if default: ask)
-                    - Evaluate stranger with LLM
+                    - A stranger is refused without it
+                    - Evaluates a known level the policy defers on
 ```
 
 All trust inputs convert to TrustAgent internally. Developers can use string levels for simplicity or pass TrustAgent directly for more control.
@@ -642,7 +643,8 @@ mean to the machine you mean.
 │  │     - Apply default                             │   │
 │  │                                                  │   │
 │  │  2. LLM Fallback (only if default: ask)         │   │
-│  │     - Evaluate stranger with LLM                │   │
+│  │     - Strangers are refused without it          │   │
+│  │     - Judges a known level the policy defers on │   │
 │  │                                                  │   │
 │  └─────────────────────────────────────────────────┘   │
 │                                                         │

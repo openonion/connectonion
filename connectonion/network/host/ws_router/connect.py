@@ -231,7 +231,7 @@ async def republish_authenticated_connection(data, send_msg, conn, storage,
     # The physical browser socket is new even though the logical relay
     # connection is not. Force the current Home snapshot onto that socket.
     from .dashboard import send_dashboard
-    await send_dashboard(send_msg, session_id)
+    await send_dashboard(send_msg, session_id, conn, force=True)
     console.print(
         f"[green]↻ REATTACH[/green] agent_address={conn['agent_address'][:16]}... "
         f"session={session_id[:8]}... status={status}"
@@ -506,6 +506,10 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     })
     if mode_is_admin is not None:
         conn["mode_is_admin"] = mode_is_admin
+    # Home is rendered for this verified identity: its own turns, and the
+    # schedule only for an admin (dashboard.EVERYONE explains why).
+    trust_for_home = route_handlers.get("trust_agent") if route_handlers is not None else None
+    conn["is_admin"] = bool(trust_for_home and trust_for_home.is_admin(agent_address))
 
     console.print(f"[green]✓ CONNECT[/green] agent_address={agent_address[:16]}... session={session_id[:8]}... status={status}{' (server_newer)' if server_newer else ''}")
 

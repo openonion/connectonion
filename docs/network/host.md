@@ -141,11 +141,18 @@ When you call `host(create_agent)`, your agent becomes accessible via **three co
 
 Direct HTTP request/response. Best for simple integrations.
 
-```bash
-curl -X POST http://localhost:8000/input \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Hello"}'
+Every request is signed by the caller's key, so a bare `curl` is refused with
+`401 unauthorized: signed request required` on every trust level (see
+[host-config.md](host-config.md)). `connect()` signs for you:
+
+```python
+from connectonion import connect
+
+agent = connect("0x3d4017c3e843895a92b70aa74d1b7ebc9c98...")  # the address the banner prints
+print(agent.input("Hello").text)
 ```
+
+Or open the `chat.openonion.ai` link the banner prints and talk to it in a browser.
 
 **Flow:**
 1. Client sends HTTP POST with `{prompt, session?}`

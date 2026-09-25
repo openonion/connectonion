@@ -89,14 +89,41 @@ class TestWithNoDoorConfigured:
 
         assert "onboard" not in decision.reason.lower(), decision.reason
 
-    def test_the_llm_policy_actually_runs(self, careful):
-        """`careful` is the default level and `default: ask` is its documented
-        behaviour. It was unreachable."""
+    def test_a_bare_stranger_is_refused_without_an_llm(self, careful, monkeypatch):
+        """The LLM was reachable after this file's first fix, and then every
+        address that knocked cost the owner a model call and got a differently
+        worded answer each time. It is shown only the address and the level,
+        and for a stranger the level is `stranger`: there is nothing there to
+        judge. The answer is fixed, so the fast path gives it."""
         agent, asked = careful
+        import importlib
+        llm_do_mod = importlib.import_module("connectonion.llm_do")
+        monkeypatch.setattr(llm_do_mod, "llm_do",
+                            lambda *a, **k: pytest.fail("an LLM was called for a stranger"))
+
+        first = agent.should_allow(STRANGER, {})
+        second = agent.should_allow(STRANGER, {})
+
+        assert asked == [], "a bare stranger reached the LLM"
+        assert first.allow is False and first.used_llm is False
+        assert first.reason == second.reason
+        # The refusal names the next step, which is the operator's to take.
+        assert f"co trust add {STRANGER}" in first.reason
+
+    def test_a_policy_that_defers_on_a_known_level_still_asks(self, careful, tmp_path):
+        """Judgement stays where the policy asks for it: a contact that a
+        custom policy does not admit outright is not a stranger."""
+        _, asked = careful
+        # Its own directory: a promotion is durable, and must not reach the
+        # stranger the other tests here depend on.
+        agent = TrustAgent("careful", co_dir=tmp_path / "own")
+        (tmp_path / "own").mkdir()
+        agent.promote_to_contact(STRANGER)
+        agent._config = {**agent._config, "allow": ["admin", "whitelisted"]}
 
         agent.should_allow(STRANGER, {})
 
-        assert asked == [STRANGER], "default: ask never reached the LLM"
+        assert asked == [STRANGER]
 
 
 class TestWithADoorThatOpens:
@@ -128,9 +155,10 @@ class TestWithADoorThatOpens:
         agent, asked = careful
         monkeypatch.setattr(TrustAgent, "get_self_address", lambda self: None)
 
-        agent.should_allow(STRANGER, {})
+        decision = agent.should_allow(STRANGER, {})
 
-        assert asked == [STRANGER]
+        assert "onboard" not in decision.reason.lower()
+        assert asked == []
 
 
 class TestTheTwoHalvesAgree:
