@@ -13,10 +13,12 @@ runner = CliRunner()
 GROUP = get_command(app).commands["schedule"]
 LEAVES = sorted(GROUP.commands)
 READ_ONLY = {"list", "check"}
+# CI sets FORCE_COLOR, so Rich writes colour codes between the words.
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def help_of(*words):
-    return runner.invoke(app, [*words, "--help"], terminal_width=200).stdout
+    return ANSI.sub("", runner.invoke(app, [*words, "--help"], terminal_width=200).stdout)
 
 
 def test_the_root_help_reaches_the_group():
