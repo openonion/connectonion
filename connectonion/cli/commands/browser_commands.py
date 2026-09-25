@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: `install-onion` explicitly installs onionwright from PyPI into the current Python environment, and on an externally-managed interpreter says so and names the opt-in flag rather than reporting an exit code | otherwise no local state except a best-effort rotating-tip index at ~/.co/.browser_tip (a garbled index resets to the first tip) | a session-starting verb on the paid engine prints a billing notice to STDERR BEFORE the command is sent | an explicit --engine wtf whose private client is missing fetches it first, so the free engine and a bare import still never mutate the environment | the success tip is printed to STDERR (stdout stays pure data) | `help` introspects the class only | direct verbs delegate to the daemon; `do` runs its model loop in this CLI process and delegates each tool call
   Integration: exposes _extract_tab(args) -> (tab|None, remaining|None), _next_tip(), handle_browser(args, headless=False, engine_mode="auto") -> int | called from main.py browser command | USAGE/TIPS document the tab lifecycle, engine modes, and exit-code contract
   Performance: direct verbs do not import the browser-owning daemon, Agent, or Playwright; `help` lazily imports the schema (no socket, no Chrome) | other verbs: one socket round-trip, first call spawns the daemon
-  Errors: no-args / bad -t → prints usage to stderr, exit 2 | daemon errors come back as ERR[ <code>] → stderr + the mirrored exit code (0 ok · 1 failure · 2 usage · 3 unknown tab · 4 tab busy)
+  Errors: no-args / bad -t → prints usage to stderr, exit 2 | daemon errors come back as ERR[ <code>] → stderr + the mirrored exit code (0 ok · 1 failure · 2 usage · 3 unknown tab or no browser open · 4 tab busy)
 """
 
 import shlex
@@ -26,6 +26,7 @@ USAGE = (
     "  co browser tab close <NAME>              release your tab when the task is done\n"
     "  co browser -t TAB network requests|request <n>|har start|har stop [FILE]   what the tab sent; HAR\n"
     "  co browser -t TAB cookies [set|clear|save|load] [--all] [--raw]   the tab's site cookies\n"
+    "  co browser status                        open or not, engine, last command, the tab board\n"
     "  co browser close                         close the browser and stop the daemon\n"
     "  co browser install-onion                  install the onionwright driver (--engine wtf does this for you)\n"
     "  co browser help                          list every browser function\n"
@@ -40,7 +41,8 @@ USAGE = (
     "each other through this error and through `tab ls`. Set CO_WHO=<name> so the board\n"
     "shows a real name for you (Claude Code sessions are identified automatically).\n"
     "Add --headless before the function to run without a visible window.\n"
-    "stdout = data, stderr = errors; exit 0 ok · 1 failure · 2 usage · 3 unknown tab · 4 tab busy."
+    "stdout = data, stderr = errors; exit 0 ok · 1 failure · 2 usage · 3 unknown tab or no browser open · 4 tab busy\n"
+    "· 5 `do` has no account to bill (co auth) · 6 daemon pinned to another engine. Every command ends within 120s."
 )
 
 TIPS = [

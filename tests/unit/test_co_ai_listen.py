@@ -45,7 +45,7 @@ def rig(tmp_path, monkeypatch):
     agent = FakeAgent()
     monkeypatch.setattr(co_ai_listen, "_inbox_for", lambda name: inbox)
     monkeypatch.setattr(co_ai_listen, "_provider_for", lambda name: provider)
-    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self, **_: 1)
     return inbox, provider, agent
 
 

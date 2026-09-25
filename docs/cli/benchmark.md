@@ -8,7 +8,7 @@ run the identical benchmark again, and see whether it improved.
 ```bash
 co benchmark --help                     # the schema and the workflow
 co benchmark check reimbursement        # validate; never runs an Agent
-co eval run reimbursement --agent agent.py --skill reimbursement --runs 3
+co eval run reimbursement --agent agent.py --skill reimbursement --runs 1
 co eval report reimbursement --latest   # reopen it; compare with the run before
 ```
 
@@ -61,7 +61,7 @@ says so rather than pretending to check it.
 ## Running it
 
 ```bash
-co eval run <name> --agent agent.py [--skill NAME] [--invoke auto|explicit] [--runs N] [--live] [--json]
+co eval run <name> --agent agent.py [--skill NAME] [--invoke auto|explicit] [--runs N] [--max-iterations N] [--live] [--json]
 ```
 
 - `--agent` imports the real Agent from that file. A file that ends in
@@ -78,7 +78,34 @@ co eval run <name> --agent agent.py [--skill NAME] [--invoke auto|explicit] [--r
 - Without `--skill`, the run scores the Agent as a whole and says it made no
   claim about any skill.
 - `--runs N` repeats every case on a fresh session and reports stability
-  (`2/3`).
+  (`2/3`). Start with `--runs 1`: every attempt is paid for, and the first run
+  is to learn whether the cases can pass at all.
+- `--max-iterations N` (default 10) is how many steps — model calls — one
+  attempt may take. An attempt that reaches it is **STOPPED**: not judged,
+  never a pass, exit 1. The `co create` agent is otherwise allowed 100 steps,
+  and on 1.8.8b9 a case with no data in its input let it search the workspace
+  for 26 steps a case. Raise it for a task that really needs more.
+
+Before the first model call the run prints how many Agent runs it is about to
+make and the step ceiling on each; the report ends with what the Agent's own
+model calls cost (the judge's are not included). Put the data a case needs in
+its `input` — the invoices, the prior submission — so a correct Agent answers
+without searching; the example `co benchmark list` prints does this.
+
+### The Agent cannot read the answers
+
+The benchmark file holds every `must` and `must_not`, and it sits in the
+project the Agent works in. On 1.8.8b11 the `co create` agent answered four of
+five cases by running `glob("**/*")` and then reading
+`.co/benchmarks/reimbursement.yaml`, and scored 5/5. So, for the length of a
+run:
+
+- any tool call that names `.co/benchmarks`, `eval-runs` or the benchmark's
+  own file name is **refused** before it runs, and the Agent is told why. A
+  case's declared `fixture:` stays readable.
+- an attempt whose tool results contain any expectation text anyway — a grep
+  over the workspace, a shell pipeline, a sub-agent — is **INVALID**: not
+  judged, never a pass, exit 1.
 
 ### How a verdict is reached
 
@@ -111,7 +138,7 @@ safe environment, as the demo below does with a local ledger.
 | exit | meaning |
 |---|---|
 | 0 | every expectation passed and, with `--skill`, the skill ran every time |
-| 1 | any FAIL, UNVERIFIED, or a skill that did not run |
+| 1 | any FAIL, UNVERIFIED, STOPPED, INVALID, or a skill that did not run |
 | 2 | bad benchmark, agent path, skill or option — nothing was run |
 | 3 | the Agent or the runner broke — never counted as a pass |
 
@@ -127,7 +154,7 @@ Every run is a new directory, never overwritten:
 
 The authored benchmark is never written to. `co eval report <name>` reopens
 the latest run (or `--run ID`) and compares it with the one before: score,
-cases newly passing or failing, forbidden outcomes that came back, and a
+cases newly passing or failing, newly forbidden outcomes, and a
 warning when the benchmark file, the invoke mode, the model or the agent
 changed — so a changed setup is not read as a changed skill. The score is
 passed checks over checks, where the checks are every expectation plus "did

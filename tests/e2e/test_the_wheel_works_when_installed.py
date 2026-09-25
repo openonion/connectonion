@@ -226,7 +226,7 @@ class TestTheDataFilesShipped:
         assert "co-ai" in result.stdout
 
     def test_the_docs_are_there(self, installed):
-        """The force-include in pyproject.toml, which every wheel once missed."""
+        """The docs/ mapping in pyproject.toml, which every wheel once missed."""
         result = _run(installed,
                       "import pathlib, connectonion;"
                       " d = pathlib.Path(connectonion.__file__).parent / 'docs';"

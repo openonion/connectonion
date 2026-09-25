@@ -154,13 +154,21 @@ back the same way. With no listener running, `send` waits 30 seconds and then
 says so:
 
 ```
-No listener answered in 30s. WhatsApp allows one connection per linked
-device, so sending goes through the listener rather than opening a second
-one. Next: co whatsapp listen
+No listener answered in 30s, so nothing was sent. WhatsApp allows one connection
+per linked device, so sending goes through the listener rather than opening a
+second one. Next: co whatsapp listen
 ```
 
-This also means `send` and `reply` work without the extra installed. Only
-`listen` needs it.
+"Nothing was sent" is a promise, and it holds. Before the failure is printed the
+request is withdrawn from `outbox/` in one atomic step; the listener claims a
+request with the same kind of step, so exactly one of them has it. If the
+listener got there first, `send` waits for its answer instead of reporting a
+failure. A request whose sender is gone — killed, or long since told it failed —
+is thrown away by the next listener with a line in `log`, never sent late.
+
+So `send` and `reply` work without the extra installed while a listener is
+running. With no listener and no extra, nothing could ever send, so they exit 3
+at once and print the pip command, as `check` does.
 
 ## The protocol snapshot
 

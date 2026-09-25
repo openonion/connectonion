@@ -9,9 +9,10 @@ Drive **one real browser** from the shell. The browser stays open between comman
 cookies and logins persist until `co browser close`. Every terminal on the machine
 talks to the same daemon: one browser, one board, no matter where you type.
 
-**Always read the output, not just the exit code.** A failed action (selector not
-found, browser not open) often returns exit `0` with the error text on stdout —
-never chain `co browser ... && next_step` as your only success check.
+**Read the output as well as the exit code.** A selector that matched nothing
+exits `1` and no browser open exits `3`, so `co browser ... && next_step` stops
+where it should — but a click that landed on the wrong element still exits `0`,
+and only the page (a screenshot, `get_text`) can tell you that.
 
 ## Step 1: Identity — who are you?
 
@@ -222,11 +223,10 @@ Exit codes cover the daemon-level contract; the output text covers the action it
 
 | Signal | Meaning | What to do |
 |--------|---------|------------|
-| exit `0`, clean output | success | continue |
-| exit `0`, error text on stdout | the action failed softly (e.g. "No element found for selector") | read it, adjust selector or approach |
-| exit `1` | the command raised (bad arguments print the usage line) | self-correct from the message |
-| exit `2` | usage error (bad flags, empty `-t`, `tab` misuse) | fix the command syntax |
-| exit `3` | unknown tab | `tab open` the name first, then target it |
+| exit `0` | success | continue (verify the page when it matters) |
+| exit `1` | the action failed (e.g. "No element found for selector", bad arguments print the usage line), or the daemon is busy at connection capacity | adjust the selector or approach; on "busy", retry shortly |
+| exit `2` | usage error (bad flags, empty `-t`, `tab` misuse, a `go_to` address that is not a web URL) | fix the command syntax |
+| exit `3` | nothing to act on: unknown tab, or no browser open yet | `tab open` the name first / run the `go_to` the message names |
 | exit `4` | tab busy — another agent is mid-task there | do NOT retry the same command — the error prints the exact commands to run instead; follow them |
 
 The exit-3/4 error messages ARE the documentation — they always carry the current
@@ -292,16 +292,19 @@ command **starts** the daemon (`status` shows `headless=true/false`). To switch:
   `co browser open_browser` again before retrying the command.
 - **"Chrome failed to start"** — usually ssh/cron without a desktop session (run
   from a logged-in Terminal, or use `--headless`). Full launch log: `~/.co/browser.log`.
-- **Nuclear option** — kill the daemon and let the next command start fresh
-  (logins survive in the profile):
+- **"did not finish within 120s — it was waiting on Chrome's cookie store"** — a
+  macOS Keychain prompt is waiting behind another window. The command was
+  cancelled and the tab is free; ask the user to answer the prompt, then retry.
+- **"the browser daemon … is running but did not answer"** — the daemon is stuck.
+  `co browser close` finishes it (it stops a daemon that does not answer by force,
+  exits 1 to say so); logins survive in the profile.
+- **Nuclear option** — only if `close` could not finish it: stop this one daemon
+  by the pid beside its socket. Never `pkill -f 'connectonion.cli.browser_agent[.]daemon'`:
+  it stops every daemon this user has, including other agents' isolated ones.
 
-  <!-- The bracketed [.] is load-bearing: `pkill -f` matches every process's whole
-       command line, so the un-bracketed pattern matches the shell running it and
-       kills that shell (measured on Linux — everything after it in the same
-       command never runs). An agent following these steps runs commands exactly
-       that way. -->
   ```bash
-  pkill -f 'connectonion.cli.browser_agent[.]daemon'
+  kill -9 "$(cat "${CO_BROWSER_SOCK:-/tmp/co-$USER/browser.sock}.pid")"                              # Linux
+  kill -9 "$(cat "${CO_BROWSER_SOCK:-$(getconf DARWIN_USER_TEMP_DIR)co-$USER/browser.sock}.pid")"   # macOS
   ```
 
 ## Done checklist

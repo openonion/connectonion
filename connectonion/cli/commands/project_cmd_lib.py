@@ -115,7 +115,7 @@ def mint_invite_code() -> str:
 
 def get_docs_source() -> Path:
     """Get the docs directory path - works in both dev and installed package."""
-    # After pip install: connectonion/docs/ exists (via force-include)
+    # After pip install: connectonion/docs/ exists (pyproject maps docs/ there)
     package_dir = Path(__file__).parent.parent.parent  # connectonion/cli/commands/ → connectonion/
     docs_source = package_dir / "docs"
 
@@ -931,6 +931,36 @@ PROVIDER_TO_ENV = {
 }
 
 
+def package_ignore_patterns(docs_source: Path) -> list:
+    """The pattern lines of docs/.package-ignore, in order, comments dropped."""
+    listing = docs_source / ".package-ignore"
+    lines = listing.read_text(encoding="utf-8").splitlines() if listing.exists() else []
+    return [line.strip().rstrip("/") for line in lines if line.strip() and not line.startswith("#")]
+
+
+def _internal_docs(docs_source: Path) -> set:
+    """Paths under docs/ that docs/.package-ignore keeps out of a user's project:
+    test runs, release evidence, planning notes, uncited design decisions.
+    `archive` is always among them, as it was before the file was read.
+
+    The file uses two of the wheel's gitignore patterns and no more: `dir/*`
+    (every entry in dir) and `!path` (except this one). They are expanded to
+    concrete paths here so copy_docs() can keep its exact-path check."""
+    patterns = package_ignore_patterns(docs_source)
+    kept = {p[1:] for p in patterns if p.startswith("!")}
+    named = set()
+    for pattern in patterns:
+        if pattern.startswith("!"):
+            continue
+        if pattern.endswith("/*"):
+            folder = pattern[:-2]
+            children = (docs_source / folder).iterdir() if (docs_source / folder).is_dir() else ()
+            named |= {f"{folder}/{child.name}" for child in children} - kept
+        else:
+            named.add(pattern)
+    return named | {"archive"}
+
+
 def copy_docs(co_dir: Path) -> bool:
     """Copy documentation to .co/docs/. Returns True if docs were copied."""
     docs_dir = co_dir / "docs"
@@ -941,14 +971,16 @@ def copy_docs(co_dir: Path) -> bool:
     docs_source = get_docs_source()
 
     if docs_source.exists() and docs_source.is_dir():
-        for item in docs_source.iterdir():
-            if item.name.startswith('.') or item.name == 'archive':
-                continue
-            dest = docs_dir / item.name
-            if item.is_dir():
-                shutil.copytree(item, dest, dirs_exist_ok=True)
-            else:
-                shutil.copy2(item, dest)
+        internal = _internal_docs(docs_source)
+
+        def ignore(directory, names):
+            # An installed wheel no longer contains these; an editable install,
+            # whose docs_source is the repo's own docs/, does and must not copy them.
+            here = Path(directory).relative_to(docs_source)
+            top = here == Path(".")
+            return [n for n in names if (top and n.startswith(".")) or (here / n).as_posix() in internal]
+
+        shutil.copytree(docs_source, docs_dir, ignore=ignore, dirs_exist_ok=True)
         return True
     else:
         console.print(f"[yellow]⚠️  Warning: Documentation not found at {docs_source}[/yellow]")
@@ -1159,6 +1191,12 @@ def _state_the_address_the_key_has(global_dir: Path) -> None:
     upsert_env(keys_env, {"AGENT_ADDRESS": data["address"]})
 
 
+# The email is not derived here. This comment is written before `co auth` runs,
+# and the one derived locally (0x + 8 hex) is not the one the backend assigns
+# (0x + 10 hex): every new project showed two addresses for one agent (1.8.8b7).
+EMAIL_COMMENT = "#   - Email address: AGENT_EMAIL below, assigned by `co auth`"
+
+
 def ensure_global_config() -> None:
     """Ensure ~/.co/ exists with global identity (keys + keys.env).
 
@@ -1201,7 +1239,7 @@ def ensure_global_config() -> None:
         "# Your agent address (Ed25519 public key) is used for:\n"
         "#   - Secure agent communication (encrypt/decrypt with private key)\n"
         "#   - Authentication with OpenOnion managed LLM provider\n"
-        f"#   - Email address: {addr_data['address'][:10]}@mail.openonion.ai\n"
+        f"{EMAIL_COMMENT}\n"
     ))
     console.print("  ✓ Created ~/.co/keys.env")
 

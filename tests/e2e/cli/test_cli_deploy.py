@@ -80,7 +80,14 @@ class TestCliDeploy:
 
             os.makedirs(".co")
             Path(".co/host.yaml").write_text('name: test-agent\nentrypoint: agent.py\n')
-            Path("agent.py").write_text('print("hello")')
+            # An entrypoint that calls host(): with `print("hello")` deploy
+            # refused it as exporting no ASGI app, and this test passed only
+            # because that refusal exited 0.
+            Path("agent.py").write_text(
+                "from connectonion import Agent, host\n"
+                "agent = Agent('test-agent')\n"
+                "host(agent)\n"
+            )
 
             subprocess.run(['git', 'add', '.'], capture_output=True)
             subprocess.run(['git', 'commit', '-m', 'init'], capture_output=True)
@@ -105,7 +112,7 @@ class TestCliDeploy:
             with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
                 result = self.runner.invoke(cli, ['deploy'])
 
-            assert "Deployed!" in result.output or result.exit_code == 0
+            assert "Deployed!" in result.output and result.exit_code == 0, result.output
 
     @SKIP_NO_GIT
     @patch('connectonion.cli.commands.deploy_commands.requests.post')

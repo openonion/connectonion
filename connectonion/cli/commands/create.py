@@ -23,6 +23,7 @@ from .auth_commands import authenticate
 
 # Import shared functions from project_cmd_lib
 from .project_cmd_lib import (
+    EMAIL_COMMENT,
     PROVIDER_TO_ENV,
     LoadingAnimation,
     check_environment_for_api_keys,
@@ -84,10 +85,40 @@ def template_dir_for(template: str) -> Path:
     return TEMPLATES_DIR / template
 
 
+def _refuse_existing(base_dir: Path, name: str) -> bool:
+    """Say the folder exists and suggest a free name; True when it does.
+
+    The caller returns False, not None: only False becomes exit 1, and 1.8.8b9
+    exited 0 here, so a script read "created" for a project it never made.
+    """
+    if not (base_dir / name).exists():
+        return False
+    # `co create .` suggested "co create .-2": a name built from something that
+    # is not a project name (".", "..", a path) is not one either. Suggest the
+    # template's own name, and `co init` for the folder that was meant.
+    stem = name if validate_project_name(name)[0] else "my-agent"
+    suggestion, counter = stem, 2
+    while (base_dir / suggestion).exists():
+        suggestion, counter = f"{stem}-{counter}", counter + 1
+    console.print(f"\n[red]❌ '{name}' exists. Try: [bold]co create {suggestion}[/bold][/red]")
+    if stem != name:
+        target = "./" if (base_dir / name).resolve() == Path.cwd().resolve() else name
+        console.print(f"[red]   Or make '{name}' itself a project: "
+                      f"[bold]co init {target} --template co-ai --yes[/bold][/red]")
+    console.print()
+    return True
+
+
 def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
                   template: Optional[str], description: Optional[str], yes: bool,
                   parent_dir: Optional[Path] = None):
     """Create a new ConnectOnion project in a new directory."""
+    # A name that is already a folder fails before anything else happens. The
+    # check below used to be the first one, after a first run had generated a
+    # keypair and signed up for an account (found capturing 1.8.8b10).
+    if name and _refuse_existing(Path.cwd() if parent_dir is None else parent_dir, name):
+        return False
+
     # Ensure global config exists first
     ensure_global_config()
 
@@ -284,25 +315,16 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         is_valid, error_msg = validate_project_name(name)
         if not is_valid:
             console.print(f"[red]❌ {error_msg}[/red]")
-            return
+            return False
 
     # Create new project directory. CLI calls use cwd; template deploy can pass
     # a temporary parent without changing the process-wide working directory.
     base_dir = Path.cwd() if parent_dir is None else parent_dir
     project_dir = base_dir / name
 
-    # Check if directory exists and suggest alternative
-    if project_dir.exists():
-        base_name = name
-        counter = 2
-        suggested_name = f"{base_name}-{counter}"
-        while (base_dir / suggested_name).exists():
-            counter += 1
-            suggested_name = f"{base_name}-{counter}"
-
-        # Show error with suggestion
-        console.print(f"\n[red]❌ '{base_name}' exists. Try: [bold]co create {suggested_name}[/bold][/red]\n")
-        return
+    # Again here: an interactive or AI-suggested name is only known now.
+    if _refuse_existing(base_dir, name):
+        return False
 
     # Create project directory
     project_dir.mkdir(parents=True, exist_ok=True)
@@ -363,8 +385,15 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
             key = line.strip().split('=', 1)[0]
             return not (is_personal_account_credential(key) or describes_this_machine(key))
 
+        def current(line: str) -> str:
+            # keys.env files written before 1.8.8 carry a guessed email in this
+            # comment that disagrees with AGENT_EMAIL; copy the pointer instead.
+            if line.startswith("#   - Email address:"):
+                return EMAIL_COMMENT + "\n"
+            return line
+
         with open(global_keys_env, 'r', encoding='utf-8') as f:
-            env_content = "".join(line for line in f if inherited(line))
+            env_content = "".join(current(line) for line in f if inherited(line))
 
         # AGENT_CONFIG_PATH is deliberately not written here. Every tool that
         # reads it already falls back to ~/.co on the machine it is running on

@@ -2,6 +2,7 @@
 
 The default is $AGENT_CONFIG_PATH/keys.env (normally ~/.co/keys.env). Only the
 CLI's explicit --env-file option selects another file; cwd never selects one.
+The one layer on top is host()'s: a hosted project's own .env (load_project_env).
 """
 
 from __future__ import annotations
@@ -154,6 +155,46 @@ def load_environment() -> None:
             publish_values({key: value if key in oauth_keys else resolved[key]})
     if path.is_file() and (sys.stderr.isatty() or os.getenv("CO_DEBUG_ENV") == "1"):
         print(f"[env] {path}", file=sys.stderr)
+
+
+def load_project_env(path: Path) -> list[str]:
+    """Layer a hosted project's .env over keys.env; the process environment still wins.
+
+    Called by host(), not at import: the CLI rule above ("cwd never selects a
+    file") is about which account a `co` command acts as, and a stray .env in
+    whatever directory someone typed `co` in must not change that. A hosted
+    agent is different — its .env is where `co create` put its invite code,
+    and without this the owner was told "no one can onboard" beside a .env
+    that held the code.
+
+    Precedence, highest first: the process (shell export, systemd
+    EnvironmentFile) > this file > keys.env. A provider record is taken whole
+    from one source, as load_environment() does, so a project token is never
+    paired with the global account's email. Returns the keys it applied.
+    """
+    if not path.is_file():
+        return []
+    values = read_env_file(path)
+    inherited = process_environment()
+    oauth_keys = {key for provider in PROVIDER_PREFIXES for key in provider_keys(provider)}
+    resolved = resolve_variables(values.items(), override=False)
+    applied = {key: value if key in oauth_keys else resolved[key]
+               for key, value in values.items() if key not in inherited}
+    for provider in PROVIDER_PREFIXES:
+        record = provider_keys(provider)
+        if not any(key in applied for key in record):
+            continue
+        if any(key in inherited for key in record):
+            for key in record:
+                applied.pop(key, None)
+            continue
+        # Drop the keys.env half of the record before publishing this one.
+        for key in record:
+            if key in _loaded and os.environ.get(key) == _loaded[key]:
+                os.environ.pop(key, None)
+            _loaded.pop(key, None)
+    publish_values(applied)
+    return sorted(applied)
 
 
 def select_env_file(path: Path | None) -> None:

@@ -18,6 +18,24 @@ What `co auth` does:
 - If your project has a `.env`, it's updated too
 - `~/.co/keys.env` gains `IS_EMAIL_ACTIVE=true`
 
+`co auth login` is the same as bare `co auth`.
+
+Check or undo it without signing in:
+
+```bash
+co auth status    # identity, token present or missing, Google/Microsoft/Feishu/Lark connections
+co auth logout    # asks, then removes OPENONION_API_KEY; the keypair stays
+```
+
+- `co auth status` only reads. It never creates a keypair, never writes
+  `keys.env` and makes no network call. On a fresh machine it says
+  "Not signed in" and names `co auth login`. Balance and deployments need a
+  signed request, so they stay with `co status`.
+- `co auth logout` never deletes `~/.co/keys/`: the keypair *is* the account,
+  so the next `co auth login` returns you to the same address and balance.
+- Any other word (`co auth foo`) exits 2 and lists the valid ones. It used to
+  fall through to sign-in.
+
 What `co auth google` does:
 - Requests the supported Gmail, Drive, Calendar and YouTube permissions by default
 - Opens browser for OAuth authorization

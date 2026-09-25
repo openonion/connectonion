@@ -18,6 +18,7 @@ import argparse
 import asyncio
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -121,6 +122,22 @@ async def run(host_address, url, direct):
     await laptop.wait_for("OUTPUT")
     await asyncio.sleep(1)
 
+    # The same stranger opens a fresh socket after both turns, so its Home
+    # snapshot is rendered with the owner's history already on disk. A snapshot
+    # used to be excluded from the check below, and it carried the owner's
+    # prompts verbatim in its "Recent" list. Now it counts like any other frame
+    # whenever it mentions the owner's conversation.
+    latecomer = Device("latecomer", other, host_address, url, direct)
+    await latecomer.open()
+    await asyncio.sleep(1)
+    owner_words = ("Tokyo", "Osaka")
+
+    def leaked(frames):
+        return [f for f in frames
+                if f.get("type") not in ("AGENT_PROFILE", "CONTROL_CENTER_STATE")
+                and (f.get("type") != "DASHBOARD_SNAPSHOT"
+                     or any(w in f.get("html", "") for w in owner_words))]
+
     checks = {
         "the phone joined the laptop's session": phone.session_id == laptop.session_id,
         "a different identity was given its own session": stranger.session_id != laptop.session_id,
@@ -132,10 +149,8 @@ async def run(host_address, url, direct):
         == [f["result"] for f in first["phone"] if f["type"] == "OUTPUT"],
         "the laptop was not echoed its own question": not any(
             f.get("type") == "user_message" for f in first["laptop"]),
-        "the stranger received nothing of it": [f for f in stranger.frames + first["stranger"]
-                                                if f.get("type") not in ("AGENT_PROFILE",
-                                                                         "DASHBOARD_SNAPSHOT",
-                                                                         "CONTROL_CENTER_STATE")] == [],
+        "the stranger received nothing of it": leaked(stranger.frames + first["stranger"]
+                                                      + latecomer.frames) == [],
         "the laptop saw the phone's question": [f.get("content") for f in laptop.of("user_message")]
         == ["And to Osaka?"],
     }
@@ -146,10 +161,10 @@ async def run(host_address, url, direct):
     print(f"phone got user_message: {[f.get('content') for f in first['phone'] if f.get('type') == 'user_message']}")
     print(f"phone got answer:       {answer[0] if answer else None}")
     print(f"laptop got user_message: {[f.get('content') for f in laptop.of('user_message')]}")
-    print(f"other got frames:       {len([f for f in stranger.frames if f.get('type') not in ('AGENT_PROFILE', 'DASHBOARD_SNAPSHOT', 'CONTROL_CENTER_STATE')])}")
+    print(f"other got frames:       {len(leaked(stranger.frames + first['stranger'] + latecomer.frames))}")
     for name, ok in checks.items():
         print(f"{'✓' if ok else '✗'} {name}")
-    for d in (laptop, phone, stranger):
+    for d in (laptop, phone, stranger, latecomer):
         await d.ws.close()
     return all(checks.values())
 
@@ -186,6 +201,9 @@ def main():
     finally:
         host.terminate()
         host.wait(10)
+        # The project holds a generated identity key; left in $TMPDIR, every
+        # run added another private key to the disk for nothing.
+        shutil.rmtree(project, ignore_errors=True)
 
 
 if __name__ == "__main__":

@@ -1,1 +1,0 @@
-../../../../../../docs/design-decisions/001-choosing-input-method.md

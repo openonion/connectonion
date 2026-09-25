@@ -176,3 +176,22 @@ def test_a_symlinked_venv_on_the_server_survives(tmp_path):
         check=True, capture_output=True,
     )
     assert (server / ".venv").is_symlink(), "deploy deleted the server's venv symlink"
+
+
+def test_a_local_schedule_state_does_not_rewind_the_servers(tmp_path):
+    """`co schedule pause` on a laptop, then a deploy: the server keeps its own
+    record of what ran and what is paused (#1685). Protect-from-delete is not
+    enough; a local copy that exists is sent and replaces the server's."""
+    local, server = tmp_path / "local", tmp_path / "server"
+    (local / ".co").mkdir(parents=True)
+    (server / ".co").mkdir(parents=True)
+    (local / "agent.py").write_text("print('hi')\n")
+    (local / ".co" / "schedule-state.json").write_text('{"sync": {"paused": true}}')
+    (server / ".co" / "schedule-state.json").write_text('{"sync": {"last_run": "server"}}')
+
+    subprocess.run(
+        ["rsync", "-a", "--delete", *RSYNC_FILTERS, f"{local}/", f"{server}/"],
+        check=True, capture_output=True,
+    )
+
+    assert (server / ".co" / "schedule-state.json").read_text() == '{"sync": {"last_run": "server"}}'

@@ -353,7 +353,47 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.8b8
+## Current Version: 1.8.8b12
+
+1.8.8b12 is an opt-in preview after 1.8.8b11: during `co eval run` the agent
+under test can no longer read the benchmark's expected outcomes, and an attempt
+that saw them anyway is INVALID, not a pass (#1712); plus browser, Wiki and docs
+promises found unkept by the last walk through b11. Stable remains 1.8.7.
+
+- 1.8.8b12 (eval-run tool guard for .co/benchmarks and eval-runs, INVALID attempts; tab ls/list/close start no daemon; client deadlines = daemon deadline + 10s and reads give up on a frozen daemon; forced close removes its files; paid engine profile under CO_BROWSER_PROFILE_DIR/onion; benchmark list prose to stderr; co create . suggests a name; co wiki show me; per-root launchd labels with migration; host.md and connect.md corrected.)
+
+Earlier in this line:
+
+1.8.8b11 is 1.8.8b10 as built: b10 was tagged but its wheel could not be built
+from the source package (co ai prompt links to design records no longer
+shipped), so it never reached PyPI. The links are gone and a test checks
+every link in the package.
+
+- 1.8.8b11 (1.8.8b10's changes; 18 dangling co_ai prompt symlinks removed; a unit test that every symlink inside connectonion/ resolves to a shipped file.)
+
+1.8.8b10 (never published) is an opt-in preview after 1.8.8b9: what a second walk through the
+same five areas found on b9 as published. Every `co browser` command ends
+within its deadline and `close` is never refused (#1709, #1704); a device that
+joins right after the host starts sees the next turn, and a host restart gives
+`TurnLostError` (#1708); a first benchmark no longer spends a dollar and
+refusals exit non-zero (#1707); `co wiki start` asks again when what it showed
+changed, and `co claude run` stops the child it started (#1706). Stable
+remains 1.8.7.
+
+- 1.8.8b10 (per-command daemon deadlines with cancellation, reserved slots for status/close/tab, client-side connect and read deadlines, read commands no longer start a daemon; viewer joins before the Home snapshot, relay "agent not connected" during resume becomes TurnLostError, slow on_approval declined at the deadline, co trust validates addresses; benchmark example self-contained, co eval run --max-iterations (10) and a spend notice, co create/co deploy refusals exit 1 and co create refuses an existing folder before any setup, internal docs out of the wheel; consent fingerprint re-asks on any change, co claude run stops its child on SIGTERM, co wiki init --name makes the owner page.)
+
+Earlier in this line:
+
+1.8.8b9 is an opt-in preview after 1.8.8b8. It gives the scheduler a command
+and a manual: `co schedule` lists, checks, runs, pauses and resumes the
+entries in `.co/schedule.yaml` (#1685), and `docs/cli/schedule.md` documents
+the file for the first time (#1680). One slow or hung entry no longer stops
+the others (#1681), and a schedule written into a running agent starts
+without a restart (#1682). Stable remains 1.8.7.
+
+- 1.8.8b9 (co schedule list/check/run/pause/resume writing only schedule-state.json; each due entry claimed as running and run as its own task; the clock always starts; deploy no longer sends a local schedule-state.json; Wiki runs confined, no full-access Codex or bypassPermissions while reading mail (#1691); headless Claude Code back in safe mode and Station browser turns ask the owner (#1687); one browser daemon per user however they logged in (#1684); experimental labels in every help surface (#1688); first-run messages that are true, host() reads the project .env (#1697); the Wiki loses no mail past 200 a week and never pays twice for a written batch (#1690); dependency caps and install lines without --pre, internal docs out of the wheel (#1696); connect().input() honours its timeout and surfaces approvals (#1700); the inbox behaves like its docs (#1698).)
+
+Earlier in this line:
 
 1.8.8b8 is an opt-in preview after 1.8.8b7. `co wiki` gets the command
 surface agreed as its help pages (#1656): fourteen commands in four groups,
@@ -857,7 +897,11 @@ When releasing a new version:
       publish through PyPI Trusted Publishing, install the public package,
       compare public artifacts byte-for-byte, and create the GitHub Release.
 - [ ] Confirm previews are GitHub Prereleases rather than Latest, normal pip
-      installs remain on stable, and `--pre` plus an exact pin install preview.
+      installs remain on stable, and an exact pin alone
+      (`pip install --upgrade 'connectonion==X.YbN'`) installs the preview.
+      Never publish an install line with `--pre`: it lets pip take pre-release
+      *dependencies* too, and 1.8.8b7's documented `--pre` line installed
+      httpx 1.0.dev6, which crashed every remote call.
 - [ ] After PyPI and the GitHub Release are visible, publish the docs-site
       version state and Design Journal. Verify the canonical URL, social and
       structured metadata, sitemap, AI-readable indexes, internal links, and

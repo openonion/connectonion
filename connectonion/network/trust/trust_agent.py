@@ -246,8 +246,26 @@ class TrustAgent:
                              f"(methods: {offered['methods']})")
             return Decision(allow=False, reason="Onboard required")
 
-        # No onboard methods - use LLM to evaluate
-        self.logger.info(f"[LLM] Evaluating stranger {client_id[:10]}... with LLM")
+        # A stranger with no door to walk through is refused here, not by a model.
+        # _llm_decide is shown the address and the level and nothing else, and
+        # for a stranger the level is `stranger` -- there is nothing in front of
+        # it to judge, so its answer was always going to be no. Asking anyway
+        # cost the owner a model call for every address that knocked, and worded
+        # the refusal differently each time. An address that should be admitted
+        # is a list entry (`co trust add`), which is deterministic and is the
+        # operator's move, so the refusal names it.
+        #
+        # The LLM stays for what a policy can actually defer on: a known level
+        # (a contact, say) that a custom policy does not admit outright.
+        if self.get_level(client_id) == "stranger":
+            self.logger.info(f"[TRUST] Stranger {client_id[:10]}... refused: no door open")
+            return Decision(
+                allow=False,
+                reason=("not a contact of this agent; its operator can add you "
+                        f"with: co trust add {client_id}"),
+            )
+
+        self.logger.info(f"[LLM] Evaluating {client_id[:10]}... with LLM")
         return self._llm_decide(client_id, request)
 
     def _llm_decide(self, client_id: str, request: dict) -> Decision:

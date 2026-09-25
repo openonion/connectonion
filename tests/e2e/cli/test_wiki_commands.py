@@ -570,3 +570,94 @@ def test_start_help_names_the_confinement_and_the_undo():
     text = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
     assert "--sandbox workspace-write" in text and "--permission-mode acceptEdits" in text
     assert "co wiki stop" in text
+
+
+def test_a_second_start_says_why_it_ran_no_batch(lifecycle):
+    """After stop, `start` resumed the schedule and printed `First batch:
+    Unknown` while its help promised it runs the first update. Only the first
+    start runs one; the output says so and names the command that runs one now."""
+    root, sessions, calls = lifecycle
+    assert invoke(root, "start", "--yes").exit_code == 0
+    assert invoke(root, "stop").exit_code == 0
+    again = invoke(root, "start", "--yes")
+    assert again.exit_code == 0, again.output
+    assert "First batch: Unknown" not in again.output
+    assert "sync" in again.output.split("First batch:")[1].splitlines()[0]
+    assert json.loads(invoke(root, "--json", "start", "--yes").stdout)["data"]["first_batch"] is None
+
+
+def test_init_with_only_a_name_makes_your_page_and_says_what_investigate_me_needs(tmp_path, monkeypatch):
+    """`init --name` with no mailbox made no owner page, so `investigate me`
+    said "Run init first" to someone who had; and `list people` right after
+    init said "Run init to build the map". Each now says what is true."""
+    monkeypatch.setattr('connectonion.wiki.service.subscriptions', lambda root: {})
+    monkeypatch.setattr('connectonion.wiki.service.mail_available', lambda kind: False)
+    monkeypatch.setattr('connectonion.wiki.runner.run_stage', lambda *a, **kw: pytest.fail('no model without material'))
+    empty = tmp_path / 'empty-skills'
+    empty.mkdir()
+    bare = tmp_path / 'bare'
+    assert invoke(bare, 'init', '--skills-dir', str(empty)).exit_code == 0
+    listing = invoke(bare, 'list', 'people')
+    assert 'Run init to build the map' not in listing.output
+    assert 'co auth google' in listing.output and 'mailbox' in listing.output
+
+    result = invoke(tmp_path, '--json', 'init', '--skills-dir', str(empty), '--name', 'Test User')
+    assert result.exit_code == 0, result.output
+    record = json.loads(result.output)['data']['owner']['record']
+    assert (tmp_path / record).read_text().startswith('# Test User\n')
+    me = invoke(tmp_path, 'investigate', 'me')
+    assert me.exit_code == 1
+    assert 'Run init first' not in me.output
+    assert record in me.output and 'co auth google' in me.output
+
+
+def test_sources_on_a_fresh_notebook_lists_whatsapp(tmp_path):
+    result = invoke(tmp_path / 'fresh', 'sources')
+    assert result.exit_code == 0, result.output
+    assert 'whatsapp' in result.output.lower()
+
+
+@pytest.mark.parametrize('make', ['symlink', 'oversize', 'not_utf8', 'hidden'])
+def test_investigate_a_bad_file_gives_the_reason_show_gives(tmp_path, make):
+    """`show` named why a file is not a page; `investigate` on the same path
+    said only "No page matches", which sent people looking for a typo."""
+    prepare(tmp_path)
+    people = tmp_path / 'people'
+    people.mkdir(exist_ok=True)
+    name = {'hidden': '._page.md'}.get(make, f'{make}.md')
+    target = people / name
+    if make == 'symlink':
+        outside = tmp_path / 'outside.md'
+        outside.write_text('# Outside\n')
+        target.symlink_to(outside)
+    elif make == 'oversize':
+        target.write_text('# Big\n' + 'x' * (2 * 1024 * 1024))
+    elif make == 'not_utf8':
+        target.write_bytes(b'\xff\xfe\xfdnot utf8\n')
+    else:
+        target.write_bytes(b'\x00\x05\x16\x07')
+    record = f'people/{name}'
+    shown = invoke(tmp_path, 'show', record)
+    investigated = invoke(tmp_path, 'investigate', record)
+    assert shown.exit_code == investigated.exit_code == 1
+    assert 'No page matches' not in investigated.output
+    reason = [line for line in shown.output.splitlines() if line.startswith('Error:')][0]
+    assert reason in investigated.output
+
+
+def test_doctor_says_whether_spreadsheet_support_is_installed(tmp_path, monkeypatch):
+    import importlib.util
+    real = importlib.util.find_spec
+    monkeypatch.setattr(importlib.util, 'find_spec',
+                        lambda name, *a: None if name == 'openpyxl' else real(name, *a))
+    result = invoke(tmp_path, 'doctor')
+    line = next(line for line in result.output.splitlines() if 'spreadsheet' in line)
+    assert line.startswith('NO') and "connectonion[wiki]" in line
+
+
+def test_a_batch_with_nothing_to_warn_about_prints_no_empty_warning_line():
+    from connectonion.cli.commands.wiki_output import render
+    quiet = render({"outcome": "completed", "warning": ""}, "sync")
+    assert "Warning" not in quiet
+    loud = render({"outcome": "completed", "warning": "codex: 3 messages in an unfamiliar format were not read"}, "sync")
+    assert "Warning: codex: 3 messages" in loud

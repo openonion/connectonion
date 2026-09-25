@@ -142,6 +142,11 @@ def _resolve_page(notebook, selector):
     pages = _investigation_pages(notebook)
     if selector in notebook.list():
         return selector
+    candidate = notebook.root / selector
+    if selector.endswith(".md") and (candidate.exists() or candidate.is_symlink()):
+        # A file that is there but is not a page (a symlink, over 1 MB, not
+        # UTF-8, hidden): say why, as show does, not "No page matches".
+        notebook.read(selector)
     people = {person["path"]: person for person in notebook.people()}
     matches = []
     for path in pages:
@@ -246,7 +251,9 @@ def make_wiki_app(factory):
                 result["recovery"] = "Check mailbox access with co auth status; retry init with --mail after resolving access. Completed maps are preserved."
                 _emit(ctx, result, ["init", "--mail", sorted(selected)[0]], failed=True)
                 raise typer.Exit(1)
-            return result, (["investigate", "me"] if result.get("owner") else ["investigate"])
+            # A page made from --name alone has no address for investigate me to use.
+            return result, (["investigate", "me"] if (result.get("owner") or {}).get("addresses")
+                            else ["investigate"])
         _handle(ctx, run, ["sources"])
 
     @wiki.command("investigate", cls=V("co wiki investigate"))
@@ -359,8 +366,15 @@ def make_wiki_app(factory):
             state = read_json(state_path(root, "map.json"), {})
             owner = state.get("owner") or {}
             if not owner.get("record"):
-                raise WikiError("No page for you yet: the map finds it from your connected mailboxes. Run init first")
+                raise WikiError("No page for you yet: init makes it from a connected mailbox or from your "
+                                "name. Run `co wiki init --name \"Your Name\"`")
             record = owner["record"]
+            if not owner.get("addresses") and not handle:
+                # A page made from --name alone has no address to find your own
+                # mail by, and investigating it would run a model on nothing.
+                raise WikiError(f"Your page {record} has no mail address yet, and investigate me reads what "
+                                "you sent. Connect a mailbox with co auth google or co auth microsoft, then "
+                                "run `co wiki init`")
             title = next((l[2:].strip() for l in Notebook(root).read(record).splitlines() if l.startswith("# ")),
                          "Account owner")
             result = _logged(root, record, "investigate me", lambda: investigate(
@@ -426,16 +440,36 @@ def make_wiki_app(factory):
                 counts = {name: len(notebook.list(name)) for name in CATEGORIES if notebook.list(name)}
                 return (counts, ["list", next(iter(counts))]) if counts else ([], ["init"])
             records = notebook.list(category)
+            if not records and category == "people" and not ctx.obj["json"]:
+                from ...wiki.files import state_path
+                from ...wiki.service import mail_available
+                # Right after init this said "Run init to build the map", to
+                # someone who just had. People come only from a mailbox.
+                if state_path(root, "map.json").is_file() and not any(
+                        mail_available(kind) for kind in ("gmail", "outlook")):
+                    return ("No people yet: people pages come from a connected mailbox, and none is "
+                            "connected. Connect one with co auth google or co auth microsoft, then run "
+                            + _next(ctx, ["init"]) + "."), ["sources"]
             return records, (["show", records[0]] if records else ["list"])
         _handle(ctx, operation, ["list"])
 
     @wiki.command("show", cls=V("co wiki show"))
     def show_record(ctx: typer.Context, record: str = typer.Argument(...)):
-        from ...wiki.files import CATEGORIES, Notebook
+        from ...wiki.files import CATEGORIES, Notebook, WikiError, read_json, state_path
         category = record.split("/")[0]
         recovery = ["list", category] if category in CATEGORIES else ["list"]
         def operation(root):
-            text = Notebook(root).read(record)
+            nonlocal category
+            page = record
+            if record == "me":
+                # The same owner `investigate me` uses; `show me` used to be
+                # read as a page called "me" and refused.
+                page = (read_json(state_path(root, "map.json"), {}).get("owner") or {}).get("record")
+                if not page:
+                    raise WikiError("No page for you yet: init makes it from a connected mailbox or from your "
+                                    "name. Run `co wiki init --name \"Your Name\"`")
+                category = page.split("/")[0]
+            text = Notebook(root).read(page)
             return text, (["investigate", record] if "Unknown" in text else ["list", category])
         _handle(ctx, operation, recovery)
 
@@ -465,7 +499,7 @@ def make_wiki_app(factory):
                 return True
             if not sys.stdin.isatty():
                 typer.echo(text, err=True)
-                typer.echo("Noninteractive first start cannot consent silently; read the summary above "
+                typer.echo("A noninteractive start cannot consent silently; read the summary above "
                            "and run with --yes, or run `co wiki start` in a terminal.", err=True)
                 return False
             typer.echo(text)
@@ -482,6 +516,11 @@ def make_wiki_app(factory):
                 result["attention"] = (f"The schedule is installed, but the first update failed: "
                                        f"{first.get('error')}")
                 _emit(ctx, result, ["logs", first["id"]], failed=True)
+            if result.get("first_batch") is None and not ctx.obj["json"]:
+                # Only the first start runs a batch; a start after stop resumes
+                # the clock. None printed as "Unknown", which read as a fault.
+                result["first_batch"] = ("Not run: the first start already ran it. "
+                                         f"{_next(ctx, ['sync'])} runs an update now.")
             return result, ["status"]
 
         _handle(ctx, operation, ["start", "--yes"] if not yes else ["doctor"])
@@ -651,6 +690,7 @@ def make_wiki_app(factory):
     def doctor(ctx: typer.Context):
         import shutil
 
+        from ..._version import __version__
         from ...wiki.config import read_config, validate
         from ...wiki.files import WikiError
         from ...wiki.runner import co_command
@@ -667,7 +707,9 @@ def make_wiki_app(factory):
                 checks.append({"check": name, "ok": ok, "detail": detail, **({"fix": fix} if not ok else {})})
 
             check("co CLI", True, " ".join(co_command()),
-                  "python -m pip install --upgrade --pre connectonion")
+                  # This exact version, never `--pre`, which also takes pre-release
+                  # dependencies (httpx 1.0.dev6 crashed 1.8.8b7).
+                  f"python -m pip install --upgrade 'connectonion=={__version__}'")
             config = None
             try:
                 config = read_config(root)
@@ -680,6 +722,14 @@ def make_wiki_app(factory):
             if binary:
                 check(f"model runner ({runner})", bool(shutil.which(binary)), shutil.which(binary) or "not on PATH",
                       "npm install -g @openai/codex" if binary == "codex" else "npm install -g @anthropic-ai/claude-code")
+            import importlib.util
+            # Optional (the `wiki` extra): without it an XLSX attachment is named,
+            # not read, and nothing said so until a page came back without it.
+            sheets = importlib.util.find_spec("openpyxl") is not None
+            check("spreadsheet support (wiki extra)", sheets,
+                  "openpyxl installed; XLSX attachments are read" if sheets
+                  else "not installed; XLSX attachments are named, not read",
+                  f"python -m pip install 'connectonion[wiki]=={__version__}'")
             for kind, provider in (("gmail", "google"), ("outlook", "microsoft")):
                 there = mail_available(kind)
                 check(f"mailbox {kind}", there, "connected" if there else "not connected", f"co auth {provider}")

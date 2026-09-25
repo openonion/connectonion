@@ -24,7 +24,7 @@ async def test_full_128_mib_dashboard_survives_sealed_websocket(tmp_path, monkey
     digest = hashlib.sha256(raw).hexdigest()
     (tmp_path / 'dashboard.html').write_bytes(raw)
     del raw
-    frame = dashboard.read_dashboard_snapshot('large')
+    frame = dashboard.read_dashboard_snapshot('large', viewer=dashboard.viewer_for(None))
     client_id, host_id = address.generate(), address.generate()
     hello, ephemeral = sealed.client_hello(client_id, host_id['address'])
     reply, sender = sealed.host_accept(hello, host_id)

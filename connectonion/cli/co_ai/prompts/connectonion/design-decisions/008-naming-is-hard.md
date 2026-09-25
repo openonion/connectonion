@@ -1,1 +1,0 @@
-../../../../../../docs/design-decisions/008-naming-is-hard.md

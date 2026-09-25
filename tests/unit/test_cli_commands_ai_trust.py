@@ -62,6 +62,30 @@ def test_handle_ai_calls_start_server(monkeypatch):
     assert created["extra_plugins"] == ()
 
 
+@pytest.mark.parametrize("in_project", [True, False])
+def test_co_ai_records_its_runs_in_the_project_it_ran_in(tmp_path, monkeypatch, in_project):
+    # 1.8.8b9: `co ai "..."` inside a project wrote its eval to ~/.co/evals/,
+    # while Agent() and python agent.py there wrote to .co/evals/. The
+    # configuration stays global (co_dir); the record of the run follows cwd.
+    created = {}
+    monkeypatch.setattr("connectonion.cli.co_ai.agent.create_agent",
+                        lambda **kwargs: created.update(kwargs) or object())
+    monkeypatch.delenv("CONNECTONION_LOG", raising=False)
+    project = tmp_path / "proj"
+    (project / "src").mkdir(parents=True)
+    if in_project:
+        (project / ".co").mkdir()
+    monkeypatch.chdir(project / "src")
+
+    ai_mod._create_agent("m", 3, False, None)
+
+    assert created["co_dir"] == GLOBAL_CO_DIR
+    if in_project:
+        assert Path(created["state_dir"]).resolve() == (project / ".co").resolve()
+    else:
+        assert created["state_dir"] is None
+
+
 def test_handle_ai_passes_invocation_invite_to_web_server(monkeypatch):
     called = {}
 
@@ -258,6 +282,9 @@ def test_handle_ai_does_not_hide_programmer_errors(monkeypatch):
         ai_mod.handle_ai(prompt="task")
 
 
+ADDR = "0x" + "ab" * 32
+
+
 def test_trust_commands_list_and_actions(tmp_path, monkeypatch):
     # Point CO_DIR at temp path and create lists
     co = tmp_path / ".co"
@@ -274,7 +301,7 @@ def test_trust_commands_list_and_actions(tmp_path, monkeypatch):
     trust_mod.handle_trust_list()
 
     monkeypatch.setattr(trust_mod, "get_level", lambda addr: "contact")
-    trust_mod.handle_trust_level("addr")
+    trust_mod.handle_trust_level(ADDR)
 
     monkeypatch.setattr(trust_mod, "promote_to_contact", lambda addr: "ok")
     monkeypatch.setattr(trust_mod, "promote_to_whitelist", lambda addr: "ok")
@@ -284,10 +311,10 @@ def test_trust_commands_list_and_actions(tmp_path, monkeypatch):
     monkeypatch.setattr(trust_mod, "add_admin", lambda addr: "ok")
     monkeypatch.setattr(trust_mod, "remove_admin", lambda addr: "ok")
 
-    trust_mod.handle_trust_add("addr")
-    trust_mod.handle_trust_add("addr", whitelist=True)
-    trust_mod.handle_trust_remove("addr")
-    trust_mod.handle_trust_block("addr", reason="r")
-    trust_mod.handle_trust_unblock("addr")
-    trust_mod.handle_admin_add("addr")
-    trust_mod.handle_admin_remove("addr")
+    trust_mod.handle_trust_add(ADDR)
+    trust_mod.handle_trust_add(ADDR, whitelist=True)
+    trust_mod.handle_trust_remove(ADDR)
+    trust_mod.handle_trust_block(ADDR, reason="r")
+    trust_mod.handle_trust_unblock(ADDR)
+    trust_mod.handle_admin_add(ADDR)
+    trust_mod.handle_admin_remove(ADDR)

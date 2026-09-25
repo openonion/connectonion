@@ -165,12 +165,31 @@ def forward_hook(url: str, token: str) -> None:
 # the process without running `finally`, so TemporaryDirectory never removed
 # them and the token outlived the run. A SIGTERM handler removes every one.
 _LIVE_TOKEN_DIRS: set[str] = set()
+# How to end each Claude process a scoped run started. `claude -p` runs in its
+# own session, so a SIGTERM to co never reaches it: the child was reparented
+# to launchd and ran on with its Hook bridge gone. The handler ends these
+# first, while the settings their Hooks point at still exist.
+_LIVE_CHILDREN: dict[int, Callable[[], None]] = {}
 _LIVE_LOCK = RLock()  # the handler may interrupt a holder on the main thread
 _previous_sigterm = None
 
 
+@contextmanager
+def owned_child(process, stop: Callable[[], None]):
+    """Register a started Claude process so a SIGTERM to co also ends it."""
+    with _LIVE_LOCK:
+        _LIVE_CHILDREN[process.pid] = stop
+    try:
+        yield process
+    finally:
+        with _LIVE_LOCK:
+            _LIVE_CHILDREN.pop(process.pid, None)
+
+
 def _remove_token_dirs_on_sigterm(signum, frame):
     with _LIVE_LOCK:
+        for stop in list(_LIVE_CHILDREN.values()):
+            stop()
         for directory in list(_LIVE_TOKEN_DIRS):
             shutil.rmtree(directory, ignore_errors=True)
     if callable(_previous_sigterm):

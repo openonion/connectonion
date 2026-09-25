@@ -55,6 +55,30 @@ _project_dir = None
 _agent_metadata = None
 
 
+# Who a rendered Home is for. The starter's activity sections are read from
+# .co/session_results.jsonl, which holds every caller's turns, prompt text
+# verbatim. Rendered once for everyone, a stranger on `trust: open` -- or any
+# contact on `careful` -- connected and read the owner's recent prompts in the
+# "Recent" list, which is exactly what #696 promised a second identity could no
+# longer see. So a snapshot sent over a socket is rendered *for* that socket's
+# verified address: its own turns only, and the schedule (operator config, whose
+# rows can be a prompt and a failure reason) only for an admin.
+#
+# Admins see their own turns too, not everyone's: the page is a Home, not an
+# audit view, and "an identity sees only its own sessions" is a rule with no
+# exception to reason about. The operator's full history is in the log.
+#
+# EVERYONE is for rendering in-process -- tests, tooling on the operator's own
+# machine. Nothing that answers a socket may use it: read_dashboard_snapshot
+# requires a viewer and has no default.
+EVERYONE = object()
+
+
+def viewer_for(address, is_admin=False):
+    """The viewer a socket's snapshot is rendered for. No address, no activity."""
+    return {"address": address, "is_admin": bool(is_admin)}
+
+
 def dashboard_path():
     """Where this agent's Home page lives.
 
@@ -74,12 +98,14 @@ def dashboard_path():
     return legacy if legacy.exists() else preferred
 
 
-def read_dashboard_snapshot(session_id=None):
+def read_dashboard_snapshot(session_id=None, *, viewer):
     """Build a ``DASHBOARD_SNAPSHOT`` frame for the current ``dashboard.html``.
 
     Returns an explanatory Home page for unreadable or oversized files.
     ``session_id`` is stamped so the relay routes it to the right client, matching
-    every other server→client frame.
+    every other server→client frame. ``viewer`` is who the page is rendered for
+    (see ``EVERYONE``); it is keyword-only with no default so no socket path can
+    forget it and fall back to showing everyone's turns.
     """
     path = dashboard_path()
     if not path.exists():
@@ -88,7 +114,7 @@ def read_dashboard_snapshot(session_id=None):
             # An embedder that never starts a host gets no Home, as before.
             return None
         # No file means "not customised", not "no Home": render the starter.
-        html = render_starter(_agent_metadata)
+        html = render_starter(_agent_metadata, viewer=viewer)
         frame = {"type": "DASHBOARD_SNAPSHOT", "html": html}
         if session_id:
             frame["session_id"] = session_id
@@ -118,12 +144,15 @@ def read_dashboard_snapshot(session_id=None):
     return frame
 
 
-async def send_dashboard(send_msg, session_id, conn=None):
+async def send_dashboard(send_msg, session_id, conn, force=False):
     """Push a ``DASHBOARD_SNAPSHOT`` unless this connection already has the current file.
 
     ``conn`` is the per-socket state dict, so a freshly connected client always gets
     its snapshot (nothing recorded yet) while a run that didn't touch the dashboard
-    doesn't re-ship the whole page. Pass ``conn=None`` to always send.
+    doesn't re-ship the whole page. ``force=True`` always sends.
+
+    ``conn`` is also who the page is for: its verified ``agent_address`` and
+    ``is_admin`` decide which activity the starter shows (see ``EVERYONE``).
 
     The read runs in a worker thread — it's file I/O on the event loop otherwise.
     """
@@ -135,15 +164,15 @@ async def send_dashboard(send_msg, session_id, conn=None):
         # cannot change within a run. One stamp for the whole run means each
         # client is sent it once, like any other unchanged page.
         stamp = ("starter", None)
-    if conn is not None and conn.get("dashboard_stamp") == stamp:
+    if not force and conn.get("dashboard_stamp") == stamp:
         return
 
-    frame = await asyncio.to_thread(read_dashboard_snapshot, session_id)
+    viewer = viewer_for(conn.get("agent_address"), conn.get("is_admin"))
+    frame = await asyncio.to_thread(read_dashboard_snapshot, session_id, viewer=viewer)
     if not frame:
         return
     await send_msg(frame)
-    if conn is not None:
-        conn["dashboard_stamp"] = stamp
+    conn["dashboard_stamp"] = stamp
 
 
 def ensure_dashboard(agent_metadata, project_dir=None):
@@ -383,7 +412,7 @@ def _address_line(agent_metadata):
     return '<p class="addr">' + escape(str(address)) + '</p>'
 
 
-def render_starter(agent_metadata):
+def render_starter(agent_metadata, viewer=EVERYONE):
     """Build the day-zero dashboard HTML: who this agent is, and every skill it
     publishes as a one-click action.
 
@@ -408,7 +437,7 @@ def render_starter(agent_metadata):
         # Center. The bundled template uses diagnostics; old templates may
         # still contain $address.
         address=_address_line(agent_metadata),
-        activity=_activity_sections(),
+        activity=_activity_sections(viewer),
         quick_actions=_quick_actions(skills),
         capability_count=(f"{len(skills)} skill{'s' if len(skills) != 1 else ''}"
                           if skills else "None published"),
@@ -488,13 +517,25 @@ def _tail_lines(path, wanted, chunk=65536):
     return list(reversed(lines[-wanted:] if wanted else lines))
 
 
-def recent_runs(limit=MAX_ACTIVITY_ROWS):
+def _run_owner(rec):
+    """The verified address that started this run -- session_owner, on a raw line."""
+    session = rec.get("session")
+    requester = session.get("requester") if isinstance(session, dict) else None
+    return requester.get("address") if isinstance(requester, dict) else None
+
+
+def recent_runs(limit=MAX_ACTIVITY_ROWS, owner=EVERYONE):
     """The last few turns, newest first, one entry per session.
 
     The log is append-only and a session appears twice — once as ``running``,
     again as ``done``. The later line wins, or the page would report every
     finished run as still in flight. Reading from the end means the later line
     is also the one seen first.
+
+    ``owner`` keeps only the runs that address started. A run nobody owns
+    (a schedule firing, a pre-#696 record) belongs to no visitor. The scan is
+    still bounded by lines, so on a busy shared host a visitor may see fewer
+    than ``limit`` of their own rows -- fewer rows, never someone else's.
     """
     import json as _json
     path = _co() / "session_results.jsonl"
@@ -511,10 +552,14 @@ def recent_runs(limit=MAX_ACTIVITY_ROWS):
             continue          # a torn write must not cost the whole page
         if isinstance(rec, dict) and rec.get("session_id"):
             latest.setdefault(rec["session_id"], rec)   # newest first: first wins
-        if len(latest) >= limit:
+        if len(latest) >= limit and owner is EVERYONE:
             break
 
-    runs = sorted(latest.values(), key=lambda r: r.get("created") or 0, reverse=True)
+    # Filtered after the newest-line-wins pick, so a session is judged by its
+    # latest record, as session_owner does.
+    runs = [r for r in latest.values()
+            if owner is EVERYONE or (owner and _run_owner(r) == owner)]
+    runs = sorted(runs, key=lambda r: r.get("created") or 0, reverse=True)
     return runs[:limit]
 
 
@@ -525,7 +570,7 @@ def scheduled_entries():
     the scheduler cannot disagree about what an entry means.
     """
     try:
-        from ..schedule import last_run, load_entries, load_state
+        from ..schedule import cadence, last_run, load_entries, load_state
     except Exception:
         return [], []
     try:
@@ -542,10 +587,11 @@ def scheduled_entries():
             # An exec entry has no prompt, and a blank here is a scheduled
             # task that looks like it does nothing (#709).
             "run": e.run or e.exec,
-            "cadence": f"every {_cadence(e)}" if e.interval else str(e.at or ""),
+            "cadence": cadence(e),
             "status": st.get("status"),
             "last_run": when,
             "running": st.get("status") == "running",
+            "paused": bool(st.get("paused")),
             "reason": st.get("reason"),
         })
     return out, problems
@@ -576,12 +622,6 @@ def _why(reason, limit=60):
     return ""
 
 
-def _cadence(entry):
-    total = int(entry.interval.total_seconds())
-    for size, unit in ((86400, "d"), (3600, "h"), (60, "m")):
-        if total % size == 0 and total >= size:
-            return f"{total // size}{unit}"
-    return f"{total}s"
 
 
 
@@ -634,7 +674,7 @@ def _collapse(runs, scheduled):
                        "run": r})
     return folded
 
-def _activity_sections():
+def _activity_sections(viewer=EVERYONE):
     """Both sections, or nothing at all.
 
     A fresh agent has neither a schedule nor a history, and a box that is empty
@@ -648,11 +688,19 @@ def _activity_sections():
     now = datetime.now(timezone.utc)
     out = []
 
-    scheduled, problems = scheduled_entries()
+    everyone = viewer is EVERYONE
+    # The schedule is the operator's configuration; an entry's row can be its
+    # prompt and its last failure reason. Only an admin is shown it.
+    scheduled, problems = (scheduled_entries() if everyone or viewer["is_admin"]
+                           else ([], []))
     if scheduled:
         rows = []
         for s in scheduled:
-            if s.get("running"):
+            if s.get("paused") and not s.get("running"):
+                # Said before the last run: a paused entry that last ran an
+                # hour ago is not an hour late.
+                meta, tone = "paused", ""
+            elif s.get("running"):
                 # While a run is in flight record_run has not landed, so
                 # last_run is the *previous* completion. Showing that for an
                 # entry configured every 15m whose run takes longer reads as
@@ -701,7 +749,7 @@ def _activity_sections():
             title="Schedule problems",
             rows="\n".join("      " + r for r in rows)).strip())
 
-    runs = recent_runs()
+    runs = recent_runs(owner=EVERYONE if everyone else viewer["address"])
     if runs:
         rows = []
         for item in _collapse(runs, scheduled):

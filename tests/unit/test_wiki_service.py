@@ -669,3 +669,99 @@ def test_the_consent_summary_says_how_confined_the_unattended_runs_are(tmp_path,
     summary = consent_summary(tmp_path)
     assert flag in summary["model_permissions"] and "no network" in summary["model_permissions"]
     assert "co wiki stop" in summary["background"]
+
+
+def test_a_batch_that_wrote_its_pages_before_failing_is_not_run_and_paid_for_again(wiki):
+    """The maintainer wrote the page, then something after it failed. The run was
+    recorded failed and the cursor held back, so every scheduled run fed the same
+    material to the maintainer again and paid for it again."""
+    root, sessions = wiki
+    rollout(sessions / "rollout-a.jsonl", [("user", "We choose SQL")])
+    calls = []
+
+    def writes_then_fails(notebook, items, config, kind=""):
+        calls.append(items)
+        notebook.write("decisions/storage.md", "# Storage\nWe choose SQL")
+        raise OSError("disk hiccup after the page was written")
+
+    first = run_sync(root, runner=writes_then_fails)
+    assert first["outcome"] == "failed" and first["changed"] == ["decisions/storage.md"]
+    assert first["progress_advanced"] is True
+    assert run_sync(root, runner=writes_then_fails)["outcome"] == "no_change"
+    assert len(calls) == 1
+
+
+def test_a_failure_that_wrote_nothing_still_retries_the_same_material(wiki):
+    root, sessions = wiki
+    rollout(sessions / "rollout-a.jsonl", [("user", "We choose SQL")])
+
+    def fails(*args, **kwargs):
+        raise OSError("no pages written")
+
+    record = run_sync(root, runner=fails)
+    assert record["outcome"] == "failed" and record["progress_advanced"] is False
+    assert read_json(state_path(root, "progress.json"), {}) == {}
+
+
+def test_a_finished_extraction_is_reused_when_only_the_maintainer_failed(tmp_path, monkeypatch):
+    """Extraction is the expensive pass. When it finished and the maintainer failed
+    without writing, the retry read the same 40 messages through extraction again."""
+    from connectonion.wiki.runner import RunFailed
+    root = _extract_world(tmp_path, monkeypatch, 40)
+    extractions, maintained = [], []
+
+    def extractor(items, config, kind=""):
+        extractions.append(len(items))
+        return {"notes": "## Decisions\n- fact 3 — user, codex:s:0", "usage": {"input_tokens": 100}}
+
+    def fail(*args, **kwargs):
+        raise RunFailed("co ai unavailable", {"input_tokens": 3})
+
+    assert run_sync(root, runner=fail, extractor=extractor)["outcome"] == "failed"
+    retry = run_sync(root, runner=lambda nb, items, cfg, kind="": maintained.extend(items) or {"usage": None, "changed": []},
+                     extractor=extractor)
+    assert retry["outcome"] == "completed" and extractions == [40]
+    assert retry["runner_attempts"] == 1 and "fact 3" in maintained[0]["text"]
+    assert run_sync(root, runner=fail, extractor=extractor)["outcome"] == "no_change"
+
+
+@pytest.mark.parametrize("change", [
+    ["runner", "claude-code"],
+    ["model", "gpt-other"],
+    ["schedule.times", "03:00"],
+])
+def test_start_asks_again_when_what_the_summary_shows_has_changed(tmp_path, monkeypatch, change):
+    """A re-tester approved Codex, stopped, switched the runner to Claude Code
+    and answered `n` to start: it printed Started: Yes and reinstalled the job
+    without showing the summary. Consent covers what was shown; if any of it
+    changed -- runner, model, permissions, schedule, sources -- ask again."""
+    from connectonion.wiki.service import start, stop
+    root, sessions = tmp_path / "wiki", tmp_path / "sessions"
+    monkeypatch.setattr("connectonion.wiki.service.codex_sessions_root", lambda: sessions)
+    monkeypatch.setattr("connectonion.wiki.service.now", lambda: datetime(2026, 9, 7, 12, tzinfo=timezone.utc))
+    rollout(sessions / "rollout-a.jsonl", [("user", "hello")])
+    calls, scheduler = [], FakeScheduler()
+    start(root, confirm=lambda s: True, scheduler=scheduler, runner=_runner_recording(calls))
+    stop(root, scheduler=scheduler)
+    set_config(root, change)
+    shown = []
+    declined = start(root, confirm=lambda s: shown.append(s) or False,
+                     scheduler=scheduler, runner=_runner_recording(calls))
+    assert declined["started"] is False and len(shown) == 1
+    assert scheduler.installed == [root.resolve()]  # only the first start installed
+    # Once agreed, the same summary is not asked about again.
+    start(root, confirm=lambda s: True, scheduler=scheduler, runner=_runner_recording(calls))
+    again = start(root, confirm=lambda s: pytest.fail("asked about an unchanged summary"),
+                  scheduler=scheduler, runner=_runner_recording(calls))
+    assert again["started"] is True
+
+
+@pytest.mark.parametrize("runner, login", [("codex", "Codex"), ("claude-code", "Claude Code")])
+def test_the_consent_summary_names_the_login_the_runner_actually_uses(tmp_path, runner, login):
+    from connectonion.wiki.service import consent_summary
+    prepare(tmp_path)
+    set_config(tmp_path, ["runner", runner])
+    receives = consent_summary(tmp_path)["model_receives"]
+    assert f"your own {login} login" in receives
+    other = "Claude Code" if login == "Codex" else "Codex"
+    assert other not in receives

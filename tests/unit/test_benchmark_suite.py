@@ -57,6 +57,22 @@ def test_the_example_the_cli_prints_is_a_valid_shape_once_it_has_five_cases(tmp_
     assert problems(tmp_path, example)[1] == []
 
 
+def test_the_printed_example_is_valid_as_printed_and_each_case_carries_its_data(tmp_path):
+    # 1.8.8b9 printed "Please process these three invoices" with no invoices;
+    # run as printed, the Agent searched the workspace for them at 20 cents a case.
+    (tmp_path / ".co" / "benchmarks").mkdir(parents=True)
+    (tmp_path / ".co" / "benchmarks" / "reimbursement.yaml").write_text(s.EXAMPLE)
+
+    loaded, found = s.load("reimbursement", tmp_path)
+
+    assert found == [] and loaded is not None
+    for c in loaded.cases:
+        assert "INV-" in c.input and "buyer" in c.input, c.id
+        # Every outcome is one the reply shows: nothing needs a tool that
+        # changes the world, so an unconfigured Agent can pass it honestly.
+        assert all(text.startswith("The reply") for text in c.must + c.must_not), c.id
+
+
 def test_fewer_than_five_is_refused_with_how_many_to_add(tmp_path):
     _, found = problems(tmp_path, good(4))
 

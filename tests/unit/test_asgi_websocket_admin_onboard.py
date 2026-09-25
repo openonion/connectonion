@@ -499,6 +499,7 @@ class TestOnboardCompletesConnect:
             is_blocked=lambda identity: False,
             verify_invite=lambda identity, code: code == "BETA",
             get_level=lambda identity: "contact",
+            is_admin=lambda identity: False,
         )
 
         def auth(data, trust, **kw):
@@ -563,6 +564,7 @@ class TestOnboardCompletesConnect:
             is_blocked=lambda identity: False,    # not trust-blocked — only host-blacklisted
             verify_invite=lambda identity, code: code == "BETA",
             get_level=lambda identity: "contact",
+            is_admin=lambda identity: False,
         )
 
         def auth(data, trust, **kw):
@@ -626,6 +628,7 @@ class TestOnboardCompletesConnect:
             is_blocked=lambda identity: False,
             verify_invite=lambda identity, code: code == "BETA",
             get_level=lambda identity: "contact",
+            is_admin=lambda identity: False,
         )
 
         def auth(data, trust, **kw):

@@ -370,3 +370,37 @@ def test_a_name_given_at_init_wins_over_the_mailbox(tmp_path):
     assert _owner_name({'outlook': Mail()}, 'Aaron Xie') == 'Aaron Xie'
     assert _owner_name({'gmail': Broken(), 'outlook': Mail()}) == 'Aaron x'
     assert _owner_name({}) == 'Account owner'
+
+
+def test_name_alone_makes_the_owners_page_and_a_mailbox_later_keeps_it(tmp_path, monkeypatch):
+    """`init --name "X"` with no mailbox made no owner page, though init's help
+    promises one; `investigate me` then said "Run init first". The name is
+    enough for the page; connecting a mailbox later fills the same page
+    rather than starting a second one."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: ([], set()))
+    first = build_map(tmp_path, {}, {}, skill_directories=[skills], name='Test User')
+    record = first['owner']['record']
+    assert Notebook(tmp_path).read(record).startswith('# Test User\n')
+    assert record in first['created']
+
+    class Mail:
+        def my_addresses(self): return {'test@example.com'}
+        def my_name(self): return ''
+
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: ([], {'test@example.com'}))
+    later = build_map(tmp_path, {}, {'gmail': Mail()}, skill_directories=[skills])
+    assert later['owner']['record'] == record
+    assert [p['path'] for p in Notebook(tmp_path).people()] == [record]
+
+
+def test_without_a_name_or_a_mailbox_there_is_no_owner_page(tmp_path, monkeypatch):
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: ([], set()))
+    assert 'owner' not in build_map(tmp_path, {}, {}, skill_directories=[skills])

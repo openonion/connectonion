@@ -33,7 +33,7 @@ class _Trust:
 
 
 async def _serve_host(host_keys, registry, monkeypatch, laptop_address):
-    async def fake_connect(data, send, conn, *args):
+    async def fake_connect(data, send, conn, *args, **kwargs):
         conn.update(
             authenticated=True,
             agent_address=laptop_address,

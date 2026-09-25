@@ -175,6 +175,15 @@ class Console:
                 skills_str = f"{len(names)} skill{'s' if len(names) != 1 else ''} ({', '.join(names)})"
             else:
                 skills_str = f"{len(names)} skills"
+            # The banner counts every skill the agent can load; /info lists only
+            # the project's own (.co/skills, .claude/skills), because built-in and
+            # personal ones do not travel and must not be advertised. Both are
+            # right, and on 1.8.8b9 they disagreed without saying so: "10 skills"
+            # here, "skills": [] there. Say how many of these /info publishes.
+            from .useful_plugins.skills import PUBLISHED_SKILL_LOCATIONS
+            published = sum(1 for s in skills if getattr(s, "location", None) in PUBLISHED_SKILL_LOCATIONS)
+            if published != len(names):
+                skills_str += f", {published} project"
 
         # Build meta line: model · tools · skills
         meta_parts = [p for p in [model, tools_str, skills_str] if p]

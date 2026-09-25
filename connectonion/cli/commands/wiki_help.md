@@ -7,6 +7,7 @@ The agreed design is issue #1656; change a page there and here together.
 
 ```
 co wiki — a notebook about the people, projects and tools in your work, kept up to date from your mail and coding sessions.
+Experimental: a preview; its commands may change before 1.9.0.
 
 Build (once)
   init          Build the notebook's frame from mail headers and coding sessions. No model.
@@ -149,6 +150,7 @@ Print one page as Markdown. Read-only.
 
 Usage:    co wiki show PAGE
 Example:  co wiki show people/tamara-berryman-324b6af6e8.md
+          co wiki show me   (your own page)
 Inputs:   PAGE comes from list, search, or the Next line of investigate.
 Next:     co wiki investigate PAGE   (if it still says Unknown)
 Back:     co wiki --help
@@ -169,7 +171,10 @@ Back:     co wiki --help
 
 ```
 Turn on daily upkeep. Shows exactly which sources will be read and which model will
-run, asks you to approve once, installs the schedule, and runs the first update.
+run, asks you to approve, installs the schedule, and runs the first update. It asks
+again whenever the sources, runner, model or schedule changed since you approved.
+The first update runs on the first start only; a start after stop resumes the
+schedule, and co wiki sync runs an update now.
 
 Usage:    co wiki start [--yes]
 Example:  co wiki start
@@ -295,7 +300,8 @@ Back:     co wiki --help
 
 ```
 Check that what the notebook needs is present: the co CLI, the model runner, mailbox
-logins, session folders and the schedule. Read-only; it never logs in or repairs.
+logins, session folders, spreadsheet support and the schedule. Read-only; it never
+logs in or repairs.
 
 Usage:    co wiki doctor
 Output:   One line per check, with the command that fixes each failure.

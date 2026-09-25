@@ -215,20 +215,29 @@ async def test_slow_reader_cannot_hold_a_connection_forever(daemon, monkeypatch)
 
 @pytest.mark.asyncio
 async def test_connection_cap_sheds_excess_without_spawning_more_work(daemon):
+    # A client over capacity is normally answered "busy" by a short-lived shed
+    # task (see test_browser_daemon_never_waits_forever). Those are bounded too:
+    # once as many are waiting as there are slots, the next is dropped outright.
     blockers = {
         asyncio.create_task(asyncio.sleep(30))
         for _ in range(daemon_module.MAX_IN_FLIGHT)
     }
+    shedding = {
+        asyncio.create_task(asyncio.sleep(30))
+        for _ in range(daemon_module.MAX_IN_FLIGHT)
+    }
     daemon._client_tasks.update(blockers)
+    daemon._shed_tasks.update(shedding)
     writer = BlockingWriter()
 
     daemon._accept_posix_client(asyncio.StreamReader(), writer)
 
     assert writer.transport.aborted is True
     assert daemon._client_tasks == blockers
-    for task in blockers:
+    assert daemon._shed_tasks == shedding
+    for task in blockers | shedding:
         task.cancel()
-    await asyncio.gather(*blockers, return_exceptions=True)
+    await asyncio.gather(*blockers, *shedding, return_exceptions=True)
 
 
 class WakeConnection:

@@ -35,7 +35,7 @@ class TestCliHelp:
         assert result.exit_code == 0
         assert __version__ in result.output
         assert "ConnectOnion" in result.output
-        assert "Quick Start:" in result.output
+        assert "Start here:" in result.output
         assert "Commands:" in result.output
         assert "init" in result.output
         assert "create" in result.output
@@ -159,10 +159,13 @@ class TestCliHelp:
         # Start, Configuration, pointers, links: ~24 lines): the list is
         # generated from the register, so the bound moves with it.
         from connectonion.cli.discovery import command_tree
-        from connectonion.cli.main import app
+        from connectonion.cli.main import START_HERE, app
         top_level = [e for e in command_tree(app) if e.path.count(" ") == 1]
-        assert line_count <= len(top_level) + 30, "Brief help should be one line per command"
-        assert "Quick Start:" in result.output
+        # The start blocks are shared with `co --help` (START_HERE), so they
+        # count as frame too: a title and a blank line around each block.
+        start = sum(len(lines) + 2 for _, lines in START_HERE)
+        assert line_count <= len(top_level) + 23 + start, "Brief help should be one line per command"
+        assert "Start here:" in result.output
         assert "Commands:" in result.output
 
     def test_invalid_command_shows_help(self):

@@ -61,7 +61,7 @@ class TestThePlan:
         assert data["ok"] is True and data["mode"] == "preview"
         assert len(data["plan"]["confirmation"]) == 64
         assert data["plan"]["submit_supported"] is False
-        assert data["next_command"] == "co browser tab ls"
+        assert data["next_command"] == "co tiktok inspect --help"
 
     def test_the_right_digest_still_does_not_submit(self, clip):
         plan = json.loads(_post(clip).output)["plan"]
@@ -94,7 +94,14 @@ class TestThePlan:
     def test_the_plain_output_ends_on_one_literal_command(self, clip):
         result = runner.invoke(app, ["tiktok", "post", clip, "--caption", "Demo", "--account", "@creator"])
         assert result.exit_code == 0, result.output
-        assert result.stdout.splitlines()[-1] == "Find your task's TikTok tab: co browser tab ls"
+        assert result.stdout.splitlines()[-1] == "Check a TikTok tab is ready (nothing is uploaded): co tiktok inspect --help"
+
+    @pytest.mark.parametrize("extra", [["--caption", "", "--account", "@creator"],
+                                       ["--caption", "Demo", "--account", "creator"]])
+    def test_a_bad_caption_or_handle_points_back_at_post_not_the_browser(self, clip, extra):
+        result = runner.invoke(app, ["tiktok", "post", clip, *extra, "--json"])
+        assert result.exit_code == 1
+        assert json.loads(result.output)["next_command"] == "co tiktok post --help"
 
 
 class TestUsageErrors:
@@ -175,6 +182,8 @@ class TestInspect:
         data = json.loads(result.output)
         assert data["code"] == "evidence_failed"
         assert data["next_command"] == "co browser tab ls"
+        # The failed inspection used to leave an empty .tmp/ behind.
+        assert not (tmp_path / ".tmp").exists()
 
     @pytest.mark.parametrize("tab", ["", "has space", "../x", "a;b"])
     def test_a_tab_name_that_could_be_anything_else_is_refused(self, tab, monkeypatch):

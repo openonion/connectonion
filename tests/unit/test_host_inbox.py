@@ -37,7 +37,7 @@ def rig(tmp_path, monkeypatch):
         turns.append({"prompt": prompt, "session": session})
         return {"result": "answered", "status": "done"}
 
-    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self, **_: 1)
     # connectonion.network rebinds the name `host` to the host() function, so
     # the submodule is reached through importlib, not attribute traversal.
     http_router = importlib.import_module("connectonion.network.host.http_router")
@@ -119,7 +119,7 @@ class TestTheHostAnswers:
 class TestTheHostKeepsServing:
     def test_a_channel_that_cannot_start_does_not_stop_the_host(self, tmp_path, rig, monkeypatch):
         box, provider, turns = rig
-        monkeypatch.setattr(Inbox, "ensure_listener", lambda self: None)
+        monkeypatch.setattr(Inbox, "ensure_listener", lambda self, **_: None)
         startup, shutdown = lifespan(tmp_path, provider, monkeypatch)
         asyncio.run(startup())           # must return, not raise
         asyncio.run(shutdown())

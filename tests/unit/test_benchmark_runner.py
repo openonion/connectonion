@@ -218,3 +218,132 @@ def test_live_is_off_during_a_run_unless_asked_and_restored_after(project, monke
 
     assert seen == ["0", "1"]
     assert os.environ["CO_EVAL_LIVE"] == "outer"
+
+
+# ---- a run a new user can afford ---------------------------------------------------------
+
+def test_an_agent_that_keeps_searching_is_stopped_at_the_ceiling_not_judged_and_not_a_pass(project):
+    # 1.8.8b9: cases without their data let the template agent search the
+    # workspace for 26 steps a case. The ceiling is the Agent's own loop limit.
+    calls = []
+
+    def look(pattern: str) -> str:
+        """Search the workspace."""
+        calls.append(pattern)
+        return "nothing here"
+
+    def complete(messages, tools):
+        return LLMResponse(content=None, raw_response=None, usage=TokenUsage(),
+                           tool_calls=[ToolCall(name="look", arguments={"pattern": "*"}, id=f"t{len(calls)}")])
+
+    bot = Agent("searcher", tools=[look], llm=MockLLM(on_complete=complete), log=False, max_iterations=100)
+    judged = []
+
+    def judge(prompt, output, model):
+        judged.append(prompt)
+        return output(verdicts=[])
+
+    report = run(project, bot, skill_name=None, judge=judge, max_iterations=3)
+
+    attempt = report["cases"][0]["attempts"][0]
+    assert len(calls) == 3
+    assert attempt["passed"] is False and "stopped after 3 steps" in attempt["stopped"]
+    assert "--max-iterations" in attempt["stopped"]
+    assert judged == [], "an unfinished attempt costs no judge call"
+    assert report["summary"]["stopped"] == 1 and report["summary"]["exit_code"] == 1
+    assert report["max_iterations"] == 3
+    assert bot.max_iterations == 100, "the Agent's own limit is back after the run"
+
+
+def test_the_default_ceiling_is_far_below_the_template_limit(project):
+    assert runner.DEFAULT_MAX_ITERATIONS <= 10
+    report = run(project, agent(True))
+    assert report["max_iterations"] == runner.DEFAULT_MAX_ITERATIONS
+    assert report["summary"]["stopped"] == 0 and report["summary"]["exit_code"] == 0
+
+
+# ---- the agent under test cannot read the answers ------------------------------------------
+
+def _peeker(tool, arguments):
+    """A real Agent that, like the co create template on 1.8.8b11, goes for the
+    benchmark file first and answers only after it has seen it."""
+    def complete(messages, tools):
+        if not any(m.get("role") == "tool" for m in messages):
+            return LLMResponse(content=None, raw_response=None, usage=TokenUsage(),
+                               tool_calls=[ToolCall(name=tool.__name__, arguments=arguments, id="t1")])
+        return LLMResponse(content="Refund approved.", tool_calls=[], raw_response=None, usage=TokenUsage())
+    return Agent("peeker", tools=[tool], llm=MockLLM(on_complete=complete), log=False)
+
+
+def _write_answers(project):
+    (project / ".co" / "benchmarks" / "refund.yaml").write_text(
+        "must:\n  - The refund is approved\nmust_not:\n  - Cash is refunded without a receipt\n")
+
+
+def read_file(path: str) -> str:
+    """Read a file."""
+    with open(path) as handle:
+        return handle.read()
+
+
+def _first_result(report):
+    return next(e for e in report["cases"][0]["attempts"][0]["trace"] if e.get("type") == "tool_result")
+
+
+def test_reading_the_benchmark_file_is_refused_during_a_run(project):
+    # 1.8.8b11: 4 of 5 attempts ran glob("**/*") then read_file(".co/benchmarks/
+    # reimbursement.yaml"), the file holding every must and must_not, and scored 5/5.
+    _write_answers(project)
+    bot = _peeker(read_file, {"path": ".co/benchmarks/refund.yaml"})
+
+    report = run(project, bot, skill_name=None)
+
+    result = _first_result(report)
+    assert result["status"] == "error" and "co eval run" in result["result"]
+    assert "The refund is approved" not in result["result"]
+    assert report["cases"][0]["attempts"][0]["invalid"] is None, "a refused read saw nothing"
+    assert bot.events["before_each_tool"] == [], "the guard is gone after the run"
+
+
+def test_an_absolute_path_or_an_earlier_run_is_refused_too(project):
+    _write_answers(project)
+    for path in (str(project / ".co" / "benchmarks" / "refund.yaml"), ".co/eval-runs/refund/x/report.json"):
+        report = run(project, _peeker(read_file, {"path": path}), skill_name=None)
+        assert _first_result(report)["status"] == "error", path
+
+
+def test_a_declared_fixture_under_the_benchmark_folder_stays_readable(project):
+    _write_answers(project)
+    (project / ".co" / "benchmarks" / "ledger.csv").write_text("INV-1,paid\n")
+    fixture_case = Case(id="ledger", kind="normal", input="Is INV-1 paid?", must=["INV-1 is reported paid"],
+                        fixture="ledger.csv")
+    report = runner.run(suite(project, fixture_case), _peeker(read_file, {"path": ".co/benchmarks/ledger.csv"}),
+                        agent_path="agent.py", judge_model="m", judge_call=judge_says("occurred"))
+
+    assert _first_result(report)["status"] == "success"
+
+
+def test_an_attempt_that_saw_the_answers_anyway_is_invalid_not_judged_and_not_a_pass(project):
+    # A path guard cannot see every way in (a grep over the workspace, a shell
+    # pipeline): the trace is checked for the expectations themselves.
+    _write_answers(project)
+
+    def search(pattern: str) -> str:
+        """Search every file in the workspace."""
+        return "\n".join(p.read_text() for p in project.rglob("*.yaml"))
+
+    judged = []
+
+    def judge(prompt, output, model):
+        judged.append(prompt)
+        return output(verdicts=[])
+
+    report = run(project, _peeker(search, {"pattern": "refund"}), skill_name=None, judge=judge)
+
+    attempt = report["cases"][0]["attempts"][0]
+    assert attempt["passed"] is False and "read the answers" in attempt["invalid"]
+    assert judged == [], "an attempt that saw the answers is not scored"
+    assert report["summary"]["invalid"] == 1 and report["summary"]["exit_code"] == 1
+
+    from connectonion.benchmark import report as reports
+    assert "INVALID" in reports.render(report)

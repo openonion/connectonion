@@ -53,3 +53,11 @@ def test_stable_commands_are_not():
     commands = listing()
     for name in ("browser", "whatsapp", "gmail"):
         assert "Experimental" not in commands[name]
+
+
+def test_the_wiki_overview_and_claude_run_pages_say_it_too():
+    # `co --help` said Experimental, but `co wiki`, `co wiki --help` and
+    # `co claude run --help` -- the pages people actually read -- never did.
+    for args in (["wiki"], ["wiki", "--help"], ["claude", "run", "--help"]):
+        page = CliRunner().invoke(cli_main.app, args, env={"COLUMNS": "200"}).output
+        assert "Experimental" in re.sub(r"\x1b\[[0-9;]*m", "", page), args

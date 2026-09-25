@@ -16,7 +16,7 @@ Word count printed on stdout
 The current flow is local and does not create or modify files. [1][2][3][6]
 
 ## Try it
-1. In `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas`, prepare a UTF-8 text file such as `draft.txt`. [1][2]
+1. In `~/projects/.worktree/wiki-investigate-0922-fixture/atlas`, prepare a UTF-8 text file such as `draft.txt`. [1][2]
 2. Run `python3 count.py draft.txt`. [1][6]
 3. Expect the word count `3` for the supplied sample `draft.txt`; the verified run printed `3`. [4][5][6]
 
@@ -66,11 +66,11 @@ There is no hosted demo or deployed website; access is local filesystem access a
 This describes the inspected implementation as of 2026-09-22. [2][3]
 
 ## Paths
-- `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas` — observed project directory. [1][7]
-- `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas/README.md` — project behavior and scope. [2]
-- `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas/count.py` — only implementation. [3]
-- `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas/draft.txt` — sample input. [4]
-- `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas/output.txt` — recorded sample output artifact. [5]
+- `~/projects/.worktree/wiki-investigate-0922-fixture/atlas` — observed project directory. [1][7]
+- `~/projects/.worktree/wiki-investigate-0922-fixture/atlas/README.md` — project behavior and scope. [2]
+- `~/projects/.worktree/wiki-investigate-0922-fixture/atlas/count.py` — only implementation. [3]
+- `~/projects/.worktree/wiki-investigate-0922-fixture/atlas/draft.txt` — sample input. [4]
+- `~/projects/.worktree/wiki-investigate-0922-fixture/atlas/output.txt` — recorded sample output artifact. [5]
 
 ## Open threads
 - Decide whether to pursue a hosted website for Atlas; owner and scope are not named, and the request has been open since 2026-09-22. [1][2]
@@ -85,12 +85,12 @@ This describes the inspected implementation as of 2026-09-22. [2][3]
 
 ## Sources
 - [1] `codex:atlas-synthetic:175` user session, 2026-09-22; supplied request and scope statements; confidence: high for stated intent and described non-deployment, not proof of implementation quality.
-- [2] `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas/README.md`, inspected 2026-09-22; project behavior, scope, sample result, and non-deployment statements; confidence: high for documented behavior, not independent runtime proof.
-- [3] `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas/count.py`, inspected 2026-09-22; implementation source; confidence: high for code contents.
-- [4] `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas/draft.txt`, inspected 2026-09-22; sample input text; confidence: high.
-- [5] `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas/output.txt`, inspected 2026-09-22; recorded output artifact containing `3`; confidence: high for artifact contents, not proof of the command that produced it.
-- [6] Command `python3 count.py draft.txt`, run in `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas` on 2026-09-22; exit code 0 and stdout `3`; confidence: high for this observed run.
-- [7] Command `git -C /Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas status --short --branch`, run on 2026-09-22; returned `fatal: not a git repository`; confidence: high for the checked directory's Git status.
+- [2] `~/projects/.worktree/wiki-investigate-0922-fixture/atlas/README.md`, inspected 2026-09-22; project behavior, scope, sample result, and non-deployment statements; confidence: high for documented behavior, not independent runtime proof.
+- [3] `~/projects/.worktree/wiki-investigate-0922-fixture/atlas/count.py`, inspected 2026-09-22; implementation source; confidence: high for code contents.
+- [4] `~/projects/.worktree/wiki-investigate-0922-fixture/atlas/draft.txt`, inspected 2026-09-22; sample input text; confidence: high.
+- [5] `~/projects/.worktree/wiki-investigate-0922-fixture/atlas/output.txt`, inspected 2026-09-22; recorded output artifact containing `3`; confidence: high for artifact contents, not proof of the command that produced it.
+- [6] Command `python3 count.py draft.txt`, run in `~/projects/.worktree/wiki-investigate-0922-fixture/atlas` on 2026-09-22; exit code 0 and stdout `3`; confidence: high for this observed run.
+- [7] Command `git -C ~/projects/.worktree/wiki-investigate-0922-fixture/atlas status --short --branch`, run on 2026-09-22; returned `fatal: not a git repository`; confidence: high for the checked directory's Git status.
 
 Investigation: mapped 2026-09-22 · not investigated yet
 

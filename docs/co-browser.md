@@ -65,7 +65,7 @@ on `main`, it fails loudly and is told exactly what to do instead:
 
 ```
 $ co browser go_to other.com
-tab 'main' is in use by alice — last: "go_to example.com" · 4s ago
+tab 'main' is in use by alice — last: go_to example.com · 4s ago
 
 You are a second agent on this browser. Two agents cannot share one tab.
 Run your task in your own tab — three commands:
@@ -95,7 +95,7 @@ co browser tab ls
 ```
 Tabs (2):
   *[main]   https://example.com          who=alice   purpose='shared main tab'
-            last: "get_text" · 3s ago
+            last: get_text · 3s ago
    [scrape] (reserved — no page yet)     who=bob     purpose='scrape pricing'
 ```
 
@@ -127,10 +127,26 @@ parsing prose:
 | Code | Meaning |
 |------|---------|
 | `0`  | success |
-| `1`  | the action failed (e.g. selector not found) |
-| `2`  | usage error (bad flags, empty `-t`, `tab` misuse) |
-| `3`  | unknown tab (`-t` names a tab that was never `tab open`ed) |
-| `4`  | tab busy (another agent is mid-task on that tab) |
+| `1`  | the action failed (e.g. a selector matched nothing, a file to upload is missing, `run_page_script` found no script, `switch_page` has no such page), the command ran out of its 120-second deadline, the daemon is not answering, or it is busy at connection capacity |
+| `2`  | usage error (bad flags, empty `-t`, `tab` misuse, wrong arguments for a function — the message shows its signature — or a `go_to` address that is not a web URL) |
+| `3`  | nothing to act on: unknown tab (`-t` names a tab that was never `tab open`ed), or no browser is open yet — the message names the `go_to` that opens one |
+| `4`  | tab busy (another agent is mid-task on that tab, or an earlier command on it is still running past this one's deadline) |
+| `5`  | `do` cannot tell which account pays for its model, or has no credentials — run `co auth` |
+| `6`  | the running daemon is pinned to a different engine than the one asked for — the message names the commands that work |
+
+A selector that matches nothing is a failure for the functions that act on it
+(`click_element_by_selector`, `type_text_by_selector`, `fill_text_by_selector`)
+and for `get_element_text_by_selector`, which would otherwise print the error
+sentence to stdout as if it were the element's text. `count_elements_by_selector`
+answering `0 elements` is an answer, exit `0`. Functions that return page
+content (`get_text`, `extract_*`, `run_page_script`, …) exit `0` whatever the
+page says.
+
+`go_to` refuses an address it cannot load before starting anything, with exit
+`2`: a scheme other than `http`, `https`, `file`, `data`, `about` or `chrome`
+(`javascript:`, `mailto:`, a typo like `htp://`), or text that is not a host
+name (`"not a url"`). A bare host still gets a scheme, as always:
+`example.com` → `https://example.com`, `localhost:8000` → `http://localhost:8000`.
 
 ## Command Reference
 
@@ -162,8 +178,12 @@ co browser save_state auth.json                  # export cookies/localStorage (
 ```
 
 Function arguments follow the shell: positional args in order, options as
-`--flag=value` (e.g. `take_screenshot --full-page=true`). Calling a function with
-the wrong arguments returns its usage line so a script (or agent) can self-correct.
+`--flag=value` or `--flag value` (e.g. `take_screenshot --full-page=true` or
+`take_screenshot --full-page true`). A boolean flag alone (`--full-page`) means
+true; a word after it that is not `true`/`false`/`yes`/`no`/`on`/`off`/`1`/`0`
+stays positional, so `take_screenshot --full-page shot.png` still names the
+file. Calling a function with the wrong arguments returns its usage line so a
+script (or agent) can self-correct.
 
 ### Network: what the page sent, and a HAR of it
 
@@ -182,11 +202,14 @@ co browser -t shop network request 7 --raw                   # with header value
 co browser -t shop network clear                             # then one action, to isolate it
 ```
 
-`requests` is the index — method, status, kind, size, duration, URL, newest
-last, id first so `cut -f1` feeds `request`. `--status` takes `200`, `2xx` or
-`400-499`; a spec that is none of those is an error, not an empty list, so a
-typo cannot read as "no errors". `request <n>` opens one: request headers,
-request body, response headers, response body.
+`requests` is the index — a header line, then method, status, kind, size,
+duration, URL, newest last, id first so `cut -f1` feeds `request`. `--status`
+takes `200`, `2xx` or `400-499`, and `--type` a comma list of Playwright's
+resource types (`document`, `xhr`, `fetch`, `script`, `image`, …); a value that
+is neither is an error, not an empty list, so a typo cannot read as "no
+errors". `request <n>` opens one: request headers, request body, response
+headers, response body; a request that never got a response says
+`status=no response`.
 
 To see what **one action** did, clear first:
 
@@ -296,8 +319,12 @@ co browser --headless go_to example.com
 
 The choice is made by whichever command **starts the daemon** and sticks for the
 daemon's lifetime — every later command reuses the same browser regardless of its
-own flags (`co browser status` shows `headless=true/false`). To switch modes,
-`co browser close` and let the next command relaunch.
+own flags (`co browser status` shows `headless=true/false`). A `--headless` that
+reaches a daemon already running with a window says so on stderr rather than
+being ignored. To switch modes, `co browser close` and let the next command
+relaunch. Commands that only read a page (`get_current_url`, `get_text`,
+`cookies`, …) never start a daemon: with nothing running they answer exit 3 at
+once, so they cannot fix the mode before the `go_to` that was meant to.
 
 ## Best Practices
 
@@ -337,7 +364,45 @@ The daemon records its pid next to the socket, so a daemon that is merely **busy
 (for example, its bounded connection capacity is full) is never mistaken for a
 dead one: clients wait briefly and report capacity instead of spawning a rival
 daemon over a live browser. Each request is capped at 1 MiB, reads and replies
-have absolute 120-second deadlines, and at most 32 client tasks are admitted.
+have absolute 120-second deadlines, and at most 32 client tasks are admitted; a
+command beyond that is answered at once with "browser daemon is busy at
+connection capacity (32 commands in flight) — try again shortly" (exit 1).
+`status`, `close`, `tab ls` and `tab close` are never answered "busy": eight
+more connections are kept for them, because they are how you get out of a full
+daemon.
+
+The command itself has the same 120-second deadline (a function's own longer
+`--timeout` adds itself plus 15 seconds). Past it the daemon cancels the
+command, which frees its tab, and answers exit 1 naming what it was waiting on —
+for `cookies` and `save_state`, Chrome's cookie store, which on macOS waits on a
+Keychain prompt until someone answers it. A command queued behind a stuck one on
+the same tab is answered exit 4 instead. A client that goes away (killed, or
+Ctrl-C) takes its command with it: the daemon notices the closed connection,
+cancels the command, and its `active_requests` entry leaves the board. A bare
+`close` cancels every running command first, so it never waits behind one.
+
+The client has deadlines too: it waits 30 seconds for `status` or `tab ls`,
+and for anything else the daemon's own deadline above plus 10 seconds for the
+answer to arrive (130 seconds, or a longer `--timeout` plus 25). A read —
+`get_current_url`, `list_pages`, `cookies`, `save_state` and the other verbs
+that never open a page — asks `status` on a second connection every 10 seconds
+while it waits: a daemon that answers is busy and is waited on, one that does
+not is frozen, and the read gives up as soon as `status` would. A daemon that
+does not answer — stopped with `kill -STOP`, or wedged — is reported as not
+answering (exit 1), with `co browser close` as the way out.
+
+With no daemon running, those reads — and `status`, `tab ls` and `tab close` —
+answer that no browser is open and start nothing. Before 1.8.8b12 `tab ls`
+started a headed daemon to list no tabs, and a later `--headless` command was
+ignored with a note.
+
+After each reply the daemon checks that the browser is still alive — after the
+connection has closed, so the check never holds a slot. The check is one round
+trip to Chrome shared by everyone asking, with a 3-second deadline. Chrome
+answers it by reading its cookie store, which on macOS can wait on a Keychain
+prompt; no answer is read as "unknown", never as "dead", so a slow Chrome is not
+torn down. `co browser status` has deadlines of its own and says which question
+went unanswered instead of hanging.
 Cancellation or disconnect clears that request's active audit lease without
 erasing another task's tab ownership. Startup itself is race-proof: a kernel lock
 makes two terminals' simultaneous first commands elect exactly one daemon — the
@@ -375,22 +440,40 @@ downgrading so an older client never talks to a newer daemon.
 - **"Chrome failed to start"** — usually running over ssh/cron without a desktop
   session (start from a logged-in Terminal, or use `--headless`), or a leftover
   Chrome still holds the profile. The full launch log is in `~/.co/browser.log`.
-- **"daemon is … at connection capacity" after ~15s** — 32 clients are already
-  admitted (or all bounded Windows transport workers are occupied). Retry shortly;
+- **"browser daemon is busy at connection capacity"** — 32 commands are in
+  flight (or all bounded Windows transport workers are occupied). Retry shortly;
   an unrelated slow browser action on another named tab no longer blocks yours.
-- **Nuclear option** — kill the daemon and let the next command start fresh
-  (logins survive: they live in the profile, not the daemon):
+- **`status` says "Chrome did not answer a liveness check"** — the browser is up
+  but its cookie store is not answering; on macOS that is usually a Keychain
+  prompt waiting behind another window. Answer it, or `co browser close` and
+  start again (logins are kept).
+- **"did not finish within 120s — it was waiting on Chrome's cookie store"** —
+  the same Keychain prompt, met by `cookies` or `save_state`. The command was
+  cancelled and its tab is free; answer the prompt and run it again.
+- **"the browser daemon … is running but did not answer"** — the daemon itself
+  is stopped or wedged. `co browser close` finishes it: when the daemon does not
+  answer within 60 seconds, close stops its processes (daemon and Chrome) itself,
+  removes the socket, `.pid` and `.lock` the daemon would have removed, and
+  exits 1 to say it had to.
+- **Nuclear option** — only if `co browser close` could not finish it. Stop this
+  one daemon by the pid it recorded beside its socket (logins survive: they
+  live in the profile, not the daemon):
 
-  <!-- The bracketed [.] is load-bearing: `pkill -f` matches every process's whole
-       command line, so the un-bracketed pattern matches the shell running it and
-       kills that shell (measured on Linux — everything after it in the same
-       command never runs). An agent following these steps runs commands exactly
-       that way. -->
   ```bash
-  pkill -f 'connectonion.cli.browser_agent[.]daemon'
+  # Linux
+  kill -9 "$(cat "${CO_BROWSER_SOCK:-/tmp/co-$USER/browser.sock}.pid")"
+  # macOS
+  kill -9 "$(cat "${CO_BROWSER_SOCK:-$(getconf DARWIN_USER_TEMP_DIR)co-$USER/browser.sock}.pid")"
   ```
 
-- **State locations** — profile (cookies/logins): `~/.co/browser_profile/` ·
+  Not `pkill -f 'connectonion.cli.browser_agent[.]daemon'`: that stops every
+  browser daemon you have, including isolated ones on their own
+  `$CO_BROWSER_SOCK` that another script or agent is using.
+
+- **State locations** — profile (cookies/logins): `~/.co/browser_profile/`
+  (the paid Onion engine's: `~/.onionwright/profiles/<address>`), or
+  `$CO_BROWSER_PROFILE_DIR` and `$CO_BROWSER_PROFILE_DIR/onion` for the paid
+  engine when that is set, so an isolated run is isolated on every engine ·
   daemon log: `~/.co/browser.log` · socket: `/tmp/co-<user>/browser.sock` on
   Linux, `<per-user temp dir>/co-<user>/browser.sock` on macOS (the dir
   `getconf DARWIN_USER_TEMP_DIR` prints), plus `.pid`/`.lock` beside it;

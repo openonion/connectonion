@@ -106,7 +106,7 @@ def _add_skill_preflight_rows(skills_table, found: list[str], skills) -> None:
             skills_table.add_row(label, f"[yellow]○[/yellow] optional: {check.detail}{setup}")
 
 
-def verdict(problems: list) -> int:
+def verdict(problems: list, warnings: list = ()) -> int:
     """The last line, and the exit code, saying what the body already said.
 
     `co doctor` printed `✅ Diagnostics complete!` and exited 0 whatever it
@@ -116,17 +116,32 @@ def verdict(problems: list) -> int:
 
     Five places add a `✗` row. They now record what they found, and this says
     it back.
+
+    Warnings are the `○` rows that ask for action — another `co` first on
+    PATH, a model it cannot price. They do not fail the exit code (running a
+    venv's co by path is legitimate), but 1.8.8b9 printed "nothing wrong" right
+    under one, so the last line now counts them too.
     """
-    if not problems:
+    if not problems and not warnings:
         console.print("[bold green]✅ Diagnostics complete — nothing wrong[/bold green]\n")
         return 0
 
-    console.print(f"[bold red]✗ Diagnostics complete — {len(problems)} problem"
-                  f"{'s' if len(problems) > 1 else ''}[/bold red]")
+    if problems:
+        console.print(f"[bold red]✗ Diagnostics complete — {_count(problems, 'problem')}"
+                      f"{', ' + _count(warnings, 'warning') if warnings else ''}[/bold red]")
+    else:
+        console.print(f"[bold yellow]⚠ Diagnostics complete — nothing broken, "
+                      f"{_count(warnings, 'warning')}[/bold yellow]")
     for problem in problems:
         console.print(f"  [red]•[/red] {problem}")
+    for warning in warnings:
+        console.print(f"  [yellow]•[/yellow] {warning}")
     console.print()
-    return 1
+    return 1 if problems else 0
+
+
+def _count(items: list, noun: str) -> str:
+    return f"{len(items)} {noun}{'s' if len(items) > 1 else ''}"
 
 
 EVALS_NOTE_THRESHOLD_MB = 20
@@ -288,6 +303,7 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
     # shadowing it made the loop below unpack my strings into three names.
     # The real CLI caught that; the unit tests could not see it.
     found: list[str] = []
+    warnings: list[str] = []
     from ... import __version__
     from .doctor_runtime import runtime_checks
 
@@ -328,7 +344,23 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
 
     # Command location
     co_path = shutil.which('co')
-    if co_path:
+    path_version, path_failure = _path_co_version(co_path) if co_path else (None, None)
+    if path_failure:
+        # 1.8.8b9 turned "could not run it" into None and printed a green ✓:
+        # the one check that exists to say which co you get vouched for a co
+        # that crashes on --version. Every `co` typed in a new shell runs it.
+        system_table.add_row("Command", f"[red]✗[/red] {co_path} does not run ({path_failure}) — "
+                             f"reinstall it, or put this environment's bin first on PATH")
+        found.append(f"the co on PATH ({co_path}) does not run: {path_failure}")
+    elif path_version and path_version != __version__:
+        # Found on a first run: ~/.local/bin/co was 1.8.8b3 while this was
+        # 1.8.8b8, so every `co` the user typed ran code this report never saw.
+        # A warning, not a failure: running a venv's co by path is legitimate.
+        system_table.add_row("Command", f"[yellow]○[/yellow] {co_path} is co {path_version}, "
+                             f"but this is {__version__} — `co` runs the other one; "
+                             f"reinstall it or put this environment's bin first on PATH")
+        warnings.append(f"`co` on PATH is {path_version} at {co_path}, not this {__version__}")
+    elif co_path:
         system_table.add_row("Command", f"[green]✓[/green] {co_path}")
     else:
         system_table.add_row("Command", "[red]✗[/red] 'co' not found in PATH")
@@ -376,10 +408,15 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
         note = model_pricing_note(model)
         if note:
             config_table.add_row("Model", f"[yellow]○[/yellow] {note}")
+            warnings.append(note)
         else:
             config_table.add_row("Model", f"[green]✓[/green] {model}")
     else:
-        config_table.add_row("Config", "[yellow]○[/yellow] Not found (optional)")
+        # This row is about the model, and used to be labelled "Config" — right
+        # under a green "Config ✓ .co/host.yaml", as if the file were missing.
+        from ...core.usage import DEFAULT_MODEL
+        config_table.add_row("Model", f"[dim]○ not set in MODEL or host.yaml (optional) — "
+                             f"Agent() uses {DEFAULT_MODEL}[/dim]")
 
     disk = disk_usage_note()
     if disk:
@@ -545,9 +582,20 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
     if not counts:
         skills_table.add_row("Skills", "[dim]none found[/dim]")
 
+    # One row per finding, not per skill: a machine with ~40 Claude Code skills
+    # that declare allowed-tools printed ~40 identical rows and buried the rest.
+    grouped: dict = {}
     for location, name, reason in problems:
-        skills_table.add_row(f"{location}/{name}", f"[red]✗[/red] {reason}")
-        found.append(f"skill {location}/{name}: {reason}")
+        grouped.setdefault((location, reason), []).append(name)
+    for (location, reason), names in grouped.items():
+        if len(names) == 1:
+            label = f"{location}/{names[0]}"
+        else:
+            names = sorted(names)
+            shown = ", ".join(names[:3]) + (", …" if len(names) > 3 else "")
+            label = f"{location} ({len(names)} skills: {shown})"
+        skills_table.add_row(label, f"[red]✗[/red] {reason}")
+        found.append(f"skill {label}: {reason}")
 
     _add_skill_preflight_rows(skills_table, found, skills)
 
@@ -555,6 +603,7 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
     console.print()
 
     # Connectivity checks (only if API key exists)
+    authenticated = False
     if api_key:
         connectivity_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 1))
         connectivity_table.add_column("Check", style="cyan")
@@ -572,6 +621,7 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
                 connectivity_table.add_row("Backend", f"[green]✓[/green] {selected_backend}")
             else:
                 connectivity_table.add_row("Backend", f"[yellow]⚠[/yellow] Status {response.status_code}")
+                warnings.append(f"backend {selected_backend} answered {response.status_code}")
 
         # Signed as whoever this project acts as. This worked the same rule
         # out a second time, in the same file -- so the identity the panel
@@ -604,6 +654,7 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
             else:
                 if response.status_code == 200:
                     connectivity_table.add_row("Authentication", "[green]✓[/green] Valid credentials")
+                    authenticated = True
                 else:
                     connectivity_table.add_row("Authentication", f"[red]✗[/red] Failed (status {response.status_code})")
                     found.append(f"authentication failed (status {response.status_code})")
@@ -611,6 +662,31 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
         console.print(Panel(connectivity_table, title="[bold]Connectivity[/bold]", border_style="magenta"))
         console.print()
 
-    code = verdict(found)
-    console.print("[dim]Run 'co auth' if you need to authenticate[/dim]\n")
+    code = verdict(found, warnings)
+    # Only when it is true: this line used to follow "✓ Valid credentials".
+    if not authenticated:
+        console.print("[dim]Not authenticated with OpenOnion — run 'co auth' for managed models[/dim]\n")
     return code
+
+
+def _path_co_version(co_path: str) -> "tuple[str | None, str | None]":
+    """(version, None) for the `co` on PATH, or (None, why it could not be run).
+
+    Two answers, not one None: "it did not run" is a finding, while "it ran
+    and printed no version" is only something we cannot say."""
+    import subprocess
+
+    # The usual case is doctor run *as* that co: same program, same version,
+    # no reason to start a second interpreter to be told so.
+    if Path(co_path).resolve() == Path(sys.argv[0]).resolve():
+        from ... import __version__
+        return __version__, None
+    try:
+        result = subprocess.run([co_path, "--version"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as error:
+        return None, f"{type(error).__name__}: {error}"
+    if result.returncode != 0:
+        last = (result.stderr or result.stdout or "").strip().splitlines()[-1:]
+        return None, f"`co --version` exited {result.returncode}" + (f": {last[0][:160]}" if last else "")
+    words = result.stdout.split()
+    return (words[-1] if words else None), None

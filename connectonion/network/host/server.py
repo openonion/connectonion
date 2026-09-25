@@ -561,9 +561,16 @@ def claim_identity(co_dir: Path, identity: dict, name: str) -> Optional[str]:
         f"{identity['address'][:10]}… is already served by "
         f"'{existing.get('name')}' in {existing.get('project')}, using the same "
         f"key from {source}. Two agents on one address means whichever is "
-        f"nearest answers the call, and the tools they answer with differ. A "
-        f"project created by `co create` gets its own identity and does not "
-        f"share."
+        f"nearest answers the call, and the tools they answer with differ. "
+        # This said a project made by `co create` gets its own identity. It
+        # does not: `co create` writes no key, so every such project inherits
+        # ~/.co's and lands here. A key in the project's own .co/keys/ wins
+        # over ~/.co (resolve_agent_identity), so that is the advice that works.
+        f"`co create` does not give a project its own key; they all use "
+        f"~/.co's. To give this one its own address, run in {co_dir.parent}: "
+        f"python -c \"from pathlib import Path; from connectonion import address; "
+        f"address.save(address.generate(), Path('.co'))\" -- the key in "
+        f".co/keys/ then wins over ~/.co. Clients must use the new address."
     )
 
 
@@ -600,6 +607,49 @@ def usable_uvicorn_options(workers, reload) -> tuple:
         print("[host] reload: true not honoured — running without reload "
               "(uvicorn needs an import string to watch files)")
     return 1, False
+
+
+def _port_in_use(port: int) -> bool:
+    """Whether uvicorn's bind on 0.0.0.0:<port> would fail.
+
+    Binds the way uvicorn does (SO_REUSEADDR, all interfaces) and lets go, so a
+    port in TIME_WAIT from the last run is not reported as taken. There is a
+    window between this and uvicorn's bind; losing that race still ends in
+    uvicorn's own error, which is what happened every time before.
+    """
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("0.0.0.0", port))
+        except OSError:
+            return True
+    return False
+
+
+def _config_whereabouts(config_file: Path) -> str:
+    """The host.yaml path, and whether it is there.
+
+    The banner's `config:` line and the port hint named <project>/.co/host.yaml
+    as if it were being read, in a project that had none: an operator went
+    looking for a file to edit that did not exist. A plain `host()` runs on
+    defaults; the path is where settings would go.
+    """
+    if config_file.exists():
+        return str(config_file)
+    return (f"none (defaults) — create {config_file} to change them")
+
+
+def _port_taken_message(port: int, co_dir: Path) -> str:
+    """Name the port and both ways to move it: host.yaml for good, AGENT_PORT for once."""
+    config_file = co_dir / "host.yaml"
+    where = (f"Change `port:` in {config_file}" if config_file.exists()
+             else f"Put `port: {port + 1}` in {config_file} (it does not exist yet: create it)")
+    return (f"[host] Port {port} is already in use — another agent, or an earlier "
+            f"`python agent.py` still running?\n"
+            f"       {where}, "
+            f"or for one run: AGENT_PORT={port + 1} python agent.py")
 
 
 def _print_host_banner(
@@ -659,8 +709,12 @@ def _print_host_banner(
     console.print()
 
     # Config and logs info (absolute paths)
-    console.print(f"{indent}[dim]config:[/dim] {config_file}")
-    console.print(f"{indent}[dim]logs:[/dim] {logs_dir}")
+    # soft_wrap: Rich otherwise breaks a long path mid-word at the console
+    # width (".co/hos" / "t.yaml" on an 80-column CI log), and a path is
+    # printed to be copied. The terminal still wraps the line visually.
+    console.print(f"{indent}[dim]config:[/dim] {_config_whereabouts(config_file)}",
+                  soft_wrap=True)
+    console.print(f"{indent}[dim]logs:[/dim] {logs_dir}", soft_wrap=True)
     console.print()
 
     # Trust/Invite (belongs to host layer)
@@ -1069,6 +1123,13 @@ def host(
     if co_dir is None:
         co_dir = project_co_dir()
 
+    # The project's .env, under anything the process already set and over
+    # ~/.co/keys.env. `co create` writes the agent's CO_INVITE_CODE there, and
+    # without this nothing read it: the banner said "no one can onboard" beside
+    # a file that held the code. See environment.load_project_env.
+    from ...environment import load_project_env
+    load_project_env(co_dir.parent / ".env")
+
     # A server can host more than one agent, and only the port stops it: two of
     # them defaulting to 8000 means the second dies on "address already in use"
     # while systemd keeps restarting it. `co deploy --to` picks a free port on
@@ -1097,6 +1158,12 @@ def host(
     relay_url = resolve_relay_url(relay_url, config)
     summary = config.get('summary')
     examples = config.get('examples')
+
+    # Before anything is printed: a banner announcing http://localhost:<port>
+    # followed by uvicorn's raw "[Errno 48] address already in use" told the
+    # user their agent was up at an address it would never serve.
+    if _port_in_use(port):
+        raise SystemExit(_port_taken_message(port, co_dir))
 
     # Extract metadata once at startup
     agent_metadata, sample = _extract_agent_metadata(create_agent, config.get("name"))
