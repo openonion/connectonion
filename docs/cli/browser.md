@@ -306,9 +306,19 @@ python -m patchright install chrome     # branded Chrome: best stealth, system i
   transport workers on Windows. A client that disconnects takes its command
   with it. The after-reply liveness check runs once the connection is closed
   and gives Chrome 3 seconds; no answer is never read as a dead browser.
-- The client waits 30 seconds for `status`/`tab ls` and 150 seconds for other
-  commands; a daemon that says nothing in that time (stopped, wedged) is
-  reported as not answering, and `co browser close` stops it by force.
+- The client waits 30 seconds for `status`/`tab ls`, and for other commands
+  the daemon's own deadline — 120 seconds, or a longer `--timeout` plus 15 —
+  and 10 seconds more for the answer to arrive. A read (`get_current_url`,
+  `list_pages`, `cookies`, `save_state`, ...) asks `status` every 10 seconds
+  while it waits, so against a frozen daemon it gives up as soon as `status`
+  would, while one queued behind a slow command on a live daemon keeps
+  waiting. A daemon that says nothing (stopped, wedged) is reported as not
+  answering, and `co browser close` stops it by force and removes the
+  socket, `.pid` and `.lock` it left.
+- With no daemon running, reads (`get_current_url`, `list_pages`, `cookies`,
+  `save_state`, `tab ls`, `tab close`, `status`) answer that no browser is open
+  and start nothing, so a later `--headless` command still decides the window
+  mode.
 - On Windows, `co browser close` returns only after the serving daemon exits, so
   an immediate next command can safely start a fresh daemon.
 - For an isolated automation run, set `$CO_BROWSER_PROFILE_DIR` to a dedicated absolute directory and `$CO_BROWSER_SOCK` to a dedicated socket. Keep the real `$HOME`; replacing it can break OS-backed browser behavior and credentials.
@@ -359,7 +369,7 @@ cookies did not finish within 120s — it was waiting on Chrome's cookie store �
 It was cancelled; tab 'main' is free again.
 Next: retry once that answers, or start over (logins are kept): co browser close
 ```
-Every command is answered within 120 seconds (longer only when its own `--timeout` asks for more). A driver timeout reads the same way — `go_to timed out: Timeout 30000ms exceeded.` — with a next step, not an exception name and a call log.
+Every command is answered within 120 seconds, or its own longer `--timeout` plus 15; the client gives up 10 seconds after that if a stopped daemon never answers. A driver timeout reads the same way — `go_to timed out: Timeout 30000ms exceeded.` — with a next step, not an exception name and a call log.
 
 **Authentication required** (only for `do`)
 ```bash

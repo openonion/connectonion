@@ -381,10 +381,20 @@ Ctrl-C) takes its command with it: the daemon notices the closed connection,
 cancels the command, and its `active_requests` entry leaves the board. A bare
 `close` cancels every running command first, so it never waits behind one.
 
-The client has deadlines too: it waits 30 seconds for `status` or `tab ls` and
-150 seconds for anything else (plus a command's own `--timeout`). A daemon that
-does not answer in that time — stopped with `kill -STOP`, or wedged — is
-reported as not answering (exit 1), with `co browser close` as the way out.
+The client has deadlines too: it waits 30 seconds for `status` or `tab ls`,
+and for anything else the daemon's own deadline above plus 10 seconds for the
+answer to arrive (130 seconds, or a longer `--timeout` plus 25). A read —
+`get_current_url`, `list_pages`, `cookies`, `save_state` and the other verbs
+that never open a page — asks `status` on a second connection every 10 seconds
+while it waits: a daemon that answers is busy and is waited on, one that does
+not is frozen, and the read gives up as soon as `status` would. A daemon that
+does not answer — stopped with `kill -STOP`, or wedged — is reported as not
+answering (exit 1), with `co browser close` as the way out.
+
+With no daemon running, those reads — and `status`, `tab ls` and `tab close` —
+answer that no browser is open and start nothing. Before 1.8.8b12 `tab ls`
+started a headed daemon to list no tabs, and a later `--headless` command was
+ignored with a note.
 
 After each reply the daemon checks that the browser is still alive — after the
 connection has closed, so the check never holds a slot. The check is one round
@@ -442,8 +452,9 @@ downgrading so an older client never talks to a newer daemon.
   cancelled and its tab is free; answer the prompt and run it again.
 - **"the browser daemon … is running but did not answer"** — the daemon itself
   is stopped or wedged. `co browser close` finishes it: when the daemon does not
-  answer within 60 seconds, close stops its processes (daemon and Chrome) itself
-  and exits 1 to say it had to.
+  answer within 60 seconds, close stops its processes (daemon and Chrome) itself,
+  removes the socket, `.pid` and `.lock` the daemon would have removed, and
+  exits 1 to say it had to.
 - **Nuclear option** — only if `co browser close` could not finish it. Stop this
   one daemon by the pid it recorded beside its socket (logins survive: they
   live in the profile, not the daemon):

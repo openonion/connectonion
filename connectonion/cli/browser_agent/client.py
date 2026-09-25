@@ -143,7 +143,7 @@ def _reply_deadline(argv: list) -> float:
         except ValueError:
             continue  # the daemon answers a bad value with a usage error
         asked = max(asked, seconds / 1000 if name != "--timeout" else seconds)
-    return REPLY_DEADLINE + asked
+    return max(OPERATION_TIMEOUT, asked + OPERATION_MARGIN) + ANSWER_SLACK
 
 
 # How long `co browser close` waits for the daemon to answer before it stops
@@ -151,12 +151,23 @@ def _reply_deadline(argv: list) -> float:
 # running: a close that hung for 3h 12m billed the whole time (#1496).
 CLOSE_DEADLINE = 60
 CLOSE_GRACE = 10  # seconds the tree gets to exit on its own after the daemon
-# How long a client waits for any other answer. The daemon answers every
-# command within its own 120 s deadline (daemon.OPERATION_TIMEOUT, not imported:
-# direct verbs must not load the browser-owning module), so silence past this
-# means the daemon itself is stopped or stuck — `kill -STOP` made `status` wait
-# more than five minutes. A command with a longer --timeout gets it added.
-REPLY_DEADLINE = 150
+# How long a client waits for any other answer: the daemon's own deadline for
+# the command — 120 s, or its --timeout plus 15 (daemon.OPERATION_TIMEOUT and
+# OPERATION_MARGIN, not imported: direct verbs must not load the
+# browser-owning module) — plus ANSWER_SLACK for the daemon's 5 s cancel grace
+# and the reply's trip. Silence past that means the daemon itself is stopped or
+# stuck: `kill -STOP` made `status` wait more than five minutes. 1.8.8b11 waited
+# 150 s plus any --timeout, and a frozen daemon held get_current_url for 151 s
+# while the notes promised 120.
+OPERATION_TIMEOUT = 120.0
+OPERATION_MARGIN = 15.0
+ANSWER_SLACK = 10.0
+# A read verb (get_current_url, list_pages, cookies...) may queue behind a slow
+# command on its tab, so it cannot be given status's 30 s outright. Instead,
+# every LIVENESS_WINDOW without an answer the client asks `status` on a second
+# connection: a daemon that answers that is busy and is waited on, one that
+# does not is frozen, and the read gives up as soon as status would.
+LIVENESS_WINDOW = 10.0
 # `status` and `tab ls` answer from the daemon's own bookkeeping with deadlines
 # of their own (about 20 s at worst), so they need not wait as long.
 QUICK_REPLY_DEADLINE = 30
@@ -271,7 +282,31 @@ def _stop(process, hard: bool) -> None:
         pass  # it exited between the check and the signal, which is what we wanted
 
 
-def _finish_close(owner_pid, watched, *, answered: bool, reason: str, payload: str = ""):
+def _remove_leftovers(sock_path, owner_pid) -> None:
+    """After a forced close, the socket, pidfile and lock the stopped daemon
+    would have removed on a clean exit. 1.8.8b11 left all three, the pidfile
+    naming a dead pid. Only when the pidfile still names the daemon that was
+    stopped: a replacement started meanwhile owns its own files."""
+    if sock_path is None or owner_pid is None:
+        return
+    try:
+        recorded = Path(transport.pid_path(sock_path)).read_text(encoding="utf-8").strip()
+    except OSError:
+        recorded = ""
+    if recorded != str(owner_pid):  # read as written: the pid is dead now, so _owner_pid says None
+        return
+    leftovers = [transport.pid_path(sock_path), transport.lock_path(sock_path)]
+    if not transport.IS_WINDOWS:
+        leftovers.insert(0, sock_path)  # a named pipe goes with its process
+    for path in leftovers:
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass  # already gone is the state we want
+
+
+def _finish_close(owner_pid, watched, *, answered: bool, reason: str, payload: str = "",
+                  sock_path=None):
     """Verify a whole-browser close actually ended every process it owned.
 
     A process still running after the daemon should have gone is stopped here,
@@ -290,6 +325,7 @@ def _finish_close(owner_pid, watched, *, answered: bool, reason: str, payload: s
     if not left and answered:
         return 0, payload
     if not left:
+        _remove_leftovers(sock_path, owner_pid)
         return 1, f"Browser close failed: {reason}"
     names = ", ".join(sorted({str(p) for p in left}))
     for process in left:
@@ -299,6 +335,8 @@ def _finish_close(owner_pid, watched, *, answered: bool, reason: str, payload: s
         _stop(process, hard=True)
     alive = _wait_gone(alive, 5)
     what = "did not answer" if not answered else "answered but left processes running"
+    if not alive:
+        _remove_leftovers(sock_path, owner_pid)
     if alive:
         return 1, (f"Browser close {what}; {len(alive)} process(es) survived SIGKILL: "
                    f"{', '.join(sorted({str(p) for p in alive}))}")
@@ -710,7 +748,18 @@ def _request_with_identity(
                 if _owner_alive(sock_path):
                     return 0, "Browser daemon: running, busy at connection capacity — try again shortly"
                 return 0, "Browser daemon: not running — the next page command starts one"
-            verb = line.split()[:1]
+            words = line.split()
+            if (target is None and words[:2] in (["tab", "ls"], ["tab", "list"], ["tab", "close"])
+                    and not _owner_alive(sock_path)):
+                # 1.8.8b11: `tab ls` with nothing running started a headed
+                # daemon to list no tabs, and the `--headless` command after it
+                # was then ignored with a note. No daemon means no tabs.
+                if words[1] == "close":
+                    return 0, "No browser is open — nothing to close."
+                if "--json" in words:
+                    return 0, "[]"
+                return 0, "No tabs: no browser is open. Next: co browser go_to <url>"
+            verb = words[:1]
             if target is None and verb and verb[0] in READ_VERBS and not _owner_alive(sock_path):
                 # With no daemon there is no browser, and the answer is the one
                 # the daemon would give. Starting a daemon to give it also
@@ -760,7 +809,8 @@ def _request_with_identity(
             owner_pid = _owner_pid(sock_path)
             watched = _process_tree(None if owner_pid == os.getpid() else owner_pid)
             if watched:
-                return _finish_close(owner_pid, watched, answered=False, reason=str(exc))
+                return _finish_close(owner_pid, watched, answered=False, reason=str(exc),
+                                     sock_path=sock_path)
         return 1, str(exc)
     except RuntimeError as exc:
         # Setup failures (authkey mismatch/corruption, daemon didn't start) must exit
@@ -784,12 +834,19 @@ def _request_with_identity(
         else:
             conn.sendall(encoded)
 
+    sent_at = time.monotonic()
     try:
         if transport.IS_WINDOWS:
             conn.send_bytes(request)
         else:
             conn.sendall(request)
-        first = receive_frame()
+        if (not transport.IS_WINDOWS and hasattr(conn, "settimeout")
+                and line.split()[:1] and line.split()[0] in READ_VERBS):
+            first = _answer_while_alive(
+                receive_frame, conn, reply_deadline,
+                alive=lambda: _daemon_answers_status(caller, account, target))
+        else:
+            first = receive_frame()
         if first.WhichOneof("frame") == "failure":
             return 1, first.failure.message
         if first.WhichOneof("frame") != "result":
@@ -847,11 +904,12 @@ def _request_with_identity(
     except (EOFError, OSError, ProtocolError, ArtifactTransferError) as exc:
         if closing and watched:
             return _finish_close(owner_pid, watched, answered=False,
-                                 reason=f"no answer within {CLOSE_DEADLINE}s ({exc})")
+                                 reason=f"no answer within {CLOSE_DEADLINE}s ({exc})",
+                                 sock_path=sock_path)
         if isinstance(exc, TimeoutError):  # socket.timeout is TimeoutError since 3.10
-            wait = CLOSE_DEADLINE if closing else reply_deadline
+            waited = time.monotonic() - sent_at  # a read gives up early when status does
             verb = " ".join(request_frame.command.argv[:2 if line.startswith("tab ") else 1])
-            return 1, _not_answering(sock_path, f"answer `{verb}` within {wait:g}s")
+            return 1, _not_answering(sock_path, f"answer `{verb}` within {waited:.0f}s")
         return 1, (
             "browser daemon closed or rejected the OIP stream — "
             f"restart it and retry ({exc})"
@@ -861,7 +919,7 @@ def _request_with_identity(
 
     if closing and watched:
         return _finish_close(owner_pid, watched, answered=code == 0, reason=payload,
-                             payload=payload)
+                             payload=payload, sock_path=sock_path)
     if code == 0:
         if owner_pid is not None and not _wait_for_pid_exit(owner_pid):
             return 1, (
@@ -894,6 +952,27 @@ def _request_with_identity(
             )
 
     return code, payload
+
+
+def _answer_while_alive(receive, conn, deadline: float, *, alive):
+    """The first frame of a read verb's answer, waited for in LIVENESS_WINDOW
+    slices; between slices `alive()` must say the daemon still answers, or the
+    wait ends with the TimeoutError a frozen daemon deserves."""
+    end = time.monotonic() + deadline
+    while True:
+        conn.settimeout(max(0.01, min(LIVENESS_WINDOW, end - time.monotonic())))
+        try:
+            return receive()
+        except TimeoutError:
+            if time.monotonic() >= end or not alive():
+                raise
+        finally:
+            conn.settimeout(deadline)
+
+
+def _daemon_answers_status(caller: str, account: str, target) -> bool:
+    code, payload = _request_with_identity("status", caller=caller, account=account, target=target)
+    return code == 0 and payload.startswith("Browser")
 
 
 def _request(
