@@ -261,11 +261,11 @@ def deploy(
 
 
 @app.command()
-def auth(service: Optional[str] = typer.Argument(None, help="Service: google, microsoft, feishu, lark"),
+def auth(service: Optional[str] = typer.Argument(None, help="login, status, logout, or a service: google, microsoft, feishu, lark"),
          scopes: Optional[str] = typer.Option(None, "--scopes", help="Google: comma-separated limited scopes. Default: Gmail, Calendar, Drive and YouTube."),
          app_id: Optional[str] = typer.Option(None, "--app-id", metavar="cli_…",
                                               help="Feishu/Lark: authorize an application you already have, keeping its groups and permissions")):
-    """Authenticate with OpenOnion."""
+    """Sign in to OpenOnion (login, status, logout) or connect a service."""
     if scopes is not None and service != "google":
         print("--scopes is only supported for Google. Next: co auth google --help")
         raise typer.Exit(2)
@@ -281,9 +281,24 @@ def auth(service: Optional[str] = typer.Argument(None, help="Service: google, mi
     elif service in ("feishu", "lark"):
         from .commands.feishu_auth import handle_feishu_auth
         handle_feishu_auth(brand=service, app_id=app_id)
-    else:
+    elif service == "status":
+        from .commands.auth_commands import handle_auth_status
+        handle_auth_status()
+    elif service == "logout":
+        from .commands.auth_commands import handle_auth_logout
+        handle_auth_logout()
+    elif service in (None, "login"):
         from .commands.auth_commands import handle_auth
         handle_auth()
+    else:
+        # Any other word used to fall through to OpenOnion sign-in, so
+        # `co auth status` minted a keypair and `co auth logout` logged you in.
+        # A word we do not know must not do the one thing that writes secrets.
+        from .commands.command_tips import print_tip
+        print(f"Unknown auth target: {service}. Use one of: login, status, logout, "
+              "google, microsoft, feishu, lark.")
+        print_tip("Next: co auth status")
+        raise typer.Exit(2)
 
 
 @app.command()

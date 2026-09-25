@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [sys, time, yaml, requests, pathlib, rich.console, rich.progress, rich.panel, address] | imported by [cli/main.py via handle_auth(), cli/commands/init.py, cli/commands/create.py] | calls the configured backend /api/v1/auth | tested by [no direct test file]
   Data flow: receives co_dir: Path from caller → address.load(co_dir) reads Ed25519 keypair from .co/keys/ → creates auth message with timestamp → address.sign() creates signature → POST to /api/v1/auth with {public_key, message, signature, timestamp} → backend verifies signature → receives JWT token → saves OPENONION_API_KEY to the selected env file (global default) → displays balance and email status → returns success bool
   State/Effects: atomically modifies the selected env file (OPENONION_API_KEY and AGENT_EMAIL) | makes network POST requests to the configured backend | chmod 0o600 on .env files (Unix/Mac) | writes to stdout via rich.Console with progress spinner | updates ~/.co/keys.env with IS_EMAIL_ACTIVE
-  Integration: exposes handle_auth() for CLI and authenticate(co_dir, save_to_project) for programmatic use | called by init.py and create.py during project setup | relies on address module for Ed25519 keypair operations | uses requests for HTTP calls | displays Rich progress spinner during network call | backend creates account on first auth (no separate registration)
+  Integration: exposes handle_auth() (co auth, co auth login), handle_auth_status() (read-only, no network, no writes), handle_auth_logout() (removes only OPENONION_API_KEY) for CLI and authenticate(co_dir, save_to_project) for programmatic use | called by init.py and create.py during project setup | relies on address module for Ed25519 keypair operations | uses requests for HTTP calls | displays Rich progress spinner during network call | backend creates account on first auth (no separate registration)
   Performance: network call to backend (2-5s) | signature generation is fast (<10ms) | file I/O for .env and keys.env | retries on network errors (up to 3 attempts with exponential backoff)
   Errors: fails if ~/.co/keys/ missing (no keypair) | fails if backend unreachable (network error) | fails if signature invalid (backend 401) | fails if timestamp expired (5min window) | prints error messages to console and returns False | backend 500 errors bubble up with error details
 """
@@ -138,6 +138,88 @@ def handle_auth():
         console.print("Authentication did not complete. Next: co auth")
         raise typer.Exit(1)
     console.print("Next: co status")
+
+
+_OAUTH_STATUS_TEXT = {
+    "connected": "connected",
+    "missing": "missing",
+    "expired": "expired",
+    "refresh available": "refresh available",
+    "invalid expiry": "invalid expiry",
+    "incomplete (tokens missing)": "incomplete (tokens missing)",
+    "incomplete (scopes missing)": "incomplete (scopes missing)",
+}
+
+
+def handle_auth_status():
+    """Report sign-in state without signing in, minting a key, or calling the network.
+
+    Before this existed, `co auth status` fell through to handle_auth(), so on a
+    fresh machine the command people run to *look* created an identity and an
+    account. Everything here is read from files and the process environment;
+    balance and deployments need a signed request, so they stay with co status.
+    """
+    from ...credentials import account_in_token
+    from ...project import project_identity
+    from .command_tips import print_tip
+    from .status_commands import OAUTH_CONNECTIONS, _credential_rows, _credential_sources, _oauth_rows
+
+    identity = project_identity()
+    token_row = next(row for row in _credential_rows() if row["credential"] == "OPENONION_API_KEY")
+    has_token = token_row["status"] != "missing"
+    print(f"Identity: {identity['address'] if identity else 'none on this machine'}")
+    print(f"OpenOnion token: {'present' if has_token else 'missing'}"
+          + (f" ({token_row['source']})" if has_token else ""))
+    if identity and has_token:
+        token = next(values["OPENONION_API_KEY"] for _source, values in _credential_sources()
+                     if values.get("OPENONION_API_KEY"))
+        claimed = account_in_token(token)
+        if claimed and claimed.casefold() != identity["address"].casefold():
+            print(f"! The token is for {claimed}, not this identity; co auth login replaces it.")
+    # Every word printed here is one of these literals, chosen by the row's
+    # state: this command's point is that it only looks, and nothing read from
+    # a credential file is echoed back — `co status` shows where each came from.
+    states = {row["provider"]: row["status"] for row in _oauth_rows()}
+    for provider, _prefix, _action in OAUTH_CONNECTIONS:
+        label = next((text for status, text in _OAUTH_STATUS_TEXT.items()
+                      if states.get(provider) == status), "unknown")
+        print(f"{provider}: {label}")
+    chat_apps = {}
+    for _source, values in _credential_sources(supported_names={"FEISHU_APP_ID", "LARK_APP_ID"}):
+        chat_apps = {**values, **chat_apps}
+    for name, label in (("FEISHU_APP_ID", "Feishu app"), ("LARK_APP_ID", "Lark app")):
+        print(f"{label}: {'configured' if chat_apps.get(name) else 'missing'}")
+    if not (identity and has_token):
+        print("Not signed in to OpenOnion.")
+        print_tip("Next: co auth login")
+    else:
+        print_tip("Next: co status (balance and deployments; makes a signed request)")
+
+
+def handle_auth_logout():
+    """Forget the OpenOnion token; never the keypair, which is the account itself.
+
+    Deleting agent.key would lose the address and its balance for good unless
+    the recovery phrase is kept, so logout only removes the bearer token. The
+    next `co auth login` signs with the same key and gets the same account.
+    """
+    from ...environment import display_path, process_environment, read_env_file, selected_env_file
+    from ...env_file import upsert_env as remove_from_env
+    from .command_tips import print_tip
+
+    path = selected_env_file()
+    if "OPENONION_API_KEY" not in read_env_file(path):
+        print(f"Not signed in: no OpenOnion token in {display_path(path)}. Nothing changed.")
+        print_tip("Next: co auth status")
+        return
+    typer.confirm(f"Remove the OpenOnion token from {display_path(path)}? "
+                  "Your keypair stays, so co auth login restores the same account", abort=True)
+    remove_from_env(path, {}, remove={"OPENONION_API_KEY"})
+    print(f"✓ Removed OPENONION_API_KEY from {display_path(path)}. Keypair kept.")
+    if "OPENONION_API_KEY" in process_environment():
+        print("! Your shell still exports OPENONION_API_KEY, and process values win. "
+              "Run: unset OPENONION_API_KEY")
+    print_tip("Next: co auth login")
 
 
 def _save_google_to_env(env_file: Path, credentials: dict) -> None:
