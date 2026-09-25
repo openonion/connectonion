@@ -265,7 +265,8 @@ def test_handle_ai_reports_a_provider_failure_without_a_traceback(monkeypatch, c
     output = capsys.readouterr().out
     assert caught.value.exit_code == 1
     assert "Model request failed" in output
-    assert "service-side configuration" in output
+    # A 401 that oo-api did not label as upstream is the caller's own key (#1728).
+    assert "Your OpenOnion API key was rejected" in output
     assert "raw upstream implementation detail" not in output
 
 

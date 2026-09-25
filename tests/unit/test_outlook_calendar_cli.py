@@ -126,7 +126,7 @@ def test_offsets_normalize_to_utc_and_naive_means_utc(given, expected, monkeypat
 def test_teams_without_a_link_is_partial_and_never_repeats_creation(monkeypatch, meeting):
     from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
     client=object.__new__(MicrosoftCalendar)
-    client._request=MagicMock(return_value={'id':'event-created','onlineMeeting':meeting})
+    client._request,calls=fake_graph(['teamsForBusiness'],{'id':'event-created','onlineMeeting':meeting})
     monkeypatch.setattr(commands,'_client',lambda:client)
     args=next(args for args,method in WRITES if method=='create_teams_meeting')
     result=CliRunner().invoke(app,['outlook','calendar',*args,'--yes'])
@@ -134,19 +134,19 @@ def test_teams_without_a_link_is_partial_and_never_repeats_creation(monkeypatch,
     assert 'Event created' in result.output and 'event-created' in result.output
     assert 'Teams meeting created:' not in result.output
     assert 'co outlook calendar read event-created' in result.output
-    client._request.assert_called_once()
+    assert [c for c in calls if c[0]=='POST'] == [('POST','/me/calendar/events')]
 
 
 def test_teams_success_requires_a_usable_link(monkeypatch):
     from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
     client=object.__new__(MicrosoftCalendar)
-    client._request=MagicMock(return_value={'id':'event-created','onlineMeeting':{'joinUrl':'https://teams.example.test/join'}})
+    client._request,calls=fake_graph(['teamsForBusiness'],{'id':'event-created','onlineMeeting':{'joinUrl':'https://teams.example.test/join'}})
     monkeypatch.setattr(commands,'_client',lambda:client)
     args=next(args for args,method in WRITES if method=='create_teams_meeting')
     result=CliRunner().invoke(app,['outlook','calendar',*args,'--yes'])
     assert result.exit_code==0,result.output
     assert 'https://teams.example.test/join' in result.output
-    client._request.assert_called_once()
+    assert calls == [('GET','/me/calendar'),('POST','/me/calendar/events')]
 
 
 def test_read_recovers_the_existing_events_join_url(monkeypatch):
@@ -160,3 +160,37 @@ def test_read_recovers_the_existing_events_join_url(monkeypatch):
     assert 'https://teams.example.test/existing' in result.output
     assert client._request.call_args.args[0]=='GET'
     assert 'onlineMeeting' in client._request.call_args.kwargs['params']['$select'].split(',')
+
+
+def fake_graph(providers, created=None):
+    """A Graph that answers the calendar read and records every call (#1719).
+
+    Personal Microsoft accounts report allowedOnlineMeetingProviders
+    ['unknown']; Graph then silently drops isOnlineMeeting, creates the event
+    anyway and Outlook mails every attendee an invitation with no link.
+    """
+    calls = []
+
+    def request(method, endpoint, **kwargs):
+        calls.append((method, endpoint))
+        if method == 'GET' and endpoint == '/me/calendar':
+            return {'allowedOnlineMeetingProviders': providers,
+                    'defaultOnlineMeetingProvider': providers[0] if providers else 'unknown'}
+        return created or {'id': 'event-created', 'isOnlineMeeting': False,
+                           'onlineMeetingProvider': 'unknown', 'onlineMeetingUrl': None}
+    return request, calls
+
+
+@pytest.mark.parametrize('providers', [['unknown'], [], ['skypeForConsumer']])
+def test_teams_on_a_personal_account_refuses_before_creating_or_inviting(monkeypatch, providers):
+    from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
+    client = object.__new__(MicrosoftCalendar)
+    client._request, calls = fake_graph(providers)
+    monkeypatch.setattr(commands, '_client', lambda: client)
+    args = next(args for args, method in WRITES if method == 'create_teams_meeting')
+    result = CliRunner().invoke(app, ['outlook', 'calendar', *args, '--yes'])
+    output = plain(result.output)
+    assert result.exit_code == 1, output
+    assert [c for c in calls if c[0] != 'GET'] == [], 'an event was created, so invitations went out'
+    assert "can't create Teams meetings" in output and 'No event was created' in output
+    assert 'Event created' not in output and 'Teams meeting created:' not in output

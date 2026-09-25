@@ -254,3 +254,35 @@ class NegativeIds(typer.core.TyperCommand):
 
 # -100123, -100123.55: a Telegram chat or message id, never an option.
 _NEGATIVE_NUMBER = re.compile(r"^-\d[\d.]*$")
+
+
+# Groups whose help is a reviewed page printed word for word, with its own
+# `Back:` lines and its own contract test (#1656).
+_OWN_PAGES = {"wiki"}
+
+
+def name_the_way_back(app: typer.Typer, path: str = "co") -> None:
+    """End every help page with `Back: <parent> --help` (#1643, #1721).
+
+    An agent that reached a leaf by guessing, or from a tip, needs one line
+    that says where the rest of the CLI is. Written once from the tree rather
+    than into 267 docstrings, so a command added later gets it too. A page
+    that already names its way back is left alone.
+    """
+    back = f"Back: {path} --help"
+
+    def with_back(epilog):
+        text = epilog if isinstance(epilog, str) else ""
+        if "Back:" in text:
+            return text
+        return f"{text}\n\n{back}" if text else back
+
+    for command in app.registered_commands:
+        command.epilog = with_back(command.epilog)
+    for group in app.registered_groups:
+        if group.name in _OWN_PAGES:
+            continue
+        info = group.typer_instance.info
+        current = group.epilog if isinstance(group.epilog, str) else info.epilog
+        group.epilog = with_back(current)
+        name_the_way_back(group.typer_instance, f"{path} {group.name}")

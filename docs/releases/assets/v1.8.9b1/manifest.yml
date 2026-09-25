@@ -1,0 +1,9 @@
+version: v1.8.9b1
+images:
+  - file: upgraded-owner-page.png
+    alt: "Terminal output of co wiki show on a synthetic upgraded notebook: the owner's old one-mail correspondent page rebuilt as the owner's page"
+    caption: "A notebook first mapped by an older version had the owner's address as a one-mail correspondent page; after 1.8.9b1's map the same page is titled with the owner's name and carries who they write to most and where they work (PR 1716)."
+    scenario: "python scripts/capture_189b1_release_cli.py: a synthetic notebook seeded as an older map left it, then the released build_map and co wiki show"
+    viewport: "terminal, 96 columns"
+    commit: 72bdbeca
+    source_run: "scripts/capture_189b1_release_cli.py; real-notebook evidence in PR 1716"

@@ -152,6 +152,9 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     if key:
         provider, key_type = detect_api_provider(key)
         detected_keys[provider] = key
+        # `provider` is reassigned below for custom-template generation, so
+        # keep the flag key's own provider for writing it into .env.
+        provider_of_key = provider
 
     # Authenticate only if OPENONION_API_KEY not already in global keys.env
     from ...environment import global_config_dir
@@ -414,6 +417,19 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
             # Add blank line after comments if we're adding any
             lines_to_add.append("\n")
             env_content = "".join(lines_to_add) + env_content
+
+        # A key typed with --key is the one thing the user asked this project
+        # to use, and copying keys.env alone dropped it — silently, on every
+        # machine that had run `co auth` (#1341). It replaces a global value
+        # of the same name rather than sitting beside it as a duplicate.
+        if key:
+            env_var = PROVIDER_TO_ENV[provider_of_key]
+            kept = [line for line in env_content.splitlines(keepends=True)
+                    if line.split("=", 1)[0].strip() != env_var]
+            env_content = "".join(kept)
+            if env_content and not env_content.endswith("\n"):
+                env_content += "\n"
+            env_content += f"{env_var}={key}\n"
     else:
         # Fallback - create minimal .env with detected keys
         env_lines = [

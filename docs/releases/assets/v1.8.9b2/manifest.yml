@@ -1,0 +1,9 @@
+version: v1.8.9b2
+images:
+  - file: co-trust-add-help.png
+    alt: "Terminal output of co trust add --help: purpose, what it changes, arguments, options, an example and the way back"
+    caption: "co trust add --help under the #1643 contract: it says the command lets an address call your agent and writes the trust list, gives two examples, and names co trust --help as the way back."
+    scenario: "python scripts/capture_189b2_release_cli.py: the released co trust add --help, unedited"
+    viewport: "terminal, 96 columns"
+    commit: 574a2354
+    source_run: "scripts/capture_189b2_release_cli.py"

@@ -239,7 +239,10 @@ class TestMicrosoftCalendarCreateOperations:
             'subject': 'Teams Sync',
             'onlineMeetingUrl': 'https://teams.microsoft.com/l/meetup-join/...'
         }
-        mock_httpx.request.return_value = mock_response
+        # A work account's calendar can host Teams; the POST follows the check.
+        calendar_response = MagicMock(status_code=200)
+        calendar_response.json.return_value = {'allowedOnlineMeetingProviders': ['teamsForBusiness']}
+        mock_httpx.request.side_effect = [calendar_response, mock_response]
 
         with patch.dict(os.environ, {
             "MICROSOFT_SCOPES": "Calendars.Read,Calendars.ReadWrite",

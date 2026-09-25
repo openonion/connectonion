@@ -10,7 +10,11 @@ from rich.console import Console
 from .google_errors import google_errors
 from .command_tips import print_tip
 
-gcalendar_app = typer.Typer(help="Google Calendar events and Meet links. Bare co gcalendar lists events.", no_args_is_help=False)
+gcalendar_app = typer.Typer(
+    help="Google Calendar events and Meet links. Bare co gcalendar lists events (Read-only); "
+         "create, meet, update and delete only preview until --yes.",
+    epilog="Example:  co gcalendar list --days 14  |  co gcalendar read <event-id>",
+    no_args_is_help=False)
 
 
 def _client():
@@ -48,63 +52,79 @@ def calendar(ctx: typer.Context):
         _run("list_events")
 
 
-@gcalendar_app.command("list")
+@gcalendar_app.command("list", epilog="Example:  co gcalendar list --days 14 -n 50")
 def list_events(days: int = typer.Option(7, "--days", min=1),
                 last: int = typer.Option(20, "--last", "-n", min=1, max=250)):
-    """List primary-calendar events with stable event IDs (not row numbers)."""
+    """List primary-calendar events with stable event IDs (not row numbers). Read-only."""
     _run("list_events", days_ahead=days, max_results=last)
 
 
-@gcalendar_app.command("today")
+@gcalendar_app.command("today", epilog="Example:  co gcalendar today")
 def today():
-    """Read today's events."""
+    """Read today's events. Read-only."""
     _run("get_today_events")
 
 
-@gcalendar_app.command("read")
+@gcalendar_app.command("read", epilog="Example:  co gcalendar read <event-id>")
 def read(event_id: str = typer.Argument(..., help="Exact event ID from co gcalendar list")):
-    """Read one event by ID."""
+    """Read one event by ID. Read-only."""
     _run("get_event", event_id)
 
 
-@gcalendar_app.command("meetings")
+@gcalendar_app.command("meetings", epilog="Example:  co gcalendar meetings --days 3")
 def meetings(days: int = typer.Option(7, "--days", min=1)):
-    """Read upcoming events that have attendees."""
+    """Read upcoming events that have attendees. Read-only."""
     _run("get_upcoming_meetings", days_ahead=days)
 
 
-@gcalendar_app.command("free")
+@gcalendar_app.command("free", epilog="Example:  co gcalendar free 2026-10-01 --minutes 30")
 def free(date: str = typer.Argument(..., help="YYYY-MM-DD; business hours in UTC"),
          minutes: int = typer.Option(60, "--minutes", min=1, max=480)):
-    """Find primary-calendar free slots between 09:00 and 17:00 UTC."""
+    """Find primary-calendar free slots between 09:00 and 17:00 UTC. Read-only."""
     _run("find_free_slots", date, duration_minutes=minutes)
 
 
-@gcalendar_app.command("create")
+@gcalendar_app.command("create", epilog=(
+    "Example:  co gcalendar create \"Team sync\" 2026-10-01T10:00:00+10:00 "
+    "2026-10-01T10:30:00+10:00 --attendees you@example.com --yes"))
 def create(title: str, start: str, end: str,
            description: Optional[str] = None, attendees: Optional[str] = None,
            location: Optional[str] = None, yes: bool = typer.Option(False, "--yes", help="Create this event; default is a local preview")):
-    """Create an event. Use ISO timestamps with offsets; naive times mean UTC."""
+    """Create an event. Creates it only with --yes; otherwise previews.
+
+    Use ISO timestamps with offsets; naive times mean UTC. With --attendees,
+    Google emails each attendee an invitation.
+    """
     values = dict(title=title, start_time=start, end_time=end, description=description, attendees=attendees, location=location)
     if _confirm(yes, "create", values):
         _run("create_event", **values)
 
 
-@gcalendar_app.command("meet")
+@gcalendar_app.command("meet", epilog=(
+    "Example:  co gcalendar meet \"Intro call\" 2026-10-01T15:00:00+10:00 "
+    "2026-10-01T15:30:00+10:00 --attendees you@example.com --yes"))
 def meet(title: str, start: str, end: str, attendees: str = typer.Option(..., "--attendees", help="Comma-separated emails"),
          description: Optional[str] = None, yes: bool = typer.Option(False, "--yes", help="Create event and Meet conference; default previews")):
-    """Create a Calendar event with a Google Meet conference request."""
+    """Create a Calendar event with a Google Meet conference request. Creates it only with --yes; otherwise previews.
+
+    Google emails each attendee an invitation.
+    """
     values = dict(title=title, start_time=start, end_time=end, attendees=attendees, description=description)
     if _confirm(yes, "meet", values):
         _run("create_meet", **values)
 
 
-@gcalendar_app.command("update")
+@gcalendar_app.command("update", epilog=(
+    "Example:  co gcalendar update <event-id> --title \"Team sync (moved)\" "
+    "--start 2026-10-01T11:00:00+10:00 --end 2026-10-01T11:30:00+10:00 --yes"))
 def update(event_id: str, title: Optional[str] = None, start: Optional[str] = None,
            end: Optional[str] = None, description: Optional[str] = None,
            attendees: Optional[str] = None, location: Optional[str] = None,
            yes: bool = typer.Option(False, "--yes", help="Apply fields to this exact event; default previews")):
-    """Update supplied nonempty fields; other fields are preserved."""
+    """Update supplied nonempty fields; other fields are preserved. Changes the event only with --yes; otherwise previews.
+
+    Google emails the event's attendees about the change.
+    """
     values = dict(title=title, start_time=start, end_time=end, description=description, attendees=attendees, location=location)
     if not any(values.values()):
         print_tip("No changes supplied. Next: co gcalendar update --help")
@@ -113,8 +133,11 @@ def update(event_id: str, title: Optional[str] = None, start: Optional[str] = No
         _run("update_event", event_id, **values)
 
 
-@gcalendar_app.command("delete")
+@gcalendar_app.command("delete", epilog="Example:  co gcalendar delete <event-id> --yes")
 def delete(event_id: str, yes: bool = typer.Option(False, "--yes", help="Delete the exact event; default previews")):
-    """Delete an event by stable ID, never by a listing number."""
+    """Delete an event by stable ID, never by a listing number. Deletes it only with --yes; otherwise previews.
+
+    Google emails the event's attendees a cancellation.
+    """
     if _confirm(yes, "delete", dict(event_id=event_id)):
         _run("delete_event", event_id)

@@ -40,8 +40,16 @@ Write content to a file with diff display and user approval.
 result = writer.write("hello.py", "print('hello')")
 # Shows colorized diff
 # Asks user to choose: 1=Yes, 2=Yes to all, 3=No + feedback
-# Returns: "Wrote 15 bytes to hello.py" or feedback message
+# Returns: "Wrote 14 bytes to '/abs/hello.py' (verified on disk, mtime ...)"
 ```
+
+Only a write whose bytes are on disk returns a plain string. Everything else
+comes back as a `ToolFailure` (✗ in the log, `status: error` in the trace), so
+it can never be mistaken for a completed write:
+
+- a rejection, or no answer because the client went away
+- a plan-mode preview (`[Plan mode] Not written. Would write ...`)
+- a file that, read back after writing, does not hold what was asked
 
 ### diff(path, content)
 
@@ -123,7 +131,7 @@ When user chooses option 3 (reject):
 
 1. User is prompted: "What should the agent do instead?"
 2. User types feedback, e.g., "use snake_case for function names"
-3. Agent receives: `"User rejected changes to hello.py. Feedback: use snake_case for function names"`
+3. Agent receives: `"User rejected changes to hello.py. Not written. Feedback: use snake_case for function names"`
 4. Agent can retry with the feedback
 
 ## Common Use Cases

@@ -375,7 +375,29 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.8
+## Current Version: 1.8.9b2
+
+1.8.9b2 is the second preview of the 1.8.9 fix line (#1722). Every `co`
+command outside `co wiki` now has help an agent can act on (#1721): an
+example, what the command changes, and the way back to its parent, enforced
+for every page by `tests/unit/test_cli_help_contract.py` (#1657). A
+fresh-agent test finds 13 of 13 single-step goals from help alone. Stable is
+1.8.8.
+
+- 1.8.9b2 (help contract for 264 commands: examples, what each changes, a generated Back line; CI gate with no exceptions; discovery fixes for co status, co trust, co env set, co skills and co sub; co auth feishu/lark says it creates a Feishu application; co keys --write names ~/.co/ssh/; opt-in fresh-agent discovery test.)
+
+Earlier in this line:
+
+
+1.8.9 is a fix line: many opt-in previews, each carrying the fixes that have
+landed, toward one 1.8.9 stable (tracking: #1722). 1.8.9b1 is its first
+preview: an upgraded Wiki notebook's owner page is rebuilt by the map, and a
+malformed review suggestion no longer fails an update (#1716). Stable is 1.8.8.
+
+- 1.8.9b1 (fix line opens; upgraded owner page rebuilt from the map when nobody has investigated it; a malformed review proposal is dropped with its reason instead of failing the maintenance batch; Development Status Beta.)
+
+Earlier in this line:
+
 
 1.8.8 is the stable release of the 1.8.8 line: 1.8.8b12 plus #1686, #1693, #1701
 and #1718. The Personal Wiki and the other experimental commands ship
