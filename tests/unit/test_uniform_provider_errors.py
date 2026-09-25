@@ -33,9 +33,10 @@ def _anthropic_error(cls, code):
 
 
 def _oo_api_401(detail):
-    """A 401 exactly as oo-api sends it: FastAPI's {"detail": ...} body."""
+    """A 401 exactly as oo-api sends it. Its HTTPException handler (main.py,
+    checked at deployed tag v0.1.19) returns {"detail": ..., "request_id": ...}."""
     request = httpx.Request("POST", "https://oo.openonion.ai/v1/chat/completions")
-    body = {"detail": detail}
+    body = {"detail": detail, "request_id": "req-test"}
     response = httpx.Response(401, request=request, json=body)
     return openai.AuthenticationError(f"Error code: 401 - {body}", response=response, body=body)
 
@@ -84,12 +85,21 @@ class TestAuthFailsTheSameWayEverywhere:
         with pytest.raises(LLMAuthenticationError):
             llm.complete([{"role": "user", "content": "hi"}])
 
-    def test_managed_upstream_credential_failure_is_a_service_error(self):
+    # Every upstream 401 path in oo-api llm/service.py at deployed tag v0.1.19:
+    # forward_to_openai, forward_to_gemini, forward_to_anthropic, and the
+    # LLM_PROXY_URL pass-through in route_completion.
+    @pytest.mark.parametrize("detail", [
+        'OpenAI API error: 401 - {"error": {"message": "Incorrect API key"}}',
+        'Gemini API error: 401 - {"error": {"code": 401}}',
+        'Anthropic API error: 401 - {"type": "error", "error": {"type": "authentication_error"}}',
+        'Upstream proxy error 401: {"error": "invalid key"}',
+    ])
+    def test_managed_upstream_credential_failure_is_a_service_error(self, detail):
         """oo-api forwards an upstream provider's 401 with its own label
         ("Anthropic API error: 401 - ..."). That really is OpenOnion's key,
         so the user can do nothing but wait or report it."""
         llm = create_llm("co/claude-sonnet-4", api_key="caller-token")
-        original = _oo_api_401("Anthropic API error: 401 - invalid x-api-key")
+        original = _oo_api_401(detail)
         _make_fail(llm, original)
 
         with pytest.raises(LLMAuthenticationError) as caught:
@@ -120,8 +130,18 @@ class TestAManagedKeySaysWhoseItIs:
             llm_do("say hi", api_key="bad-key")
         return caught.value
 
-    def test_a_rejected_caller_key_names_the_callers_fix(self, monkeypatch):
-        error = self._llm_do_fails_with(monkeypatch, _oo_api_401("Invalid token"))
+    # Every 401 detail require_auth (auth/routes.py, deployed tag v0.1.19) can
+    # send; a revoked token arrives as "Invalid token".
+    @pytest.mark.parametrize("detail", [
+        "Invalid token",
+        "Authorization header missing",
+        "Invalid authorization format. Use: Bearer {token}",
+        "Token expired. Authenticate again with /api/v1/auth",
+        "This account moved to 0xabc. This token was issued before the migration "
+        "and names the old address. Authenticate again with the key you migrated to.",
+    ])
+    def test_a_rejected_caller_key_names_the_callers_fix(self, monkeypatch, detail):
+        error = self._llm_do_fails_with(monkeypatch, _oo_api_401(detail))
 
         message = str(error)
         assert "service-side" not in message

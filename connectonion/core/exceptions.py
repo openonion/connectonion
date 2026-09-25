@@ -30,7 +30,8 @@ class LLMProviderError(Exception):
 # status. Its auth dependency rejects the caller's own token with a bare detail
 # ("Invalid token", "Token expired. ..."); a 401 from the upstream provider is
 # passed through with a label naming it ("Anthropic API error: 401 - ...",
-# "Upstream proxy error 401: ..."). Every co/ 401 used to be reported as the
+# "Upstream proxy error 401: ..."). Both sets of wording were checked against
+# the deployed oo-api tag v0.1.19. Every co/ 401 used to be reported as the
 # second, so a mistyped key sent people to wait or open a support ticket (#1728).
 _UPSTREAM_LABELS = ("API error", "Upstream proxy error")
 
