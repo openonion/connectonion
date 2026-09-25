@@ -507,17 +507,28 @@ The tool is checked against the host's `.co/host.yaml` permission whitelist (the
 #### ASK_USER_RESPONSE
 
 ```json
-{ "type": "ASK_USER_RESPONSE", "answer": "Python 3" }
+{ "type": "ASK_USER_RESPONSE", "request_id": "<id of the ask_user event>", "answer": "Python 3" }
 ```
 
 #### APPROVAL_RESPONSE
 
 ```json
-{ "type": "APPROVAL_RESPONSE", "approved": true, "scope": "once" }
+{ "type": "APPROVAL_RESPONSE", "request_id": "<id of the approval_needed event>", "approved": true, "scope": "once" }
 ```
 
-Approval responses are consumed once and are bound to the currently pending
-request.
+An answer names the request it answers: `request_id` is the `id` the Host
+stamped on the `approval_needed` or `ask_user` event. The Host delivers it only
+if that request is the one the agent is waiting on now, once. An answer naming
+any other request is dropped — never applied to the request that is pending —
+and that connection gets
+`{"type": "ERROR", "code": "STALE_ANSWER", "reason": "stale", "request_id": ...}`.
+This matters when one session is open on several devices: the device that did
+not answer first still shows a request that is over.
+
+An answer without `request_id` (clients before 1.8.8) is accepted only while
+this caller has the session open on a single connection. With two or more it
+is refused with `STALE_ANSWER` and `"reason": "request_id_required"`, because
+nothing says which request it meant.
 
 #### mode_change
 
