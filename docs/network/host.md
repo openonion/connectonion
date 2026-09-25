@@ -40,7 +40,7 @@ def create_agent():
 host(create_agent)
 ```
 
-**Output** (1.8.8b11, trimmed):
+**Output:**
 ```
  ◎    translator
       ────────────────────
