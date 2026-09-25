@@ -1,5 +1,7 @@
 # Discord CLI (`co discord`)
 
+> **Experimental.** `co discord` was tested against fakes, not yet a live bot. Edit, delete and react are not implemented and say so.
+
 Turn a Discord bot you own into a directory of files. Every message the bot
 can see becomes one line in a log and one file in a queue; anything that can
 read a file can answer it. The same verbs as [`co feishu`](feishu.md), against

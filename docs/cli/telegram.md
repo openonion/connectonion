@@ -1,5 +1,7 @@
 # Telegram CLI (`co telegram`)
 
+> **`send` is stable; `listen`, `receive`, `reply`, `done` and `consume` are experimental** — tested against fakes, not yet a live bot. Edit, delete and react are not implemented and say so.
+
 Send a plain-text Telegram message from the terminal or an agent using a bot
 you own, and receive what people send it as a directory of files. This calls Telegram directly: it does not use OpenOnion credits or an
 OpenOnion credential.
