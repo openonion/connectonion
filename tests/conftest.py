@@ -14,9 +14,11 @@ Policy fixtures (autouse, apply to every test):
 - _retire_legacy_browser_workers: legacy browser worker threads are retired after each test
 - _forget_seen_signatures: CONNECT replay memory is cleared between tests
 - _no_stray_project_above_the_test: a stray .co/ above cwd is a failure, not a wrong answer
+- _nothing_written_into_the_repos_own_project: a write under the repo's own .co/ fails the test
 
 Shared fixtures:
 - temp_dir, mock_llm, sample_tools, test_agent, test_files, relay_url
+- own_project: run the test from an empty tmp dir so the .co/ it writes is its own
 - default_backend_url: for tests about backend URL resolution itself
 
 Markers are auto-applied by folder in pytest_collection_modifyitems; see
@@ -479,3 +481,97 @@ def _no_stray_project_above_the_test(tmp_path_factory):
         f"deciding what the code under test reads. Remove it ({resolved / '.co'}) "
         f"or chdir somewhere isolated."
     )
+
+
+# ---- no test writes into the repository's own .co/ ---------------------------
+#
+# The suite runs from the repository root, so any code path that writes
+# `.co/...` relative to the working directory — an Agent's default log and
+# eval files, a host's session store, `co trust admin add` — wrote into the
+# checkout itself. Under `-n auto` every worker shares that one directory:
+# `.co/evals/hi.yaml` was written by several processes at once, and
+# `session_results.jsonl` was compacted by one worker while another read it,
+# the same kind of shared state behind #1653's flake. A full run left
+# admins.txt, contacts.txt, logs/, evals/, replay.sqlite3 and
+# session_results.jsonl in the repo, written by about ninety tests in
+# seventeen files.
+#
+# An audit hook sees every write in this process whoever makes it (Path,
+# open, os.open, sqlite3, os.replace), and it is per process, so under xdist
+# it blames exactly the test that did it rather than whichever test happened
+# to run next to it — which a before/after listing of the directory could not.
+_REPO_CO = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".co")
+_REPO_CO_REAL = os.path.realpath(_REPO_CO)
+_WRITE_FLAGS = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_TRUNC
+_repo_co_writes = None  # a list while a test runs; None between tests
+
+
+def _under_repo_co(path):
+    """The absolute path if it is inside the repo's .co/, else None."""
+    try:
+        text = os.path.abspath(os.fsdecode(path))
+    except (TypeError, ValueError):
+        return None  # a path-like that is not a path
+    if any(text == root or text.startswith(root + os.sep) for root in (_REPO_CO, _REPO_CO_REAL)):
+        return text
+    return None
+
+
+def _watch_repo_co(event, args):
+    if _repo_co_writes is None:
+        return
+    if event == "open":
+        path, mode, flags = args
+        if isinstance(flags, int):
+            if not flags & _WRITE_FLAGS:
+                return
+        elif not (isinstance(mode, str) and any(c in mode for c in "wax+")):
+            return
+    elif event in ("os.mkdir", "sqlite3.connect"):
+        path = args[0]
+    elif event in ("os.rename", "os.replace"):
+        path = args[1]
+    else:
+        return
+    if isinstance(path, (str, bytes, os.PathLike)):  # not a file descriptor
+        hit = _under_repo_co(path)
+        if hit:
+            _repo_co_writes.append(hit)
+
+
+sys.addaudithook(_watch_repo_co)
+
+
+@pytest.fixture
+def own_project(tmp_path, monkeypatch):
+    """Run the test from an empty tmp dir, so the `.co/` it writes is its own.
+
+    Apply it to a module with `pytestmark = pytest.mark.usefixtures("own_project")`.
+    """
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+@pytest.fixture(autouse=True)
+def _nothing_written_into_the_repos_own_project():
+    """A test that writes under the repository's .co/ fails, naming the paths.
+
+    The fix is to give the test a project of its own: `monkeypatch.chdir(tmp_path)`
+    before building the Agent or host, or `log=False` when it does not care
+    about logs.
+    """
+    global _repo_co_writes
+    _repo_co_writes = []
+    try:
+        yield
+        written = _repo_co_writes
+    finally:
+        _repo_co_writes = None
+    if written:
+        shown = sorted({".co" + path[len(_REPO_CO if path.startswith(_REPO_CO) else _REPO_CO_REAL):] for path in written})
+        pytest.fail(
+            "this test wrote into the repository's own .co/ "
+            f"({', '.join(shown[:6])}{', ...' if len(shown) > 6 else ''}). Every xdist worker "
+            "shares that directory, so it is state one test hands another. "
+            "monkeypatch.chdir(tmp_path) first, or pass log=False."
+        )

@@ -36,6 +36,10 @@ from connectonion.core.usage import TokenUsage
 # Import server module directly for internal functions
 from connectonion.network.host import server as host_module
 
+# Agents and hosts built here write .co/ under the working directory; each
+# test gets its own, not the repository's shared one (tests/conftest.py).
+pytestmark = pytest.mark.usefixtures("own_project")
+
 
 @pytest.fixture
 def mock_llm():
