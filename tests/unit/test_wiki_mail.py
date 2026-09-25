@@ -201,3 +201,29 @@ def test_a_correspondent_can_be_named_by_part_of_their_address():
     batch = collect_mail(subscription(), {}, 10, 100000, client, now=NOW, only="vern")
     assert references(batch) == ["outlook:m1"]
     assert collect_mail(subscription(), {}, 10, 100000, client, now=NOW, only="nobody").items == []
+
+
+class NewestFirstMail(FakeMail):
+    """Gmail's search returns the newest matches, so its cap keeps the recent end."""
+
+    def list_between(self, start, end, max_results):
+        rows = [m for m in self.messages if start <= m["date"] < end][-max_results:]
+        return [{k: m[k] for k in ("id", "from", "to", "subject", "date")} for m in rows]
+
+
+@pytest.mark.parametrize("client_class", [FakeMail, NewestFirstMail])
+def test_a_week_with_more_mail_than_one_listing_holds_loses_none_of_it(client_class):
+    """250 mails in one week against a 200-row listing: the 50 past the cap were
+    dropped for good, because the scan moved on to the next week regardless."""
+    messages = [mail(i, f"2026-09-02T{i // 60:02d}:{i % 60:02d}:00+00:00", sender=f"p{i}@example.com")
+                for i in range(250)]
+    batch = collect_mail(subscription(), {}, 1, 100000, client_class(messages), now=NOW)
+    queued = {row["id"] for rows in batch.progress["pending"].values() for row in rows}
+    queued |= {item["reference"].split(":", 1)[1] for item in batch.items}
+    assert queued == {f"m{i}" for i in range(250)}
+
+
+def test_a_second_more_crowded_than_one_listing_fails_loudly_rather_than_dropping_mail():
+    messages = [mail(i, "2026-09-02T09:00:00+00:00", sender=f"p{i}@example.com") for i in range(201)]
+    with pytest.raises(WikiError, match="more than 200"):
+        collect_mail(subscription(), {}, 1, 100000, FakeMail(messages), now=NOW)

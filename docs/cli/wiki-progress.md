@@ -59,7 +59,7 @@ are additional work, so this is not a claim that only two tasks remain.
 |---|---|---|
 | P0 | Enforce real provider budgets across init, investigate, extract, maintain and abstract | Shared meter/reservation before work; known and unknown usage distinguished; stop/resume behavior verified. Current attempt/input limits do not enforce 2% initial, 1% daily or $1 spending limits. |
 | P0 | Alternate incremental maintenance and unfinished investigations | Persist per-notebook progress, prevent concurrent writers, preserve retryable work on failure, and respect the shared budget. |
-| P1 | Complete source listing | Paginate beyond 200 messages per weekly investigation window and own-mail sent history; prove no loss with a busy-window fixture. |
+| P1 | Complete source listing | Sync's weekly listing now splits a full window (proved with a 250-mail week). Still open: investigation windows on clients without server-side search, and own-mail sent history. |
 | P1 | Connect Jira discovery/auth | Explicit source selection, successful authorized retrieval, visible partial/failure state. |
 | P1 | End-to-end initialization and daily lifecycle | Verify one authorized account through init, update, correction, scheduled continuation and stop; record elapsed time, usage and coverage. |
 | Release | Repair remaining gates and refresh acceptance | CI at the resulting commit, live Claude evidence if advertised, cost narrative, release metadata. |

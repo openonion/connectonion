@@ -265,8 +265,11 @@ The removed scoped wiki_* tools are no longer a filesystem guarantee.
 ## Source coverage and output
 
 Gmail/Outlook programmatic collection searches the requested date windows.
-The current listing adapter requests up to 200 messages per weekly window;
-a full-mailbox completeness claim requires closing that listing limitation.
+Sync lists each weekly window 200 messages at a time and splits any window
+that comes back full until every half fits, so a busy week is read whole; a
+single second holding more than 200 messages stops the scan with an error
+rather than skipping them. Investigating a person on a client without a
+server-side search still reads at most 200 messages per weekly window.
 Coding investigation now walks successive batches until the cursor stops,
 rather than stopping at 40 messages. It searches aliases and project paths;
 an owner identified by mailbox address receives their own typed session
