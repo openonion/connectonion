@@ -353,7 +353,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.8b8
+## Current Version: 1.8.8b9
+
+1.8.8b9 is an opt-in preview after 1.8.8b8. It gives the scheduler a command
+and a manual: `co schedule` lists, checks, runs, pauses and resumes the
+entries in `.co/schedule.yaml` (#1685), and `docs/cli/schedule.md` documents
+the file for the first time (#1680). One slow or hung entry no longer stops
+the others (#1681), and a schedule written into a running agent starts
+without a restart (#1682). Stable remains 1.8.7.
+
+- 1.8.8b9 (co schedule list/check/run/pause/resume writing only schedule-state.json; each due entry claimed as running and run as its own task; the clock always starts; deploy no longer sends a local schedule-state.json; Wiki runs confined, no full-access Codex or bypassPermissions while reading mail (#1691); headless Claude Code back in safe mode and Station browser turns ask the owner (#1687); one browser daemon per user however they logged in (#1684); experimental labels in every help surface (#1688); first-run messages that are true, host() reads the project .env (#1697); the Wiki loses no mail past 200 a week and never pays twice for a written batch (#1690); dependency caps and install lines without --pre, internal docs out of the wheel (#1696); connect().input() honours its timeout and surfaces approvals (#1700); the inbox behaves like its docs (#1698).)
+
+Earlier in this line:
 
 1.8.8b8 is an opt-in preview after 1.8.8b7. `co wiki` gets the command
 surface agreed as its help pages (#1656): fourteen commands in four groups,
