@@ -142,3 +142,25 @@ def test_co_init_leaves_internal_docs_out_of_the_project(tmp_path, monkeypatch):
     copied = {p.relative_to(tmp_path / ".co" / "docs").as_posix()
               for p in (tmp_path / ".co" / "docs").rglob("*") if p.is_file()}
     assert copied == {"quickstart.md", "releases/1.8.8.md", "design-decisions/063-cited.md"}
+
+
+def test_every_link_inside_the_package_points_at_a_doc_that_ships():
+    # 1.8.8b10's release build failed: co ai's prompt library links into docs/
+    # with symlinks, and 18 of them pointed at design records left out of the
+    # sdist, so building the wheel from the sdist met a dangling link. The
+    # unit tests build nothing, so this reads the links instead.
+    import os
+
+    internal = _package_ignore()
+    dangling = []
+    for link in (REPO / "connectonion").rglob("*"):
+        if not link.is_symlink():
+            continue
+        target = (link.parent / os.readlink(link)).resolve()
+        if not target.exists():
+            dangling.append(f"{link.relative_to(REPO)} -> missing {target}")
+        elif DOCS in target.parents:
+            relative = target.relative_to(DOCS).as_posix()
+            if any(relative == p or relative.startswith(p + "/") for p in internal):
+                dangling.append(f"{link.relative_to(REPO)} -> {relative} (left out of the package)")
+    assert not dangling, "\n".join(sorted(dangling))

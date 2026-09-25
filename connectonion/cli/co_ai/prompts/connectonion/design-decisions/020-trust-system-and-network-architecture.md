@@ -1,1 +1,0 @@
-../../../../../../docs/design-decisions/020-trust-system-and-network-architecture.md

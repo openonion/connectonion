@@ -1,1 +1,0 @@
-../../../../../../docs/design-decisions/021-task-storage-jsonl-design.md

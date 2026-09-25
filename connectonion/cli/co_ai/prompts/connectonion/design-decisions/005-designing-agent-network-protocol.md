@@ -1,1 +1,0 @@
-../../../../../../docs/design-decisions/005-designing-agent-network-protocol.md
