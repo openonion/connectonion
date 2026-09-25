@@ -325,7 +325,7 @@ def keys(
     handle_keys(reveal=reveal, ssh=ssh, write=write)
 
 
-@app.command()
+@app.command(epilog="Example:  co status")
 def status(
     reveal: bool = typer.Option(
         False,
@@ -334,7 +334,7 @@ def status(
         help="Show full provider credential values",
     ),
 ):
-    """Check credential sources, account status, and deployments."""
+    """Show your credit balance, account, credential sources and deployments. Read-only."""
     from .commands.status_commands import handle_status
     handle_status(reveal=reveal)
 
@@ -921,7 +921,8 @@ def env_get(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_K
     handle_env_get(key)
 
 
-@env_app.command("set")
+@env_app.command("set", epilog="Example:  co env set OPENAI_API_KEY sk-...  |  "
+                                "co env set GITHUB_TOKEN ghp_... --secret")
 def env_set(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_KEY"),
             value: str = typer.Argument(..., help="Value; quote it if it has spaces"),
             from_console: bool = typer.Option(
@@ -934,7 +935,7 @@ def env_set(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_K
                 help="Encrypt it instead of writing it in plain text. The key is derived "
                      "from this agent's own key and stored nowhere; rotate with co env rotate",
             )):
-    """Save one setting to the selected file, keeping every other line as it is."""
+    """Save one setting to ~/.co/keys.env, which every project reads, or to --env-file. Writes that file."""
     from .commands.env_commands import handle_env_set
     handle_env_set(key, value, from_console=from_console, secret=secret)
 
@@ -1116,7 +1117,9 @@ app.add_typer(make_wiki_app(_typer_app), name="wiki",
 
 # Skills command group
 skills_app = _typer_app(help=(
-    "Discover, copy, list and link existing SKILL.md files; does not author or benchmark them.\n\n"
+    "Your own SKILL.md files: discover them in ~/.claude, ~/.codex, ~/.cursor and ~/.kiro, copy, list "
+    "and link them. Another person's published skills come from co sub instead. "
+    "This group does not author or benchmark them.\n\n"
     "Project skills live in .co/skills/<name>/SKILL.md. Creating or improving a skill? "
     "Define its test cases first: co benchmark --help. Then write SKILL.md and score it: co eval --help."
 ))
@@ -1184,7 +1187,11 @@ def skills_link(
 
 
 # Trust command group
-trust_app = _typer_app(help="Manage trust lists (contacts, whitelist, blocklist, admins)")
+trust_app = _typer_app(
+    help="Who may call your agent: contacts, whitelist, blocklist and admins, kept in this project's .co/. "
+         "trust='careful' admits contacts and the whitelist; trust='strict' admits only the whitelist.",
+    epilog="Example:  co trust add 0xabc...  |  co trust level 0xabc...",
+)
 app.add_typer(trust_app, name="trust")
 
 
@@ -1197,69 +1204,70 @@ def trust_callback(ctx: typer.Context):
         handle_trust_list()
 
 
-@trust_app.command("list")
+@trust_app.command("list", epilog="Example:  co trust list")
 def trust_list():
-    """List all trust lists."""
+    """List every address on each trust list. Read-only."""
     from .commands.trust_commands import handle_trust_list
     handle_trust_list()
 
 
-@trust_app.command("level")
+@trust_app.command("level", epilog="Example:  co trust level 0xabc...")
 def trust_level(address: str = typer.Argument(..., help="Address to check")):
-    """Check trust level of an address."""
+    """Show whether an address is a stranger, contact, whitelisted or blocked. Read-only."""
     from .commands.trust_commands import handle_trust_level
     handle_trust_level(address)
 
 
-@trust_app.command("add")
+@trust_app.command("add", epilog="Example:  co trust add 0xabc...  |  co trust add 0xabc... --whitelist")
 def trust_add(
     address: str = typer.Argument(..., help="Address to add"),
     whitelist: bool = typer.Option(False, "-w", "--whitelist", help="Add to whitelist instead of contacts"),
 ):
-    """Add address to contacts (default) or whitelist."""
+    """Let an address call your agent: adds it to contacts, or --whitelist for trust='strict'. Writes the trust list."""
     from .commands.trust_commands import handle_trust_add
     handle_trust_add(address, whitelist)
 
 
-@trust_app.command("remove")
+@trust_app.command("remove", epilog="Example:  co trust remove 0xabc...")
 def trust_remove(address: str = typer.Argument(..., help="Address to remove")):
-    """Remove address from all lists (demote to stranger)."""
+    """Make an address a stranger again. Removes it from every trust list."""
     from .commands.trust_commands import handle_trust_remove
     handle_trust_remove(address)
 
 
-@trust_app.command("block")
+@trust_app.command("block", epilog='Example:  co trust block 0xabc... --reason "spam"')
 def trust_block(
     address: str = typer.Argument(..., help="Address to block"),
     reason: str = typer.Option("", "-r", "--reason", help="Reason for blocking"),
 ):
-    """Block an address."""
+    """Refuse every call from an address. Writes the blocklist."""
     from .commands.trust_commands import handle_trust_block
     handle_trust_block(address, reason)
 
 
-@trust_app.command("unblock")
+@trust_app.command("unblock", epilog="Example:  co trust unblock 0xabc...")
 def trust_unblock(address: str = typer.Argument(..., help="Address to unblock")):
-    """Unblock an address."""
+    """Accept calls from a blocked address again. Removes it from the blocklist."""
     from .commands.trust_commands import handle_trust_unblock
     handle_trust_unblock(address)
 
 
 # Admin subcommand group
-admin_app = _typer_app(help="Manage admins (super admin only)")
+admin_app = _typer_app(help="Addresses that may command your agent (super admin only).",
+                       epilog="Example:  co trust admin add 0xabc...")
 trust_app.add_typer(admin_app, name="admin")
 
 
-@admin_app.command("add")
+@admin_app.command("add", epilog="Example:  co trust admin add 0xabc...")
 def admin_add(address: str = typer.Argument(..., help="Address to add as admin")):
-    """Add an admin."""
+    """Let an address command your agent. Writes .co/admins.txt."""
     from .commands.trust_commands import handle_admin_add
     handle_admin_add(address)
 
 
-@admin_app.command("remove")
+@admin_app.command("remove", epilog="Example:  co trust admin remove 0xabc...")
 def admin_remove(address: str = typer.Argument(..., help="Address to remove from admins")):
-    """Remove an admin."""
+    """Stop an address commanding your agent. Removes it from .co/admins.txt."""
     from .commands.trust_commands import handle_admin_remove
     handle_admin_remove(address)
 
@@ -2312,7 +2320,9 @@ def outlook_search(
 # Subscription command group. `co sub` (no args) syncs every subscription.
 # `co sub sync <addr>` syncs one. `list` and `remove` are the secondary verbs.
 sub_app = _typer_app(
-    help="Follow public skills: co sub sync <0xaddress> once; co sub refreshes all saved publishers"
+    help="Install another person's published skills: co sub sync <0xaddress> once, then bare co sub "
+         "refreshes every publisher you follow. Your own skills are co skills.",
+    epilog="Example:  co sub sync 0xabc...",
 )
 app.add_typer(sub_app, name="sub")
 
@@ -2328,7 +2338,7 @@ def sub_callback(
         handle_sub_sync_all(relay=relay)
 
 
-@sub_app.command("sync")
+@sub_app.command("sync", epilog="Example:  co sub sync 0xabc...  |  Next, to ship one of its skills with this project: co skills copy <name> --to-project")
 def sub_sync(
     target: str = typer.Argument(..., help="0x address (or locally-pinned alias) to sync"),
     relay: Optional[str] = typer.Option(None, "--relay", help="Relay URL (default: configured backend)"),

@@ -162,8 +162,7 @@
   "side_effect"
  ],
  "co env": [
-  "example",
-  "side_effect"
+  "example"
  ],
  "co env get": [
   "example",
@@ -174,10 +173,6 @@
   "side_effect"
  ],
  "co env rotate": [
-  "example",
-  "side_effect"
- ],
- "co env set": [
   "example",
   "side_effect"
  ],
@@ -685,12 +680,7 @@
   "example",
   "side_effect"
  ],
- "co status": [
-  "example",
-  "side_effect"
- ],
  "co sub": [
-  "example",
   "side_effect"
  ],
  "co sub list": [
@@ -702,7 +692,6 @@
   "side_effect"
  ],
  "co sub sync": [
-  "example",
   "side_effect"
  ],
  "co syno": [
@@ -861,46 +850,6 @@
   "side_effect"
  ],
  "co transfer": [
-  "example",
-  "side_effect"
- ],
- "co trust": [
-  "example",
-  "side_effect"
- ],
- "co trust add": [
-  "example",
-  "side_effect"
- ],
- "co trust admin": [
-  "example",
-  "side_effect"
- ],
- "co trust admin add": [
-  "example",
-  "side_effect"
- ],
- "co trust admin remove": [
-  "example",
-  "side_effect"
- ],
- "co trust block": [
-  "example",
-  "side_effect"
- ],
- "co trust level": [
-  "example",
-  "side_effect"
- ],
- "co trust list": [
-  "example",
-  "side_effect"
- ],
- "co trust remove": [
-  "example",
-  "side_effect"
- ],
- "co trust unblock": [
   "example",
   "side_effect"
  ],
