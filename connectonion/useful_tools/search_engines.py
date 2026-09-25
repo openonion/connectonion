@@ -2,7 +2,7 @@
 Purpose: Web search for agents and `co search` — managed Google results by default, free DuckDuckGo when that is unavailable
 LLM-Note:
   Dependencies: imports from [httpx, bs4, backend.backend_url] | imported by [useful_tools/__init__.py, cli/co_ai/agent.py, cli/commands/web_commands.py] | tested by [tests/unit/test_search_engines.py]
-  Data flow: web_search(query) → search(query, engine) → one engine's HTTP call → list of {title, url, snippet} → numbered text for the model
+  Data flow: web_search(query) → search(query, engine) → one engine's HTTP call → answer (managed engine only) and a list of {title, url, snippet} → numbered text for the model
   State/Effects: network only; the `co` engine is billed per query to the caller's ConnectOnion credits by oo-api
   Integration: exposes web_search (agent tool, returns text), search (structured, raises SearchError), ENGINES
   Errors: search() raises SearchError(code, message, hint); web_search() never raises for an engine failure, it returns the message and hint
@@ -10,8 +10,10 @@ LLM-Note:
 Why these engines. Without search, skills written for Claude Code or Codex that
 say "search for X" cannot run here at all, so co ai has to be able to search
 out of the box. Google's own Custom Search JSON API is closed to new customers
-and Bing's API is retired, so the managed engine is oo-api forwarding to a
-Google results provider and charging the query to the caller's credits.
+and Bing's API is retired, so the managed engine is oo-api asking Gemini with
+Google Search grounding, in a request of its own (grounding cannot share a
+request with an agent's function tools), and charging each Google query to
+the caller's credits. It returns a short answer plus the pages it cites.
 Serper and Brave are there for users who hold their own key (both have free
 tiers). DuckDuckGo's HTML endpoint needs no key and no money, which makes it
 the floor every other engine falls back to: an agent out of credits keeps
@@ -48,7 +50,7 @@ def _http() -> httpx.Client:
     return httpx.Client(timeout=TIMEOUT, headers={"User-Agent": "Mozilla/5.0 (compatible; ConnectOnion)"})
 
 
-def _search_co(query: str, count: int) -> list:
+def _search_co(query: str, count: int) -> tuple:
     token = os.getenv("OPENONION_API_KEY")
     if not token:
         raise SearchError("auth_required", "Not logged in to ConnectOnion.", "Log in: co auth")
@@ -62,11 +64,13 @@ def _search_co(query: str, count: int) -> list:
         raise SearchError("auth_required", "ConnectOnion rejected the login token.", "Log in again: co auth")
     if response.is_error:
         raise SearchError("unavailable", f"Managed search answered HTTP {response.status_code}.", FREE_HINT)
-    return [{"title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("snippet", "")}
-            for r in response.json().get("results", [])]
+    body = response.json()
+    # Managed search is Gemini grounded in Google Search: an answer plus the pages it cites.
+    return ([{"title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("snippet", "")}
+             for r in body.get("results", [])], body.get("answer", ""))
 
 
-def _search_serper(query: str, count: int) -> list:
+def _search_serper(query: str, count: int) -> tuple:
     key = os.getenv("SERPER_API_KEY")
     if not key:
         raise SearchError("auth_required", "SERPER_API_KEY is not set.", "Get a free key at serper.dev, then: co env set SERPER_API_KEY <key>")
@@ -76,10 +80,10 @@ def _search_serper(query: str, count: int) -> list:
     if response.is_error:
         raise SearchError("unavailable", f"Serper answered HTTP {response.status_code}.", FREE_HINT)
     return [{"title": r.get("title", ""), "url": r.get("link", ""), "snippet": r.get("snippet", "")}
-            for r in response.json().get("organic", [])]
+            for r in response.json().get("organic", [])], ""
 
 
-def _search_brave(query: str, count: int) -> list:
+def _search_brave(query: str, count: int) -> tuple:
     key = os.getenv("BRAVE_API_KEY")
     if not key:
         raise SearchError("auth_required", "BRAVE_API_KEY is not set.", "Get a free key at brave.com/search/api, then: co env set BRAVE_API_KEY <key>")
@@ -90,7 +94,7 @@ def _search_brave(query: str, count: int) -> list:
     if response.is_error:
         raise SearchError("unavailable", f"Brave answered HTTP {response.status_code}.", FREE_HINT)
     return [{"title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("description", "")}
-            for r in response.json().get("web", {}).get("results", [])]
+            for r in response.json().get("web", {}).get("results", [])], ""
 
 
 def _ddg_target(href: str) -> str:
@@ -99,7 +103,7 @@ def _ddg_target(href: str) -> str:
     return wrapped[0] if wrapped else href
 
 
-def _search_ddg(query: str, count: int) -> list:
+def _search_ddg(query: str, count: int) -> tuple:
     with _http() as client:
         response = client.post("https://html.duckduckgo.com/html/", data={"q": query})
     if response.is_error:
@@ -114,7 +118,7 @@ def _search_ddg(query: str, count: int) -> list:
         snippet = block.select_one(".result__snippet")
         results.append({"title": link.get_text(" ", strip=True), "url": _ddg_target(link.get("href", "")),
                         "snippet": snippet.get_text(" ", strip=True) if snippet else ""})
-    return results[:count]
+    return results[:count], ""
 
 
 _BY_NAME = {"co": _search_co, "serper": _search_serper, "brave": _search_brave, "ddg": _search_ddg}
@@ -127,7 +131,7 @@ def _auto_order() -> list:
 
 
 def search(query: str, engine: str = "auto", count: int = 10) -> dict:
-    """Structured search. Returns {"engine", "results", "notes"}; raises SearchError.
+    """Structured search. Returns {"engine", "answer", "results", "notes"}; raises SearchError.
 
     `auto` tries each available engine in turn and records in `notes` why an
     earlier one was skipped, so running out of credits is visible, not silent.
@@ -139,7 +143,8 @@ def search(query: str, engine: str = "auto", count: int = 10) -> dict:
     notes = []
     for name in names:
         try:
-            return {"engine": name, "results": _BY_NAME[name](query, count), "notes": notes}
+            results, answer = _BY_NAME[name](query, count)
+            return {"engine": name, "answer": answer, "results": results, "notes": notes}
         except SearchError as error:
             if engine != "auto" or name == names[-1]:
                 raise
@@ -157,7 +162,8 @@ def format_results(found: dict) -> str:
              for i, r in enumerate(found["results"], 1)]
     body = "\n".join(lines) if lines else "No results."
     notes = "".join(f"\nNote: {note}" for note in found["notes"])
-    return f"Results from {found['engine']}:\n{body}{notes}"
+    answer = f"Answer: {found['answer']}\n\nSources:\n" if found.get("answer") else ""
+    return f"Results from {found['engine']}:\n{answer}{body}{notes}"
 
 
 def web_search(query: str, engine: str = "auto", count: int = 10) -> str:

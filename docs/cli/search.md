@@ -17,7 +17,7 @@ co fetch https://docs.python.org/3/library/json.html --prompt "What does indent 
 |---|---|
 | `--engine, -e` | `auto` (default), `co`, `serper`, `brave`, `ddg` — see [web_search](../useful_tools/web_search.md#web_searchquery-engineauto-count10) |
 | `--count, -n` | 1–20 results (default 10) |
-| `--json` | `{"engine", "results": [{"title","url","snippet"}], "notes"}` on stdout |
+| `--json` | `{"engine", "answer", "results": [{"title","url","snippet"}], "notes"}` on stdout (`answer` only from `co`) |
 
 Exit 0 with results; the tip on stderr names `co fetch <first result>`.
 Exit 1 when the engine could not answer, with one next step. Out of credits:

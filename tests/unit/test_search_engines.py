@@ -48,14 +48,17 @@ def managed(status, body=None):
 
 def test_managed_search_sends_the_query_with_the_token(web, monkeypatch):
     monkeypatch.setenv("OPENONION_API_KEY", "tok")
-    web.routes["oo.test"] = managed(200, {"results": [{"title": "A", "url": "https://a.example", "snippet": "s"}]})
+    web.routes["oo.test"] = managed(200, {"answer": "Use json.dumps.",
+                                          "results": [{"title": "A", "url": "https://a.example", "snippet": "s"}]})
 
     found = engines.search("python json", count=3)
 
     request = web.requests[0]
     assert request.url.path == "/api/v1/search" and request.headers["authorization"] == "Bearer tok"
     assert json.loads(request.content) == {"query": "python json", "count": 3}
-    assert found == {"engine": "co", "results": [{"title": "A", "url": "https://a.example", "snippet": "s"}], "notes": []}
+    assert found == {"engine": "co", "answer": "Use json.dumps.",
+                     "results": [{"title": "A", "url": "https://a.example", "snippet": "s"}], "notes": []}
+    assert engines.format_results(found).startswith("Results from co:\nAnswer: Use json.dumps.\n\nSources:\n1. A")
 
 
 def test_out_of_credits_auto_answers_from_duckduckgo_and_says_why(web, monkeypatch):

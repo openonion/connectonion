@@ -12,12 +12,16 @@ commands, `co search` and `co fetch`, for skills that shell out.
 
 **Search needs a provider, and the obvious ones are gone.** Google's Custom
 Search JSON API no longer takes new customers, and Bing's search API was
-retired. Gemini can ground an answer in Google Search, but only through its
-native API. It can't be combined with our function tools on the model we
-default to, and its terms require showing Google's suggestion chips. What
-stays is a results provider behind our own backend. The query is charged to
-the caller's ConnectOnion credits the way a model call is, so it works the
-moment you have logged in, with nothing to configure.
+retired. The one search-capable key our backend already holds is Gemini's,
+and Gemini can ground an answer in Google Search, but a grounded request
+cannot also carry an agent's function tools. That ruled out switching it on
+in the agent's own chat call. It did not rule out a second call. The backend
+now asks Gemini one question with only the search tool attached, and returns
+the short answer together with the pages it cited, their redirect links
+resolved to the real URLs so the agent can go and read them. Google bills
+per query the model runs, so we charge per query too, from the caller's
+ConnectOnion credits, the way a model call is charged. It works the moment
+you have logged in, with nothing to configure.
 
 **Running out of money must not mean running out of search.** An agent in
 the middle of a task that gets a 402 back has two bad options: stop, or
@@ -42,4 +46,4 @@ handed back raw markup, and most of a context window went on `<div>`.
 What would make us revisit this: DuckDuckGo tightening its limits on
 scripted use, which would take away the free floor, or Gemini grounding
 becoming usable alongside function tools, which would let the model search
-without a second provider at all.
+without the second call.

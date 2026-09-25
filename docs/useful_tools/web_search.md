@@ -17,7 +17,7 @@ Returns numbered results: title, URL, snippet.
 
 | engine | Results | Needs | Cost |
 |---|---|---|---|
-| `co` | Google, through ConnectOnion | `co auth` | per query, from your ConnectOnion credits |
+| `co` | A short answer from Gemini grounded in Google Search, plus the pages it cites | `co auth` | per Google query Gemini runs, from your ConnectOnion credits |
 | `serper` | Google, through serper.dev | `SERPER_API_KEY` | your Serper plan (free tier: 2,500 queries) |
 | `brave` | Brave Search | `BRAVE_API_KEY` | your Brave plan (free tier monthly) |
 | `ddg` | DuckDuckGo | nothing | free |
