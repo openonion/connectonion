@@ -87,7 +87,11 @@ Skills are discovered from three locations (priority order):
 3. builtin/skill-name/SKILL.md       # Built-in (lowest priority)
 ```
 
-Skills are loaded once at agent creation, descriptions injected into system prompt.
+Skills are loaded once at agent creation, and each one's name and description is
+appended to the system prompt under `# Available Skills` — for a plain
+`Agent(tools=[skill], plugins=[skills])` too, not only `co ai`. Before 1.8.9 a
+plain Agent discovered them and never said so, and a model cannot choose a skill
+it was never told about.
 
 ### Which of them survive a deploy
 

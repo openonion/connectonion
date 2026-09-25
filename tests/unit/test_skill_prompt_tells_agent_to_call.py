@@ -18,26 +18,27 @@ if skills_plugin is None:
 
 
 class FakeAgent:
-    def __init__(self):
-        self.co_dir = None
-        self.current_session = {"messages": [{"role": "system", "content": "BASE."}]}
+    """What setup_skills leaves behind: the discovered list and a base prompt."""
+
+    def __init__(self, skills):
+        self.skills = skills
+        self.system_prompt = "BASE."
 
     @property
     def prompt(self):
-        return self.current_session["messages"][0]["content"]
+        return self.system_prompt
 
 
 @pytest.fixture
-def injected(monkeypatch):
+def injected():
     from connectonion.useful_plugins.skills import SkillInfo
 
-    monkeypatch.setattr(skills_plugin, "_discover_all_skills", lambda **kw: [
+    agent = FakeAgent([
         SkillInfo(name="contract-ledger",
                   description="use when the user says 整理合同 / 更新台账",
                   location="project"),
         SkillInfo(name="commit", description="Create git commits", location="builtin"),
     ])
-    agent = FakeAgent()
     skills_plugin._inject_skills_to_system_prompt(agent)
     return agent.prompt
 
@@ -81,9 +82,8 @@ class TestItKeepsSayingWhatIsAvailable:
 
 
 class TestNothingToSayStaysQuiet:
-    def test_no_skills_means_no_section(self, monkeypatch):
-        monkeypatch.setattr(skills_plugin, "_discover_all_skills", lambda **kw: [])
-        agent = FakeAgent()
+    def test_no_skills_means_no_section(self):
+        agent = FakeAgent([])
 
         skills_plugin._inject_skills_to_system_prompt(agent)
 

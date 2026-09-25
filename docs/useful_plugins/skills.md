@@ -28,6 +28,11 @@ agent = Agent(
 1. **Instant invocation** - `/command` detected in `@after_user_input`, no LLM overhead
 2. **Scoped permissions** - Temporary tool auto-approval for skill duration
 3. **Security** - Permissions auto-clear after turn completes
+4. **The model is told** - at agent creation, every discovered skill's name and
+   description is appended to the system prompt under `# Available Skills`, so a
+   model can choose one. Add the `skill` tool (`from connectonion.useful_plugins
+   import skill`) to `tools=` so it can load the one it chose. A prompt that already
+   has an `# Available Skills` section (as `co ai` builds) is left with that one.
 
 ## Example Skill
 
