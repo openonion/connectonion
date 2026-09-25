@@ -3,11 +3,11 @@
   "subject": "projects/atlas-58b543867f.md",
   "statement": "Mira owns maintenance, not Leo. Mira explicitly chose a local pilot so reviewers can work without a hosted account; this does not permanently reject hosting. No hosted release.",
   "author": "synthetic-user",
-  "basis": "Explicit owner clarification and dated decision in /Users/changxing/projects/.worktree/wiki-improve-0922-safe/owner-decision.txt; inspect the source.",
+  "basis": "Explicit owner clarification and dated decision in ~/projects/.worktree/wiki-improve-0922-safe/owner-decision.txt; inspect the source.",
   "previous": "Leo owns Atlas; no recorded product decision",
   "applies": "2026-09-22 pilot",
   "sources": [
-    "/Users/changxing/projects/.worktree/wiki-improve-0922-safe/owner-decision.txt"
+    "~/projects/.worktree/wiki-improve-0922-safe/owner-decision.txt"
   ],
   "supersedes": [],
   "kind": "correction",

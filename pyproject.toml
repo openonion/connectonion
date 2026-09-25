@@ -40,7 +40,11 @@ classifiers = [
 dependencies = [
     "openai>=1.0.0",
     "anthropic>=0.18.0",
-    "pydantic>=2.0.0",
+    # Upper bounds only where the next major is known to break us, not by habit.
+    # pydantic 3 is the announced end of the v2 API our models are written in;
+    # openai and anthropic already cap it at <3, so this costs nothing today and
+    # keeps an old connectonion from resolving against it tomorrow.
+    "pydantic>=2.0.0,<3",
     "python-dotenv>=1.2.2",
     "requests>=2.33.0",
     "rich>=13.0.0",
@@ -51,7 +55,11 @@ dependencies = [
     "websockets>=11.0.0",
     "google-auth>=2.0.0",
     "google-api-python-client>=2.0.0",
-    "httpx>=0.24.0",
+    # httpx 1.0 (on PyPI as 1.0.dev6 since before 1.8.8) removes HTTPError,
+    # AsyncClient and Timeout, which connect(), hosted agents and co outlook use.
+    # Testers who installed 1.8.8b7 with `--pre` got it and everything remote
+    # crashed. Without this cap, stable would break the day 1.0 goes final.
+    "httpx>=0.24.0,<1",
     "ifaddr>=0.2.0",
     "beautifulsoup4>=4.12.0",
     "pyyaml>=6.0.0",
@@ -142,32 +150,30 @@ co = "connectonion.cli.main:cli"
 connectonion = "connectonion.cli.main:cli"
 
 [tool.hatch.build.targets.wheel]
-packages = ["connectonion"]
+# Ship the repo-root docs/ inside the package as connectonion/docs/, which is
+# where get_docs_source() looks and what `co init` copies into .co/docs/.
+#
+# This used to be `packages = ["connectonion"]` plus a force-include of "docs".
+# force-include runs after exclusion rules, so nothing could be kept out of it:
+# 1.8.8b7 shipped docs/testing/ (91 files of test runs, ~245 absolute paths from
+# the maintainer's machine) inside the wheel and into every new project's
+# .co/docs/. `only-include` + `sources` puts the same files at the same place
+# while letting `exclude` apply. The whole docs/ directory is still mapped, so a
+# docs folder added later ships without anyone remembering to list it.
+only-include = ["connectonion", "docs"]
+sources = { "docs" = "connectonion/docs" }
+# Internal-only trees: test runs and release evidence, written on a maintainer's
+# machine and full of its paths and screenshots (releases/assets alone was 5 MB
+# of the 9 MB wheel). design-decisions/ keeps shipping on purpose: it explains
+# why, which is what an agent reading .co/docs/ needs. Keep this list equal to
+# docs/.package-ignore, which copy_docs() reads for editable installs;
+# tests/unit/test_the_wheel_ships_only_public_docs.py holds them together.
 exclude = [
-    "connectonion/docs/archive/**",
+    "docs/archive",
+    "docs/testing",
+    "docs/acceptance",
+    "docs/releases/assets",
 ]
-
-# Ship the repo-root docs/ inside the package as connectonion/docs/.
-#
-# It was never shipped before: `packages = ["connectonion"]` only picks up what
-# lives under connectonion/, and docs/ is at the root — so every wheel went out
-# without it while `co init` still reported ".co/docs/ (full documentation)" over
-# an empty folder. get_docs_source() already expects connectonion/docs/ to exist
-# ("via force-include", says its comment); this is that force-include, finally
-# written.
-#
-# The whole directory is mapped rather than a list of subpaths on purpose: an
-# explicit list would silently omit any docs folder added later, which is the same
-# class of bug this line fixes.
-#
-# Caveat, measured: force-include runs after exclusion rules, so the `exclude`
-# above does NOT reach these files. docs/archive/ stays out only because it is in
-# .gitignore (hatch honours VCS ignores); docs/design-decisions/ (26 files,
-# 0.28 MB) does ship despite docs/.package-ignore asking otherwise. Accepted —
-# copy_docs() keeps archive out of the user's .co/docs/, and design notes are
-# harmless to ship. To actually exclude it, .gitignore is the lever that works.
-[tool.hatch.build.targets.wheel.force-include]
-"docs" = "connectonion/docs"
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -175,6 +181,13 @@ include = [
     "docs/**",
     "README.md",
     "LICENSE",
+]
+# The sdist is on PyPI too; the same internal trees stay out of it.
+exclude = [
+    "docs/archive",
+    "docs/testing",
+    "docs/acceptance",
+    "docs/releases/assets",
 ]
 
 # Include all non-Python files (md, txt, etc.) in the package

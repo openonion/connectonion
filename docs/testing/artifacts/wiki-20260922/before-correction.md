@@ -7,7 +7,7 @@
 - Run `python3 count.py draft.txt` from the project directory; the script reads the named file, splits its text on whitespace, and prints the number of resulting words. [1][2]
 
 ## Try it
-- From `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas`, run `python3 count.py draft.txt`; the observed result for the sample `draft.txt` was `3`. [1][3][4]
+- From `~/projects/.worktree/wiki-investigate-0922-fixture/atlas`, run `python3 count.py draft.txt`; the observed result for the sample `draft.txt` was `3`. [1][3][4]
 
 ## Where it stands
 - The local implementation and sample artifact are present and the documented command was verified on 2026-09-22. No hosted website or hosted service is implemented. [1][4]
@@ -34,7 +34,7 @@
 - `draft.txt` → `count.py` → word-count text on stdout; `output.txt` records the sample result `3`. The README says the command changes no files. [1][2][3]
 
 ## Paths
-- /Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas
+- ~/projects/.worktree/wiki-investigate-0922-fixture/atlas
 - Sessions: 1
 - First seen: 2026-09-22
 - Last seen: 2026-09-22
@@ -50,11 +50,11 @@
 - The existing page was a mapped skeleton with all project fields unknown; its prior statements are retained only as prior context, not independent corroboration. [7]
 
 ## Sources
-- [1] `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas/README.md`, inspected 2026-09-22, high confidence for the project's documented purpose, behavior, and implementation/deployment status.
-- [2] `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas/count.py`, inspected 2026-09-22, high confidence for the implementation details.
-- [3] `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas/draft.txt` and `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas/output.txt`, inspected 2026-09-22, high confidence for the sample input and recorded output.
-- [4] Command `python3 count.py draft.txt` run in `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/atlas` on 2026-09-22; output `3`, high confidence for that observed run only.
-- [5] `codex:atlas-synthetic:175` / `/Users/changxing/projects/.worktree/wiki-investigate-0922-fixture/sessions/rollout-atlas.jsonl`, observed 2026-09-22, high confidence for the recorded user request and its status as a request rather than completed deployment.
+- [1] `~/projects/.worktree/wiki-investigate-0922-fixture/atlas/README.md`, inspected 2026-09-22, high confidence for the project's documented purpose, behavior, and implementation/deployment status.
+- [2] `~/projects/.worktree/wiki-investigate-0922-fixture/atlas/count.py`, inspected 2026-09-22, high confidence for the implementation details.
+- [3] `~/projects/.worktree/wiki-investigate-0922-fixture/atlas/draft.txt` and `~/projects/.worktree/wiki-investigate-0922-fixture/atlas/output.txt`, inspected 2026-09-22, high confidence for the sample input and recorded output.
+- [4] Command `python3 count.py draft.txt` run in `~/projects/.worktree/wiki-investigate-0922-fixture/atlas` on 2026-09-22; output `3`, high confidence for that observed run only.
+- [5] `codex:atlas-synthetic:175` / `~/projects/.worktree/wiki-investigate-0922-fixture/sessions/rollout-atlas.jsonl`, observed 2026-09-22, high confidence for the recorded user request and its status as a request rather than completed deployment.
 - [6] `investigation:coverage` in supplied material, observed 2026-09-22, medium confidence for the collector's stated coverage: one `codex` message in the window and one related subject match.
 - [7] Existing page `projects/atlas-58b543867f.md` (`investigation:page`), supplied and inspected 2026-09-22, prior/derived context only; not independent verification.
 

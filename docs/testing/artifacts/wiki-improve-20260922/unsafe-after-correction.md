@@ -20,4 +20,4 @@ If the project later moves beyond the local pilot, the deployment scope, access 
 
 ## Sources
 
-Sources: `/Users/changxing/projects/.worktree/wiki-improve-0922-fixture/owner-decision.txt` (2026-09-22), reflection:ed1db9b201e94f0baa5b147d19d02106 (2026-09-22), codex:atlas-synthetic:175 (2026-09-22)
+Sources: `~/projects/.worktree/wiki-improve-0922-fixture/owner-decision.txt` (2026-09-22), reflection:ed1db9b201e94f0baa5b147d19d02106 (2026-09-22), codex:atlas-synthetic:175 (2026-09-22)

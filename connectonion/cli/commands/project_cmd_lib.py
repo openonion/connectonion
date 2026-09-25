@@ -115,7 +115,7 @@ def mint_invite_code() -> str:
 
 def get_docs_source() -> Path:
     """Get the docs directory path - works in both dev and installed package."""
-    # After pip install: connectonion/docs/ exists (via force-include)
+    # After pip install: connectonion/docs/ exists (pyproject maps docs/ there)
     package_dir = Path(__file__).parent.parent.parent  # connectonion/cli/commands/ → connectonion/
     docs_source = package_dir / "docs"
 
@@ -931,6 +931,16 @@ PROVIDER_TO_ENV = {
 }
 
 
+def _internal_docs(docs_source: Path) -> set:
+    """Paths under docs/ named in docs/.package-ignore: test runs and release
+    evidence recorded on a maintainer's machine, never meant for a user's project.
+    `archive` is always among them, as it was before the file was read."""
+    listing = docs_source / ".package-ignore"
+    lines = listing.read_text(encoding="utf-8").splitlines() if listing.exists() else []
+    named = {line.strip().rstrip("/") for line in lines if line.strip() and not line.startswith("#")}
+    return named | {"archive"}
+
+
 def copy_docs(co_dir: Path) -> bool:
     """Copy documentation to .co/docs/. Returns True if docs were copied."""
     docs_dir = co_dir / "docs"
@@ -941,14 +951,16 @@ def copy_docs(co_dir: Path) -> bool:
     docs_source = get_docs_source()
 
     if docs_source.exists() and docs_source.is_dir():
-        for item in docs_source.iterdir():
-            if item.name.startswith('.') or item.name == 'archive':
-                continue
-            dest = docs_dir / item.name
-            if item.is_dir():
-                shutil.copytree(item, dest, dirs_exist_ok=True)
-            else:
-                shutil.copy2(item, dest)
+        internal = _internal_docs(docs_source)
+
+        def ignore(directory, names):
+            # An installed wheel no longer contains these; an editable install,
+            # whose docs_source is the repo's own docs/, does and must not copy them.
+            here = Path(directory).relative_to(docs_source)
+            top = here == Path(".")
+            return [n for n in names if (top and n.startswith(".")) or (here / n).as_posix() in internal]
+
+        shutil.copytree(docs_source, docs_dir, ignore=ignore, dirs_exist_ok=True)
         return True
     else:
         console.print(f"[yellow]⚠️  Warning: Documentation not found at {docs_source}[/yellow]")

@@ -857,7 +857,11 @@ When releasing a new version:
       publish through PyPI Trusted Publishing, install the public package,
       compare public artifacts byte-for-byte, and create the GitHub Release.
 - [ ] Confirm previews are GitHub Prereleases rather than Latest, normal pip
-      installs remain on stable, and `--pre` plus an exact pin install preview.
+      installs remain on stable, and an exact pin alone
+      (`pip install --upgrade 'connectonion==X.YbN'`) installs the preview.
+      Never publish an install line with `--pre`: it lets pip take pre-release
+      *dependencies* too, and 1.8.8b7's documented `--pre` line installed
+      httpx 1.0.dev6, which crashed every remote call.
 - [ ] After PyPI and the GitHub Release are visible, publish the docs-site
       version state and Design Journal. Verify the canonical URL, social and
       structured metadata, sitemap, AI-readable indexes, internal links, and
