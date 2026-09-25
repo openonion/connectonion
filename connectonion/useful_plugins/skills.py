@@ -669,9 +669,14 @@ def _restore_permissions(agent: 'Agent') -> None:
 
 @on_agent_ready
 def setup_skills(agent: 'Agent') -> None:
-    """Populate agent.skills on startup."""
+    """Populate agent.skills on startup and tell the model what they are."""
     co_dir = getattr(agent, 'co_dir', None)
     agent.skills = _discover_all_skills(co_dir=co_dir)
+    # The list has to reach the prompt, not only agent.skills (#1666). A plain
+    # Agent(tools=[skill], plugins=[skills]) used to stop here: on a real model,
+    # five `co eval run --invoke auto` cases called skill() zero times, because
+    # nothing named the skill it was supposed to choose.
+    _inject_skills_to_system_prompt(agent)
 
 
 def _close_out_a_turn_that_never_finished(agent: 'Agent') -> None:
@@ -838,14 +843,35 @@ def skill(agent: 'Agent', name: str) -> str:
 # SYSTEM PROMPT INJECTION
 # =============================================================================
 
-def _inject_skills_to_system_prompt(agent: 'Agent') -> None:
-    """Inject available skills into system prompt.
+SKILLS_SECTION_HEADING = "# Available Skills"
 
-    Adds a section listing all discoverable skills so the LLM knows what's available.
+
+def _inject_skills_to_system_prompt(agent: 'Agent') -> None:
+    """Append the discovered skills to agent.system_prompt.
+
+    Runs from setup_skills (on_agent_ready), before any session exists, so every
+    session -- including the fresh one after reset_conversation(), which is how
+    a benchmark runs each case -- starts from a prompt that names the skills.
     """
-    co_dir = getattr(agent, 'co_dir', None)
-    skills_list = _discover_all_skills(co_dir=co_dir)
+    skills_list = agent.skills
     if not skills_list:
+        return
+    # co ai assembles its own "# Available Skills" section from project context
+    # and installs this plugin too. A second catalogue of the same skills would
+    # only spend tokens, so an existing section is left as the one list.
+    if SKILLS_SECTION_HEADING in agent.system_prompt:
+        return
+    # The section tells the model its first action is skill(name=...). Without
+    # a `skill` tool that is an instruction to call a tool that does not exist,
+    # so the prompt stays as it was and the operator is told what to add;
+    # /name invocation still works without the tool.
+    if 'skill' not in agent.tools:
+        agent.logger.print(
+            f"[yellow]⚠ The skills plugin found {len(skills_list)} skill(s) but this "
+            "Agent has no `skill` tool, so the model is not told about them. "
+            "Add tools=\\[skill] (from connectonion.useful_plugins import skill) "
+            "to let it choose one.[/yellow]"
+        )
         return
 
     # Project skills first: with dozens installed, the one that lives in this
@@ -860,7 +886,7 @@ def _inject_skills_to_system_prompt(agent: 'Agent') -> None:
     # skill's own trigger words it ran glob, then glob again, then `find`,
     # hunting for a file it could never see, because skills live under dot
     # directories.
-    skills_text = "\n\n# Available Skills\n\n"
+    skills_text = f"\n\n{SKILLS_SECTION_HEADING}\n\n"
     skills_text += (
         "Pre-packaged workflows. When a request matches a skill's description, "
         "**your first action is `skill(name=...)`** to load its full "
@@ -875,12 +901,7 @@ def _inject_skills_to_system_prompt(agent: 'Agent') -> None:
 
     skills_text += "\nA user can also type `/skill-name` directly.\n"
 
-    # Find system message and append
-    messages = agent.current_session.get('messages', [])
-    for msg in messages:
-        if msg.get('role') == 'system':
-            msg['content'] = msg['content'] + skills_text
-            break
+    agent.system_prompt = agent.system_prompt + skills_text
 
 
 # Export as plugin (list of event handlers)
