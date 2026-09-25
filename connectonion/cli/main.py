@@ -1273,7 +1273,10 @@ def admin_remove(address: str = typer.Argument(..., help="Address to remove from
 
 
 # SMS command group. `co sms` (no args) shows the inbox without changing state.
-sms_app = _typer_app(help="Pair a phone and read the Agent's encrypted SMS inbox")
+sms_app = _typer_app(
+    help="Pair a phone and read the Agent's encrypted SMS inbox. Bare 'co sms' shows the inbox (Read-only).",
+    epilog="Example:  co sms inbox --pending",
+)
 app.add_typer(sms_app, name="sms")
 
 
@@ -1285,7 +1288,7 @@ def sms_callback(ctx: typer.Context):
         handle_sms_inbox()
 
 
-@sms_app.command("pair")
+@sms_app.command("pair", epilog="Example:  co sms pair --expires 900")
 def sms_pair(
     expires: int = typer.Option(
         600, "--expires", min=60, max=1800,
@@ -1297,23 +1300,26 @@ def sms_pair(
     ),
     json_output: bool = typer.Option(False, "--json", help="Emit stable JSON and do not wait"),
 ):
-    """Create an Agent-signed QR challenge for one Android phone."""
+    """Create an Agent-signed QR challenge for one Android phone. Creates a one-time pairing; approving its code lets that phone upload SMS."""
     from .commands.sms_commands import handle_sms_pair
     handle_sms_pair(expires=expires, wait=wait and not json_output, json_output=json_output)
 
 
-@sms_app.command("inbox")
+@sms_app.command("inbox", epilog="Example:  co sms inbox --pending -n 20")
 def sms_inbox(
     last: int = typer.Option(10, "--last", "-n", min=1, max=100),
     pending: bool = typer.Option(False, "--pending", help="Only unacknowledged messages"),
     json_output: bool = typer.Option(False, "--json", help="Emit stable JSON"),
 ):
-    """List decrypted SMS without acknowledging them."""
+    """List decrypted SMS without acknowledging them. Read-only."""
     from .commands.sms_commands import handle_sms_inbox
     handle_sms_inbox(last=last, pending=pending, json_output=json_output)
 
 
-sms_devices_app = _typer_app(help="List and revoke paired SMS phones")
+sms_devices_app = _typer_app(
+    help="List and revoke paired SMS phones. Bare 'co sms devices' lists them (Read-only).",
+    epilog="Example:  co sms devices --json",
+)
 sms_app.add_typer(sms_devices_app, name="devices")
 
 
@@ -1325,18 +1331,21 @@ def sms_devices_callback(ctx: typer.Context, json_output: bool = typer.Option(Fa
         handle_sms_devices(json_output=json_output)
 
 
-@sms_devices_app.command("revoke")
+@sms_devices_app.command("revoke", epilog="Example:  co sms devices revoke <device-id> --yes")
 def sms_devices_revoke(
     device_id: str = typer.Argument(..., help="Device UUID from co sms devices"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt"),
 ):
-    """Revoke one phone's upload credential."""
+    """Revoke one phone's upload credential. Removes that phone's access; asks first unless --yes."""
     from .commands.sms_commands import handle_sms_revoke
     handle_sms_revoke(device_id, yes=yes)
 
 
 # Email command group. `co email` (no args) shows the inbox.
-email_app = _typer_app(help="Send and read email from the agent's address")
+email_app = _typer_app(
+    help="Send and read email from the agent's address. Bare 'co email' shows the inbox (Read-only).",
+    epilog="Example:  co email inbox --unread",
+)
 app.add_typer(email_app, name="email")
 
 
@@ -1348,7 +1357,7 @@ def email_callback(ctx: typer.Context):
         handle_email_inbox()
 
 
-@email_app.command("send")
+@email_app.command("send", epilog="Example:  co email send you@example.com \"Weekly report\" \"Numbers are below.\"")
 def email_send(
     to: str = typer.Argument(..., help="Recipient email address"),
     subject: str = typer.Argument(..., help="Subject line"),
@@ -1364,7 +1373,7 @@ def email_send(
         help="Send as one of your owned addresses (server checks ownership)",
     ),
 ):
-    """Send an email from the agent's address."""
+    """Send an email from the agent's address. Sends immediately."""
     from .commands.email_commands import handle_email_send
     handle_email_send(
         to, subject, message,
@@ -1372,7 +1381,7 @@ def email_send(
     )
 
 
-@email_app.command("inbox")
+@email_app.command("inbox", epilog="Example:  co email inbox --unread -n 20")
 def email_inbox(
     last: int = typer.Option(
         10,
@@ -1396,22 +1405,25 @@ def email_inbox(
         help="Only mail delivered to this address (default: every address you can read)",
     ),
 ):
-    """List recent received emails, across every address this account can read."""
+    """List recent received emails, across every address this account can read. Read-only."""
     from .commands.email_commands import handle_email_inbox
     handle_email_inbox(last=last, offset=offset, unread=unread, address=address)
 
 
-@email_app.command("read")
+@email_app.command("read", epilog="Example:  co email read 3")
 def email_read(
     email_id: str = typer.Argument(..., help="Email # from the inbox list"),
     mark_read: bool = typer.Option(False, "--mark-read", help="Mark the email as read after showing it"),
 ):
-    """Show one email's body without changing its unread state."""
+    """Show one email's body without changing its unread state. Read-only unless --mark-read."""
     from .commands.email_commands import handle_email_read
     handle_email_read(email_id, mark_read=mark_read)
 
 
-sent_app = _typer_app(help="List and read emails the agent has sent")
+sent_app = _typer_app(
+    help="List and read emails the agent has sent. Read-only.",
+    epilog="Example:  co email sent --to you@example.com",
+)
 email_app.add_typer(sent_app, name="sent")
 
 
@@ -1427,62 +1439,62 @@ def email_sent(
         handle_email_sent(last=last, to=to)
 
 
-@sent_app.command("read")
+@sent_app.command("read", epilog="Example:  co email sent read 2")
 def email_sent_read(email_id: str = typer.Argument(..., help="Email # from the sent list")):
-    """Show one sent email's body."""
+    """Show one sent email's body. Read-only."""
     from .commands.email_commands import handle_email_sent_read
     handle_email_sent_read(email_id)
 
 
-@email_app.command("addresses")
+@email_app.command("addresses", epilog="Example:  co email addresses")
 def email_addresses():
-    """List every email address this account owns, marking the default sender."""
+    """List every email address this account owns, marking the default sender. Read-only."""
     from .commands.email_commands import handle_email_addresses
     handle_email_addresses()
 
 
-@email_app.command("default")
+@email_app.command("default", epilog="Example:  co email default you@mail.openonion.ai")
 def email_default(
     address: str = typer.Argument(..., help="One of your own addresses, e.g. aaron@mail.openonion.ai"),
 ):
-    """Choose which of your addresses is the default sender."""
+    """Choose which of your addresses is the default sender. Changes your account's default."""
     from .commands.email_commands import handle_email_default
     handle_email_default(address)
 
 
-@email_app.command("name")
+@email_app.command("name", epilog="Examples:  co email name aaron  |  co email name aaron --buy")
 def email_name(
     name: str = typer.Argument(..., help="Desired name, e.g. 'aaron' → aaron@openonion.ai"),
     buy: bool = typer.Option(False, "--buy", help="Claim it (deducts the price from your credits)"),
 ):
-    """Check a custom email name's availability, or --buy to claim it."""
+    """Check a custom email name's availability, or --buy to claim it. Read-only; --buy Charges your credits."""
     from .commands.email_commands import handle_email_name
     handle_email_name(name, buy=buy)
 
 
-@email_app.command("share")
+@email_app.command("share", epilog="Examples:  co email share you@mail.openonion.ai --with teammate@example.com --can send,read  |  co email share --list")
 def email_share(
     address: Optional[str] = typer.Argument(None, help="One of your addresses (omit with --list)"),
     with_: Optional[str] = typer.Option(None, "--with", help="Grantee: public key or one of their addresses"),
     can: Optional[str] = typer.Option(None, "--can", help="Comma-separated capabilities: send,read"),
     list_: bool = typer.Option(False, "--list", help="Show what you've shared, and what's shared with you"),
 ):
-    """Let another account send and/or read as one of your addresses, without moving it."""
+    """Let another account send and/or read as one of your addresses, without moving it. Changes who can use it; --list is Read-only."""
     from .commands.email_commands import handle_email_share
     handle_email_share(address, with_=with_, can=can, list_=list_)
 
 
-@email_app.command("unshare")
+@email_app.command("unshare", epilog="Example:  co email unshare you@mail.openonion.ai --with teammate@example.com")
 def email_unshare(
     address: str = typer.Argument(..., help="One of your addresses"),
     with_: str = typer.Option(..., "--with", help="Grantee to revoke: public key or one of their addresses"),
 ):
-    """Revoke a grant. No key rotation — the address was never shared, only access to it."""
+    """Revoke a grant. Removes that account's access. No key rotation — the address was never shared, only access to it."""
     from .commands.email_commands import handle_email_unshare
     handle_email_unshare(address, with_=with_)
 
 
-@email_app.command("upgrade")
+@email_app.command("upgrade", epilog="Example:  co email upgrade plus --keep-address")
 def email_upgrade(
     tier: str = typer.Argument(..., help="Tier: plus or pro"),
     domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Sending domain (plus/pro)"),
@@ -1493,7 +1505,7 @@ def email_upgrade(
         help="Increase quota while preserving an existing @mail.openonion.ai address (plus only)",
     ),
 ):
-    """Upgrade email tier — deducts the monthly price from your credits."""
+    """Upgrade email tier. Charges: deducts the monthly price from your credits."""
     from .commands.email_commands import handle_email_upgrade
     handle_email_upgrade(tier, domain=domain, alias=alias, keep_address=keep_address)
 
@@ -2204,7 +2216,10 @@ app.add_typer(syno_app, name="syno")
 
 # Outlook command group. `co outlook` (no args) shows the Outlook inbox.
 # Uses the MICROSOFT_* OAuth tokens saved to .env by `co auth microsoft`.
-outlook_app = _typer_app(help="Your Outlook account: mail, scheduled sends, contacts and calendar. Bare 'co outlook' shows the inbox.")
+outlook_app = _typer_app(
+    help="Your Outlook account: mail, scheduled sends, contacts and calendar. Bare 'co outlook' shows the inbox (Read-only).",
+    epilog="Example:  co outlook inbox --unread",
+)
 app.add_typer(outlook_app, name="outlook")
 
 
@@ -2217,7 +2232,8 @@ def outlook_callback(ctx: typer.Context):
 
 
 outlook_contact_app = _typer_app(
-    help="Add, list, and search Outlook contacts.",
+    help="Add, list, and search Outlook contacts. list and search are Read-only.",
+    epilog="Example:  co outlook contact search sam",
     no_args_is_help=True,
 )
 outlook_app.add_typer(outlook_contact_app, name="contact", rich_help_panel="Contacts")
@@ -2229,31 +2245,31 @@ from .commands.outlook_calendar_commands import outlook_calendar_app
 outlook_app.add_typer(outlook_calendar_app, name="calendar", rich_help_panel="Calendar")
 
 
-@outlook_contact_app.command("add")
+@outlook_contact_app.command("add", epilog="Example:  co outlook contact add \"Sam Lee\" sam@example.com")
 def outlook_contact_add(
     name: str = typer.Argument(..., help="Contact display name"),
     email: str = typer.Argument(..., help="Contact email address"),
 ):
-    """Save a contact with a name and email address."""
+    """Save a contact with a name and email address. Creates it in your Outlook contacts."""
     from .commands.outlook_commands import handle_outlook_contact_add
     handle_outlook_contact_add(name, email)
 
 
-@outlook_contact_app.command("list")
+@outlook_contact_app.command("list", epilog="Example:  co outlook contact list -n 50")
 def outlook_contact_list(
     last: int = typer.Option(25, "--last", "-n", help="How many contacts to show"),
 ):
-    """List saved Outlook contacts."""
+    """List saved Outlook contacts. Read-only."""
     from .commands.outlook_commands import handle_outlook_contact_list
     handle_outlook_contact_list(last=last)
 
 
-@outlook_contact_app.command("search")
+@outlook_contact_app.command("search", epilog="Example:  co outlook contact search sam@example.com")
 def outlook_contact_search(
     query: str = typer.Argument(..., help="Name or email substring"),
     last: int = typer.Option(25, "--last", "-n", help="How many matches to show"),
 ):
-    """Search saved Outlook contacts by name or email."""
+    """Search saved Outlook contacts by name or email. Read-only."""
     from .commands.outlook_commands import handle_outlook_contact_search
     handle_outlook_contact_search(query, last=last)
 
@@ -2270,12 +2286,12 @@ def outlook_send(
     attach: Optional[List[str]] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for multiple)"),
     at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z); cancel before it goes out with co outlook cancel <#>"),
 ):
-    """Send an email from your Outlook account, now or scheduled with --at."""
+    """Send an email from your Outlook account, now or scheduled with --at. Sends as you."""
     from .commands.outlook_commands import handle_outlook_send
     handle_outlook_send(to, subject, message, cc=cc, bcc=bcc, attachments=attach, at=at)
 
 
-@outlook_app.command("inbox", rich_help_panel="Mail")
+@outlook_app.command("inbox", rich_help_panel="Mail", epilog="Example:  co outlook inbox --unread -n 20")
 def outlook_inbox(
     last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
     unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
@@ -2288,23 +2304,23 @@ def outlook_inbox(
         False, "--json", help="One JSON array of the provider's own fields, for a caller to parse",
     ),
 ):
-    """List recent emails in your Outlook inbox."""
+    """List recent emails in your Outlook inbox. Read-only."""
     from .commands.outlook_commands import handle_outlook_inbox
     handle_outlook_inbox(last=last, unread=unread, since=since, until=until,
                          json_output=json_output)
 
 
-@outlook_app.command("read", rich_help_panel="Mail")
+@outlook_app.command("read", rich_help_panel="Mail", epilog="Example:  co outlook read 3")
 def outlook_read(
     email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing (re-run to refresh numbers)"),
     mark_read: bool = typer.Option(False, "--mark-read", help="Mark the email as read after showing it"),
 ):
-    """Show one email's body without changing its unread state."""
+    """Show one email's body without changing its unread state. Read-only unless --mark-read."""
     from .commands.outlook_commands import handle_outlook_read
     handle_outlook_read(email_id, mark_read=mark_read)
 
 
-@outlook_app.command("download", rich_help_panel="Mail")
+@outlook_app.command("download", rich_help_panel="Mail", epilog="Example:  co outlook download 3 --to ./attachments")
 def outlook_download(
     email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),
     out_dir: str = typer.Option(".", "--to", help="Directory to save attachments into"),
@@ -2313,7 +2329,7 @@ def outlook_download(
         help="Also save embedded signature images and logos (skipped by default)",
     ),
 ):
-    """Save an email's attachments to disk."""
+    """Save an email's attachments to disk. Writes files into --to (default: this directory)."""
     from .commands.outlook_commands import handle_outlook_download
     handle_outlook_download(email_id, out_dir, include_inline=include_inline)
 
@@ -2330,40 +2346,40 @@ def outlook_reply(
     attach: Optional[List[str]] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for multiple)"),
     at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z); cancel before it goes out with co outlook cancel <#>"),
 ):
-    """Reply to an email (threaded), now or scheduled with --at."""
+    """Reply to an email (threaded), now or scheduled with --at. Sends from your Outlook account."""
     from .commands.outlook_commands import handle_outlook_reply
     handle_outlook_reply(email_id, message, attachments=attach, at=at, cc=cc, bcc=bcc)
 
 
-@outlook_app.command("scheduled", rich_help_panel="Scheduled sends")
+@outlook_app.command("scheduled", rich_help_panel="Scheduled sends", epilog="Example:  co outlook scheduled")
 def outlook_scheduled():
-    """List emails waiting for scheduled delivery."""
+    """List emails waiting for scheduled delivery. Read-only."""
     from .commands.outlook_commands import handle_outlook_scheduled
     handle_outlook_scheduled()
 
 
-@outlook_app.command("cancel", rich_help_panel="Scheduled sends")
+@outlook_app.command("cancel", rich_help_panel="Scheduled sends", epilog="Example:  co outlook cancel 1")
 def outlook_cancel(email_id: str = typer.Argument(..., help="Email # from 'co outlook scheduled' (or a full message ID)")):
-    """Cancel a scheduled email before it goes out."""
+    """Cancel a scheduled email before it goes out. Deletes the pending message, so it is never sent."""
     from .commands.outlook_commands import handle_outlook_cancel
     handle_outlook_cancel(email_id)
 
 
-@outlook_app.command("sent", rich_help_panel="Mail")
+@outlook_app.command("sent", rich_help_panel="Mail", epilog="Example:  co outlook sent -n 20")
 def outlook_sent(last: int = typer.Option(10, "--last", "-n", help="How many emails to show")):
-    """List recently sent Outlook emails."""
+    """List recently sent Outlook emails. Read-only."""
     from .commands.outlook_commands import handle_outlook_sent
     handle_outlook_sent(last=last)
 
 
-@outlook_app.command("search", rich_help_panel="Mail")
+@outlook_app.command("search", rich_help_panel="Mail", epilog="Example:  co outlook search \"from:sam@example.com invoice\"")
 def outlook_search(
     query: str = typer.Argument(..., help="Search query: words match subject and body; "
                                         "from:<address>, to:<address> and participants:<address> "
                                         "narrow by who (measured to work on Graph $search)"),
     last: int = typer.Option(10, "--last", "-n", help="How many results to show"),
 ):
-    """Search your Outlook emails."""
+    """Search your Outlook emails. Read-only."""
     from .commands.outlook_commands import handle_outlook_search
     handle_outlook_search(query, last=last)
 
