@@ -699,6 +699,18 @@ with a count.
 
 ---
 
+#### `co search` / `co fetch` - Search the Web and Read a Page
+
+```bash
+co search "python json module"              # Google via credits; free DuckDuckGo when out
+co search "python json module" --engine ddg # free, no key
+co fetch https://example.com/page           # the page as Markdown
+```
+
+The same tools `co ai` carries. See [search.md](search.md).
+
+---
+
 #### `co copy <name>` - Copy Built-In Tools, Plugins, Skills & Prompts
 
 Copy built-in tools, plugins, prompt templates, trust policies, TUI components, and bundled skills to your project for customization.

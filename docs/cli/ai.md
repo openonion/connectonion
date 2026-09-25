@@ -195,6 +195,11 @@ The agent has a full suite of tools for coding tasks:
 **Shell**
 - Run bash commands (with approval flow for destructive operations)
 
+**Web**
+- Search the web (`web_search`): Gemini's answer grounded in Google Search plus its sources, charged per query to your credits; free DuckDuckGo when credits run out. Your own `SERPER_API_KEY` / `BRAVE_API_KEY` is used first when set
+- Read a page as Markdown (`web_fetch`), or ask a question about it; private and local addresses are refused
+- Same tools from any shell: [`co search` / `co fetch`](search.md)
+
 **Planning**
 - Track complex work with a visible todo list; handle simple work directly
 

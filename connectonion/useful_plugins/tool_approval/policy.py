@@ -31,6 +31,9 @@ READ_TOOLS = {
     "read", "read_file", "glob", "grep", "search", "list", "ls",
     "list_files", "get_file_info", "task_output", "get_emails", "get_events",
     "screenshot", "load_guide",
+    # Reading the web changes nothing. web_search may spend a fraction of a
+    # cent of credits, the same order as the model call that asked for it.
+    "web_search", "web_fetch",
 }
 WORKFLOW_TOOLS = {"task", "ask_user", "skill", "todo_list"}
 # Classes whose every method is planning with no side effect. Matched on the

@@ -375,7 +375,20 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b3
+## Current Version: 1.8.9b4
+
+1.8.9b4 is the fourth preview of the 1.8.9 fix line (#1722). `co ai` can
+search the web and read a page (#1724): `web_search` and `web_fetch` are
+default tools and `co search` / `co fetch` commands. Managed search is Gemini
+grounded in Google Search, $0.02 of credits per Google query, verified against
+production; out of credits it falls back to free DuckDuckGo and says so.
+Stable is 1.8.8.
+
+- 1.8.9b4 (web_search / web_fetch in co ai and as co search / co fetch; managed Gemini-grounded search on credits with a DuckDuckGo fallback; SSRF-guarded Markdown fetch.)
+
+Earlier in this line:
+
+## 1.8.9b3
 
 1.8.9b3 is the third preview of the 1.8.9 fix line (#1722): six bugs reported
 in real use, each a tool that reported success or blamed the wrong party. A
