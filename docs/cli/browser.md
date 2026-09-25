@@ -297,7 +297,7 @@ python -m patchright install chrome     # branded Chrome: best stealth, system i
 ## Sessions & Profile
 
 - One async browser runtime per machine, backed by a persistent profile at `~/.co/browser_profile/` — so logins survive restarts.
-- The daemon endpoint: a Unix socket under `$XDG_RUNTIME_DIR/co/browser.sock` on macOS/Linux, a per-user named pipe on Windows (native, 1.2.1+ — no WSL). Override with `$CO_BROWSER_SOCK`.
+- The daemon endpoint: a Unix socket at `/tmp/co-<user>/browser.sock` on Linux and `<per-user temp dir>/co-<user>/browser.sock` on macOS — the same however you logged in, since no session variable moves it — and a per-user named pipe on Windows (native, 1.2.1+ — no WSL). Override with `$CO_BROWSER_SOCK`. A daemon an older version started at `$XDG_RUNTIME_DIR/co/`, `/run/user/<uid>/co/` or `$TMPDIR/co-<user>/` is still found until it is closed.
 - Client work is bounded: 1 MiB request cap, 120-second read/reply deadlines,
   32 admitted connections, and eight blocking transport workers on Windows.
 - On Windows, `co browser close` returns only after the serving daemon exits, so
