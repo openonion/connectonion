@@ -130,7 +130,7 @@ def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
     Args:
         reveal: If True, show full values instead of masked
         ssh: If True, print the SSH public key derived from the recovery phrase
-        write: With ssh, also write the private half to ~/.ssh/
+        write: With ssh, also write the private half to ~/.co/ssh/
     """
     from ... import address
 

@@ -265,7 +265,7 @@ def auth(service: Optional[str] = typer.Argument(None, help="login, status, logo
          scopes: Optional[str] = typer.Option(None, "--scopes", help="Google: comma-separated limited scopes. Default: Gmail, Calendar, Drive and YouTube."),
          app_id: Optional[str] = typer.Option(None, "--app-id", metavar="cli_…",
                                               help="Feishu/Lark: authorize an application you already have, keeping its groups and permissions")):
-    """Sign in to OpenOnion (login, status, logout) or connect a service. Writes tokens to the env file; status is Read-only."""
+    """Sign in to OpenOnion (login, status, logout) or connect a service. Writes tokens to the env file; feishu and lark also create a Feishu application you own. status is Read-only."""
     if scopes is not None and service != "google":
         print("--scopes is only supported for Google. Next: co auth google --help")
         raise typer.Exit(2)
@@ -306,7 +306,7 @@ def keys(
     reveal: bool = typer.Option(False, "--reveal", "-r", help="Show full key values"),
     agent: Optional[str] = typer.Option(None, "--agent", help="Print the address an agent of this name will have, before it is deployed"),
     ssh: bool = typer.Option(False, "--ssh", help="Print the SSH public key derived from your recovery phrase"),
-    write: bool = typer.Option(False, "--write", help="With --ssh, also write the private half to ~/.ssh/"),
+    write: bool = typer.Option(False, "--write", help="With --ssh, also write the private half to ~/.co/ssh/"),
 ):
     """Show agent keys and credentials. Read-only; only --ssh --write writes key files under ~/.co/ssh/."""
     if agent:
@@ -1677,13 +1677,13 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
 
     @group.command("check", epilog=f"Example:  {co} check")
     def _check():
-        """Credentials, connectivity, listener state, unread count. Exit 3 on a problem. Read-only."""
+        """Credentials, connectivity, listener state, unread count. Exit 3 on a problem. Changes nothing in the chat or the queue."""
         from .commands.listen_commands import handle_check
         handle_check(name)
 
     @group.command("ls", epilog=f"Example:  {co} ls")
     def _ls():
-        """Unread messages: id, chat, sender, text. Read-only: nothing is taken from the queue."""
+        """Unread messages: id, chat, sender, text. Nothing is taken from the queue; malformed queue files are moved to quarantine. Changes nothing in the chat."""
         from .commands.listen_commands import handle_ls
         handle_ls(name)
 
@@ -1703,7 +1703,7 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         last: Optional[int] = typer.Option(None, "--last", "-n", min=1,
                                            help="Keep only the most recent N"),
     ):
-        """Every message ever received, one JSON line each. Read-only."""
+        """Every message ever received, one JSON line each. Changes nothing in the chat or the queue."""
         from .commands.listen_commands import handle_log
         handle_log(name, follow=follow, chat=chat, sender=sender, since=since, last=last)
 
