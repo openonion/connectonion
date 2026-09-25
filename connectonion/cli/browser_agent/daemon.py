@@ -18,6 +18,7 @@ import inspect
 import json
 import os
 import platform
+import re
 import shlex
 import signal
 import socket
@@ -60,6 +61,9 @@ def default_sock_path() -> str:
     return transport.default_address()
 
 
+BOOL_WORDS = ("1", "true", "yes", "on", "0", "false", "no", "off")
+
+
 def _coerce(value: str, annotation):
     """Coerce a shell string token to the parameter's annotated type."""
     if annotation is bool:
@@ -77,12 +81,20 @@ def _split_tokens(tokens, params=()):
     `--key value` works too when `key` is a parameter that takes a value — the
     way `tab open --who me --for "..."` always has, and the way every other CLI
     an agent knows does. Knowing the parameters is what makes that safe: a bare
-    `--raw` on a bool stays a switch, and a word after it stays positional.
+    `--raw` on a bool stays a switch, and a word after it stays positional —
+    unless that word is itself a boolean (`--full-page true`), which is what the
+    caller meant by it and was otherwise taken as a file name.
+
+    A flag and its value quoted into one token (`"--status 4x"`) is the same
+    request as the two tokens; read as one, it became a keyword argument named
+    `status 4x` and a TypeError instead of the validation message.
     """
+    params = list(params)
     takes_value = {
         p.name for p in params
         if p.annotation not in (bool, inspect.Parameter.empty)
     }
+    is_switch = {p.name for p in params if p.annotation is bool}
     positional, kwargs = [], {}
     index = 0
     while index < len(tokens):
@@ -92,15 +104,62 @@ def _split_tokens(tokens, params=()):
             positional.append(tok)
             continue
         key, eq, val = tok[2:].partition("=")
+        if not eq and " " in key.strip():
+            key, _, val = key.strip().partition(" ")
+            eq, val = "=", val.strip()
         name = key.replace("-", "_")
         if eq:
             kwargs[name] = val
         elif name in takes_value and index < len(tokens) and not tokens[index].startswith("--"):
             kwargs[name] = tokens[index]
             index += 1
+        elif name in is_switch and index < len(tokens) and tokens[index].lower() in BOOL_WORDS:
+            kwargs[name] = tokens[index]
+            index += 1
         else:
             kwargs[name] = True
     return positional, kwargs
+
+
+# The browser functions report some failures as sentences rather than raising,
+# because the `do` agent reads their return value as tool output. At the CLI
+# boundary those sentences are what the exit-code table calls "the action
+# failed", and exiting 0 on them let `click '#nope' && next-step` run the next
+# step on a page nothing had been clicked on.
+_ACTION_FAILED = (
+    "No element found for selector:",
+    "No visible element found for selector:",
+    "Could not find element matching:",
+    "Could not find target near anchor",
+    "File not found:",
+    "Script not found:",
+)
+_INDEX_OUT_OF_RANGE = re.compile(r"^Selector matched \d+ elements.*; index -?\d+ is out of range$")
+# These return what is on the page. A page may say anything, including one of
+# the sentences above, so for them only "no browser at all" is a failure.
+_PAGE_CONTENT_VERBS = frozenset({
+    "get_text", "extract_items_by_selector", "extract_data", "get_links_from_page",
+    "run_page_script", "run_frame_script", "get_focused_element", "save_page_context",
+    "get_current_url", "get_system_info", "list_pages", "network", "cookies",
+})
+
+
+def _result_code(verb: str, payload, tab) -> tuple:
+    """(ok, payload) for a browser function's result, with sentence failures made codes.
+
+    "Browser not open" is exit 3, the code for "there is nothing here to act
+    on" (as for a tab that was never opened), and names the way to open it.
+    """
+    if not isinstance(payload, str):
+        return True, payload
+    flag = "" if tab is None else f" -t {shlex.quote(str(tab))}"
+    if payload == "Browser not open":
+        return 3, f"the browser is not open. Next: co browser{flag} go_to <url>"
+    if verb in _PAGE_CONTENT_VERBS:
+        return True, payload
+    if payload.startswith(_ACTION_FAILED) or _INDEX_OUT_OF_RANGE.match(payload):
+        return False, payload
+    return True, payload
 
 
 def _is_verb(browser, name: str) -> bool:
@@ -143,6 +202,24 @@ REQUEST_TIMEOUT = 120.0
 REPLY_TIMEOUT = 120.0
 MAX_REQUEST_BYTES = 1024 * 1024
 MAX_IN_FLIGHT = 32
+# How long the daemon waits for Chrome to answer "are you still there?". The
+# answer is a round trip (see AsyncBrowserCore.is_alive), and on macOS the
+# cookie store it reads can sit behind a Keychain prompt for as long as nobody
+# clicks it. Waiting for that without a deadline, while holding the client's
+# connection, is what filled all 32 slots in 1.8.7: one leaked connection per
+# command. Silence past this deadline is "unknown", never "dead" — a dead
+# browser answers at once, with TargetClosedError.
+LIVENESS_TIMEOUT = 3.0
+# Status reads a few more things from the runtime (engine, tab board, binary);
+# each gets this long before the report says what it could not read.
+STATUS_STEP_TIMEOUT = 5.0
+# What a client hears when every admitted slot is taken — the docs promise it.
+BUSY_MESSAGE = (
+    f"browser daemon is busy at connection capacity ({MAX_IN_FLIGHT} commands in "
+    "flight) — try again shortly"
+)
+# How long a shed client gets to send the request it is being refused for.
+SHED_READ_TIMEOUT = 2.0
 WINDOWS_TRANSPORT_WORKERS = 8
 
 # Tabs are closed by the agent that opened them. This is only a janitor for tabs
@@ -342,6 +419,12 @@ class BrowserDaemon:
         self._health_lock = asyncio.Lock()
         self._loop = None
         self._client_tasks = set()
+        # Work that runs after a reply is sent and its connection closed: the
+        # post-reply health check, and busy answers to clients over capacity.
+        # Neither may hold one of the MAX_IN_FLIGHT client slots.
+        self._health_tasks = set()
+        self._shed_tasks = set()
+        self._alive_probe = None  # the one liveness round trip in flight, shared
         self._transport_pool = None
         artifact_root = (
             Path(tempfile.gettempdir())
@@ -397,16 +480,17 @@ class BrowserDaemon:
 
     async def _paid_browser_is_live(self) -> bool:
         """Is the paid session this daemon was pinned for still open?"""
-        is_alive = getattr(self.browser, "is_alive", None)
-        if is_alive is None:
+        if getattr(self.browser, "is_alive", None) is None:
             return False
         try:
-            result = is_alive()
-            if inspect.isawaitable(result):
-                result = await result
+            # Bounded like every other liveness question: this one runs before
+            # each command on a paid pin, so an unbounded wait here would hang
+            # every command. A session that ended upstream answers False at
+            # once (is_alive checks terminal_reason before any round trip).
+            alive = await self._probe_alive()
         except Exception:
             return False
-        return bool(result)
+        return alive is not False
 
     def _paid_relaunch_refusal(self) -> str:
         """A bare command must not restart a paid browser on the caller's behalf."""
@@ -466,7 +550,7 @@ class BrowserDaemon:
         """Run one request without blocking unrelated tabs.
 
         Returns ``(ok, payload)``; ok is True, False, or an integer error code
-        mirrored by the client (2 usage · 3 unknown tab · 4 tab busy).
+        mirrored by the client (2 usage · 3 unknown tab or no browser open · 4 tab busy).
         Claim admission and active-request audit leases are atomic even though the
         browser operation itself may overlap work on independent tabs.
         """
@@ -559,13 +643,14 @@ class BrowserDaemon:
             }
             self.last_command = {"line": line, "at": time.time()}
         try:
-            return await self._call_verb_async(
+            ok, payload = await self._call_verb_async(
                 verb,
                 tokens[1:],
                 raw_result=raw_result,
                 artifact_stager=artifact_stager,
                 request_id=request_id,
             )
+            return _result_code(verb, payload, tab) if ok is True else (ok, payload)
         finally:
             async with self._registry_lock:
                 active = meta.get("active_requests")
@@ -669,8 +754,17 @@ class BrowserDaemon:
                     f"{type(exc).__name__}: {first}\n"
                     f"Chrome failed to start. {launch_failure_advice(first)}"
                 )
+            code = getattr(exc, "exit_code", None)
+            if isinstance(code, int):
+                return code, str(exc)  # a refusal that names its own exit code (usage: 2)
             # On wrong arguments, show the expected signature so an agent can self-correct.
             hint = f"\nusage: {verb}{signature_str(method)}" if isinstance(exc, TypeError) else ""
+            if type(exc) is ValueError:
+                # Our own refusals are written as sentences with a Next step;
+                # "ValueError: " in front of one read as a crash. Other classes
+                # keep their names: TimeoutError and TargetClosedError are what
+                # the health check reads, and a real crash should look like one.
+                return False, f"{exc}{hint}"
             return False, f"{type(exc).__name__}: {exc}{hint}"
 
         if staged_path is not None and staged_path.is_file():
@@ -699,14 +793,36 @@ class BrowserDaemon:
             return asyncio.run(self._status_async())
         raise RuntimeError("await _status_async() inside an event loop")
 
-    async def _browser_is_alive(self) -> bool:
+    async def _probe_alive(self):
+        """True or False from a round trip to the browser, or None for no answer.
+
+        None means the browser did not answer within LIVENESS_TIMEOUT. Callers
+        must read it as "unknown", not "dead": a Chrome whose cookie store waits
+        on the Keychain is alive, and tearing it down would lose the session.
+
+        One round trip is shared by everyone asking. Without that, each command
+        added another cookie read to the queue in front of a Chrome that was not
+        answering the first one.
+        """
         probe = getattr(self.browser, "is_alive", None)
         if probe is None:
             probe = getattr(self.browser, "_context_is_alive", None)
         if probe is None:
             return False
-        result = probe()
-        return bool(await result) if inspect.isawaitable(result) else bool(result)
+        task = getattr(self, "_alive_probe", None)  # tests build daemons with __new__
+        if task is None or task.done():
+            result = probe()
+            if not inspect.isawaitable(result):
+                return bool(result)
+            task = self._alive_probe = asyncio.ensure_future(result)
+        try:
+            return bool(await asyncio.wait_for(asyncio.shield(task), LIVENESS_TIMEOUT))
+        except asyncio.TimeoutError:
+            return None
+
+    async def _browser_is_alive(self) -> bool:
+        """Liveness where a caller needs a yes or no: no answer counts as alive."""
+        return await self._probe_alive() is not False
 
     async def _browser_tab_status(self) -> str:
         result = self.browser.tab_status()
@@ -714,7 +830,18 @@ class BrowserDaemon:
 
     async def _status_async(self) -> tuple:
         """Report browser state, the last command, and the tab board."""
-        open_state = "open" if await self._browser_is_alive() else "not open"
+        # Status is what someone runs when things are stuck, so no step of it
+        # may wait forever: in 1.8.8b7 it hung 4.5 minutes on the same cookie
+        # read that was starving the connection slots.
+        alive = await self._probe_alive()
+        if alive is None:
+            open_state = (
+                f"open, but Chrome did not answer a liveness check within "
+                f"{LIVENESS_TIMEOUT:g}s (it reads the cookie store, which on macOS "
+                "can wait on a Keychain prompt) — commands may be slow or stuck"
+            )
+        else:
+            open_state = "open" if alive else "not open"
         headless = str(getattr(self.browser, "_headless", False)).lower()
         lines = [f"Browser: {open_state} · headless={headless} · targeting is per-command (-t <tab>; bare = main)"]
         engine_status = getattr(self.browser, "engine_status", None)
@@ -726,7 +853,7 @@ class BrowserDaemon:
                 "artifact_id": None,
             }
             if inspect.isawaitable(engine):
-                engine = await engine
+                engine = await asyncio.wait_for(engine, STATUS_STEP_TIMEOUT)
         except Exception:
             # Status is the diagnostic path. A broken optional paid client must
             # be reported as unresolved, not take the whole report down.
@@ -779,7 +906,9 @@ class BrowserDaemon:
             try:
                 # The fallback starts Patchright's synchronous driver. Running it
                 # on this event loop raises and falsely reports Chromium missing.
-                binary = await asyncio.to_thread(installed_browser_path)
+                binary = await asyncio.wait_for(
+                    asyncio.to_thread(installed_browser_path), STATUS_STEP_TIMEOUT
+                )
             except Exception:
                 binary = None  # status is what you run when things are broken
         lines.append(f"Browser binary: ✓ {binary}" if binary else
@@ -789,7 +918,17 @@ class BrowserDaemon:
         else:
             lines.append("Last command: (none yet)")
         lines.append("")
-        lines.append(await self._browser_tab_status())
+        try:
+            lines.append(
+                await asyncio.wait_for(self._browser_tab_status(), STATUS_STEP_TIMEOUT)
+            )
+        except asyncio.TimeoutError:
+            # The board waits for the tab locks; a command that is itself stuck
+            # holds one. Say so rather than inherit its wait.
+            lines.append(
+                f"Tabs: not read — the tab board waited {STATUS_STEP_TIMEOUT:g}s for a "
+                "command that is still running to let go of its tab"
+            )
         return True, "\n".join(lines)
 
     def _tab(self, args, caller: str = "") -> tuple:
@@ -1035,6 +1174,8 @@ class BrowserDaemon:
             # close_tab releases the page, registration/claim, and remembered URL.
             result = self.browser.close_tab(_tab_label(key))
             message = await result if inspect.isawaitable(result) else result
+            if message == "Tab closed":  # the same news twice read as a stutter
+                return True, f"Closed tab {_tab_label(key)}."
             return True, f"Closed tab {_tab_label(key)}. {message}"
 
     def serve(self):
@@ -1136,12 +1277,53 @@ class BrowserDaemon:
         self.browser = browser
 
     def _accept_posix_client(self, reader, writer) -> None:
-        """Admit at most ``MAX_IN_FLIGHT`` clients; shed excess immediately."""
-        if self._closing or len(self._client_tasks) >= MAX_IN_FLIGHT:
+        """Admit at most ``MAX_IN_FLIGHT`` clients; answer the excess "busy"."""
+        if self._closing or len(self._shed_tasks) >= MAX_IN_FLIGHT:
             writer.transport.abort()
+            return
+        if len(self._client_tasks) >= MAX_IN_FLIGHT:
+            # Dropping the connection read, on the client, as "the daemon closed
+            # or rejected the OIP stream — restart it", which sent people to
+            # restart a daemon that was merely full. The docs promise a busy
+            # answer; a shed client gets one, without taking a slot.
+            task = asyncio.create_task(self._answer_busy(reader, writer))
+            self._shed_tasks.add(task)
+            task.add_done_callback(self._shed_tasks.discard)
             return
         task = asyncio.create_task(self._handle_posix_client(reader, writer))
         self._track_client(task)
+
+    async def _answer_busy(self, reader, writer) -> None:
+        """Read the refused request (briefly) so the reply can name it, then say busy."""
+        request_id = ""
+        legacy = False
+        try:
+            prefix = await asyncio.wait_for(reader.readexactly(4), SHED_READ_TIMEOUT)
+            if prefix == OIP_MAGIC:
+                header = await asyncio.wait_for(reader.readexactly(4), SHED_READ_TIMEOUT)
+                size = frame_size_from_header(prefix + header)
+                body = await asyncio.wait_for(reader.readexactly(size), SHED_READ_TIMEOUT)
+                request_id = decode_frame(prefix + header + body).request_id
+            else:
+                legacy = True
+        except (asyncio.TimeoutError, asyncio.IncompleteReadError, ProtocolError, ValueError):
+            pass  # still answer: a client that never finished speaking gets the busy frame
+        try:
+            if legacy:
+                writer.write(self._reply_bytes(1, BUSY_MESSAGE))
+            else:
+                writer.write(encode_frame(oip_wire.Envelope(
+                    protocol_version=OIP_VERSION,
+                    request_id=request_id or uuid.uuid4().hex,
+                    failure=oip_wire.ProtocolFailure(code="BUSY", message=BUSY_MESSAGE),
+                )))
+            await asyncio.wait_for(writer.drain(), SHED_READ_TIMEOUT)
+        except (asyncio.TimeoutError, OSError):
+            pass  # the client left first; there is nobody to tell
+        finally:
+            writer.close()
+            with contextlib.suppress(OSError):
+                await writer.wait_closed()
 
     def _track_client(self, task: asyncio.Task) -> None:
         self._client_tasks.add(task)
@@ -1201,6 +1383,7 @@ class BrowserDaemon:
 
     async def _handle_posix_client(self, reader, writer) -> None:
         request = ""
+        answered = None  # (ok, payload) once a reply went out
         try:
             request = await self._read_posix_request(reader)
             if isinstance(request, oip_wire.Envelope):
@@ -1213,13 +1396,12 @@ class BrowserDaemon:
                         read_async_frame(reader), timeout=REQUEST_TIMEOUT
                     )
 
-                await self._serve_oip_command(request, send_frame, receive_frame)
-                return
-            ok, payload = await self._dispatch_boundary(request)
-            writer.write(self._reply_bytes(ok, payload))
-            await asyncio.wait_for(writer.drain(), timeout=REPLY_TIMEOUT)
-            if await self._should_stop(ok, payload):
-                self._begin_shutdown()
+                answered = await self._serve_oip_command(request, send_frame, receive_frame)
+            else:
+                ok, payload = await self._dispatch_boundary(request)
+                writer.write(self._reply_bytes(ok, payload))
+                await asyncio.wait_for(writer.drain(), timeout=REPLY_TIMEOUT)
+                answered = (ok, payload)
         except (
             BrokenPipeError,
             ConnectionResetError,
@@ -1241,6 +1423,8 @@ class BrowserDaemon:
             writer.close()
             with contextlib.suppress(BrokenPipeError, ConnectionResetError):
                 await writer.wait_closed()
+        if answered is not None:
+            self._check_health_later(*answered)
 
     async def _serve_windows(self) -> None:
         slots = asyncio.Semaphore(MAX_IN_FLIGHT)
@@ -1274,6 +1458,7 @@ class BrowserDaemon:
 
     async def _handle_windows_client(self, conn, slots) -> None:
         request = ""
+        answered = None  # (ok, payload) once a reply went out
         try:
             request = await self._transport_call(lambda: self._read_request(conn))
             if request is None:
@@ -1294,17 +1479,16 @@ class BrowserDaemon:
                     )
                     return decode_frame(data)
 
-                await self._serve_oip_command(request, send_frame, receive_frame)
-                return
-            if len(request.encode()) > MAX_REQUEST_BYTES:
-                ok, payload = 2, f"request exceeds the {MAX_REQUEST_BYTES}-byte limit"
+                answered = await self._serve_oip_command(request, send_frame, receive_frame)
             else:
-                ok, payload = await self._dispatch_boundary(request)
-            await self._transport_call(
-                lambda: self._send_reply(conn, self._reply_bytes(ok, payload))
-            )
-            if await self._should_stop(ok, payload):
-                self._begin_shutdown()
+                if len(request.encode()) > MAX_REQUEST_BYTES:
+                    ok, payload = 2, f"request exceeds the {MAX_REQUEST_BYTES}-byte limit"
+                else:
+                    ok, payload = await self._dispatch_boundary(request)
+                await self._transport_call(
+                    lambda: self._send_reply(conn, self._reply_bytes(ok, payload))
+                )
+                answered = (ok, payload)
         except (BrokenPipeError, ConnectionResetError, TimeoutError, EOFError):
             preview = request[:80] if isinstance(request, str) else request.request_id
             print(f"client vanished before reply: {preview!r}", file=sys.stderr)
@@ -1321,6 +1505,8 @@ class BrowserDaemon:
                 conn.close()
             finally:
                 slots.release()
+        if answered is not None:
+            self._check_health_later(*answered)
 
     async def _dispatch_boundary(self, request: str) -> tuple:
         try:
@@ -1330,8 +1516,12 @@ class BrowserDaemon:
         except Exception as exc:
             return False, f"{type(exc).__name__}: {exc}"
 
-    async def _serve_oip_command(self, request, send_frame, receive_frame) -> None:
-        """Serve one typed command and any artifact streams on the same channel."""
+    async def _serve_oip_command(self, request, send_frame, receive_frame):
+        """Serve one typed command and any artifact streams on the same channel.
+
+        Returns (ok, text) once the reply is out, for the caller to run the health
+        check after it has closed the connection; None when nothing was answered.
+        """
         staged = None
         try:
             if request.WhichOneof("frame") != "command":
@@ -1410,8 +1600,7 @@ class BrowserDaemon:
                     )
                 )
                 staged = None
-            if await self._should_stop(ok, result_text):
-                self._begin_shutdown()
+            return ok, result_text
         except (ProtocolError, ValueError) as exc:
             await send_frame(
                 oip_wire.Envelope(
@@ -1438,7 +1627,7 @@ class BrowserDaemon:
                 self._had_browser = True
                 self._defer_context_probe = True
                 return False
-            closed = payload.startswith("Browser closed") or (
+            closed = payload.startswith(("Browser closed", "No browser was open")) or (
                 ok is False
                 and (
                     payload.startswith("TargetClosedError:")
@@ -1458,9 +1647,37 @@ class BrowserDaemon:
                 # A concurrent bare close owns teardown and will stop the server
                 # after its reply. Do not race that teardown with a health probe.
                 return False
-            alive = await self._browser_is_alive()
+        # The round trip runs outside the lock: it is shared and bounded, and
+        # holding the lock across it queued every later reply behind one
+        # unanswered cookie read.
+        alive = await self._probe_alive()
+        if alive is None:
+            return self._launch_failed()  # no answer is not evidence of death
+        async with self._health_lock:
             self._had_browser = self._had_browser or alive
-            return self._launch_failed() or closed or (self._had_browser and not alive)
+            return self._launch_failed() or (self._had_browser and not alive)
+
+    def _check_health_later(self, ok, payload: str) -> None:
+        """Run the post-reply health check after the connection is gone.
+
+        The client has its answer and has hung up; nothing about whether the
+        daemon should stop is theirs to wait for. Running it inside the client
+        task kept that task — and its MAX_IN_FLIGHT slot — alive for as long as
+        Chrome took to answer, which was forever.
+        """
+        async def check():
+            if await self._should_stop(ok, payload):
+                self._begin_shutdown()
+
+        task = asyncio.create_task(check())
+        self._health_tasks.add(task)
+        task.add_done_callback(self._health_done)
+
+    def _health_done(self, task: asyncio.Task) -> None:
+        self._health_tasks.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            exc = task.exception()
+            print(f"browser health check failed: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     def _begin_shutdown(self) -> None:
         if self._shutdown_started:
@@ -1511,6 +1728,15 @@ class BrowserDaemon:
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
         self._client_tasks.clear()
+        background = [
+            task
+            for task in (*self._health_tasks, *self._shed_tasks, self._alive_probe)
+            if task is not None and task is not current and not task.done()
+        ]
+        for task in background:
+            task.cancel()
+        if background:
+            await asyncio.gather(*background, return_exceptions=True)
         close = getattr(self.browser, "close", None)
         if callable(close):
             try:

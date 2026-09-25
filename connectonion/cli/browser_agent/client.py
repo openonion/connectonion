@@ -368,6 +368,9 @@ PAGELESS_VERBS = {
 # a Host-local filename would recreate the bug Artifact Stream removes, so file
 # verbs fail closed until the secure remote stream carrier is connected.
 _REMOTE_ARTIFACT_VERBS = {"take_screenshot", "save_state", "save_page_context"}
+# Words a boolean flag accepts as its value (the daemon's BOOL_WORDS, kept here
+# so a direct verb never imports the browser-owning daemon module).
+_BOOL_WORDS = ("1", "true", "yes", "on", "0", "false", "no", "off")
 
 
 def _remote_artifact_unavailable(line: str) -> tuple | None:
@@ -397,6 +400,17 @@ def _oip_command(line: str, *, caller: str, account: str, tab, engine: str):
                 if index + 1 >= len(argv):
                     raise ValueError(f"{token} requires a local path")
                 destination = argv[index + 1]
+                index += 2
+                continue
+            if (
+                token.startswith("--")
+                and "=" not in token
+                and index + 1 < len(argv)
+                and argv[index + 1].lower() in _BOOL_WORDS
+            ):
+                # `--full-page true` is `--full-page=true`. Read as two tokens,
+                # the bare word below became the destination: a PNG named `true`.
+                daemon_argv.append(f"{token}={argv[index + 1]}")
                 index += 2
                 continue
             if token.startswith("--out=") or token.startswith("--path="):
@@ -547,6 +561,11 @@ def _request_with_identity(
                     _protocol_checked=True,
                 )
         if conn is None:
+            if closing:
+                # Starting a daemon — and on a first run, installing a browser —
+                # only to close it answered "Browser closed. Session saved",
+                # which claimed a session nobody had opened.
+                return 0, "No browser is open — nothing to close."
             if line.split()[:1] == ["status"]:
                 # Asking whether the browser is running must not start it. With
                 # nobody listening the answer is already known, and obtaining it

@@ -644,7 +644,8 @@ def test_close_stops_a_fresh_async_daemon_without_launching_chrome(short_sock, m
     code, payload = c._request("close", headless=True)
 
     assert code == 0
-    assert payload.startswith("Browser closed")
+    # Nothing was ever opened, so there is no session to have saved.
+    assert payload.startswith("No browser was open")
     server.join(timeout=2)
     assert not server.is_alive()
 

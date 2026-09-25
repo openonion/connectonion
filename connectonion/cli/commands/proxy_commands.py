@@ -19,6 +19,7 @@ import contextlib
 import hmac
 import json
 import os
+import re
 import secrets
 import signal
 import sys
@@ -31,7 +32,7 @@ USAGE = """co proxy — share this computer's internet connection.
   co proxy share [to <address>]   lend your connection to one agent
   co proxy status                 what is shared right now
   co proxy stop [<address>]       stop lending
-  co proxy diagnose [<address>]   why a share is not working
+  co proxy diagnose [<address>]   why a share is not working (--help: what it checks)
 
 <address> defaults to the one `co remote-browser config` remembered.
 
@@ -435,6 +436,44 @@ def _diagnose(address: str, as_json: bool) -> int:
     )
 
 
+DIAGNOSE_HELP = """co proxy diagnose <address> — why a share of this connection is not working.
+
+It checks, in order, and stops at the first thing wrong:
+  1. this machine has a share recorded for <address>   (else: co proxy share to <address>)
+  2. the process serving that share is still running
+  3. the share is attached to the host — if not, which of the host's endpoints
+     answer from this network
+
+<address> is the agent's 0x… address (co proxy status lists your shares). With
+no address it uses the one `co remote-browser config` remembered.
+Add --json for the stable JSON envelope."""
+
+AGENT_ADDRESS = re.compile(r"^0x[0-9a-fA-F]{64}$")
+
+
+def _diagnose_command(rest: list, as_json: bool, configured_address) -> int:
+    """`diagnose` checks a share, so its help and its errors are about shares.
+
+    It used to fall through the shared argument handling: with no address it
+    answered "No remote browser configured" — true, but about a different
+    command — and any word at all was looked up as if it were an address.
+    """
+    if rest[:1] in (["--help"], ["-h"], ["help"]):
+        print(DIAGNOSE_HELP)
+        return 0
+    target = rest[0] if rest else configured_address()
+    if not target:
+        print("Which share? Nothing is remembered to default to.\n", file=sys.stderr)
+        print(DIAGNOSE_HELP, file=sys.stderr)
+        return 2
+    if not AGENT_ADDRESS.match(target):
+        print(f"{target!r} is not an agent address — one looks like 0x followed by "
+              "64 hex characters.", file=sys.stderr)
+        print("See your shares with: co proxy status", file=sys.stderr)
+        return 2
+    return _diagnose(target, as_json)
+
+
 def handle_proxy(args) -> int:
     args = list(args)
     as_json = "--json" in args
@@ -463,6 +502,9 @@ def handle_proxy(args) -> int:
         print(f"Unknown command: co proxy {verb}", file=sys.stderr)
         print(USAGE, file=sys.stderr)
         return 2
+
+    if verb == "diagnose":
+        return _diagnose_command(rest, as_json, configured_address)
 
     # `share to <address>` reads as English; `share <address>` also works, and
     # no address at all means the one `co remote-browser config` remembered.

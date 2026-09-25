@@ -150,7 +150,7 @@ co browser scroll                          # scroll the main content
 co browser close                           # close browser, stop daemon
 ```
 
-Arguments are plain strings; flags like `--full-page` and `--index=2` map to the function's parameters. For `fill_text_by_selector`, `type_text_by_selector`, and `keyboard_type`, a final `--stdin` reads the text from redirected standard input so passwords and one-run codes do not appear in process arguments. Prefer `fill_text_by_selector` when replacing a controlled framework input; use `type_text_by_selector` when appending human-shaped keystrokes is required.
+Arguments are plain strings; flags like `--full-page` and `--index=2` map to the function's parameters, and `--index 2` or `--full-page true` mean the same as the `=` forms. For `fill_text_by_selector`, `type_text_by_selector`, and `keyboard_type`, a final `--stdin` reads the text from redirected standard input so passwords and one-run codes do not appear in process arguments. Prefer `fill_text_by_selector` when replacing a controlled framework input; use `type_text_by_selector` when appending human-shaped keystrokes is required.
 
 Before replacing focused text with a keyboard shortcut, inspect the target:
 
@@ -198,7 +198,7 @@ Add `--full-page` to capture the entire scrollable height instead of just the vi
 
 ## Scripting
 
-Output is clean stdout, errors go to stderr, and the exit code is `0` on success / `1` on failure — so commands compose like any Unix tool:
+Output is clean stdout, errors go to stderr, and the exit code is `0` on success / `1` when the action failed (a selector that matched nothing included) / `2` for a usage error (including a `go_to` address that is not a web URL) / `3` when there is nothing to act on (no browser open yet, or an unknown `-t` tab) / `4` when another agent holds the tab — so commands compose like any Unix tool:
 
 ```bash
 # Capture a value
@@ -299,7 +299,10 @@ python -m patchright install chrome     # branded Chrome: best stealth, system i
 - One async browser runtime per machine, backed by a persistent profile at `~/.co/browser_profile/` — so logins survive restarts.
 - The daemon endpoint: a Unix socket at `/tmp/co-<user>/browser.sock` on Linux and `<per-user temp dir>/co-<user>/browser.sock` on macOS — the same however you logged in, since no session variable moves it — and a per-user named pipe on Windows (native, 1.2.1+ — no WSL). Override with `$CO_BROWSER_SOCK`. A daemon an older version started at `$XDG_RUNTIME_DIR/co/`, `/run/user/<uid>/co/` or `$TMPDIR/co-<user>/` is still found until it is closed.
 - Client work is bounded: 1 MiB request cap, 120-second read/reply deadlines,
-  32 admitted connections, and eight blocking transport workers on Windows.
+  32 admitted connections (a command beyond them is told the daemon is busy at
+  connection capacity), and eight blocking transport workers on Windows. The
+  after-reply liveness check runs once the connection is closed and gives
+  Chrome 3 seconds; no answer is never read as a dead browser.
 - On Windows, `co browser close` returns only after the serving daemon exits, so
   an immediate next command can safely start a fresh daemon.
 - For an isolated automation run, set `$CO_BROWSER_PROFILE_DIR` to a dedicated absolute directory and `$CO_BROWSER_SOCK` to a dedicated socket. Keep the real `$HOME`; replacing it can break OS-backed browser behavior and credentials.
@@ -315,7 +318,17 @@ the driver). These messages omit URLs and driver logs that may hold credentials.
 An ordinary empty page or HTTP 404 document remains readable and is not treated
 as a transport failure.
 
-Errors print to **stderr** and exit with code `1`. Each one tells you the next step — handy when an AI agent is driving the CLI and needs to self-correct.
+An address that cannot load at all is refused before anything starts, with
+exit code `2`: a scheme other than `http`, `https`, `file`, `data`, `about` or
+`chrome`, or text that is not a host name.
+
+```bash
+$ co browser go_to htp://example.com
+go_to 'htp://example.com': htp: is not a web address this browser opens
+Next: co browser go_to https://example.com   (http, https, file, data, about and chrome addresses)
+```
+
+Errors print to **stderr** and exit non-zero (`1` for a failed action; see Scripting for the others). Each one tells you the next step — handy when an AI agent is driving the CLI and needs to self-correct.
 
 **Unknown function**
 ```bash
