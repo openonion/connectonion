@@ -1,6 +1,6 @@
 ---
 name: cli-skill-design
-description: Design a `co <thing>` CLI surface and its SKILL.md together so an agent can drive it without guessing — help teaches the workflow and serves as the skill source of truth, every command names the next step, and failures explain recovery. Use when adding a new CLI command group, writing or rewriting a SKILL.md for one, or auditing an existing one.
+description: Design a `co <thing>` CLI surface and its SKILL.md together so an agent can drive it without guessing — help teaches the workflow and serves as the skill source of truth, every command names the next step, and failures explain recovery; every page passes the CI help contract (example, what it changes, a way back). Use when adding a new CLI command group, writing or rewriting a SKILL.md for one, or auditing an existing one.
 ---
 
 # Designing a CLI skill
@@ -26,6 +26,61 @@ selectors, verification scripts. This one is about the command surface itself.)
 
 Start with the help workflow contract below, then verify command discovery,
 execution and recovery. Record actual test results, not just design principles.
+
+## What CI enforces on every `co` command
+
+`tests/unit/test_cli_help_contract.py` (#1657) checks every registered command
+outside `co wiki` (which is held to its own verbatim pages by
+`tests/e2e/cli/test_wiki_help_contract.py`). There is no baseline and no
+waiver: a new command fails CI until its page passes. Offline, under an empty
+HOME and cwd, `co <cmd> --help` must:
+
+| check | how to pass it |
+|---|---|
+| exit 0 and write nothing | help never loads credentials, opens a network connection or creates a file |
+| `Usage:` | Typer prints it; a hand-written page (`co proxy`) must be listed in the test |
+| `Example:` line | `@app.command("send", epilog="Example:  co gmail send you@example.com \"Hi\" \"Note\"")`. Separate several with `  \|  `. Every flag in it must exist on that command; placeholders are `<#>`, `<message-id>`, `0xabc...`, `you@example.com`, never a real address or id |
+| says what it changes | one of these exact words, which the gate finds anywhere on the page; put it in the docstring's first line, the one an agent reads: `Read-only`, `Writes`, `Sends`, `Deletes`, `Removes`, `Creates`, `Changes`, `Charges`, `Deploys`, `Installs`, `Uploads`, `Publishes`, `Starts`, `Stops`, `Runs` |
+| a way back | **do not write it.** `name_the_way_back(app)` in `cli/typer_groups.py` appends `Back: <parent> --help` to every page from the command tree |
+| real references | every `co …` in an Example, Next or Back line must resolve through `connectonion.cli.discovery.check` |
+
+Two other register tests apply to every leaf:
+`test_every_command_has_a_next_step.py` needs an entry in `command_tips.NEXT`
+(a tip naming one real command, or `HANDLER` when the handler prints its own),
+and `test_cli_tips_name_real_commands.py` checks every tip string.
+
+Run all three before pushing, and once with CI's colour on, because Rich puts
+escape codes between words:
+
+```bash
+pytest -q tests/unit/test_cli_help_contract.py tests/unit/test_every_command_has_a_next_step.py tests/unit/test_cli_tips_name_real_commands.py
+GITHUB_ACTIONS=true FORCE_COLOR=1 pytest -q tests/unit/test_cli_help_contract.py
+```
+
+### Write "what it changes" from the handler, not the name
+
+The #1721 audit wrote 264 of these sentences by reading each handler first. That
+is where the real defects were: `co auth feishu` creates a Feishu application
+and its help never said so, and `co keys --write` named a directory the code
+does not write. Name the thing a user would care about and nothing more:
+
+- `Read-only` only when it is. A listing that caches row numbers locally is
+  still read-only for the account, so say which: "Read-only for the mailbox".
+  A command that moves malformed files to quarantine is not read-only; say
+  "Changes nothing in the chat."
+- Conditional effects go in the same line: "Read-only unless --mark-read",
+  "Previews unless --yes", "Charges your credits with --buy".
+- Effects that depend on the provider are stated as the provider's
+  (Google emails attendees; Drive empties trash after 30 days), not as ours.
+
+### Use the reader's word in the first line
+
+In the discovery test, a model searching for "credit balance" opened `co status`
+and moved on, because the page said "account status". The right page was open;
+it did not say the word the reader came with. Put the goal's noun in the first
+line: "Show your credit balance…", "Who may call your agent…", "…
+~/.co/keys.env, which every project reads". When two groups sound alike
+(`co skills` and `co sub`), each says which one is the other.
 
 ## Help is the usage skill
 
@@ -92,6 +147,19 @@ Allocate enough response tokens for a complete command, including quoted paths.
 If a harness limit truncates a response, retain it as an incomplete evaluation
 and document any allowance change. For genuine command-selection failures,
 improve the help; do not weaken the goal or grader to make the result pass.
+
+The help-only test for the whole CLI is committed as
+`tests/e2e/real_api/test_cli_discovery_journeys.py` (opt-in, `-m real_api`,
+about 90 seconds). The model starts at `co --help` and may ask for any page
+until it names one command. **When you add a command group, add its goal
+there.** Lessons from building it:
+
+- **Never truncate the pages you feed it.** A first version cut each page at
+  6,000 characters; `co --help` is about 10,000, so gmail, outlook, trust and
+  skills were invisible and four "failures" were the harness's own.
+- A goal that needs two commands cannot pass a one-command grader. Mark it
+  `xfail` with the reason, and have the first command's help name the second
+  as its Next, rather than rewording the goal until it passes.
 
 Report the two kinds of evidence separately:
 
@@ -300,6 +368,10 @@ with a failed run.
 
 ## Done checklist
 
+- [ ] `test_cli_help_contract.py` passes for every new or changed command, also with `GITHUB_ACTIONS=true FORCE_COLOR=1`
+- [ ] Each page has an `Example:` epilog whose flags exist, and a first line with the fixed "what it changes" word, written from the handler
+- [ ] Every new leaf has a `command_tips.NEXT` entry
+- [ ] A goal for the new group is in `test_cli_discovery_journeys.py`, and it passes with `-m real_api`
 - [ ] Help teaches purpose, observed inputs, procedure, effects, results, verification and recovery before listing options
 - [ ] Help and any loadable Skill share one workflow definition or the Skill explicitly routes to help
 - [ ] Command syntax/defaults match CLI registration; generated Skill exports are verified if implemented
