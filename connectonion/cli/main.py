@@ -666,7 +666,7 @@ skill: field — the same cases must be able to compare two of them.
 \b
 Next after `co benchmark check <name>` passes:
   1. write or edit .co/skills/<skill>/SKILL.md (the skill is the deliverable)
-  2. co eval run <name> --agent agent.py --skill <skill> --runs 3
+  2. co eval run <name> --agent agent.py --skill <skill> --runs 1
   3. co eval report <name> --latest, edit only the skill, rerun the same benchmark
 """
 
@@ -716,6 +716,7 @@ EVAL_HELP = """Run a benchmark with the real Agent and inspect scored reports.
 
 \b
   co eval run <name> --agent agent.py [--skill NAME] [--invoke auto|explicit] [--runs N]
+              [--max-iterations N]
   co eval report <name> [--latest | --run ID]
 
 \b
@@ -754,7 +755,10 @@ def eval_run(
     invoke: str = typer.Option("auto", "--invoke",
                                help="auto: send the input unchanged, the Agent must choose the skill. "
                                     "explicit: send /<skill> <input>"),
-    runs: int = typer.Option(1, "--runs", min=1, help="Repeat each case on a fresh session"),
+    runs: int = typer.Option(1, "--runs", min=1, help="Repeat each case on a fresh session. Start with 1"),
+    max_iterations: Optional[int] = typer.Option(
+        None, "--max-iterations", min=1,
+        help="Steps one attempt may take before it is stopped (default 10); each step is paid for"),
     json_out: bool = typer.Option(False, "--json", help="Summary and report path as JSON"),
     live: bool = typer.Option(False, "--live",
                               help="Allow outside effects. Without it the run sets CO_EVAL_LIVE=0 "
@@ -763,12 +767,13 @@ def eval_run(
 ):
     """Run every case on the real Agent and score each expectation. Saves an immutable report.
 
-    Exit 0 all expectations pass; 1 any FAIL, UNVERIFIED or skill not invoked;
+    Exit 0 all expectations pass; 1 any FAIL, UNVERIFIED, STOPPED or skill not invoked;
     2 bad benchmark, agent path, skill or option; 3 the Agent or runner broke (never a pass).
     """
     from .commands.benchmark_commands import handle_eval_run
     raise typer.Exit(code=handle_eval_run(name, agent, skill_name=skill, invoke=invoke, runs=runs,
-                                          as_json=json_out, live=live, judge_model=judge_model))
+                                          as_json=json_out, live=live, judge_model=judge_model,
+                                          max_iterations=max_iterations))
 
 
 @eval_app.command("report")

@@ -157,6 +157,27 @@ def test_report_for_a_benchmark_never_run_is_exit_2(project):
     assert result.exit_code == 2 and "co eval run ops --agent agent.py" in result.output
 
 
+def test_a_first_multi_run_says_what_it_will_spend_and_suggests_one_run(project, judge):
+    # 1.8.8b9: a new user followed the hint to --runs 3 and would have spent $3
+    # of $5 before learning the cases could not pass.
+    result = co("eval", "run", "ops", "--agent", "agent.py", "--runs", "3", "--max-iterations", "4")
+
+    assert "5 cases × 3 run(s) = 15 Agent runs, each stopped after 4 steps" in result.output
+    assert "--runs 1 first" in result.output
+    assert json.loads(next((project / ".co" / "eval-runs" / "ops").glob("*/report.json")).read_text())[
+        "max_iterations"] == 4
+
+    again = co("eval", "run", "ops", "--agent", "agent.py", "--runs", "3")
+    assert "each stopped after 10 steps" in again.output
+    assert "--runs 1 first" not in again.output, "once a run is saved, more runs are a choice, not a trap"
+
+
+def test_check_suggests_one_run_first(project):
+    result = co("benchmark", "check", "ops")
+
+    assert "--runs 1" in result.output and "--runs 3" not in result.output
+
+
 def test_run_with_a_missing_agent_file_is_exit_2_not_3(project):
     result = co("eval", "run", "ops", "--agent", "nope.py")
 

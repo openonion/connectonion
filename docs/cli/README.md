@@ -811,7 +811,7 @@ only the skill, and rerun the identical benchmark:
 
 ```bash
 co benchmark check reimbursement        # .co/benchmarks/reimbursement.yaml; never runs an Agent
-co eval run reimbursement --agent agent.py --skill reimbursement --runs 3
+co eval run reimbursement --agent agent.py --skill reimbursement --runs 1
 co eval report reimbursement --latest   # case by case, and what changed since the run before
 ```
 
