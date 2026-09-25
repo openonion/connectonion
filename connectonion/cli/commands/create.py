@@ -93,10 +93,19 @@ def _refuse_existing(base_dir: Path, name: str) -> bool:
     """
     if not (base_dir / name).exists():
         return False
-    counter = 2
-    while (base_dir / f"{name}-{counter}").exists():
-        counter += 1
-    console.print(f"\n[red]❌ '{name}' exists. Try: [bold]co create {name}-{counter}[/bold][/red]\n")
+    # `co create .` suggested "co create .-2": a name built from something that
+    # is not a project name (".", "..", a path) is not one either. Suggest the
+    # template's own name, and `co init` for the folder that was meant.
+    stem = name if validate_project_name(name)[0] else "my-agent"
+    suggestion, counter = stem, 2
+    while (base_dir / suggestion).exists():
+        suggestion, counter = f"{stem}-{counter}", counter + 1
+    console.print(f"\n[red]❌ '{name}' exists. Try: [bold]co create {suggestion}[/bold][/red]")
+    if stem != name:
+        target = "./" if (base_dir / name).resolve() == Path.cwd().resolve() else name
+        console.print(f"[red]   Or make '{name}' itself a project: "
+                      f"[bold]co init {target} --template co-ai --yes[/bold][/red]")
+    console.print()
     return True
 
 
