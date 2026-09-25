@@ -51,6 +51,17 @@ The cost is honest and small: investigation no longer looks up a job title
 or a switchboard number on the open web. The page says "web: not searched"
 under Uncertainties instead of guessing, which is what it should say.
 
+A tester then showed that a boundary is only as good as the program that
+draws it. They ran `venv/bin/co wiki start --yes` from a venv they had not
+activated, with an older `co` in `~/.local/bin` earlier on PATH. The job
+launchd installed ran that older `co` every day, and every model turn went to
+its `co ai` -- older code, with the older, wide-open flags. Wiki looked the
+executable up by name. It now runs the interpreter that is running it,
+`python -m connectonion.cli.main`, and a test puts a decoy `co` first on PATH
+to prove the decoy never answers. The consent summary `co wiki start` prints,
+and its `--help`, now also say which of these modes the unattended runs get,
+and that `co wiki stop` undoes the schedule.
+
 The lesson is about where a boundary lives. A prompt that tells a model to
 ignore instructions is a hope. A sandbox is a boundary. When the input comes
 from strangers and nobody is watching, only the boundary counts, so work out

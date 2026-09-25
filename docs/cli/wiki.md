@@ -239,6 +239,14 @@ nobody watching. So every stage, scheduled or started by hand, runs confined:
 | `codex` | `--sandbox workspace-write` | Read files; write only inside `.state/tasks/` and TMPDIR; no network |
 | `claude-code` | `--permission-mode acceptEdits` | Read and write inside `.state/tasks/`; commands, web fetch/search and reads elsewhere are denied, since nobody is there to approve them |
 
+`co wiki start` shows the row for the configured runner in its consent
+summary, as `model_permissions`, before you approve the schedule.
+
+Model turns and the launchd job both run the installation that is running
+`co wiki` -- `<its python> -m connectonion.cli.main` -- not the first `co` on
+PATH. Starting from a non-activated venv with an older `co` in `~/.local/bin`
+used to install a job, and route every model turn, through the older one.
+
 Wiki's own code fetches the mail and attachments before the model starts, so
 the model needs nothing more than to read that material and write the page
 copy it is given. The cost is the web: investigation no longer looks up a

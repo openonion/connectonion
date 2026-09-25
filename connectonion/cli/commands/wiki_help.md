@@ -178,7 +178,10 @@ Example:  co wiki start
 Effects:  Installs a launchd job (macOS) that runs `co wiki sync --scheduled` at the
           times in co wiki config (default 03:00 04:00 06:00 17:00 18:00 19:00 local).
           Each run reads new mail bodies and sessions and calls the model, at most
-          `runner_calls_per_day` times a day.
+          `runner_calls_per_day` times a day. Nobody watches those runs, so the
+          model is confined: Codex gets --sandbox workspace-write, Claude Code
+          --permission-mode acceptEdits. It writes only under the notebook's
+          .state/tasks, with no shell commands and no network.
 Requires: co wiki init. On Linux and Windows the schedule is not yet installed; run
           co wiki sync yourself.
 

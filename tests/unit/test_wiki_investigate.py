@@ -30,7 +30,7 @@ def co_ai(monkeypatch):
                                      stderr="", returncode=0)
 
     monkeypatch.setattr("subprocess.run", fake_run)
-    monkeypatch.setattr("shutil.which", lambda name: "/usr/local/bin/co")
+    monkeypatch.setattr("connectonion.wiki.runner.co_command", lambda: ["/usr/local/bin/co"])
     return calls
 
 

@@ -3,8 +3,8 @@
 import json
 import math
 import os
-import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -75,12 +75,37 @@ def maintenance_instructions(kind: str = "") -> str:
     return instructions("maintain", kind)
 
 
-def preflight() -> str:
+def co_command() -> list[str]:
+    """The `co` of the installation running now, never whichever is first on PATH.
+
+    `venv/bin/co wiki start` from a non-activated venv, with an older co in
+    ~/.local/bin earlier on PATH, installed a daily job running that older co
+    and sent every model turn to its `co ai` -- older code, older permissions.
+    The interpreter running this module is the installation the user chose.
+    """
+    if getattr(sys, "frozen", False):  # a PyInstaller bundle is its own co
+        return [sys.executable]
+    if not sys.executable:
+        raise WikiError("Cannot tell which Python is running ConnectOnion; run co wiki from a normal install")
+    return [sys.executable, "-m", "connectonion.cli.main"]
+
+
+def preflight() -> list[str]:
     """Check the common CLI, leaving provider login and validation to COAI."""
-    executable = shutil.which("co")
-    if not executable:
-        raise WikiError("co CLI is missing from PATH; install ConnectOnion, then run co ai --help")
-    return executable
+    return co_command()
+
+
+# What harness_flags grants, in words, for `co wiki start`'s consent summary:
+# approving start is approving runs nobody watches, so say what they may do.
+CONFINEMENT = {
+    "codex": "Codex runs with --sandbox workspace-write: it writes only inside the notebook's "
+             ".state/tasks and TMPDIR, with no network",
+    "claude-code": "Claude Code runs with --permission-mode acceptEdits: it edits only inside the "
+                   "notebook's .state/tasks; shell commands, web access (no network) and reads "
+                   "elsewhere are denied",
+    "coai": "ConnectOnion's own loop runs in its default Auto approval mode; that is an approval "
+            "policy, not an OS sandbox; the task is only told to stay offline",
+}
 
 
 def harness_flags(config: dict, stage: str) -> list[str]:
@@ -126,7 +151,7 @@ def run_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
         options["env"] = environment
     try:
         completed = subprocess.run(
-            [preflight(), "ai", "--json", *harness_flags(config, stage), prompt],
+            [*preflight(), "ai", "--json", *harness_flags(config, stage), prompt],
             cwd=str(workspace.resolve()), capture_output=True, text=True,
             timeout=process_timeout, **options)
     except subprocess.TimeoutExpired as error:
