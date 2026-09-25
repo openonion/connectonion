@@ -1,8 +1,9 @@
-# 🧅 ConnectOnion
+# 🧅 ConnectOnion — the agent CLI harness
 
-**Keep simple things simple, make complicated things possible.**
+**Connect your AI agent to Gmail, a real browser and your files — one command each.**
 
-A template-first toolkit for FDEs building, debugging, deploying, and operating real AI agents.
+No OAuth app, no DNS records, no Playwright script. Your Gmail and Outlook
+credentials stay on your machine. Works with Claude Code, Codex, or your own agent.
 
 <div align="center">
 
@@ -15,7 +16,7 @@ A template-first toolkit for FDEs building, debugging, deploying, and operating 
 [![Discord](https://img.shields.io/badge/Discord-Join-7289DA?style=flat-square&logo=discord)](https://discord.gg/4xfD9k8AUF)
 [![Documentation](https://img.shields.io/badge/Docs-docs.connectonion.com-blue?style=flat-square)](http://docs.connectonion.com)
 
-**A simple, elegant open-source framework for production-ready AI agents**
+**Open source (Apache-2.0) · Python 3.10+ · `pip install connectonion`**
 
 [📚 Documentation](http://docs.connectonion.com) • [💬 Discord](https://discord.gg/4xfD9k8AUF) • [⭐ Star Us](https://github.com/openonion/connectonion)
 
@@ -23,44 +24,99 @@ A template-first toolkit for FDEs building, debugging, deploying, and operating 
 
 ---
 
-> ## 🌟 Philosophy: "Keep simple things simple, make complicated things possible"
-> 
-> This is the core principle that drives every design decision in ConnectOnion.
+## Your agent needs a harness
 
-## Start from a working agent
+Models can already reason, plan and write code. What they cannot do on their
+own is *reach* anything: log in to a client's portal, read an inbox, drop a file
+on the office NAS, send an email from an address that is theirs. Every one of
+those normally costs you an SDK, an OAuth app, a credential store and a script —
+per service, per agent.
 
-You do not need to assemble a framework stack before doing useful work. Start
-from the same working agent that powers `co ai`, specialise it with skills, and
-use one CLI across the delivery path:
+ConnectOnion is the harness that removes that work. Each capability is a
+command-line tool the agent runs in its shell:
+
+- **Any agent can use it.** If it can run a shell command — Claude Code, Codex,
+  Cursor, or an agent you wrote — it can use every capability below. Nothing to
+  import.
+- **You can read what it did.** The agent runs the same `co` command you would
+  type. Its transcript is a list of commands, not opaque API calls.
+- **Commands say what to run next.** Many finish with a
+  `Next: …` hint, so an agent recovers from a missing login or a wrong flag on
+  its own.
+- **It stays yours.** Google and Microsoft credentials are saved only on your
+  computer; shell, file writes and email stop for approval when a chat UI is
+  attached.
+
+## Thirty seconds
 
 ```bash
 pip install connectonion
 
-co create sales-agent
-cd sales-agent
-co ai
-co doctor
-co deploy
-co status
+co auth                     # your agent's identity; new accounts get $5 of model credit
+co auth google              # Gmail, Drive, Calendar — no Cloud project, no review queue
+co gmail                    # the inbox
+co browser go_to https://example.com   # a real browser that stays logged in
+co email send you@example.com "Hi" "Sent from my agent's own address"
 ```
 
-`co create` supplies files, shell, browser, planning, todos, and sub-agents.
-`co ai` works in the project from a terminal or the web client. `co deploy`
-ships the agent, while `co status` and `co doctor` explain what is running and
-what needs attention. The Python runtime below remains directly available when
-you need a custom tool, hook, provider, or host boundary.
+## What's in the harness
+
+| | Commands |
+|---|---|
+| **Identity** | `co init` · `co auth` · `co keys` · `co status` · `co trust` |
+| **Browser** | `co browser` — one persistent browser; log in by hand once, 2FA included · `co remote-browser` · `co proxy` |
+| **Mail & calendar** | `co email` (the agent's own address, no DNS) · `co gmail` · `co outlook` · `co gcalendar` |
+| **Chat inboxes** | `co sms` · `co telegram` · `co whatsapp` · `co feishu` · `co lark` |
+| **Files** | `co gdrive` · `co syno` (Synology NAS) · `co youtube` |
+| **Network & ship** | `co call` (run one command on a remote agent) · `co deploy` (our cloud, or `--to` a server you own) · `co server` |
+| **Build** | `co ai` · `co create` · `co skills` · `co eval` · `co doctor` |
+
+`co commands` lists every command and subcommand with its summary.
+
+## Use it from Claude Code or Codex
+
+Because the harness is commands, a coding agent needs nothing but its shell.
+Give it a skill that names the commands it may run:
+
+```markdown
+---
+name: monthly-arrears
+description: Pull overdue accounts from the portal and file the report.
+tools: [read_file, write_file, Bash(co *)]
+---
+1. co browser go_to the arrears page and export the table
+2. co gdrive put arrears.xlsx
+3. co email send the owner a two-line summary
+```
+
+Skills in `.claude/skills/` load as they are, and `co skills discover` also finds
+Codex, Cursor and Kiro skills.
+
+## Build your own agent on the harness
+
+When you want an agent of your own rather than a coding agent, start from the
+same working agent that powers `co ai` and specialise it with skills:
+
+```bash
+co create sales-agent
+cd sales-agent
+co ai          # work on it from a terminal or the web client
+co deploy      # ship it
+co status      # see what is running
+```
+
+`co create` supplies files, shell, browser, planning, todos and sub-agents. The
+Python runtime below is there whenever you need a custom tool, hook, provider or
+host boundary.
 
 The 1.8.2 default is `co/gemini-3.8-flash`, routed through the managed gateway
 without exposing Google's key to the client. Select `gemini-3.8-flash` to use
 your own `GEMINI_API_KEY`, or explicitly choose an OpenAI, Anthropic, or older
 Gemini model. Provider failures do not silently move a request to another model.
 
-Common delivery commands include:
-
-- `co browser` for a persistent browser;
-- `co server new --region <region>` and `co deploy --to <server>` for owned infrastructure;
-- `co email share` and `co email unshare` for scoped mailbox delegation;
-- `co gmail`, `co outlook`, and `co gdrive` for operator-connected services.
+> ## 🌟 Philosophy: "Keep simple things simple, make complicated things possible"
+>
+> This is the core principle that drives every design decision in ConnectOnion.
 
 ## 🎯 Living Our Philosophy
 
@@ -108,7 +164,7 @@ host(agent)  # HTTP server + P2P relay - other agents can now discover and call 
 
 ## ✨ Why ConnectOnion?
 
-Most frameworks give you a way to call LLMs. ConnectOnion gives you everything around it — so you only write prompt and tools.
+When you build your own agent, ConnectOnion gives you everything around the LLM call — so you only write prompt and tools.
 
 ### Built-in AI Programmer
 
@@ -744,7 +800,7 @@ agent = Agent(name="test", llm=CustomLLM())
 
 ### What is ConnectOnion?
 
-ConnectOnion is a simple, elegant open-source Python framework for production-ready AI agents. It gives you everything around LLM calls — just write prompt and tools.
+ConnectOnion is the agent CLI harness: it connects your AI agent to Gmail, Outlook, a real logged-in browser, chat apps and your files, one `co` command each, with no OAuth app, no DNS records and no Playwright script. Any agent that can run a shell command can use it — Claude Code, Codex, or an agent you build with ConnectOnion's Python runtime. Open source, Apache-2.0.
 
 ### What is ConnectOnion's philosophy?
 

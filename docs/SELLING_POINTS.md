@@ -263,7 +263,7 @@ and shipped next quarter.
 
 | Candidate | Why it was cut |
 |---|---|
-| "Calendar from the command line" | No `co calendar` command exists. Calendar is Python-only (`useful_tools/google_calendar.py`, `microsoft_calendar.py`). `co auth google` unlocks Gmail/Drive/Outlook on the CLI, not calendar. |
+| "Calendar from the command line" | **Reinstated.** Cut while calendar was Python-only; `co gcalendar` and `co outlook calendar` now exist on the CLI. There is still no bare `co calendar`. |
 | "Claude Code skills run identically" | `allowed-tools` is not read, so auto-approvals do not carry. Downgraded to "reads the same SKILL.md files" and kept with the limit attached. |
 | "Native mobile apps" | Responsive web only. No native client, and no PWA manifest in `../oo-chat/public/`. |
 | "We list the OAuth scopes we request" | Scope list is server-supplied and not in this repo (`commands/auth_commands.py:191,285`). Cannot cite it, so cannot claim it. |

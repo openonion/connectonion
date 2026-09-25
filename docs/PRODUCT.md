@@ -25,6 +25,38 @@ a record of what was cut and why. This file is the narrative. They must agree.
 
 ---
 
+## 0. The one sentence
+
+Written from the reader's side: what they get, then what it spares them.
+
+> **Connect your AI agent to Gmail, a real browser and your files — one command each.**
+>
+> No OAuth app, no DNS records, no Playwright script. Your Gmail and Outlook
+> credentials stay on your machine. Works with Claude Code, Codex, or your own agent.
+
+Use the headline verbatim where a page needs one line, and the second paragraph
+where it has room for two. Each clause is checkable: `co auth google` prints
+"Credentials will be saved only on this computer" (§3, Gmail); the agent's own
+mailbox needs no DNS (§3, email); `co browser` replaces the scripted login (§3).
+
+The **category**, for search engines, metadata and anywhere a noun phrase is
+needed, is "the agent CLI harness". It names what the product
+is; the headline names what the reader gets. Lead with the headline.
+
+The category replaced "an AI agent framework" because that stopped describing
+what people adopt: the capabilities are CLI
+commands (§3), so anything that can run a shell command can use them — a
+ConnectOnion agent, or a coding agent such as Claude Code or Codex. The Python
+`Agent` class is still here (§4) and still the way to go deeper. It is how you
+extend the toolkit, not the pitch.
+
+Two words stay out of it. **"Best"**: there is no ranking, survey or comparison
+behind it, and this file forbids unsourced claims. **"Framework"**: it names the
+thing people are relieved *not* to adopt. The audience line, when a page has room
+for one, is "built for forward deployed engineers".
+
+---
+
 ## 1. The first sixty seconds
 
 ```
@@ -99,7 +131,7 @@ key in `.env` and change the model string at any time.
 
 ---
 
-## 3. What you can do without writing Python
+## 3. The toolkit: what you can do without writing Python
 
 These are commands. No project, no imports, no framework to adopt — the strongest
 answer to "do I have to buy into all of this?" is that you do not.
@@ -112,6 +144,11 @@ answer to "do I have to buy into all of this?" is that you do not.
 | `co gdrive` | list, search, get, put, rm |
 | `co syno` | a Synology NAS: read-only status/list/search/share audit plus get, put, and public-link creation |
 | `co email` | the agent's **own** mailbox — see the limit below |
+| `co gcalendar` | Google Calendar events and Meet links; `co outlook calendar` is the Microsoft side |
+| `co sms` · `co telegram` · `co whatsapp` · `co feishu` · `co lark` | chat channels as inboxes: pair a phone and read the encrypted SMS inbox, send from a Telegram bot, and listen/receive/send/reply on WhatsApp, Feishu and Lark |
+| `co youtube` | YouTube Data API on your saved Google login; writes preview by default |
+| `co proxy` | share this computer's internet connection with an authorized agent |
+| `co deploy` · `co server` | deploy to ConnectOnion Cloud, or `co deploy --to` onto a server you own (`co server` registers and preflights them) |
 | `co call <addr> <cmd>` | run one command on a *remote* agent, no LLM in the loop, gated by that agent's whitelist (`cli/commands/call_commands.py:51-135`) |
 | `co copy <name>` | vendor any built-in into your project to edit: 16 tools, 13 plugins, 10 TUI components, trust policies, skills (`cli/commands/copy_commands.py:20-104`) |
 | `co skills` | discover, copy, link and list skills across tools (§8) |
@@ -121,9 +158,8 @@ answer to "do I have to buy into all of this?" is that you do not.
 gets exit code 4. `bash` itself is **Unix and macOS only — it raises on Windows**
 (`useful_tools/bash.py:9`).
 
-**There is no `co calendar`.** Calendar exists only as Python tools
-(`useful_tools/google_calendar.py`, `microsoft_calendar.py`). Do not claim calendar
-from the CLI.
+**Calendar from the CLI is `co gcalendar` and `co outlook calendar`.** There is
+no bare `co calendar` — do not write that name.
 
 **Email, precisely.** Every address deterministically yields
 `{address[:10]}@mail.openonion.ai` at key generation (`address.py:69-70`) — so "it
@@ -320,8 +356,6 @@ Worth saying out loud on any page that sells to a business:
 | "agents test with dummy data first" | No such mechanism |
 | any adoption or time-saved statistic | We have no survey. The "75% more time" figure was invented |
 | "native iOS / Android apps" | No such repo is present. Web, Python and CLI only |
-| "calendar from the CLI" | Python-only; there is no `co calendar` |
-| "deploy to your own server with `co deploy --to`" | Does not exist. Cloud only |
 | "self-host the relay" | You can point `relay_url` elsewhere, but **the relay server is not in this repo** — you would reimplement the protocol |
 | "one agent can call another as a tool, out of the box" | `connect()` returns a `RemoteAgent`; you can pass `remote.input` into `tools=[]` yourself, but nothing ships wired |
 | "browse a directory of agents" | Discovery is by known address. There is no search endpoint |
