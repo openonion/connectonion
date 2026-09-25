@@ -191,11 +191,15 @@ Options:
 
 ### Auto-Detection
 
-The CLI automatically detects API key providers:
-- `sk-proj-...` → OpenAI
-- `sk-ant-...` → Anthropic
-- `AIza...` → Google
-- `gsk_...` → Groq
+The CLI automatically detects API key providers and writes the key under that
+provider's variable in the project `.env`, replacing a global value of the same
+name:
+- `sk-ant-...` → Anthropic (`ANTHROPIC_API_KEY`)
+- `sk-or-...` → OpenRouter (`OPENROUTER_API_KEY`)
+- `sk-proj-...` or any other `sk-...` → OpenAI (`OPENAI_API_KEY`)
+- `AIza...` → Google (`GEMINI_API_KEY`)
+- `gsk_...` → Groq (`GROQ_API_KEY`)
+- `xai-...` → Grok (`XAI_API_KEY`)
 
 ## Special Features
 
