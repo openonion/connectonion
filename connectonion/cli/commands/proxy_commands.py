@@ -40,7 +40,8 @@ Options:
   --json          emit the complete stable JSON envelope
   --ttl SEC       stop sharing automatically after this long (default: 24h)
 
-Start with: co proxy share to 0xHOST"""
+Start with: co proxy share to 0xHOST
+Back: co --help"""
 
 STATE_PATH = Path.home() / ".co" / "proxy-shares.json"
 

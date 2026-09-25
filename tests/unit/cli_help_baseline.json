@@ -1,0 +1,993 @@
+{
+ "co ai": [
+  "example",
+  "side_effect"
+ ],
+ "co announce": [
+  "example",
+  "side_effect"
+ ],
+ "co auth": [
+  "example",
+  "side_effect"
+ ],
+ "co benchmark": [
+  "example"
+ ],
+ "co benchmark check": [
+  "example",
+  "side_effect"
+ ],
+ "co benchmark list": [
+  "example"
+ ],
+ "co browser": [
+  "example",
+  "side_effect"
+ ],
+ "co call": [
+  "example",
+  "side_effect"
+ ],
+ "co claude": [
+  "example",
+  "side_effect"
+ ],
+ "co claude run": [
+  "example",
+  "side_effect"
+ ],
+ "co commands": [
+  "example",
+  "side_effect"
+ ],
+ "co copy": [
+  "example",
+  "side_effect"
+ ],
+ "co create": [
+  "example",
+  "side_effect"
+ ],
+ "co deploy": [
+  "example",
+  "side_effect"
+ ],
+ "co discord": [
+  "example",
+  "side_effect"
+ ],
+ "co discord chats": [
+  "example",
+  "side_effect"
+ ],
+ "co discord check": [
+  "example",
+  "side_effect"
+ ],
+ "co discord consume": [
+  "example",
+  "side_effect"
+ ],
+ "co discord delete": [
+  "example",
+  "side_effect"
+ ],
+ "co discord done": [
+  "example",
+  "side_effect"
+ ],
+ "co discord edit": [
+  "example",
+  "side_effect"
+ ],
+ "co discord listen": [
+  "example",
+  "side_effect"
+ ],
+ "co discord log": [
+  "example",
+  "side_effect"
+ ],
+ "co discord ls": [
+  "example",
+  "side_effect"
+ ],
+ "co discord react": [
+  "example",
+  "side_effect"
+ ],
+ "co discord receive": [
+  "example",
+  "side_effect"
+ ],
+ "co discord reply": [
+  "example",
+  "side_effect"
+ ],
+ "co discord send": [
+  "example",
+  "side_effect"
+ ],
+ "co doctor": [
+  "example",
+  "side_effect"
+ ],
+ "co email": [
+  "example",
+  "side_effect"
+ ],
+ "co email addresses": [
+  "example",
+  "side_effect"
+ ],
+ "co email default": [
+  "example",
+  "side_effect"
+ ],
+ "co email inbox": [
+  "example",
+  "side_effect"
+ ],
+ "co email name": [
+  "example",
+  "side_effect"
+ ],
+ "co email read": [
+  "example",
+  "side_effect"
+ ],
+ "co email send": [
+  "example",
+  "side_effect"
+ ],
+ "co email sent": [
+  "example",
+  "side_effect"
+ ],
+ "co email sent read": [
+  "example",
+  "side_effect"
+ ],
+ "co email share": [
+  "example",
+  "side_effect"
+ ],
+ "co email unshare": [
+  "example",
+  "side_effect"
+ ],
+ "co email upgrade": [
+  "example",
+  "side_effect"
+ ],
+ "co env": [
+  "example",
+  "side_effect"
+ ],
+ "co env get": [
+  "example",
+  "side_effect"
+ ],
+ "co env path": [
+  "example",
+  "side_effect"
+ ],
+ "co env rotate": [
+  "example",
+  "side_effect"
+ ],
+ "co env set": [
+  "example",
+  "side_effect"
+ ],
+ "co env show": [
+  "example",
+  "side_effect"
+ ],
+ "co env unset": [
+  "example",
+  "side_effect"
+ ],
+ "co eval": [
+  "example"
+ ],
+ "co eval legacy": [
+  "example",
+  "side_effect"
+ ],
+ "co eval report": [
+  "example"
+ ],
+ "co eval run": [
+  "example",
+  "side_effect"
+ ],
+ "co feishu": [
+  "example",
+  "side_effect"
+ ],
+ "co feishu chats": [
+  "example",
+  "side_effect"
+ ],
+ "co feishu check": [
+  "example",
+  "side_effect"
+ ],
+ "co feishu consume": [
+  "example",
+  "side_effect"
+ ],
+ "co feishu delete": [
+  "example",
+  "side_effect"
+ ],
+ "co feishu done": [
+  "example",
+  "side_effect"
+ ],
+ "co feishu edit": [
+  "example",
+  "side_effect"
+ ],
+ "co feishu listen": [
+  "example",
+  "side_effect"
+ ],
+ "co feishu log": [
+  "example",
+  "side_effect"
+ ],
+ "co feishu ls": [
+  "example",
+  "side_effect"
+ ],
+ "co feishu react": [
+  "example",
+  "side_effect"
+ ],
+ "co feishu receive": [
+  "example",
+  "side_effect"
+ ],
+ "co feishu reply": [
+  "example",
+  "side_effect"
+ ],
+ "co feishu send": [
+  "example",
+  "side_effect"
+ ],
+ "co gcalendar": [
+  "example",
+  "side_effect"
+ ],
+ "co gcalendar create": [
+  "example",
+  "side_effect"
+ ],
+ "co gcalendar delete": [
+  "example",
+  "side_effect"
+ ],
+ "co gcalendar free": [
+  "example",
+  "side_effect"
+ ],
+ "co gcalendar list": [
+  "example",
+  "side_effect"
+ ],
+ "co gcalendar meet": [
+  "example",
+  "side_effect"
+ ],
+ "co gcalendar meetings": [
+  "example",
+  "side_effect"
+ ],
+ "co gcalendar read": [
+  "example",
+  "side_effect"
+ ],
+ "co gcalendar today": [
+  "example",
+  "side_effect"
+ ],
+ "co gcalendar update": [
+  "example",
+  "side_effect"
+ ],
+ "co gdrive": [
+  "example",
+  "side_effect"
+ ],
+ "co gdrive get": [
+  "example",
+  "side_effect"
+ ],
+ "co gdrive info": [
+  "example",
+  "side_effect"
+ ],
+ "co gdrive list": [
+  "example",
+  "side_effect"
+ ],
+ "co gdrive put": [
+  "example",
+  "side_effect"
+ ],
+ "co gdrive rm": [
+  "example",
+  "side_effect"
+ ],
+ "co gdrive search": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail archive": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail attachments": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail download": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail draft": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail draft attach": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail draft create": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail draft list": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail draft preview": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail draft remove": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail draft replace": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail draft review": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail draft send": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail inbox": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail label": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail label add": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail label list": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail label remove": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail mark": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail read": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail reply": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail search": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail send": [
+  "side_effect"
+ ],
+ "co gmail sent": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail star": [
+  "example",
+  "side_effect"
+ ],
+ "co gmail unanswered": [
+  "example",
+  "side_effect"
+ ],
+ "co init": [
+  "example",
+  "side_effect"
+ ],
+ "co keys": [
+  "example",
+  "side_effect"
+ ],
+ "co lark": [
+  "example",
+  "side_effect"
+ ],
+ "co lark chats": [
+  "example",
+  "side_effect"
+ ],
+ "co lark check": [
+  "example",
+  "side_effect"
+ ],
+ "co lark consume": [
+  "example",
+  "side_effect"
+ ],
+ "co lark delete": [
+  "example",
+  "side_effect"
+ ],
+ "co lark done": [
+  "example",
+  "side_effect"
+ ],
+ "co lark edit": [
+  "example",
+  "side_effect"
+ ],
+ "co lark listen": [
+  "example",
+  "side_effect"
+ ],
+ "co lark log": [
+  "example",
+  "side_effect"
+ ],
+ "co lark ls": [
+  "example",
+  "side_effect"
+ ],
+ "co lark react": [
+  "example",
+  "side_effect"
+ ],
+ "co lark receive": [
+  "example",
+  "side_effect"
+ ],
+ "co lark reply": [
+  "example",
+  "side_effect"
+ ],
+ "co lark send": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook calendar": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook calendar create": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook calendar delete": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook calendar free": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook calendar list": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook calendar meetings": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook calendar read": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook calendar teams": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook calendar today": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook calendar update": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook cancel": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook contact": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook contact add": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook contact list": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook contact search": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook download": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook inbox": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook read": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook reply": [
+  "side_effect"
+ ],
+ "co outlook scheduled": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook search": [
+  "example",
+  "side_effect"
+ ],
+ "co outlook send": [
+  "side_effect"
+ ],
+ "co outlook sent": [
+  "example",
+  "side_effect"
+ ],
+ "co proxy": [
+  "example",
+  "side_effect"
+ ],
+ "co remote-browser": [
+  "example",
+  "side_effect"
+ ],
+ "co reset": [
+  "example",
+  "side_effect"
+ ],
+ "co schedule": [
+  "example"
+ ],
+ "co server": [
+  "example"
+ ],
+ "co server add": [
+  "example",
+  "side_effect"
+ ],
+ "co server check": [
+  "example",
+  "side_effect"
+ ],
+ "co server destroy": [
+  "example",
+  "side_effect"
+ ],
+ "co server fix-key": [
+  "example",
+  "side_effect"
+ ],
+ "co server forget": [
+  "example",
+  "side_effect"
+ ],
+ "co server ls": [
+  "example",
+  "side_effect"
+ ],
+ "co server new": [
+  "example"
+ ],
+ "co server ssh": [
+  "example",
+  "side_effect"
+ ],
+ "co setup": [
+  "example",
+  "side_effect"
+ ],
+ "co skills": [
+  "example",
+  "side_effect"
+ ],
+ "co skills copy": [
+  "example",
+  "side_effect"
+ ],
+ "co skills discover": [
+  "example",
+  "side_effect"
+ ],
+ "co skills link": [
+  "example",
+  "side_effect"
+ ],
+ "co skills list": [
+  "example",
+  "side_effect"
+ ],
+ "co skills manifest": [
+  "example",
+  "side_effect"
+ ],
+ "co sms": [
+  "example",
+  "side_effect"
+ ],
+ "co sms devices": [
+  "example",
+  "side_effect"
+ ],
+ "co sms devices revoke": [
+  "example",
+  "side_effect"
+ ],
+ "co sms inbox": [
+  "example",
+  "side_effect"
+ ],
+ "co sms pair": [
+  "example",
+  "side_effect"
+ ],
+ "co status": [
+  "example",
+  "side_effect"
+ ],
+ "co sub": [
+  "example",
+  "side_effect"
+ ],
+ "co sub list": [
+  "example",
+  "side_effect"
+ ],
+ "co sub remove": [
+  "example",
+  "side_effect"
+ ],
+ "co sub sync": [
+  "example",
+  "side_effect"
+ ],
+ "co syno": [
+  "side_effect"
+ ],
+ "co syno copy": [
+  "side_effect"
+ ],
+ "co syno download": [
+  "side_effect"
+ ],
+ "co syno get": [
+  "side_effect"
+ ],
+ "co syno info": [
+  "side_effect"
+ ],
+ "co syno login": [
+  "side_effect"
+ ],
+ "co syno logout": [
+  "side_effect"
+ ],
+ "co syno ls": [
+  "side_effect"
+ ],
+ "co syno mkdir": [
+  "side_effect"
+ ],
+ "co syno move": [
+  "side_effect"
+ ],
+ "co syno nas": [
+  "side_effect"
+ ],
+ "co syno nas list": [
+  "side_effect"
+ ],
+ "co syno nas use": [
+  "side_effect"
+ ],
+ "co syno network": [
+  "side_effect"
+ ],
+ "co syno network status": [
+  "side_effect"
+ ],
+ "co syno put": [
+  "side_effect"
+ ],
+ "co syno search": [
+  "side_effect"
+ ],
+ "co syno service": [
+  "side_effect"
+ ],
+ "co syno service list": [
+  "side_effect"
+ ],
+ "co syno share": [
+  "side_effect"
+ ],
+ "co syno share create": [
+  "side_effect"
+ ],
+ "co syno share list": [
+  "side_effect"
+ ],
+ "co syno share revoke": [
+  "side_effect"
+ ],
+ "co syno shares": [
+  "side_effect"
+ ],
+ "co syno status": [
+  "side_effect"
+ ],
+ "co syno storage": [
+  "side_effect"
+ ],
+ "co syno storage disks": [
+  "side_effect"
+ ],
+ "co syno storage status": [
+  "side_effect"
+ ],
+ "co syno upload": [
+  "side_effect"
+ ],
+ "co telegram": [
+  "example",
+  "side_effect"
+ ],
+ "co telegram chats": [
+  "example",
+  "side_effect"
+ ],
+ "co telegram check": [
+  "example",
+  "side_effect"
+ ],
+ "co telegram consume": [
+  "example",
+  "side_effect"
+ ],
+ "co telegram delete": [
+  "example",
+  "side_effect"
+ ],
+ "co telegram done": [
+  "example",
+  "side_effect"
+ ],
+ "co telegram edit": [
+  "example",
+  "side_effect"
+ ],
+ "co telegram listen": [
+  "example",
+  "side_effect"
+ ],
+ "co telegram log": [
+  "example",
+  "side_effect"
+ ],
+ "co telegram ls": [
+  "example",
+  "side_effect"
+ ],
+ "co telegram react": [
+  "example",
+  "side_effect"
+ ],
+ "co telegram receive": [
+  "example",
+  "side_effect"
+ ],
+ "co telegram reply": [
+  "example",
+  "side_effect"
+ ],
+ "co telegram send": [
+  "example",
+  "side_effect"
+ ],
+ "co tiktok": [
+  "example",
+  "side_effect"
+ ],
+ "co tiktok inspect": [
+  "example",
+  "side_effect"
+ ],
+ "co tiktok post": [
+  "example",
+  "side_effect"
+ ],
+ "co transfer": [
+  "example",
+  "side_effect"
+ ],
+ "co trust": [
+  "example",
+  "side_effect"
+ ],
+ "co trust add": [
+  "example",
+  "side_effect"
+ ],
+ "co trust admin": [
+  "example",
+  "side_effect"
+ ],
+ "co trust admin add": [
+  "example",
+  "side_effect"
+ ],
+ "co trust admin remove": [
+  "example",
+  "side_effect"
+ ],
+ "co trust block": [
+  "example",
+  "side_effect"
+ ],
+ "co trust level": [
+  "example",
+  "side_effect"
+ ],
+ "co trust list": [
+  "example",
+  "side_effect"
+ ],
+ "co trust remove": [
+  "example",
+  "side_effect"
+ ],
+ "co trust unblock": [
+  "example",
+  "side_effect"
+ ],
+ "co whatsapp": [
+  "example",
+  "side_effect"
+ ],
+ "co whatsapp chats": [
+  "example",
+  "side_effect"
+ ],
+ "co whatsapp check": [
+  "example",
+  "side_effect"
+ ],
+ "co whatsapp consume": [
+  "example",
+  "side_effect"
+ ],
+ "co whatsapp delete": [
+  "example",
+  "side_effect"
+ ],
+ "co whatsapp done": [
+  "example",
+  "side_effect"
+ ],
+ "co whatsapp edit": [
+  "example",
+  "side_effect"
+ ],
+ "co whatsapp group": [
+  "example",
+  "side_effect"
+ ],
+ "co whatsapp group add": [
+  "example",
+  "side_effect"
+ ],
+ "co whatsapp group create": [
+  "example",
+  "side_effect"
+ ],
+ "co whatsapp listen": [
+  "example",
+  "side_effect"
+ ],
+ "co whatsapp log": [
+  "example",
+  "side_effect"
+ ],
+ "co whatsapp ls": [
+  "example",
+  "side_effect"
+ ],
+ "co whatsapp react": [
+  "example",
+  "side_effect"
+ ],
+ "co whatsapp receive": [
+  "example",
+  "side_effect"
+ ],
+ "co whatsapp reply": [
+  "example",
+  "side_effect"
+ ],
+ "co whatsapp send": [
+  "example",
+  "side_effect"
+ ],
+ "co youtube": [
+  "example"
+ ],
+ "co youtube channel": [
+  "example"
+ ],
+ "co youtube list": [
+  "example"
+ ],
+ "co youtube put": [
+  "example"
+ ],
+ "co youtube update": [
+  "example"
+ ],
+ "co youtube video": [
+  "example"
+ ]
+}

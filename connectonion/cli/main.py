@@ -2370,6 +2370,11 @@ def sub_remove(target: str = typer.Argument(..., help="Alias or 0x address to un
     handle_sub_remove(target)
 
 
+from .typer_groups import name_the_way_back  # noqa: E402 — needs every command registered
+
+name_the_way_back(app)
+
+
 def cli():
     """Entry point."""
     from ..environment import EnvironmentError
