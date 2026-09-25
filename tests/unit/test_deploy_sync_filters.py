@@ -195,3 +195,53 @@ def test_a_local_schedule_state_does_not_rewind_the_servers(tmp_path):
     )
 
     assert (server / ".co" / "schedule-state.json").read_text() == '{"sync": {"last_run": "server"}}'
+
+
+@pytest.mark.parametrize("relpath", [
+    # Every turn the deployed agent has served (#1694): the dashboard's history,
+    # and what a reconnecting client reads its result back from. The lock and
+    # sync epoch travel with it; a laptop's epoch on the server tells every
+    # client its cached history belongs to a different store.
+    ".co/session_results.jsonl",
+    ".co/session_results.jsonl.lock",
+    ".co/session_results.jsonl.sync-epoch",
+    # Signatures already used. Rewinding it to a laptop's copy reopens every
+    # signed request the server has seen to a replay.
+    ".co/replay.sqlite3",
+    ".co/replay.sqlite3-wal",
+    ".co/replay.sqlite3-shm",
+    # Remote-browser leases and the per-agent browser runtime (its authkey and
+    # Chrome profile) — the laptop's belong to the laptop's browser.
+    ".co/remote-browser-sessions.json",
+    ".co/remote-browser-runtime/abc/authkey",
+    # Files callers uploaded to the deployed agent.
+    ".co/uploads/0f3a_invoice.pdf",
+    # Callers onboarded by invite code or payment on the server. A laptop's
+    # list would drop every customer who paid since the last deploy.
+    ".co/contacts.txt",
+    # Already excluded, pinned here so that stays true.
+    ".co/logs/agent.log",
+    ".co/evals/hello.yaml",
+    ".co/sessions/abc.yaml",
+    ".co/served_by.json",
+    ".co/schedule-state.json.lock",
+    ".co/schedule.tick.lock",
+])
+def test_a_local_copy_cannot_overwrite_what_the_running_agent_wrote(tmp_path, relpath):
+    """Protect-from-delete keeps these when the laptop has none. Anyone who ran
+    the agent locally does have one, and rsync sends a file that exists — so
+    without an exclude, each deploy replaces the server's runtime state with
+    the laptop's."""
+    local, server = tmp_path / "local", tmp_path / "server"
+    (local / relpath).parent.mkdir(parents=True)
+    (server / relpath).parent.mkdir(parents=True)
+    (local / "agent.py").write_text("print('hi')\n")
+    (local / relpath).write_text("LOCAL")
+    (server / relpath).write_text("SERVER")
+
+    subprocess.run(
+        ["rsync", "-a", "--delete", *RSYNC_FILTERS, f"{local}/", f"{server}/"],
+        check=True, capture_output=True,
+    )
+
+    assert (server / relpath).read_text() == "SERVER", f"{relpath} was overwritten by the deploy"
