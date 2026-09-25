@@ -525,7 +525,7 @@ def scheduled_entries():
     the scheduler cannot disagree about what an entry means.
     """
     try:
-        from ..schedule import last_run, load_entries, load_state
+        from ..schedule import cadence, last_run, load_entries, load_state
     except Exception:
         return [], []
     try:
@@ -542,10 +542,11 @@ def scheduled_entries():
             # An exec entry has no prompt, and a blank here is a scheduled
             # task that looks like it does nothing (#709).
             "run": e.run or e.exec,
-            "cadence": f"every {_cadence(e)}" if e.interval else str(e.at or ""),
+            "cadence": cadence(e),
             "status": st.get("status"),
             "last_run": when,
             "running": st.get("status") == "running",
+            "paused": bool(st.get("paused")),
             "reason": st.get("reason"),
         })
     return out, problems
@@ -576,12 +577,6 @@ def _why(reason, limit=60):
     return ""
 
 
-def _cadence(entry):
-    total = int(entry.interval.total_seconds())
-    for size, unit in ((86400, "d"), (3600, "h"), (60, "m")):
-        if total % size == 0 and total >= size:
-            return f"{total // size}{unit}"
-    return f"{total}s"
 
 
 
@@ -652,7 +647,11 @@ def _activity_sections():
     if scheduled:
         rows = []
         for s in scheduled:
-            if s.get("running"):
+            if s.get("paused") and not s.get("running"):
+                # Said before the last run: a paused entry that last ran an
+                # hour ago is not an hour late.
+                meta, tone = "paused", ""
+            elif s.get("running"):
                 # While a run is in flight record_run has not landed, so
                 # last_run is the *previous* completion. Showing that for an
                 # entry configured every 15m whose run takes longer reads as

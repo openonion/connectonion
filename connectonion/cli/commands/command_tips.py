@@ -184,6 +184,11 @@ NEXT = {
     "co email unshare": "See remaining grants:  co email share --list",
     "co email upgrade": "See the new balance:  co status",
     "co env *": HANDLER,  # path/get intentionally remain bare values
+    "co schedule list": "co schedule run <name>",
+    "co schedule check": "co schedule list",
+    "co schedule run": "co schedule list",
+    "co schedule pause": HANDLER,  # names the resume for this entry
+    "co schedule resume": "co schedule list",
     "co outlook calendar *": HANDLER,
     "co gcalendar *": HANDLER,
     "co gdrive *": HANDLER,

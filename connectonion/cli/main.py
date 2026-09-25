@@ -1008,6 +1008,63 @@ def server_destroy(
 
 # Experimental: the Personal Wiki targets 1.9.0 and its acceptance gates are
 # open, so the command list says so wherever `co --help` is read.
+schedule_app = _typer_app(
+    help="This agent's own recurring work, from .co/schedule.yaml: see it, check it, run an entry now, "
+         "pause or resume one. Bare 'co schedule' lists entries. Reads and writes .co/schedule-state.json only; "
+         "never edits schedule.yaml.",
+    epilog="Workflow:  co schedule check  →  co schedule  →  co schedule run <name>  |  "
+           "The running agent acts on run/pause/resume at its next tick (within a minute).  |  "
+           "Back: co --help",
+)
+app.add_typer(schedule_app, name="schedule")
+
+
+@schedule_app.callback(invoke_without_command=True)
+def schedule_callback(ctx: typer.Context,
+                      json_output: bool = typer.Option(False, "--json", help="Entries and problems as JSON")):
+    """List scheduled entries: cadence, next run, last run, status, paused."""
+    if ctx.invoked_subcommand is None:
+        from .commands.schedule_commands import handle_list
+        handle_list(json_output)
+    elif json_output:
+        raise typer.BadParameter("Put --json on bare co schedule or after co schedule list.")
+
+
+@schedule_app.command("list", epilog="Example:  co schedule list --json  |  Back: co schedule --help")
+def schedule_list(json_output: bool = typer.Option(False, "--json", help="Entries and problems as JSON")):
+    """List each entry: cadence, next run, last run and status, reason, session, paused. Read-only."""
+    from .commands.schedule_commands import handle_list
+    handle_list(json_output)
+
+
+@schedule_app.command("check", epilog="Example:  co schedule check  |  Back: co schedule --help")
+def schedule_check():
+    """Validate schedule.yaml the way the scheduler reads it; exit 1 naming each ignored entry. Read-only."""
+    from .commands.schedule_commands import handle_check
+    handle_check()
+
+
+@schedule_app.command("run", epilog='Example:  co schedule run "morning report"  |  Back: co schedule --help')
+def schedule_run(name: str = typer.Argument(..., help="Entry name, as co schedule lists it")):
+    """Ask the running agent to run one entry at its next tick, even if paused. Writes schedule state."""
+    from .commands.schedule_commands import handle_run
+    handle_run(name)
+
+
+@schedule_app.command("pause", epilog='Example:  co schedule pause "morning report"  |  Back: co schedule --help')
+def schedule_pause(name: str = typer.Argument(..., help="Entry name, as co schedule lists it")):
+    """Stop an entry firing without editing schedule.yaml; survives restarts and deploys. Writes schedule state."""
+    from .commands.schedule_commands import handle_pause
+    handle_pause(name)
+
+
+@schedule_app.command("resume", epilog='Example:  co schedule resume "morning report"  |  Back: co schedule --help')
+def schedule_resume(name: str = typer.Argument(..., help="Entry name, as co schedule lists it")):
+    """Put a paused entry back on its schedule. Writes schedule state."""
+    from .commands.schedule_commands import handle_resume
+    handle_resume(name)
+
+
 from .commands.wiki_commands import make_wiki_app
 
 app.add_typer(make_wiki_app(_typer_app), name="wiki",
