@@ -113,54 +113,6 @@
   "example",
   "side_effect"
  ],
- "co email": [
-  "example",
-  "side_effect"
- ],
- "co email addresses": [
-  "example",
-  "side_effect"
- ],
- "co email default": [
-  "example",
-  "side_effect"
- ],
- "co email inbox": [
-  "example",
-  "side_effect"
- ],
- "co email name": [
-  "example",
-  "side_effect"
- ],
- "co email read": [
-  "example",
-  "side_effect"
- ],
- "co email send": [
-  "example",
-  "side_effect"
- ],
- "co email sent": [
-  "example",
-  "side_effect"
- ],
- "co email sent read": [
-  "example",
-  "side_effect"
- ],
- "co email share": [
-  "example",
-  "side_effect"
- ],
- "co email unshare": [
-  "example",
-  "side_effect"
- ],
- "co email upgrade": [
-  "example",
-  "side_effect"
- ],
  "co env": [
   "example"
  ],
@@ -489,100 +441,6 @@
   "example",
   "side_effect"
  ],
- "co outlook": [
-  "example",
-  "side_effect"
- ],
- "co outlook calendar": [
-  "example",
-  "side_effect"
- ],
- "co outlook calendar create": [
-  "example",
-  "side_effect"
- ],
- "co outlook calendar delete": [
-  "example",
-  "side_effect"
- ],
- "co outlook calendar free": [
-  "example",
-  "side_effect"
- ],
- "co outlook calendar list": [
-  "example",
-  "side_effect"
- ],
- "co outlook calendar meetings": [
-  "example",
-  "side_effect"
- ],
- "co outlook calendar read": [
-  "example",
-  "side_effect"
- ],
- "co outlook calendar teams": [
-  "example",
-  "side_effect"
- ],
- "co outlook calendar today": [
-  "example",
-  "side_effect"
- ],
- "co outlook calendar update": [
-  "example",
-  "side_effect"
- ],
- "co outlook cancel": [
-  "example",
-  "side_effect"
- ],
- "co outlook contact": [
-  "example",
-  "side_effect"
- ],
- "co outlook contact add": [
-  "example",
-  "side_effect"
- ],
- "co outlook contact list": [
-  "example",
-  "side_effect"
- ],
- "co outlook contact search": [
-  "example",
-  "side_effect"
- ],
- "co outlook download": [
-  "example",
-  "side_effect"
- ],
- "co outlook inbox": [
-  "example",
-  "side_effect"
- ],
- "co outlook read": [
-  "example",
-  "side_effect"
- ],
- "co outlook reply": [
-  "side_effect"
- ],
- "co outlook scheduled": [
-  "example",
-  "side_effect"
- ],
- "co outlook search": [
-  "example",
-  "side_effect"
- ],
- "co outlook send": [
-  "side_effect"
- ],
- "co outlook sent": [
-  "example",
-  "side_effect"
- ],
  "co proxy": [
   "example",
   "side_effect"
@@ -660,26 +518,6 @@
   "example",
   "side_effect"
  ],
- "co sms": [
-  "example",
-  "side_effect"
- ],
- "co sms devices": [
-  "example",
-  "side_effect"
- ],
- "co sms devices revoke": [
-  "example",
-  "side_effect"
- ],
- "co sms inbox": [
-  "example",
-  "side_effect"
- ],
- "co sms pair": [
-  "example",
-  "side_effect"
- ],
  "co sub": [
   "side_effect"
  ],
@@ -692,93 +530,6 @@
   "side_effect"
  ],
  "co sub sync": [
-  "side_effect"
- ],
- "co syno": [
-  "side_effect"
- ],
- "co syno copy": [
-  "side_effect"
- ],
- "co syno download": [
-  "side_effect"
- ],
- "co syno get": [
-  "side_effect"
- ],
- "co syno info": [
-  "side_effect"
- ],
- "co syno login": [
-  "side_effect"
- ],
- "co syno logout": [
-  "side_effect"
- ],
- "co syno ls": [
-  "side_effect"
- ],
- "co syno mkdir": [
-  "side_effect"
- ],
- "co syno move": [
-  "side_effect"
- ],
- "co syno nas": [
-  "side_effect"
- ],
- "co syno nas list": [
-  "side_effect"
- ],
- "co syno nas use": [
-  "side_effect"
- ],
- "co syno network": [
-  "side_effect"
- ],
- "co syno network status": [
-  "side_effect"
- ],
- "co syno put": [
-  "side_effect"
- ],
- "co syno search": [
-  "side_effect"
- ],
- "co syno service": [
-  "side_effect"
- ],
- "co syno service list": [
-  "side_effect"
- ],
- "co syno share": [
-  "side_effect"
- ],
- "co syno share create": [
-  "side_effect"
- ],
- "co syno share list": [
-  "side_effect"
- ],
- "co syno share revoke": [
-  "side_effect"
- ],
- "co syno shares": [
-  "side_effect"
- ],
- "co syno status": [
-  "side_effect"
- ],
- "co syno storage": [
-  "side_effect"
- ],
- "co syno storage disks": [
-  "side_effect"
- ],
- "co syno storage status": [
-  "side_effect"
- ],
- "co syno upload": [
   "side_effect"
  ],
  "co telegram": [
