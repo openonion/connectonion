@@ -478,7 +478,7 @@ Relay /ws/input currently returns only OUTPUT without session data.
 ```python
 agent.current_session   # Synced from server when available (read-only)
 agent.ui                # Client-side UI event list (input + streamed events)
-agent.status            # 'idle' | 'working' | 'waiting'
+agent.status            # 'idle' | 'working' | 'waiting' | 'unknown' (after a TurnTimeoutError)
 ```
 
 ---
@@ -595,7 +595,7 @@ import { useAgentForHuman } from '@connectonion/react'
 function ChatPage() {
   const {
     ui,              // ChatItem[] — all streaming events
-    status,          // 'idle' | 'working' | 'waiting'
+    status,          // 'idle' | 'working' | 'waiting' (no 'unknown': that is the Python client's)
     isProcessing,    // true while agent is working
     mode,            // 'read-only' | 'auto' | 'full-access'
     turnsLeft,       // number | null
@@ -646,7 +646,7 @@ const agent = useAgentForHuman(address, { sessionId })
 
 // State (reactive)
 agent.ui: ChatItem[]           // All events for rendering
-agent.status: AgentStatus      // 'idle' | 'working' | 'waiting'
+agent.status: AgentStatus      // 'idle' | 'working' | 'waiting' (Python adds 'unknown' after a timeout)
 agent.isProcessing: boolean    // true while agent working
 agent.mode: Mode // 'read-only' | 'auto' | 'full-access'
 agent.turnsLeft: number | null
@@ -858,7 +858,7 @@ const agent = useAgentForHuman(address, { sessionId })
 
 // State (reactive)
 agent.ui: ChatItem[]           // All events for rendering
-agent.status: AgentStatus      // 'idle' | 'working' | 'waiting'
+agent.status: AgentStatus      // 'idle' | 'working' | 'waiting' (Python adds 'unknown' after a timeout)
 agent.isProcessing: boolean
 agent.mode: Mode // 'read-only' | 'auto' | 'full-access'
 agent.turnsLeft: number | null

@@ -10,7 +10,16 @@
 
 ## Quick Start (60 Seconds)
 
-Save this as `agent.py` and run `python agent.py`:
+First, once per machine, give yourself an identity and an account — the agent
+below calls a `co/` model, and without them `python agent.py` stops with
+`MissingAmbientAPIKey`:
+
+```bash
+co auth        # creates ~/.co/keys.env with your address and signs you in
+```
+
+(`co init` in the project folder does the same and also writes `.co/` and the
+agent's invite code.) Then save this as `agent.py` and run `python agent.py`:
 
 ```python
 from connectonion import Agent, host, llm_do
@@ -31,25 +40,31 @@ def create_agent():
 host(create_agent)
 ```
 
-**Output:**
+**Output** (1.8.8b11, trimmed):
 ```
-[agent] ─────────────────────────────────────
-        translator
-        co/gemini-3.8-flash · 1 tool
+ ◎    translator
+      ────────────────────
+      connectonion v1.8.8b11
+      gemini-3.8-flash · 1 tool
+      balance: $5.00
+      ────────────────────
 
-[host]  ─────────────────────────────────────
-        http://localhost:8000
-        POST /input · WS /ws · GET /docs
+[host] ───────────────────────────────────
+       http://localhost:8000
+       POST /input · WS /ws · GET /docs
 
-        0x3d4017c3e843895a92b70aa74d1b7ebc9c98...
-        ↳ chat.openonion.ai ↗
-        ✓ relay
+       0x3d4017c3e843895a92b70aa74d1b7ebc9c98...
+       ↳ chat.openonion.ai ↗
+       relay: oo.openonion.ai
 
-        config: none (defaults) — create /Users/you/my-agent/.co/host.yaml to change them
-        logs: /Users/you/my-agent/.co/logs
+       config: none (defaults) — create /Users/you/my-agent/.co/host.yaml to change them
+       logs: /Users/you/my-agent/.co/logs
 
-Waiting for tasks...
+       Invite: no one can onboard — CO_INVITE_CODE is not set. Add it to .env,
+or run `co init ./` to mint one.
 ```
+
+The host then waits for requests; nothing more is printed until one arrives.
 
 **That's it.** Your agent is now accessible via HTTP, WebSocket, and P2P relay.
 
@@ -72,7 +87,11 @@ needs none and runs on defaults; the banner then says where the file would go.
 with the port and how to move it: set `port:` in `.co/host.yaml` (creating the
 file if the project has none), or for one run `AGENT_PORT=8001 python agent.py`.
 
-**By default, your agent is automatically discoverable.** Anyone with your address can connect:
+**By default, your agent is discoverable, not open.** Anyone with your
+address can reach it, but the default trust level is `careful`: it answers you
+(the admin), whitelisted addresses and contacts, and refuses any other identity
+as "not a contact of this agent" until you run `co trust add <address>` or they
+bring the invite code in `CO_INVITE_CODE`. From an address it admits:
 
 ```python
 from connectonion import connect
@@ -997,11 +1016,15 @@ signature = signing_key.sign(canonical.encode()).signature.hex()
 
 ### Authentication Modes
 
-| Trust Level | Required Auth |
-|-------------|---------------|
-| `open` | None (anonymous OK) |
-| `careful` | Signature recommended |
-| `strict` | Signature required |
+Every request is signed, at every trust level: an unsigned request is refused
+as "signed request required" before trust is consulted. The level decides
+which signed identities are admitted:
+
+| Trust Level | Admitted |
+|-------------|----------|
+| `open` | any signed identity |
+| `careful` | admin, whitelisted and contacts; a stranger with the invite code (or payment, when `CO_PAYMENT` is set) becomes a contact |
+| `strict` | admin and whitelisted only |
 
 ---
 
@@ -1016,16 +1039,16 @@ See [Trust in ConnectOnion](../features/trust.md) for the complete trust system 
 Pre-configured trust agents for common scenarios:
 
 ```python
-host(agent, trust="open")      # Accept all (development)
-host(agent, trust="careful")   # Admin, whitelisted and contacts (default; every request is signed)
-host(agent, trust="strict")    # Require valid signature (production)
+host(agent, trust="open")      # Any signed identity (development)
+host(agent, trust="careful")   # Admin, whitelisted and contacts (default)
+host(agent, trust="strict")    # Admin and whitelisted only (production)
 ```
 
-| Level | Behavior |
+| Level | Behavior (every request is signed at every level) |
 |-------|----------|
-| `open` | Accept all requests, no verification |
-| `careful` | Recommend signature, accept unsigned requests |
-| `strict` | Require identity and valid signature |
+| `open` | Admit every signed identity |
+| `careful` | Admit admin, whitelisted and contacts; a stranger is refused as "not a contact" unless they bring the invite code (or payment, when `CO_PAYMENT` is set) |
+| `strict` | Admit admin and whitelisted only; no onboarding |
 
 ### 2. Trust Policy (natural language)
 
