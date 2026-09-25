@@ -40,6 +40,13 @@ def summary(cmd) -> str:
     listing can carry. Cut at the first period that ends a sentence, not at a
     fixed width, so a summary is never a half word.
     """
+    # A short_help was written to be the listing line — it is where
+    # "Experimental:" lives for wiki, discord and telegram's inbox verbs — so
+    # it is used whole. Cutting it at a period dropped telegram's label, and
+    # falling back to the long help dropped the others: bare `co` listed
+    # previews unlabelled while `co --help` labelled them.
+    if getattr(cmd, "short_help", None):
+        return cmd.short_help.strip()
     text = (cmd.help or "").strip()
     first_line = text.splitlines()[0] if text else ""
     match = re.match(r"(.+?\.)(?:\s|$)", first_line)

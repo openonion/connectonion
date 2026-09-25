@@ -129,3 +129,82 @@ def test_a_long_turn_is_written_once_not_once_per_tool_call(tmp_path):
     trace = storage.get(station.session_id).session["trace"]
     assert sum(event["type"] == "provider_activity" for event in trace) == 400
     assert trace[-1]["status"] == "completed"
+
+
+def test_browser_started_turns_route_every_claude_permission_to_the_owner(tmp_path, monkeypatch):
+    """1.8.8b4 promised owner approval for edits and refusal for shell commands.
+
+    Claude's native `auto` lets its own classifier run Bash without ever asking
+    our PermissionRequest Hook, so a Station turn must launch in the manual
+    (`default`) mode whatever the Host ceiling or a Work Room pick says.
+    """
+    import json
+
+    import connectonion.plugins.coding_agents as coding_agents
+
+    seen = []
+
+    def fake_claude(**kwargs):
+        seen.append(kwargs["permission_mode"])
+        return json.dumps({"provider": "claude_code", "exit_code": 0})
+
+    monkeypatch.setattr(coding_agents, "run_co_claude", fake_claude)
+    plugin = claude_station.station_claude_plugin(tmp_path)
+    for session in (
+        {"mode": "auto"},
+        {"mode": "full-access", "turns_left": 3},
+        {
+            "mode": "full-access", "turns_left": 3,
+            "_provider_workroom_id": "room-1",
+            "_provider_permission_options": {"room-1": "claude:bypass-permissions"},
+        },
+    ):
+        agent = SimpleNamespace(
+            current_session={"_active_tool_call_id": "call-1", **session},
+            io=SimpleNamespace(log=lambda *a, **k: None),
+        )
+        plugin.claude_code("continue", cwd=str(tmp_path), agent=agent)
+
+    assert seen == ["default", "default", "default"]
+
+
+_NO_TRANSCRIPT = "Claude SessionStart did not provide an absolute transcript path."
+
+
+def _terminal_without_transcript(**options):
+    raise ValueError(_NO_TRANSCRIPT)
+
+
+def test_a_failed_terminal_closes_the_work_room_and_voids_the_pairing_code(tmp_path, monkeypatch):
+    storage = SessionStorage(tmp_path / "station" / "session_results.jsonl")
+    station = claude_station.ClaudeStation(tmp_path, storage)
+    monkeypatch.setattr(claude_station, "run_interactive_claude", _terminal_without_transcript)
+    try:
+        station.run()
+    except claude_station.StationFailed as failure:
+        assert str(failure) == _NO_TRANSCRIPT
+    else:
+        raise AssertionError("the station reported success")
+    assert storage.get(station.session_id).status == "done"
+    # The code was printed to the terminal; nothing is left for it to pair with.
+    assert station.attach("0xowner", station.pairing_code)["accepted"] is False
+
+
+def test_share_mode_fails_with_the_same_clean_line_as_no_share(tmp_path, monkeypatch):
+    """With share on, a SessionStart without a transcript path printed a Work
+    Room link, a pairing code and then a full Rich traceback ending
+    `RuntimeError: Claude Station terminal failed`; --no-share printed one line."""
+    import re
+
+    from typer.testing import CliRunner
+
+    from connectonion.cli.main import app
+
+    monkeypatch.setattr(claude_station, "run_interactive_claude", _terminal_without_transcript)
+    monkeypatch.setattr(claude_station, "host", lambda **kwargs: None)
+    result = CliRunner().invoke(app, ["claude", "--cwd", str(tmp_path)])
+    output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    assert result.exit_code == 1
+    assert f"co claude: {_NO_TRANSCRIPT}" in output
+    assert "Traceback" not in output and "RuntimeError" not in output
+    assert not isinstance(result.exception, RuntimeError)

@@ -58,6 +58,10 @@ user, project, and local customizations cannot raise the authority of the
 current mode. Safe mode disables `CLAUDE.md`,
 skills, plugins, hooks, MCP servers, custom commands and agents, and related
 customizations; callers put the relevant instructions in the delegated prompt.
+(Update, 1.8.8: hosted turns now need scoped Hooks, which safe mode also
+disables, so they pass `--setting-sources user --strict-mcp-config` instead.
+That still drops the project's and local settings, `CLAUDE.md`, and MCP
+servers; the user's own settings now load. Standalone calls keep safe mode.)
 Authentication and admin-managed policy still apply, and admin policy may be
 stricter. The child process receives a small process/locale environment plus
 Claude-specific authentication variables; unrelated provider, cloud, and

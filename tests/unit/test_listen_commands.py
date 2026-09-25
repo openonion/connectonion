@@ -104,10 +104,12 @@ def test_receive_exits_124_when_nothing_arrives(box, fake):
 
 def test_receive_starts_a_listener_unless_told_not_to(box, fake, monkeypatch):
     started = []
-    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: started.append(self.provider) or 1)
-    deliver(box)
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self, **_: started.append(self.provider) or 1)
 
-    listen_commands.handle_receive("feishu", timeout=0)
+    # An empty queue is what needs a listener; a queued message is taken
+    # without one (test_inbox_behaves_like_its_docs has why).
+    with pytest.raises(SystemExit):
+        listen_commands.handle_receive("feishu", timeout=0)
 
     assert started == ["feishu"]
 
@@ -338,7 +340,7 @@ class TestTheConversationAroundAMessage:
         assert [turn["text"] for turn in turns] == ["looking now"]
 
     def test_consume_hands_the_context_to_the_command(self, box, fake, monkeypatch):
-        monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
+        monkeypatch.setattr(Inbox, "ensure_listener", lambda self, **_: 1)
         self._conversation(box, fake)
         command = [sys.executable, "-c",
                    "import json,sys; m=json.load(sys.stdin); "
@@ -416,7 +418,7 @@ def test_reply_to_an_unknown_id_exits_1(box, fake, capsys):
 
 
 def test_consume_pipes_the_message_through_a_command_and_replies_with_its_stdout(box, fake, monkeypatch):
-    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self, **_: 1)
     deliver(box, i="om_s", chat="oc_s", text="what is 2+2")
     command = [sys.executable, "-c",
                "import json,os,sys; m=json.load(sys.stdin); "
@@ -434,7 +436,7 @@ def test_consume_marks_before_running_the_command_not_after(box, fake, monkeypat
     # Marking after it would light up for the instant before the reply lands,
     # which is the same as not marking at all — and that interval is precisely
     # what the chat cannot otherwise tell apart from the bot being down.
-    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self, **_: 1)
     deliver(box, i="om_s", chat="oc_s", text="what is 2+2")
     marks = []
     command = [sys.executable, "-c", "import sys; sys.stdin.read(); print('4')"]
@@ -460,7 +462,7 @@ def test_consume_sends_nothing_for_a_failing_or_silent_command(box, fake, monkey
     # A command that exits non-zero did not answer: the message stays taken
     # and comes back in an hour, as the docs promise. Empty stdout with exit
     # 0 is the command choosing silence: done. Both are one log line.
-    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self, **_: 1)
     deliver(box, i="om_f")
     listen_commands.handle_consume("feishu", [sys.executable, "-c", "import sys; sys.exit(3)"], once=True)
     deliver(box, i="om_g")
@@ -476,7 +478,7 @@ def test_consume_sends_nothing_for_a_failing_or_silent_command(box, fake, monkey
 
 
 def test_consume_keeps_a_message_whose_reply_the_platform_refused(box, fake, monkeypatch):
-    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self, **_: 1)
 
     def refuse(chat, text, *, reply_to=None, fresh=False, plain=False):
         raise RuntimeError("Feishu error 99991400: too many requests")
@@ -494,7 +496,7 @@ def test_consume_keeps_a_message_whose_reply_the_platform_refused(box, fake, mon
 def test_consume_refuses_a_command_it_cannot_run_before_taking_a_message(box, fake, monkeypatch, capsys):
     # A typo in the command used to claim the message into cur/ and then
     # traceback, stranding one message per restart.
-    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: 1)
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self, **_: 1)
     deliver(box, i="om_n")
 
     with pytest.raises(SystemExit) as exit_:
@@ -519,7 +521,7 @@ def test_listen_exits_3_before_taking_the_lock_when_the_sdk_is_missing(box, fake
 def test_a_listener_that_died_is_reported_with_its_reason_inline(box, fake, monkeypatch, capsys):
     # "see the log" sent an agent to a file it may not read; the reason is
     # three lines, so print them.
-    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: None)
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self, **_: None)
     box.log("The Feishu SDK is not installed. Run: pip install lark-oapi")
     box.log("listener exited at once with 3; see the lines above")
 
@@ -655,7 +657,7 @@ def test_every_verb_that_talks_to_the_platform_exits_3_when_unconfigured(box, mo
 
 
 def test_receive_exits_1_when_the_listener_could_not_start(box, fake, monkeypatch, capsys):
-    monkeypatch.setattr(Inbox, "ensure_listener", lambda self: None)
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self, **_: None)
 
     with pytest.raises(SystemExit) as exit_:
         listen_commands.handle_receive("feishu", timeout=0)

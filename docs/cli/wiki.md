@@ -174,7 +174,7 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co wiki investigate people --limit 3` | Investigate up to three unfinished people pages, most mail first; `--list` prints the order and runs nothing. Also `projects`, `orgs`, `skills`. |
 | `co wiki investigate me` | Fill your own page from what you sent and your coding sessions of the last 30 days. |
 | `co wiki abstract` | Run wiki-abstract over existing notebook evidence. |
-| `co wiki start` | Confirm source access, run first bounded sync, install macOS background schedule. |
+| `co wiki start` | Confirm source access, run first bounded sync, install macOS background schedule. Asks again whenever anything its summary shows (sources, runner, model, permissions, schedule, limits) changed since the last approval. A start after `stop` resumes the schedule without a batch; `co wiki sync` runs one. |
 | `co wiki start --yes` | Explicit noninteractive consent for start. |
 | `co wiki stop` | Remove that notebook's background job; preserve pages and progress. |
 | `co wiki sync` | The whole update: one batch of new material, then at most one unfinished page. What the schedule runs (`sync --scheduled`). |
@@ -230,12 +230,36 @@ those turns under one workspace in its history. Inputs, review results and
 disposable page copies live in per-run subdirectories there;
 the runner validates a candidate before promoting it to the notebook.
 
-Codex extraction/maintenance/abstraction use workspace-write. Initialization
-and investigation retain the existing danger-full-access setting for source
-and browser access. When explicitly selected as the Wiki runner, Claude Code
-uses `bypassPermissions` so its headless task can write candidate pages and
-run source commands; the generic `co ai --harness claude-code` default remains
-manual. Wiki removes an ambient `ANTHROPIC_API_KEY` from Claude's subprocess
+Every Wiki stage reads text other people wrote -- mail bodies and PDF, DOCX
+and XLSX attachments -- and the daily job `co wiki start` installs runs with
+nobody watching. So every stage, scheduled or started by hand, runs confined:
+
+| Runner | Flags Wiki passes to `co ai` | What the model can do |
+|---|---|---|
+| `codex` | `--sandbox workspace-write` | Read files; write only inside `.state/tasks/` and TMPDIR; no network |
+| `claude-code` | `--permission-mode acceptEdits` | Read and write inside `.state/tasks/`; commands, web fetch/search and reads elsewhere are denied, since nobody is there to approve them |
+
+`co wiki start` shows the row for the configured runner in its consent
+summary, as `model_permissions`, before you approve the schedule, and
+`model_receives` names whose login the model is called through (Codex or
+Claude Code). Change the runner later and the next `start` shows the
+summary again.
+
+Model turns and the launchd job both run the installation that is running
+`co wiki` -- `<its python> -m connectonion.cli.main` -- not the first `co` on
+PATH. Starting from a non-activated venv with an older `co` in `~/.local/bin`
+used to install a job, and route every model turn, through the older one.
+
+Wiki's own code fetches the mail and attachments before the model starts, so
+the model needs nothing more than to read that material and write the page
+copy it is given. The cost is the web: investigation no longer looks up a
+role or a switchboard number with `co browser`, and says so in the page's
+`Uncertainties`. Before 1.8.8 investigation ran Codex with
+`danger-full-access` and Claude with `bypassPermissions`, which gave anyone
+who could email the user an unattended agent with a shell, the network and
+the user's mailbox; a line in the prompt was the only defence.
+
+Wiki removes an ambient `ANTHROPIC_API_KEY` from Claude's subprocess
 environment so the run uses the selected account's subscription rather than
 silently billing the API. Skills govern what the task should do; they are not
 OS permission enforcement.
@@ -244,8 +268,11 @@ The removed scoped wiki_* tools are no longer a filesystem guarantee.
 ## Source coverage and output
 
 Gmail/Outlook programmatic collection searches the requested date windows.
-The current listing adapter requests up to 200 messages per weekly window;
-a full-mailbox completeness claim requires closing that listing limitation.
+Sync lists each weekly window 200 messages at a time and splits any window
+that comes back full until every half fits, so a busy week is read whole; a
+single second holding more than 200 messages stops the scan with an error
+rather than skipping them. Investigating a person on a client without a
+server-side search still reads at most 200 messages per weekly window.
 Coding investigation now walks successive batches until the cursor stops,
 rather than stopping at 40 messages. It searches aliases and project paths;
 an owner identified by mailbox address receives their own typed session
@@ -253,7 +280,8 @@ messages. Injected Skill prompts are not reingested as user experience.
 The importer still labels oversized pasted session text as truncated.
 
 PDF, DOCX, XLSX, PPTX (including tables/notes), plain text, HTML and ICS
-attachments are read. Investigation passes full extracted text to chronological
+attachments are read; XLSX needs `pip install 'connectonion[wiki]'`, and
+without it a spreadsheet is named as unread with that command. Investigation passes full extracted text to chronological
 digest chunks instead of dropping a long attachment's tail. Unreadable
 formats/errors remain visible. The Skill supplements from the account's
 `co email` service, known documents and public sites, and reports what it
@@ -277,6 +305,12 @@ launchd invokes the resolved `co wiki --root ... sync --scheduled` CLI every
 five minutes, with PATH entries for co and installed delegates. Saved local
 time slots determine whether a batch is due. Repeated start reloads one job;
 missed slots coalesce into one catch-up. No permanent Wiki daemon is added.
+
+Each notebook root is its own job, `ai.openonion.co-wiki.<hash of the root>`,
+the default `~/.co/wiki` included, so `co wiki start`/`stop` under another
+`HOME` never touches your real job. A job installed before 1.8.8b12 under
+the bare label `ai.openonion.co-wiki` is still found: `stop` removes it and
+`start` replaces it, but only when its own `--root` is this notebook.
 
 Sync retains its source cursor on failure. Two-stage batches reserve two
 attempts and cannot start with only one remaining; extraction usage survives

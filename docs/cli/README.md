@@ -71,8 +71,15 @@ that conversation. A failed run prints a JSON error and exits nonzero.
 
 The connector installs a temporary `SessionStart` Hook and checks its session
 ID and transcript path before accepting a Work Room input. Host/COAI Claude
-delegation uses this same path. Claude's native user and project settings,
-skills, and MCP configuration remain available during a resume. The interactive
+delegation uses this same path. Every headless run (`co claude run`, `co ai`
+delegation, and browser turns in a shared terminal) loads only your user
+settings plus the connector's Hooks (`--setting-sources user
+--strict-mcp-config`): a repository's `.claude/settings.json`,
+`.claude/settings.local.json`, `CLAUDE.md`, and MCP servers do not load, so a
+cloned repo cannot add Hooks or allow Bash in a turn nobody is watching. The
+interactive `co claude` terminal keeps Claude's normal project settings,
+because you are at the keyboard and Claude's own folder-trust prompt applies
+there. The interactive
 wrapper currently observes locally; Host registration, OIP mirroring to O Chat,
 terminal-to-web handover, approval routing, and release to terminal in
 [issue #1134](https://github.com/openonion/connectonion/issues/1134) remain in
@@ -506,6 +513,13 @@ co --env-file ./project.env env     # the same on a project file
 
 Full reference: [env.md](env.md).
 
+### `co schedule` — the agent's recurring work
+
+A hosted agent runs the entries in `.co/schedule.yaml` on its own clock.
+`co schedule` lists them with next and last run, `co schedule check`
+validates the file, and `co schedule run|pause|resume <name>` control one
+entry without editing the file. Full reference: [schedule.md](schedule.md).
+
 #### `co status` - Check Credentials, Account, and Deployments
 
 Shows redacted provider credential availability and source paths, followed by your
@@ -655,10 +669,18 @@ $ co doctor
 │ Authentication ✓ Valid credentials       │
 └──────────────────────────────────────────┘
 
-✅ Diagnostics complete!
-
-Run 'co auth' if you need to authenticate
+✅ Diagnostics complete — nothing wrong
 ```
+
+The closing "run 'co auth'" line appears only when this machine is not
+authenticated. A `Command` row in yellow means the `co` on your PATH reports
+a different version from the package being diagnosed — the `co` you type runs
+other code — and the last line then reads `⚠ Diagnostics complete — nothing
+broken, 1 warning` and names it (exit 0). A `Command` row with `✗` means that
+`co` does not run at all (it crashed on `--version`): a problem, exit 1. A
+`Model` row saying "not set" only means neither `MODEL` nor host.yaml names
+one, so `Agent()` uses the default. Skills that share one finding are one row
+with a count.
 
 **When to use:**
 - Installation issues
@@ -668,7 +690,7 @@ Run 'co auth' if you need to authenticate
 - General troubleshooting
 
 **Common issues it detects:**
-- Missing `co` command in PATH
+- Missing `co` command in PATH, or a `co` on PATH from another version
 - Python version incompatibility
 - Missing API keys
 - Invalid authentication
@@ -794,7 +816,7 @@ only the skill, and rerun the identical benchmark:
 
 ```bash
 co benchmark check reimbursement        # .co/benchmarks/reimbursement.yaml; never runs an Agent
-co eval run reimbursement --agent agent.py --skill reimbursement --runs 3
+co eval run reimbursement --agent agent.py --skill reimbursement --runs 1
 co eval report reimbursement --latest   # case by case, and what changed since the run before
 ```
 
@@ -1217,6 +1239,8 @@ co doctor
 ```bash
 $ co create my-agent
 ❌ 'my-agent' exists. Try: co create my-agent-2
+$ echo $?
+1
 
 # Or add to existing
 cd my-agent
@@ -1327,6 +1351,7 @@ See [server.md](server.md).
 | `co browser` | Browser command (local) | No | ✅ Yes |
 | `co call` | Run a command on a remote agent | No | ✅ Yes |
 | `co outlook` | Send/read Outlook email | No | ✅ Yes |
+| `co schedule` | See, check, run now, pause and resume `.co/schedule.yaml` entries — [schedule.md](schedule.md) | No | ✅ Yes (writes schedule state only) |
 
 ---
 

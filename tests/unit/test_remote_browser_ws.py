@@ -109,7 +109,7 @@ async def test_session_dispatch_uses_connection_identity(monkeypatch):
         {"type": "REMOTE_BROWSER", "request_id": "req-5", "command": "sessions"},
     ]
 
-    async def fake_connect(data, send, conn, *args):
+    async def fake_connect(data, send, conn, *args, **kwargs):
         conn.update(
             authenticated=True,
             agent_address="0xowner",
@@ -168,7 +168,7 @@ async def test_session_executes_signed_payload_not_tampered_top_level(monkeypatc
     result_sent = asyncio.Event()
     sent = []
 
-    async def fake_connect(data, send, conn, *args):
+    async def fake_connect(data, send, conn, *args, **kwargs):
         conn.update(
             authenticated=True,
             agent_address=keys["address"],

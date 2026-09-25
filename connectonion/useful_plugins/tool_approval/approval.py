@@ -831,11 +831,15 @@ def _refuse_control_file(tool_name: str, tool_args: dict):
     `check_approval` (the agent's own turn) and `is_tool_permitted` (network
     EXEC and anything else outside the loop).
     """
+    # The refusal names what was refused. It said "write" for every tool, so a
+    # refused read_file read as a refusal of something the agent never tried,
+    # and it went looking for the write it had supposedly attempted.
+    verb = "read" if tool_name.startswith("read") or tool_name in ("glob", "grep") else "write"
     for key in ("file_path", "path", "target", "filename"):
         candidate = tool_args.get(key)
         if candidate and _is_control_file(candidate):
             return (f"{Path(str(candidate)).name} decides what this agent may do — "
-                    f"the agent does not get to write it")
+                    f"the agent does not get to {verb} it")
 
     if tool_name == 'bash' and 'command' in tool_args:
         command = str(tool_args['command'])

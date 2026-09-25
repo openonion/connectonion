@@ -19,6 +19,7 @@ import json
 import os
 import platform
 import re
+import shlex
 import sys
 import time
 import urllib.parse
@@ -182,6 +183,21 @@ def _profile_dir() -> Path:
     return Path.home() / ".co" / "browser_profile"
 
 
+def _paid_profile_dir():
+    """Where the paid engine keeps its profile: inside CO_BROWSER_PROFILE_DIR
+    when that is set, or True for onionwright's own per-address default.
+
+    1.8.8b11 always passed True, so an isolated run's paid browser wrote
+    ~/.onionwright/profiles/<addr> under the real HOME. A subdirectory, not the
+    directory itself: the paid engine is a different Chromium build from the
+    system Chrome the free engine opens there, and one profile opened by two
+    Chrome versions can be upgraded out from under the older one.
+    """
+    if os.environ.get("CO_BROWSER_PROFILE_DIR"):
+        return _profile_dir() / "onion"
+    return True
+
+
 def has_display() -> bool:
     """Whether a headed browser can open a window here."""
     if platform.system() != "Linux":
@@ -256,12 +272,57 @@ def _requires_editable_focus(key: str) -> bool:
     )
 
 
-def _normalize_url(url: str) -> str:
-    if url.startswith(
-        ("http://", "https://", "file://", "about:", "data:", "chrome://")
-    ):
+class BrowserUsageError(ValueError):
+    """A request refused before it reached the browser: exit code 2 (usage)."""
+
+    exit_code = 2
+
+
+# Schemes go_to hands to Chrome as they are. Anything else with a scheme is
+# refused: `javascript:` became `http://javascript:...`, a typo like `htp://`
+# became `https://htp//...`, and both then waited out the full 30 s timeout.
+_PASS_THROUGH_SCHEMES = ("http", "https", "file", "about", "data", "chrome")
+_SCHEME = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*):(.*)$", re.DOTALL)
+# Deliberately loose — \w admits underscores and non-ASCII names, which Chrome
+# opens — but no spaces, no empty labels, no scheme typo like `htp//x`.
+_HOST = re.compile(r"^(\[[0-9A-Fa-f:.]+\]|[\w-]+(?:\.[\w-]+)*\.?)(:\d{1,5})?$")
+
+
+def _url_refusal(url: str, why: str, tab: Optional[str] = None) -> BrowserUsageError:
+    # The Next line keeps the caller's -t: without it, a person on tab U was
+    # told to run a command that drives the shared main tab instead.
+    flag = "" if tab is None else f" -t {shlex.quote(str(tab))}"
+    return BrowserUsageError(
+        f"go_to {url!r}: {why}\n"
+        f"Next: co browser{flag} go_to https://example.com   (http, https, file, data, about and chrome addresses)"
+    )
+
+
+def _normalize_url(url: str, tab: Optional[str] = None) -> str:
+    """The address to hand Chrome, or BrowserUsageError when it cannot load.
+
+    A bare host (`example.com`, `localhost:8000`) gets a scheme as it always
+    has. Everything else must already be an address Chrome can open.
+    """
+    text = url.strip()
+    if not text:
+        raise _url_refusal(url, "no address given", tab)
+    found = _SCHEME.match(text)
+    # `localhost:8000/x` also matches the scheme pattern; digits after the
+    # colon make it a port, not a scheme.
+    if found and not re.match(r"^\d+(?:[/?#]|$)", found.group(2)):
+        scheme = found.group(1).lower()
+        if scheme not in _PASS_THROUGH_SCHEMES:
+            raise _url_refusal(url, f"{scheme}: is not a web address this browser opens", tab)
+        if scheme in ("http", "https"):
+            host = urllib.parse.urlsplit(text).netloc.rpartition("@")[2]
+            if not host or not _HOST.match(host):
+                raise _url_refusal(url, "that is not a valid host", tab)
         return url
-    return f"https://{url}" if "." in url else f"http://{url}"
+    host = re.split(r"[/?#]", text, maxsplit=1)[0]
+    if not _HOST.match(host):
+        raise _url_refusal(url, "that is not a URL or a host name", tab)
+    return f"https://{text}" if "." in host else f"http://{text}"
 
 
 def _occupancy_help(verb: str, url: str) -> str:
@@ -308,6 +369,17 @@ def _occupancy_note(meta: Dict[str, Any]) -> str:
         f"owner expected to finish by {when} ({_age(-left)} ago) — "
         "free for another agent to close"
     )
+
+
+def _reason(exc: BaseException) -> str:
+    """Why a cleanup step failed, never blank.
+
+    A step that ran out of time raises TimeoutError with no message, and the
+    warning read "close context failed: " with nothing after the colon.
+    """
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)) and not str(exc):
+        return "Chrome did not answer in time"
+    return str(exc) or type(exc).__name__
 
 
 async def _complete_cleanup(awaitable):
@@ -566,7 +638,7 @@ class AsyncBrowserCore:
         try:
             await page.close()
         except Exception as exc:
-            return f"close page failed: {exc}"
+            return f"close page failed: {_reason(exc)}"
         return None
 
     async def _release_tab(self, key: Optional[str]) -> Optional[str]:
@@ -583,7 +655,7 @@ class AsyncBrowserCore:
         try:
             await page.close()
         except Exception as exc:
-            return f"close page failed: {exc}"
+            return f"close page failed: {_reason(exc)}"
         return None
 
     async def is_alive(self) -> bool:
@@ -717,7 +789,8 @@ class AsyncBrowserCore:
                         playwright,
                         self._paid_idempotency_key,
                         user_data_dir=(
-                            policy.profile_dir if policy is not None else True
+                            policy.profile_dir if policy is not None
+                            else _paid_profile_dir()
                         ),
                         **launch_options,
                     )
@@ -904,6 +977,9 @@ class AsyncBrowserCore:
         who: str = "",
         hours: float = 0.0,
     ) -> str:
+        # Checked before the tab lock and before any launch: a refusal costs
+        # nothing, where navigating to a mangled address cost 30 seconds.
+        target = _normalize_url(url, self._bound_session_key())
         async with self._tab_operation():
             key = self._bound_session_key()
             existing = self._tab_meta.get(key, {})
@@ -915,7 +991,7 @@ class AsyncBrowserCore:
 
             try:
                 response = await self.page.goto(
-                    _normalize_url(url), wait_until="domcontentloaded", timeout=30000
+                    target, wait_until="domcontentloaded", timeout=30000
                 )
             except Exception as exc:
                 match = re.search(r"net::(ERR_[A-Z0-9_]+)", str(exc))
@@ -1002,8 +1078,11 @@ class AsyncBrowserCore:
                     )
                 last_at = meta.get("last_at")
                 if last_at:
-                    last_line = (meta.get("last_line") or "")[:60]
-                    line += f'\n      last: "{last_line}" · {_age(time.time() - last_at)} ago'
+                    # Already shell-quoted; quoting it again read as mangled.
+                    last_line = meta.get("last_line") or ""
+                    if len(last_line) > 60:
+                        last_line = last_line[:59] + "…"
+                    line += f"\n      last: {last_line} · {_age(time.time() - last_at)} ago"
                 note = _occupancy_note(meta)
                 if note:
                     line += f"\n      {note}"
@@ -2137,10 +2216,12 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         written owner-only (0600) and loads back with `cookies load`.
         """
         async with self._tab_operation(ensure_page=False):
-            if self.browser is None:
-                raise ValueError("the browser is not open. Next: co browser go_to <url>")
             key = self._bound_session_key()
             tab = self._tab_name(key)
+            if self.browser is None:
+                # The sentence every other verb returns: the daemon turns it into
+                # exit 3 ("nothing to act on") with a Next step that keeps -t.
+                return "Browser not open"
             site = "" if all else self._tab_site(key, tab)
             if action == "ls":
                 found = await self.browser.cookies([site] if site else [])
@@ -2364,6 +2445,9 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         if wait_for_other_close:
             await self._close_complete.wait()
             return "Browser closed. Session saved for next time."
+        # "Session saved" about a browser that never opened told the reader
+        # there was a session to come back to.
+        was_open = self.browser is not None or self.playwright is not None or bool(self._pages)
 
         try:
             await self._operations_idle.wait()
@@ -2375,6 +2459,9 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
                 self._close_complete.set()
         if warnings:
             return "Browser closed with cleanup warnings: " + "; ".join(warnings)
+        if not was_open:
+            # Same words as a client that finds no daemon at all: one state, one sentence.
+            return "No browser is open — nothing to close."
         return "Browser closed. Session saved for next time."
 
     async def _teardown_unlocked(self) -> list[str]:
@@ -2412,13 +2499,13 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
                     )
                     interrupted = interrupted or was_cancelled
                 except BaseException as exc:
-                    warnings.append(f"close page failed: {exc}")
+                    warnings.append(f"close page failed: {_reason(exc)}")
         if paid_run is not None:
             try:
                 _, was_cancelled = await _complete_cleanup(paid_run.close())
                 interrupted = interrupted or was_cancelled
             except BaseException as exc:
-                warnings.append(f"close paid browser failed: {exc}")
+                warnings.append(f"close paid browser failed: {_reason(exc)}")
         elif context is not None:
             try:
                 _, was_cancelled = await _complete_cleanup(
@@ -2426,7 +2513,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
                 )
                 interrupted = interrupted or was_cancelled
             except BaseException as exc:
-                warnings.append(f"close context failed: {exc}")
+                warnings.append(f"close context failed: {_reason(exc)}")
         if playwright is not None:
             try:
                 _, was_cancelled = await _complete_cleanup(
@@ -2434,7 +2521,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
                 )
                 interrupted = interrupted or was_cancelled
             except BaseException as exc:
-                warnings.append(f"stop playwright failed: {exc}")
+                warnings.append(f"stop playwright failed: {_reason(exc)}")
         if interrupted:
             raise asyncio.CancelledError
         return warnings

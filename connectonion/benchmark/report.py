@@ -84,7 +84,7 @@ def previous(name: str, run_id: str, root: Optional[Path] = None) -> Optional[di
 
 
 def compare(current: dict, before: Optional[dict]) -> Optional[dict]:
-    """What changed since the run before: score, cases that flipped, forbidden outcomes that came back."""
+    """What changed since the run before: score, cases that flipped, forbidden outcomes it did not have."""
     if before is None:
         return None
     score = _score(current)
@@ -155,6 +155,10 @@ def render(report: dict, comparison: Optional[dict] = None) -> str:
             if attempt["error"]:
                 lines.append(f"{prefix}ERROR  {attempt['error']}")
                 continue
+            if attempt.get("stopped"):  # .get: reports saved before the step ceiling have no such key
+                lines.append(f"{prefix}STOPPED  {attempt['stopped']}")
+            if attempt.get("invalid"):  # .get: reports saved before 1.8.8b12 have no such key
+                lines.append(f"{prefix}INVALID  {attempt['invalid']}")
             if attempt["activation"]:
                 lines.append(f"{prefix}{attempt['activation']['status']:<10} skill: {attempt['activation']['evidence']}")
             for indicator in attempt["indicators"]:
@@ -167,7 +171,12 @@ def render(report: dict, comparison: Optional[dict] = None) -> str:
     lines.append(f"cases {s['cases_passing']}/{s['cases']} · attempts {s['passed_attempts']}/{s['attempts']} · "
                  f"expectations {s['passed_indicators']}/{s['indicators']} · failed {s['failed']} · "
                  f"unverified {s['unverified']} · forbidden {s['forbidden_failures']} · "
-                 f"not activated {s['not_activated']} · runner errors {s['runner_errors']}")
+                 f"not activated {s['not_activated']} · stopped {s.get('stopped', 0)} · "
+                 f"invalid {s.get('invalid', 0)} · "
+                 f"runner errors {s['runner_errors']}")
+    if s.get("agent_cost") is not None:
+        ceiling = f", at most {report['max_iterations']} steps an attempt" if report.get("max_iterations") else ""
+        lines.append(f"agent model cost ${s['agent_cost']:.3f} (judge not included{ceiling})")
     if comparison:
         lines.append(f"vs {comparison['previous_run']}: score {comparison['previous_score']:.0%} → "
                      f"{comparison['score']:.0%} ({comparison['delta']:+.0%})"
@@ -176,7 +185,10 @@ def render(report: dict, comparison: Optional[dict] = None) -> str:
             lines.append(f"  ⚠ not the same setup: {', '.join(comparison['setup_changed'])} — "
                          "a score change here is not the skill's alone")
         for label, key in (("newly passing", "newly_passing"), ("newly failing", "newly_failing"),
-                           ("forbidden again", "forbidden_regressions")):
+                           # Not "again": this set is, by construction, what the
+                           # previous run did NOT do, and 1.8.8b7's "forbidden
+                           # again" named a case that had just passed.
+                           ("newly forbidden", "forbidden_regressions")):
             if comparison[key]:
                 lines.append(f"  {label}: {', '.join(comparison[key])}")
     if report.get("report_path"):

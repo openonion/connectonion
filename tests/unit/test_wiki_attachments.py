@@ -144,3 +144,20 @@ def test_gather_creates_gmail_download_directory(tmp_path):
                              subscriptions={}, attachments_dir=tmp_path / "attachments")
     assert any(i["role"] == "attachment" and "Signed on" in i["text"] for i in items)
     assert not any("could not be saved" in line for line in coverage)
+
+
+def test_without_the_wiki_extra_a_spreadsheet_says_how_to_install_it(tmp_path, monkeypatch):
+    """openpyxl is the `wiki` extra, not a core dependency; a plain install names the
+    spreadsheet as unread and gives the exact command, rather than crashing."""
+    import builtins
+    real_import = builtins.__import__
+
+    def no_openpyxl(name, *args, **kwargs):
+        if name == "openpyxl":
+            raise ImportError("No module named 'openpyxl'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", no_openpyxl)
+    path = tmp_path / "terms.xlsx"
+    path.write_bytes(b"PK")
+    assert "pip install 'connectonion[wiki]'" in extract_text(path)

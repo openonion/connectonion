@@ -105,9 +105,16 @@ never select it through the tool schema.
 Headless Claude Code cannot open its own interactive permission prompt inside
 O Chat. Standalone function calls use Claude's `--safe-mode`; hosted Work Room
 turns instead install scoped, authenticated Hooks for exact session observation
-and browser approval. The Hook receiver does not persist tool input. Hosted
-file edits require an authenticated owner decision and a verified path inside
-the selected workspace; commands and unknown actions are denied. Include
+and browser approval. Because `--safe-mode` would disable those Hooks too,
+hosted turns pass `--setting-sources user --strict-mcp-config`: only the
+user's own settings and ours load, and the repository's `.claude/` settings,
+`CLAUDE.md`, and MCP servers do not. The Hook receiver does not persist tool
+input. When a permission request reaches the Hook, a file edit requires an
+authenticated owner decision and a verified path inside the selected
+workspace; commands and unknown actions are denied. Which actions reach the
+Hook depends on the Claude mode: turns started from a `co claude` browser are
+pinned to manual mode so all of them do, while Claude's Auto mode decides many
+actions itself. Include
 relevant project instructions in the delegated prompt. Admin-managed policy
 still applies and may be stricter. An unmatched permission request fails closed.
 

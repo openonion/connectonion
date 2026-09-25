@@ -142,10 +142,17 @@ class _OneSuggestion(typer.core.TyperGroup):
                     group = ""
                 path = f"co {group}".strip()
 
+                reached = self._reached(args[0] if args else kwargs.get("args"))
                 if guess:
                     # Already the full command, group included — Click just named
                     # the word, and resolve_command put it back in context.
                     tip = guess
+                elif reached:
+                    # The command the words on the line did reach. `main` runs on
+                    # the root even when the mistake was in `co telegram reply`'s
+                    # arguments, so this used to say `co commands` — a list of
+                    # two hundred commands, for someone already at the right one.
+                    tip = f"co {reached} --help"
                 elif group:
                     tip = f"{path} --help"
                 else:
@@ -155,6 +162,27 @@ class _OneSuggestion(typer.core.TyperGroup):
                     tip = "co commands"
                 print(f"Next: {tip}", file=sys.stderr)
             raise
+
+    def _reached(self, args) -> str:
+        """The subcommand path the argument words name, e.g. "telegram reply".
+
+        Walks the tree by name only, and stops at the first command that is
+        not a group; words that are not a subcommand of the group being walked
+        (the root's own options and their values) are skipped. Empty when not
+        even one subcommand was named.
+        """
+        import sys
+
+        words = list(sys.argv[1:] if args is None else args)
+        names, here = [], self
+        for word in words:
+            commands = getattr(here, "commands", None)
+            if not commands:
+                break
+            if word in commands:
+                names.append(word)
+                here = commands[word]
+        return " ".join(names)
 
     def invoke(self, ctx):
         """Run the command, then name the next one.
@@ -195,3 +223,34 @@ _LAST_GUESS = None
 # The first name inside "Did you mean 'x', 'y'?", for the version that puts
 # the clause in the text instead of in .possibilities.
 _GUESS_RE = re.compile(r"Did you mean '([^']+)'")
+
+
+class NegativeIds(typer.core.TyperCommand):
+    """A command whose ids may start with "-": Telegram's group and channel ids.
+
+    Telegram numbers a group `-100123` and our message ids are `<chat>.<id>`,
+    so the docs' own `co telegram done -100123.55` reached Click as the short
+    options `-1 -0 -0 …` and exited 2 with "No such option: -1". Only a token
+    that is a number with a minus in front is set aside, and it is set aside
+    for the parse alone: every real option still parses, and a mistyped one
+    (`--plian`) is still a usage error rather than text somebody sends.
+    `ignore_unknown_options` would have made that typo the message.
+    """
+
+    _MARK = "\x00"
+
+    def parse_args(self, ctx, args):
+        marked = [self._MARK + arg if _NEGATIVE_NUMBER.match(arg) else arg for arg in args]
+        rest = super().parse_args(ctx, marked)
+        for key, value in ctx.params.items():
+            if isinstance(value, str) and value.startswith(self._MARK):
+                ctx.params[key] = value[len(self._MARK):]
+            elif isinstance(value, (list, tuple)):
+                ctx.params[key] = type(value)(
+                    item[len(self._MARK):] if isinstance(item, str) and item.startswith(self._MARK) else item
+                    for item in value)
+        return rest
+
+
+# -100123, -100123.55: a Telegram chat or message id, never an option.
+_NEGATIVE_NUMBER = re.compile(r"^-\d[\d.]*$")

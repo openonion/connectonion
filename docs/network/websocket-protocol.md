@@ -31,10 +31,14 @@ The descriptor-less reader remains through 1.7.x and may be removed no earlier
 than 1.8.0a1, 2026-09-15, and two previews after compatibility telemetry no
 longer observes it, whichever is later.
 
-Host emits one content-free `OIP_COMPAT` record for CONNECT/reattach. It contains
-only `transport=direct|relay|unknown`, `peer=legacy|oip/0.1|unsupported`, and
-`outcome=accepted|rejected`; it never copies peer strings, prompts, credentials,
-addresses, session IDs, or paths.
+Host emits one content-free `OIP_COMPAT` record for CONNECT/reattach, at debug
+level on the `connectonion.network.host.ws_router.connect` logger (off unless
+you turn debug logging on). It contains only `transport=direct|relay|unknown`,
+`peer=undeclared|oip/0.1|unsupported`, and `outcome=accepted|rejected`; it
+never copies peer strings, prompts, credentials, addresses, session IDs, or
+paths. `undeclared` means the CONNECT carried no protocol descriptor — older
+readers, and also the current Python `connect()` client, which does not send
+one — so it cannot by itself show that old readers are gone.
 
 ---
 
@@ -507,17 +511,28 @@ The tool is checked against the host's `.co/host.yaml` permission whitelist (the
 #### ASK_USER_RESPONSE
 
 ```json
-{ "type": "ASK_USER_RESPONSE", "answer": "Python 3" }
+{ "type": "ASK_USER_RESPONSE", "request_id": "<id of the ask_user event>", "answer": "Python 3" }
 ```
 
 #### APPROVAL_RESPONSE
 
 ```json
-{ "type": "APPROVAL_RESPONSE", "approved": true, "scope": "once" }
+{ "type": "APPROVAL_RESPONSE", "request_id": "<id of the approval_needed event>", "approved": true, "scope": "once" }
 ```
 
-Approval responses are consumed once and are bound to the currently pending
-request.
+An answer names the request it answers: `request_id` is the `id` the Host
+stamped on the `approval_needed` or `ask_user` event. The Host delivers it only
+if that request is the one the agent is waiting on now, once. An answer naming
+any other request is dropped — never applied to the request that is pending —
+and that connection gets
+`{"type": "ERROR", "code": "STALE_ANSWER", "reason": "stale", "request_id": ...}`.
+This matters when one session is open on several devices: the device that did
+not answer first still shows a request that is over.
+
+An answer without `request_id` (clients before 1.8.8) is accepted only while
+this caller has the session open on a single connection. With two or more it
+is refused with `STALE_ANSWER` and `"reason": "request_id_required"`, because
+nothing says which request it meant.
 
 #### mode_change
 
@@ -792,8 +807,8 @@ Response to CONNECT.
 
 | `status` | Meaning | Client action |
 |----------|---------|---------------|
-| `"new"` | Fresh session | Send INPUT when ready |
-| `"connected"` | Session alive, idle | Send INPUT when ready |
+| `"new"` | Fresh session: the Host has nothing stored under this id | Send INPUT when ready |
+| `"connected"` | Session exists and is idle: alive, or its history is on disk after a Host restart | Send INPUT when ready |
 | `"running"` | Agent still running | Wait for events/OUTPUT |
 
 `server_newer`, `session`, and `chat_items` are only included when the server's session data is newer than the client's (e.g., agent completed while client was away).

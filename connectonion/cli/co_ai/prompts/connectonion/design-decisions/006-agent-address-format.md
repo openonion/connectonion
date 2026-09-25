@@ -1,1 +1,0 @@
-../../../../../../docs/design-decisions/006-agent-address-format.md

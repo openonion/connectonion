@@ -19,7 +19,7 @@
 ├── concepts/              # Core concepts (agents, tools, trust)
 │   └── coding-agent-plugins.md # Codex/Claude delegation and live invocation contract
 ├── debug/                 # Debugging and @xray documentation
-├── design-decisions/      # Why things are built this way
+├── design-decisions/      # Why things are built this way (the decisions these docs cite)
 ├── integrations/          # Third-party integrations
 ├── network/               # Agent networking and communication
 ├── templates/             # Project templates reference

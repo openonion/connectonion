@@ -1,1 +1,0 @@
-../../../../../../docs/design-decisions/016-why-no-zero-knowledge-proofs.md

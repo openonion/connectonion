@@ -112,7 +112,7 @@ NEXT = {
     "co copy": HANDLER,               # "co copy --list" after a copy; --list ends with usage
     "co create": HANDLER,             # "co deploy" after the resources block
     "co deploy": HANDLER,             # cloud: "co status"; --to: the journalctl line
-    "co doctor": HANDLER,             # "Run 'co auth' if you need to authenticate"
+    "co doctor": HANDLER,             # "run 'co auth'" only when not authenticated
     "co benchmark list": HANDLER,     # empty: the schema and "check"; else "check <first invalid>"
     "co benchmark check": HANDLER,    # valid: "co eval run <name> ..."; invalid: "check <name>" again
     "co eval run": HANDLER,           # "co eval report <name> --latest"
@@ -192,6 +192,11 @@ NEXT = {
     "co email unshare": "See remaining grants:  co email share --list",
     "co email upgrade": "See the new balance:  co status",
     "co env *": HANDLER,  # path/get intentionally remain bare values
+    "co schedule list": "co schedule run <name>",
+    "co schedule check": "co schedule list",
+    "co schedule run": "co schedule list",
+    "co schedule pause": HANDLER,  # names the resume for this entry
+    "co schedule resume": "co schedule list",
     "co outlook calendar *": HANDLER,
     "co gcalendar *": HANDLER,
     "co gdrive *": HANDLER,
@@ -247,7 +252,7 @@ NEXT = {
     "co telegram log": "co telegram ls",
     "co telegram consume": "co telegram ls",
     "co trust list": "Check one address:  co trust level <address>",
-    "co trust level": "Make it a contact:  co trust add <address>",
+    "co trust level": HANDLER,  # the next step depends on the level it printed
     "co trust add": "See every list:  co trust list",
     "co trust remove": "See every list:  co trust list",
     "co trust block": "See every list:  co trust list",

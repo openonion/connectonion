@@ -39,7 +39,7 @@ from ..core.usage import DEFAULT_MODEL
 console = Console()
 
 
-from .typer_groups import _OneSuggestion
+from .typer_groups import NegativeIds, _OneSuggestion
 
 
 def _typer_app(**kwargs) -> typer.Typer:
@@ -86,7 +86,32 @@ def env_file_callback(ctx: typer.Context, value: Optional[Path]):
     return value
 
 
-@app.callback(invoke_without_command=True)
+# One text for both first screens. `co --help` said Start here: init, create,
+# auth, and bare `co` said Quick Start: init, create, run, benchmark, eval -- two
+# answers to "where do I start", and Rich wrapped bare co's eval line mid-sentence.
+# Both now print these lines as they are, so they cannot drift apart again.
+START_HERE = (
+    ("Start here:", (
+        "co init                  Set up your identity and keys (~/.co/keys.env)",
+        "co create my-agent       New project; then: cd my-agent && python agent.py",
+        "co auth                  Log in to OpenOnion for managed models and credits",
+    )),
+    ("Build or improve a skill:", (
+        "1. Define the standard first: co benchmark --help",
+        "2. Write/check >=5 distinct cases; then edit .co/skills/<name>/SKILL.md",
+        "3. Run and score the real Agent: co eval --help",
+        "4. Inspect failures, edit the skill, rerun the SAME benchmark",
+    )),
+)
+
+
+def _start_here_help() -> str:
+    """START_HERE as Click help: \\b keeps each block from being re-wrapped."""
+    blocks = ["\b\n" + title + "\n" + "\n".join("  " + line for line in lines) for title, lines in START_HERE]
+    return "ConnectOnion - A simple Python framework for creating AI agents.\n\n" + "\n\n".join(blocks)
+
+
+@app.callback(invoke_without_command=True, help=_start_here_help())
 def main(
     ctx: typer.Context,
     version: bool = typer.Option(False, "--version", "-v", callback=version_callback, is_eager=True),
@@ -95,15 +120,7 @@ def main(
     no_tips: bool = typer.Option(False, "--no-tips",
         help="Do not print the Next: line after the command (CO_TIPS=off does the same for every run)."),
 ):
-    """ConnectOnion - A simple Python framework for creating AI agents.
-
-    \b
-    Build or improve a skill:
-      1. Define the standard first: co benchmark --help
-      2. Write/check >=5 distinct cases; then edit .co/skills/<name>/SKILL.md
-      3. Run and score the real Agent: co eval --help
-      4. Inspect failures, edit the skill, rerun the SAME benchmark
-    """
+    """The root of every co command; its help text is START_HERE."""
     from ..environment import selection_error
     error = selection_error()
     if error is not None and ctx.invoked_subcommand != "env":
@@ -124,16 +141,15 @@ def _show_help():
     console.print()
     console.print("A simple Python framework for creating AI agents.")
     console.print()
-    console.print("[bold]Quick Start:[/bold]")
-    console.print("  co init                          Set up global credentials", markup=False)
-    console.print("  [cyan]co create my-agent[/cyan]               Create a project")
-    console.print("  [cyan]cd my-agent && python agent.py[/cyan]    Run your agent")
     # The workflow, not just the commands: an agent handed "improve this skill"
     # must find that the test cases come first without being told a command
     # name (#1642). `co skills` manages skills and says so.
-    console.print("  co benchmark --help              Build a skill: write >=5 test cases first", markup=False)
-    console.print("  co eval --help                   Then score the real Agent, edit the skill, rerun", markup=False)
-    console.print()
+    for title, lines in START_HERE:
+        console.print(f"[bold]{title}[/bold]")
+        for line in lines:
+            # soft_wrap: Rich folded the eval line at 80 columns into a stray "rerun".
+            console.print(f"  {line}", markup=False, highlight=False, soft_wrap=True)
+        console.print()
     # The register, not a selection. This list used to be typed by hand and
     # named 16 of 24 commands — ai, announce, call, reset, server, setup,
     # skills and sub were real and absent, and a hand-typed list has no way
@@ -238,15 +254,18 @@ def deploy(
         raise typer.Exit(2)
 
     from .commands.deploy_commands import handle_deploy
-    handle_deploy(template=template, skills=skills, name=name)
+    # Every refusal and failure in handle_deploy returns False; 1.8.8b9 dropped
+    # it here, so "Entrypoint not found" exited 0.
+    if handle_deploy(template=template, skills=skills, name=name) is False:
+        raise typer.Exit(1)
 
 
 @app.command()
-def auth(service: Optional[str] = typer.Argument(None, help="Service: google, microsoft, feishu, lark"),
+def auth(service: Optional[str] = typer.Argument(None, help="login, status, logout, or a service: google, microsoft, feishu, lark"),
          scopes: Optional[str] = typer.Option(None, "--scopes", help="Google: comma-separated limited scopes. Default: Gmail, Calendar, Drive and YouTube."),
          app_id: Optional[str] = typer.Option(None, "--app-id", metavar="cli_…",
                                               help="Feishu/Lark: authorize an application you already have, keeping its groups and permissions")):
-    """Authenticate with OpenOnion."""
+    """Sign in to OpenOnion (login, status, logout) or connect a service."""
     if scopes is not None and service != "google":
         print("--scopes is only supported for Google. Next: co auth google --help")
         raise typer.Exit(2)
@@ -262,9 +281,24 @@ def auth(service: Optional[str] = typer.Argument(None, help="Service: google, mi
     elif service in ("feishu", "lark"):
         from .commands.feishu_auth import handle_feishu_auth
         handle_feishu_auth(brand=service, app_id=app_id)
-    else:
+    elif service == "status":
+        from .commands.auth_commands import handle_auth_status
+        handle_auth_status()
+    elif service == "logout":
+        from .commands.auth_commands import handle_auth_logout
+        handle_auth_logout()
+    elif service in (None, "login"):
         from .commands.auth_commands import handle_auth
         handle_auth()
+    else:
+        # Any other word used to fall through to OpenOnion sign-in, so
+        # `co auth status` minted a keypair and `co auth logout` logged you in.
+        # A word we do not know must not do the one thing that writes secrets.
+        from .commands.command_tips import print_tip
+        print(f"Unknown auth target: {service}. Use one of: login, status, logout, "
+              "google, microsoft, feishu, lark.")
+        print_tip("Next: co auth status")
+        raise typer.Exit(2)
 
 
 @app.command()
@@ -366,9 +400,13 @@ def claude_interactive(
     if ctx.invoked_subcommand is not None:
         return
     if share:
-        from .co_ai.claude_station import launch_claude_station
+        from .co_ai.claude_station import StationFailed, launch_claude_station
 
-        exit_code, owned_session = launch_claude_station(cwd, session_id, model)
+        try:
+            exit_code, owned_session = launch_claude_station(cwd, session_id, model)
+        except StationFailed as exc:
+            print(f"co claude: {exc}", file=sys.stderr)
+            raise typer.Exit(1) from exc
     else:
         from ..useful_tools.claude_code import run_interactive_claude
 
@@ -392,7 +430,7 @@ def claude_run(
     model: str = typer.Option("", "--model", help="Claude model override"),
     timeout: int = typer.Option(600, "--timeout", min=1, help="Maximum run time in seconds"),
 ):
-    """Start or resume one Claude Code turn and print its session envelope."""
+    """Experimental: start or resume one Claude Code turn and print its session envelope."""
     from ..useful_tools.claude_code import run_co_claude
 
     result = run_co_claude(
@@ -407,6 +445,14 @@ def claude_run(
     import json
     if json.loads(result)["status"] != "completed":
         raise typer.Exit(1)
+
+
+def _closes_only(args: List[str]) -> bool:
+    """`close`, `-t NAME close` or `tab close NAME`: verbs that never open a window."""
+    from .commands.browser_commands import _extract_tab
+
+    _, verb = _extract_tab(args)
+    return bool(verb) and (verb[0] == "close" or verb[:2] == ["tab", "close"])
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
@@ -424,7 +470,10 @@ def browser(
     args: List[str] = typer.Argument(None, help="Browser function + args, or: do \"<instruction>\""),
 ):
     """Drive one persistent browser. Run a function directly (co browser go_to x.com),
-    use `do` for the AI agent (co browser do "..."), or `co browser help` to list functions."""
+    use `do` for the AI agent (co browser do "..."), or `co browser help` to list functions.
+
+    Also: -t TAB to target your own tab · tab open|ls|close · status · network ·
+    cookies · close. `co browser help` shows how to use each one."""
     # `config` is a setting, not a browser verb: it must not reach the daemon
     # or start anything, so it is answered before the engine is resolved.
     if args and args[0] == "config":
@@ -442,8 +491,10 @@ def browser(
     # so with no display it was quietly launched headless — and headless Chrome
     # says `HeadlessChrome` in its User-Agent, which is what the caller was
     # avoiding by asking for a window. Asked for a window, get one or a refusal
-    # (#1339).
-    if headless is False and not has_display():
+    # (#1339). Only a command that can open a window is refused: closing a
+    # browser or a tab opens nothing, and refusing it left a headless box with
+    # a running browser that `--no-headless close` could not reach.
+    if headless is False and not has_display() and not _closes_only(args or []):
         print("--no-headless needs a display, and this machine has none "
               "(DISPLAY and WAYLAND_DISPLAY are unset).")
         print("Give it a virtual one:  xvfb-run -a co browser --no-headless <command>")
@@ -476,6 +527,9 @@ def remote_browser(
 @app.command(
     "proxy",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    # --help belongs to handle_proxy: Click's own printed the generic help for
+    # `co proxy diagnose --help`, though `co proxy` promises that diagnose has one.
+    add_help_option=False,
 )
 def proxy(
     args: List[str] = typer.Argument(
@@ -647,7 +701,7 @@ skill: field — the same cases must be able to compare two of them.
 \b
 Next after `co benchmark check <name>` passes:
   1. write or edit .co/skills/<skill>/SKILL.md (the skill is the deliverable)
-  2. co eval run <name> --agent agent.py --skill <skill> --runs 3
+  2. co eval run <name> --agent agent.py --skill <skill> --runs 1
   3. co eval report <name> --latest, edit only the skill, rerun the same benchmark
 """
 
@@ -697,6 +751,7 @@ EVAL_HELP = """Run a benchmark with the real Agent and inspect scored reports.
 
 \b
   co eval run <name> --agent agent.py [--skill NAME] [--invoke auto|explicit] [--runs N]
+              [--max-iterations N]
   co eval report <name> [--latest | --run ID]
 
 \b
@@ -735,7 +790,10 @@ def eval_run(
     invoke: str = typer.Option("auto", "--invoke",
                                help="auto: send the input unchanged, the Agent must choose the skill. "
                                     "explicit: send /<skill> <input>"),
-    runs: int = typer.Option(1, "--runs", min=1, help="Repeat each case on a fresh session"),
+    runs: int = typer.Option(1, "--runs", min=1, help="Repeat each case on a fresh session. Start with 1"),
+    max_iterations: Optional[int] = typer.Option(
+        None, "--max-iterations", min=1,
+        help="Steps one attempt may take before it is stopped (default 10); each step is paid for"),
     json_out: bool = typer.Option(False, "--json", help="Summary and report path as JSON"),
     live: bool = typer.Option(False, "--live",
                               help="Allow outside effects. Without it the run sets CO_EVAL_LIVE=0 "
@@ -744,12 +802,13 @@ def eval_run(
 ):
     """Run every case on the real Agent and score each expectation. Saves an immutable report.
 
-    Exit 0 all expectations pass; 1 any FAIL, UNVERIFIED or skill not invoked;
+    Exit 0 all expectations pass; 1 any FAIL, UNVERIFIED, STOPPED or skill not invoked;
     2 bad benchmark, agent path, skill or option; 3 the Agent or runner broke (never a pass).
     """
     from .commands.benchmark_commands import handle_eval_run
     raise typer.Exit(code=handle_eval_run(name, agent, skill_name=skill, invoke=invoke, runs=runs,
-                                          as_json=json_out, live=live, judge_model=judge_model))
+                                          as_json=json_out, live=live, judge_model=judge_model,
+                                          max_iterations=max_iterations))
 
 
 @eval_app.command("report")
@@ -992,6 +1051,63 @@ def server_destroy(
 
 # Experimental: the Personal Wiki targets 1.9.0 and its acceptance gates are
 # open, so the command list says so wherever `co --help` is read.
+schedule_app = _typer_app(
+    help="This agent's own recurring work, from .co/schedule.yaml: see it, check it, run an entry now, "
+         "pause or resume one. Bare 'co schedule' lists entries. Reads and writes .co/schedule-state.json only; "
+         "never edits schedule.yaml.",
+    epilog="Workflow:  co schedule check  →  co schedule  →  co schedule run <name>  |  "
+           "The running agent acts on run/pause/resume at its next tick (within a minute).  |  "
+           "Back: co --help",
+)
+app.add_typer(schedule_app, name="schedule")
+
+
+@schedule_app.callback(invoke_without_command=True)
+def schedule_callback(ctx: typer.Context,
+                      json_output: bool = typer.Option(False, "--json", help="Entries and problems as JSON")):
+    """List scheduled entries: cadence, next run, last run, status, paused."""
+    if ctx.invoked_subcommand is None:
+        from .commands.schedule_commands import handle_list
+        handle_list(json_output)
+    elif json_output:
+        raise typer.BadParameter("Put --json on bare co schedule or after co schedule list.")
+
+
+@schedule_app.command("list", epilog="Example:  co schedule list --json  |  Back: co schedule --help")
+def schedule_list(json_output: bool = typer.Option(False, "--json", help="Entries and problems as JSON")):
+    """List each entry: cadence, next run, last run and status, reason, session, paused. Read-only."""
+    from .commands.schedule_commands import handle_list
+    handle_list(json_output)
+
+
+@schedule_app.command("check", epilog="Example:  co schedule check  |  Back: co schedule --help")
+def schedule_check():
+    """Validate schedule.yaml the way the scheduler reads it; exit 1 naming each ignored entry. Read-only."""
+    from .commands.schedule_commands import handle_check
+    handle_check()
+
+
+@schedule_app.command("run", epilog='Example:  co schedule run "morning report"  |  Back: co schedule --help')
+def schedule_run(name: str = typer.Argument(..., help="Entry name, as co schedule lists it")):
+    """Ask the running agent to run one entry at its next tick, even if paused. Writes schedule state."""
+    from .commands.schedule_commands import handle_run
+    handle_run(name)
+
+
+@schedule_app.command("pause", epilog='Example:  co schedule pause "morning report"  |  Back: co schedule --help')
+def schedule_pause(name: str = typer.Argument(..., help="Entry name, as co schedule lists it")):
+    """Stop an entry firing without editing schedule.yaml; survives restarts and deploys. Writes schedule state."""
+    from .commands.schedule_commands import handle_pause
+    handle_pause(name)
+
+
+@schedule_app.command("resume", epilog='Example:  co schedule resume "morning report"  |  Back: co schedule --help')
+def schedule_resume(name: str = typer.Argument(..., help="Entry name, as co schedule lists it")):
+    """Put a paused entry back on its schedule. Writes schedule state."""
+    from .commands.schedule_commands import handle_resume
+    handle_resume(name)
+
+
 from .commands.wiki_commands import make_wiki_app
 
 app.add_typer(make_wiki_app(_typer_app), name="wiki",
@@ -1397,13 +1513,15 @@ def transfer(
 
 # Telegram command group. The bot is the user's own (@BotFather), so the token
 # lives in their keys.env -- no OpenOnion credential and nothing billed.
-telegram_app = _typer_app(help="Telegram bot as an inbox: listen, receive, send, reply.")
+telegram_app = _typer_app(help="Telegram bot: send, plus experimental listen, receive and reply.")
 # send has shipped since 1.7.0; the inbox verbs (#1671) have not met a live bot yet.
 app.add_typer(telegram_app, name="telegram",
-              short_help="Telegram bot: send. Experimental: listen, receive, reply.")
+              short_help="Telegram bot: send, plus experimental listen, receive and reply.")
 
 
-@telegram_app.command("send")
+# NegativeIds: a Telegram group is `-100123`, and `send -100123 hi` was
+# "No such option: -1".
+@telegram_app.command("send", cls=NegativeIds)
 def telegram_send(
     chat: str = typer.Argument(..., help="Chat id, or @channelname for a channel"),
     message: str = typer.Argument(..., help="The text to send"),
@@ -1417,11 +1535,16 @@ def telegram_send(
 # ~/.co/inbox/, the same nine verbs on each. The tool knows nothing about
 # agents; anything that can read a file consumes it (DD-063).
 def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = None,
-                 with_send: bool = True) -> typer.Typer:
+                 with_send: bool = True, writes: bool = False) -> typer.Typer:
     """The inbox verbs on a fresh group, or on an existing one that already has
     its own `send`: `co telegram send` shipped first, and its output is part of
-    its contract, so Telegram gains the other verbs beside it."""
+    its contract, so Telegram gains the other verbs beside it.
+
+    `writes`: the provider implements edit, delete and react. Only WhatsApp
+    does; elsewhere the verbs stay (one set of verbs everywhere) but their help
+    says they refuse, instead of promising an id they never print."""
     group = group if group is not None else _typer_app(help=help_text)
+    refuses = None if writes else "Not implemented for this provider yet; says which endpoint would do it."
 
     @group.command("listen")
     def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl")):
@@ -1451,9 +1574,11 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         handle_send(name, chat, text, reply_to=reply_to, plain=plain)
 
     if with_send:
-        group.command("send")(_send)
+        group.command("send", cls=NegativeIds)(_send)
 
-    @group.command("reply")
+    # Every verb that takes a chat or message id parses with NegativeIds:
+    # Telegram ids start with "-" for groups and channels.
+    @group.command("reply", cls=NegativeIds)
     def _reply(
         message_id: str = typer.Argument(..., help="Id of a received message"),
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
@@ -1464,7 +1589,7 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         from .commands.listen_commands import handle_reply
         handle_reply(name, message_id, text, again=again, plain=plain)
 
-    @group.command("edit")
+    @group.command("edit", cls=NegativeIds, help=refuses)
     def _edit(
         message_id: str = typer.Argument(..., help="Id of a message this account sent"),
         text: Optional[str] = typer.Argument(None, help="The new text; omitted means stdin"),
@@ -1474,13 +1599,13 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         from .commands.listen_commands import handle_edit
         handle_edit(name, message_id, text, plain=plain)
 
-    @group.command("delete")
+    @group.command("delete", cls=NegativeIds, help=refuses)
     def _delete(message_id: str = typer.Argument(..., help="Id of a message to delete for everyone")):
         """Delete a message for everyone. Prints the deletion's id."""
         from .commands.listen_commands import handle_delete
         handle_delete(name, message_id)
 
-    @group.command("react")
+    @group.command("react", cls=NegativeIds, help=refuses)
     def _react(
         message_id: str = typer.Argument(..., help="Id of any message, received or sent"),
         emoji: str = typer.Argument(..., help='The emoji; "" removes our reaction'),
@@ -1489,7 +1614,7 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         from .commands.listen_commands import handle_react
         handle_react(name, message_id, emoji)
 
-    @group.command("done")
+    @group.command("done", cls=NegativeIds)
     def _done(message_id: str = typer.Argument(..., help="Id of a taken message")):
         """Forget a taken message without replying, so it does not come back in an hour."""
         from .commands.listen_commands import handle_done
@@ -1551,9 +1676,9 @@ app.add_typer(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, s
 app.add_typer(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply."), name="lark")
 # Discord too: its Gateway client is `websockets`, already a core dependency.
 # Experimental: ported in #1674 and tested against fakes only, never a live Gateway.
-app.add_typer(_inbox_group("discord", "Discord bot as an inbox: listen, receive, send, reply."), name="discord",
+app.add_typer(_inbox_group("discord", "Experimental: Discord bot as an inbox: listen, receive, send, reply."), name="discord",
               short_help="Experimental: Discord bot as an inbox: listen, receive, send, reply.")
-_whatsapp_app = _inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply.")
+_whatsapp_app = _inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply.", writes=True)
 _whatsapp_groups = _typer_app(help="Start a group, or add people to one. One line per person.")
 
 
@@ -1979,7 +2104,7 @@ def youtube_update(item: str = typer.Argument(..., help="Listing number, video I
 # reads login evidence from a browser tab the caller already owns. There is no
 # submission adapter: nobody has yet seen the logged-in upload form, and a
 # publish button written from guesses would be a publish button nobody tested.
-tiktok_app = _typer_app(help="TikTok local post plans and read-only browser readiness. Upload/publish is not implemented.")
+tiktok_app = _typer_app(help="Experimental: TikTok local post plans and read-only browser readiness. Upload/publish is not implemented.")
 app.add_typer(tiktok_app, name="tiktok",
               short_help="Experimental: TikTok post plans and read-only readiness. Nothing is uploaded.")
 

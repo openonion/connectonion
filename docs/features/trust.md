@@ -235,7 +235,8 @@ host(agent, trust=...)
                 │   - Apply default
                 │
                 └── LLM Fallback (only if default: ask)
-                    - Evaluate stranger with LLM
+                    - A stranger is refused without it
+                    - Evaluates a known level the policy defers on
 ```
 
 All trust inputs convert to TrustAgent internally. Developers can use string levels for simplicity or pass TrustAgent directly for more control.
@@ -642,7 +643,8 @@ mean to the machine you mean.
 │  │     - Apply default                             │   │
 │  │                                                  │   │
 │  │  2. LLM Fallback (only if default: ask)         │   │
-│  │     - Evaluate stranger with LLM                │   │
+│  │     - Strangers are refused without it          │   │
+│  │     - Judges a known level the policy defers on │   │
 │  │                                                  │   │
 │  └─────────────────────────────────────────────────┘   │
 │                                                         │
@@ -787,6 +789,11 @@ secret — not in the project, not in the server user's `~/.co/keys.env`, and no
 in this repository. A literal in a shipped policy would be one password for
 every deployment (#561), and a shipped price would charge for every agent whose
 operator never asked to (#672).
+
+Locally, `co create` and `co init ./` write a unique `CO_INVITE_CODE` into the
+project's `.env`, and `host()` reads that file at startup (the process
+environment still wins), so `python agent.py` starts with the door open to
+whoever holds that code.
 
 The default **local** `co ai` host is the exception that makes first-owner setup
 usable without weakening that rule: on its first web-server start it mints one

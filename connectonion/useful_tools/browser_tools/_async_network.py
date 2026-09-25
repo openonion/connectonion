@@ -334,7 +334,7 @@ class NetworkLog:
         """`kind` is a comma list (`xhr,fetch`); `status` is `200`, `2xx` or `400-499`."""
         found = []
         cutoff = time.time() - since if since else 0.0
-        kinds = {part.strip() for part in str(kind).split(",") if part.strip()}
+        kinds = parse_kinds(kind)
         wanted_status = parse_status(status)
         for record in self._by_tab.get(key, []):
             if url_contains and url_contains not in record["url"]:
@@ -355,6 +355,27 @@ class NetworkLog:
             if record["n"] == index:
                 return record
         return None
+
+
+# Playwright's request.resource_type values — the whole vocabulary --type can match.
+RESOURCE_TYPES = (
+    "document", "stylesheet", "image", "media", "font", "script", "texttrack",
+    "xhr", "fetch", "eventsource", "websocket", "manifest", "other",
+)
+
+
+def parse_kinds(spec) -> set:
+    """`xhr,fetch` as a set; a word Playwright never reports is a usage error.
+
+    Like --status: a typo that matched nothing read as "the page made no such
+    requests".
+    """
+    kinds = {part.strip().lower() for part in str(spec or "").split(",") if part.strip()}
+    unknown = sorted(kinds - set(RESOURCE_TYPES))
+    if unknown:
+        raise ValueError(f"--type takes a comma list of {', '.join(RESOURCE_TYPES)}, "
+                         f"not {', '.join(map(repr, unknown))}")
+    return kinds
 
 
 def parse_status(spec) -> Optional[Any]:
@@ -424,7 +445,7 @@ def render_list(records: List[dict], as_json: bool = False) -> str:
         )
     if not records:
         return "no requests recorded"
-    rows = []
+    rows = ["#\tmethod\tstatus\tkind\tsize\ttook\turl"]
     for record in records:
         status = record["status"] if record["status"] is not None else "—"
         size = _human(record["resp_size"])
@@ -434,7 +455,6 @@ def render_list(records: List[dict], as_json: bool = False) -> str:
             f"{record['n']}\t{record['method']}\t{status}\t{record['kind']}\t"
             f"{size}\t{took}\t{record['url']}{note}"
         )
-    rows.append("#\tmethod\tstatus\tkind\tsize\ttook\turl")
     return "\n".join(rows)
 
 
@@ -442,7 +462,8 @@ def render_one(record: dict, raw: bool = False) -> str:
     """One request in full: what went out, what came back."""
     out = [
         f"#{record['n']}  {record['method']} {record['url']}",
-        f"kind={record['kind']}  status={record['status']}  "
+        f"kind={record['kind']}  "
+        f"status={record['status'] if record['status'] is not None else 'no response'}  "
         f"size={_human(record['resp_size'])}  took="
         f"{record['duration_ms'] if record['duration_ms'] is not None else '—'}ms",
     ]

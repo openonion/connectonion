@@ -24,6 +24,10 @@ from connectonion.network.trust import TrustAgent
 from connectonion.useful_tools.claude_code import run_interactive_claude
 
 
+class StationFailed(RuntimeError):
+    """Claude's terminal could not run; the message is the reason, as --no-share says it."""
+
+
 class ClaudeStation:
     """A terminal owner whose durable OIP session can be claimed by one browser."""
 
@@ -271,8 +275,13 @@ class ClaudeStation:
                     skip_existing_messages=returning_from_browser,
                 )
             except (OSError, ValueError) as exc:
+                # The link and pairing code are already on screen. Close the
+                # Work Room and void the code so neither outlives the failure,
+                # then report the reason the way --no-share does, not as a
+                # traceback that ends "Claude Station terminal failed".
+                self._pairing_hash = b""
                 self._transition("failed", status="done")
-                raise RuntimeError("Claude Station terminal failed") from exc
+                raise StationFailed(str(exc)) from exc
             with self._condition:
                 self.claude_session_id = session_id
             if not self._stop_local.is_set():
@@ -308,6 +317,17 @@ class _StationOutput:
         return getattr(self.terminal, name)
 
 
+def station_claude_plugin(workspace: Path) -> ClaudeCodePlugin:
+    """Claude tool for the turns a paired browser starts.
+
+    1.8.8b4 promised that a browser edit waits for the owner and shell
+    commands are refused. That holds only while Claude asks our Hook, so the
+    Station never follows the Host ceiling or a Work Room pick into native
+    `auto` or `bypassPermissions`.
+    """
+    return ClaudeCodePlugin(workspace=workspace, ask_owner=True)
+
+
 def launch_claude_station(workspace: Path, session_id: str, model: str) -> tuple[int, str]:
     """Serve one private OIP identity while Claude owns the foreground terminal."""
     workspace = workspace.resolve(strict=True)
@@ -328,7 +348,7 @@ def launch_claude_station(workspace: Path, session_id: str, model: str) -> tuple
             "Claude Code Station",
             llm=SimpleNamespace(model="claude-code"),
             tools=[],
-            plugins=[ClaudeCodePlugin(workspace=workspace, use_host_permissions=True)],
+            plugins=[station_claude_plugin(workspace)],
             co_dir=state_dir,
             quiet=True,
         )

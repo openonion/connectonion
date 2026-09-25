@@ -554,6 +554,15 @@ async def handle_http(
             extra_headers=[[b"cache-control", b"no-store"]],
         )
 
+    elif method == "GET" and path == "/":
+        # The banner prints http://localhost:<port>, so this is the first URL a
+        # new user opens; it answered 404 {"error": "not found"}. Name what is
+        # here instead. Public on purpose: it says only what /docs already does.
+        await send_json(send, {
+            "docs": "/docs", "info": "/info", "health": "/health",
+            "input": "POST /input", "websocket": "/ws",
+        })
+
     elif method == "GET" and path == "/docs":
         base = Path(__file__).resolve().parent.parent
         html_path = base / "static" / "docs.html"

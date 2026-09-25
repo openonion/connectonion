@@ -31,7 +31,12 @@ default: ask
 # Careful Trust
 
 You decide whether to admit a client that arrived with no invite code and no
-payment.
+payment and that this policy does not already admit.
+
+A stranger never reaches you: with no door open and nothing but the level
+`stranger` to go on, the answer is fixed, so the host refuses them without a
+model call and tells them the operator can run `co trust add <address>`. You
+are asked only about a known level a custom `allow` list leaves out.
 
 ## What you are shown
 

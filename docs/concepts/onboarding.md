@@ -91,10 +91,18 @@ Simple codes for beta access or exclusive entry.
 ```
 
 **How it works:**
-- Admin creates codes in oo-frontend dashboard
-- User provides code during onboarding
-- System verifies with oo-api (one-time use)
-- User added to contacts
+- `co create` and `co init ./` mint one code per project and write it to the
+  project's `.env` as `CO_INVITE_CODE` (never printed at startup). The shipped
+  `careful` policy reads it through `invite_code: [$CO_INVITE_CODE]`; you can
+  list more codes, or `$NAME`s, under `onboard.invite_code` in your policy.
+- User provides the code during onboarding
+- The agent itself checks it against those codes — no oo-api call
+- User added to contacts, permanently: the next CONNECT needs no code
+
+**A code is reusable, not one-time.** Every identity that presents it is
+admitted, until you change it. To stop admitting new people, change or remove
+`CO_INVITE_CODE` in `.env` (on a deployed agent, in its env file) and restart;
+contacts already admitted stay contacts until you demote or block them.
 
 ### 2. Credit Transfer
 

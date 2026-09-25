@@ -282,11 +282,34 @@ def _create_agent(
         model=model,
         max_iterations=max_iterations,
         co_dir=GLOBAL_CO_DIR,
-        state_dir=state_dir,
+        state_dir=state_dir if state_dir is not None else _project_state_dir(),
         full_access_turns=full_access_turns if full_access else None,
         background_tools=not resumable,
         extra_plugins=extra_plugins,
     )
+
+
+def _project_state_dir() -> Path | None:
+    """The project's .co/ for logs and evals when co ai runs inside a project.
+
+    co ai's configuration stays in ~/.co (co_dir above), but what it records
+    about a run belongs where the run happened: on 1.8.8b9 `co ai "..."` in a
+    project wrote its eval to ~/.co/evals/ while Agent() and python agent.py in
+    the same directory wrote to .co/evals/. None outside a project, and when
+    CONNECTONION_LOG is set, because an explicit state root would override that
+    variable and it is the user's own redirect.
+    """
+    import os
+
+    from ...project import project_co_dir
+    from ..co_ai.agent import GLOBAL_CO_DIR
+
+    if os.getenv("CONNECTONION_LOG"):
+        return None
+    project = project_co_dir()
+    if not project.is_dir() or project.resolve() == GLOBAL_CO_DIR.resolve():
+        return None
+    return project
 
 
 def _handle_plain_one_shot(agent, prompt: str) -> None:

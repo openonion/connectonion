@@ -1,5 +1,7 @@
 # Telegram CLI (`co telegram`)
 
+> **`send` is stable; `listen`, `receive`, `reply`, `done` and `consume` are experimental** — tested against fakes, not yet a live bot. Edit, delete and react are not implemented and say so.
+
 Send a plain-text Telegram message from the terminal or an agent using a bot
 you own, and receive what people send it as a directory of files. This calls Telegram directly: it does not use OpenOnion credits or an
 OpenOnion credential.
@@ -29,9 +31,11 @@ co telegram send 123456789 "The deployment needs attention"
 co telegram send @my_channel "Version 1.7 is ready for review"
 ```
 
-The first argument is a numeric chat ID or a channel username. The command
-exits non-zero if setup, transport, or Telegram delivery fails, so scripts can
-tell whether the message was accepted.
+The first argument is a numeric chat ID or a channel username. Group and
+channel ids start with `-` (`-100123`) and are taken as ids, not options. The
+command exits 3 when no token is set, and 1 with Telegram's reason and
+`Next: co telegram check` when Telegram refuses, so scripts can tell whether
+the message was accepted.
 
 ## Use it as an agent tool
 
@@ -94,7 +98,9 @@ co telegram log -f                 # everything, as it arrives
   `voice`, `document`, `sticker`… The text is the caption, or `[photo]` when
   there is none. The file itself is not downloaded yet.
 
-`receive` and `consume` start a listener if none is running. The poll offset
+`receive` and `consume` start a listener if none is running. With a revoked or
+mistyped token that listener is refused within a second, and they say so and
+exit 3 rather than waiting for messages that cannot arrive. The poll offset
 lives in memory on purpose: Telegram keeps unacknowledged updates for a day, so
 a listener that was down for an hour catches up, and the inbox drops anything
 it has already logged. A listener that was down for longer than a day misses

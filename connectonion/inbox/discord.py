@@ -336,7 +336,9 @@ class Discord:
         instead of posting it twice; `fresh` (`reply --again`) is a deliberate
         second post and gets a new one."""
         if len(text) > LIMIT:
-            raise RuntimeError(f"Discord messages are limited to {LIMIT} characters; got {len(text)}")
+            raise RuntimeError(f"Discord messages are limited to {LIMIT} characters; got {len(text)}. "
+                               f"Nothing was sent. Next: split it and send each part with "
+                               f"co discord send {chat} \"<part>\"")
         # No `parse`: nothing in the text pings anyone — not @everyone, not a
         # role — and the person being replied to is not pinged either.
         body = {"content": text, "allowed_mentions": {"parse": [], "replied_user": False}}

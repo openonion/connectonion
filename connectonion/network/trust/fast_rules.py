@@ -171,7 +171,12 @@ def evaluate_request(config: dict, client_id: str, request: dict,
     #
     # The config does not go out at all: it carries the agent's invite codes, and it
     # was being printed at warning level on every single request.
-    logger.warning(
+    #
+    # Every line here is debug, not warning: at warning they reached the host's
+    # terminal on each stranger's CONNECT ("[FAST_RULES] Returning None (needs
+    # LLM)"), which is the rule engine talking to itself. The one durable change,
+    # a stranger promoted to contact by invite code, stays at info.
+    logger.debug(
         f"[FAST_RULES] Evaluating client_id={client_id} "
         f"allow={config.get('allow', [])} default={config.get('default', 'deny')}"
     )
@@ -183,7 +188,7 @@ def evaluate_request(config: dict, client_id: str, request: dict,
             is_blocked(client_id) if co_dir is None
             else is_blocked(client_id, co_dir)
         ):
-            logger.warning(f"[FAST_RULES] Client {client_id} is BLOCKED, returning 'deny'")
+            logger.debug(f"[FAST_RULES] Client {client_id} is BLOCKED, returning 'deny'")
             return 'deny'
 
     # 2. Check allow list (whitelisted, contacts)
@@ -202,19 +207,19 @@ def evaluate_request(config: dict, client_id: str, request: dict,
             is_admin(client_id) if co_dir is None
             else is_admin(client_id, co_dir)
         ):
-            logger.warning(f"[FAST_RULES] Returning 'allow' — {client_id} is admin")
+            logger.debug(f"[FAST_RULES] Returning 'allow' — {client_id} is admin")
             return 'allow'
         if condition == 'whitelisted' and (
             is_whitelisted(client_id) if co_dir is None
             else is_whitelisted(client_id, co_dir)
         ):
-            logger.warning(f"[FAST_RULES] Returning 'allow' — {client_id} is whitelisted")
+            logger.debug(f"[FAST_RULES] Returning 'allow' — {client_id} is whitelisted")
             return 'allow'
         if condition == 'contact' and (
             is_contact(client_id) if co_dir is None
             else is_contact(client_id, co_dir)
         ):
-            logger.warning(f"[FAST_RULES] Returning 'allow' — {client_id} is contact")
+            logger.debug(f"[FAST_RULES] Returning 'allow' — {client_id} is contact")
             return 'allow'
 
     # 3. Try onboarding (stranger → contact)
@@ -231,7 +236,7 @@ def evaluate_request(config: dict, client_id: str, request: dict,
         # Promotion is durable — this client is a contact from now on. That is a
         # change to who can reach the agent, so it belongs in the record. The code
         # itself does not.
-        logger.warning(
+        logger.info(
             f"[FAST_RULES] Returning 'allow' — {client_id} onboarded by invite code, "
             f"promoted to contact"
         )
@@ -261,17 +266,17 @@ def evaluate_request(config: dict, client_id: str, request: dict,
 
     # 4. Default action for strangers without onboarding
     default = config.get('default', 'deny')
-    logger.warning(f"[FAST_RULES] No match, using default={default}")
+    logger.debug(f"[FAST_RULES] No match, using default={default}")
 
     if default == 'allow':
-        logger.warning("[FAST_RULES] Returning 'allow' (default)")
+        logger.debug("[FAST_RULES] Returning 'allow' (default)")
         return 'allow'
     elif default == 'deny':
-        logger.warning("[FAST_RULES] Returning 'deny' (default)")
+        logger.debug("[FAST_RULES] Returning 'deny' (default)")
         return 'deny'
     elif default == 'ask':
-        logger.warning("[FAST_RULES] Returning None (needs LLM)")
+        logger.debug("[FAST_RULES] Returning None (needs LLM)")
         return None  # Needs LLM evaluation
 
-    logger.warning("[FAST_RULES] Returning 'deny' (fallback)")
+    logger.debug("[FAST_RULES] Returning 'deny' (fallback)")
     return 'deny'  # Safe fallback

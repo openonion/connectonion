@@ -295,8 +295,9 @@ def test_the_list_puts_the_id_first_so_cut_f1_feeds_the_other_verb(log):
     three(log)
 
     lines = net.render_list(log.select(None)).splitlines()
-    assert lines[-1].startswith("#\tmethod")
-    assert lines[0].split("\t")[0] == "1"
+    # The header heads the columns it names; below the rows it read as a stray line.
+    assert lines[0].startswith("#\tmethod")
+    assert lines[1].split("\t")[0] == "1"
 
 
 def test_an_empty_log_says_so_rather_than_printing_a_bare_header(log):

@@ -86,6 +86,7 @@ _FROM = {
     )},
     **{name: ".network" for name in (
         "connect", "RemoteAgent", "Response", "ExecResult", "PermissionModeError",
+        "TurnTimeoutError", "TurnLostError", "ApprovalPendingError",
         "host", "create_app",
         "IO", "relay", "announce", "HTTPRequest", "HTTPResponse", "HTTPRoute",
         "HTTPRouter",
@@ -212,6 +213,9 @@ __all__ = [
     "Response",
     "ExecResult",
     "PermissionModeError",
+    "TurnTimeoutError",
+    "TurnLostError",
+    "ApprovalPendingError",
     "host",
     "create_app",
     "IO",

@@ -301,7 +301,8 @@ what you are allowed to know.
   a message and then sleeps is not.
 - **`done` is not optional.** A message you decided to ignore stays claimed
   until it expires, then comes back. `done <id>` is how you say the silence was
-  deliberate.
+  deliberate. It refuses an id the inbox never received (exit 1), because a
+  finished id is dropped if it ever arrives.
 - **A reply happens once.** `reply <id>` refuses a second reply to the same id;
   `--again` is the override. Feishu also dedupes on its side for an hour.
 - **Two consumers never get the same message**, because taking one is
@@ -309,7 +310,9 @@ what you are allowed to know.
   the next one.
 - **`listen` is the only writer and there is one of it.** A second `listen` on
   the same directory exits 1 rather than competing. `receive` and `consume`
-  start one in the background if none is running.
+  start one in the background if none is running; `receive` takes an already
+  queued message without one. A listener that cannot start (no SDK, a token the
+  platform refused) is reported with its reason and its exit code, 3.
 - **Nothing is deleted.** `received.jsonl` keeps every message forever, so
   `grep` is your history and disk is your limit.
 - **`--json` is not a flag here.** Every verb that returns data already prints
@@ -336,7 +339,7 @@ not need any command in this skill to read it.
 | 0 | it worked | the tip the command printed |
 | 1 | the platform refused, or a listener is already running | `co feishu log` |
 | 2 | wrong arguments | `co feishu <verb> --help` |
-| 3 | not configured | `co auth feishu` |
+| 3 | not configured: a credential, the SDK, or a token the platform refused | `co feishu check`, then `co auth feishu` |
 | 124 | `receive` waited and no message came | `co feishu ls` |
 
 Every one of these prints a line naming the command to run next. A refusal

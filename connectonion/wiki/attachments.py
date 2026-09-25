@@ -52,7 +52,10 @@ def extract_text(path: Path, limit: int | None = 20_000) -> str:
         try:
             from openpyxl import load_workbook
         except ImportError:
-            return "[XLSX not read: install openpyxl, then investigate again]"
+            # An optional extra (see pyproject.toml). One unreadable attachment is a
+            # finding the page can carry, not a reason to stop the investigation.
+            return ("[XLSX not read: spreadsheet support is optional; "
+                    "run pip install 'connectonion[wiki]', then investigate again]")
         try:
             workbook = load_workbook(path, read_only=True, data_only=True)
             try:

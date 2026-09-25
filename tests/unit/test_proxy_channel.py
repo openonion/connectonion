@@ -261,7 +261,7 @@ async def test_the_session_registers_on_attach_and_forgets_on_disconnect(keys, m
     seen_while_attached = []
     sent = []
 
-    async def fake_connect(data, send, conn, *args):
+    async def fake_connect(data, send, conn, *args, **kwargs):
         conn.update(
             authenticated=True,
             agent_address=keys["laptop"]["address"],

@@ -43,7 +43,10 @@ def handle_benchmark_list(as_json: bool = False) -> int:
         print(json.dumps(rows, indent=2))
         return 0
     if not rows:
-        print("No benchmarks yet. A benchmark is .co/benchmarks/<name>.yaml; this is the smallest valid one:\n")
+        # The YAML alone on stdout, so `co benchmark list > .co/benchmarks/x.yaml`
+        # writes a benchmark; on 1.8.8b11 the sentence above it went into the file too.
+        print("No benchmarks yet. A benchmark is .co/benchmarks/<name>.yaml; this is the smallest valid one:\n",
+              file=sys.stderr)
         print(EXAMPLE)
         _next("write .co/benchmarks/<name>.yaml, then co benchmark check <name>")
         return 0
@@ -85,13 +88,13 @@ def handle_benchmark_check(name: str, as_json: bool = False) -> int:
           f" — {suite.path}")
     print("Structure is checked; whether the cases are really different decisions is for a person to read.")
     _next(f"write or edit .co/skills/<skill>/SKILL.md, then co eval run {name} --agent agent.py "
-          f"--skill <skill> --runs 3")
+          f"--skill <skill> --runs 1")
     return 0
 
 
 def handle_eval_run(name: str, agent_path: str, skill_name: Optional[str] = None, invoke: str = "auto",
                     runs: int = 1, as_json: bool = False, live: bool = False,
-                    judge_model: Optional[str] = None) -> int:
+                    judge_model: Optional[str] = None, max_iterations: Optional[int] = None) -> int:
     from ...benchmark import report as reports
     from ...benchmark import runner
     from ...core.usage import DEFAULT_MODEL
@@ -103,11 +106,13 @@ def handle_eval_run(name: str, agent_path: str, skill_name: Optional[str] = None
             print(f"  {problem.line()}", file=sys.stderr)
         _next(f"co benchmark check {name}")
         return 2
+    ceiling = max_iterations or runner.DEFAULT_MAX_ITERATIONS
+    _say_what_it_will_spend(name, len(suite.cases), runs, ceiling)
     try:
         skill = runner.resolve_skill(skill_name) if skill_name else None
         agent = runner.load_agent(agent_path)
         result = runner.run(suite, agent, agent_path=agent_path, skill=skill, invoke=invoke, runs=runs,
-                            live=live, judge_model=judge_model or DEFAULT_MODEL)
+                            live=live, judge_model=judge_model or DEFAULT_MODEL, max_iterations=ceiling)
     except runner.RunnerError as error:
         _refuse(str(error))
         return error.code
@@ -123,6 +128,19 @@ def handle_eval_run(name: str, agent_path: str, skill_name: Optional[str] = None
             print("No --skill was named: this scored the Agent as a whole, not any one skill.")
     _next(f"co eval report {name} --latest")
     return stored["summary"]["exit_code"]
+
+
+def _say_what_it_will_spend(name: str, cases: int, runs: int, ceiling: int) -> None:
+    """Before the first model call, how many Agent runs this is and how far each
+    may go, on stderr. Every attempt is paid for from the user's own balance; a
+    new user's first run on 1.8.8b9 cost $1 of $5 without a word beforehand."""
+    from ...benchmark import report as reports
+
+    print(f"{cases} cases × {runs} run(s) = {cases * runs} Agent runs, each stopped after {ceiling} steps "
+          f"(--max-iterations N to raise), plus one judge call each. Paid from your balance.", file=sys.stderr)
+    if runs > 1 and not reports.run_ids(name):
+        print(f"No run of {name} is saved yet: --runs 1 first costs 1/{runs} of this and shows whether the "
+              f"cases work; add runs to measure stability once they do.", file=sys.stderr)
 
 
 def handle_eval_report(name: str, run_id: Optional[str] = None, as_json: bool = False) -> int:

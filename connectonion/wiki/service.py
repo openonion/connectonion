@@ -109,7 +109,21 @@ def approve_sources(root: Path) -> None:
             if source.get("kind") in READABLE and source.get("enabled"):
                 source["consented"] = True
         write_json(state_path(root, "subscriptions.json"), sources)
-        write_json(state_path(root, "consent.json"), {"authorized_at": now().isoformat()})
+        write_json(state_path(root, "consent.json"), {"authorized_at": now().isoformat(),
+                                                      "summary": summary_fingerprint(root)})
+
+
+def summary_fingerprint(root: Path) -> str:
+    """What the user agreed to, as one value: every line the consent summary shows.
+
+    Consent used to be a bare timestamp, so after `stop`, switching the runner
+    from Codex to Claude Code, `start` reinstalled the job without showing the
+    summary and ignored the `n` typed at it. Recording what was shown lets
+    `start` ask again whenever the sources, runner, model, permissions or
+    schedule are no longer what the user said yes to.
+    """
+    shown = json.dumps(consent_summary(root), sort_keys=True, default=str)
+    return hashlib.sha256(shown.encode()).hexdigest()
 
 
 def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", about: str = "",
@@ -305,8 +319,20 @@ def status(root: Path) -> dict:
             "last_run": logs[0] if logs else None}
 
 
+# Whose account the model is called through, per runner. The line said "your
+# own Codex login" whatever the runner was, so a user approving Claude Code
+# was told their mail would go somewhere it would not.
+MODEL_ROUTE = {
+    "codex": "through your own Codex login (no API key, no OpenOnion server)",
+    "claude-code": "through your own Claude Code login (no API key, no OpenOnion server)",
+    "coai": "through ConnectOnion's own agent loop: a co/ model goes through OpenOnion's "
+            "server on your OpenOnion account, any other model through your own provider key",
+}
+
+
 def consent_summary(root: Path) -> dict:
     """Everything `start` must show before a single source body is read."""
+    from .runner import CONFINEMENT
     config = read_config(root)
     sources = {}
     for name, source in subscriptions(root).items():
@@ -330,9 +356,13 @@ def consent_summary(root: Path) -> dict:
             sources[name]["chats"] = source.get("chats") or []
     return {"root": str(root), "sources": sources, "runner": config["runner"], "model": config["model"],
             "model_receives": "the new session messages plus the notebook pages it reads, "
-                              "through your own Codex login (no API key, no OpenOnion server)",
+                              + MODEL_ROUTE[config["runner"]],
+            "model_permissions": CONFINEMENT[config["runner"]],
             "schedule": config["schedule"], "limits": config["limits"],
-            "background": "a launchd job under your user at the times above, and one bounded batch at login"}
+            # RunAtLoad is off (schedule.py): a login runs nothing; a slot missed
+            # while asleep runs once at the next five-minute tick.
+            "background": "a launchd job under your user at the times above (a time missed while "
+                          "asleep runs once on wake); co wiki stop removes it"}
 
 
 def start(root: Path, *, confirm, scheduler, runner=None) -> dict:
@@ -352,7 +382,12 @@ def start(root: Path, *, confirm, scheduler, runner=None) -> dict:
     # read; asking again whenever one is waiting means it is read only once shown.
     waiting = [name for name, source in subscriptions(root).items()
                if source.get("enabled") and not source.get("consented") and source.get("kind") in READABLE]
-    if first or waiting:
+    # The same holds for everything else the summary shows. A consent recorded
+    # before the summary was, has no fingerprint and is asked for once more.
+    agreed = read_json(state_path(root, "consent.json"), {}) if not first else {}
+    changed = not first and (not isinstance(agreed, dict)
+                             or agreed.get("summary") != summary_fingerprint(root))
+    if first or waiting or changed:
         if not confirm(consent_summary(root)):
             return {"started": False, "consented": False, "first_batch": None}
         approve_sources(root)
@@ -582,7 +617,9 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
         write_json(state_path(root, "progress.json"), updated)
         write_json(path, record)
         return record
-    attempts = 2 if record["extracted"] else 1
+    from .extract import finished_digest, forget_digest, remember_digest
+    digested = finished_digest(root, items, kind) if record["extracted"] else None
+    attempts = 2 if record["extracted"] and digested is None else 1
     if not uncapped and status(root)["runner_attempts_today"] + attempts > limits["runner_calls_per_day"]:
         raise WikiError("Daily runner-attempt limit reached; source progress was not advanced")
     runner = runner or run_stage
@@ -592,9 +629,17 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
     record.update(outcome="running", runner_attempts=attempts)
     write_json(path, record)  # Reserve the attempts before starting a COAI process.
     usage = {}
-    stage = "extract" if record["extracted"] else "maintain"
+    stage = "extract" if record["extracted"] and digested is None else "maintain"
+    # What the notebook held before the run: a failure after pages were written
+    # still has to advance the cursor, or the same material is paid for daily.
+    notebook = Notebook(root)
+    before = {page: notebook.read(page) for page in notebook.list()}
     try:
-        if record["extracted"]:
+        if digested is not None:
+            record["extract_reused"] = True
+            items = [] if digested == NOTHING else [extraction_item(digested, items)]
+        elif record["extracted"]:
+            digested_items = items
             digest = (extractor(items, config, kind) if extractor else
                       run_extract(items, config, kind, root=root))
             usage = dict(digest.get("usage") or {})
@@ -606,6 +651,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
             extracts.mkdir(parents=True, exist_ok=True, mode=0o700)
             (extracts / f"{record['id']}.md").write_text(notes, encoding="utf-8")
             record["extract_notes"] = f".state/extracts/{record['id']}.md"
+            remember_digest(root, digested_items, kind, f"extracts/{record['id']}.md")
             items = [] if notes == NOTHING else [extraction_item(notes, items)]
         if items:
             stage = "maintain"
@@ -629,6 +675,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
             if key in updated and waiting:
                 updated[key] = sorted(set(updated[key]) - waiting)
         write_json(state_path(root, "progress.json"), updated)
+        forget_digest(root)
     except BaseException as error:
         failed_usage = getattr(error, "usage", None)
         record["usage_by_stage"][stage] = failed_usage
@@ -638,7 +685,19 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
                       usage=usage or None, changed=getattr(error, "changed", []),
                       error=str(error) if isinstance(error, WikiError) else "Runner failed; source progress preserved")
         if isinstance(error, (KeyboardInterrupt, SystemExit)):
-            raise
+            raise  # stopped mid-write: what is on disk may be half a batch, so it runs again
+        # Pages on disk mean the maintainer finished with this material and the
+        # failure came after (the runner promotes a batch's pages together, under
+        # the lock). Holding the cursor back reran the batch on every schedule and
+        # paid for it again.
+        after = {page: notebook.read(page) for page in notebook.list()}
+        written = sorted(page for page in before.keys() | after.keys() if before.get(page) != after.get(page))
+        record.update(changed=written or record["changed"], progress_advanced=bool(written))
+        if written:
+            if not isinstance(error, WikiError):
+                record["error"] = "Runner failed after writing its pages; source progress advanced"
+            write_json(state_path(root, "progress.json"), updated)
+            forget_digest(root)
     finally:
         record["finished_at"] = now().isoformat()
         record["seconds"] = round((datetime.fromisoformat(record["finished_at"])

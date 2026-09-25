@@ -244,9 +244,13 @@ and what you looked for and did not find in `Uncertainties`. A guess is worse
 than a gap: the next pass would build on it. Five page loads is generous; ten
 means the site does not have it.
 
-You should have `co browser` for the web lookups above; if it fails to run or
-cannot reach the network, say so in `Uncertainties` ("web: not reachable on
-this runner") and leave the fields `Unknown`. Do not pretend to have looked.
+A run started by `co wiki` has no `co browser`, no shell commands and no
+network: its material is mail strangers wrote, often read with nobody
+watching, so the runner confines it to reading that material and writing the
+page. There, skip this section without trying it, say so once in
+`Uncertainties` ("web: not searched; Wiki runs are offline") and leave the
+fields `Unknown`. When you do have `co browser` and it fails to run or cannot
+reach the network, say that instead. Do not pretend to have looked.
 
 ## Finish, then say what you did not finish
 

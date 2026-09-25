@@ -204,14 +204,19 @@ def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
         'Who they are': [f"The owner of this notebook{'' if name == 'Account owner' else ', ' + name}; "
                          f"the other pages are written from their side. [1]"],
         'Why they are here': ['This is the owner\'s own page. [1]'],
-        'History': ([f"In the {days} days to {date}: wrote {sent} and received {received} messages with "
-                     f"{len(people)} correspondents in {', '.join(boxes) or 'no mailbox'}. [1]"]
+        # With no mailbox (a page made from --name alone) there is no mail
+        # history to state; leaving it Unknown lets a later init fill it.
+        'History': (([f"In the {days} days to {date}: wrote {sent} and received {received} messages with "
+                      f"{len(people)} correspondents in {', '.join(boxes) or 'no mailbox'}. [1]"]
+                     if owner['addresses'] else [])
                     + ([f"Most mail with: {top}. [1]"] if top else [])
                     + ([f"Coding sessions in the same window: {sessions} across {len(projects)} projects; most: "
                         + ', '.join(f"{row['name']} ({row['sessions']})" for row in projects[:5]) + '. [1]']
                        if projects else [])),
     }
     for section, lines in filled.items():
+        if not lines:
+            continue
         page = page.replace(f'## {section}\n{UNFILLED}', f'## {section}\n' + '\n'.join(f'- {line}' for line in lines), 1)
     # init asks about every write-only address; the page names only those that
     # carry the owner's own name. On the real map the write-only list also held
@@ -242,6 +247,10 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
               'possible_own_addresses': []}
     state = root / '.state' / 'map.json'
     state.parent.mkdir(parents=True, exist_ok=True)
+    # The owner's page from an earlier init, so a page made from --name alone
+    # is the one a mailbox connected later fills, not a second owner.
+    earlier = json.loads(state.read_text()).get('owner') if state.is_file() else None
+    earlier = earlier['record'] if earlier and notebook.path(earlier['record']).is_file() else None
     def save():
         atomic_write(state, json.dumps(report, ensure_ascii=False, indent=2) + '\n')
     save()
@@ -252,11 +261,21 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
     if own:
         aliases = sorted({address.casefold() for address in own})
         existing = next((p['path'] for p in roster if set(aliases).intersection(p['emails'])), None)
-        owner_record = existing or _record('people', 'Account owner', aliases[0])
+        owner_record = existing or earlier or _record('people', 'Account owner', aliases[0])
         owner_name = _owner_name(clients, name)
         if notebook.stub_person(owner_record, 'Account owner', aliases, email=', '.join(aliases)):
             report['created'].append(owner_record)
         report['owner'] = {'record': owner_record, 'addresses': aliases}
+        report['people'].append({'record': owner_record, 'classification': 'account owner'})
+    elif name.strip() or earlier:
+        # init's help promises your own page, titled with your name. Without a
+        # mailbox there are no addresses to key it on, but the name is enough;
+        # without it `investigate me` said "Run init first" after init had run.
+        owner_record = earlier or _record('people', 'Account owner', 'owner')
+        owner_name = name.strip() or 'Account owner'
+        if notebook.stub_person(owner_record, 'Account owner'):
+            report['created'].append(owner_record)
+        report['owner'] = {'record': owner_record, 'addresses': []}
         report['people'].append({'record': owner_record, 'classification': 'account owner'})
     org_rows = []
     for group in _people_groups(people):

@@ -628,6 +628,12 @@ RSYNC_FILTERS = [
     # a collision on every start.
     "--exclude", ".co/served_by.json",
     "--exclude", ".co/provision.json",
+    # The scheduler's record of what ran, and `co schedule pause` / `run`
+    # (#1685). A laptop copy sent up would rewind the server's last runs, so
+    # entries fire again, and undo a pause the operator set on the server.
+    "--exclude", ".co/schedule-state.json",
+    "--exclude", ".co/schedule-state.json.lock",
+    "--exclude", ".co/schedule.tick.lock",
     "--exclude", ".co/requirements.sha256",
     "--exclude", ".co/logs/",
     "--exclude", ".co/evals/",

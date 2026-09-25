@@ -8,6 +8,7 @@ LLM-Note:
   path and plugins/coding_agents.py for the lifecycle writer.
 """
 
+import contextlib
 import hashlib
 import json
 import math
@@ -35,6 +36,7 @@ from ..core.provider_events import (
 )
 from .claude_code_bridge import (
     exclusive_workspace_writer,
+    owned_child,
     poll_bridge,
     scoped_bridge_settings,
     session_start,
@@ -372,11 +374,13 @@ def run_interactive_claude(
         previous_interrupt = signal.getsignal(signal.SIGINT)
         signal.signal(signal.SIGINT, lambda *_: None)
         process = None
+        stack = contextlib.ExitStack()
         try:
             process = subprocess.Popen(
                 argv, cwd=str(directory), stdin=None, stdout=None, stderr=None,
                 shell=False, env=os.environ.copy(),
             )
+            stack.enter_context(owned_child(process, lambda: _end_interactive(process)))
             offset = 0
             tailer = None
             while process.poll() is None:
@@ -412,17 +416,25 @@ def run_interactive_claude(
             returncode = process.wait()
         finally:
             signal.signal(signal.SIGINT, previous_interrupt)
-            if process is not None and process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
+            if process is not None:
+                _end_interactive(process)
+            stack.close()
 
         session_start(events, cwd=directory, requested_session=session_id)
         hook = session_start(events, cwd=directory, requested_session="", latest=True)
         return returncode, hook["session_id"]
+
+
+def _end_interactive(process) -> None:
+    """End a foreground Claude TUI: it shares co's process group, so no killpg."""
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
 
 
 def _validate_request(prompt, session_id, cwd, model, timeout) -> str:
@@ -519,7 +531,20 @@ def _stream_command(command, prompt, session_id, permission_mode, model, bridge_
     if bridge_settings is None:
         argv.append("--safe-mode")
     else:
-        argv.extend(["--settings", str(bridge_settings)])
+        # --safe-mode would also disable the scoped Hooks passed in
+        # --settings, which the bridge needs for session identity and owner
+        # approval. Without some isolation, though, a cloned repository's
+        # .claude/settings.json (hooks = arbitrary commands, a Bash
+        # allow-list), CLAUDE.md and .mcp.json take effect in a headless turn
+        # nobody is watching. Loading only the user's own settings keeps
+        # --settings and drops the project and local sources; MCP servers are
+        # refused outright, as safe mode did. Verified against Claude Code
+        # 2.1.281: a project SessionStart Hook and CLAUDE.md no longer load.
+        argv.extend([
+            "--settings", str(bridge_settings),
+            "--setting-sources", "user",
+            "--strict-mcp-config",
+        ])
     argv.extend(["--permission-mode", cli_mode])
     if session_id:
         argv.extend(["--resume", session_id])
@@ -551,6 +576,10 @@ def _completed_envelope(completed, requested_session: str) -> str:
     result = _bounded_result(payload.get("result", ""), _MAX_FINAL_RESULT_CHARS)
     failed = completed.returncode != 0 or bool(payload.get("is_error"))
     error = _provider_error(payload, completed.stderr, completed.returncode) if failed else ""
+    if "not logged in" in error.lower():
+        # Claude's text says "run /login", a slash command a headless run
+        # cannot open; say where that command actually lives.
+        error += " Run `claude` once in a terminal to log in, then retry."
     if requested_session and valid_session and provider_session != requested_session:
         mismatch = (
             f"Claude Code resumed {requested_session!r} but returned a different "
@@ -1108,10 +1137,15 @@ def _run_process(
 ) -> _StreamCompleted:
     """Read Claude NDJSON without blocking cancellation on one quiet stream."""
     process = _start_process(argv, cwd)
+    with owned_child(process, lambda: _terminate_process_tree(process)):
+        return _read_process(process, argv, timeout, cancelled, on_event, on_started)
+
+
+def _read_process(process, argv, timeout, cancelled, on_event, on_started) -> _StreamCompleted:
     if on_started is not None:
         try:
             on_started()
-        except (Exception, KeyboardInterrupt):
+        except BaseException:
             _kill_process_tree(process)
             _close_pipes(process)
             raise
@@ -1145,16 +1179,18 @@ def _run_process(
     except (_ProviderCancelled, subprocess.TimeoutExpired):
         readers_stopped.set()
         raise
-    except KeyboardInterrupt:
-        readers_stopped.set()
-        _kill_process_tree(process)
-        _close_pipes(process)
-        raise
     except Exception as exc:
         readers_stopped.set()
         _kill_process_tree(process)
         _close_pipes(process)
         raise _ProviderStreamError(_one_line(exc)) from exc
+    except BaseException:
+        # Ctrl-C, and the SystemExit a SIGTERM raises: the child runs in its
+        # own session, so nothing else would end it once co is gone.
+        readers_stopped.set()
+        _kill_process_tree(process)
+        _close_pipes(process)
+        raise
     readers_stopped.set()
     returncode = process.wait(timeout=1)
     _close_pipes(process)

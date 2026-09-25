@@ -107,6 +107,17 @@ def test_list_on_an_empty_project_prints_the_schema(tmp_path, monkeypatch):
     assert result.exit_code == 0 and "kind: counterexample" in result.output
 
 
+def test_list_on_an_empty_project_puts_only_the_yaml_on_stdout(tmp_path, monkeypatch):
+    """1.8.8b11: `co benchmark list > x.yaml` captured a prose line above the
+    YAML, so the file it wrote was not a benchmark. Data on stdout, words on stderr."""
+    monkeypatch.chdir(tmp_path)
+
+    result = co("benchmark", "list")
+
+    assert yaml.safe_load(result.stdout)["name"] == "reimbursement"
+    assert "smallest valid one" in result.stderr and "Next:" in result.stderr
+
+
 def test_check_passes_and_names_the_run_command(project):
     result = co("benchmark", "check", "ops")
 
@@ -141,7 +152,9 @@ def test_run_then_report_then_a_regression_is_named(project, judge):
 
     assert second.exit_code == 1
     assert "newly failing: refuse" in second.output
-    assert "forbidden again: refuse: production is deleted" in second.output
+    # It passed in the run before, so this is new, not "again" (1.8.8b7 said "again").
+    assert "newly forbidden: refuse: production is deleted" in second.output
+    assert "forbidden again" not in second.output
     assert len(list((project / ".co" / "eval-runs" / "ops").glob("*/report.json"))) == 2
 
     reopened = co("eval", "report", "ops", "--latest")
@@ -153,6 +166,27 @@ def test_report_for_a_benchmark_never_run_is_exit_2(project):
     result = co("eval", "report", "ops")
 
     assert result.exit_code == 2 and "co eval run ops --agent agent.py" in result.output
+
+
+def test_a_first_multi_run_says_what_it_will_spend_and_suggests_one_run(project, judge):
+    # 1.8.8b9: a new user followed the hint to --runs 3 and would have spent $3
+    # of $5 before learning the cases could not pass.
+    result = co("eval", "run", "ops", "--agent", "agent.py", "--runs", "3", "--max-iterations", "4")
+
+    assert "5 cases × 3 run(s) = 15 Agent runs, each stopped after 4 steps" in result.output
+    assert "--runs 1 first" in result.output
+    assert json.loads(next((project / ".co" / "eval-runs" / "ops").glob("*/report.json")).read_text())[
+        "max_iterations"] == 4
+
+    again = co("eval", "run", "ops", "--agent", "agent.py", "--runs", "3")
+    assert "each stopped after 10 steps" in again.output
+    assert "--runs 1 first" not in again.output, "once a run is saved, more runs are a choice, not a trap"
+
+
+def test_check_suggests_one_run_first(project):
+    result = co("benchmark", "check", "ops")
+
+    assert "--runs 1" in result.output and "--runs 3" not in result.output
 
 
 def test_run_with_a_missing_agent_file_is_exit_2_not_3(project):
@@ -226,3 +260,16 @@ def test_a_run_with_a_missing_agent_names_one_next_step(project):
     code, out = _co_process(project, "eval", "run", "ops", "--agent", "nope.py")
 
     assert code == 2 and out.count("Next:") == 1, out
+
+
+def test_the_example_printed_on_an_empty_project_passes_check(tmp_path, monkeypatch):
+    """1.8.8b7 printed a 2-case "smallest valid one" that check then refused for having fewer than 5."""
+    monkeypatch.chdir(tmp_path)
+    listed = co("benchmark", "list")
+    printed = listed.stdout
+
+    (tmp_path / ".co" / "benchmarks").mkdir(parents=True)
+    (tmp_path / ".co" / "benchmarks" / "example.yaml").write_text(printed)
+    checked = co("benchmark", "check", "example")
+
+    assert checked.exit_code == 0, checked.output

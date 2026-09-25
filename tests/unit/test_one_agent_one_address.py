@@ -30,6 +30,8 @@ copy is created.
 """
 
 import json
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -95,8 +97,8 @@ class TestTheSecondAgentIsTold:
 
 
 class TestAProjectWithItsOwnKey:
-    """What `co create` produces now, and what the fix for this is: no sharing,
-    so nothing to warn about."""
+    """What the warning advises: a key of the project's own, so no sharing and
+    nothing to warn about. (`co create` does not do this; see below.)"""
 
     def test_two_projects_with_their_own_keys_never_collide(self, tmp_path, monkeypatch):
         home_co = tmp_path / "home" / ".co"
@@ -125,6 +127,41 @@ class TestAProjectWithItsOwnKey:
 
         assert (project / "served_by.json").exists()
         assert not (home_co / "served_by.json").exists()
+
+
+class TestTheWarningTellsTheTruth:
+    """Re-test of 1.8.8b9: the warning said "A project created by `co create`
+    gets its own identity and does not share". `co create` writes no key: its
+    projects use ~/.co's, which is how they end up sharing in the first place."""
+
+    def test_it_does_not_promise_co_create_a_key(self, shared, monkeypatch):
+        home_co, first, second = shared
+        monkeypatch.setattr(Path, "home", lambda: home_co.parent)
+        claim_identity(first, resolve_agent_identity(first), "oo")
+
+        warning = claim_identity(second, resolve_agent_identity(second), "naturewill")
+
+        assert "gets its own identity" not in warning
+        assert "does not give a project its own key" in warning
+
+    def test_the_command_it_gives_does_give_the_project_its_own_address(
+            self, shared, monkeypatch):
+        import re
+        import subprocess
+        home_co, first, second = shared
+        monkeypatch.setattr(Path, "home", lambda: home_co.parent)
+        claim_identity(first, resolve_agent_identity(first), "oo")
+        warning = claim_identity(second, resolve_agent_identity(second), "naturewill")
+        command = re.search(r'python -c "([^"]+)"', warning).group(1)
+
+        subprocess.run([sys.executable, "-c", command], cwd=second.parent, check=True,
+                       env={**os.environ, "HOME": str(home_co.parent),
+                            "PYTHONPATH": str(Path(__file__).resolve().parents[2])})
+
+        own = resolve_agent_identity(second)
+        assert own["source"] == str(second)
+        assert own["address"] != resolve_agent_identity(first)["address"]
+        assert claim_identity(second, own, "naturewill") is None
 
 
 class TestWhereTheIdentityCameFrom:

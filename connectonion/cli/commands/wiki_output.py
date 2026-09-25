@@ -33,6 +33,8 @@ def _lines(value, indent=0, raw_keys=False):
             return [pad + 'None']
         lines = []
         for key, item in value.items():
+            if key == 'warning' and item == '':
+                continue  # a batch with nothing to warn about printed a bare "Warning: "
             label = str(key) if raw_keys else _label(key)
             if isinstance(item, (dict, list)) and item:
                 lines.append(pad + label + ':')

@@ -165,3 +165,46 @@ class TestTheDocstringSaysWhatIsTrue:
         text = (inspect.getdoc(connect) or "").lower()
 
         assert "required for strict trust agents" not in text
+
+
+class TestACallerWithNoIdentityIsToldHowToGetOne:
+    """1.8.8b9, from a HOME with no ~/.co: `connect(addr).input(...)` raised only
+    "Auth error: unauthorized: signed request required". True, and no help to
+    someone who never ran `co init`."""
+
+    def _refusal(self, remote):
+        import asyncio
+        import json
+        from types import SimpleNamespace
+
+        class Host:
+            async def recv(self):
+                return json.dumps({"type": "ERROR", "message": "unauthorized: signed request required"})
+
+        async def handshake():
+            turn = SimpleNamespace(deadline=asyncio.get_running_loop().time() + 5, started=False)
+            await remote._wait_for_connected(Host(), turn)
+
+        with pytest.raises(ConnectionError) as refused:
+            asyncio.run(handshake())
+        return str(refused.value)
+
+    def test_no_identity_anywhere_names_co_init(self, tmp_path, monkeypatch):
+        from connectonion.network import connect
+
+        home = tmp_path / "empty-home"
+        home.mkdir()
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+        monkeypatch.chdir(tmp_path)
+
+        message = self._refusal(connect("0x" + "a" * 64))
+
+        assert "signed request required" in message
+        assert "co init" in message and "keys=" in message
+
+    def test_a_deliberately_unsigned_caller_is_not_told_to_init(self, a_project_with_an_identity):
+        from connectonion.network import connect
+
+        message = self._refusal(connect("0x" + "a" * 64, keys=False))
+
+        assert "signed request required" in message and "co init" not in message
