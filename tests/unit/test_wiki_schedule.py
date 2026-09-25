@@ -68,9 +68,61 @@ def test_uninstall_removes_the_job_and_the_file(tmp_path, monkeypatch):
 
 
 def test_custom_roots_get_their_own_label():
-    assert label_for(Path.home() / ".co" / "wiki") == LABEL
     custom = label_for(Path("/elsewhere/notes"))
     assert custom.startswith(LABEL + ".") and custom != LABEL
+
+
+def test_the_default_root_under_another_home_is_another_job(tmp_path, monkeypatch):
+    # 1.8.8b11: the default root's label was always ai.openonion.co-wiki, and
+    # launchd's domain is the uid, not HOME: `co wiki stop` under a test HOME
+    # booted out the real user's job.
+    first = label_for(tmp_path / "a" / ".co" / "wiki")
+    second = label_for(Path.home() / ".co" / "wiki")
+    assert LABEL not in (first, second) and first != second
+    assert first.startswith(LABEL + ".") and second.startswith(LABEL + ".")
+
+
+def _legacy_job(agents: Path, root: Path) -> Path:
+    """A job installed by 1.8.8b11 or earlier: the bare label, for the default root."""
+    agents.mkdir(parents=True, exist_ok=True)
+    path = agents / f"{LABEL}.plist"
+    path.write_bytes(plistlib.dumps({"Label": LABEL, "ProgramArguments": [
+        "/venv/bin/co", "wiki", "--root", str(root), "sync", "--scheduled"]}))
+    return path
+
+
+def test_stop_still_removes_a_job_installed_under_the_old_label(tmp_path, monkeypatch):
+    scheduler, calls = make(tmp_path, monkeypatch)
+    root = Path.home() / ".co" / "wiki"
+    legacy = _legacy_job(tmp_path / "LaunchAgents", root.resolve())
+
+    assert scheduler.describe(root)["installed"] is True, "an installed old job is still found"
+    assert scheduler.uninstall(root) is True
+    assert ["launchctl", "bootout", f"gui/501/{LABEL}"] in calls.commands
+    assert not legacy.exists()
+
+
+def test_the_old_label_of_another_root_is_left_alone(tmp_path, monkeypatch):
+    scheduler, calls = make(tmp_path, monkeypatch)
+    legacy = _legacy_job(tmp_path / "LaunchAgents", Path("/Users/someone-else/.co/wiki"))
+
+    scheduler.uninstall(Path.home() / ".co" / "wiki")
+    scheduler.install(Path.home() / ".co" / "wiki", default_config())
+
+    assert ["launchctl", "bootout", f"gui/501/{LABEL}"] not in calls.commands
+    assert legacy.exists()
+
+
+def test_start_replaces_the_old_label_rather_than_running_two_jobs(tmp_path, monkeypatch):
+    scheduler, calls = make(tmp_path, monkeypatch)
+    root = Path.home() / ".co" / "wiki"
+    legacy = _legacy_job(tmp_path / "LaunchAgents", root.resolve())
+
+    scheduler.install(root, default_config())
+
+    assert ["launchctl", "bootout", f"gui/501/{LABEL}"] in calls.commands
+    assert not legacy.exists()
+    assert [p.name for p in (tmp_path / "LaunchAgents").glob("*.plist")] == [f"{label_for(root)}.plist"]
 
 
 def test_unsupported_platform_says_how_to_run_by_hand(tmp_path):

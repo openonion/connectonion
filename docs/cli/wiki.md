@@ -306,6 +306,12 @@ five minutes, with PATH entries for co and installed delegates. Saved local
 time slots determine whether a batch is due. Repeated start reloads one job;
 missed slots coalesce into one catch-up. No permanent Wiki daemon is added.
 
+Each notebook root is its own job, `ai.openonion.co-wiki.<hash of the root>`,
+the default `~/.co/wiki` included, so `co wiki start`/`stop` under another
+`HOME` never touches your real job. A job installed before 1.8.8b12 under
+the bare label `ai.openonion.co-wiki` is still found: `stop` removes it and
+`start` replaces it, but only when its own `--root` is this notebook.
+
 Sync retains its source cursor on failure. Two-stage batches reserve two
 attempts and cannot start with only one remaining; extraction usage survives
 a later maintenance failure. Reported tokens are not account quota or dollars.

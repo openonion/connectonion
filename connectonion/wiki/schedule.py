@@ -42,9 +42,12 @@ def default_root() -> Path:
 
 
 def label_for(root: Path) -> str:
+    # Every root, the default one included, is named by its resolved path.
+    # launchd's domain is the uid, not HOME: when the default root's label was
+    # the bare LABEL, `co wiki stop` under a test HOME booted out the real
+    # user's job (1.8.8b11). Jobs installed under the bare label are still found
+    # and stopped through Launchd._legacy.
     root = Path(root).resolve()
-    if root == default_root():
-        return LABEL
     return LABEL + "." + hashlib.sha256(str(root).encode()).hexdigest()[:12]
 
 
@@ -59,6 +62,28 @@ class Launchd:
 
     def plist_path(self, root: Path) -> Path:
         return self.agents_dir / f"{label_for(root)}.plist"
+
+    def _legacy(self, root: Path):
+        """The plist of a job 1.8.8b11 or earlier installed under the bare LABEL
+        for this root, or None. Only when its own --root is this root: under
+        another HOME the bare label is someone else's job."""
+        path = self.agents_dir / f"{LABEL}.plist"
+        try:
+            arguments = plistlib.loads(path.read_bytes()).get("ProgramArguments") or []
+        except (OSError, plistlib.InvalidFileException, ValueError):
+            return None
+        for index, argument in enumerate(arguments[:-1]):
+            if argument == "--root" and Path(arguments[index + 1]).resolve() == Path(root).resolve():
+                return path
+        return None
+
+    def _remove_legacy(self, root: Path) -> bool:
+        path = self._legacy(root)
+        if path is None:
+            return False
+        self._launchctl("bootout", f"gui/{self.uid}/{LABEL}")
+        path.unlink()
+        return True
 
     def render(self, root: Path, config: dict) -> str:
         from .runner import co_command
@@ -107,6 +132,7 @@ class Launchd:
         os.replace(name, path)
         # bootout first so a changed schedule is reloaded rather than ignored.
         self._launchctl("bootout", f"gui/{self.uid}/{label_for(root)}")
+        self._remove_legacy(root)  # one job per root, not the old label beside the new
         if not self._launchctl("bootstrap", f"gui/{self.uid}", str(path)):
             raise WikiError("launchctl could not load the job; check ~/Library/LaunchAgents and run `co wiki doctor`")
         return {"scheduler": "launchd", "label": label_for(root), "plist": str(path),
@@ -116,16 +142,21 @@ class Launchd:
         root = Path(root).resolve()
         path = self.plist_path(root)
         self._launchctl("bootout", f"gui/{self.uid}/{label_for(root)}")
+        removed_legacy = self._remove_legacy(root)
         if not path.exists():
-            return False
+            return removed_legacy
         path.unlink()
         return True
 
     def describe(self, root: Path) -> dict:
         """What launchd itself says -- the plist being present is not the job being alive."""
         root = Path(root).resolve()
-        info = {"scheduler": "launchd", "label": label_for(root), "installed": self.plist_path(root).is_file()}
-        result = self.run(["launchctl", "print", f"gui/{self.uid}/{label_for(root)}"],
+        label = label_for(root)
+        if not self.plist_path(root).is_file() and self._legacy(root) is not None:
+            label = LABEL  # installed before labels named the root; stop still removes it
+        installed = self.plist_path(root).is_file() or label == LABEL
+        info = {"scheduler": "launchd", "label": label, "installed": installed}
+        result = self.run(["launchctl", "print", f"gui/{self.uid}/{label}"],
                           capture_output=True, text=True, timeout=30)
         info["loaded"] = result.returncode == 0
         for line in (result.stdout or "").splitlines():
