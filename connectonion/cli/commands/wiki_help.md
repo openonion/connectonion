@@ -299,7 +299,8 @@ Back:     co wiki --help
 
 ```
 Check that what the notebook needs is present: the co CLI, the model runner, mailbox
-logins, session folders and the schedule. Read-only; it never logs in or repairs.
+logins, session folders, spreadsheet support and the schedule. Read-only; it never
+logs in or repairs.
 
 Usage:    co wiki doctor
 Output:   One line per check, with the command that fixes each failure.

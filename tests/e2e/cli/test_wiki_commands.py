@@ -609,3 +609,55 @@ def test_init_with_only_a_name_makes_your_page_and_says_what_investigate_me_need
     assert me.exit_code == 1
     assert 'Run init first' not in me.output
     assert record in me.output and 'co auth google' in me.output
+
+
+def test_sources_on_a_fresh_notebook_lists_whatsapp(tmp_path):
+    result = invoke(tmp_path / 'fresh', 'sources')
+    assert result.exit_code == 0, result.output
+    assert 'whatsapp' in result.output.lower()
+
+
+@pytest.mark.parametrize('make', ['symlink', 'oversize', 'not_utf8', 'hidden'])
+def test_investigate_a_bad_file_gives_the_reason_show_gives(tmp_path, make):
+    """`show` named why a file is not a page; `investigate` on the same path
+    said only "No page matches", which sent people looking for a typo."""
+    prepare(tmp_path)
+    people = tmp_path / 'people'
+    people.mkdir(exist_ok=True)
+    name = {'hidden': '._page.md'}.get(make, f'{make}.md')
+    target = people / name
+    if make == 'symlink':
+        outside = tmp_path / 'outside.md'
+        outside.write_text('# Outside\n')
+        target.symlink_to(outside)
+    elif make == 'oversize':
+        target.write_text('# Big\n' + 'x' * (2 * 1024 * 1024))
+    elif make == 'not_utf8':
+        target.write_bytes(b'\xff\xfe\xfdnot utf8\n')
+    else:
+        target.write_bytes(b'\x00\x05\x16\x07')
+    record = f'people/{name}'
+    shown = invoke(tmp_path, 'show', record)
+    investigated = invoke(tmp_path, 'investigate', record)
+    assert shown.exit_code == investigated.exit_code == 1
+    assert 'No page matches' not in investigated.output
+    reason = [line for line in shown.output.splitlines() if line.startswith('Error:')][0]
+    assert reason in investigated.output
+
+
+def test_doctor_says_whether_spreadsheet_support_is_installed(tmp_path, monkeypatch):
+    import importlib.util
+    real = importlib.util.find_spec
+    monkeypatch.setattr(importlib.util, 'find_spec',
+                        lambda name, *a: None if name == 'openpyxl' else real(name, *a))
+    result = invoke(tmp_path, 'doctor')
+    line = next(line for line in result.output.splitlines() if 'spreadsheet' in line)
+    assert line.startswith('NO') and "connectonion[wiki]" in line
+
+
+def test_a_batch_with_nothing_to_warn_about_prints_no_empty_warning_line():
+    from connectonion.cli.commands.wiki_output import render
+    quiet = render({"outcome": "completed", "warning": ""}, "sync")
+    assert "Warning" not in quiet
+    loud = render({"outcome": "completed", "warning": "codex: 3 messages in an unfamiliar format were not read"}, "sync")
+    assert "Warning: codex: 3 messages" in loud

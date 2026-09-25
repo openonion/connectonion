@@ -142,6 +142,11 @@ def _resolve_page(notebook, selector):
     pages = _investigation_pages(notebook)
     if selector in notebook.list():
         return selector
+    candidate = notebook.root / selector
+    if selector.endswith(".md") and (candidate.exists() or candidate.is_symlink()):
+        # A file that is there but is not a page (a symlink, over 1 MB, not
+        # UTF-8, hidden): say why, as show does, not "No page matches".
+        notebook.read(selector)
     people = {person["path"]: person for person in notebook.people()}
     matches = []
     for path in pages:
@@ -707,6 +712,14 @@ def make_wiki_app(factory):
             if binary:
                 check(f"model runner ({runner})", bool(shutil.which(binary)), shutil.which(binary) or "not on PATH",
                       "npm install -g @openai/codex" if binary == "codex" else "npm install -g @anthropic-ai/claude-code")
+            import importlib.util
+            # Optional (the `wiki` extra): without it an XLSX attachment is named,
+            # not read, and nothing said so until a page came back without it.
+            sheets = importlib.util.find_spec("openpyxl") is not None
+            check("spreadsheet support (wiki extra)", sheets,
+                  "openpyxl installed; XLSX attachments are read" if sheets
+                  else "not installed; XLSX attachments are named, not read",
+                  f"python -m pip install 'connectonion[wiki]=={__version__}'")
             for kind, provider in (("gmail", "google"), ("outlook", "microsoft")):
                 there = mail_available(kind)
                 check(f"mailbox {kind}", there, "connected" if there else "not connected", f"co auth {provider}")

@@ -31,7 +31,18 @@ def inspect_page(tab: str) -> dict:
     scripts = Path(__file__).resolve().parents[2] / "useful_skills" / "co-tiktok" / "scripts"
     evidence_name = f"tiktok_inspect_{uuid4().hex[:12]}"
     screenshot = Path.cwd() / ".tmp" / f"{evidence_name}_before.png"
+    made = not screenshot.parent.exists()
     screenshot.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        return _inspect(tab, scripts, evidence_name, screenshot)
+    finally:
+        # A tab that never answered left an empty .tmp/ in the working
+        # directory; one holding evidence stays.
+        if made and not any(screenshot.parent.iterdir()):
+            screenshot.parent.rmdir()
+
+
+def _inspect(tab: str, scripts: Path, evidence_name: str, screenshot: Path) -> dict:
     output = _send(tab, "take_screenshot", str(screenshot))
     if f"Screenshot saved to: {screenshot}" not in output:
         raise CreatorError("evidence_failed", "The browser did not confirm the screenshot; extraction was stopped.")
