@@ -587,7 +587,9 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
         write_json(state_path(root, "progress.json"), updated)
         write_json(path, record)
         return record
-    attempts = 2 if record["extracted"] else 1
+    from .extract import finished_digest, forget_digest, remember_digest
+    digested = finished_digest(root, items, kind) if record["extracted"] else None
+    attempts = 2 if record["extracted"] and digested is None else 1
     if not uncapped and status(root)["runner_attempts_today"] + attempts > limits["runner_calls_per_day"]:
         raise WikiError("Daily runner-attempt limit reached; source progress was not advanced")
     runner = runner or run_stage
@@ -597,9 +599,17 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
     record.update(outcome="running", runner_attempts=attempts)
     write_json(path, record)  # Reserve the attempts before starting a COAI process.
     usage = {}
-    stage = "extract" if record["extracted"] else "maintain"
+    stage = "extract" if record["extracted"] and digested is None else "maintain"
+    # What the notebook held before the run: a failure after pages were written
+    # still has to advance the cursor, or the same material is paid for daily.
+    notebook = Notebook(root)
+    before = {page: notebook.read(page) for page in notebook.list()}
     try:
-        if record["extracted"]:
+        if digested is not None:
+            record["extract_reused"] = True
+            items = [] if digested == NOTHING else [extraction_item(digested, items)]
+        elif record["extracted"]:
+            digested_items = items
             digest = (extractor(items, config, kind) if extractor else
                       run_extract(items, config, kind, root=root))
             usage = dict(digest.get("usage") or {})
@@ -611,6 +621,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
             extracts.mkdir(parents=True, exist_ok=True, mode=0o700)
             (extracts / f"{record['id']}.md").write_text(notes, encoding="utf-8")
             record["extract_notes"] = f".state/extracts/{record['id']}.md"
+            remember_digest(root, digested_items, kind, f"extracts/{record['id']}.md")
             items = [] if notes == NOTHING else [extraction_item(notes, items)]
         if items:
             stage = "maintain"
@@ -634,6 +645,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
             if key in updated and waiting:
                 updated[key] = sorted(set(updated[key]) - waiting)
         write_json(state_path(root, "progress.json"), updated)
+        forget_digest(root)
     except BaseException as error:
         failed_usage = getattr(error, "usage", None)
         record["usage_by_stage"][stage] = failed_usage
@@ -643,7 +655,19 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
                       usage=usage or None, changed=getattr(error, "changed", []),
                       error=str(error) if isinstance(error, WikiError) else "Runner failed; source progress preserved")
         if isinstance(error, (KeyboardInterrupt, SystemExit)):
-            raise
+            raise  # stopped mid-write: what is on disk may be half a batch, so it runs again
+        # Pages on disk mean the maintainer finished with this material and the
+        # failure came after (the runner promotes a batch's pages together, under
+        # the lock). Holding the cursor back reran the batch on every schedule and
+        # paid for it again.
+        after = {page: notebook.read(page) for page in notebook.list()}
+        written = sorted(page for page in before.keys() | after.keys() if before.get(page) != after.get(page))
+        record.update(changed=written or record["changed"], progress_advanced=bool(written))
+        if written:
+            if not isinstance(error, WikiError):
+                record["error"] = "Runner failed after writing its pages; source progress advanced"
+            write_json(state_path(root, "progress.json"), updated)
+            forget_digest(root)
     finally:
         record["finished_at"] = now().isoformat()
         record["seconds"] = round((datetime.fromisoformat(record["finished_at"])
