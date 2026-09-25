@@ -222,6 +222,46 @@ def test_skills_help_points_at_benchmarks_without_claiming_to_author(project):
     assert "co benchmark --help" in text
 
 
+# ---- one next step per refusal, through the real process ---------------------------------
+
+def _co_process(project, *args):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    # PYTHONPATH pins this checkout: an editable install elsewhere would
+    # otherwise run different code and pass for the wrong reason.
+    env = {"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "CO_TIPS": "on", "HOME": str(project),
+           "PYTHONPATH": str(Path(__file__).resolve().parents[2])}
+    done = subprocess.run([sys.executable, "-m", "connectonion.cli.main", *args], cwd=project,
+                          capture_output=True, text=True, env=env)
+    return done.returncode, done.stdout + done.stderr
+
+
+def test_a_missing_benchmark_names_one_next_step_and_says_create(project):
+    # Found on the published 1.8.8b8: two Next lines, "fix the file" for a file
+    # that did not exist and the generic "Next: co commands" under it.
+    code, out = _co_process(project, "benchmark", "check", "nope")
+
+    assert code == 2
+    assert out.count("Next:") == 1, out
+    assert "Next: create .co/benchmarks/nope.yaml" in out
+
+
+def test_an_invalid_benchmark_names_one_next_step(project):
+    (project / ".co" / "benchmarks" / "thin.yaml").write_text(yaml.safe_dump({"cases": cases()[:2]}))
+
+    code, out = _co_process(project, "benchmark", "check", "thin")
+
+    assert code == 2 and out.count("Next:") == 1, out
+
+
+def test_a_run_with_a_missing_agent_names_one_next_step(project):
+    code, out = _co_process(project, "eval", "run", "ops", "--agent", "nope.py")
+
+    assert code == 2 and out.count("Next:") == 1, out
+
+
 def test_the_example_printed_on_an_empty_project_passes_check(tmp_path, monkeypatch):
     """1.8.8b7 printed a 2-case "smallest valid one" that check then refused for having fewer than 5."""
     monkeypatch.chdir(tmp_path)

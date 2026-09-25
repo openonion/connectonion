@@ -45,6 +45,14 @@ def next_step_already_named() -> bool:
     return _NEXT_STEP_NAMED
 
 
+def mark_next_step_named() -> None:
+    """Record that a handler named the next step itself, on a stream print_tip
+    does not use (stderr, so --json stdout stays parseable). Without it the exit-2
+    net adds a second, generic tip under the real one."""
+    global _NEXT_STEP_NAMED
+    _NEXT_STEP_NAMED = True
+
+
 def forget_next_step_named() -> None:
     """Reset the flag. For tests, which run many commands in one process."""
     global _NEXT_STEP_NAMED

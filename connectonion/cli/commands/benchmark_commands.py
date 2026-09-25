@@ -16,11 +16,25 @@ from ...benchmark import EXAMPLE, list_suites, load
 
 
 def _next(text: str) -> None:
-    """The next step, on stderr so --json stdout stays parseable; off with --no-tips / CO_TIPS=off."""
-    from .command_tips import tips_enabled
+    """The next step, on stderr so --json stdout stays parseable; off with --no-tips / CO_TIPS=off.
 
+    Marked as named either way, so the exit-2 net does not add `Next: co commands`
+    under it: two tips are a fork, and an agent resolves a fork by guessing.
+    """
+    from .command_tips import mark_next_step_named, tips_enabled
+
+    mark_next_step_named()
     if tips_enabled():
         print(f"Next: {text}", file=sys.stderr)
+
+
+def _refuse(message: str) -> None:
+    """An error on stderr. One that already names the next step counts as the tip."""
+    from .command_tips import mark_next_step_named
+
+    print(message, file=sys.stderr)
+    if "Next:" in message:
+        mark_next_step_named()
 
 
 def handle_benchmark_list(as_json: bool = False) -> int:
@@ -61,7 +75,13 @@ def handle_benchmark_check(name: str, as_json: bool = False) -> int:
         if any(p.field in ("", "cases") for p in problems):
             print("\nThe smallest valid benchmark:\n")
             print(EXAMPLE)
-        _next(f"fix the file, then co benchmark check {name}")
+        from ...benchmark.suite import benchmark_path
+
+        if benchmark_path(name).exists():
+            _next(f"fix the file, then co benchmark check {name}")
+        else:
+            _next(f"create .co/benchmarks/{name}.yaml (schema: co benchmark --help), "
+                  f"then co benchmark check {name}")
         return 2
     counts = suite.counts()
     print(f"Valid: {len(suite.cases)} cases ({counts['normal']} normal, {counts['counterexample']} counterexample)"
@@ -94,7 +114,7 @@ def handle_eval_run(name: str, agent_path: str, skill_name: Optional[str] = None
         result = runner.run(suite, agent, agent_path=agent_path, skill=skill, invoke=invoke, runs=runs,
                             live=live, judge_model=judge_model or DEFAULT_MODEL, max_iterations=ceiling)
     except runner.RunnerError as error:
-        print(str(error), file=sys.stderr)
+        _refuse(str(error))
         return error.code
     path = reports.save(result)
     stored = reports.load(name, path.parent.name)
@@ -129,7 +149,7 @@ def handle_eval_report(name: str, run_id: Optional[str] = None, as_json: bool = 
     try:
         stored = reports.load(name, run_id)
     except LookupError as error:
-        print(str(error), file=sys.stderr)
+        _refuse(str(error))
         return 2
     comparison = reports.compare(stored, reports.previous(name, stored["run_id"]))
     if as_json:
