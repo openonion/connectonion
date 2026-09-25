@@ -123,7 +123,10 @@ def teams(title: str = typer.Argument(..., help="Meeting title"),
           attendees: str = typer.Option(..., "--attendees", help="Comma-separated emails"),
           description: Optional[str] = typer.Option(None, "--description"),
           yes: bool = typer.Option(False, "--yes", help="Create the event and its Teams link; default previews")):
-    """Create an event with a Microsoft Teams meeting link. Previews until --yes, which Creates it and invites the --attendees."""
+    """Create an event with a Microsoft Teams meeting link. Previews until --yes, which Creates it and invites the --attendees.
+
+    Teams meetings need a work or school Microsoft account; on a personal account the command refuses before anything is created or sent (#1719).
+    """
     options = dict(attendees=attendees, description=description)
     if _confirm(yes, "teams", [title, start, end], options):
         _run("create_teams_meeting", title, start, end, attendees, description=description)
