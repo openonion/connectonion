@@ -8,10 +8,7 @@ every 15m whose run takes longer, that reads as a job running late.
 display state more common, not less.
 """
 
-import asyncio
 import json
-import threading
-import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -19,13 +16,6 @@ import pytest
 from connectonion.network.host import http_router
 from connectonion.network.host import schedule as sched
 from connectonion.network.host.ws_router import dashboard as dash
-
-
-@pytest.fixture(autouse=True)
-def clean_registry():
-    sched.running_entries().clear()
-    yield
-    sched.running_entries().clear()
 
 
 @pytest.fixture
@@ -41,9 +31,15 @@ def project(tmp_path, monkeypatch):
     return tmp_path
 
 
+def mark_running(project):
+    """What a claim writes: the mark every process and the page can see."""
+    sched.record_run(project / ".co", "check", when=datetime.now(timezone.utc),
+                     status="running", session_id="live")
+
+
 class TestTheRowTellsTheTruth:
     def test_an_entry_in_flight_shows_as_running(self, project):
-        sched.running_entries().add("check")
+        mark_running(project)
 
         html = dash.render_starter({"name": "billing", "skills": []})
         scheduled = html.split("Scheduled")[-1].split("</section>")[0]
@@ -63,14 +59,14 @@ class TestTheRowTellsTheTruth:
         assert "running" not in scheduled
 
     def test_running_is_not_styled_as_an_error(self, project):
-        sched.running_entries().add("check")
+        mark_running(project)
         html = dash.render_starter({"name": "billing", "skills": []})
         scheduled = html.split("Scheduled")[-1].split("</section>")[0]
 
         assert "bad" not in scheduled      # working is not failing
 
 
-class TestTheRegistryIsAccurate:
+class TestTheStateIsAccurate:
     @pytest.mark.asyncio
     async def test_it_is_populated_while_a_run_is_in_flight(self, tmp_path, monkeypatch):
         co = tmp_path / ".co"
@@ -81,15 +77,15 @@ class TestTheRegistryIsAccurate:
         seen = []
 
         def handler(create_agent, storage, prompt, ttl, session=None, **kw):
-            seen.append(set(sched.running_entries()))
+            seen.append(sched.load_state(co)["slow"]["status"])
             return {"status": "done"}
 
         monkeypatch.setattr(http_router, "input_handler", handler)
         start, _ = sched.create_schedule_lifespan(co, lambda: None, None, 86400)
         await start.tick_once()
 
-        assert seen == [{"slow"}]
-        assert sched.running_entries() == set(), "not cleared after the run"
+        assert seen == ["running"]
+        assert sched.load_state(co)["slow"]["status"] == "done", "not cleared after the run"
 
     @pytest.mark.asyncio
     async def test_it_is_cleared_when_a_run_raises(self, tmp_path, monkeypatch):
@@ -105,6 +101,6 @@ class TestTheRegistryIsAccurate:
         start, _ = sched.create_schedule_lifespan(co, lambda: None, None, 86400)
         await start.tick_once()
 
-        assert sched.running_entries() == set(), (
-            "a stuck flag would make Home claim the entry is running forever"
+        assert sched.load_state(co)["boom"]["status"] == "failed", (
+            "a stuck mark would make Home claim the entry is running forever"
         )

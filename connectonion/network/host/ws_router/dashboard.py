@@ -525,9 +525,7 @@ def scheduled_entries():
     the scheduler cannot disagree about what an entry means.
     """
     try:
-        from ..schedule import last_run, load_entries, load_state, running_entries
-
-        _running = running_entries()
+        from ..schedule import last_run, load_entries, load_state
     except Exception:
         return [], []
     try:
@@ -547,7 +545,7 @@ def scheduled_entries():
             "cadence": f"every {_cadence(e)}" if e.interval else str(e.at or ""),
             "status": st.get("status"),
             "last_run": when,
-            "running": e.name in _running,
+            "running": st.get("status") == "running",
             "reason": st.get("reason"),
         })
     return out, problems
