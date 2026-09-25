@@ -23,6 +23,7 @@ from .auth_commands import authenticate
 
 # Import shared functions from project_cmd_lib
 from .project_cmd_lib import (
+    EMAIL_COMMENT,
     PROVIDER_TO_ENV,
     LoadingAnimation,
     check_environment_for_api_keys,
@@ -363,8 +364,15 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
             key = line.strip().split('=', 1)[0]
             return not (is_personal_account_credential(key) or describes_this_machine(key))
 
+        def current(line: str) -> str:
+            # keys.env files written before 1.8.8 carry a guessed email in this
+            # comment that disagrees with AGENT_EMAIL; copy the pointer instead.
+            if line.startswith("#   - Email address:"):
+                return EMAIL_COMMENT + "\n"
+            return line
+
         with open(global_keys_env, 'r', encoding='utf-8') as f:
-            env_content = "".join(line for line in f if inherited(line))
+            env_content = "".join(current(line) for line in f if inherited(line))
 
         # AGENT_CONFIG_PATH is deliberately not written here. Every tool that
         # reads it already falls back to ~/.co on the machine it is running on

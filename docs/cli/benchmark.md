@@ -127,7 +127,7 @@ Every run is a new directory, never overwritten:
 
 The authored benchmark is never written to. `co eval report <name>` reopens
 the latest run (or `--run ID`) and compares it with the one before: score,
-cases newly passing or failing, forbidden outcomes that came back, and a
+cases newly passing or failing, newly forbidden outcomes, and a
 warning when the benchmark file, the invoke mode, the model or the agent
 changed — so a changed setup is not read as a changed skill. The score is
 passed checks over checks, where the checks are every expectation plus "did

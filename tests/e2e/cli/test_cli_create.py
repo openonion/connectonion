@@ -318,7 +318,8 @@ class TestCliCreate:
                         assert "Your agent address (Ed25519 public key) is used for:" in content
                         assert "Secure agent communication" in content
                         assert "Authentication with OpenOnion" in content
-                        assert "@mail.openonion.ai" in content
+                        # Not a guessed address: it disagreed with the AGENT_EMAIL `co auth` writes.
+                        assert "Email address: AGENT_EMAIL" in content
 
     def test_create_host_yaml_from_template(self):
         """Test that create generates host.yaml from network/host/host.yaml template."""

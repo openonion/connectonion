@@ -602,6 +602,33 @@ def usable_uvicorn_options(workers, reload) -> tuple:
     return 1, False
 
 
+def _port_in_use(port: int) -> bool:
+    """Whether uvicorn's bind on 0.0.0.0:<port> would fail.
+
+    Binds the way uvicorn does (SO_REUSEADDR, all interfaces) and lets go, so a
+    port in TIME_WAIT from the last run is not reported as taken. There is a
+    window between this and uvicorn's bind; losing that race still ends in
+    uvicorn's own error, which is what happened every time before.
+    """
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("0.0.0.0", port))
+        except OSError:
+            return True
+    return False
+
+
+def _port_taken_message(port: int, co_dir: Path) -> str:
+    """Name the port and both ways to move it: host.yaml for good, AGENT_PORT for once."""
+    return (f"[host] Port {port} is already in use — another agent, or an earlier "
+            f"`python agent.py` still running?\n"
+            f"       Change `port:` in {co_dir / 'host.yaml'}, "
+            f"or for one run: AGENT_PORT={port + 1} python agent.py")
+
+
 def _print_host_banner(
     port: int,
     address: str,
@@ -1069,6 +1096,13 @@ def host(
     if co_dir is None:
         co_dir = project_co_dir()
 
+    # The project's .env, under anything the process already set and over
+    # ~/.co/keys.env. `co create` writes the agent's CO_INVITE_CODE there, and
+    # without this nothing read it: the banner said "no one can onboard" beside
+    # a file that held the code. See environment.load_project_env.
+    from ...environment import load_project_env
+    load_project_env(co_dir.parent / ".env")
+
     # A server can host more than one agent, and only the port stops it: two of
     # them defaulting to 8000 means the second dies on "address already in use"
     # while systemd keeps restarting it. `co deploy --to` picks a free port on
@@ -1097,6 +1131,12 @@ def host(
     relay_url = resolve_relay_url(relay_url, config)
     summary = config.get('summary')
     examples = config.get('examples')
+
+    # Before anything is printed: a banner announcing http://localhost:<port>
+    # followed by uvicorn's raw "[Errno 48] address already in use" told the
+    # user their agent was up at an address it would never serve.
+    if _port_in_use(port):
+        raise SystemExit(_port_taken_message(port, co_dir))
 
     # Extract metadata once at startup
     agent_metadata, sample = _extract_agent_metadata(create_agent, config.get("name"))

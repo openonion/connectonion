@@ -1159,6 +1159,12 @@ def _state_the_address_the_key_has(global_dir: Path) -> None:
     upsert_env(keys_env, {"AGENT_ADDRESS": data["address"]})
 
 
+# The email is not derived here. This comment is written before `co auth` runs,
+# and the one derived locally (0x + 8 hex) is not the one the backend assigns
+# (0x + 10 hex): every new project showed two addresses for one agent (1.8.8b7).
+EMAIL_COMMENT = "#   - Email address: AGENT_EMAIL below, assigned by `co auth`"
+
+
 def ensure_global_config() -> None:
     """Ensure ~/.co/ exists with global identity (keys + keys.env).
 
@@ -1201,7 +1207,7 @@ def ensure_global_config() -> None:
         "# Your agent address (Ed25519 public key) is used for:\n"
         "#   - Secure agent communication (encrypt/decrypt with private key)\n"
         "#   - Authentication with OpenOnion managed LLM provider\n"
-        f"#   - Email address: {addr_data['address'][:10]}@mail.openonion.ai\n"
+        f"{EMAIL_COMMENT}\n"
     ))
     console.print("  ✓ Created ~/.co/keys.env")
 

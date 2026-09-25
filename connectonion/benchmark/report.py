@@ -84,7 +84,7 @@ def previous(name: str, run_id: str, root: Optional[Path] = None) -> Optional[di
 
 
 def compare(current: dict, before: Optional[dict]) -> Optional[dict]:
-    """What changed since the run before: score, cases that flipped, forbidden outcomes that came back."""
+    """What changed since the run before: score, cases that flipped, forbidden outcomes it did not have."""
     if before is None:
         return None
     score = _score(current)
@@ -176,7 +176,10 @@ def render(report: dict, comparison: Optional[dict] = None) -> str:
             lines.append(f"  ⚠ not the same setup: {', '.join(comparison['setup_changed'])} — "
                          "a score change here is not the skill's alone")
         for label, key in (("newly passing", "newly_passing"), ("newly failing", "newly_failing"),
-                           ("forbidden again", "forbidden_regressions")):
+                           # Not "again": this set is, by construction, what the
+                           # previous run did NOT do, and 1.8.8b7's "forbidden
+                           # again" named a case that had just passed.
+                           ("newly forbidden", "forbidden_regressions")):
             if comparison[key]:
                 lines.append(f"  {label}: {', '.join(comparison[key])}")
     if report.get("report_path"):

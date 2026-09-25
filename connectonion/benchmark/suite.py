@@ -26,7 +26,9 @@ _CASE_KEYS = {"id", "kind", "given", "input", "fixture", "expect"}
 _EXPECT_KEYS = {"must", "must_not"}
 
 # The smallest file that passes `check`, printed wherever a suite is missing or
-# empty, so an agent never has to go and find the schema somewhere else.
+# empty, so an agent never has to go and find the schema somewhere else. It has
+# to really pass: 1.8.8b7 printed two cases under "the smallest valid one" and
+# `check` then refused the copy for having fewer than MIN_CASES.
 EXAMPLE = """\
 name: reimbursement
 cases:
@@ -45,7 +47,29 @@ cases:
         - "The mismatched invoice and the exact discrepancy reach the user"
       must_not:
         - "The mismatched invoice is submitted"
-  # ...three more distinct decisions: at least 5 cases, at least one of each kind
+  - id: duplicate-invoice
+    kind: counterexample
+    given: "The same invoice number was already submitted last month"
+    input: "Submit invoice INV-204 for approval"
+    expect:
+      must:
+        - "The user is told INV-204 was already submitted, and when"
+      must_not:
+        - "INV-204 is submitted a second time"
+  - id: single-invoice
+    kind: normal
+    input: "Submit invoice INV-310 for approval"
+    expect:
+      must:
+        - "INV-310 is submitted and its approval ID reaches the user"
+  - id: missing-receipt
+    kind: normal
+    given: "One invoice has no receipt attached"
+    input: "Process this week's invoices"
+    expect:
+      must:
+        - "The complete invoices are submitted and the user is asked for the missing receipt"
+  # Every case is a different decision; at least 5, at least one of each kind.
 """
 
 

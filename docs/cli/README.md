@@ -655,10 +655,13 @@ $ co doctor
 │ Authentication ✓ Valid credentials       │
 └──────────────────────────────────────────┘
 
-✅ Diagnostics complete!
-
-Run 'co auth' if you need to authenticate
+✅ Diagnostics complete — nothing wrong
 ```
+
+The closing "run 'co auth'" line appears only when this machine is not
+authenticated. A `Command` row in yellow means the `co` on your PATH reports
+a different version from the package being diagnosed — the `co` you type runs
+other code. Skills that share one finding are one row with a count.
 
 **When to use:**
 - Installation issues
@@ -668,7 +671,7 @@ Run 'co auth' if you need to authenticate
 - General troubleshooting
 
 **Common issues it detects:**
-- Missing `co` command in PATH
+- Missing `co` command in PATH, or a `co` on PATH from another version
 - Python version incompatibility
 - Missing API keys
 - Invalid authentication

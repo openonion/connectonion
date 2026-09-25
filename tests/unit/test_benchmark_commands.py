@@ -141,7 +141,9 @@ def test_run_then_report_then_a_regression_is_named(project, judge):
 
     assert second.exit_code == 1
     assert "newly failing: refuse" in second.output
-    assert "forbidden again: refuse: production is deleted" in second.output
+    # It passed in the run before, so this is new, not "again" (1.8.8b7 said "again").
+    assert "newly forbidden: refuse: production is deleted" in second.output
+    assert "forbidden again" not in second.output
     assert len(list((project / ".co" / "eval-runs" / "ops").glob("*/report.json"))) == 2
 
     reopened = co("eval", "report", "ops", "--latest")
@@ -186,3 +188,16 @@ def test_skills_help_points_at_benchmarks_without_claiming_to_author(project):
 
     assert "does not author or benchmark them" in text
     assert "co benchmark --help" in text
+
+
+def test_the_example_printed_on_an_empty_project_passes_check(tmp_path, monkeypatch):
+    """1.8.8b7 printed a 2-case "smallest valid one" that check then refused for having fewer than 5."""
+    monkeypatch.chdir(tmp_path)
+    listed = co("benchmark", "list")
+    printed = listed.stdout.split("smallest valid one:", 1)[1].strip()
+
+    (tmp_path / ".co" / "benchmarks").mkdir(parents=True)
+    (tmp_path / ".co" / "benchmarks" / "example.yaml").write_text(printed)
+    checked = co("benchmark", "check", "example")
+
+    assert checked.exit_code == 0, checked.output

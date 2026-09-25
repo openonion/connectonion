@@ -356,7 +356,8 @@ class TestCliInit:
                 assert "Your agent address (Ed25519 public key) is used for:" in content
                 assert "Secure agent communication" in content
                 assert "Authentication with OpenOnion" in content
-                assert "@mail.openonion.ai" in content
+                # Not a guessed address: it disagreed with the AGENT_EMAIL `co auth` writes.
+                assert "Email address: AGENT_EMAIL" in content
 
     def test_init_ensure_global_config_creates_keys_env(self, tmp_path, monkeypatch):
         """Test that ensure_global_config creates ~/.co/keys.env with agent address."""

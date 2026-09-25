@@ -788,6 +788,11 @@ in this repository. A literal in a shipped policy would be one password for
 every deployment (#561), and a shipped price would charge for every agent whose
 operator never asked to (#672).
 
+Locally, `co create` and `co init ./` write a unique `CO_INVITE_CODE` into the
+project's `.env`, and `host()` reads that file at startup (the process
+environment still wins), so `python agent.py` starts with the door open to
+whoever holds that code.
+
 The default **local** `co ai` host is the exception that makes first-owner setup
 usable without weakening that rule: on its first web-server start it mints one
 unique `CO_INVITE_CODE` in the owner-only `~/.co/keys.env`. Startup names the

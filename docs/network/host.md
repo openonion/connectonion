@@ -23,9 +23,6 @@ host(create_agent)
 
 **Output:**
 ```
-INFO: Loaded environment: /Users/you/my-agent/.env
-INFO: Loaded global keys: /Users/you/.co/keys.env
-
 [agent] ─────────────────────────────────────
         translator
         co/gemini-3.8-flash • 12 tools
@@ -45,6 +42,21 @@ Waiting for tasks...
 ```
 
 **That's it.** Your agent is now accessible via HTTP, WebSocket, and P2P relay.
+
+**Where settings come from.** `host()` reads the project's `.env` (next to
+`.co/`) at startup, on top of `~/.co/keys.env`. Highest first:
+
+1. the process environment — a shell `export`, systemd's `EnvironmentFile`
+2. the project's `.env` — where `co create` writes the agent's `CO_INVITE_CODE`
+3. `~/.co/keys.env`
+
+A Google or Microsoft account record is taken whole from one of these, never
+mixed. The project `.env` is read by `host()`, so anything `agent.py` reads
+before calling it (at import) sees only 1 and 3.
+
+**Port already in use?** `host()` checks before printing the banner and stops
+with the port and how to move it: change `port:` in `.co/host.yaml`, or for one
+run `AGENT_PORT=8001 python agent.py`.
 
 **By default, your agent is automatically discoverable.** Anyone with your address can connect:
 
@@ -414,6 +426,17 @@ curl http://localhost:8000/sessions
   ]
 }
 ```
+
+### GET /
+
+The address the banner prints. Answers with where things are, so opening it in
+a browser is not a 404:
+
+```json
+{"docs": "/docs", "info": "/info", "health": "/health", "input": "POST /input", "websocket": "/ws"}
+```
+
+A custom HTTP route on `/` takes precedence.
 
 ### GET /health
 
