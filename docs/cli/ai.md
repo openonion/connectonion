@@ -375,8 +375,10 @@ This is loaded every session, so the agent always follows your rules.
 
 `co ai` uses your global identity from `~/.co/`:
 
-- Logs saved to `~/.co/logs/oo.log`
-- Session records saved to `~/.co/evals/` (the newest 500 are retained)
+- Logs saved to `.co/logs/oo.log` and session records to `.co/evals/` of the
+  project you run it in, the same place `Agent()` and `python agent.py` write
+  (the newest 500 are retained); outside a project, or with
+  `CONNECTONION_LOG` set, they go to `~/.co/logs/` and `~/.co/evals/`
 - Resumable one-shot sessions saved privately under `~/.co/ai/sessions/`
 - Same address across all `co ai` sessions
 
