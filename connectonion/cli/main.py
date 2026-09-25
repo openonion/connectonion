@@ -244,7 +244,10 @@ def deploy(
         raise typer.Exit(2)
 
     from .commands.deploy_commands import handle_deploy
-    handle_deploy(template=template, skills=skills, name=name)
+    # Every refusal and failure in handle_deploy returns False; 1.8.8b9 dropped
+    # it here, so "Entrypoint not found" exited 0.
+    if handle_deploy(template=template, skills=skills, name=name) is False:
+        raise typer.Exit(1)
 
 
 @app.command()

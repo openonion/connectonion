@@ -1234,6 +1234,8 @@ co doctor
 ```bash
 $ co create my-agent
 ❌ 'my-agent' exists. Try: co create my-agent-2
+$ echo $?
+1
 
 # Or add to existing
 cd my-agent

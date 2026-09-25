@@ -376,7 +376,12 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     print_resources()
     # Last line names a command: the reader with only this output is often
     # an agent, and the resources block above ends on a URL.
-    console.print("[dim]Deploy it when it works:[/dim] [bold]co deploy[/bold]\n")
+    if (Path(current_dir) / "agent.py").exists():
+        console.print("[dim]Deploy it when it works:[/dim] [bold]co deploy[/bold]\n")
+    else:
+        # `co deploy` here would only say "Entrypoint not found: agent.py".
+        console.print("[dim]Next: create agent.py — an Agent that ends in host(agent) — or start from the "
+                      "template:[/dim] [bold]co init ./ --template co-ai --yes[/bold]\n")
 
     # Clean up temporary project directory if created for authentication
     if temp_project_dir and temp_project_dir.exists():
