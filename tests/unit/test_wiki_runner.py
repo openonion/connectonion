@@ -57,10 +57,16 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
     assert options["timeout"] == seconds + (0 if harness == "coai" else 15)
     if harness != "coai":
         assert argv[argv.index("--timeout") + 1] == str(seconds)
+    # Every stage, not only investigation: all of them read source text a
+    # correspondent could have written, and none needs a shell or the network.
     if harness == "claude-code":
-        assert argv[argv.index("--permission-mode") + 1] == "bypassPermissions"
+        assert argv[argv.index("--permission-mode") + 1] == "acceptEdits"
     else:
         assert "--permission-mode" not in argv
+    if harness == "codex":
+        assert argv[argv.index("--sandbox") + 1] == "workspace-write"
+    else:
+        assert "--sandbox" not in argv
     material = next((notebook.root / ".state/tasks").glob("*/material.json"))
     assert json.loads(material.read_text()) == [item]
     assert result["usage"] == {"input_tokens": 13}

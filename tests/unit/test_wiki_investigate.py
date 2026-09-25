@@ -20,7 +20,7 @@ def co_ai(monkeypatch):
     """A `co` that answers at once and remembers how it was called."""
     calls = []
 
-    def fake_run(argv, cwd, capture_output, text, timeout):
+    def fake_run(argv, cwd, capture_output, text, timeout, env=None):
         calls.append(argv)
         import re
         from pathlib import Path
@@ -42,19 +42,58 @@ def _notebook(tmp_path, runner):
     return root
 
 
-def test_runner_codex_is_co_ai_delegating_to_codex_with_the_full_access_sandbox(tmp_path, co_ai):
-    """Investigating means running co outlook / co gmail / co browser inside the
-    thread, and every one of them needs the network a read-only thread lacks."""
+def test_runner_codex_is_co_ai_delegating_to_codex_in_the_workspace_sandbox(tmp_path, co_ai):
     root = _notebook(tmp_path, "codex")
     inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=7,
                     clients={"outlook": Quiet()}, subscriptions={})
     argv = co_ai[0]
     assert argv[1:3] == ["ai", "--json"]
-    assert argv[3:9] == ["--harness", "codex", "--sandbox", "danger-full-access",
+    assert argv[3:9] == ["--harness", "codex", "--sandbox", "workspace-write",
                          "--model", read_config(root)["model"]]
     # The Skill is told the page's real path, extension included: an earlier
     # version cut the record at its first "." and pointed it at people/vern.
     assert argv[-1].startswith("/wiki-investigate ") and "/notebook/people/vern.md" in argv[-1]
+
+
+# The whole command line before the prompt, pinned per executor. Investigation
+# puts correspondents' mail and attachments in front of the model, and the same
+# page is investigated unattended by the daily job `co wiki start` installs.
+# Codex used to get danger-full-access and Claude bypassPermissions here, so
+# anyone who could email the user could hand instructions to an agent with a
+# shell, the network and the user's mailbox. Our code fetches the mail; the
+# model only reads the material and writes candidate.md in its task directory.
+PINNED = {
+    "codex": ["ai", "--json", "--harness", "codex", "--sandbox", "workspace-write",
+              "--model", "gpt-5.6-luna", "--timeout", "1200"],
+    "claude-code": ["ai", "--json", "--harness", "claude-code", "--permission-mode", "acceptEdits",
+                    "--model", "sonnet", "--timeout", "1200"],
+}
+
+
+def _pinned_notebook(tmp_path, runner):
+    root = _notebook(tmp_path, runner)
+    set_config(root, ["model", "gpt-5.6-luna" if runner == "codex" else "sonnet"])
+    set_config(root, ["limits.timeout_seconds", "1200"])
+    return root
+
+
+@pytest.mark.parametrize("runner", sorted(PINNED))
+def test_an_investigation_the_user_starts_runs_confined(tmp_path, co_ai, runner):
+    root = _pinned_notebook(tmp_path, runner)
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=7,
+                    clients={"outlook": Quiet()}, subscriptions={})
+    assert co_ai[0][1:-1] == PINNED[runner]
+
+
+@pytest.mark.parametrize("runner", sorted(PINNED))
+def test_the_scheduled_daily_investigation_runs_confined(tmp_path, co_ai, monkeypatch, runner):
+    from connectonion.wiki.daily import run_daily
+    monkeypatch.setattr("connectonion.wiki.service.mail_available", lambda kind: False)
+    root = _pinned_notebook(tmp_path, runner)
+    result = run_daily(root, scheduled=True,
+                       maintain=lambda root, scheduled: {"outcome": "no_change"})
+    assert result["run"]["outcome"] == "completed", result
+    assert [argv[1:-1] for argv in co_ai] == [PINNED[runner]]
 
 
 def test_runner_coai_is_co_ai_on_our_own_loop_and_its_own_default_model(tmp_path, co_ai):

@@ -86,13 +86,24 @@ def preflight() -> str:
 def harness_flags(config: dict, stage: str) -> list[str]:
     harness = "ours" if config["runner"] == "coai" else config["runner"]
     flags = ["--harness", harness]
+    # Every stage reads text correspondents wrote -- mail bodies, PDF/DOCX/XLSX
+    # attachments -- and the daily job `co wiki start` installs runs them with
+    # nobody watching. Investigation used to get Codex danger-full-access and
+    # Claude bypassPermissions "for source and browser access", which handed
+    # anyone who could email the user an agent with a shell, the network and
+    # the user's logged-in mailbox; a prompt line was the only defence. Our code
+    # fetches the mail (investigate.gather) before the model starts. The model
+    # only reads material and writes pages under its task directory, the cwd
+    # below, so it gets exactly that and nothing more, on every stage and every
+    # run, attended or not -- the runner cannot tell which, so neither guesses.
     if harness == "codex":
-        sandbox = "danger-full-access" if stage in ("init", "investigate") else "workspace-write"
-        flags += ["--sandbox", sandbox]
+        # Writes confined to cwd (.state/tasks) and TMPDIR; no network.
+        flags += ["--sandbox", "workspace-write"]
     elif harness == "claude-code":
-        # Selecting Claude for Wiki explicitly allows the file writes and source
-        # commands its headless task needs. The generic co ai default stays manual.
-        flags += ["--permission-mode", "bypassPermissions"]
+        # Headless acceptEdits (measured with claude 2.1.281): Write/Edit inside
+        # cwd are accepted; Bash beyond simple file commands, WebFetch,
+        # WebSearch and reads outside cwd are denied, as nobody can approve them.
+        flags += ["--permission-mode", "acceptEdits"]
     if config["model"] != "default":
         flags += ["--model", config["model"]]
     if harness != "ours":
@@ -261,6 +272,10 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
     if additions and len(json.dumps(items, ensure_ascii=False)) > config["limits"]["input_chars_per_batch"]:
         raise RunFailed("Evidence and reflection context exceeds input budget; narrow the task before retrying")
     prompt = task_prompt(directory, items, stage, kind) + POLICY
+    # harness_flags enforces this for Codex and Claude; saying it saves the
+    # turns a Skill's `co browser` / `co gmail` recipes would spend on refusals.
+    prompt += (" This run is offline and has no shell: do not run commands, browse or search. "
+               "Work from the supplied material and the notebook files, and name what you could not check. ")
 
     record = next((i.get("record") for i in items if i.get("role") == "page"), None)
     candidate = directory / "candidate.md" if stage == "investigate" and record else None
