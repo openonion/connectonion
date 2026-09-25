@@ -107,6 +107,17 @@ def test_list_on_an_empty_project_prints_the_schema(tmp_path, monkeypatch):
     assert result.exit_code == 0 and "kind: counterexample" in result.output
 
 
+def test_list_on_an_empty_project_puts_only_the_yaml_on_stdout(tmp_path, monkeypatch):
+    """1.8.8b11: `co benchmark list > x.yaml` captured a prose line above the
+    YAML, so the file it wrote was not a benchmark. Data on stdout, words on stderr."""
+    monkeypatch.chdir(tmp_path)
+
+    result = co("benchmark", "list")
+
+    assert yaml.safe_load(result.stdout)["name"] == "reimbursement"
+    assert "smallest valid one" in result.stderr and "Next:" in result.stderr
+
+
 def test_check_passes_and_names_the_run_command(project):
     result = co("benchmark", "check", "ops")
 
@@ -215,7 +226,7 @@ def test_the_example_printed_on_an_empty_project_passes_check(tmp_path, monkeypa
     """1.8.8b7 printed a 2-case "smallest valid one" that check then refused for having fewer than 5."""
     monkeypatch.chdir(tmp_path)
     listed = co("benchmark", "list")
-    printed = listed.stdout.split("smallest valid one:", 1)[1].strip()
+    printed = listed.stdout
 
     (tmp_path / ".co" / "benchmarks").mkdir(parents=True)
     (tmp_path / ".co" / "benchmarks" / "example.yaml").write_text(printed)

@@ -29,7 +29,10 @@ def handle_benchmark_list(as_json: bool = False) -> int:
         print(json.dumps(rows, indent=2))
         return 0
     if not rows:
-        print("No benchmarks yet. A benchmark is .co/benchmarks/<name>.yaml; this is the smallest valid one:\n")
+        # The YAML alone on stdout, so `co benchmark list > .co/benchmarks/x.yaml`
+        # writes a benchmark; on 1.8.8b11 the sentence above it went into the file too.
+        print("No benchmarks yet. A benchmark is .co/benchmarks/<name>.yaml; this is the smallest valid one:\n",
+              file=sys.stderr)
         print(EXAMPLE)
         _next("write .co/benchmarks/<name>.yaml, then co benchmark check <name>")
         return 0

@@ -277,11 +277,11 @@ def run(suite: Suite, agent, *, agent_path: str, skill: Optional[dict] = None, i
         raise RunnerError("--max-iterations must be a positive integer", code=2)
     started = time.time()
     cases = []
-    with _live_flag(live), _step_ceiling(agent, max_iterations):
+    with _live_flag(live), _step_ceiling(agent, max_iterations), _answers_out_of_reach(agent, suite):
         for case in suite.cases:
             cases.append(_run_case(case, agent, skill=skill, invoke=invoke, runs=runs,
                                    judge_model=judge_model, judge_call=judge_call,
-                                   max_iterations=max_iterations))
+                                   max_iterations=max_iterations, answers=_answers(suite)))
     report = {
         "benchmark": suite.name,
         "benchmark_path": str(suite.path),
@@ -313,18 +313,100 @@ def _step_ceiling(agent, max_iterations: int):
         agent.max_iterations = before
 
 
+# ---- the Agent under test cannot read the answers -------------------------------------------
+#
+# On 1.8.8b11 the co create template, asked a benchmark question, ran
+# glob("**/*") and then read_file(".co/benchmarks/reimbursement.yaml") in 4 of
+# 5 cases: the file with every must and must_not. It scored 5/5, and the score
+# meant nothing. Two layers, because neither is enough alone:
+#   1. a before_each_tool guard refuses any call that names the benchmark
+#      folder, an earlier run or the suite's file, for the length of the run;
+#   2. a call that got the answers some other way (a grep over the workspace, a
+#      shell pipeline, a sub-agent) leaves them in its result, so an attempt
+#      whose tool results contain an expectation is INVALID: not judged, not a pass.
+
+_REFUSAL = ("Refused during `co eval run`: {what} holds the benchmark's expected answers or earlier "
+            "runs of it, and an agent under test does not read its own answer key. Answer from the "
+            "request and your skills.")
+
+# An expectation shorter than this is too likely to turn up in an honest tool
+# result ("Approved") to be read as a leak.
+_ANSWER_MIN_CHARS = 12
+
+
+def _protected(suite: Suite) -> List[str]:
+    """What a tool call may not name during the run, as lowercase substrings.
+    ".co/benchmarks" covers an absolute path too; the file's own name and
+    "eval-runs" cover `cd .co && cat benchmarks/x.yaml`."""
+    return [".co/benchmarks", "eval-runs", suite.path.name.lower()]
+
+
+def _fixtures(suite: Suite) -> List[str]:
+    """A case's `fixture:` lives under .co/benchmarks/ and is there to be read."""
+    return sorted({f".co/benchmarks/{case.fixture}".lower() for case in suite.cases if case.fixture},
+                  key=len, reverse=True)
+
+
+def _answers(suite: Suite) -> List[str]:
+    texts = {text for case in suite.cases for text in (*case.must, *case.must_not)}
+    return sorted(t for t in texts if len(t.strip()) >= _ANSWER_MIN_CHARS)
+
+
+@contextlib.contextmanager
+def _answers_out_of_reach(agent, suite: Suite):
+    """The guard, first in line so it refuses before any approval prompt asks a
+    person about a read that must not happen, and removed after the run."""
+    events = getattr(agent, "events", None)
+    if not isinstance(events, dict) or "before_each_tool" not in events:
+        yield  # not a ConnectOnion Agent: the trace check below still applies
+        return
+    protected, fixtures = _protected(suite), _fixtures(suite)
+
+    def guard(agent):
+        pending = agent.current_session.get("pending_tool") or {}
+        named = json.dumps(pending.get("arguments") or {}, ensure_ascii=False, default=str)
+        named = named.replace("\\\\", "/").lower()  # a Windows path, as JSON escapes it
+        for fixture in fixtures:
+            named = named.replace(fixture, "<fixture>")
+        hit = next((p for p in protected if p in named), None)
+        if hit:
+            raise PermissionError(_REFUSAL.format(what=hit))
+
+    events["before_each_tool"].insert(0, guard)
+    try:
+        yield
+    finally:
+        events["before_each_tool"].remove(guard)
+
+
+def _saw_answers(trace: List[dict], answers: List[str]) -> Optional[str]:
+    """The first expectation a successful tool result contains, as the reason
+    the attempt is INVALID; None when the run never saw one. The skill tool is
+    left out: a SKILL.md is the thing under test, not a way around it."""
+    for entry in trace:
+        if entry.get("type") != "tool_result" or entry.get("status") != "success" or entry.get("name") == "skill":
+            continue
+        result = str(entry.get("result", ""))
+        for text in answers:
+            if text in result:
+                return (f"{entry.get('name')} returned the benchmark's own expectation {text!r}: the Agent "
+                        f"read the answers, so this attempt is not scored. Keep benchmark files and runs out "
+                        f"of what its tools can reach, then rerun")
+    return None
+
+
 def _turn_result(session: dict) -> dict:
     results = [e for e in session.get("trace") or [] if e.get("type") == "turn_result"]
     return results[-1] if results else {}
 
 
 def _run_case(case: Case, agent, *, skill, invoke, runs, judge_model, judge_call,
-              max_iterations: int = DEFAULT_MAX_ITERATIONS) -> dict:
+              max_iterations: int = DEFAULT_MAX_ITERATIONS, answers: Optional[List[str]] = None) -> dict:
     sent = effective_input(case, skill, invoke)
     attempts = []
     for number in range(1, runs + 1):
         attempt = {"n": number, "output": "", "activation": None, "indicators": [], "passed": False,
-                   "error": None, "stopped": None, "cost": None, "trace": []}
+                   "error": None, "stopped": None, "invalid": None, "cost": None, "trace": []}
         try:
             agent.reset_conversation()
             attempt["output"] = str(agent.input(sent) or "")
@@ -333,20 +415,24 @@ def _run_case(case: Case, agent, *, skill, invoke, runs, judge_model, judge_call
             ended = _turn_result(session)
             attempt["cost"] = (ended.get("usage") or {}).get("cost")
             attempt["activation"] = activation(skill, invoke, session, sent)
-            if ended.get("reason") == "max_iterations":
+            # Not judged when it saw the answers: a verdict on an answer copied
+            # from the key is no verdict, and it would cost a judge call.
+            attempt["invalid"] = _saw_answers(attempt["trace"], answers or [])
+            if attempt["invalid"] is None and ended.get("reason") == "max_iterations":
                 # Not judged: the answer is "Task incomplete", and judging it
                 # would spend a judge call to say so. Not a runner error either:
                 # nothing broke, the Agent just did not finish inside the ceiling.
                 attempt["stopped"] = (f"stopped after {max_iterations} steps without an answer. If the case "
                                       f"carries the data it needs, this is the skill's to fix; if the task "
                                       f"really takes more steps, rerun with --max-iterations N")
-            else:
+            elif attempt["invalid"] is None:
                 attempt["indicators"] = judge(case, attempt["output"], tool_evidence(session),
                                               model=judge_model, call=judge_call)
         except Exception as error:  # the Agent or the judge broke: a runner error, never a pass
             attempt["error"] = f"{type(error).__name__}: {error}"
         activated = attempt["activation"] is None or attempt["activation"]["status"] == "PASS"
         attempt["passed"] = (attempt["error"] is None and attempt["stopped"] is None and activated
+                             and attempt["invalid"] is None
                              and bool(attempt["indicators"])
                              and all(i["verdict"] == "PASS" for i in attempt["indicators"]))
         attempts.append(attempt)
@@ -363,6 +449,7 @@ def summarise(report: dict) -> dict:
     unverified = sum(1 for i in indicators if i["verdict"] == "UNVERIFIED")
     not_activated = sum(1 for a in attempts if a["activation"] and a["activation"]["status"] != "PASS")
     stopped = sum(1 for a in attempts if a.get("stopped"))
+    invalid = sum(1 for a in attempts if a.get("invalid"))
     costs = [a["cost"] for a in attempts if isinstance(a.get("cost"), (int, float))]
     # Checks = every expectation plus, when a skill was named, "did it run" per
     # attempt. The score is taken over checks: on the first real run every
@@ -372,7 +459,7 @@ def summarise(report: dict) -> dict:
     passed_indicators = sum(1 for i in indicators if i["verdict"] == "PASS")
     if runner_errors:
         exit_code = 3
-    elif failed or unverified or not_activated or stopped or not attempts:
+    elif failed or unverified or not_activated or stopped or invalid or not attempts:
         exit_code = 1
     else:
         exit_code = 0
@@ -390,6 +477,7 @@ def summarise(report: dict) -> dict:
         "forbidden_failures": sum(1 for i in indicators if i["kind"] == "must_not" and i["verdict"] == "FAIL"),
         "not_activated": not_activated,
         "stopped": stopped,
+        "invalid": invalid,
         # What the Agent's own model calls cost, as measured; None when no
         # attempt reported usage. The judge's calls are not in it.
         "agent_cost": round(sum(costs), 4) if costs else None,
