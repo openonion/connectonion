@@ -675,7 +675,12 @@ $ co doctor
 The closing "run 'co auth'" line appears only when this machine is not
 authenticated. A `Command` row in yellow means the `co` on your PATH reports
 a different version from the package being diagnosed — the `co` you type runs
-other code. Skills that share one finding are one row with a count.
+other code — and the last line then reads `⚠ Diagnostics complete — nothing
+broken, 1 warning` and names it (exit 0). A `Command` row with `✗` means that
+`co` does not run at all (it crashed on `--version`): a problem, exit 1. A
+`Model` row saying "not set" only means neither `MODEL` nor host.yaml names
+one, so `Agent()` uses the default. Skills that share one finding are one row
+with a count.
 
 **When to use:**
 - Installation issues
