@@ -321,7 +321,7 @@ python -m patchright install chrome     # branded Chrome: best stealth, system i
   mode.
 - On Windows, `co browser close` returns only after the serving daemon exits, so
   an immediate next command can safely start a fresh daemon.
-- For an isolated automation run, set `$CO_BROWSER_PROFILE_DIR` to a dedicated absolute directory and `$CO_BROWSER_SOCK` to a dedicated socket. Keep the real `$HOME`; replacing it can break OS-backed browser behavior and credentials.
+- For an isolated automation run, set `$CO_BROWSER_PROFILE_DIR` to a dedicated absolute directory and `$CO_BROWSER_SOCK` to a dedicated socket. Keep the real `$HOME`; replacing it can break OS-backed browser behavior and credentials. The paid Onion engine honours it too: its profile goes in `$CO_BROWSER_PROFILE_DIR/onion` instead of `~/.onionwright/profiles/<address>` (a separate folder because it is a different Chromium build from the system Chrome the free engine opens in the directory itself).
 
 ## Error Messages
 

@@ -126,6 +126,31 @@ def test_real_launch_seam_uses_supervised_paid_handle(monkeypatch):
     assert closed == "Browser closed"
 
 
+def test_the_paid_engine_keeps_its_profile_inside_co_browser_profile_dir(monkeypatch, tmp_path):
+    # 1.8.8b11 passed user_data_dir=True whatever the setting, so onionwright
+    # wrote ~/.onionwright/profiles/<addr> under the real HOME: an isolated run
+    # was isolated only on the free engine.
+    monkeypatch.setenv("CO_BROWSER_PROFILE_DIR", str(tmp_path / "profile"))
+    playwright = FakePlaywright()
+    calls = []
+    monkeypatch.setattr(async_mod, "ASYNC_BROWSER_AVAILABLE", True)
+    monkeypatch.setattr(async_mod, "async_playwright", lambda: FakeManager(playwright))
+
+    async def launch(resolution, owner, key, **kwargs):
+        calls.append(kwargs)
+        return FakePaidRun()
+
+    monkeypatch.setattr(async_mod.browser_engine, "launch_async", launch)
+    browser = mod.BrowserAutomation(engine_resolver=lambda mode: onion_resolution())
+
+    browser.open_browser()
+    browser.close()
+
+    chosen = calls[0]["user_data_dir"]
+    assert chosen is not True
+    assert (tmp_path / "profile").resolve() in [chosen, *chosen.parents]
+
+
 def test_paid_launch_failure_never_hot_swaps_to_system(monkeypatch):
     playwright = FakePlaywright()
     monkeypatch.setattr(async_mod, "ASYNC_BROWSER_AVAILABLE", True)

@@ -470,7 +470,10 @@ downgrading so an older client never talks to a newer daemon.
   browser daemon you have, including isolated ones on their own
   `$CO_BROWSER_SOCK` that another script or agent is using.
 
-- **State locations** — profile (cookies/logins): `~/.co/browser_profile/` ·
+- **State locations** — profile (cookies/logins): `~/.co/browser_profile/`
+  (the paid Onion engine's: `~/.onionwright/profiles/<address>`), or
+  `$CO_BROWSER_PROFILE_DIR` and `$CO_BROWSER_PROFILE_DIR/onion` for the paid
+  engine when that is set, so an isolated run is isolated on every engine ·
   daemon log: `~/.co/browser.log` · socket: `/tmp/co-<user>/browser.sock` on
   Linux, `<per-user temp dir>/co-<user>/browser.sock` on macOS (the dir
   `getconf DARWIN_USER_TEMP_DIR` prints), plus `.pid`/`.lock` beside it;
