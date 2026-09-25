@@ -353,9 +353,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.8b10
+## Current Version: 1.8.8b11
 
-1.8.8b10 is an opt-in preview after 1.8.8b9: what a second walk through the
+1.8.8b11 is 1.8.8b10 as built: b10 was tagged but its wheel could not be built
+from the source package (co ai prompt links to design records no longer
+shipped), so it never reached PyPI. The links are gone and a test checks
+every link in the package.
+
+- 1.8.8b11 (1.8.8b10's changes; 18 dangling co_ai prompt symlinks removed; a unit test that every symlink inside connectonion/ resolves to a shipped file.)
+
+1.8.8b10 (never published) is an opt-in preview after 1.8.8b9: what a second walk through the
 same five areas found on b9 as published. Every `co browser` command ends
 within its deadline and `close` is never refused (#1709, #1704); a device that
 joins right after the host starts sees the next turn, and a host restart gives

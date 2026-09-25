@@ -1,1 +1,0 @@
-../../../../../../docs/design-decisions/011-global-config-identity-management.md

@@ -1,1 +1,0 @@
-../../../../../../docs/design-decisions/003-choosing-trust-keyword.md
