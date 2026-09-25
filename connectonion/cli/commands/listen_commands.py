@@ -19,12 +19,21 @@ import time
 from typing import List, Optional
 
 from rich.console import Console
+from rich.markup import escape
 
 from ...inbox import ANSWERING, Inbox, ListenerStopped, provider, reactions_enabled
 from .command_tips import print_tip
 
 console = Console()
-errors = Console(stderr=True)
+# No markup on stderr. Everything printed here is a sentence from a platform,
+# a provider or a log, never our own formatting, and Rich read the `[whatsapp]`
+# in `pip install 'connectonion[whatsapp]'` as a style tag and printed
+# `pip install 'connectonion'` — a command that succeeds and fixes nothing.
+# The same line went into the listener's log the same way.
+# soft_wrap: a background listener's stderr is its log file, and Rich wrapped
+# every line there at 80 columns, so a path or a pip command arrived in three
+# pieces that no one can paste and no reader can match on.
+errors = Console(stderr=True, markup=False, soft_wrap=True)
 
 EXIT_CONFIG = 3
 EXIT_TIMEOUT = 124
@@ -41,16 +50,44 @@ def _missing_scope(text: str):
     return found.group(1) if found else None
 
 
-def _configured(name: str):
+def _configured(name: str, *, sends: bool = False):
     """The provider, or exit 3 with what is missing. Every verb that talks
-    to the platform starts here so the message is the same everywhere."""
+    to the platform starts here so the message is the same everywhere.
+
+    `sends`: this verb puts something on the wire. A provider whose sends go
+    through its listener (WhatsApp: one socket per linked device) cannot send
+    without one, and cannot start one without its SDK. Without this check
+    `co whatsapp send` with no extra installed waited thirty seconds for a
+    listener that could never exist and then exited 1, while `listen` and
+    `check` said exit 3 and named the pip command at once.
+    """
     p = provider(name)
     problems = p.missing()
+    if not problems and sends and getattr(p, "via_listener", False) \
+            and Inbox(name).listener_pid() is None:
+        problems = getattr(p, "listen_requirements", list)()
     if problems:
         for problem in problems:
             errors.print(problem, style="red")
         sys.exit(EXIT_CONFIG)
     return p
+
+
+# Words a platform uses when the credential itself is the problem. Every
+# refusal must name a next command (the co-inbox SKILL: "a refusal that names
+# no command is a bug"); for these the command is the one that tests the
+# credential, and for anything else the log that has the whole story.
+_CREDENTIAL_WORDS = re.compile(r"credential|unauthori[sz]ed|\b401\b|\b403\b|token", re.IGNORECASE)
+
+
+def _refused(name: str, exc: Exception) -> None:
+    """Print a platform's refusal with the command to run next, and exit 1."""
+    text = str(exc)
+    if "Next:" not in text:
+        verb = "check" if _CREDENTIAL_WORDS.search(text) else "log"
+        text = f"{text.rstrip('. ')}. Next: co {name} {verb}"
+    errors.print(text, style="red")
+    sys.exit(1)
 
 
 def _text_from(argument: Optional[str]) -> str:
@@ -100,23 +137,65 @@ def _wire(p, text: str, plain: bool) -> str:
     return render(text)
 
 
+# How long a listener we just started gets to say whether its connection is
+# up before `receive` or `consume` is told it started. A revoked token is
+# refused in one round trip; this is several.
+SETTLE_SECONDS = 3.0
+
+
 def _listener_or_exit(inbox: Inbox) -> None:
     """Make sure a listener is running, or say why one could not start."""
-    if inbox.ensure_listener() is None:
-        errors.print("the listener exited at once:", style="red")
-        # The reason is the child's last few lines; an agent that reads
-        # stderr should not have to go and open the log to learn "pip
-        # install lark-oapi".
-        for line in inbox.last_log_lines():
-            # Unwrapped: a pip command split across two lines cannot be copied.
-            errors.print(f"  {line}", style="red", soft_wrap=True, markup=False, highlight=False)
-        errors.print(f"full log: {inbox.logfile}", style="dim")
-        sys.exit(1)
+    if inbox.ensure_listener(settle=SETTLE_SECONDS) is None:
+        _listener_died(inbox, inbox.listener_exit_code)
+
+
+def _listener_died(inbox: Inbox, code, when: str = "at once") -> None:
+    """Say the listener is gone and why, then exit with what it exited with.
+
+    Exit 3 when the listener exited 3: a missing SDK or a token the platform
+    refused needs a person, and `listen` and `check` already said 3 for the same
+    thing. `receive` said 1, so a supervisor that stops on 3 and retries on 1
+    retried a revoked token forever.
+    """
+    errors.print(f"the listener exited {when}:", style="red")
+    # The reason is the child's last few lines; an agent that reads
+    # stderr should not have to go and open the log to learn "pip
+    # install lark-oapi".
+    for line in _reason_lines(inbox):
+        # Unwrapped: a pip command split across two lines cannot be copied.
+        errors.print(f"  {line}", style="red", soft_wrap=True, highlight=False)
+    errors.print(f"full log: {inbox.logfile}", style="dim")
+    sys.exit(EXIT_CONFIG if code == EXIT_CONFIG else 1)
+
+
+# What a listener writes about its own start and stop, as opposed to why it
+# stopped. The last three log lines of a refused Telegram token were
+# "listener stopped", "exited at once with 3" and the tail of a path, with the
+# sentence that says to copy the token from @BotFather just above them.
+_BOOKKEEPING = re.compile(r"(listener stopped|listener exited at once with \d+.*|"
+                          r"listening · .*|details: .*)$")
+
+
+def _reason_lines(inbox: Inbox, count: int = 3) -> List[str]:
+    """The last few log lines that say why, not that, the listener stopped."""
+    lines = [line for line in inbox.last_log_lines(12) if not _BOOKKEEPING.search(line)]
+    return lines[-count:]
 
 
 def handle_done(name: str, message_id: str) -> None:
-    """Forget a taken message without replying, so it does not come back."""
-    Inbox(name).done(message_id, by="done")
+    """Forget a taken message without replying, so it does not come back.
+
+    Refuses an id this inbox has never received. `done` writes the id to
+    done.jsonl, and `deliver` drops any id already there — so a mistyped id
+    that "worked" silently would make the real message with that id vanish
+    the day it arrived.
+    """
+    inbox = Inbox(name)
+    if not inbox.known(message_id):
+        errors.print(f"no message {message_id} in {inbox.cur} or {inbox.received}; nothing to mark done. "
+                     f"Next: co {name} ls", style="red")
+        sys.exit(1)
+    inbox.done(message_id, by="done")
 
 
 def handle_listen(name: str, raw: bool = False) -> None:
@@ -182,13 +261,32 @@ WATCH_SECONDS = 60
 
 
 def _receive(inbox: Inbox, timeout: Optional[float], watch: bool):
-    if not watch or timeout is not None:
+    """Wait for a message, keeping an eye on the listener the wait depends on.
+
+    Looked at every second, not every minute: a listener that was refused
+    after it took the lock (Telegram 409, a Discord close code) is gone for
+    good, and `receive -t 300` used to spend the whole five minutes and then
+    say "no message within the timeout" about a listener that died in the
+    first second. One that exited 3 is reported at once; any other exit is
+    restarted, which reports it if the restart dies too.
+    """
+    if not watch:
         return inbox.receive(timeout)
+    deadline = None if timeout is None else time.monotonic() + timeout
+    looked = time.monotonic()
     while True:
-        message = inbox.receive(WATCH_SECONDS)
+        left = 1.0 if deadline is None else max(0.0, min(1.0, deadline - time.monotonic()))
+        message = inbox.receive(left)
         if message is not None:
             return message
-        _listener_or_exit(inbox)
+        if deadline is not None and time.monotonic() >= deadline:
+            return None
+        code = inbox.exited_listener()
+        if code == EXIT_CONFIG:
+            _listener_died(inbox, code, when="while this was waiting")
+        if code is not None or time.monotonic() - looked >= WATCH_SECONDS:
+            _listener_or_exit(inbox)
+            looked = time.monotonic()
 
 
 def _with_context(inbox: Inbox, message, count: int) -> str:
@@ -210,10 +308,18 @@ def handle_receive(name: str, timeout: Optional[float] = None, start: bool = Tru
                    context: int = 0) -> None:
     """Print the next message as one JSON line. Exit 124 if none arrived."""
     inbox = Inbox(name)
+    message = None
     if start:
         _configured(name)
-        _listener_or_exit(inbox)
-    message = _receive(inbox, timeout, watch=start)
+        # What is already queued needs no listener. Asking for one first made
+        # a queued message unreachable whenever the listener would not start,
+        # and of three `receive -t 0` racing to start one, only one got a
+        # message and the others reported "already listening".
+        message = inbox.receive(0)
+        if message is None:
+            _listener_or_exit(inbox)
+    if message is None:
+        message = _receive(inbox, timeout, watch=start)
     if message is None:
         # 124 is the contract, borrowed from timeout(1). Saying so costs one
         # line on stderr and saves a caller from reading an empty stdout as
@@ -227,15 +333,14 @@ def handle_receive(name: str, timeout: Optional[float] = None, start: bool = Tru
 def handle_send(name: str, chat: str, text: Optional[str] = None, reply_to: Optional[str] = None,
                 plain: bool = False) -> None:
     """Send text to a chat. Prints the new message id."""
-    p = _configured(name)
+    p = _configured(name, sends=True)
     inbox = Inbox(name)
     body = _wire(p, _text_from(text), plain)
     try:
         sent = p.send(chat, body, reply_to=reply_to, plain=True)
     except Exception as exc:
         inbox.record_sent(chat=chat, text=body, reply_to=reply_to, error=str(exc), by="send")
-        errors.print(str(exc), style="red")
-        sys.exit(1)
+        _refused(name, exc)
     inbox.record_sent(chat=chat, text=body, reply_to=reply_to, provider_id=sent, by="send")
     print(sent)
 
@@ -266,11 +371,11 @@ def _mark_answering(p, inbox, message) -> None:
 def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: bool = False,
                  plain: bool = False) -> None:
     """Reply to a received message where it was asked. Prints the new id."""
-    p = _configured(name)
+    p = _configured(name, sends=True)
     inbox = Inbox(name)
     original = inbox.lookup(message_id)
     if original is None:
-        errors.print(f"no message {message_id} in {inbox.received}", style="red")
+        errors.print(f"no message {message_id} in {inbox.received}. Next: co {name} log", style="red")
         sys.exit(1)
     if inbox.already_replied(message_id) and not again:
         errors.print(f"already replied to {message_id}; pass --again to reply once more", style="yellow")
@@ -282,8 +387,7 @@ def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: 
     except Exception as exc:
         inbox.record_sent(chat=original.chat, text=body, reply_to=message_id,
                           error=str(exc), by="reply")
-        errors.print(str(exc), style="red")
-        sys.exit(1)
+        _refused(name, exc)
     inbox.record_sent(chat=original.chat, text=body, reply_to=message_id, provider_id=sent,
                       by="reply")
     inbox.done(message_id, by="reply")
@@ -312,7 +416,7 @@ def _unsupported(p, name: str, verb: str,
 def handle_edit(name: str, message_id: str, text: Optional[str] = None,
                 plain: bool = False) -> None:
     """Replace the text of a message we sent. Prints the edit's id."""
-    p = _configured(name)
+    p = _configured(name, sends=True)
     inbox = Inbox(name)
     if getattr(p, "edit", None) is None:
         _unsupported(p, name, "edit")
@@ -329,8 +433,7 @@ def handle_edit(name: str, message_id: str, text: Optional[str] = None,
     try:
         sent = p.edit(original["chat"], message_id, body, plain=True)
     except Exception as exc:
-        errors.print(str(exc), style="red")
-        sys.exit(1)
+        _refused(name, exc)
     inbox.record_sent(chat=original["chat"], text=body, reply_to=original.get("reply_to"),
                       provider_id=sent, by=f"edit of {message_id}")
     print(sent)
@@ -338,7 +441,7 @@ def handle_edit(name: str, message_id: str, text: Optional[str] = None,
 
 def handle_delete(name: str, message_id: str) -> None:
     """Delete a message for everyone. Prints the deletion's id."""
-    p = _configured(name)
+    p = _configured(name, sends=True)
     inbox = Inbox(name)
     if getattr(p, "revoke", None) is None:
         _unsupported(p, name, "delete")
@@ -357,8 +460,7 @@ def handle_delete(name: str, message_id: str) -> None:
     try:
         sent = p.revoke(chat, message_id, sender=sender)
     except Exception as exc:
-        errors.print(str(exc), style="red")
-        sys.exit(1)
+        _refused(name, exc)
     inbox.log(f"deleted {message_id} in {chat} as {sent or 'no id'}")
     print(sent)
 
@@ -371,7 +473,7 @@ def handle_group(name: str, phones: list, *, subject: str = "", chat: str = "") 
     point: WhatsApp calls the group a success while quietly leaving out anyone
     whose privacy settings forbid being added.
     """
-    p = _configured(name)
+    p = _configured(name, sends=True)
     try:
         result = p.create_group(subject, phones) if subject else p.add_to_group(chat, phones)
     except Exception as exc:
@@ -401,7 +503,7 @@ def handle_react(name: str, message_id: str, emoji: str) -> None:
     only stay silent or send a whole message, which is louder than the moment
     deserves (#1633). Prints the reaction's id so a script can check it landed.
     """
-    p = _configured(name)
+    p = _configured(name, sends=True)
     inbox = Inbox(name)
     if getattr(p, "react", None) is None:
         _unsupported(p, name, "react", "POST /im/v1/messages/<id>/reactions")
@@ -418,8 +520,7 @@ def handle_react(name: str, message_id: str, emoji: str) -> None:
     try:
         sent = p.react(chat, message_id, emoji, sender=sender, mine=mine)
     except Exception as exc:
-        errors.print(str(exc), style="red")
-        sys.exit(1)
+        _refused(name, exc)
     what = f"reacted {emoji}" if emoji else "removed our reaction"
     inbox.log(f"{what} on {message_id} in {chat} as {sent or 'no id'}")
     print(sent)
@@ -430,7 +531,7 @@ def handle_check(name: str) -> None:
     p = provider(name)
     problems = p.check()
     for problem in problems:
-        console.print(f"[red]✗[/red] {problem}")
+        console.print(f"[red]✗[/red] {escape(problem)}")
     if problems:
         sys.exit(EXIT_CONFIG)
     inbox = Inbox(name)
@@ -615,6 +716,16 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
     _listener_or_exit(inbox)
     consumer = f"consume:{os.path.basename(command[0])}"
 
+    def failed(message, why: str) -> None:
+        # On stderr as well as in the log, while the loop carries on: the
+        # SKILL tells a reader that consume reports its commands' failures
+        # there, and a reply the platform refused used to be one log line
+        # nobody watching the terminal would ever see. Raising leaves the
+        # message taken, for the hourly sweep to offer again.
+        errors.print(f"{message.id}: {why}. The message stays taken and comes back in an hour. "
+                     f"Next: co {name} log", style="red", soft_wrap=True, highlight=False)
+        raise RuntimeError(why)
+
     def answer(message) -> None:
         env = dict(
             os.environ,
@@ -640,8 +751,7 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
         # transient failure into an unanswered question. A command that exited
         # 0 with nothing to say returns, because silence is an answer.
         if run.returncode != 0:
-            raise RuntimeError(
-                f"command exited {run.returncode}: {run.stderr.strip()[:500]}")
+            failed(message, f"command exited {run.returncode}: {run.stderr.strip()[:500]}")
         if not run.stdout.strip():
             inbox.log(f"consume: nothing to say for {message.id}")
             return
@@ -651,7 +761,7 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
         except Exception as exc:
             inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id,
                               error=str(exc), by=consumer)
-            raise RuntimeError(f"reply failed: {exc}") from exc
+            failed(message, f"reply failed: {exc}")
         inbox.record_sent(chat=message.chat, text=reply, reply_to=message.id,
                           provider_id=sent, by=consumer)
 
