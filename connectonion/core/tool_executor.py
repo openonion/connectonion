@@ -583,6 +583,12 @@ def execute_single_tool(
             logger.log_tool_result(
                 trace_entry["result"], tool_duration, success=False
             )
+            # The ✗ line truncates the call to fit the terminal, and the log
+            # file is the same text: a failed write's resolved path and reason
+            # were nowhere in it, so the failure could not be diagnosed from
+            # the run log (#1338). Print what the model was told, in full.
+            from rich.markup import escape
+            logger.print(f"  [red]{escape(trace_entry['result'])}[/red]")
         else:
             logger.log_tool_result(trace_entry["result"], tool_duration)
 
