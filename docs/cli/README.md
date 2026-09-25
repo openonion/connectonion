@@ -513,6 +513,13 @@ co --env-file ./project.env env     # the same on a project file
 
 Full reference: [env.md](env.md).
 
+### `co schedule` — the agent's recurring work
+
+A hosted agent runs the entries in `.co/schedule.yaml` on its own clock.
+`co schedule` lists them with next and last run, `co schedule check`
+validates the file, and `co schedule run|pause|resume <name>` control one
+entry without editing the file. Full reference: [schedule.md](schedule.md).
+
 #### `co status` - Check Credentials, Account, and Deployments
 
 Shows redacted provider credential availability and source paths, followed by your
@@ -1334,6 +1341,7 @@ See [server.md](server.md).
 | `co browser` | Browser command (local) | No | ✅ Yes |
 | `co call` | Run a command on a remote agent | No | ✅ Yes |
 | `co outlook` | Send/read Outlook email | No | ✅ Yes |
+| `co schedule` | See, check, run now, pause and resume `.co/schedule.yaml` entries — [schedule.md](schedule.md) | No | ✅ Yes (writes schedule state only) |
 
 ---
 

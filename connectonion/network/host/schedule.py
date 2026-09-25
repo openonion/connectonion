@@ -373,6 +373,47 @@ def load_state(co_dir: Path) -> dict:
         return {}
 
 
+def update_state(co_dir: Path, change) -> None:
+    """Read, `change(state)` in place, and write the whole state file under its lock.
+
+    Every writer goes through here — a run's outcome, and `co schedule pause`
+    or `run` from another process — so none of them can drop another's entry.
+    """
+    co_dir = Path(co_dir)
+    co_dir.mkdir(parents=True, exist_ok=True)
+    path = co_dir / STATE_FILE
+
+    handle = _lock(co_dir / f"{STATE_FILE}.lock")
+    if handle is None:
+        # Proceeding unlocked is the deliberate choice — blocking forever on a
+        # lock held by a process the OS never noticed dying is worse. But this
+        # write is a read-modify-write of the whole file, so it can drop another
+        # writer's entry, and a lost last_run makes the scheduler run something
+        # a second time. Say it, so that duplicate run is findable in the log
+        # instead of being inferred weeks later.
+        print("[schedule] writing without the state lock — another "
+              "process is holding it; an entry may be lost")
+    try:
+        state = load_state(co_dir)
+        change(state)
+        # A name of its own. One shared `.tmp` meant concurrent writers wrote
+        # over each other's file and then raced to rename it: the first
+        # os.replace consumed it and the second raised FileNotFoundError, out
+        # of the scheduler's own tick.
+        tmp = path.with_suffix(f"{path.suffix}.{os.getpid()}.{threading.get_ident()}.tmp")
+        try:
+            tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+            os.replace(tmp, path)  # readers see the old file or the new one
+        finally:
+            # A crash between write and replace would otherwise leave one temp
+            # file per incident, in the directory the agent reads on every boot.
+            if tmp.exists():
+                tmp.unlink(missing_ok=True)
+    finally:
+        if handle:
+            handle.close()
+
+
 def record_run(co_dir: Path, name: str, *, when: datetime, status: str,
                session_id: Optional[str], reason: Optional[str] = None) -> None:
     """Remember one run, pointing at the session it produced.
@@ -394,22 +435,7 @@ def record_run(co_dir: Path, name: str, *, when: datetime, status: str,
     says `failed` and finding out that the account was out of credits costs an
     ssh session (#541).
     """
-    co_dir = Path(co_dir)
-    co_dir.mkdir(parents=True, exist_ok=True)
-    path = co_dir / STATE_FILE
-
-    handle = _lock(co_dir / f"{STATE_FILE}.lock")
-    if handle is None:
-        # Proceeding unlocked is the deliberate choice — blocking forever on a
-        # lock held by a process the OS never noticed dying is worse. But this
-        # write is a read-modify-write of the whole file, so it can drop another
-        # writer's entry, and a lost last_run makes the scheduler run something
-        # a second time. Say it, so that duplicate run is findable in the log
-        # instead of being inferred weeks later.
-        print(f"[schedule] writing {name} without the state lock — another "
-              f"process is holding it; an entry may be lost")
-    try:
-        state = load_state(co_dir)
+    def change(state):
         paused = (state.get(name) or {}).get("paused")
         # Rebuilt rather than updated, so a later success drops the reason a
         # previous failure left behind. A stale cause on a healthy entry is a
@@ -423,22 +449,54 @@ def record_run(co_dir: Path, name: str, *, when: datetime, status: str,
             state[name]["paused"] = True
         if reason:
             state[name]["reason"] = reason
-        # A name of its own. One shared `.tmp` meant concurrent writers wrote
-        # over each other's file and then raced to rename it: the first
-        # os.replace consumed it and the second raised FileNotFoundError, out
-        # of the scheduler's own tick.
-        tmp = path.with_suffix(f"{path.suffix}.{os.getpid()}.{threading.get_ident()}.tmp")
-        try:
-            tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-            os.replace(tmp, path)  # readers see the old file or the new one
-        finally:
-            # A crash between write and replace would otherwise leave one temp
-            # file per incident, in the directory the agent reads on every boot.
-            if tmp.exists():
-                tmp.unlink(missing_ok=True)
-    finally:
-        if handle:
-            handle.close()
+
+    update_state(co_dir, change)
+
+
+def set_flag(co_dir: Path, name: str, flag: str, on: bool) -> None:
+    """Set or clear `paused` or `run_requested` for one entry, keeping its history."""
+    def change(state):
+        entry = dict(state.get(name) or {})
+        if on:
+            entry[flag] = True
+        else:
+            entry.pop(flag, None)
+        if entry:
+            state[name] = entry
+        else:
+            state.pop(name, None)
+
+    update_state(co_dir, change)
+
+
+def cadence(entry: Entry) -> str:
+    """How the entry was written: `every 15m`, or its `at` time."""
+    if entry.interval is None:
+        return str(entry.at or "")
+    total = int(entry.interval.total_seconds())
+    for size, unit in ((86400, "d"), (3600, "h"), (60, "m")):
+        if total % size == 0 and total >= size:
+            return f"every {total // size}{unit}"
+    return f"every {total}s"
+
+
+def next_run(entry: Entry, state: dict, now: datetime) -> Optional[datetime]:
+    """When this entry will next fire, or None while it is paused.
+
+    A time at or before `now` means "on the next tick". Computed from the same
+    is_due the scheduler uses, so the answer cannot disagree with the clock.
+    """
+    st = state.get(entry.name) or {}
+    if st.get("run_requested"):
+        return now
+    if st.get("paused"):
+        return None
+    if is_due(entry, last_run(state, entry.name), now):
+        return now
+    if entry.interval is not None:
+        return last_run(state, entry.name) + entry.interval
+    upcoming = [_last_occurrence(entry, now + timedelta(days=days)) for days in range(1, 9)]
+    return min(moment for moment in upcoming if moment and moment > now)
 
 
 def last_run(state: dict, name: str) -> Optional[datetime]:
