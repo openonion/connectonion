@@ -465,7 +465,7 @@ def make_wiki_app(factory):
                 return True
             if not sys.stdin.isatty():
                 typer.echo(text, err=True)
-                typer.echo("Noninteractive first start cannot consent silently; read the summary above "
+                typer.echo("A noninteractive start cannot consent silently; read the summary above "
                            "and run with --yes, or run `co wiki start` in a terminal.", err=True)
                 return False
             typer.echo(text)
@@ -482,6 +482,11 @@ def make_wiki_app(factory):
                 result["attention"] = (f"The schedule is installed, but the first update failed: "
                                        f"{first.get('error')}")
                 _emit(ctx, result, ["logs", first["id"]], failed=True)
+            if result.get("first_batch") is None and not ctx.obj["json"]:
+                # Only the first start runs a batch; a start after stop resumes
+                # the clock. None printed as "Unknown", which read as a fault.
+                result["first_batch"] = ("Not run: the first start already ran it. "
+                                         f"{_next(ctx, ['sync'])} runs an update now.")
             return result, ["status"]
 
         _handle(ctx, operation, ["start", "--yes"] if not yes else ["doctor"])

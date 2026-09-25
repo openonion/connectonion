@@ -174,7 +174,7 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co wiki investigate people --limit 3` | Investigate up to three unfinished people pages, most mail first; `--list` prints the order and runs nothing. Also `projects`, `orgs`, `skills`. |
 | `co wiki investigate me` | Fill your own page from what you sent and your coding sessions of the last 30 days. |
 | `co wiki abstract` | Run wiki-abstract over existing notebook evidence. |
-| `co wiki start` | Confirm source access, run first bounded sync, install macOS background schedule. |
+| `co wiki start` | Confirm source access, run first bounded sync, install macOS background schedule. Asks again whenever anything its summary shows (sources, runner, model, permissions, schedule, limits) changed since the last approval. A start after `stop` resumes the schedule without a batch; `co wiki sync` runs one. |
 | `co wiki start --yes` | Explicit noninteractive consent for start. |
 | `co wiki stop` | Remove that notebook's background job; preserve pages and progress. |
 | `co wiki sync` | The whole update: one batch of new material, then at most one unfinished page. What the schedule runs (`sync --scheduled`). |
@@ -240,7 +240,10 @@ nobody watching. So every stage, scheduled or started by hand, runs confined:
 | `claude-code` | `--permission-mode acceptEdits` | Read and write inside `.state/tasks/`; commands, web fetch/search and reads elsewhere are denied, since nobody is there to approve them |
 
 `co wiki start` shows the row for the configured runner in its consent
-summary, as `model_permissions`, before you approve the schedule.
+summary, as `model_permissions`, before you approve the schedule, and
+`model_receives` names whose login the model is called through (Codex or
+Claude Code). Change the runner later and the next `start` shows the
+summary again.
 
 Model turns and the launchd job both run the installation that is running
 `co wiki` -- `<its python> -m connectonion.cli.main` -- not the first `co` on

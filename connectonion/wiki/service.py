@@ -109,7 +109,21 @@ def approve_sources(root: Path) -> None:
             if source.get("kind") in READABLE and source.get("enabled"):
                 source["consented"] = True
         write_json(state_path(root, "subscriptions.json"), sources)
-        write_json(state_path(root, "consent.json"), {"authorized_at": now().isoformat()})
+        write_json(state_path(root, "consent.json"), {"authorized_at": now().isoformat(),
+                                                      "summary": summary_fingerprint(root)})
+
+
+def summary_fingerprint(root: Path) -> str:
+    """What the user agreed to, as one value: every line the consent summary shows.
+
+    Consent used to be a bare timestamp, so after `stop`, switching the runner
+    from Codex to Claude Code, `start` reinstalled the job without showing the
+    summary and ignored the `n` typed at it. Recording what was shown lets
+    `start` ask again whenever the sources, runner, model, permissions or
+    schedule are no longer what the user said yes to.
+    """
+    shown = json.dumps(consent_summary(root), sort_keys=True, default=str)
+    return hashlib.sha256(shown.encode()).hexdigest()
 
 
 def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", about: str = "",
@@ -305,6 +319,17 @@ def status(root: Path) -> dict:
             "last_run": logs[0] if logs else None}
 
 
+# Whose account the model is called through, per runner. The line said "your
+# own Codex login" whatever the runner was, so a user approving Claude Code
+# was told their mail would go somewhere it would not.
+MODEL_ROUTE = {
+    "codex": "through your own Codex login (no API key, no OpenOnion server)",
+    "claude-code": "through your own Claude Code login (no API key, no OpenOnion server)",
+    "coai": "through ConnectOnion's own agent loop: a co/ model goes through OpenOnion's "
+            "server on your OpenOnion account, any other model through your own provider key",
+}
+
+
 def consent_summary(root: Path) -> dict:
     """Everything `start` must show before a single source body is read."""
     from .runner import CONFINEMENT
@@ -331,7 +356,7 @@ def consent_summary(root: Path) -> dict:
             sources[name]["chats"] = source.get("chats") or []
     return {"root": str(root), "sources": sources, "runner": config["runner"], "model": config["model"],
             "model_receives": "the new session messages plus the notebook pages it reads, "
-                              "through your own Codex login (no API key, no OpenOnion server)",
+                              + MODEL_ROUTE[config["runner"]],
             "model_permissions": CONFINEMENT[config["runner"]],
             "schedule": config["schedule"], "limits": config["limits"],
             # RunAtLoad is off (schedule.py): a login runs nothing; a slot missed
@@ -357,7 +382,12 @@ def start(root: Path, *, confirm, scheduler, runner=None) -> dict:
     # read; asking again whenever one is waiting means it is read only once shown.
     waiting = [name for name, source in subscriptions(root).items()
                if source.get("enabled") and not source.get("consented") and source.get("kind") in READABLE]
-    if first or waiting:
+    # The same holds for everything else the summary shows. A consent recorded
+    # before the summary was, has no fingerprint and is asked for once more.
+    agreed = read_json(state_path(root, "consent.json"), {}) if not first else {}
+    changed = not first and (not isinstance(agreed, dict)
+                             or agreed.get("summary") != summary_fingerprint(root))
+    if first or waiting or changed:
         if not confirm(consent_summary(root)):
             return {"started": False, "consented": False, "first_batch": None}
         approve_sources(root)

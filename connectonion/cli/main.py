@@ -398,7 +398,7 @@ def claude_run(
     model: str = typer.Option("", "--model", help="Claude model override"),
     timeout: int = typer.Option(600, "--timeout", min=1, help="Maximum run time in seconds"),
 ):
-    """Start or resume one Claude Code turn and print its session envelope."""
+    """Experimental: start or resume one Claude Code turn and print its session envelope."""
     from ..useful_tools.claude_code import run_co_claude
 
     result = run_co_claude(

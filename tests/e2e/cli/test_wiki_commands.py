@@ -570,3 +570,17 @@ def test_start_help_names_the_confinement_and_the_undo():
     text = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
     assert "--sandbox workspace-write" in text and "--permission-mode acceptEdits" in text
     assert "co wiki stop" in text
+
+
+def test_a_second_start_says_why_it_ran_no_batch(lifecycle):
+    """After stop, `start` resumed the schedule and printed `First batch:
+    Unknown` while its help promised it runs the first update. Only the first
+    start runs one; the output says so and names the command that runs one now."""
+    root, sessions, calls = lifecycle
+    assert invoke(root, "start", "--yes").exit_code == 0
+    assert invoke(root, "stop").exit_code == 0
+    again = invoke(root, "start", "--yes")
+    assert again.exit_code == 0, again.output
+    assert "First batch: Unknown" not in again.output
+    assert "sync" in again.output.split("First batch:")[1].splitlines()[0]
+    assert json.loads(invoke(root, "--json", "start", "--yes").stdout)["data"]["first_batch"] is None
