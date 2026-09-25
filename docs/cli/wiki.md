@@ -277,7 +277,8 @@ messages. Injected Skill prompts are not reingested as user experience.
 The importer still labels oversized pasted session text as truncated.
 
 PDF, DOCX, XLSX, PPTX (including tables/notes), plain text, HTML and ICS
-attachments are read. Investigation passes full extracted text to chronological
+attachments are read; XLSX needs `pip install 'connectonion[wiki]'`, and
+without it a spreadsheet is named as unread with that command. Investigation passes full extracted text to chronological
 digest chunks instead of dropping a long attachment's tail. Unreadable
 formats/errors remain visible. The Skill supplements from the account's
 `co email` service, known documents and public sites, and reports what it

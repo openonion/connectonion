@@ -17,7 +17,7 @@ is a local, single-owner Markdown notebook.
 | Background updates | `start`, `stop` | macOS launchd runs scheduled sync. Does not yet alternate sync with unfinished investigations. |
 | Reading and diagnostics | `list`, `show`, `search`, `open`, `status`, `logs`, `usage`, `doctor` | HTML is a generated snapshot; reopen to refresh. No hosted login/admin UI. |
 | Shared model execution | All model stages use `co ai` | Codex, Claude Code and COAI adapters exist. Claude subscription path lacks live acceptance. |
-| Attachments | Investigation collection | PDF, DOCX, XLSX, PPTX, ICS, HTML and text readers exist; errors are reported. |
+| Attachments | Investigation collection | PDF, DOCX, XLSX, PPTX, ICS, HTML and text readers exist; errors are reported. XLSX needs the `wiki` extra. |
 
 Full syntax, configuration and source boundaries: [CLI contract](wiki.md).
 
