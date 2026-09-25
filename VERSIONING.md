@@ -43,7 +43,29 @@ The published stable line is 1.8.x. Maintenance fixes for `release/1.7`
 must still be forward-ported to `main`. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
-## Stable release: 1.8.6
+## Stable release: 1.8.8
+
+Tested by strangers. Twelve previews (1.8.8b1–b12) fed it, and the stable
+claim rests on how they were checked: five testers installed each candidate
+from PyPI into an empty profile and used it as a new user — first run, the
+browser, every inbox, hosting one agent on two devices, and the experimental
+commands — three times (1.8.8b7, b9, b11), each round's findings fixed from a
+failing test before the next. The last walk found nothing in hosting and one
+thing in benchmarks, fixed in b12.
+
+New and stable: one conversation on two devices, with every approval answer
+naming its request; skill benchmarks (`co benchmark`, `co eval run`) whose
+agent cannot read the answers; `co browser network`/`cookies` with deadlines
+on every command; `co schedule`; a Python `connect()` whose timeout is a
+deadline. Shipped and labelled Experimental in every help surface: the
+Personal Wiki (long-term supported in 1.9.0), `co claude`, `co discord`, the
+Telegram inbox verbs and `co tiktok`. Fixed since 1.8.7 and reproduced on it: a
+visitor's Home page showed the owner's prompts; `co deploy` deleted a symlinked
+server `.venv`; `co auth status` signed you in; the project `.env` was never
+read; Outlook calendar reads failed on Python 3.10; httpx and pydantic had no
+upper bound. See [1.8.8 notes](docs/releases/1.8.8.md).
+
+### Superseded: 1.8.6 (stable, published)
 
 WhatsApp as an inbox, on a number a person already uses. `co whatsapp` links a
 device, sees the groups that number is in, and answers only where it was
@@ -353,7 +375,15 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.8b12
+## Current Version: 1.8.8
+
+1.8.8 is the stable release of the 1.8.8 line: 1.8.8b12 plus #1686, #1693, #1701
+and #1718. The Personal Wiki and the other experimental commands ship
+labelled as such; the Wiki's long-term support target remains 1.9.0.
+
+- 1.8.8 (stable: b12; co auth status only reads and unknown words exit 2; one Next line per benchmark refusal; co deploy keeps a symlinked server .venv; Outlook calendar parses Graph's seven-digit times on Python 3.10 and reports local errors in their own words; Development Status Production/Stable.)
+
+Earlier in this line:
 
 1.8.8b12 is an opt-in preview after 1.8.8b11: during `co eval run` the agent
 under test can no longer read the benchmark's expected outcomes, and an attempt

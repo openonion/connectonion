@@ -1,0 +1,9 @@
+version: v1.8.8
+images:
+  - file: co-schedule.png
+    alt: "Terminal output of co schedule check, co schedule, co schedule pause and co schedule again on a demo project with three entries"
+    caption: "co schedule on a demo project, new and stable in 1.8.8: check names the entry the scheduler would ignore, the list shows next and last run, and pause takes one entry off the clock without editing schedule.yaml."
+    scenario: "python scripts/capture_188_release_cli.py on the release branch: a made-up orders-agent project, the released command's own output, captured live from this checkout"
+    viewport: "terminal, 96 columns"
+    commit: 9ce5030d
+    source_run: "scripts/capture_188_release_cli.py, 25 September 2026, the release/1.8.8 branch built on main after PR 1701"
