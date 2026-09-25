@@ -162,7 +162,7 @@ def handle_auth_status():
     from ...credentials import account_in_token
     from ...project import project_identity
     from .command_tips import print_tip
-    from .status_commands import _credential_rows, _credential_sources, _oauth_rows
+    from .status_commands import OAUTH_CONNECTIONS, _credential_rows, _credential_sources, _oauth_rows
 
     identity = project_identity()
     token_row = next(row for row in _credential_rows() if row["credential"] == "OPENONION_API_KEY")
@@ -179,8 +179,11 @@ def handle_auth_status():
     # Every word printed here is one of these literals, chosen by the row's
     # state: this command's point is that it only looks, and nothing read from
     # a credential file is echoed back — `co status` shows where each came from.
-    for row in _oauth_rows():
-        print(f"{row['provider']}: {_OAUTH_STATUS_TEXT.get(row['status'], 'unknown')}")
+    states = {row["provider"]: row["status"] for row in _oauth_rows()}
+    for provider, _prefix, _action in OAUTH_CONNECTIONS:
+        label = next((text for status, text in _OAUTH_STATUS_TEXT.items()
+                      if states.get(provider) == status), "unknown")
+        print(f"{provider}: {label}")
     chat_apps = {}
     for _source, values in _credential_sources(supported_names={"FEISHU_APP_ID", "LARK_APP_ID"}):
         chat_apps = {**values, **chat_apps}
