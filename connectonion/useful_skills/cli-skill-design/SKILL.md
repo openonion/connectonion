@@ -49,8 +49,17 @@ Two other register tests apply to every leaf:
 (a tip naming one real command, or `HANDLER` when the handler prints its own),
 and `test_cli_tips_name_real_commands.py` checks every tip string.
 
-Run all three before pushing, and once with CI's colour on, because Rich puts
-escape codes between words:
+`co audit` runs the same rules (it is the same engine), so the quick check
+while writing is:
+
+```bash
+co audit <group> <command>             # hard rules; exit 1 names each fix
+co audit <group> <command> --review    # then a model judges clarity, accuracy, example, simplicity
+```
+
+The `help-gate` workflow runs `--review` on the pages a PR changed and reports
+without blocking. Before pushing, run the register tests too, and once with
+CI's colour on, because Rich puts escape codes between words:
 
 ```bash
 pytest -q tests/unit/test_cli_help_contract.py tests/unit/test_every_command_has_a_next_step.py tests/unit/test_cli_tips_name_real_commands.py
