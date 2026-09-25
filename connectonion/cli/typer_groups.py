@@ -275,7 +275,7 @@ def name_the_way_back(app: typer.Typer, path: str = "co") -> None:
         text = epilog if isinstance(epilog, str) else ""
         if "Back:" in text:
             return text
-        return f"{text}  |  {back}" if text else back
+        return f"{text}\n\n{back}" if text else back
 
     for command in app.registered_commands:
         command.epilog = with_back(command.epilog)
