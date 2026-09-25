@@ -656,3 +656,16 @@ def test_whatsapp_is_a_source_chat_by_chat_and_a_new_chat_asks_again(tmp_path, m
 
     toggle_source(root, "whatsapp", False, chats=["120363411567190840@g.us"])
     assert subscriptions(root)["whatsapp"]["chats"] == []
+
+
+@pytest.mark.parametrize("runner, flag", [("codex", "--sandbox workspace-write"),
+                                          ("claude-code", "--permission-mode acceptEdits")])
+def test_the_consent_summary_says_how_confined_the_unattended_runs_are(tmp_path, runner, flag):
+    """Approving `co wiki start` is agreeing to runs nobody watches; the user
+    should see what those runs may do before saying yes, and how to undo it."""
+    from connectonion.wiki.service import consent_summary
+    prepare(tmp_path)
+    set_config(tmp_path, ["runner", runner])
+    summary = consent_summary(tmp_path)
+    assert flag in summary["model_permissions"] and "no network" in summary["model_permissions"]
+    assert "co wiki stop" in summary["background"]

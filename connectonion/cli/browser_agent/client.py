@@ -34,8 +34,13 @@ from .artifacts import ArtifactReceiver, ArtifactTransferError
 
 
 def default_sock_path() -> str:
-    """Resolve the endpoint without importing the browser-owning daemon module."""
-    return transport.default_address()
+    """The endpoint of the running daemon, or where a new one will listen.
+
+    Resolved without importing the browser-owning daemon module. It may be an
+    address an older client used, so an upgraded client still reaches — and can
+    close — the daemon it did not start (see transport.running_address).
+    """
+    return transport.running_address()
 
 
 def _owner_pid(sock_path: str) -> int | None:
@@ -79,8 +84,12 @@ def _ps_table() -> dict:
     would crash `close` on every ordinary install.
     """
     try:
+        # lstart is localized: under ko_KR or ja_JP it is not five English
+        # words, the split below misreads every row, and close would find none
+        # of the browser's processes. The C locale pins the format.
+        env = {**os.environ, "LC_ALL": "C", "LANG": "C"}
         out = subprocess.run(["ps", "-A", "-o", "pid=,ppid=,lstart=,comm="],
-                             capture_output=True, text=True, timeout=10).stdout
+                             capture_output=True, text=True, timeout=10, env=env).stdout
     except (OSError, subprocess.TimeoutExpired):
         return {}  # a slim container with no procps: the check is skipped, not a crash
     table = {}

@@ -2,7 +2,7 @@
 Purpose: An agent's own recurring work — read the schedule, decide what is due, run it, remember that it ran
 LLM-Note:
   Dependencies: imports from [asyncio, dataclasses, datetime, json, os, pathlib, re, sys, uuid, yaml, zoneinfo, host.http_router] | imported by [network/host/server.py via create_schedule_lifespan()] | tested by [tests/unit/test_schedule.py]
-  Data flow: load_entries(.co/schedule.yaml) → tick() every 60s → is_due(entry, last_run, now) → input_handler() in a worker thread → record_run() into .co/schedule-state.json
+  Data flow: load_entries(.co/schedule.yaml) → tick() every 60s → _claim_due() marks each due entry `running` in .co/schedule-state.json → each runs as its own task (input_handler() or a command, in a thread) → record_run() the outcome
   State/Effects: reads .co/schedule.yaml (authored, deployed) | reads and writes .co/schedule-state.json (the server's own, never deployed over) | holds an OS lock while writing state | runs agent turns through the same path as POST /input, so every run lands in .co/session_results.jsonl
   Integration: exposes load_entries(), is_due(), load_state(), record_run(), last_run(), create_schedule_lifespan() | the lifespan pair composes with the relay's in host()
   Performance: one tick a minute, a dict comparison per entry | the run itself is a full agent turn, off the event loop in a thread
@@ -39,21 +39,6 @@ _UNITS = {"s": "seconds", "m": "minutes", "h": "hours", "d": "days"}
 _DURATION = re.compile(r"^(\d+)([smhd])$")
 _WEEKDAYS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
 
-
-
-# Entry names with a run in flight right now.
-#
-# Module level rather than a closure so the Home page can read it: while a run
-# is in flight, record_run has not landed and the Scheduled row shows the
-# *previous* completion — which for an entry that takes longer than its
-# interval reads as overdue (#539). The page needs to know the difference
-# between "late" and "working".
-_RUNNING: set = set()
-
-
-def running_entries() -> set:
-    """The live set of entry names currently executing."""
-    return _RUNNING
 
 
 @dataclass
@@ -396,6 +381,13 @@ def record_run(co_dir: Path, name: str, *, when: datetime, status: str,
     transcript, the result and the duration. Copying any of that here would be
     a second source of truth that drifts.
 
+    `status="running"` is written when a run is claimed, before it starts. It is
+    what stops a second copy, in this process or another worker, and what the
+    Home page shows as "running" instead of a stale last completion (#537, #539).
+
+    `paused` is the user's setting, not the run's outcome, so it survives every
+    write; a pending `run_requested` is consumed by the run it asked for.
+
     `reason` is the exception from a run that raised, and is the exception to
     that rule — a run that dies before producing a session leaves no session to
     point at, so this file is the only place its cause can live. Without it Home
@@ -418,6 +410,7 @@ def record_run(co_dir: Path, name: str, *, when: datetime, status: str,
               f"process is holding it; an entry may be lost")
     try:
         state = load_state(co_dir)
+        paused = (state.get(name) or {}).get("paused")
         # Rebuilt rather than updated, so a later success drops the reason a
         # previous failure left behind. A stale cause on a healthy entry is a
         # worse lie than no cause at all.
@@ -426,6 +419,8 @@ def record_run(co_dir: Path, name: str, *, when: datetime, status: str,
             "status": status,
             "session_id": session_id,
         }
+        if paused:
+            state[name]["paused"] = True
         if reason:
             state[name]["reason"] = reason
         # A name of its own. One shared `.tmp` meant concurrent writers wrote
@@ -464,7 +459,7 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
     host() can compose them.
     """
     task: dict = {}
-    in_flight = _RUNNING
+    ticks: set = set()
 
     def _say(message: str) -> None:
         if console:
@@ -491,7 +486,7 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
         return "failed", f"exit {result.returncode}: {detail[-400:]}" if detail else \
             f"exit {result.returncode}"
 
-    def _run_entry(entry: Entry) -> tuple:
+    def _run_entry(entry: Entry, session_id: str) -> tuple:
         """One turn, through the same path as POST /input.
 
         Reusing input_handler is what puts a scheduled run in
@@ -501,12 +496,18 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
         """
         from .http_router import input_handler
 
-        session_id = str(uuid.uuid4())
         out = input_handler(create_agent, storage, entry.run, result_ttl,
                             session={"session_id": session_id})
-        return out.get("status", "done"), session_id
+        return out.get("status", "done"), None
 
     async def tick_once(now: Optional[datetime] = None) -> None:
+        """Claim what is due under the cluster lock, then run each on its own.
+
+        The lock is held for the claim, not the run. It used to be held for
+        the run, with entries awaited one after another, so a ten-minute entry
+        delayed every other entry by ten minutes, and a turn that hung stopped
+        the whole schedule and the compaction below it until a restart (#1681).
+        """
         now = now or datetime.now(timezone.utc)
         entries = load_entries(co_dir)
         if not entries and extra_tick is None:
@@ -519,58 +520,54 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
             # minute, and it would bury what the running worker says.
             return
         try:
-            await _run_due(entries, now)
+            claimed = _claim_due(entries, now)
             if extra_tick is not None:
                 await extra_tick(now)
             _compact_sessions()
         finally:
             _release_tick_lock(holder)
+        await asyncio.gather(*(_run(entry, now, session_id) for entry, session_id in claimed))
 
-    async def _run_due(entries, now: datetime) -> None:
+    def _claim_due(entries, now: datetime) -> list:
+        """Mark each due entry `running` in the state file before it starts.
+
+        The mark, not a set in this process, is what keeps one copy per entry:
+        it is visible to every worker, and it is what the Home page reads. An
+        entry that outlives its interval is skipped out loud, because the
+        schedule claims fifteen minutes and the truth is twenty-five (#537).
+        """
         state = load_state(co_dir)
-
+        claimed = []
         for entry in entries:
-            if entry.name in in_flight:
-                # record_run only happens after the turn returns, so last_run is
-                # stale for the whole duration — an entry whose work outlives its
-                # interval is "due" again while the first copy is still going, and
-                # again after that. Two copies of a pipeline that downloads,
-                # extracts and writes to one table race each other into the same
-                # rows (#537).
-                #
-                # Said out loud rather than skipped quietly: an entry that
-                # overruns every time is a misconfiguration — the schedule claims
-                # fifteen minutes and the truth is twenty-five.
+            st = state.get(entry.name) or {}
+            wanted = st.get("run_requested") or (
+                not st.get("paused") and is_due(entry, last_run(state, entry.name), now))
+            if not wanted:
+                continue
+            if st.get("status") == "running":
                 _say(f"[yellow]{entry.name} still running, skipping this tick[/yellow]")
                 continue
-            if not is_due(entry, last_run(state, entry.name), now):
-                continue
             _say(f"running {entry.name}")
-            in_flight.add(entry.name)
-            try:
-                # A turn takes as long as it takes — four minutes is normal for
-                # real work. In a thread, so the heartbeat keeps going and the
-                # agent stays reachable while it runs.
-                if entry.exec:
-                    status, reason = await asyncio.to_thread(_run_command, entry)
-                    session_id = None
-                else:
-                    status, session_id = await asyncio.to_thread(_run_entry, entry)
-                    reason = None
-            except Exception as exc:
-                # One entry failing is not the scheduler failing. Record it and
-                # keep the others on time.
-                _say(f"[red]{entry.name} failed: {exc}[/red]")
-                record_run(co_dir, entry.name, when=now, status="failed",
-                           session_id=None, reason=str(exc))
-                continue
-            finally:
-                # Released whatever happened. A flag that outlived a crash would
-                # mean the entry never runs again, which is worse than the
-                # overlap it prevents.
-                in_flight.discard(entry.name)
-            record_run(co_dir, entry.name, when=now, status=status,
-                       session_id=session_id, reason=reason)
+            session_id = None if entry.exec else str(uuid.uuid4())
+            record_run(co_dir, entry.name, when=now, status="running", session_id=session_id)
+            claimed.append((entry, session_id))
+        return claimed
+
+    async def _run(entry: Entry, now: datetime, session_id: Optional[str]) -> None:
+        # A turn takes as long as it takes — four minutes is normal for real
+        # work. In a thread, so the heartbeat keeps going and the agent stays
+        # reachable while it runs.
+        try:
+            if entry.exec:
+                status, reason = await asyncio.to_thread(_run_command, entry)
+            else:
+                status, reason = await asyncio.to_thread(_run_entry, entry, session_id)
+        except Exception as exc:
+            # One entry failing is not the scheduler failing.
+            _say(f"[red]{entry.name} failed: {exc}[/red]")
+            status, reason = "failed", str(exc)
+        record_run(co_dir, entry.name, when=now, status=status,
+                   session_id=session_id, reason=reason)
 
     def _compact_sessions() -> None:
         """Housekeeping on the tick, because startup may never come again.
@@ -594,14 +591,17 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
             return
         storage.compact()
 
+    def _tick_done(tick) -> None:
+        ticks.discard(tick)
+        if not tick.cancelled() and tick.exception() is not None:
+            _say(f"[red]tick failed: {tick.exception()}[/red]")
+
     async def loop() -> None:
+        # Each tick is its own task, so a long run never holds the clock.
         while True:
-            try:
-                await tick_once()
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                _say(f"[red]tick failed: {exc}[/red]")
+            tick = asyncio.create_task(tick_once())
+            ticks.add(tick)
+            tick.add_done_callback(_tick_done)
             await asyncio.sleep(TICK_SECONDS)
 
     async def on_startup() -> None:
@@ -611,15 +611,28 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
         # not due yet — and that is what a working schedule looks like too.
         for problem in problems:
             _say(f"[yellow]{problem}[/yellow]")
-        if not entries and extra_tick is None:
-            return          # nothing scheduled: no task, no noise
-        _say(f"{len(entries)} scheduled")
+        # A `running` mark this process did not write belongs to a process that
+        # is gone. Left alone the entry would be skipped as busy forever.
+        state = load_state(co_dir)
+        for name, st in state.items():
+            if isinstance(st, dict) and st.get("status") == "running":
+                record_run(co_dir, name, when=last_run(state, name) or datetime.now(timezone.utc),
+                           status="failed", session_id=st.get("session_id"),
+                           reason="the agent stopped during this run")
+        if entries:
+            _say(f"{len(entries)} scheduled")
+        # Started even with nothing scheduled: entries are re-read every tick,
+        # and an agent asked to "do this every morning" writes schedule.yaml
+        # while it runs. Skipping the clock here meant that entry never ran
+        # until a restart, and nothing said so (#1682).
         task["handle"] = asyncio.create_task(loop())
 
     async def on_shutdown() -> None:
         handle = task.get("handle")
         if not handle:
             return
+        for tick in list(ticks):
+            tick.cancel()
         handle.cancel()
         try:
             await handle

@@ -166,6 +166,12 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
         from ..session import Viewer
         viewer = Viewer(send_msg=send_msg, conn=conn)
     watching = None
+    # The io this connection last took from `viewer.io`. Adopt a turn another
+    # device started once, when it is handed over, not on every frame: the
+    # viewer also keeps the io of a turn that has since ended, and adopting it
+    # again replaced a Work Room turn this connection started afterwards, so
+    # Stop, steer and approvals went to a turn that was already over.
+    adopted_io = None
 
     def track_viewer():
         nonlocal watching
@@ -190,8 +196,10 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
             track_viewer()
             # A turn another device started hands this viewer its io, so an
             # approval, answer or stop sent from here reaches that turn.
-            if viewer is not None and viewer.io is not None and viewer.io is not active_io:
-                active_io = viewer.io
+            if viewer is not None and viewer.io is not adopted_io:
+                adopted_io = viewer.io
+                if adopted_io is not None:
+                    active_io = adopted_io
 
             msg_type = data.get("type")
 
@@ -798,19 +806,38 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 # revision when it arrives immediately afterwards.
                 await send_msg(committed["event"])
 
-            elif msg_type == "APPROVAL_RESPONSE" and active_io:
-                resolver = getattr(active_io, "resolve_legacy_permission", None)
-                if resolver is None:
+            elif msg_type in ("APPROVAL_RESPONSE", "ASK_USER_RESPONSE") and active_io:
+                answer_request = getattr(active_io, "answer_request", None)
+                if answer_request is None:
                     active_io.send_to_agent(data)
-                elif not resolver(data):
+                    continue
+                sid = conn.get("session_id")
+                # Devices signed in as this caller that could also have
+                # answered. Only they matter: a stranger never gets the io.
+                answerers = [
+                    v for v in (viewers.of(sid) if viewers is not None and sid else [])
+                    if v.conn.get("agent_address") == conn.get("agent_address")
+                ]
+                refused = answer_request(data, sole_viewer=len(answerers) <= 1)
+                if refused:
+                    console.print(f"[yellow]⚠ dropped {msg_type}:[/yellow] {refused}")
                     await send_msg({
                         "type": "ERROR",
-                        "message": "unknown or stale approval response",
+                        "code": "STALE_ANSWER",
+                        "reason": refused,
+                        "request_id": data.get("request_id"),
+                        "session_id": sid,
+                        "message": (
+                            "this answer names no request; with the session open on "
+                            "more than one device it must carry the request's id as request_id"
+                            if refused == "request_id_required"
+                            else "that request is no longer waiting for an answer"
+                        ),
                     })
 
             elif active_io:
-                # Anything else (ASK_USER_RESPONSE, APPROVAL_RESPONSE, mode_change, ...)
-                # → forward to the running agent's input mailbox.
+                # Anything else (mode_change, ...) → forward to the running
+                # agent's input mailbox. Answers are matched above instead.
                 active_io.send_to_agent(data)
 
             else:

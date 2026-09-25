@@ -113,8 +113,6 @@ async def forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holde
     """
     reader = io.read_msgs_from_agent() if start is None else io.read_msgs_from_agent(start=start)
     async for event in reader:
-        if event.get("type") == "approval_needed":
-            io.register_permission_request(event, session_id)
         if session_id:
             event["session_id"] = session_id
         await send_msg(event)
@@ -339,8 +337,6 @@ async def start_agent(data, send_msg, conn, route_handlers, storage, registry):
 async def forward_provider_workroom_msgs_to_client(send_msg, io, session_id):
     """Forward a direct Codex Work Room turn without creating an outer COAI reply."""
     async for event in io.read_msgs_from_agent():
-        if event.get("type") == "approval_needed":
-            io.register_permission_request(event, session_id)
         if session_id:
             event["session_id"] = session_id
         await send_msg(event)

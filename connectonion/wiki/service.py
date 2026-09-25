@@ -307,6 +307,7 @@ def status(root: Path) -> dict:
 
 def consent_summary(root: Path) -> dict:
     """Everything `start` must show before a single source body is read."""
+    from .runner import CONFINEMENT
     config = read_config(root)
     sources = {}
     for name, source in subscriptions(root).items():
@@ -331,8 +332,12 @@ def consent_summary(root: Path) -> dict:
     return {"root": str(root), "sources": sources, "runner": config["runner"], "model": config["model"],
             "model_receives": "the new session messages plus the notebook pages it reads, "
                               "through your own Codex login (no API key, no OpenOnion server)",
+            "model_permissions": CONFINEMENT[config["runner"]],
             "schedule": config["schedule"], "limits": config["limits"],
-            "background": "a launchd job under your user at the times above, and one bounded batch at login"}
+            # RunAtLoad is off (schedule.py): a login runs nothing; a slot missed
+            # while asleep runs once at the next five-minute tick.
+            "background": "a launchd job under your user at the times above (a time missed while "
+                          "asleep runs once on wake); co wiki stop removes it"}
 
 
 def start(root: Path, *, confirm, scheduler, runner=None) -> dict:

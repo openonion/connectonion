@@ -562,3 +562,11 @@ def test_an_error_that_names_a_command_makes_it_the_next_line(tmp_path):
 def test_list_without_a_category_is_refused_before_anything_runs(tmp_path):
     result = invoke(tmp_path, 'investigate', '--list')
     assert result.exit_code == 1 and 'investigate people --list' in result.output
+
+
+def test_start_help_names_the_confinement_and_the_undo():
+    import re
+    result = runner.invoke(app, ["wiki", "start", "--help"])
+    text = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    assert "--sandbox workspace-write" in text and "--permission-mode acceptEdits" in text
+    assert "co wiki stop" in text

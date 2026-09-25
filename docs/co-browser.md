@@ -391,8 +391,14 @@ downgrading so an older client never talks to a newer daemon.
   ```
 
 - **State locations** — profile (cookies/logins): `~/.co/browser_profile/` ·
-  daemon log: `~/.co/browser.log` · socket: `$TMPDIR/co/browser.sock` (plus
-  `.pid`/`.lock` beside it).
+  daemon log: `~/.co/browser.log` · socket: `/tmp/co-<user>/browser.sock` on
+  Linux, `<per-user temp dir>/co-<user>/browser.sock` on macOS (the dir
+  `getconf DARWIN_USER_TEMP_DIR` prints), plus `.pid`/`.lock` beside it;
+  `$CO_BROWSER_SOCK` overrides. No session variable (`$XDG_RUNTIME_DIR`,
+  `$TMPDIR`) moves it, so a desktop login, ssh, su and cron all reach the same
+  daemon. A daemon an older version started at `$XDG_RUNTIME_DIR/co/`,
+  `/run/user/<uid>/co/` or `$TMPDIR/co-<user>/` is still found and can be
+  closed; the next one starts at the address above.
 
 ## Remote control
 

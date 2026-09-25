@@ -33,7 +33,20 @@ def test_wiki_and_claude_are_marked_experimental_in_the_command_list():
 
 def test_telegram_separates_the_shipped_send_from_the_new_inbox_verbs():
     row = listing()["telegram"]
-    assert "send" in row and "Experimental: listen" in re.sub(r"\x1b\[[0-9;]*m", "", row)
+    assert "send, plus experimental listen" in re.sub(r"\x1b\[[0-9;]*m", "", row)
+
+
+def test_co_commands_and_each_group_help_say_it_too():
+    # `co commands` reads each group's own help, not the --help listing's
+    # short_help, so a label only in short_help vanished from the register
+    # and from `co discord --help` (found testing 1.8.8b7).
+    register = CliRunner().invoke(cli_main.app, ["commands"]).output
+    lines = {line.split("  ")[0].strip(): line for line in register.splitlines() if line.startswith("co ")}
+    for name in ("claude", "discord", "tiktok"):
+        assert "Experimental" in lines[f"co {name}"], lines.get(f"co {name}")
+        page = CliRunner().invoke(cli_main.app, [name, "--help"], env={"COLUMNS": "200"}).output
+        assert "Experimental" in re.sub(r"\x1b\[[0-9;]*m", "", page)
+    assert "plus experimental" in lines["co telegram"]
 
 
 def test_stable_commands_are_not():

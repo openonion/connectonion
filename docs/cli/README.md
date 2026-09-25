@@ -71,8 +71,15 @@ that conversation. A failed run prints a JSON error and exits nonzero.
 
 The connector installs a temporary `SessionStart` Hook and checks its session
 ID and transcript path before accepting a Work Room input. Host/COAI Claude
-delegation uses this same path. Claude's native user and project settings,
-skills, and MCP configuration remain available during a resume. The interactive
+delegation uses this same path. Every headless run (`co claude run`, `co ai`
+delegation, and browser turns in a shared terminal) loads only your user
+settings plus the connector's Hooks (`--setting-sources user
+--strict-mcp-config`): a repository's `.claude/settings.json`,
+`.claude/settings.local.json`, `CLAUDE.md`, and MCP servers do not load, so a
+cloned repo cannot add Hooks or allow Bash in a turn nobody is watching. The
+interactive `co claude` terminal keeps Claude's normal project settings,
+because you are at the keyboard and Claude's own folder-trust prompt applies
+there. The interactive
 wrapper currently observes locally; Host registration, OIP mirroring to O Chat,
 terminal-to-web handover, approval routing, and release to terminal in
 [issue #1134](https://github.com/openonion/connectonion/issues/1134) remain in
