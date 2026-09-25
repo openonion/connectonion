@@ -2,6 +2,9 @@
 
 Follow another agent's address, mirror their published skills to your machine, and make them available to every coding agent on your system (Claude Code, Codex, OpenClaw, Cursor, Kiro).
 
+For agent-readable subscription guidance, `co copy oo-subscribe` copies the
+bundled skill into the current project's `.co/skills/` directory.
+
 ## Quick Start
 
 ```bash
@@ -18,7 +21,9 @@ co sub list
 co sub remove changxing
 ```
 
-After any `co sub` invocation that pulls new content, **restart your coding agent** to pick up the new skills.
+Restart a coding agent only when the sync output reports that it installed
+skills into that agent. A recorded subscription with zero mirrored or installed
+skills needs no restart.
 
 ## Why
 
@@ -67,7 +72,9 @@ Only tools that exist on your machine (have a `~/.<tool>/` directory) are touche
 
 ## Commands
 
-`co sub` is the **sync verb**. With a target it syncs one publisher; with no target it syncs every entry in `~/.co/subscriptions.txt`. `list` and `remove` are named subcommands for the secondary operations.
+`co sub sync <target>` follows or refreshes one publisher. Bare `co sub`
+refreshes every entry in `~/.co/subscriptions.txt`; it does not accept a target.
+`list` and `remove` are separate subcommands.
 
 ### `co sub sync <0xaddress>` — sync one publisher
 
@@ -92,13 +99,19 @@ Fetching profile 0xcd92510bb6cc...
 
 Re-running is idempotent — the file is deduped, the bundle is overwritten, the fanout is redone. This is also how you refresh: re-run the same command after the publisher pushes a new version.
 
+Read the mirrored and installed counts in the result. `Subscribed to` means
+the relationship was recorded, even when the publisher withheld every body or
+no coding agent was detected. Only a positive installed count calls for a
+restart. `co sub list` reports profile entries, which can include withheld
+bodies; its Skills count is not an installed-skill count.
+
 Once a publisher is in `~/.co/subscriptions.txt`, you can use the alias as a shorthand for refresh: `co sub sync changxing` does the same thing.
 
 **Options:**
 
 | Option | Description |
 |--------|-------------|
-| `--relay <url>` | Override the relay (default `https://oo.openonion.ai`) |
+| `--relay <url>` | Override the configured backend for this sync |
 
 ### `co sub` — sync every subscription
 
@@ -148,14 +161,15 @@ Idempotent — removing something you haven't subscribed to prints `Not subscrib
 
 ## The subscriptions file
 
-`~/.co/subscriptions.txt` is plain text. Edit it by hand if you like; `co sub` is just sugar.
+`~/.co/subscriptions.txt` is plain text. Let `co sub sync` and `co sub remove`
+maintain it so the saved address, mirrored bundle, installed copies, and
+rollback watermark stay consistent.
 
 ```
 # ~/.co/subscriptions.txt — agents you follow
 # Format: <address> <alias>
 # Managed by `co sub`. Re-run `co sub sync <address>` to refresh one.
 0xcd92510bb6cc090374ecc345ef8c19b9d3797624fd1fbf7e078a9372fc31bdc1 changxing
-0xabc...                                                              alice
 ```
 
 The mirrored bodies live separately at `~/.co/subs/<alias>/` — version and skill count are read from `<alias>/agent.json`, not from this list.

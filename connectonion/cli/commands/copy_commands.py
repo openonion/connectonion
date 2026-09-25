@@ -108,6 +108,7 @@ SKILLS = {
     "commit": "commit",
     "install-connectonion": "install-connectonion",
     "oo": "oo",
+    "oo-subscribe": "oo-subscribe",
     "review-pr": "review-pr",
     "ship-feature": "ship-feature",
 }
