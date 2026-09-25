@@ -388,7 +388,7 @@ async def test_close_with_nothing_open_says_so():
 
     assert ok is True
     assert "Session saved" not in payload
-    assert "No browser was open" in payload
+    assert "No browser is open" in payload
     assert await server._should_stop(ok, payload) is True
 
 
@@ -426,7 +426,7 @@ async def test_errors_carry_no_exception_class_and_keep_the_tab():
 
     ok, payload = await server.dispatch_async(envelope("cookies", tab="X"))
 
-    assert ok is False
+    assert ok == 3  # no browser open: the same code as every other verb
     assert not payload.startswith("ValueError")
     assert "Next: co browser -t X go_to <url>" in payload
 

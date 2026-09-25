@@ -41,7 +41,8 @@ USAGE = (
     "each other through this error and through `tab ls`. Set CO_WHO=<name> so the board\n"
     "shows a real name for you (Claude Code sessions are identified automatically).\n"
     "Add --headless before the function to run without a visible window.\n"
-    "stdout = data, stderr = errors; exit 0 ok · 1 failure · 2 usage · 3 unknown tab or no browser open · 4 tab busy."
+    "stdout = data, stderr = errors; exit 0 ok · 1 failure · 2 usage · 3 unknown tab or no browser open · 4 tab busy\n"
+    "· 5 `do` has no account to bill (co auth) · 6 daemon pinned to another engine. Every command ends within 120s."
 )
 
 TIPS = [
