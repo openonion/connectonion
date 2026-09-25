@@ -185,7 +185,7 @@ def _show_help():
     console.print()
 
 
-@app.command()
+@app.command(epilog="Example:  co init  |  co init ./ --template co-ai")
 def init(
     path: Optional[Path] = typer.Argument(None, exists=True, file_okay=False, resolve_path=True,
                                          help="Existing project directory; omit for global ~/.co/keys.env"),
@@ -195,7 +195,7 @@ def init(
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
     force: bool = typer.Option(False, "--force", help="Overwrite existing files"),
 ):
-    """Initialize global ~/.co/keys.env, or use co init ./ for a project."""
+    """Initialize global ~/.co/keys.env, or use co init ./ for a project. Creates your keypair and writes keys.env."""
     from .commands.init import handle_global_init, handle_init
     if path is None:
         from ..environment import explicit_env_file
@@ -210,7 +210,7 @@ def init(
     handle_init(ai=None, key=key, template=template, description=description, yes=yes, force=force, path=path)
 
 
-@app.command()
+@app.command(epilog="Example:  co create my-agent")
 def create(
     name: Optional[str] = typer.Argument(None, help="Project name"),
     template: Optional[str] = typer.Option(None, "-t", "--template", help="Template: co-ai (default), custom"),
@@ -218,7 +218,7 @@ def create(
     key: Optional[str] = typer.Option(None, "--key", help="API key"),
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
 ):
-    """Create new project."""
+    """Create new project. Creates the <name>/ directory; the first run also sets up ~/.co/."""
     from .commands.create import handle_create
     # An explicit False means the project was not created — exit non-zero so a
     # script can tell. Other return values keep the previous behaviour.
@@ -227,7 +227,7 @@ def create(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(epilog="Example:  co deploy  |  co deploy --to prod")
 def deploy(
     template: Optional[str] = typer.Option(None, "-t", "--template", help="Create and deploy a template project"),
     skills: Optional[List[str]] = typer.Option(None, "--skills", help="Skill directory (contains SKILL.md) or directory of skills to bundle into .co/skills/ (repeatable: --skills a --skills b)"),
@@ -235,7 +235,7 @@ def deploy(
     to: Optional[str] = typer.Option(None, "--to", help="Deploy onto a server you own (see: co server ls)"),
     own_identity: bool = typer.Option(False, "--own-identity", help="With --to, let the agent mint its own identity instead of deriving it from your recovery phrase — for an agent you are handing to someone else"),
 ):
-    """Deploy to ConnectOnion Cloud, or with --to onto a server you own."""
+    """Deploy to ConnectOnion Cloud, or with --to onto a server you own. Deploys the project in this directory."""
     if to:
         # A different destination, not a variant of the same one: this path holds
         # no container and never touches the server's .co/ state.
@@ -260,12 +260,12 @@ def deploy(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(epilog="Example:  co auth  |  co auth status  |  co auth google")
 def auth(service: Optional[str] = typer.Argument(None, help="login, status, logout, or a service: google, microsoft, feishu, lark"),
          scopes: Optional[str] = typer.Option(None, "--scopes", help="Google: comma-separated limited scopes. Default: Gmail, Calendar, Drive and YouTube."),
          app_id: Optional[str] = typer.Option(None, "--app-id", metavar="cli_…",
                                               help="Feishu/Lark: authorize an application you already have, keeping its groups and permissions")):
-    """Sign in to OpenOnion (login, status, logout) or connect a service."""
+    """Sign in to OpenOnion (login, status, logout) or connect a service. Writes tokens to the env file; status is Read-only."""
     if scopes is not None and service != "google":
         print("--scopes is only supported for Google. Next: co auth google --help")
         raise typer.Exit(2)
@@ -301,14 +301,14 @@ def auth(service: Optional[str] = typer.Argument(None, help="login, status, logo
         raise typer.Exit(2)
 
 
-@app.command()
+@app.command(epilog="Example:  co keys  |  co keys --agent my-agent  |  co keys --ssh")
 def keys(
     reveal: bool = typer.Option(False, "--reveal", "-r", help="Show full key values"),
     agent: Optional[str] = typer.Option(None, "--agent", help="Print the address an agent of this name will have, before it is deployed"),
     ssh: bool = typer.Option(False, "--ssh", help="Print the SSH public key derived from your recovery phrase"),
     write: bool = typer.Option(False, "--write", help="With --ssh, also write the private half to ~/.ssh/"),
 ):
-    """Show agent keys and credentials."""
+    """Show agent keys and credentials. Read-only; only --ssh --write writes key files under ~/.co/ssh/."""
     if agent:
         from .commands.server_commands import derived_agent_identity
         identity = derived_agent_identity(agent)
@@ -339,20 +339,20 @@ def status(
     handle_status(reveal=reveal)
 
 
-@app.command()
+@app.command(epilog="Example:  co reset")
 def reset():
-    """Reset account (destructive)."""
+    """Reset account (destructive). Deletes ~/.co/keys/ and ~/.co/keys.env after you confirm, then creates a new account."""
     from .commands.reset_commands import handle_reset
     handle_reset()
 
 
-@app.command()
+@app.command(epilog="Example:  co doctor  |  co doctor --fix")
 def doctor(
     fix: bool = typer.Option(False, "--fix", help="Offer safe browser/runtime repairs"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Approve every offered repair"),
     json_output: bool = typer.Option(False, "--json", help="Emit stable machine-readable output"),
 ):
-    """Diagnose installation."""
+    """Diagnose installation. Read-only; --fix Changes the browser runtime only for repairs you approve."""
     if yes and not fix:
         console.print("[red]--yes requires --fix.[/red]")
         raise typer.Exit(2)
@@ -363,9 +363,9 @@ def doctor(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(epilog="Example:  co commands")
 def commands():
-    """List every command, including subcommands, one per line with its summary."""
+    """List every command, including subcommands, one per line with its summary. Read-only."""
     # `co --help` shows one level; `co gmail --help` the next; `co gmail draft
     # --help` the one below that. An agent looking for "the command that sends
     # a draft" has to guess which group to open, and a wrong guess is a round
@@ -383,7 +383,9 @@ def commands():
 
 
 claude_app = _typer_app(help="Experimental — run Claude Code through the ConnectOnion session connector. "
-                              "Preview only; its surface may change before 1.9.0.")
+                              "Preview only; its surface may change before 1.9.0. "
+                              "Starts Claude's terminal and, unless --no-share, an OIP Work Room.",
+                         epilog='Example:  co claude  |  co claude run "Summarise README.md"')
 app.add_typer(claude_app, name="claude",
               short_help="Experimental: Run Claude Code through the ConnectOnion session connector.")
 
@@ -422,7 +424,7 @@ def claude_interactive(
         raise typer.Exit(exit_code)
 
 
-@claude_app.command("run")
+@claude_app.command("run", epilog='Example:  co claude run "Summarise README.md" --timeout 300')
 def claude_run(
     prompt: str = typer.Argument(..., help="Task for Claude Code"),
     cwd: Path = typer.Option(Path("."), "--cwd", exists=True, file_okay=False, resolve_path=True, help="Workspace directory"),
@@ -430,7 +432,7 @@ def claude_run(
     model: str = typer.Option("", "--model", help="Claude model override"),
     timeout: int = typer.Option(600, "--timeout", min=1, help="Maximum run time in seconds"),
 ):
-    """Experimental: start or resume one Claude Code turn and print its session envelope."""
+    """Experimental: start or resume one Claude Code turn and print its session envelope. Runs Claude Code in --cwd."""
     from ..useful_tools.claude_code import run_co_claude
 
     result = run_co_claude(
@@ -455,7 +457,8 @@ def _closes_only(args: List[str]) -> bool:
     return bool(verb) and (verb[0] == "close" or verb[:2] == ["tab", "close"])
 
 
-@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+             epilog='Example:  co browser go_to example.com  |  co browser do "find the pricing page"')
 def browser(
     headless: Optional[bool] = typer.Option(
         None, "--headless/--no-headless",
@@ -469,7 +472,9 @@ def browser(
     ),
     args: List[str] = typer.Argument(None, help="Browser function + args, or: do \"<instruction>\""),
 ):
-    """Drive one persistent browser. Run a function directly (co browser go_to x.com),
+    """Drive one persistent browser. Starts it on first use; a WTF Browser session is billed.
+
+    Run a function directly (co browser go_to x.com),
     use `do` for the AI agent (co browser do "..."), or `co browser help` to list functions.
 
     Also: -t TAB to target your own tab · tab open|ls|close · status · network ·
@@ -512,13 +517,14 @@ def browser(
 @app.command(
     "remote-browser",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    epilog="Example:  co remote-browser config 0xabc... --proxy shared  |  co remote-browser start",
 )
 def remote_browser(
     args: List[str] = typer.Argument(
         None, help="config <address> [--proxy shared] | [<address>] <start|status|sessions|stop|diagnose>"
     ),
 ):
-    """Manage an owner-bound browser session on a remote agent over OIP."""
+    """Manage an owner-bound browser session on a remote agent over OIP. Starts and stops it there; config writes ~/.co/remote-browser.json."""
     from .commands.remote_browser_commands import handle_remote_browser
 
     raise typer.Exit(handle_remote_browser(args or []))
@@ -536,17 +542,18 @@ def proxy(
         None, help="share to <address> | status | stop <address> | diagnose <address>"
     ),
 ):
-    """Share this computer's internet connection with an authorized agent."""
+    """Share this computer's internet connection with an authorized agent. Starts or stops sharing it."""
     from .commands.proxy_commands import handle_proxy
 
     raise typer.Exit(handle_proxy(args or []))
 
 
-@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+             epilog="Example:  co call 0x3d40... co status")
 def call(
     args: List[str] = typer.Argument(None, help="[--out F] [--timeout S] [--relay U] <address> <command...>"),
 ):
-    """Run one command on a remote agent and print the result (no LLM).
+    """Run one command on a remote agent and print the result (no LLM). Runs it there as bash.
 
     The remote twin of `co browser` — everything after the address runs on the
     remote agent as a bash command, gated by its .co/host.yaml whitelist:
@@ -565,7 +572,7 @@ def call(
     raise typer.Exit(handle_call(args or []))
 
 
-@app.command()
+@app.command(epilog='Example:  co ai "explain what agent.py does"  |  co ai --port 8000')
 def ai(
     prompt: Optional[str] = typer.Argument(None, help="One-shot prompt (runs and exits)"),
     port: int = typer.Option(8000, "--port", "-p", help="Port for web server"),
@@ -630,7 +637,7 @@ def ai(
     ),
     timeout: int = typer.Option(600, "--timeout", min=1, help="Delegated harness task timeout, in seconds"),
 ):
-    """Start AI coding agent or run one-shot prompt."""
+    """Start AI coding agent or run one-shot prompt. Runs an agent whose tools can edit files and run commands here, with approval."""
     from .commands.ai_commands import handle_ai
     if listen and no_listen:
         raise typer.BadParameter("--listen and --no-listen contradict each other")
@@ -656,14 +663,14 @@ def ai(
     )
 
 
-@app.command()
+@app.command(epilog="Example:  co copy --list  |  co copy gmail")
 def copy(
     names: List[str] = typer.Argument(None, help="Tool or plugin names to copy"),
     list_all: bool = typer.Option(False, "--list", "-l", help="List available items"),
     path: Optional[str] = typer.Option(None, "--path", "-p", help="Custom destination path"),
     force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing files"),
 ):
-    """Copy built-in tools/plugins to customize."""
+    """Copy built-in tools/plugins to customize. Writes them into ./tools/, ./plugins/ or ./prompts/."""
     from .commands.copy_commands import handle_copy
     handle_copy(names=names or [], list_all=list_all, path=path, force=force)
 
@@ -705,7 +712,8 @@ Next after `co benchmark check <name>` passes:
   3. co eval report <name> --latest, edit only the skill, rerun the same benchmark
 """
 
-benchmark_app = _typer_app(help=BENCHMARK_HELP, invoke_without_command=True)
+benchmark_app = _typer_app(help=BENCHMARK_HELP, invoke_without_command=True,
+                           epilog="Example:  co benchmark check invoice-batch")
 
 
 @benchmark_app.callback()
@@ -715,19 +723,19 @@ def _benchmark(ctx: typer.Context):
         console.print(ctx.get_help())
 
 
-@benchmark_app.command("list")
+@benchmark_app.command("list", epilog="Example:  co benchmark list --json")
 def benchmark_list(json_out: bool = typer.Option(False, "--json", help="Structured list for coding agents")):
     """Show authored suites, their paths and whether they are valid. Read-only."""
     from .commands.benchmark_commands import handle_benchmark_list
     raise typer.Exit(code=handle_benchmark_list(as_json=json_out))
 
 
-@benchmark_app.command("check")
+@benchmark_app.command("check", epilog="Example:  co benchmark check invoice-batch")
 def benchmark_check(
     name: str = typer.Argument(..., help="File stem of .co/benchmarks/<name>.yaml, not a path"),
     json_out: bool = typer.Option(False, "--json", help="Structured errors: case_id, field, reason, fix"),
 ):
-    """Validate one suite: at least 5 distinct cases, both kinds, must/must_not. Never calls an Agent.
+    """Validate one suite: at least 5 distinct cases, both kinds, must/must_not. Never calls an Agent. Read-only.
 
     Exit 0 valid; 2 missing or invalid suite, with every problem and its fix.
     """
@@ -766,7 +774,8 @@ Older evals: `co eval [NAME] [--agent FILE]` still runs .co/evals/*.yaml
 exactly as before (docs/debug/eval.md); those files are not benchmarks.
 """
 
-eval_app = typer.Typer(cls=_EvalGroup, help=EVAL_HELP, invoke_without_command=True)
+eval_app = typer.Typer(cls=_EvalGroup, help=EVAL_HELP, invoke_without_command=True,
+                       epilog="Example:  co eval run invoice-batch --agent agent.py --runs 1")
 
 
 @eval_app.callback()
@@ -782,7 +791,7 @@ def _eval(
     ctx.obj = {"agent": agent}
 
 
-@eval_app.command("run")
+@eval_app.command("run", epilog="Example:  co eval run invoice-batch --agent agent.py --skill invoice-check --runs 1")
 def eval_run(
     name: str = typer.Argument(..., help="Benchmark name: .co/benchmarks/<name>.yaml; must pass co benchmark check"),
     agent: str = typer.Option(..., "--agent", "-a", help="The real Agent entry point, e.g. agent.py"),
@@ -800,7 +809,7 @@ def eval_run(
                                    "and unproven effects stay UNVERIFIED"),
     judge_model: Optional[str] = typer.Option(None, "--judge-model", help="Model that judges outcomes"),
 ):
-    """Run every case on the real Agent and score each expectation. Saves an immutable report.
+    """Run every case on the real Agent and score each expectation. Runs the Agent; Writes an immutable report.
 
     Exit 0 all expectations pass; 1 any FAIL, UNVERIFIED, STOPPED or skill not invoked;
     2 bad benchmark, agent path, skill or option; 3 the Agent or runner broke (never a pass).
@@ -811,7 +820,7 @@ def eval_run(
                                           max_iterations=max_iterations))
 
 
-@eval_app.command("report")
+@eval_app.command("report", epilog="Example:  co eval report invoice-batch --latest")
 def eval_report(
     name: str = typer.Argument(..., help="Benchmark name"),
     latest: bool = typer.Option(False, "--latest", help="The most recent run (the default)"),
@@ -829,13 +838,13 @@ def eval_report(
     raise typer.Exit(code=handle_eval_report(name, run_id=run_id, as_json=json_out))
 
 
-@eval_app.command("legacy")
+@eval_app.command("legacy", epilog="Example:  co eval legacy my-eval --agent agent.py")
 def eval_legacy(
     ctx: typer.Context,
     name: Optional[str] = typer.Argument(None, help="Specific eval name"),
     agent: Optional[str] = typer.Option(None, "--agent", "-a", help="Agent file (overrides YAML)"),
 ):
-    """Run the older .co/evals/*.yaml, unchanged. `co eval <name>` still reaches it.
+    """Run the older .co/evals/*.yaml, unchanged. Runs the agent on each. `co eval <name>` still reaches it.
 
     Visible rather than hidden: a command only reachable by guessing is one an
     agent cannot find (tests/unit/test_cli_discovery.py).
@@ -862,30 +871,31 @@ def _legacy_eval(name: Optional[str], agent: Optional[str]) -> int:
 app.add_typer(eval_app, name="eval")
 
 
-@app.command()
+@app.command(epilog='Example:  co setup --bio "Builds invoice agents"')
 def setup(
     bio: Optional[str] = typer.Option(None, "--bio", "-b", help="One-line bio for ~/.co/agent.json"),
     name: Optional[str] = typer.Option(None, "--name", "-n", help="Alias/name for ~/.co/agent.json (default: $USER)"),
     force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing ~/.co/agent.json (backs up to .bak)"),
     skip_skills: bool = typer.Option(False, "--no-skills", help="Skip ~/.co/skills/ library refresh"),
 ):
-    """Set up your global ~/.co/ — identity, agent.json, and skill library."""
+    """Set up your global ~/.co/ — identity, agent.json, and skill library. Writes ~/.co/agent.json and ~/.co/skills/."""
     from .commands.setup_commands import handle_setup
     handle_setup(name=name, bio=bio, force=force, skip_skills=skip_skills)
 
 
-@app.command()
+@app.command(epilog="Example:  co announce --dry-run  |  co announce")
 def announce(
     relay: Optional[str] = typer.Option(None, "--relay", "-r", help="Relay URL (default: configured backend)"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the signed message, don't send"),
 ):
-    """Publish ~/.co/agent.json + SKILL.md bodies (publish:true) to the relay."""
+    """Publish ~/.co/agent.json + SKILL.md bodies (publish:true) to the relay. Publishes them; --dry-run sends nothing."""
     from .commands.announce_commands import handle_announce
     handle_announce(relay=relay, dry_run=dry_run)
 
 
 # Server command group — the machines `co deploy --to` can target
-env_app = _typer_app(help="Show, set and remove settings in the selected env file (global ~/.co/keys.env unless --env-file was given). Bare 'co env' shows them.")
+env_app = _typer_app(help="Show, set and remove settings in the selected env file (global ~/.co/keys.env unless --env-file was given). Bare 'co env' shows them.",
+                     epilog="Example:  co env  |  co env set OPENAI_API_KEY sk-...")
 app.add_typer(env_app, name="env")
 
 
@@ -899,24 +909,24 @@ def env_callback(ctx: typer.Context, json_output: bool = typer.Option(False, "--
         raise typer.BadParameter("Put --json on bare co env or after env show.")
 
 
-@env_app.command("show")
+@env_app.command("show", epilog="Example:  co env show  |  co env show --json")
 def env_show(reveal: bool = typer.Option(False, "--reveal", "-r", help="Show full values"),
              json_output: bool = typer.Option(False, "--json", help="Redacted configuration provenance as JSON")):
-    """List setting sources; all values stay hidden unless --reveal is explicit."""
+    """List setting sources; all values stay hidden unless --reveal is explicit. Read-only."""
     from .commands.env_commands import handle_env_show
     handle_env_show(reveal=reveal, json_output=json_output)
 
 
-@env_app.command("path")
+@env_app.command("path", epilog="Example:  co env path")
 def env_path():
-    """Print the selected env file's path and nothing else, for $(co env path)."""
+    """Print the selected env file's path and nothing else, for $(co env path). Read-only."""
     from .commands.env_commands import handle_env_path
     handle_env_path()
 
 
-@env_app.command("get")
+@env_app.command("get", epilog="Example:  co env get OPENAI_API_KEY")
 def env_get(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_KEY")):
-    """Print one value as a command would see it: the process wins, then the file."""
+    """Print one value as a command would see it: the process wins, then the file. Read-only."""
     from .commands.env_commands import handle_env_get
     handle_env_get(key)
 
@@ -940,21 +950,22 @@ def env_set(key: str = typer.Argument(..., help="Setting name, e.g. OPENAI_API_K
     handle_env_set(key, value, from_console=from_console, secret=secret)
 
 
-@env_app.command("rotate")
+@env_app.command("rotate", epilog="Example:  co env rotate LARK_APP_SECRET")
 def env_rotate(key: str = typer.Argument(..., help="An encrypted setting, e.g. LARK_APP_SECRET")):
-    """Re-encrypt one stored secret at the next derivation index."""
+    """Re-encrypt one stored secret at the next derivation index. Writes the new value to the env file."""
     from .commands.env_commands import handle_env_rotate
     handle_env_rotate(key)
 
 
-@env_app.command("unset")
+@env_app.command("unset", epilog="Example:  co env unset OPENAI_API_KEY")
 def env_unset(key: str = typer.Argument(..., help="Setting name; a GOOGLE_*/MICROSOFT_* account field removes the whole record")):
-    """Remove one setting from the selected file."""
+    """Remove one setting from the selected file. Removes it from that file only; your shell is untouched."""
     from .commands.env_commands import handle_env_unset
     handle_env_unset(key)
 
 
-server_app = _typer_app(help="Register, list and preflight the servers you can deploy to")
+server_app = _typer_app(help="Register, list and preflight the servers you can deploy to",
+                        epilog="Example:  co server add prod --ssh ubuntu@203.0.113.10  |  co server check prod")
 app.add_typer(server_app, name="server")
 
 
@@ -966,35 +977,35 @@ def server_callback(ctx: typer.Context):
         handle_server_list()
 
 
-@server_app.command("add")
+@server_app.command("add", epilog="Example:  co server add prod --ssh ubuntu@203.0.113.10")
 def server_add(
     name: str = typer.Argument(..., help="Short name you will pass to co deploy --to"),
     ssh: str = typer.Option(..., "--ssh", help="ssh target, e.g. user@1.2.3.4 or a Host from ~/.ssh/config"),
 ):
-    """Register a machine. Stores a name → ssh target mapping, no credential."""
+    """Register a machine. Writes a name → ssh target mapping to ~/.co/servers.yaml, no credential."""
     from .commands.server_commands import handle_server_add
     if not handle_server_add(name=name, ssh_target=ssh):
         raise typer.Exit(1)
 
 
-@server_app.command("ls")
+@server_app.command("ls", epilog="Example:  co server ls")
 def server_ls():
-    """Show what you can deploy to."""
+    """Show what you can deploy to. Read-only."""
     from .commands.server_commands import handle_server_list
     handle_server_list()
 
 
-@server_app.command("check")
+@server_app.command("check", epilog="Example:  co server check prod")
 def server_check(
     name: str = typer.Argument(..., help="Registered server name"),
 ):
-    """Preflight a target and name the requirement that failed."""
+    """Preflight a target and name the requirement that failed. Writes the result to ~/.co/servers.yaml."""
     from .commands.server_commands import handle_server_check
     if not handle_server_check(name=name):
         raise typer.Exit(1)
 
 
-@server_app.command("new")
+@server_app.command("new", epilog="Example:  co server new prod")
 def server_new(
     name: str = typer.Argument(..., help="Short name you will pass to co deploy --to"),
     machine: Optional[str] = typer.Option(None, "--machine", help="Machine type (default: the smallest)"),
@@ -1008,43 +1019,43 @@ def server_new(
         raise typer.Exit(1)
 
 
-@server_app.command("ssh")
+@server_app.command("ssh", epilog='Example:  co server ssh prod  |  co server ssh prod "systemctl status my-agent"')
 def server_ssh(
     name: str = typer.Argument(..., help="Registered server name"),
     command: Optional[str] = typer.Argument(None, help="Command to run instead of opening a shell"),
 ):
-    """Open a shell on a registered server, or run one command there."""
+    """Open a shell on a registered server, or run one command there. Runs whatever you type on that machine."""
     from .commands.server_commands import handle_server_ssh
     if not handle_server_ssh(name=name, command=command):
         raise typer.Exit(1)
 
 
-@server_app.command("fix-key")
+@server_app.command("fix-key", epilog="Example:  co server fix-key prod")
 def server_fix_key(
     name: str = typer.Argument(..., help="Registered server name"),
 ):
-    """Reinstall your SSH key on a server you own, without recreating it."""
+    """Reinstall your SSH key on a server you own, without recreating it. Changes the key it accepts; the disk is kept."""
     from .commands.server_commands import handle_server_fix_key
     if not handle_server_fix_key(name=name):
         raise typer.Exit(1)
 
 
-@server_app.command("forget")
+@server_app.command("forget", epilog="Example:  co server forget prod")
 def server_forget(
     name: str = typer.Argument(..., help="Registered server name"),
 ):
-    """Drop the local entry. Does NOT touch the machine or stop any billing."""
+    """Drop the local entry. Removes it from ~/.co/servers.yaml; does NOT touch the machine or stop any billing."""
     from .commands.server_commands import handle_server_forget
     if not handle_server_forget(name=name):
         raise typer.Exit(1)
 
 
-@server_app.command("destroy")
+@server_app.command("destroy", epilog="Example:  co server destroy prod")
 def server_destroy(
     name: str = typer.Argument(..., help="Server to tear down"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation"),
 ):
-    """Destroy the machine and stop the billing. The unused term is refunded."""
+    """Destroy the machine and stop the billing. Deletes the machine and its disk; the unused term is refunded."""
     from .commands.server_commands import handle_server_destroy
     if not handle_server_destroy(name=name, yes=yes):
         raise typer.Exit(1)
@@ -1056,7 +1067,8 @@ schedule_app = _typer_app(
     help="This agent's own recurring work, from .co/schedule.yaml: see it, check it, run an entry now, "
          "pause or resume one. Bare 'co schedule' lists entries. Reads and writes .co/schedule-state.json only; "
          "never edits schedule.yaml.",
-    epilog="Workflow:  co schedule check  →  co schedule  →  co schedule run <name>  |  "
+    epilog='Example:  co schedule run "morning report"  |  '
+           "Workflow:  co schedule check  →  co schedule  →  co schedule run <name>  |  "
            "The running agent acts on run/pause/resume at its next tick (within a minute).  |  "
            "Back: co --help",
 )
@@ -1121,8 +1133,9 @@ skills_app = _typer_app(help=(
     "and link them. Another person's published skills come from co sub instead. "
     "This group does not author or benchmark them.\n\n"
     "Project skills live in .co/skills/<name>/SKILL.md. Creating or improving a skill? "
-    "Define its test cases first: co benchmark --help. Then write SKILL.md and score it: co eval --help."
-))
+    "Define its test cases first: co benchmark --help. Then write SKILL.md and score it: co eval --help.\n\n"
+    "Bare co skills lists installed skills. Read-only."
+), epilog="Example:  co skills discover  |  co skills copy invoice-check --to-project")
 app.add_typer(skills_app, name="skills")
 
 
@@ -1134,18 +1147,18 @@ def skills_callback(ctx: typer.Context):
         handle_skills_list()
 
 
-@skills_app.command("discover")
+@skills_app.command("discover", epilog="Example:  co skills discover --json --no-save")
 def skills_discover(
     no_save: bool = typer.Option(False, "--no-save", help="Don't write ~/.co/skills/index.json"),
     json_out: bool = typer.Option(False, "--json", help="Print index as JSON"),
     include_namespaced: bool = typer.Option(False, "--include-namespaced", help="Include plugin-namespaced skills (names with ':')"),
 ):
-    """Scan ~/.claude, ~/.codex, ~/.cursor, ~/.kiro, .co/skills for SKILL.md files."""
+    """Scan ~/.claude, ~/.codex, ~/.cursor, ~/.kiro, .co/skills for SKILL.md files. Writes ~/.co/skills/index.json unless --no-save."""
     from .commands.skills_commands import handle_skills_discover
     handle_skills_discover(save=not no_save, json_out=json_out, include_namespaced=include_namespaced)
 
 
-@skills_app.command("copy")
+@skills_app.command("copy", epilog="Example:  co skills copy invoice-check --to-project")
 def skills_copy(
     names: List[str] = typer.Argument(None, help="Skill names to copy into ~/.co/skills/"),
     source: Optional[str] = typer.Option(None, "--source", "-s", help="Restrict to a specific source (claude, codex, cursor, kiro, co-user, co-project)"),
@@ -1153,35 +1166,35 @@ def skills_copy(
     all_: bool = typer.Option(False, "--all", "-a", help="Copy every discovered skill (dedupe by SOURCES priority)"),
     to_project: bool = typer.Option(False, "--to-project", help="Copy into this project's .co/skills/ — the only tier that deploys"),
 ):
-    """Copy a discovered skill into ~/.co/skills/<name>/, or --to-project to ship it."""
+    """Copy a discovered skill into ~/.co/skills/<name>/, or --to-project to ship it. Writes the copy there."""
     from .commands.skills_commands import handle_skills_copy
     handle_skills_copy(names=names or [], source=source, force=force, all_=all_,
                        to_project=to_project)
 
 
-@skills_app.command("manifest")
+@skills_app.command("manifest", epilog="Example:  co skills manifest --stdout")
 def skills_manifest(
     path: Optional[str] = typer.Option(None, "--path", "-p", help="Skills directory to scan (default: ~/.co/skills/)"),
     out: Optional[str] = typer.Option(None, "--out", "-o", help="Write to file (default: merge into ~/.co/agent.json); if path ends in agent.json, merge into its skills[] key"),
     stdout: bool = typer.Option(False, "--stdout", help="Print JSON to stdout instead of writing"),
 ):
-    """Build skill metadata for oo-publish."""
+    """Build skill metadata for oo-publish. Writes it into ~/.co/agent.json unless --stdout or --out."""
     from .commands.skills_commands import handle_skills_manifest
     handle_skills_manifest(path=path, out=out, stdout=stdout)
 
 
-@skills_app.command("list")
+@skills_app.command("list", epilog="Example:  co skills list")
 def skills_list():
-    """List skills currently installed in ~/.co/skills/."""
+    """List skills currently installed in ~/.co/skills/. Read-only."""
     from .commands.skills_commands import handle_skills_list
     handle_skills_list()
 
 
-@skills_app.command("link")
+@skills_app.command("link", epilog="Example:  co skills link")
 def skills_link(
     force: bool = typer.Option(False, "--force", help="Replace directories you own"),
 ):
-    """Link ConnectOnion's bundled skills into Claude Code and Codex."""
+    """Link ConnectOnion's bundled skills into Claude Code and Codex. Creates symlinks in ~/.claude/skills and ~/.codex/skills."""
     from .commands.skills_commands import handle_skills_link
     handle_skills_link(force=force)
 
@@ -1513,7 +1526,7 @@ def email_upgrade(
 # One command, not a group: a group callback with positional arguments would
 # swallow "list" as the address ('co transfer list' parses the group args
 # first), so the listing mode is the literal address "list" instead.
-@app.command("transfer")
+@app.command("transfer", epilog='Example:  co transfer 0xabc... 5.00 --memo "May invoice"  |  co transfer list --sent')
 def transfer(
     address: str = typer.Argument(..., help="Recipient 0x… address, or 'list' for your transfer history"),
     amount: Optional[float] = typer.Argument(None, help="Amount in USD credits, e.g. 5.00"),
@@ -1523,7 +1536,7 @@ def transfer(
     received: bool = typer.Option(False, "--received", help="With list: only transfers you received"),
     last: int = typer.Option(50, "--last", "-n", help="With list: how many to show"),
 ):
-    """Send credits to another agent address (irreversible, confirms first), or list transfers."""
+    """Send credits to another agent address, or list transfers. Sends irreversibly from your balance, confirming first unless --yes; list is Read-only."""
     from .commands.transfer_commands import handle_transfer_list, handle_transfer_send
     if address == "list":
         handle_transfer_list(sent=sent, received=received, last=last)
@@ -2388,7 +2401,8 @@ def outlook_search(
 # `co sub sync <addr>` syncs one. `list` and `remove` are the secondary verbs.
 sub_app = _typer_app(
     help="Install another person's published skills: co sub sync <0xaddress> once, then bare co sub "
-         "refreshes every publisher you follow. Your own skills are co skills.",
+         "refreshes every publisher you follow. Installs their skills into ~/.co/subs/ and your coding "
+         "agents. Your own skills are co skills.",
     epilog="Example:  co sub sync 0xabc...",
 )
 app.add_typer(sub_app, name="sub")
@@ -2410,7 +2424,7 @@ def sub_sync(
     target: str = typer.Argument(..., help="0x address (or locally-pinned alias) to sync"),
     relay: Optional[str] = typer.Option(None, "--relay", help="Relay URL (default: configured backend)"),
 ):
-    """Follow or refresh one publisher's public skills.
+    """Follow or refresh one publisher's public skills. Installs them into ~/.co/subs/ and your coding agents.
 
     First follow needs the full 0x address from the publisher. A local alias
     works only after that address is saved; see `co sub list` for saved aliases.
@@ -2429,9 +2443,9 @@ def sub_sync(
     handle_sub_sync_one(target, relay=relay)
 
 
-@sub_app.command("list")
+@sub_app.command("list", epilog="Example:  co sub list")
 def sub_list():
-    """List locally pinned addresses and aliases; no relay calls.
+    """List locally pinned addresses and aliases; no relay calls. Read-only.
 
     The Skills column counts profile entries, including withheld bodies. Use
     the last sync's installed count to see what reached coding agents.
@@ -2440,9 +2454,9 @@ def sub_list():
     handle_sub_list()
 
 
-@sub_app.command("remove")
+@sub_app.command("remove", epilog="Example:  co sub remove 0xabc...")
 def sub_remove(target: str = typer.Argument(..., help="Alias or 0x address to unsubscribe from")):
-    """Unsubscribe locally; keep the signed revision history for future safety."""
+    """Unsubscribe locally. Removes its skills from ~/.co/subs/ and your coding agents; keeps the signed revision history."""
     from .commands.sub_commands import handle_sub_remove
     handle_sub_remove(target)
 

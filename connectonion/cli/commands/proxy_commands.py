@@ -41,6 +41,7 @@ Options:
   --ttl SEC       stop sharing automatically after this long (default: 24h)
 
 Start with: co proxy share to 0xHOST
+Example:  co proxy share to 0xabc... --ttl 3600
 Back: co --help"""
 
 STATE_PATH = Path.home() / ".co" / "proxy-shares.json"
