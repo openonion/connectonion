@@ -1,31 +1,22 @@
 """A fresh agent finds the right `co` command from help pages alone (#1643, #1721).
 
 A text-only model gets a goal and only the help pages it asks for, starting at
-`co --help`, and must name one command. Help is the prompt an agent reads
-before it acts, so this is the test of whether that prompt works. It runs no
-command and needs no account beyond the model call.
+`co --help`, and must name one command. It runs no command. The walk is the
+same code `co audit` uses (connectonion/cli/audit.py).
 
-    pytest -m real_api tests/e2e/cli/../real_api/test_cli_discovery_journeys.py
+    pytest -m real_api tests/e2e/real_api/test_cli_discovery_journeys.py
 """
 
 import re
 
 import pytest
-from typer.testing import CliRunner
 
-from connectonion import llm_do
+from connectonion.cli import audit
 from connectonion.cli.discovery import check
 from connectonion.cli.main import app
+from connectonion.core.usage import DEFAULT_MODEL
 
 pytestmark = pytest.mark.real_api
-ANSI = re.compile(r"\x1b\[[0-9;]*m")
-MAX_PAGES = 8
-PROMPT = """You operate a CLI named `co` and can only read its help pages. Goal: {goal}
-Pages you have read so far:
-{pages}
-Reply with exactly one line:
-HELP <command path>   to read that command's --help (e.g. HELP co gmail), or
-RUN <full command>    when you know the command that achieves the goal."""
 
 JOURNEYS = [
     ("Start a new agent project from scratch", ["co create"]),
@@ -50,28 +41,10 @@ JOURNEYS = [
 ]
 
 
-def page(path, runner=CliRunner()):
-    result = runner.invoke(app, [*path.split()[1:], "--help"], terminal_width=120)
-    return ANSI.sub("", result.stdout) if result.exit_code == 0 else f"(no such command: {path})"
-
-
 @pytest.mark.parametrize("goal,accepted", JOURNEYS)
-def test_a_fresh_agent_finds_the_command(goal, accepted, tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("NO_COLOR", "1")
-    pages, answer = {"co": page("co")}, None
-    for _ in range(MAX_PAGES):
-        read = "\n\n".join(f"$ {path} --help\n{text}" for path, text in pages.items())
-        reply = str(llm_do(PROMPT.format(goal=goal, pages=read), model="co/gemini-3.7-flash"))
-        reply = reply.strip().splitlines()[0].strip("` ")
-        if reply.startswith("HELP "):
-            path = reply[5:].strip()
-            path = path if path.startswith("co") else f"co {path}"
-            pages[path] = page(path)
-            continue
-        answer = reply.removeprefix("RUN ").strip()
-        break
-    assert answer, f"no command after reading {list(pages)}"
-    assert any(answer.startswith(prefix) for prefix in accepted), f"{answer!r} after reading {list(pages)}"
+def test_a_fresh_agent_finds_the_command(goal, accepted):
+    answer, read = audit.walk(goal, DEFAULT_MODEL)
+    assert answer, f"no command after reading {read}"
+    assert any(answer.startswith(prefix) for prefix in accepted), f"{answer!r} after reading {read}"
     words = [w for w in answer.split() if re.fullmatch(r"co|[a-z][a-z0-9_-]*", w)]
     assert check(app, " ".join(words)) is None, answer

@@ -61,6 +61,7 @@ app = _typer_app(
     add_completion=False,
     no_args_is_help=False,
     pretty_exceptions_show_locals=False,
+    epilog="Example:  co create my-agent  |  co status  |  co gmail --help",
 )
 
 
@@ -2459,6 +2460,21 @@ def sub_remove(target: str = typer.Argument(..., help="Alias or 0x address to un
     """Unsubscribe locally. Removes its skills from ~/.co/subs/ and your coding agents; keeps the signed revision history."""
     from .commands.sub_commands import handle_sub_remove
     handle_sub_remove(target)
+
+
+@app.command(epilog="Example:  co audit co  |  co audit co gmail --review  |  co audit yt-dlp  |  "
+                    "co audit co --inventory > base.json  |  co audit co --since base.json --review")
+def audit(
+    command: List[str] = typer.Argument(..., help="The command to audit, as you would type it: co, co gmail, yt-dlp, gh pr"),
+    review: bool = typer.Option(False, "--review", help="After the hard rules pass, have a model judge each page: clear, accurate, realistic example, simple. Calls a model"),
+    since: Optional[Path] = typer.Option(None, "--since", help="Only commands added or changed since an inventory from co audit --inventory"),
+    inventory: bool = typer.Option(False, "--inventory", help="Print each command's help fingerprint as JSON, for --since"),
+    json_output: bool = typer.Option(False, "--json", help="Findings as JSON"),
+    model: str = typer.Option(DEFAULT_MODEL, "--model", help="Model for --review; pin it so reruns compare like with like"),
+):
+    """Is a CLI fit for an agent harness? Runs its --help pages and scores them: usage, examples, documented flags, every subcommand reachable. Read-only; --review calls a model."""
+    from .commands.audit_commands import handle_audit
+    handle_audit(command, review, since, inventory, json_output, model)
 
 
 from .typer_groups import name_the_way_back  # noqa: E402 — needs every command registered
