@@ -1521,7 +1521,9 @@ def transfer(
 
 # Telegram command group. The bot is the user's own (@BotFather), so the token
 # lives in their keys.env -- no OpenOnion credential and nothing billed.
-telegram_app = _typer_app(help="Telegram bot: send, plus experimental listen, receive and reply.")
+telegram_app = _typer_app(
+    help="Telegram bot: send, plus experimental listen, receive and reply. Sends as your bot.",
+    epilog='Example:  co telegram send -1001234567890 "Hello"  |  co telegram check  |  co telegram receive -t 60')
 # send has shipped since 1.7.0; the inbox verbs (#1671) have not met a live bot yet.
 app.add_typer(telegram_app, name="telegram",
               short_help="Telegram bot: send, plus experimental listen, receive and reply.")
@@ -1529,14 +1531,25 @@ app.add_typer(telegram_app, name="telegram",
 
 # NegativeIds: a Telegram group is `-100123`, and `send -100123 hi` was
 # "No such option: -1".
-@telegram_app.command("send", cls=NegativeIds)
+@telegram_app.command("send", cls=NegativeIds,
+                      epilog='Example:  co telegram send -1001234567890 "Hello"  |  co telegram send @mychannel "Hello"')
 def telegram_send(
     chat: str = typer.Argument(..., help="Chat id, or @channelname for a channel"),
     message: str = typer.Argument(..., help="The text to send"),
 ):
-    """Send a Telegram message."""
+    """Send a Telegram message. Sends it as your bot."""
     from .commands.telegram_commands import handle_telegram_send
     handle_telegram_send(chat, message)
+
+
+# The ids each provider's help examples use: (chat, message).
+_INBOX_IDS = {
+    "feishu": ("oc_abc...", "om_abc..."),
+    "lark": ("oc_abc...", "om_abc..."),
+    "whatsapp": ("61412345678@s.whatsapp.net", "<message-id>"),
+    "telegram": ("-1001234567890", "<message-id>"),
+    "discord": ("<channel-id>", "<message-id>"),
+}
 
 
 # Inbox providers: feishu, lark, whatsapp, telegram. One directory per provider under
@@ -1551,23 +1564,27 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
     `writes`: the provider implements edit, delete and react. Only WhatsApp
     does; elsewhere the verbs stay (one set of verbs everywhere) but their help
     says they refuse, instead of promising an id they never print."""
-    group = group if group is not None else _typer_app(help=help_text)
-    refuses = None if writes else "Not implemented for this provider yet; says which endpoint would do it."
+    co, chat, msg = f"co {name}", *_INBOX_IDS[name]
+    group = group if group is not None else _typer_app(
+        help=help_text,
+        epilog=f'Example:  {co} check  |  {co} receive -t 60  |  {co} reply {msg} "On it"')
+    refuses = None if writes else ("Not implemented for this provider yet; says which endpoint would do it. "
+                                   "Read-only: it refuses and sends nothing.")
 
-    @group.command("listen")
+    @group.command("listen", epilog=f"Example:  {co} listen  |  {co} listen --raw")
     def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl")):
-        """Hold the connection; write every message to the inbox. Ctrl-C stops."""
+        """Hold the connection; write every message to the inbox. Ctrl-C stops. Runs in the foreground and writes to ~/.co/inbox/."""
         from .commands.listen_commands import handle_listen
         handle_listen(name, raw=raw)
 
-    @group.command("receive")
+    @group.command("receive", epilog=f"Example:  {co} receive -t 60  |  {co} receive -t 0 --no-start  |  {co} receive --context 5")
     def _receive(
         timeout: Optional[float] = typer.Option(None, "--timeout", "-t", help="Seconds to wait; 0 looks once. Exit 124 if none."),
         no_start: bool = typer.Option(False, "--no-start", help="Do not start a background listener"),
         context: int = typer.Option(0, "--context", min=0, max=200, metavar="N",
                                     help="Also include the N turns before it in that chat"),
     ):
-        """Print the next message as one JSON line, taking it from the queue."""
+        """Print the next message as one JSON line, taking it from the queue. Changes the queue; starts a background listener unless --no-start."""
         from .commands.listen_commands import handle_receive
         handle_receive(name, timeout=timeout, start=not no_start, context=context)
 
@@ -1577,76 +1594,81 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         reply_to: Optional[str] = typer.Option(None, "--reply-to", help="Message id to reply to"),
         plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
     ):
-        """Send text to a chat. Prints the new message id."""
+        """Send text to a chat. Prints the new message id. Sends a message to the chat."""
         from .commands.listen_commands import handle_send
         handle_send(name, chat, text, reply_to=reply_to, plain=plain)
 
     if with_send:
-        group.command("send", cls=NegativeIds)(_send)
+        group.command("send", cls=NegativeIds,
+                      epilog=f'Example:  {co} send {chat} "Hello"  |  echo "Hello" | {co} send {chat}  |  '
+                             f'{co} send {chat} "Thanks" --reply-to {msg}')(_send)
 
     # Every verb that takes a chat or message id parses with NegativeIds:
     # Telegram ids start with "-" for groups and channels.
-    @group.command("reply", cls=NegativeIds)
+    @group.command("reply", cls=NegativeIds,
+                   epilog=f'Example:  {co} reply {msg} "On it"  |  {co} reply {msg} "One more thing" --again')
     def _reply(
         message_id: str = typer.Argument(..., help="Id of a received message"),
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
         again: bool = typer.Option(False, "--again", help="Reply even if this message was already answered"),
         plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
     ):
-        """Reply where a received message was asked. Prints the new id."""
+        """Reply where a received message was asked. Prints the new id. Sends a message to that chat."""
         from .commands.listen_commands import handle_reply
         handle_reply(name, message_id, text, again=again, plain=plain)
 
-    @group.command("edit", cls=NegativeIds, help=refuses)
+    @group.command("edit", cls=NegativeIds, help=refuses,
+                   epilog=f'Example:  {co} edit {msg} "Fixed typo"  |  echo "Fixed typo" | {co} edit {msg}')
     def _edit(
         message_id: str = typer.Argument(..., help="Id of a message this account sent"),
         text: Optional[str] = typer.Argument(None, help="The new text; omitted means stdin"),
         plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
     ):
-        """Replace the text of a message this account sent. Prints the edit's id."""
+        """Replace the text of a message this account sent. Prints the edit's id. Changes it for everyone in the chat."""
         from .commands.listen_commands import handle_edit
         handle_edit(name, message_id, text, plain=plain)
 
-    @group.command("delete", cls=NegativeIds, help=refuses)
+    @group.command("delete", cls=NegativeIds, help=refuses, epilog=f"Example:  {co} delete {msg}")
     def _delete(message_id: str = typer.Argument(..., help="Id of a message to delete for everyone")):
-        """Delete a message for everyone. Prints the deletion's id."""
+        """Delete a message for everyone. Prints the deletion's id. Deletes it from the chat."""
         from .commands.listen_commands import handle_delete
         handle_delete(name, message_id)
 
-    @group.command("react", cls=NegativeIds, help=refuses)
+    @group.command("react", cls=NegativeIds, help=refuses,
+                   epilog=f'Example:  {co} react {msg} "👍"  |  {co} react {msg} ""')
     def _react(
         message_id: str = typer.Argument(..., help="Id of any message, received or sent"),
         emoji: str = typer.Argument(..., help='The emoji; "" removes our reaction'),
     ):
-        """React to a message, anyone's. Prints the reaction's id."""
+        """React to a message, anyone's. Prints the reaction's id. Sends a reaction; "" removes ours."""
         from .commands.listen_commands import handle_react
         handle_react(name, message_id, emoji)
 
-    @group.command("done", cls=NegativeIds)
+    @group.command("done", cls=NegativeIds, epilog=f"Example:  {co} done {msg}")
     def _done(message_id: str = typer.Argument(..., help="Id of a taken message")):
-        """Forget a taken message without replying, so it does not come back in an hour."""
+        """Forget a taken message without replying, so it does not come back in an hour. Changes the local queue; sends nothing."""
         from .commands.listen_commands import handle_done
         handle_done(name, message_id)
 
-    @group.command("check")
+    @group.command("check", epilog=f"Example:  {co} check")
     def _check():
-        """Credentials, connectivity, listener state, unread count. Exit 3 on a problem."""
+        """Credentials, connectivity, listener state, unread count. Exit 3 on a problem. Read-only."""
         from .commands.listen_commands import handle_check
         handle_check(name)
 
-    @group.command("ls")
+    @group.command("ls", epilog=f"Example:  {co} ls")
     def _ls():
-        """Unread messages: id, chat, sender, text."""
+        """Unread messages: id, chat, sender, text. Read-only: nothing is taken from the queue."""
         from .commands.listen_commands import handle_ls
         handle_ls(name)
 
-    @group.command("chats")
+    @group.command("chats", epilog=f"Example:  {co} chats")
     def _chats():
-        """Conversations seen: chat id, kind, messages, for-us, last activity."""
+        """Conversations seen: chat id, kind, messages, for-us, last activity. Read-only."""
         from .commands.listen_commands import handle_chats
         handle_chats(name)
 
-    @group.command("log")
+    @group.command("log", epilog=f"Example:  {co} log -f  |  {co} log --chat {chat} --since 7d  |  {co} log -n 20")
     def _log(
         follow: bool = typer.Option(False, "--follow", "-f", help="Keep printing new messages"),
         chat: Optional[str] = typer.Option(None, "--chat", help="Only this conversation; ids come from `chats`"),
@@ -1656,7 +1678,7 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         last: Optional[int] = typer.Option(None, "--last", "-n", min=1,
                                            help="Keep only the most recent N"),
     ):
-        """Every message ever received, one JSON line each."""
+        """Every message ever received, one JSON line each. Read-only."""
         from .commands.listen_commands import handle_log
         handle_log(name, follow=follow, chat=chat, sender=sender, since=since, last=last)
 
@@ -1664,7 +1686,9 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
     # off a queue and hands each to a command, which is what DD-063 calls a
     # consumer throughout, and what `lark-cli event consume` calls it too. A
     # verb an agent can guess is worth more than one it has to be told.
-    @group.command("consume", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+    @group.command("consume", context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+                   epilog=f"Example:  {co} consume python3 bot.py  |  {co} consume --once ./answer.sh  |  "
+                          f"{co} consume --workers 4 --context 5 python3 bot.py")
     def _consume(
         command: List[str] = typer.Argument(..., help="Command run per message: message on stdin, reply on stdout"),
         once: bool = typer.Option(False, "--once", help="Handle one message and exit"),
@@ -1673,39 +1697,44 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         context: int = typer.Option(0, "--context", min=0, max=200, metavar="N",
                                     help="Also give the command the N turns before each message"),
     ):
-        """Loop: receive, run COMMAND with the message on stdin, reply with its stdout."""
+        """Loop: receive, run COMMAND with the message on stdin, reply with its stdout. Runs COMMAND and sends its output as the reply."""
         from .commands.listen_commands import handle_consume
         handle_consume(name, command, once=once, workers=workers, context=context)
 
     return group
 
 
-app.add_typer(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, send, reply."), name="feishu")
-app.add_typer(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply."), name="lark")
+app.add_typer(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="feishu")
+app.add_typer(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="lark")
 # Discord too: its Gateway client is `websockets`, already a core dependency.
 # Experimental: ported in #1674 and tested against fakes only, never a live Gateway.
-app.add_typer(_inbox_group("discord", "Experimental: Discord bot as an inbox: listen, receive, send, reply."), name="discord",
+app.add_typer(_inbox_group("discord", "Experimental: Discord bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="discord",
               short_help="Experimental: Discord bot as an inbox: listen, receive, send, reply.")
-_whatsapp_app = _inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply.", writes=True)
-_whatsapp_groups = _typer_app(help="Start a group, or add people to one. One line per person.")
+_whatsapp_app = _inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply. Sends as your linked account.",
+                             writes=True)
+_whatsapp_groups = _typer_app(
+    help="Start a group, or add people to one. One line per person. Creates or changes WhatsApp groups.",
+    epilog='Example:  co whatsapp group create "Acme onboarding" 61412345678 61498765432  |  '
+           'co whatsapp group add 120363012345678901@g.us 61412345678')
 
 
-@_whatsapp_groups.command("create")
+@_whatsapp_groups.command(
+    "create", epilog='Example:  co whatsapp group create "Acme onboarding" 61412345678 61498765432')
 def _whatsapp_group_create(
     subject: str = typer.Argument(..., help="The group's name"),
     phones: List[str] = typer.Argument(..., help="Phone numbers with country code, e.g. 61412345678"),
 ):
-    """Create a group with these people. Prints its chat id, then one line per person."""
+    """Create a group with these people. Prints its chat id, then one line per person. Creates the group and adds them."""
     from .commands.listen_commands import handle_group
     handle_group("whatsapp", phones, subject=subject)
 
 
-@_whatsapp_groups.command("add")
+@_whatsapp_groups.command("add", epilog="Example:  co whatsapp group add 120363012345678901@g.us 61412345678 61498765432")
 def _whatsapp_group_add(
     chat: str = typer.Argument(..., help="The group's chat id, from `co whatsapp chats`"),
     phones: List[str] = typer.Argument(..., help="Phone numbers with country code"),
 ):
-    """Add people to a group this account administers. One line per person."""
+    """Add people to a group this account administers. One line per person. Changes the group's members."""
     from .commands.listen_commands import handle_group
     handle_group("whatsapp", phones, chat=chat)
 

@@ -53,62 +53,6 @@
   "example",
   "side_effect"
  ],
- "co discord": [
-  "example",
-  "side_effect"
- ],
- "co discord chats": [
-  "example",
-  "side_effect"
- ],
- "co discord check": [
-  "example",
-  "side_effect"
- ],
- "co discord consume": [
-  "example",
-  "side_effect"
- ],
- "co discord delete": [
-  "example",
-  "side_effect"
- ],
- "co discord done": [
-  "example",
-  "side_effect"
- ],
- "co discord edit": [
-  "example",
-  "side_effect"
- ],
- "co discord listen": [
-  "example",
-  "side_effect"
- ],
- "co discord log": [
-  "example",
-  "side_effect"
- ],
- "co discord ls": [
-  "example",
-  "side_effect"
- ],
- "co discord react": [
-  "example",
-  "side_effect"
- ],
- "co discord receive": [
-  "example",
-  "side_effect"
- ],
- "co discord reply": [
-  "example",
-  "side_effect"
- ],
- "co discord send": [
-  "example",
-  "side_effect"
- ],
  "co doctor": [
   "example",
   "side_effect"
@@ -195,62 +139,6 @@
   "example"
  ],
  "co eval run": [
-  "example",
-  "side_effect"
- ],
- "co feishu": [
-  "example",
-  "side_effect"
- ],
- "co feishu chats": [
-  "example",
-  "side_effect"
- ],
- "co feishu check": [
-  "example",
-  "side_effect"
- ],
- "co feishu consume": [
-  "example",
-  "side_effect"
- ],
- "co feishu delete": [
-  "example",
-  "side_effect"
- ],
- "co feishu done": [
-  "example",
-  "side_effect"
- ],
- "co feishu edit": [
-  "example",
-  "side_effect"
- ],
- "co feishu listen": [
-  "example",
-  "side_effect"
- ],
- "co feishu log": [
-  "example",
-  "side_effect"
- ],
- "co feishu ls": [
-  "example",
-  "side_effect"
- ],
- "co feishu react": [
-  "example",
-  "side_effect"
- ],
- "co feishu receive": [
-  "example",
-  "side_effect"
- ],
- "co feishu reply": [
-  "example",
-  "side_effect"
- ],
- "co feishu send": [
   "example",
   "side_effect"
  ],
@@ -430,62 +318,6 @@
   "side_effect"
  ],
  "co keys": [
-  "example",
-  "side_effect"
- ],
- "co lark": [
-  "example",
-  "side_effect"
- ],
- "co lark chats": [
-  "example",
-  "side_effect"
- ],
- "co lark check": [
-  "example",
-  "side_effect"
- ],
- "co lark consume": [
-  "example",
-  "side_effect"
- ],
- "co lark delete": [
-  "example",
-  "side_effect"
- ],
- "co lark done": [
-  "example",
-  "side_effect"
- ],
- "co lark edit": [
-  "example",
-  "side_effect"
- ],
- "co lark listen": [
-  "example",
-  "side_effect"
- ],
- "co lark log": [
-  "example",
-  "side_effect"
- ],
- "co lark ls": [
-  "example",
-  "side_effect"
- ],
- "co lark react": [
-  "example",
-  "side_effect"
- ],
- "co lark receive": [
-  "example",
-  "side_effect"
- ],
- "co lark reply": [
-  "example",
-  "side_effect"
- ],
- "co lark send": [
   "example",
   "side_effect"
  ],
@@ -781,62 +613,6 @@
  "co syno upload": [
   "side_effect"
  ],
- "co telegram": [
-  "example",
-  "side_effect"
- ],
- "co telegram chats": [
-  "example",
-  "side_effect"
- ],
- "co telegram check": [
-  "example",
-  "side_effect"
- ],
- "co telegram consume": [
-  "example",
-  "side_effect"
- ],
- "co telegram delete": [
-  "example",
-  "side_effect"
- ],
- "co telegram done": [
-  "example",
-  "side_effect"
- ],
- "co telegram edit": [
-  "example",
-  "side_effect"
- ],
- "co telegram listen": [
-  "example",
-  "side_effect"
- ],
- "co telegram log": [
-  "example",
-  "side_effect"
- ],
- "co telegram ls": [
-  "example",
-  "side_effect"
- ],
- "co telegram react": [
-  "example",
-  "side_effect"
- ],
- "co telegram receive": [
-  "example",
-  "side_effect"
- ],
- "co telegram reply": [
-  "example",
-  "side_effect"
- ],
- "co telegram send": [
-  "example",
-  "side_effect"
- ],
  "co tiktok": [
   "example",
   "side_effect"
@@ -850,74 +626,6 @@
   "side_effect"
  ],
  "co transfer": [
-  "example",
-  "side_effect"
- ],
- "co whatsapp": [
-  "example",
-  "side_effect"
- ],
- "co whatsapp chats": [
-  "example",
-  "side_effect"
- ],
- "co whatsapp check": [
-  "example",
-  "side_effect"
- ],
- "co whatsapp consume": [
-  "example",
-  "side_effect"
- ],
- "co whatsapp delete": [
-  "example",
-  "side_effect"
- ],
- "co whatsapp done": [
-  "example",
-  "side_effect"
- ],
- "co whatsapp edit": [
-  "example",
-  "side_effect"
- ],
- "co whatsapp group": [
-  "example",
-  "side_effect"
- ],
- "co whatsapp group add": [
-  "example",
-  "side_effect"
- ],
- "co whatsapp group create": [
-  "example",
-  "side_effect"
- ],
- "co whatsapp listen": [
-  "example",
-  "side_effect"
- ],
- "co whatsapp log": [
-  "example",
-  "side_effect"
- ],
- "co whatsapp ls": [
-  "example",
-  "side_effect"
- ],
- "co whatsapp react": [
-  "example",
-  "side_effect"
- ],
- "co whatsapp receive": [
-  "example",
-  "side_effect"
- ],
- "co whatsapp reply": [
-  "example",
-  "side_effect"
- ],
- "co whatsapp send": [
   "example",
   "side_effect"
  ],
