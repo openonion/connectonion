@@ -15,7 +15,7 @@ Usage:
 
     # Status bar with model/context/git info
     status = StatusBar([
-        ("🤖", "co/gemini-3.8-flash", "magenta"),
+        ("🤖", "co/llama", "magenta"),
         ("📊", "50%", "green"),
         ("", "main", "blue"),
     ])

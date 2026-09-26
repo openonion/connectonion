@@ -182,8 +182,10 @@ agent = Agent("assistant", model="mistral/mistral-medium-latest")
 
 | Model | Provider | Key Strengths | Multimodal |
 |-------|----------|---------------|------------|
+| co/llama | ConnectOnion GPU | Default free text and tool calling | No |
+| co/gemma | ConnectOnion GPU | Free text and tool calling | No |
 | gpt-5 | OpenAI | Best for coding and agentic tasks | ✅ |
-| gemini-3.8-flash | Google | Default model, newest fast Gemini | ✅ |
+| gemini-3.8-flash | Google | Fast multimodal Gemini | ✅ |
 | gemini-3.7-flash | Google | Selectable rollback model | ✅ |
 | gemini-3.6-flash | Google | Legacy fast Gemini | ✅ |
 | gemini-2.5-pro | Google | Strong multimodal model for agents | ✅ |
@@ -194,6 +196,9 @@ agent = Agent("assistant", model="mistral/mistral-medium-latest")
 
 | Model | Context Window |
 |-------|---------------|
+| **ConnectOnion GPU** | |
+| co/llama | 4,096 tokens |
+| co/gemma | 4,096 tokens |
 | **OpenAI** | |
 | gpt-5 | 200K tokens |
 | gpt-5-mini | 200K tokens |
@@ -214,6 +219,9 @@ agent = Agent("assistant", model="mistral/mistral-medium-latest")
 
 ## Pricing (Managed Keys)
 
+`co/llama` and `co/gemma` cost $0 in credits. The shared GPU currently handles
+one request at a time and caps each answer at 1,024 tokens.
+
 All prices are **per 1M tokens** and match official provider pricing:
 
 ### OpenAI Models
@@ -231,7 +239,7 @@ All prices are **per 1M tokens** and match official provider pricing:
 
 | Model | Input | Output | Notes |
 |-------|-------|--------|-------|
-| gemini-3.8-flash | $0.75 | $3.75 | **Default model** - promotional pricing through 2026-12-31 |
+| gemini-3.8-flash | $0.75 | $3.75 | Promotional pricing through 2026-12-31 |
 | gemini-3.7-flash | $0.75 | $3.75 | Selectable rollback model with the same promotional rates |
 | gemini-3.6-flash | $1.50 | $7.50 | Legacy fast Gemini |
 | gemini-3.5-flash | $1.50 | $9.00 | Previous fast Gemini |

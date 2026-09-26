@@ -7,7 +7,7 @@ Make direct LLM calls with optional structured output. Supports OpenAI, Google G
 ```python
 from connectonion import llm_do
 
-# Default: co/gemini-3.8-flash (managed key, no setup needed)
+# Default: co/llama (managed key, free)
 answer = llm_do("What's 2+2?")  
 print(answer)  # "4"
 
