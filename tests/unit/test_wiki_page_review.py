@@ -6,7 +6,8 @@ import pytest
 
 from connectonion.wiki.config import default_config, prepare
 from connectonion.wiki.files import Notebook
-from connectonion.wiki.page_review import normalize, normalize_numbered_sources, validate
+from connectonion.wiki.page_review import (align_project_metadata, normalize,
+                                           normalize_numbered_sources, validate)
 from connectonion.wiki.runner import RunFailed, run_stage, task_prompt
 
 
@@ -16,6 +17,20 @@ def test_legacy_project_gets_missing_sections_without_losing_content():
     assert 'A demo.' in new
     assert all(new.count('## '+h+'\n') == 1 for h in Notebook.PROJECT_SECTIONS)
     assert normalize('projects/atlas.md', new) == new
+
+
+def test_project_map_metadata_alignment_repairs_only_matching_nested_values():
+    old = ('# Atlas\n\n## Paths\n- /work/atlas\n- Sessions: 2\n'
+           '- First seen: 2026-09-20\n- Last seen: 2026-09-22\n')
+    nested = ('# Atlas\n\n## Paths\n- /work/atlas\n- Mapped facts:\n'
+              '  - Sessions: 2\n  - First seen: 2026-09-20\n'
+              '  - Last seen: 2026-09-22\n')
+    fixed = align_project_metadata(nested, old)
+    for line in ('- Sessions: 2', '- First seen: 2026-09-20', '- Last seen: 2026-09-22'):
+        assert fixed.count('\n' + line + '\n') == 1
+    assert align_project_metadata(fixed, old) == fixed
+    changed = nested.replace('Sessions: 2', 'Sessions: 3')
+    assert '  - Sessions: 3' in align_project_metadata(changed, old)
 
 
 def test_material_readable_reconstructs_long_single_line(tmp_path):

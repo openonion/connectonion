@@ -267,7 +267,8 @@ def _project_window_notice(text: str, items: list[dict]) -> str:
 
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage):
-    from .page_review import drop_owner_addresses, drop_uncited_sources, normalize_numbered_sources, validate
+    from .page_review import (align_project_metadata, drop_owner_addresses,
+                              drop_uncited_sources, normalize_numbered_sources, validate)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     text = candidate.read_text(encoding="utf-8")
@@ -277,6 +278,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         text, removed = drop_owner_addresses(text, {a.casefold() for a in owner.get("addresses", [])})
     text = drop_uncited_sources(normalize_numbered_sources(text))
     if record.startswith("projects/"):
+        text = align_project_metadata(text, original)
         text = _project_window_notice(text, items)
     errors = validate(record, text, original, items)
     # Sync owns this same lock. Compare and write together so a completed
