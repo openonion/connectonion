@@ -342,6 +342,7 @@ def test_direct_claude_turn_uses_request_message_id_and_acknowledges_after_start
         "accepted": True,
         "stateRevision": 4,
     })
+    assert agent.current_session["_provider_direct_acknowledged"] is True
 
 
 def test_duplicate_assistant_messages_do_not_duplicate_tool_cards():

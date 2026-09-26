@@ -1249,6 +1249,7 @@ def _confirm_direct_workroom_turn(agent) -> None:
             "accepted": True,
             "stateRevision": state_revision,
         })
+        session["_provider_direct_acknowledged"] = True
 
 
 def _start_process(argv: list[str], cwd: str):

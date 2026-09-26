@@ -22,13 +22,13 @@ python -m pip install --upgrade 'connectonion==1.8.8'
 
 ## Current preview
 
-Beta **1.8.9b6** fixes offline Wiki maintenance: staged local files are
-available to the agent, and an unchanged batch needs a source-linked receipt
-before progress advances. See [1.8.9b6 release notes](releases/1.8.9b6.md)
+Beta **1.8.9b7** lets a new Claude Station start its first browser turn before
+any terminal prompt, and promptly rejects a native startup failure. It includes
+the offline Wiki maintenance fixes from b6. See [1.8.9b7 release notes](releases/1.8.9b7.md)
 for the tested scope and limits.
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.9b6'
+python -m pip install --upgrade 'connectonion==1.8.9b7'
 co --version
 ```
 

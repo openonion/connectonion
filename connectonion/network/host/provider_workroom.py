@@ -102,9 +102,23 @@ def prepare_provider_workroom_turn(
             agent.execute_tool(provider, {
                 "prompt": text.strip(),
                 "cwd": "",
-                "session_id": source_session_id,
+                # SessionStart can publish an ID before Claude has written a
+                # resumable turn. The first browser prompt starts a new native
+                # session; its result supplies the ID for later handovers.
+                "session_id": "" if source.get("resumeReady") is False else source_session_id,
             })
         finally:
+            if provider == "claude_code" and not (
+                agent and agent.current_session.get("_provider_direct_acknowledged")
+            ) and callable(getattr(io, "send", None)):
+                io.send({
+                    "type": "PROVIDER_INPUT_ACK",
+                    "requestId": request_id,
+                    "invocationId": invocation_id,
+                    "accepted": False,
+                    "stateRevision": source_revision,
+                    "reason": "provider_start_failed",
+                })
             _persist_direct_provider_trace(
                 storage,
                 session_id,

@@ -375,7 +375,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b6
+## Current Version: 1.8.9b7
+
+1.8.9b7 fixes the first browser turn of a new Claude Station. A SessionStart
+ID without a completed native turn is not resumed; the browser starts a new
+Claude session and can return it to the terminal. An early native-start failure
+rejects the browser request promptly. Stable remains 1.8.8. See
+[1.8.9b7 notes](docs/releases/1.8.9b7.md).
+
+- 1.8.9b7 (New Claude Stations can start in the browser; failed native starts reject the matching message.)
+
+Earlier in this line:
 
 1.8.9b6 is an opt-in Wiki maintenance reliability preview. Offline batches
 can read their staged local files without interpreting the network restriction
