@@ -172,6 +172,37 @@ server's copy. `co deploy --to` keeps the server's `whitelist.txt` and
 `co deploy --to <server> --push-trust-lists` to replace them with your local
 copies. See [deploy: trust lists](deploy.md#trust-lists).
 
+### Event Watchers (1.8.9 preview)
+
+The Host can turn a local file change or timer firing into a user message in
+the agent's session. Declare watchers in `.co/host.yaml`:
+
+```yaml
+watch:
+  - name: notes
+    source: file
+    path: notes.md                 # relative to the project directory
+  - name: heartbeat
+    source: timer
+    every: 15m
+```
+
+The first observation of a file establishes a baseline. Later creates, writes,
+and deletes enqueue events. A timer's first event occurs after its interval;
+after a restart, missed intervals are coalesced into one event. Events are
+persisted in `.co/watch-state.sqlite3` before the agent is called. Each watch
+uses a stable session across restarts, and its event arrives as a `user` message
+with the watch name, source, observation time, event ID, and data. An event
+producer can also call `connectonion.network.host.watch.emit_event()` with a
+stable event ID; duplicate IDs are ignored.
+
+Run `co watch list` (or `co watch list --json`) to see the latest event, status,
+error, and session ID. Delivery is retried up to three times; after correcting
+a failure, use `co watch retry <event-id>` to requeue it. The Host polls
+every two seconds; file writes between two polls can be combined. Watcher
+events are local Host authority, so only declare paths and event producers you
+trust. The event data itself is framed as untrusted data for the agent.
+
 ### Server Settings
 
 ```yaml
