@@ -55,9 +55,10 @@ NOT_COMMANDS = re.compile(r"option|argument|flag|example|environment|usage|learn
 # argparse lists subcommands as `{init,run,list}`.
 BRACES = re.compile(r"\{([a-z][a-z0-9_-]*(?:,[a-z][a-z0-9_-]*)+)\}")
 USAGE = re.compile(r"^\s*usage\b", re.I | re.M)
-# A real home directory or a full 40-hex address in an example is someone's
-# data, not a placeholder. Narrow on purpose: NAS paths and chat ids are fine.
-PRIVATE = re.compile(r"/Users/[a-z][\w.-]*/|/home/[a-z][\w.-]*/[\w.-]+/|\b0x[0-9a-fA-F]{40}\b")
+# A real home directory or a full address in an example is someone's data, not
+# a placeholder: 0x plus 64 hex is a ConnectOnion address, 40 hex an Ethereum
+# one. Narrow on purpose: NAS paths, chat ids and `0x3f5a...c9e1` are fine.
+PRIVATE = re.compile(r"/Users/[a-z][\w.-]*/|/home/[a-z][\w.-]*/[\w.-]+/|\b0x(?:[0-9a-fA-F]{64}|[0-9a-fA-F]{40})\b")
 MAX_PAGES = 600
 FIXES = {
     "prints": "`--help` (or -h) must print help and exit 0",
@@ -68,9 +69,10 @@ FIXES = {
     "self_example": "no example runs this command itself",
     "flags": "an example uses a flag this page does not document",
     "private": "an example contains a real home path or a full 0x address; use a placeholder",
+    "params": "an option or argument has no description",
     "review": "a model reviewer flagged this page",
 }
-RULES = ("prints", "hangs", "writes", "usage", "example", "self_example", "flags", "private")
+RULES = ("prints", "hangs", "writes", "usage", "example", "self_example", "flags", "private", "params")
 
 
 @dataclass(frozen=True)
@@ -124,6 +126,41 @@ def help_page(argv: list) -> Page:
         return page
     short = run([*argv, "-h"])
     return short if short.code == 0 and short.text.strip() else page
+
+
+# A token that names a parameter rather than describing it: `*`, `--overwrite`,
+# `-n`, `local`, `TEXT`, `<PATH>`, `[required]`.
+# `INTEGER RANGE [1<=x<=3650]`, `[name|modified|size]` and `[default: 30]` are
+# types and defaults, not descriptions.
+_NAME_ONLY = re.compile(r"^(\*|-{1,2}[\w-]+(?:[, ]+-{1,2}[\w-]+)*(?:[ =][A-Z_<\[][\w<>\[\].|-]*)?|[a-z_][\w-]*|"
+                        r"[A-Z_]+(?: [A-Z_]+)*(?: \[[^\]]*\])?|<[^>]+>|\[[^\]]*\](?: \[[^\]]*\])*)$")
+
+
+def undocumented(text: str) -> list:
+    """Options and arguments a page lists with a name but no description.
+
+    Read from Rich's Options/Arguments panels and from plain sections headed
+    Options, Arguments or Flags. A row that starts with `[` continues the
+    description above it and is not a parameter.
+    """
+    rows = []
+    for panel in re.findall(r"╭─ (?:Options|Arguments) ─+╮\n(.*?)╰", text, re.S):
+        rows += [line.strip().strip("│").strip() for line in panel.splitlines()]
+    heading = ""
+    for line in text.splitlines():
+        if line[:1].strip():
+            heading = line.strip()
+        elif (re.search(r"option|argument|flag", heading, re.I) and not heading.startswith("╭")
+              and line.strip().startswith("-")):
+            # Plain text wraps descriptions onto indented lines of their own
+            # (yt-dlp: "  ago"); only a line that starts with a flag is one.
+            rows.append(line.strip())
+    missing = []
+    for row in rows:
+        parts = [p for p in re.split(r"\s{2,}", row) if p]
+        if parts and not row.startswith("[") and "--help" not in row and all(_NAME_ONLY.match(p) for p in parts):
+            missing.append(parts[1] if parts[0] == "*" and len(parts) > 1 else parts[0])
+    return missing
 
 
 def listed_commands(text: str) -> list:
@@ -246,6 +283,9 @@ def check(path: str, page: Page, found: dict) -> list:
     for line in text.splitlines():
         if re.search(r"\bExamples?:", line) and PRIVATE.search(line):
             add("private", PRIVATE.search(line).group())
+    missing = undocumented(text)
+    if missing:
+        add("params", ", ".join(missing))
     return out
 
 
