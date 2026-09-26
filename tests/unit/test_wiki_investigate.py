@@ -156,6 +156,9 @@ def test_project_inventory_is_bounded_and_excludes_hidden_or_sensitive_files(tmp
     assert leads[0].endswith('/README.md')
     assert any(path.endswith('/wiki-guide.md') for path in leads)
     assert not any('password' in path or '/.git/' in path or '/.env' in path for path in leads)
+    cited = page.replace(f'- {project}\n', f'- {project} [1][2]\n')
+    assert inv.project_paths(cited) == [str(project)]
+    assert inv.project_file_inventory(cited, max_files=2) == leads
 
 
 # The whole command line before the prompt, pinned per executor. Investigation

@@ -10,7 +10,7 @@ import pytest
 from connectonion.wiki.config import default_config, prepare
 from connectonion.wiki.extract import run_extract
 from connectonion.wiki.files import Notebook
-from connectonion.wiki.runner import RunFailed, run_stage, task_prompt
+from connectonion.wiki.runner import RunFailed, _project_window_notice, run_stage, task_prompt
 
 
 @pytest.fixture
@@ -87,6 +87,19 @@ def test_quick_investigation_reads_complete_bounded_material_once(tmp_path):
     assert 'continued_text' not in prompt
     assert json.loads((tmp_path / 'material.json').read_text()) == items
     assert (tmp_path / 'material-readable.json').exists()
+
+
+def test_project_page_keeps_zero_session_window_separate_from_old_files():
+    page = ('# Reader\n\n## Uncertainties\n- Unknown\n\n## Sources\n'
+            '- [1] project-file — observed today\n\nInvestigation: mapped today')
+    items = [{'role': 'coverage', 'source': 'investigation:coverage',
+              'text': 'codex: 10 messages in window, 0 related to subject, 0 read\n'
+                      'claude-code: 101 messages in window, 0 related to subject, 0 read\n'
+                      'Requested investigation window: 5 days ending 2026-09-26'}]
+    result = _project_window_notice(page, items)
+    assert 'No related Codex and Claude Code messages were found in the requested 5-day window' in result
+    assert '- [2] investigation:coverage' in result
+    assert _project_window_notice(result, items) == result
 
 
 def test_investigation_does_not_claim_another_concurrent_page_change(notebook, monkeypatch):

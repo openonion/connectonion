@@ -198,6 +198,9 @@ so they identify nothing a week later.
   inspected file separately. A supplied `project-inventory` item is only a
   list of candidate files, not evidence of their contents. Distinguish user intent in sessions from verified
   repository state. A directory name alone does not establish a project.
+  State the requested investigation window and whether that window contained
+  relevant coding-session messages. Historical project files may support
+  background, but do not present them as recent activity inside the window.
 - Record each source as searched (with window/query), unavailable, or not
   searched. Authentication failures and unreadable files leave gaps open.
 - If coverage says `Quick first pass`, only the listed sample was evaluated.

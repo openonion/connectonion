@@ -350,9 +350,8 @@ def make_wiki_app(factory):
                 # and signature that mentioned it -- 3,500 mails scanned for one
                 # project on a real mailbox, then a turn that timed out. Mail about
                 # a project comes in through --handle, named on purpose.
-                section = text.partition("## Paths\n")[2].split("\n## ")[0]
-                handles = list(dict.fromkeys([*handle, *(line[2:].strip() for line in section.splitlines()
-                                                          if line.startswith("- /")), title]))
+                from ...wiki.investigate import project_paths
+                handles = list(dict.fromkeys([*handle, *project_paths(text), title]))
                 clients = {kind: client for kind, client in clients.items() if handle}
             skipped = "" if clients or not record.startswith("projects/") else \
                 "not read for a project page; name its mail with --handle"

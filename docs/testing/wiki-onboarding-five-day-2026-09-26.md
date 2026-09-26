@@ -24,6 +24,7 @@ committed with this report. The notebook lived under a temporary, private root.
 | Project prompt and discovery ambiguity | A project with two session files but no relevant typed user turns produced a candidate only after many local search/read calls. | The runner and Skill agree on a bounded exception for recorded project Paths; a file-name inventory gives leads without claiming their contents. |
 | Generated projects in the map | Nine same-name `notebook` entries came from other Wiki task copies and test fixtures. | Exclude these execution workspaces during project scanning. |
 | Partial category outcome reported success | Category investigation could return exit zero after a failed page. | Return a nonzero status while preserving per-page outcomes. |
+| Project page can hide the chosen window | The fresh candidate cited older project files but did not say that both coding-session sources had zero relevant messages in the requested five days. After a page gained a citation on its `Paths` line, the next scan also treated `[1]` as part of the directory name. | Pass the requested window into coverage, add a sourced no-relevant-session notice to project pages, and strip citation markers before later path reads or session matching. |
 
 The interrupted full owner run produced no candidate and did not replace a page.
 Its prior preview version had no chunk checkpoint or live aggregate usage. The
@@ -86,9 +87,30 @@ and the run had zero script errors or external HTTP requests. Screenshots of
 the private notebook remain in the temporary test directory and are not part
 of the repository.
 
+The fresh project investigation with the bounded local-Paths prompt also
+completed, in 1,041.8 seconds. The model received the mapped page, source
+coverage and a 61-line candidate-file inventory; there were no relevant
+typed user turns in the five-day session sources. It read six distinct local
+file bodies and wrote a 7,655-byte candidate with ten source definitions.
+Structural review accepted it and promoted it only in the isolated notebook.
+The page distinguishes dated fix-report claims from tests actually rerun, and
+marks unverified platforms and ownership unknown. This is useful but costly:
+1,120,354 reported input tokens (1,022,720 cached) and 30,854 output tokens.
+The bounded file search prevents uncontrolled source expansion; it does not
+yet make a deep project investigation fast. This remains a beta limitation,
+not evidence that the first map or bounded owner pass failed.
+The project's candidate omitted the zero-relevant-session window. After that
+finding, the deterministic coverage notice was exercised against the saved
+candidate and passed structural/citation review without repeating the model
+call. The cited-path parser now recovers the actual directory on a subsequent
+investigation; focused regressions cover both changes. These post-run fixes
+have not yet been exercised by a second live project model call.
+
 The full non-network repository suite first reported 12,351 passed, 31
 skipped, 267 deselected, and six failures. One was this change's stale quick
 material-count assertion, fixed immediately. Five other tests constructed a
 gateway agent without `OPENONION_API_KEY`; all six passed in a targeted rerun
-with a deliberately nonfunctional local test value. PR review and public
+with a deliberately nonfunctional local test value. The full non-network suite
+then passed with that test value: 12,357 passed, 31 skipped, 267 deselected in
+570.54 seconds. PR review and public
 preview smoke check remain pending at the time of this report update.

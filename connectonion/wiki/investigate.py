@@ -9,6 +9,7 @@ read alike on a page and mean different things.
 import hashlib
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -49,6 +50,17 @@ def quick_evidence(items: list[dict], *, max_items: int = 24,
     return selected
 
 
+def project_paths(page: str) -> list[str]:
+    """Recover mapped project directories after a cited investigation page.
+
+    Citation markers belong to Markdown, not to the path used for local reads
+    or session matching on the next run.
+    """
+    section = page.partition("## Paths\n")[2].split("\n## ", 1)[0]
+    return [re.sub(r"\s+\[\d+\](?:\s*\[\d+\])*\s*$", "", line[2:].strip())
+            for line in section.splitlines() if line.startswith("- /")]
+
+
 def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
     """Give a project investigation bounded file leads, never file contents.
 
@@ -56,9 +68,7 @@ def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
     lets the model pick evidence from the recorded path without repeatedly
     searching the user's home directory. File names alone prove no project fact.
     """
-    section = page.partition("## Paths\n")[2].split("\n## ", 1)[0]
-    roots = [Path(line[2:].strip()).expanduser() for line in section.splitlines()
-             if line.startswith("- /")]
+    roots = [Path(path).expanduser() for path in project_paths(page)]
     leads = []
     excluded = {".git", ".venv", "venv", "node_modules", "__pycache__", "dist", "build", ".state"}
     suffixes = {".md", ".txt", ".toml", ".py", ".js", ".ts", ".tsx", ".html", ".css", ".swift", ".go", ".rs"}
@@ -370,6 +380,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                              progress=progress, attachments_dir=root / ".state" / "attachments",
                              sent_only=sent_only, mail_skipped=mail_skipped, stage_progress=stage_progress,
                              quick=quick)
+    coverage.append(f"Requested investigation window: {days} days ending "
+                    f"{datetime.now(timezone.utc).date().isoformat()}")
     available_items = len(items)
     if quick:
         items = quick_evidence(items)
