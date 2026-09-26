@@ -148,7 +148,10 @@ def undocumented(text: str) -> list:
     for line in text.splitlines():
         if line[:1].strip():
             heading = line.strip()
-        elif re.search(r"option|argument|flag", heading, re.I) and not heading.startswith("╭"):
+        elif (re.search(r"option|argument|flag", heading, re.I) and not heading.startswith("╭")
+              and line.strip().startswith("-")):
+            # Plain text wraps descriptions onto indented lines of their own
+            # (yt-dlp: "  ago"); only a line that starts with a flag is one.
             rows.append(line.strip())
     missing = []
     for row in rows:
