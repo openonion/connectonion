@@ -49,34 +49,43 @@ class DriveInfoCommand(MailboxCommand):
     provider = 'gdrive'
 
 
+MESSAGE_ID = '18f2c3b4a5d6e7f8'  # the shape Gmail gives message IDs
+ID_HELP = 'Message ID from co gmail inbox, sent or search, or a row number with --listing'
+LISTING_HELP = 'Listing ID printed by co gmail inbox, sent or search; needed with a row number'
+JSON_HELP = 'Print JSON with full IDs and the account used'
+LABEL_HELP = 'Label name as shown in co gmail label list, or its full ID'
+
+
 def register_mailbox_commands(app: typer.Typer, group_class: type) -> None:
-    @app.command('mark', cls=MailboxCommand, epilog='Example:  co gmail mark <message-id> --read')
-    def mark(email_id: str, read: bool = typer.Option(False, '--read'),
+    @app.command('mark', cls=MailboxCommand, epilog=f'Example:  co gmail mark {MESSAGE_ID} --read')
+    def mark(email_id: str = typer.Argument(..., help=ID_HELP), read: bool = typer.Option(False, '--read'),
              unread: bool = typer.Option(False, '--unread'),
-             listing: Optional[str] = typer.Option(None, '--listing'),
-             json_output: bool = typer.Option(False, '--json')):
+             listing: Optional[str] = typer.Option(None, '--listing', help=LISTING_HELP),
+             json_output: bool = typer.Option(False, '--json', help=JSON_HELP)):
         """Set read state; choose exactly one of --read and --unread. Changes the message in Gmail."""
         if read == unread:
             usage_error('Choose exactly one of --read and --unread.', 'mark', json_output)
         handle_mailbox('mark.read' if read else 'mark.unread', email_id=email_id, listing=listing, json_output=json_output)
 
-    @app.command('archive', cls=MailboxCommand, epilog='Example:  co gmail archive <message-id>')
-    def archive(email_id: str, listing: Optional[str] = typer.Option(None, '--listing'),
-                json_output: bool = typer.Option(False, '--json')):
-        """Remove INBOX from a message without deleting it. Changes the message in Gmail."""
+    @app.command('archive', cls=MailboxCommand, epilog=f'Example:  co gmail archive {MESSAGE_ID}')
+    def archive(email_id: str = typer.Argument(..., help=ID_HELP),
+                listing: Optional[str] = typer.Option(None, '--listing', help=LISTING_HELP),
+                json_output: bool = typer.Option(False, '--json', help=JSON_HELP)):
+        """Move a message out of your inbox without deleting it; it stays in All Mail. Changes the message in Gmail."""
         handle_mailbox('archive', email_id=email_id, listing=listing, json_output=json_output)
 
     @app.command('star', cls=MailboxCommand,
-                 epilog='Example:  co gmail star <message-id>  |  co gmail star <message-id> --remove')
-    def star(email_id: str, remove: bool = typer.Option(False, '--remove'),
-             listing: Optional[str] = typer.Option(None, '--listing'),
-             json_output: bool = typer.Option(False, '--json')):
-        """Add a star, or remove it with --remove. Changes the message in Gmail."""
+                 epilog=f'Example:  co gmail star {MESSAGE_ID}  |  co gmail star {MESSAGE_ID} --remove')
+    def star(email_id: str = typer.Argument(..., help=ID_HELP),
+             remove: bool = typer.Option(False, '--remove', help='Unstar the message instead'),
+             listing: Optional[str] = typer.Option(None, '--listing', help=LISTING_HELP),
+             json_output: bool = typer.Option(False, '--json', help=JSON_HELP)):
+        """Star a message, or unstar it with --remove. Changes the message in Gmail."""
         handle_mailbox('unstar' if remove else 'star', email_id=email_id, listing=listing, json_output=json_output)
 
     labels = typer.Typer(cls=group_class,
                          help='List labels (Read-only) and add/remove labels on a message (Changes it).',
-                         epilog='Example:  co gmail label list  |  co gmail label add <message-id> Receipts')
+                         epilog=f'Example:  co gmail label list  |  co gmail label add {MESSAGE_ID} Receipts')
     app.add_typer(labels, name='label')
 
     @labels.command('list', cls=MailboxCommand, epilog='Example:  co gmail label list --json')
@@ -84,32 +93,37 @@ def register_mailbox_commands(app: typer.Typer, group_class: type) -> None:
         """List full label IDs, names and types. Read-only."""
         handle_mailbox('label.list', json_output=json_output)
 
-    @labels.command('add', cls=MailboxCommand, epilog='Example:  co gmail label add <message-id> Receipts')
-    def label_add(email_id: str, label: str, listing: Optional[str] = typer.Option(None, '--listing'),
-                  json_output: bool = typer.Option(False, '--json')):
+    @labels.command('add', cls=MailboxCommand, epilog=f'Example:  co gmail label add {MESSAGE_ID} Receipts')
+    def label_add(email_id: str = typer.Argument(..., help=ID_HELP),
+                  label: str = typer.Argument(..., help=LABEL_HELP),
+                  listing: Optional[str] = typer.Option(None, '--listing', help=LISTING_HELP),
+                  json_output: bool = typer.Option(False, '--json', help=JSON_HELP)):
         """Add a label by its exact name or full ID. Changes the message in Gmail."""
         handle_mailbox('label.add', email_id=email_id, label=label, listing=listing, json_output=json_output)
 
-    @labels.command('remove', cls=MailboxCommand, epilog='Example:  co gmail label remove <message-id> Receipts')
-    def label_remove(email_id: str, label: str, listing: Optional[str] = typer.Option(None, '--listing'),
-                     json_output: bool = typer.Option(False, '--json')):
-        """Remove a label without changing other labels. Changes the message in Gmail."""
+    @labels.command('remove', cls=MailboxCommand, epilog=f'Example:  co gmail label remove {MESSAGE_ID} Receipts')
+    def label_remove(email_id: str = typer.Argument(..., help=ID_HELP),
+                     label: str = typer.Argument(..., help=LABEL_HELP),
+                     listing: Optional[str] = typer.Option(None, '--listing', help=LISTING_HELP),
+                     json_output: bool = typer.Option(False, '--json', help=JSON_HELP)):
+        """Take one label off a message; its other labels stay. Changes the message in Gmail."""
         handle_mailbox('label.remove', email_id=email_id, label=label, listing=listing, json_output=json_output)
 
-    @app.command('attachments', cls=MailboxCommand, epilog='Example:  co gmail attachments <message-id>')
-    def attachments(email_id: str, listing: Optional[str] = typer.Option(None, '--listing'),
-                    json_output: bool = typer.Option(False, '--json')):
-        """List nested attachments and inline parts with stable IDs and sizes. Read-only."""
+    @app.command('attachments', cls=MailboxCommand, epilog=f'Example:  co gmail attachments {MESSAGE_ID}')
+    def attachments(email_id: str = typer.Argument(..., help=ID_HELP),
+                    listing: Optional[str] = typer.Option(None, '--listing', help=LISTING_HELP),
+                    json_output: bool = typer.Option(False, '--json', help=JSON_HELP)):
+        """List every attachment in a message, including files embedded in the body, with the IDs and sizes co gmail download needs. Read-only."""
         handle_mailbox('attachments', email_id=email_id, listing=listing, json_output=json_output)
 
     @app.command('download', cls=MailboxCommand,
-                 epilog='Example:  co gmail download <message-id> --all --to ~/Downloads  |  '
-                        'co gmail download <message-id> --attachment <attachment-id> --to .')
-    def download(email_id: str, to: str = typer.Option(..., '--to', help='Existing local destination directory'),
+                 epilog=f'Example:  co gmail download {MESSAGE_ID} --all --to ~/Downloads  |  '
+                        f'co gmail download {MESSAGE_ID} --attachment <attachment-id from co gmail attachments> --to .')
+    def download(email_id: str = typer.Argument(..., help=ID_HELP), to: str = typer.Option(..., '--to', help='Existing local destination directory'),
                  attachment: Optional[str] = typer.Option(None, '--attachment', help='Full attachment/part ID from attachments'),
                  all_attachments: bool = typer.Option(False, '--all'),
-                 listing: Optional[str] = typer.Option(None, '--listing'),
-                 json_output: bool = typer.Option(False, '--json')):
+                 listing: Optional[str] = typer.Option(None, '--listing', help=LISTING_HELP),
+                 json_output: bool = typer.Option(False, '--json', help=JSON_HELP)):
         """Download selected attachments; keep existing files and report partial failures. Writes files to --to; Gmail is unchanged."""
         if bool(attachment) == all_attachments:
             usage_error('Choose exactly one of --attachment ID and --all.', 'download', json_output)

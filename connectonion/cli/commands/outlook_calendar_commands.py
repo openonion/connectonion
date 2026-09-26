@@ -83,7 +83,7 @@ def today():
     _run("get_today_events")
 
 
-@outlook_calendar_app.command("read", epilog="Example:  co outlook calendar read <event-id>")
+@outlook_calendar_app.command("read", epilog="Example:  co outlook calendar read AAMkAGQ5ZjE3LTJiYzEAAA=")
 def read(event_id: str = typer.Argument(..., help="Exact event ID from co outlook calendar list")):
     """Read one event by ID. Read-only."""
     _run("get_event", event_id)
@@ -125,7 +125,7 @@ def teams(title: str = typer.Argument(..., help="Meeting title"),
           yes: bool = typer.Option(False, "--yes", help="Create the event and its Teams link; default previews")):
     """Create an event with a Microsoft Teams meeting link. Previews until --yes, which Creates it and invites the --attendees.
 
-    Teams meetings need a work or school Microsoft account; on a personal account the command refuses before anything is created or sent (#1719).
+    Teams meetings need a work or school Microsoft account; on a personal account the command stops before anything is created or sent.
     """
     options = dict(attendees=attendees, description=description)
     if _confirm(yes, "teams", [title, start, end], options):
@@ -151,9 +151,10 @@ def update(event_id: str = typer.Argument(..., help="Exact event ID from co outl
              description=description, attendees=attendees, location=location)
 
 
-@outlook_calendar_app.command("delete", epilog="Example:  co outlook calendar delete <event-id> --yes")
+@outlook_calendar_app.command("delete", epilog="Example:  co outlook calendar delete AAMkAGQ5ZjE3LTJiYzEAAA=  |  "
+                                               "co outlook calendar delete AAMkAGQ5ZjE3LTJiYzEAAA= --yes")
 def delete(event_id: str = typer.Argument(..., help="Exact event ID from co outlook calendar list"),
            yes: bool = typer.Option(False, "--yes", help="Delete the exact event; default previews")):
-    """Delete an event by its stable ID, never by a listing number. Previews until --yes, which Deletes it."""
+    """Delete one event by its ID from co outlook calendar list. Without --yes it only previews and changes nothing; --yes Deletes it."""
     if _confirm(yes, "delete", [event_id], {}):
         _run("delete_event", event_id)

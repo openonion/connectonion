@@ -1288,7 +1288,8 @@ def admin_remove(address: str = typer.Argument(..., help="Address to remove from
 
 # SMS command group. `co sms` (no args) shows the inbox without changing state.
 sms_app = _typer_app(
-    help="Pair a phone and read the Agent's encrypted SMS inbox. Bare 'co sms' shows the inbox (Read-only).",
+    help="Pair an Android phone and read the text messages it forwards to this Agent, encrypted. "
+         "Bare 'co sms' shows the inbox (Read-only).",
     epilog="Example:  co sms inbox --pending",
 )
 app.add_typer(sms_app, name="sms")
@@ -1314,7 +1315,7 @@ def sms_pair(
     ),
     json_output: bool = typer.Option(False, "--json", help="Emit stable JSON and do not wait"),
 ):
-    """Create an Agent-signed QR challenge for one Android phone. Creates a one-time pairing; approving its code lets that phone upload SMS."""
+    """Show a QR code to pair one Android phone. Creates a one-time pairing; once you approve the phone's six-digit code, it can upload SMS to this Agent."""
     from .commands.sms_commands import handle_sms_pair
     handle_sms_pair(expires=expires, wait=wait and not json_output, json_output=json_output)
 
@@ -1503,7 +1504,7 @@ def email_unshare(
     address: str = typer.Argument(..., help="One of your addresses"),
     with_: str = typer.Option(..., "--with", help="Grantee to revoke: public key or one of their addresses"),
 ):
-    """Revoke a grant. Removes that account's access. No key rotation — the address was never shared, only access to it."""
+    """Stop sharing one of your addresses with another account. Removes their access; your address and keys stay the same."""
     from .commands.email_commands import handle_email_unshare
     handle_email_unshare(address, with_=with_)
 
@@ -1802,7 +1803,7 @@ def gmail_callback(ctx: typer.Context, json_output: bool = typer.Option(False, "
 def gmail_inbox(
     last: int = typer.Option(10, "--last", "-n", min=1, max=500, help="How many emails to show"),
     unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
-    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
+    json_output: bool = typer.Option(False, "--json", help="Print JSON with full IDs and the account used"),
     cursor: Optional[str] = typer.Option(None, "--cursor", help="Continuation from the same account, query and limit (15 minute expiry)"),
     since: str = typer.Option(
         None, "--since", metavar="30d|2026-06-01",
@@ -1828,8 +1829,8 @@ def gmail_inbox(
 def gmail_read(
     email_id: str = typer.Argument(..., help="Full message ID, or row # together with --listing ID"),
     mark_read: bool = typer.Option(False, "--mark-read", help="Mark the email as read after showing it"),
-    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
-    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co gmail inbox, sent or search; needed with a row number"),
+    json_output: bool = typer.Option(False, "--json", help="Print JSON with full IDs and the account used"),
 ):
     """Show one email's full body without changing its unread state. Read-only unless --mark-read."""
     if json_output:
@@ -1844,7 +1845,7 @@ def gmail_read(
 def gmail_reply(
     email_id: str = typer.Argument(..., help="Full message ID, or row # together with --listing ID"),
     message: str = typer.Argument(..., help="Reply body, or '-' to read stdin"),
-    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co gmail inbox, sent or search; needed with a row number"),
 ):
     """Reply to an email from the last listing. Sends immediately, without a preview."""
     from .commands.gmail_commands import handle_gmail_reply
@@ -1870,7 +1871,7 @@ def gmail_send(
 @gmail_app.command("sent", cls=MailboxCommand, epilog="Example:  co gmail sent -n 5")
 def gmail_sent(
     last: int = typer.Option(10, "--last", "-n", min=1, max=500, help="How many emails to show"),
-    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
+    json_output: bool = typer.Option(False, "--json", help="Print JSON with full IDs and the account used"),
     cursor: Optional[str] = typer.Option(None, "--cursor", help="Continuation from the same account, query and limit (15 minute expiry)"),
 ):
     """List recently sent emails. Read-only."""
@@ -1886,7 +1887,7 @@ def gmail_sent(
 def gmail_search(
     query: str = typer.Argument(..., help="Gmail search query, e.g. 'from:alice@example.com'"),
     last: int = typer.Option(10, "--last", "-n", min=1, max=500, help="How many matches to show"),
-    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
+    json_output: bool = typer.Option(False, "--json", help="Print JSON with full IDs and the account used"),
     cursor: Optional[str] = typer.Option(None, "--cursor", help="Continuation from the same account, query and limit (15 minute expiry)"),
 ):
     """Search your mail with Gmail query syntax. Read-only."""
@@ -1897,19 +1898,23 @@ def gmail_search(
     handle_gmail_search(query, last=last)
 
 
+_DRAFT_ID = "r-5419627513466803292"  # the shape Gmail gives draft IDs
+_DRIVE_ID = "1Zx9Kq3VbT7mR2pL8wN4cY6hJ0dF5sGaE"  # the shape Drive gives file IDs
+
 # Drafts are a nested, explicit workflow: editing never sends, and the send
 # command always previews and confirms. Keeping these under `co gmail draft`
 # makes the safe path discoverable without changing the immediate-send command.
 gmail_draft_app = _typer_app(
-    help="Create, inspect, and edit Gmail drafts; sending always asks for confirmation. Only draft send Sends mail.",
-    epilog="Example:  co gmail draft create you@example.com \"Hi\" \"Quick note\"  |  co gmail draft review <draft-id>")
+    help="Write, check and send Gmail drafts. Only 'draft send' Sends mail, and it asks you to confirm first; "
+         "the other commands change the draft or are Read-only.",
+    epilog=f"Example:  co gmail draft create you@example.com \"Hi\" \"Quick note\"  |  co gmail draft review {_DRAFT_ID}")
 gmail_app.add_typer(gmail_draft_app, name="draft")
 
 
 @gmail_draft_app.command("list", cls=MailboxCommand, epilog="Example:  co gmail draft list -n 5")
 def gmail_draft_list(
     last: int = typer.Option(20, "--last", "-n", min=1, max=500, help="How many drafts to show"),
-    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
+    json_output: bool = typer.Option(False, "--json", help="Print JSON with full IDs and the account used"),
     cursor: Optional[str] = typer.Option(None, "--cursor", help="Continuation from the same account, query and limit (15 minute expiry)"),
 ):
     """List Gmail drafts, numbered for later draft commands. Read-only."""
@@ -1933,54 +1938,54 @@ def gmail_draft_create(
     handle_gmail_draft_create(to, subject, message, cc=cc, bcc=bcc)
 
 
-@gmail_draft_app.command("attach", epilog="Example:  co gmail draft attach <draft-id> report.pdf  |  "
-                                           "co gmail draft attach <draft-id> <file-id> --drive --link")
+@gmail_draft_app.command("attach", epilog=f"Example:  co gmail draft attach {_DRAFT_ID} report.pdf  |  "
+                                           f"co gmail draft attach {_DRAFT_ID} {_DRIVE_ID} --drive --link")
 def gmail_draft_attach(
     draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
     source: str = typer.Argument(..., help="Local path, or Drive file #/id with --drive"),
-    drive: bool = typer.Option(False, "--drive", help="Read the source from the last Drive listing or a Drive id"),
+    drive: bool = typer.Option(False, "--drive", help="SOURCE is a Drive file ID, or a row number with --drive-listing"),
     link: bool = typer.Option(False, "--link", help="With --drive, append its web link instead of attaching bytes"),
-    drive_listing: Optional[str] = typer.Option(None, "--drive-listing", help="Drive listing token required for a Drive row number"),
-    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
+    drive_listing: Optional[str] = typer.Option(None, "--drive-listing", help="Listing ID printed by co gdrive list or search; needed with a Drive row number"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co gmail draft list; needed with a row number"),
 ):
-    """Stage a local/Drive file, or append a Drive link, without sending. Changes the draft only."""
+    """Attach a local or Google Drive file, or add a Drive link, to an unsent draft. Changes the draft only; nothing is sent."""
     from .commands.gmail_commands import handle_gmail_draft_attach
     handle_gmail_draft_attach(draft_id, source, drive=drive, link=link, listing=listing, drive_listing=drive_listing)
 
 
-@gmail_draft_app.command("remove", epilog="Example:  co gmail draft remove <draft-id> 2")
+@gmail_draft_app.command("remove", epilog=f"Example:  co gmail draft remove {_DRAFT_ID} 2")
 def gmail_draft_remove(
     draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
-    attachment: int = typer.Argument(..., min=1, help="Attachment # from draft preview"),
-    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
+    attachment: int = typer.Argument(..., min=1, help="Attachment number shown by co gmail draft preview"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co gmail draft list; needed with a row number"),
 ):
-    """Remove one staged attachment; the draft remains unsent. Changes the draft only."""
+    """Remove one attachment from an unsent draft. Changes the draft only; nothing is sent."""
     from .commands.gmail_commands import handle_gmail_draft_remove
     handle_gmail_draft_remove(draft_id, attachment, listing=listing)
 
 
-@gmail_draft_app.command("replace", epilog="Example:  co gmail draft replace <draft-id> 1 report-v2.pdf")
+@gmail_draft_app.command("replace", epilog=f"Example:  co gmail draft replace {_DRAFT_ID} 1 report-v2.pdf")
 def gmail_draft_replace(
     draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
-    attachment: int = typer.Argument(..., min=1, help="Attachment # from draft preview"),
+    attachment: int = typer.Argument(..., min=1, help="Attachment number shown by co gmail draft preview"),
     source: str = typer.Argument(..., help="Local path, or Drive file #/id with --drive"),
     drive: bool = typer.Option(False, "--drive", help="Read the replacement from Drive"),
-    link: bool = typer.Option(False, "--link", help="Replace with a managed Drive link; requires --drive"),
-    drive_listing: Optional[str] = typer.Option(None, "--drive-listing", help="Drive listing token required for a Drive row number"),
-    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
+    link: bool = typer.Option(False, "--link", help="Replace it with a Drive link instead of the file; requires --drive"),
+    drive_listing: Optional[str] = typer.Option(None, "--drive-listing", help="Listing ID printed by co gdrive list or search; needed with a Drive row number"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co gmail draft list; needed with a row number"),
 ):
-    """Atomically replace one staged attachment without sending. Changes the draft only."""
+    """Swap one attachment on an unsent draft for another file in a single step. Changes the draft only; nothing is sent."""
     from .commands.gmail_commands import handle_gmail_draft_replace
     handle_gmail_draft_replace(draft_id, attachment, source, drive=drive, link=link, listing=listing, drive_listing=drive_listing)
 
 
-@gmail_draft_app.command("preview", cls=MailboxCommand, epilog="Example:  co gmail draft preview <draft-id>")
+@gmail_draft_app.command("preview", cls=MailboxCommand, epilog=f"Example:  co gmail draft preview {_DRAFT_ID}")
 def gmail_draft_preview(
     draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
-    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
-    json_output: bool = typer.Option(False, "--json", help="Versioned result envelope with full IDs and account context"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co gmail draft list; needed with a row number"),
+    json_output: bool = typer.Option(False, "--json", help="Print JSON with full IDs and the account used"),
 ):
-    """Print recipients, body, and the final attachment manifest. Read-only."""
+    """Show a draft's recipients, body and the attachments it will carry. Read-only."""
     if json_output:
         from .commands.gmail_mailbox_commands import handle_mailbox
         return handle_mailbox("draft.preview", json_output=json_output, draft_id=draft_id, listing=listing)
@@ -1988,13 +1993,13 @@ def gmail_draft_preview(
     handle_gmail_draft_preview(draft_id, listing=listing)
 
 
-@gmail_draft_app.command("review", cls=MailboxCommand, epilog="Example:  co gmail draft review <draft-id>")
+@gmail_draft_app.command("review", cls=MailboxCommand, epilog=f"Example:  co gmail draft review {_DRAFT_ID}")
 def gmail_draft_review(
-    draft_id: str = typer.Argument(..., help="Full draft ID, or row with --listing"),
-    listing: Optional[str] = typer.Option(None, "--listing"),
-    json_output: bool = typer.Option(False, "--json"),
+    draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co gmail draft list; needed with a row number"),
+    json_output: bool = typer.Option(False, "--json", help="Print JSON with full IDs and the account used"),
 ):
-    """Review the complete outgoing content and produce its confirmation token. Read-only."""
+    """Show exactly what draft send would send, and print the token its --confirm needs. Read-only."""
     if json_output:
         from .commands.gmail_mailbox_commands import handle_mailbox
         return handle_mailbox("draft.review", draft_id=draft_id, listing=listing, json_output=True)
@@ -2003,14 +2008,15 @@ def gmail_draft_review(
 
 
 @gmail_draft_app.command("send", cls=MailboxCommand,
-                         epilog="Example:  co gmail draft send <draft-id>  |  co gmail draft send <draft-id> --confirm <token>")
+                         epilog=f"Example:  co gmail draft send {_DRAFT_ID}  |  "
+                                f"co gmail draft send {_DRAFT_ID} --confirm <token from co gmail draft review>")
 def gmail_draft_send(
     draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
-    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
-    confirm: Optional[str] = typer.Option(None, "--confirm", help="Token from draft review; required without a real TTY"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co gmail draft list; needed with a row number"),
+    confirm: Optional[str] = typer.Option(None, "--confirm", help="Token printed by co gmail draft review; required when not run in a terminal"),
     json_output: bool = typer.Option(False, "--json"),
 ):
-    """Send reviewed MIME; require a token or default-No interactive confirmation. Sends the draft once confirmed."""
+    """Send a draft exactly as draft review shows it. Asks you to confirm (default No), or takes --confirm with the review token. Sends the email once confirmed."""
     if json_output:
         from .commands.gmail_mailbox_commands import handle_mailbox
         return handle_mailbox("draft.send", draft_id=draft_id, listing=listing, confirm=confirm, json_output=True)
@@ -2063,13 +2069,13 @@ from .commands.gmail_mailbox_registration import DriveInfoCommand
 
 
 @gdrive_app.command("info", cls=DriveInfoCommand,
-                    epilog="Example:  co gdrive info <file-id>  |  co gdrive info 2 --listing <listing-id>")
+                    epilog=f"Example:  co gdrive info {_DRIVE_ID}  |  co gdrive info 2 --listing <listing-id from co gdrive list>")
 def gdrive_info(
-    listing: Optional[str] = typer.Option(None, "--listing", help="Frozen Drive listing token required for a row number"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co gdrive list or search; needed with a row number"),
     file_id: str = typer.Argument(..., help="Full Drive ID, or row with --listing"),
-    json_output: bool = typer.Option(False, "--json", help="Versioned inspection result"),
+    json_output: bool = typer.Option(False, "--json", help="Print JSON with the account used"),
 ):
-    """Inspect metadata and export format without downloading or changing sharing. Read-only."""
+    """Show a Drive file's details, such as name, type, size and download format, without downloading it or changing sharing. Read-only."""
     from .commands.gdrive_commands import handle_gdrive_info
     handle_gdrive_info(file_id, listing=listing, json_output=json_output)
 
@@ -2077,7 +2083,7 @@ def gdrive_info(
 @gdrive_app.command("get", epilog="Example:  co gdrive get <file-id> --to ~/Downloads  |  "
                                   "co gdrive get 2 --listing <listing-id>")
 def gdrive_get(
-    listing: Optional[str] = typer.Option(None, "--listing", help="Frozen Drive listing token required for a row number"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co gdrive list or search; needed with a row number"),
     file_id: str = typer.Argument(..., help="Full Drive ID, or row with --listing"),
     dest: str = typer.Option(".", "--to", help="Destination directory or file path"),
 ):
@@ -2098,7 +2104,7 @@ def gdrive_put(
 
 @gdrive_app.command("rm", epilog="Example:  co gdrive rm <file-id>  |  co gdrive rm 2 --listing <listing-id>")
 def gdrive_rm(
-    listing: Optional[str] = typer.Option(None, "--listing", help="Frozen Drive listing token required for a row number"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co gdrive list or search; needed with a row number"),
     file_id: str = typer.Argument(..., help="Full Drive ID, or row with --listing"),
 ):
     """Move a file to the Drive trash (recoverable). Removes it at once; Drive deletes it after 30 days."""
@@ -2106,20 +2112,19 @@ def gdrive_rm(
     handle_gdrive_rm(file_id, listing=listing)
 
 
-_YOUTUBE_AUTH_HELP = (
-    "Connect once with co auth google, then use the saved Google login like co gmail. "
-    "Tokens refresh automatically through the existing Google OAuth broker. "
-    "YouTube operations use the official Data API. Uploads default to private; "
-    "unverified API projects can force private visibility. --confirm is an external write."
-)
-youtube_app = _typer_app(help="YouTube Data API using your saved Google login. Writes preview by default.",
-                         epilog=f"Example:  co youtube list -n 5  |  {_YOUTUBE_AUTH_HELP}")
+_YOUTUBE_LOGIN = "Run co auth google once first; YouTube uses the same Google login as co gmail."
+_YOUTUBE_PREVIEW = ("Without --confirm you only get a preview, which prints the exact command "
+                    "to run with its --confirm code. " + _YOUTUBE_LOGIN)
+_YOUTUBE_CHANNEL = "UCa1b2C3d4E5f6G7h8I9j0kL"  # the shape YouTube gives channel IDs
+youtube_app = _typer_app(help="Read your YouTube channel and videos, upload videos, and edit titles and descriptions. "
+                              "Uploads and edits happen only with --confirm; without it you get a preview.",
+                         epilog=f"Example:  co youtube list -n 5  |  {_YOUTUBE_LOGIN}")
 app.add_typer(youtube_app, name="youtube")
 
 
 @youtube_app.callback(invoke_without_command=True)
 def youtube_callback(ctx: typer.Context,
-                     json_output: bool = typer.Option(False, "--json", help="Emit one JSON object")):
+                     json_output: bool = typer.Option(False, "--json", help="Print one JSON object")):
     if ctx.invoked_subcommand is None:
         from .commands.youtube_commands import handle_youtube_list
         handle_youtube_list(json_output=json_output)
@@ -2127,58 +2132,60 @@ def youtube_callback(ctx: typer.Context,
         raise typer.BadParameter("Place --json after the subcommand; see co youtube --help.")
 
 
-@youtube_app.command("channel", epilog=f"Example:  co youtube channel @yourhandle  |  {_YOUTUBE_AUTH_HELP}")
-def youtube_channel(target: Optional[str] = typer.Argument(None, help="UC channel ID, @handle, or channel URL; default is your channel"),
-                    json_output: bool = typer.Option(False, "--json")):
-    """Read a channel and its uploads playlist ID. Read-only."""
+@youtube_app.command("channel", epilog=f"Example:  co youtube channel @yourhandle  |  {_YOUTUBE_LOGIN}")
+def youtube_channel(target: Optional[str] = typer.Argument(None, help="Channel ID (starts with UC), @handle, or channel URL; default is your channel"),
+                    json_output: bool = typer.Option(False, "--json", help="Print one JSON object")):
+    """Show a channel's name, subscriber count and uploads playlist ID. Read-only."""
     from .commands.youtube_commands import handle_youtube_channel
     handle_youtube_channel(target, json_output=json_output)
 
 
-@youtube_app.command("list", epilog=f"Example:  co youtube list @yourhandle -n 10  |  {_YOUTUBE_AUTH_HELP}")
+@youtube_app.command("list", epilog=f"Example:  co youtube list @yourhandle -n 10  |  {_YOUTUBE_LOGIN}")
 def youtube_list(target: Optional[str] = typer.Argument(None, help="Channel ID, @handle or URL; default is your channel"),
-                 last: int = typer.Option(20, "--last", "-n", min=1, max=200),
-                 json_output: bool = typer.Option(False, "--json")):
-    """List recent uploads; numbers refer to this exact listing. Read-only."""
+                 last: int = typer.Option(20, "--last", "-n", min=1, max=200, help="How many videos to show"),
+                 json_output: bool = typer.Option(False, "--json", help="Print one JSON object")):
+    """List a channel's recent uploads, numbered so co youtube video 3 can pick one. Read-only."""
     from .commands.youtube_commands import handle_youtube_list
     handle_youtube_list(target, last, json_output=json_output)
 
 
-@youtube_app.command("video", epilog=f"Example:  co youtube video <video-id>  |  co youtube video 3  |  {_YOUTUBE_AUTH_HELP}")
-def youtube_video(item: str = typer.Argument(..., help="Number from your last listing, video ID, or URL; no media download"),
-                  json_output: bool = typer.Option(False, "--json")):
-    """Read one video's metadata and returned counts. Read-only."""
+@youtube_app.command("video", epilog=f"Example:  co youtube video 3  |  co youtube video https://youtu.be/aBc123XyZ_0  |  {_YOUTUBE_LOGIN}")
+def youtube_video(item: str = typer.Argument(..., help="Number from your last co youtube list, video ID, or URL"),
+                  json_output: bool = typer.Option(False, "--json", help="Print one JSON object")):
+    """Show one video's title, description, visibility and view, like and comment counts, without downloading it. Read-only."""
     from .commands.youtube_commands import handle_youtube_video
     handle_youtube_video(item, json_output=json_output)
 
 
 @youtube_app.command("put", epilog=(
-    "Example:  co youtube put talk.mp4 --title \"Launch talk\" --channel <channel-id>  |  "
-    f"co youtube put talk.mp4 --title \"Launch talk\" --channel <channel-id> --confirm <digest>  |  {_YOUTUBE_AUTH_HELP}"))
+    f"Example:  co youtube put talk.mp4 --title \"Launch talk\" --channel {_YOUTUBE_CHANNEL}  |  "
+    f"co youtube put talk.mp4 --title \"Launch talk\" --channel {_YOUTUBE_CHANNEL} --confirm <code from the preview>  |  "
+    "Uploads are private unless you pass --privacy, and YouTube can still keep them private "
+    f"while the Google app doing the upload is unverified. {_YOUTUBE_PREVIEW}"))
 def youtube_put(path: str = typer.Argument(..., help="Local video file"),
                 title: str = typer.Option(..., "--title"),
-                channel: str = typer.Option(..., "--channel", help="Exact UC channel ID, checked again before upload"),
+                channel: str = typer.Option(..., "--channel", help="Your channel ID (starts with UC, see co youtube channel); checked again before upload"),
                 description: str = typer.Option("", "--description"),
                 privacy: str = typer.Option("private", "--privacy", help="private, unlisted, or public"),
-                category: str = typer.Option("22", "--category"),
-                dry_run: bool = typer.Option(False, "--dry-run", help="Explicit preview; also the default without --confirm"),
-                confirm: Optional[str] = typer.Option(None, "--confirm", help="Exact preview digest; consumes this plan once and uploads"),
-                json_output: bool = typer.Option(False, "--json")):
-    """Preview locally; upload only with the current plan's --confirm digest. Uploads only with --confirm."""
+                category: str = typer.Option("22", "--category", help="YouTube category number; 22 is People & Blogs"),
+                dry_run: bool = typer.Option(False, "--dry-run", help="Preview only; also the default without --confirm"),
+                confirm: Optional[str] = typer.Option(None, "--confirm", help="Code printed by the preview; uploads exactly that plan, once"),
+                json_output: bool = typer.Option(False, "--json", help="Print one JSON object")):
+    """Upload a local video to your YouTube channel. Previews first; Uploads only when you pass the preview's --confirm code."""
     from .commands.youtube_commands import handle_youtube_put
     handle_youtube_put(path, title, channel, description, privacy, category, dry_run, confirm, json_output)
 
 
 @youtube_app.command("update", epilog=(
-    "Example:  co youtube update <video-id> --title \"New title\"  |  "
-    f"co youtube update <video-id> --title \"New title\" --confirm <digest>  |  {_YOUTUBE_AUTH_HELP}"))
-def youtube_update(item: str = typer.Argument(..., help="Listing number, video ID, or URL"),
-                   title: Optional[str] = typer.Option(None, "--title"),
-                   description: Optional[str] = typer.Option(None, "--description"),
-                   dry_run: bool = typer.Option(False, "--dry-run", help="Explicit preview; also the default without --confirm"),
-                   confirm: Optional[str] = typer.Option(None, "--confirm", help="Exact digest of the current metadata preview; performs one update"),
-                   json_output: bool = typer.Option(False, "--json")):
-    """Preview title/description edits without changing privacy or other parts. Changes the video only with --confirm."""
+    "Example:  co youtube update 3 --title \"New title\"  |  "
+    f"co youtube update aBc123XyZ_0 --title \"New title\" --confirm <code from the preview>  |  {_YOUTUBE_PREVIEW}"))
+def youtube_update(item: str = typer.Argument(..., help="Number from your last co youtube list, video ID, or URL"),
+                   title: Optional[str] = typer.Option(None, "--title", help="New title"),
+                   description: Optional[str] = typer.Option(None, "--description", help="New description"),
+                   dry_run: bool = typer.Option(False, "--dry-run", help="Preview only; also the default without --confirm"),
+                   confirm: Optional[str] = typer.Option(None, "--confirm", help="Code printed by the preview; applies exactly that edit, once"),
+                   json_output: bool = typer.Option(False, "--json", help="Print one JSON object")):
+    """Edit a video's title or description; privacy and other settings are left alone. Previews first; Changes the video only with the preview's --confirm code."""
     from .commands.youtube_commands import handle_youtube_update
     handle_youtube_update(item, title, description, dry_run, confirm, json_output)
 
@@ -2203,13 +2210,13 @@ def tiktok_callback(ctx: typer.Context):
 
 
 @tiktok_app.command("post", epilog="Example:  co tiktok post clip.mp4 --caption \"Launch day\" --account @yourhandle")
-def tiktok_post(path: str = typer.Argument(..., help="Local video file; preview never uploads it"),
-                caption: str = typer.Option(..., "--caption"),
-                account: str = typer.Option(..., "--account", help="Intended @handle; not an authenticated identity assertion"),
-                dry_run: bool = typer.Option(False, "--dry-run", help="Explicit local preview (the default)"),
-                confirm: Optional[str] = typer.Option(None, "--confirm", help="Validate a plan digest, then refuse submission until the browser adapter is verified"),
-                json_output: bool = typer.Option(False, "--json")):
-    """Prepare a local plan. No TikTok draft, upload, or post is created. Read-only: the plan is printed, not saved."""
+def tiktok_post(path: str = typer.Argument(..., help="Local video file; it is never uploaded"),
+                caption: str = typer.Option(..., "--caption", help="Post caption, up to 2200 characters"),
+                account: str = typer.Option(..., "--account", help="The @handle you mean to post as; not checked against a TikTok login"),
+                dry_run: bool = typer.Option(False, "--dry-run", help="Preview only (the default)"),
+                confirm: Optional[str] = typer.Option(None, "--confirm", help="Check a plan's code, then stop: posting to TikTok is not built yet"),
+                json_output: bool = typer.Option(False, "--json", help="Print one JSON object")):
+    """Check a video and caption and print the TikTok post plan. Read-only: nothing is uploaded, drafted, posted or saved."""
     from .commands.tiktok_commands import handle_tiktok_post
     handle_tiktok_post(path, caption, account, dry_run, confirm, json_output)
 
@@ -2389,9 +2396,8 @@ def outlook_sent(last: int = typer.Option(10, "--last", "-n", help="How many ema
 
 @outlook_app.command("search", rich_help_panel="Mail", epilog="Example:  co outlook search \"from:sam@example.com invoice\"")
 def outlook_search(
-    query: str = typer.Argument(..., help="Search query: words match subject and body; "
-                                        "from:<address>, to:<address> and participants:<address> "
-                                        "narrow by who (measured to work on Graph $search)"),
+    query: str = typer.Argument(..., help="Words to find in subject and body; add from:<address>, "
+                                        "to:<address> or participants:<address> to narrow by person"),
     last: int = typer.Option(10, "--last", "-n", help="How many results to show"),
 ):
     """Search your Outlook emails. Read-only."""
