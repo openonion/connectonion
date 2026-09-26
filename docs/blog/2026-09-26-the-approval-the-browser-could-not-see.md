@@ -33,6 +33,6 @@ questions, and plan changes need explicit presentation and decision rules
 before the Work Room can offer the same control without weakening its
 workspace boundary.
 
-The bridge fix is included in the opt-in 1.8.9b4 preview. The O Chat label
+The bridge fix is included in the opt-in 1.8.9b5 preview. The O Chat label
 change is tracked separately, so installing the Python preview alone does not
 change the already deployed browser interface.
