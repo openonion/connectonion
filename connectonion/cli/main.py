@@ -2330,45 +2330,48 @@ def outlook_inbox(
                          json_output=json_output)
 
 
-@outlook_app.command("read", rich_help_panel="Mail", epilog="Example:  co outlook read 3")
+@outlook_app.command("read", rich_help_panel="Mail", epilog="Example:  co outlook read 3 --listing <listing-id>")
 def outlook_read(
-    email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing (re-run to refresh numbers)"),
+    email_id: str = typer.Argument(..., help="Full message ID, or row # together with --listing ID"),
     mark_read: bool = typer.Option(False, "--mark-read", help="Mark the email as read after showing it"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
 ):
     """Show one email's body without changing its unread state. Read-only unless --mark-read."""
     from .commands.outlook_commands import handle_outlook_read
-    handle_outlook_read(email_id, mark_read=mark_read)
+    handle_outlook_read(email_id, mark_read=mark_read, listing=listing)
 
 
-@outlook_app.command("download", rich_help_panel="Mail", epilog="Example:  co outlook download 3 --to ./attachments")
+@outlook_app.command("download", rich_help_panel="Mail", epilog="Example:  co outlook download 3 --listing <listing-id> --to ./attachments")
 def outlook_download(
-    email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),
+    email_id: str = typer.Argument(..., help="Full message ID, or row # together with --listing ID"),
     out_dir: str = typer.Option(".", "--to", help="Directory to save attachments into"),
     include_inline: bool = typer.Option(
         False, "--include-inline",
         help="Also save embedded signature images and logos (skipped by default)",
     ),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
 ):
     """Save an email's attachments to disk. Writes files into --to (default: this directory)."""
     from .commands.outlook_commands import handle_outlook_download
-    handle_outlook_download(email_id, out_dir, include_inline=include_inline)
+    handle_outlook_download(email_id, out_dir, include_inline=include_inline, listing=listing)
 
 
-@outlook_app.command("reply", rich_help_panel="Send", epilog="Examples:  co outlook reply 3 \"Sounds good\"  |  "
-                                     "cat notes.txt | co outlook reply 3 -  |  "
-                                     "co outlook reply 3 \"Looping in Sam\" --cc sam@example.com  |  "
-                                     "co outlook reply 3 \"Signed copy attached\" --attach signed.pdf")
+@outlook_app.command("reply", rich_help_panel="Send", epilog="Examples:  co outlook reply 3 \"Sounds good\" --listing <listing-id>  |  "
+                                     "cat notes.txt | co outlook reply <message-id> -  |  "
+                                     "co outlook reply 3 \"Looping in Sam\" --listing <listing-id> --cc sam@example.com  |  "
+                                     "co outlook reply <message-id> \"Signed copy attached\" --attach signed.pdf")
 def outlook_reply(
-    email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),
+    email_id: str = typer.Argument(..., help="Full message ID, or row # together with --listing ID"),
     message: str = typer.Argument(..., help="Reply body (plain text, or '-' to read from stdin)"),
     cc: Optional[str] = typer.Option(None, "--cc", help="CC recipients (comma-separated); the reply stays in its thread"),
     bcc: Optional[str] = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
     attach: Optional[List[str]] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for multiple)"),
     at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z); cancel before it goes out with co outlook cancel <#>"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
 ):
     """Reply to an email (threaded), now or scheduled with --at. Sends from your Outlook account."""
     from .commands.outlook_commands import handle_outlook_reply
-    handle_outlook_reply(email_id, message, attachments=attach, at=at, cc=cc, bcc=bcc)
+    handle_outlook_reply(email_id, message, attachments=attach, at=at, cc=cc, bcc=bcc, listing=listing)
 
 
 @outlook_app.command("scheduled", rich_help_panel="Scheduled sends", epilog="Example:  co outlook scheduled")
