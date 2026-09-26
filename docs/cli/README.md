@@ -470,8 +470,8 @@ Requires `co auth microsoft` once (Mail/Contacts scopes; saved as `MICROSOFT_*` 
 ```bash
 co outlook                                            # show inbox (default)
 co outlook inbox -n 25 -u                             # last 25, unread only
-co outlook read 3                                     # read #3, preserve unread state
-co outlook read 3 --mark-read                         # explicitly mark it read
+co outlook read 3 --listing <listing-id>              # read #3, preserve unread state
+co outlook read 3 --listing <listing-id> --mark-read  # explicitly mark it read
 co outlook send bob@example.com "Hi" "Body text"      # send now
 co outlook send bob@example.com "Hi" - < body.txt     # body from stdin
 co outlook contact add "Zhou Yifei" zhou@example.com  # save contact
@@ -480,7 +480,7 @@ co outlook contact search yifei                       # find by name/email
 
 **Subcommands:**
 - `co outlook` / `co outlook inbox` - numbered inbox table (`--last/-n`, `--unread/-u`)
-- `co outlook read <#>` - print one message's body; add `--mark-read` to consume it
+- `co outlook read <#> --listing <listing-id>` - print one message's body; add `--mark-read` to consume it. Numbers need the token their listing printed (15 minutes, same account); full message IDs need none
 - `co outlook send <to> <subject> <message>` - send, with `--cc`, `--bcc`, repeatable `--attach FILE` (~3MB Graph limit), and `--at` to schedule (`+30m`, `+2h`, or UTC ISO time — Exchange holds delivery)
 - `co outlook sent` - list recently sent emails
 - `co outlook search <query>` - search subject and body

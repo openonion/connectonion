@@ -106,6 +106,11 @@ Everything else downloads byte-for-byte. Folders and Forms have no export
 format at all — the command fails rather than writing a broken file.
 Shortcuts resolve to whatever they point at.
 
+An existing file is never replaced: if the name is taken (or is a symlink), the
+download is saved as `name-1.ext`, `name-2.ext`, … and the printed path says
+which. Only the last segment of a Drive name is used, so a file shared as
+`../../.zshrc` lands in your `--to` folder as `.zshrc`.
+
 To stage a Drive file directly into an unsent Gmail draft, keep the current
 Drive listing and use its row number:
 
@@ -174,7 +179,8 @@ Or call it directly:
 drive = GDrive()
 drive.list_files(last=20)
 drive.search_files("report")
-drive.download("1A2b3C4d5E6f7G8h", dest="~/Downloads")
+drive.download("1A2b3C4d5E6f7G8h", dest="downloads")   # inside the project
+GDrive(allow_external_downloads=True).download("1A2b3C4d5E6f7G8h", dest="~/Downloads")
 drive.upload("report.pdf")
 ```
 

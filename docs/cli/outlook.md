@@ -18,9 +18,9 @@ co auth microsoft
 # Check your inbox (the zero-arg default)
 co outlook
 
-# Read message #3 from the inbox list
-co outlook read 3
-co outlook read 3 --mark-read
+# Read message #3 from that list (the listing prints its token)
+co outlook read 3 --listing <listing-id>
+co outlook read 3 --listing <listing-id> --mark-read
 
 # Send a message
 co outlook send alice@example.com "Hello" "Thanks for the meeting today!"
@@ -107,9 +107,16 @@ co outlook inbox -u              # only unread  (alias: --unread)
 ```
 
 Unread messages are marked with a green `●`. The leftmost `#` is the email's
-number — pass it to `co outlook read`. The numbering is cached (in
-`~/.co/outlook_last_inbox.json`), so `read 3` still finds the right message
-in a later shell session.
+number. Each inbox or search listing also prints a line
+`Listing: <listing-id> (expires in 15 minutes ...)`; a number means a row of
+*that* listing only, so pass both: `co outlook read 3 --listing <listing-id>`.
+The token is bound to the connected account, expires after 15 minutes, and a
+later listing (including an empty one) never changes what an older token's
+rows point at. A bare number without `--listing` is refused rather than
+guessed — before 1.8.9 a single saved numbering outlived `inbox --json` and
+empty searches, and `reply 1` could answer a different person than the one on
+screen (#1754). `--json` output carries full message IDs and freezes no
+listing; full IDs work everywhere without a token.
 
 **Options**
 - `--last, -n` — how many to show (default: 10)
@@ -118,28 +125,32 @@ in a later shell session.
 ### `co outlook read <#>` — Read one message
 
 ```bash
-co outlook read 3
-co outlook read 3 --mark-read
+co outlook read 3 --listing <listing-id>
+co outlook read 3 --listing <listing-id> --mark-read
+co outlook read <message-id>
 ```
 
-Prints the full body (sender, subject, date, content). Accepts the `#` from
-your last listing (inbox or search) or a full Graph message ID. The message is
+Prints the full body (sender, subject, date, content). Accepts a `#` with the
+`--listing` token of the inbox or search listing that showed it, or a full
+Graph message ID. The message is
 left unread by default. Use `--mark-read` when opening it should consume it;
 that opt-in needs the `Mail.ReadWrite` scope.
 
 ### `co outlook reply <#> <message>` — Reply
 
 ```bash
-co outlook reply 3 "Sounds good, see you then."
+co outlook reply 3 "Sounds good, see you then." --listing <listing-id>
+co outlook reply <message-id> "Sounds good, see you then."
 ```
 
-Sends a threaded reply to an email from your last listing. Use `-` as the
+Sends a threaded reply to an email from that listing (or a full message ID). Use `-` as the
 message to read the reply body from stdin, and `--at +2h` (or a UTC ISO
 time) to schedule the reply like a scheduled send. A scheduled reply is a
 reply draft that Exchange holds until then, so it needs the `Mail.ReadWrite`
 scope and shows up in `co outlook scheduled` like any other scheduled send.
 
 **Options**
+- `--listing` — listing ID printed with the table; required with a `#`
 - `--cc` — CC recipients (comma-separated); the reply stays in its thread
 - `--bcc` — BCC recipients (comma-separated)
 - `--attach, -a FILE` — attach a local file; repeat for multiple
@@ -153,13 +164,13 @@ conversation. Before 1.8.4b1 the only way to copy someone was a fresh
 history-less thread (#1247):
 
 ```bash
-co outlook reply 3 "Looping in Sam so he has the context." --cc sam@example.com
+co outlook reply 3 "Looping in Sam so he has the context." --listing <listing-id> --cc sam@example.com
 ```
 
 **Attachments** — same files, limit, and flag as `send`, still a real reply:
 
 ```bash
-co outlook reply 3 "Signed copy attached." \
+co outlook reply 3 "Signed copy attached." --listing <listing-id> \
     --attach signed.pdf --attach cover.png
 ```
 

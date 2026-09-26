@@ -9,6 +9,7 @@ from connectonion.network.host.http_router import session_handler, sessions_hand
 from connectonion.network.host.session.storage import SessionStorage, session_owner
 from connectonion.network.host.session.ui import session_to_chat_items
 from connectonion.useful_tools.claude_code import _approve_claude_permission
+from connectonion.plugins.coding_agents import _provider_permission_for_event
 
 
 def test_terminal_browser_terminal_handover(tmp_path, monkeypatch):
@@ -79,14 +80,22 @@ def test_browser_approval_requires_owned_workspace_edit(tmp_path):
     class ApprovalIO:
         def __init__(self):
             self.requests = []
+            self.live = []
+
+        def send_live_trace(self, entry):
+            self.live.append(entry)
 
         def request_approval(self, tool, arguments, *, context):
+            assert self.live[-1]["status"] == "awaiting_approval"
+            assert self.live[-1]["invocationId"] == context["invocationId"]
             self.requests.append((tool, arguments, context))
             return True
 
     io = ApprovalIO()
+    trace = []
     agent = SimpleNamespace(
         io=io,
+        _record_trace=trace.append,
         current_session={
             "requester": {"address": "0xowner", "level": "admin"},
             "_active_tool_call_id": "task-1",
@@ -95,6 +104,8 @@ def test_browser_approval_requires_owned_workspace_edit(tmp_path):
     edit = {"tool_name": "Write", "tool_input": {"file_path": str(tmp_path / "note.txt")}}
     assert _approve_claude_permission(edit, agent, tmp_path)
     assert io.requests[0][2]["providerApproval"]["files"] == ["note.txt"]
+    assert [item["status"] for item in trace] == ["awaiting_approval", "running"]
+    assert trace[0]["stateRevision"] < trace[1]["stateRevision"]
     assert not _approve_claude_permission(
         {"tool_name": "Write", "tool_input": {"file_path": "/etc/passwd"}},
         agent, tmp_path,
@@ -166,6 +177,14 @@ def test_browser_started_turns_route_every_claude_permission_to_the_owner(tmp_pa
         plugin.claude_code("continue", cwd=str(tmp_path), agent=agent)
 
     assert seen == ["default", "default", "default"]
+
+
+def test_station_does_not_advertise_selectable_permission_profiles():
+    agent = SimpleNamespace(current_session={"mode": "auto"})
+
+    assert _provider_permission_for_event(
+        agent, "claude_code", "claude_code:station:session-1", 1,
+    ) is None
 
 
 _NO_TRANSCRIPT = "Claude SessionStart did not provide an absolute transcript path."

@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: one background listener process per channel, one consumer thread per channel, turns recorded in .co/session_results.jsonl with via and requester | sends replies through the provider
   Integration: exposes create_inbox_lifespan(), returning the (on_startup, on_shutdown) pair server.py already composes for the relay and the schedule
   Performance: a turn runs in the consumer's own thread, so the event loop and the heartbeat are untouched by a four-minute answer
-  Errors: a turn that raises leaves its message in cur/ for the hourly sweep | a channel that cannot start is one line on the console and does not stop the Host
+  Errors: a turn that raises leaves its message in cur/ for the hourly sweep | a listener that dies is restarted; one that exits 3 is one line on the console with its reason, that channel stops being answered, and the Host keeps serving
 
 Why the listener is still a separate process, when this is not: DD-063 rejected
 putting the SDK connection, the dedup and the staging inside the Host, and that
@@ -44,8 +44,11 @@ def create_inbox_lifespan(co_dir: Path, create_agent, storage, result_ttl: int,
     Returns (on_startup, on_shutdown), the same pair shape the relay and the
     schedule use, so server.py can compose them.
     """
+    from rich.markup import escape
+
     from ...inbox import Inbox
     from ...inbox import provider as provider_for
+    from ...inbox.consumer import serve_with_listener
     from ...inbox.settings import configured_channels
 
     stop = threading.Event()
@@ -103,16 +106,17 @@ def create_inbox_lifespan(co_dir: Path, create_agent, storage, result_ttl: int,
             inbox = Inbox(channel.provider)
             try:
                 provider = provider_for(channel.provider)
-                if inbox.ensure_listener() is None:
-                    _say(f"[yellow]{channel.provider}: listener did not start; "
-                         f"see {inbox.logfile}[/yellow]")
-                    continue
             except Exception as error:
                 _say(f"[yellow]{channel.provider}: {error}[/yellow]")
                 continue
+            # Started and watched in the channel's own thread: a listener
+            # checked once at startup and never again let the Host say
+            # "answering feishu" for days after it died (#1751), and waiting
+            # here for one to settle would hold up the event loop.
             thread = threading.Thread(
-                target=inbox.serve, args=(_handler(channel, inbox, provider),),
-                kwargs={"workers": 1, "should_stop": stop, "by": "host"},
+                target=serve_with_listener, args=(inbox, _handler(channel, inbox, provider)),
+                kwargs={"say": lambda line: _say(f"[yellow]{escape(line)}[/yellow]"),
+                        "workers": 1, "should_stop": stop, "by": "host"},
                 name=f"inbox-{channel.provider}", daemon=True)
             thread.start()
             threads.append(thread)

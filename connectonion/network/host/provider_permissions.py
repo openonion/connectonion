@@ -76,6 +76,10 @@ def commit_provider_permission(
         if source.get("stateRevision") != observed_revision:
             raise ProviderPermissionError("stale_revision", "The provider state changed; refresh before trying again.")
         provider = source.get("provider")
+        workroom_id = source.get("workroomId") or invocation_id
+        if (provider == "claude_code" and isinstance(workroom_id, str)
+                and workroom_id.startswith("claude_code:station:")):
+            raise ProviderPermissionError("unsupported_option", "Claude Station uses owner approval for workspace edits.")
         host_mode = mode_of(session)
         try:
             state = provider_permission_state(provider, option_id, host_mode)
@@ -93,7 +97,6 @@ def commit_provider_permission(
             host_mode,
             state_revision=revision,
         )
-        workroom_id = source.get("workroomId") or invocation_id
         choices = session.setdefault("_provider_permission_options", {})
         if not isinstance(choices, dict):
             choices = {}

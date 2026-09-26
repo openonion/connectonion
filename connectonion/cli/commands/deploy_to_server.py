@@ -641,8 +641,9 @@ RSYNC_FILTERS = [
     # laptop's copy would reopen to replay; remote-browser leases and the
     # browser runtime holding its authkey and profile; files callers uploaded;
     # and contacts.txt, the callers onboarded by invite or payment on the server.
-    # whitelist.txt and blocklist.txt stay deployable: host-config.md documents
-    # them as files the author writes.
+    # whitelist.txt and blocklist.txt are the same kind of file and are kept
+    # too, by _rsync_filters() below rather than here, because
+    # --push-trust-lists can send them on purpose (#1757).
     "--exclude", ".co/session_results.jsonl*",
     "--exclude", ".co/replay.sqlite3*",
     "--exclude", ".co/remote-browser-sessions.json",
@@ -672,7 +673,15 @@ RSYNC_FILTERS = [
 ]
 
 
-def _rsync_filters(project_dir: Path) -> list[str]:
+# Written by the author *and* by the running agent: an admin's block through
+# the admin endpoint or `co trust` lands in the server's copy. Sent by default,
+# the laptop's copy unblocked that caller on the next deploy and nothing said so
+# (#1757). So the server's copy wins, a local one only fills in a list the
+# server does not have yet, and --push-trust-lists replaces them on purpose.
+TRUST_LISTS = (".co/whitelist.txt", ".co/blocklist.txt")
+
+
+def _rsync_filters(project_dir: Path, push_trust_lists: bool = False) -> list[str]:
     """Framework safety rules plus the project's own deploy boundary.
 
     A path in the root ``.gitignore`` is neither transferred nor deleted on
@@ -681,10 +690,28 @@ def _rsync_filters(project_dir: Path) -> list[str]:
     secrets and state remain protected first, regardless of project rules.
     """
     filters = list(RSYNC_FILTERS)
+    if not push_trust_lists:
+        for path in TRUST_LISTS:
+            filters += ["--exclude", path]
     gitignore = project_dir / ".gitignore"
     if gitignore.is_file():
         filters.extend(["--exclude-from", str(gitignore)])
     return filters
+
+
+def _trust_list_seed_filters(project_dir: Path) -> list[str]:
+    """The second rsync pass: only the trust lists, only where the server has none.
+
+    `--ignore-existing` is what makes it a seed. Without this pass a first
+    deploy would leave a new server with no blocklist at all, which is the
+    permissive direction. The project's rules still apply first, so a list the
+    author gitignored is not sent here either.
+    """
+    only = ["--include", ".co/"]
+    for path in TRUST_LISTS:
+        only += ["--include", path]
+    return ["--ignore-existing", *_rsync_filters(project_dir, push_trust_lists=True),
+            *only, "--exclude", "*"]
 
 
 def _agent_account(agent_identity: dict) -> Optional[dict]:
@@ -865,7 +892,8 @@ sudo chmod 600 {shlex.quote(dest)}
     return True
 
 
-def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
+def _sync_code(target: str, agent: str, project_dir: Path,
+               push_trust_lists: bool = False) -> bool:
     """rsync the project, carrying everything the author wrote and deleting
     nothing the server owns.
 
@@ -885,30 +913,42 @@ def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
     neither copied from the laptop nor deleted on the server. Put generated
     runtime state there when it lives inside the project root.
 
-    See RSYNC_FILTERS for the framework rules and why the default is "carry".
+    See RSYNC_FILTERS for the framework rules and why the default is "carry",
+    and TRUST_LISTS for the two files where the server's copy wins.
     """
     from .server_commands import _identity as _ssh_identity
 
+    def rsync(filters: list) -> bool:
+        result = subprocess.run(
+            [
+                "rsync", "-az", *filters,
+                "-e", " ".join(["ssh", "-o", "BatchMode=yes",
+                                "-o", "StrictHostKeyChecking=accept-new",
+                                *_ssh_identity(target)]),
+                f"{project_dir}/",
+                f"{target}:{SRV}/{agent}/",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        if result.returncode != 0:
+            console.print("[red]rsync failed.[/red]")
+            for line in (result.stderr or result.stdout).strip().splitlines()[-8:]:
+                console.print(f"  [dim]{line}[/dim]")
+        return result.returncode == 0
+
     console.print("[dim]  syncing code …[/dim]")
-    result = subprocess.run(
-        [
-            "rsync", "-az", "--delete",
-            *_rsync_filters(project_dir),
-            "-e", " ".join(["ssh", "-o", "BatchMode=yes",
-                            "-o", "StrictHostKeyChecking=accept-new",
-                            *_ssh_identity(target)]),
-            f"{project_dir}/",
-            f"{target}:{SRV}/{agent}/",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=600,
-    )
-    if result.returncode != 0:
-        console.print("[red]rsync failed.[/red]")
-        for line in (result.stderr or result.stdout).strip().splitlines()[-8:]:
-            console.print(f"  [dim]{line}[/dim]")
+    if not rsync(["--delete", *_rsync_filters(project_dir, push_trust_lists)]):
         return False
+    local_lists = [path for path in TRUST_LISTS if (project_dir / path).is_file()]
+    if local_lists and not push_trust_lists:
+        if not rsync(_trust_list_seed_filters(project_dir)):
+            return False
+        # Said, because an author who edited a list and deployed would otherwise
+        # believe the change is live.
+        console.print(f"[dim]  kept the server's {', '.join(local_lists)} — a local copy only "
+                      f"fills in one the server lacks; --push-trust-lists replaces them[/dim]")
 
     # Every deploy, not only when the unit changes: the files have to belong
     # to the user the service runs as. An agent that ran as root before left
@@ -1152,7 +1192,7 @@ def _mark_provisioned(target: str, agent: str) -> None:
 
 
 def handle_deploy_to(server: str, project_dir: Optional[Path] = None,
-                     own_identity: bool = False) -> bool:
+                     own_identity: bool = False, push_trust_lists: bool = False) -> bool:
     """co deploy --to <server>:  ensure(setup) → sync code → restart."""
     from ...project import project_root
 
@@ -1227,7 +1267,7 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None,
                          ssh_public_lines, deployer_address,
                          agent_identity=agent_identity):
         return False
-    if not _sync_code(target, agent, project_dir):
+    if not _sync_code(target, agent, project_dir, push_trust_lists):
         return False
 
     if not _install_deps_if_changed(target, agent, project_dir, skill_requirements):
