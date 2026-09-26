@@ -1,3 +1,7 @@
+---
+tags: [Permissions, Work Rooms, Claude Code]
+---
+
 # The approval the browser could not see
 
 Claude was waiting for permission to write a file. The browser had received
