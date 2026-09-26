@@ -10,7 +10,7 @@ import pytest
 from connectonion.wiki.config import default_config, prepare
 from connectonion.wiki.extract import run_extract
 from connectonion.wiki.files import Notebook
-from connectonion.wiki.runner import RunFailed, run_stage
+from connectonion.wiki.runner import RunFailed, run_stage, task_prompt
 
 
 @pytest.fixture
@@ -75,6 +75,18 @@ def test_project_investigation_bounds_local_file_search(notebook, monkeypatch):
                               'source': 'investigation:page'}], default_config(), stage='investigate')
     assert 'at most twelve relevant text files' in prompts[0]
     assert 'stop using tools and return a brief coverage summary' in prompts[0]
+
+
+def test_quick_investigation_reads_complete_bounded_material_once(tmp_path):
+    items = [{'role': 'quick-first-pass', 'source': 'investigation:quick-scope',
+              'text': 'Only use the gathered items.'},
+             {'role': 'page', 'record': 'people/me.md', 'text': 'A' * 200}]
+    prompt = task_prompt(tmp_path, items, 'investigate')
+    assert f'at {tmp_path / "material.json"}' in prompt
+    assert 'once' in prompt
+    assert 'continued_text' not in prompt
+    assert json.loads((tmp_path / 'material.json').read_text()) == items
+    assert (tmp_path / 'material-readable.json').exists()
 
 
 def test_investigation_does_not_claim_another_concurrent_page_change(notebook, monkeypatch):

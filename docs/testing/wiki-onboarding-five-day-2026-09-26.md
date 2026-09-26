@@ -51,5 +51,28 @@ because a relative `PYTHONPATH=.` no longer pointed to the checkout from the
 task directory. The rerun uses an absolute source path. Neither failure
 produced or promoted a candidate page.
 
-Final person/quick-pass result, candidate quality review, release tests, PR,
-and public preview smoke check are pending at the time of this draft.
+The separate person investigation completed in 770.7 seconds with 43 supplied
+items, 98,456 input characters, 1,647,649 reported input tokens (1,494,016
+cached) and 38,575 output tokens. Its candidate used the person template,
+defined 15 sources, and explicitly marked unsupported facts unknown. Sampled
+claims about the relationship, a recent request and the reply were checked
+against their saved source messages. It was promoted only inside the isolated
+test notebook; the logged source path mismatch on the first attempt had not
+promoted a candidate.
+
+The bounded owner first pass completed in 535.7 seconds with one synthesis
+turn and no extraction chunks. It read 24 of 60 already bounded gathered
+items, used 21,396 input characters, and reported 429,022 input tokens
+(369,408 cached) and 23,341 output tokens. The accepted page includes a clear
+24-of-60 partial-coverage warning. It changed only the owner page. The large
+reported model usage means this is a functioning first pass, not yet a cheap
+one; cost is an explicit beta limitation.
+
+The actual 519-page, 6.1 MB local reader snapshot loaded in Chrome in 0.18
+seconds. Search returned results, a 375px viewport had no horizontal overflow,
+and the run had zero script errors or external HTTP requests. Screenshots of
+the private notebook remain in the temporary test directory and are not part
+of the repository.
+
+Release tests, PR review, and public preview smoke check are pending at the
+time of this report update.

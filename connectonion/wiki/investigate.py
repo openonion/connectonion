@@ -428,7 +428,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
          "timestamp": now, "source": "investigation:page"},
         {"role": "coverage", "text": "Sources searched for handles " + ", ".join(handles) + ":\n"
                                      + "\n".join(coverage), "timestamp": now, "source": "investigation:coverage"},
-    ] + items
+    ] + ([{"role": "quick-first-pass", "source": "investigation:quick-scope",
+           "timestamp": now, "text": "This is a bounded, partial first pass. Use only the supplied sample; "
+                                     "disclose the sampling limit in Uncertainties."}]
+         if quick else []) + items
     if original_material:
         prompt_items.append({"role": "original_evidence", "source": "investigation:original-evidence",
                              "text": f"Original uncompressed evidence is retained at {original_material}. Read it to check summaries and counterevidence.",
