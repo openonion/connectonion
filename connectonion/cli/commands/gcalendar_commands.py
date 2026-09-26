@@ -57,8 +57,8 @@ def calendar(ctx: typer.Context):
 
 
 @gcalendar_app.command("list", epilog="Example:  co gcalendar list --days 14 -n 50")
-def list_events(days: int = typer.Option(7, "--days", min=1),
-                last: int = typer.Option(20, "--last", "-n", min=1, max=250)):
+def list_events(days: int = typer.Option(7, "--days", min=1, help="How many days ahead to include, starting now"),
+                last: int = typer.Option(20, "--last", "-n", min=1, max=250, help="Maximum events to show")):
     """List primary-calendar events with stable event IDs (not row numbers). Read-only."""
     _run("list_events", days_ahead=days, max_results=last)
 
@@ -76,14 +76,14 @@ def read(event_id: str = typer.Argument(..., help="Exact event ID from co gcalen
 
 
 @gcalendar_app.command("meetings", epilog="Example:  co gcalendar meetings --days 3")
-def meetings(days: int = typer.Option(7, "--days", min=1)):
+def meetings(days: int = typer.Option(7, "--days", min=1, help="How many days ahead to include, starting now")):
     """Read upcoming events that have attendees. Read-only."""
     _run("get_upcoming_meetings", days_ahead=days)
 
 
 @gcalendar_app.command("free", epilog="Example:  co gcalendar free 2026-10-01 --minutes 30")
 def free(date: str = typer.Argument(..., help="YYYY-MM-DD; business hours in UTC"),
-         minutes: int = typer.Option(60, "--minutes", min=1, max=480)):
+         minutes: int = typer.Option(60, "--minutes", min=1, max=480, help="Length of free time to find, in minutes")):
     """Find primary-calendar free slots between 09:00 and 17:00 UTC. Read-only."""
     _run("find_free_slots", date, duration_minutes=minutes)
 

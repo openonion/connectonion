@@ -56,6 +56,8 @@ def test_each_rule_fails_the_page_it_is_for():
 def test_an_option_or_argument_without_a_description_is_caught():
     bare = GOOD.replace("│ --cc   TEXT  Copy to  │", "│ --cc   TEXT           │")
     assert rules(bare) == {"params"}
+    ranged = GOOD.replace("│ --cc   TEXT  Copy to  │", "│ --days   INTEGER RANGE [1<=x<=365]  [default: 30] │")
+    assert rules(ranged) == {"params"}
     plain = ("usage: tool [-h] [--fast]\n\noptions:\n  -h, --help  show help\n  --fast\n"
              "  --slow      Take the slow path, as you did two weeks\n              ago\n\nExample:  tool --fast\n")
     assert audit.undocumented(plain) == ["--fast"]

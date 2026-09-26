@@ -130,8 +130,10 @@ def help_page(argv: list) -> Page:
 
 # A token that names a parameter rather than describing it: `*`, `--overwrite`,
 # `-n`, `local`, `TEXT`, `<PATH>`, `[required]`.
-_NAME_ONLY = re.compile(r"^(\*|-{1,2}[\w-]+(?:[, ]+-{1,2}[\w-]+)*(?:[ =][A-Z_<\[][\w<>\[\].|-]*)?|[a-z_][\w-]*|[A-Z_]+|"
-                        r"<[^>]+>|\[required\]|\[default: [^\]]*\])$")
+# `INTEGER RANGE [1<=x<=3650]`, `[name|modified|size]` and `[default: 30]` are
+# types and defaults, not descriptions.
+_NAME_ONLY = re.compile(r"^(\*|-{1,2}[\w-]+(?:[, ]+-{1,2}[\w-]+)*(?:[ =][A-Z_<\[][\w<>\[\].|-]*)?|[a-z_][\w-]*|"
+                        r"[A-Z_]+(?: [A-Z_]+)*(?: \[[^\]]*\])?|<[^>]+>|\[[^\]]*\](?: \[[^\]]*\])*)$")
 
 
 def undocumented(text: str) -> list:

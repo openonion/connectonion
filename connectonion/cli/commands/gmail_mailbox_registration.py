@@ -132,7 +132,7 @@ def register_mailbox_commands(app: typer.Typer, group_class: type) -> None:
 
     @app.command('unanswered', cls=MailboxCommand,
                  epilog='Example:  co gmail unanswered --within-days 7 --exclude-automated')
-    def unanswered(within_days: int = typer.Option(30, '--within-days', min=1, max=3650),
+    def unanswered(within_days: int = typer.Option(30, '--within-days', min=1, max=3650, help='Only threads whose latest message arrived in the last N days'),
                    last: int = typer.Option(20, '--last', '-n', min=1, max=100, help='Maximum threads scanned in one page; filtering may return fewer'),
                    exclude_automated: bool = typer.Option(False, '--exclude-automated', help='Filter Auto-Submitted and bulk/list/junk headers'),
                    cursor: Optional[str] = typer.Option(None, '--cursor', help='Continuation from the same account, days, filter and limit'),

@@ -1329,7 +1329,7 @@ def sms_pair(
 
 @sms_app.command("inbox", epilog="Example:  co sms inbox --pending -n 20")
 def sms_inbox(
-    last: int = typer.Option(10, "--last", "-n", min=1, max=100),
+    last: int = typer.Option(10, "--last", "-n", min=1, max=100, help="How many recent messages to show"),
     pending: bool = typer.Option(False, "--pending", help="Only unacknowledged messages"),
     json_output: bool = typer.Option(False, "--json", help="Emit stable JSON"),
 ):
