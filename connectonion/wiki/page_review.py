@@ -149,6 +149,30 @@ def normalize_numbered_sources(text: str) -> str:
     return head + marker + sources + rest
 
 
+def align_project_metadata(text: str, original: str) -> str:
+    """Unindent unchanged map metadata; never repair a changed value.
+
+    The map owns these three facts. A real project candidate kept their values
+    but nested them under a bullet, which failed the top-level preservation
+    check after an otherwise successful model turn.
+    """
+    before, marker, tail = text.partition('\n## Paths\n')
+    old_paths = original.partition('\n## Paths\n')[2].split('\n## ', 1)[0]
+    if not marker:
+        return text
+    paths, next_section, after = tail.partition('\n## ')
+    for label in ("Sessions", "First seen", "Last seen"):
+        previous = re.search(r'^- ' + re.escape(label) + r': ([0-9-]+)$', prose(old_paths), re.M)
+        if not previous:
+            continue
+        line = f'- {label}: {previous[1]}'
+        if re.search(r'^' + re.escape(line) + r'$', prose(paths), re.M):
+            continue
+        paths = re.sub(r'^[ \t]+- ' + re.escape(label) + r': '
+                       + re.escape(previous[1]) + r'[ \t]*$', line, paths, count=1, flags=re.M)
+    return before + marker + paths + (next_section + after if next_section else '')
+
+
 IDENTITY_LINE = re.compile(r'^(- (?:Email|Handles|Also known as): )(.*)$', re.M)
 
 

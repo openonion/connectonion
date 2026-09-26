@@ -466,7 +466,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # The status line names the sources this code searched. Whether the web
     # was reached is the Skill's to report, on the page: a real run (2026-09-14)
     # had `co browser` fail inside the thread while this line still said "web".
-    searched = [c.split(" (")[0].split(":")[0] for c in coverage if not c.startswith(("budget", "digest"))]
+    searched = [c.split(" (")[0].split(":")[0] for c in coverage
+                if not c.startswith(("budget", "digest", "Requested investigation window:",
+                                     "Quick first pass:"))
+                and "not searched" not in c and ": unreadable" not in c]
     with maintenance_lock(root):
         from .reviews import ingest
         ingest(root, result.get("review_candidates", []))
