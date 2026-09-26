@@ -37,6 +37,7 @@ no claim about that private implementation.
 | Call `agent.input()` in a file callback | Tiny demo. | A slow turn blocks observation; no durable receipt or Host session claim. |
 | OS file notifications (`watchdog`/Watchman) | Many paths, low latency. | Dependency or daemon, platform edge cases, and a reconciliation path after missed notifications. |
 | Fixed-path metadata polling | A few explicit files where a coalesced “changed” signal is enough. | Up to the poll interval of latency; intermediate writes can be coalesced. |
+| Reuse the current Inbox directory queue | Chat messages with provider IDs, chats, and reply destinations. | Its `Message` contract and consumer also handle provider replies; a file or timer event has no chat or reply address. Turning it into a generic event queue would change the inbox feature in this preview. |
 | Host source adapters → durable queue → normal input | Different external sources, restart recovery, continuing sessions. | Adds queue state and an acknowledgement boundary that must be reconciled after a crash. |
 | One new subprocess/session per event | Isolated, independent runs, like cloud routines. | Loses the requested continuing conversation and duplicates Host startup work. |
 
