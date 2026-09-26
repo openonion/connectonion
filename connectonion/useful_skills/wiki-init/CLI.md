@@ -186,7 +186,7 @@ Do not close the shared browser or take over another task's tab. If a browser
 cannot start or a site requires sign-in, report that gap instead of claiming the
 page was searched. Read the adjacent `../co-browser/SKILL.md` for browser recovery
 and popup handling. Wiki lookups stay within wiki-investigate's public-source
-scope; do not open LinkedIn. Prefer direct commands over `co browser do`, which
+scope; do not open LinkedIn. Prefer direct commands over `co browser "<instruction>"`, which
 starts a separate model-driven workflow.
 
 ## Wiki: enumerate, build the skeleton, investigate

@@ -226,7 +226,7 @@ Use an unused task-specific tab name instead of `wiki-subject` if it is already
 claimed. Keep the same `CO_WHO` and `-t` on every browsing command. Inspect each
 result before the next command; an exit code alone does not prove navigation
 succeeded. Close only your own tab, never the shared browser. These direct
-commands do not need the model-driven `co browser do` command.
+commands do not need the model-driven `co browser "<instruction>"` command.
 
 `co browser` is a shell command and it is the browser here: run it the way you
 run any other command. Do not reach for a computer-use or `cua_repl` plugin

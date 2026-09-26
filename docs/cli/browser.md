@@ -77,13 +77,13 @@ it never prints tokens, licence bytes, or paid-cache paths.
 Two ways to use a browser from the CLI, and you pick per command:
 
 - **Direct function call** — `co browser go_to x.com`. Deterministic and instant, with no LLM charge; browser runtime cost follows the selected engine. Great for scripting and exact steps you already know.
-- **Natural language** — `co browser do "find the cheapest flight"`. The AI agent figures out the steps. Great when you don't want to spell them out.
+- **Natural language** — `co browser "find the cheapest flight"`. The AI agent figures out the steps. Great when you don't want to spell them out.
 
 Both drive the **same live browser**, so you can mix them: script the boring parts, let the agent handle the hard part.
 
 ```bash
 co browser go_to myapp.com/login
-co browser do "log me in and open the billing page"   # agent takes over the same window
+co browser "log me in and open the billing page"   # agent takes over the same window
 co browser take_screenshot /tmp/billing.png           # back to a direct call
 ```
 
@@ -107,10 +107,10 @@ The first word is compared against the browser's function names:
 | You type | What happens |
 |----------|--------------|
 | `co browser go_to x.com` | `go_to` **is** a function → runs it directly |
-| `co browser do "..."` | `do` → hands the instruction to the AI agent |
+| `co browser "..."` | Hands one quoted task to the AI agent |
 | `co browser frobnicate` | matches nothing → `unknown command: frobnicate` (exit 1) |
 
-> Quote natural-language instructions: `co browser do "click the blue button"`. A bare word that happens to be a function name (like `click`) is treated as a direct call, not language.
+> Quote natural-language instructions: `co browser "click the blue button"`. A bare word that happens to be a function name (like `click`) is treated as a direct call, not language.
 
 ## Discovering Functions
 
@@ -194,11 +194,11 @@ Screenshot saved to: /Users/you/project/.tmp/screenshots/screenshot-3f9a1c2b7d4e
 
 Add `--full-page` to capture the entire scrollable height instead of just the viewport.
 
-> **Why a path, not the image?** The underlying `take_screenshot()` function returns a base64 data URL — that's what the AI agent "sees" when it drives the browser with `do`. A direct CLI call deliberately prints the **file path** instead, so `co browser take_screenshot` never floods your terminal with a screenful of base64. Open or pipe the saved file when you want the actual image.
+> **Why a path, not the image?** The underlying `take_screenshot()` function returns a base64 data URL — that's what the AI agent "sees" during a quoted task. A direct CLI call deliberately prints the **file path** instead, so `co browser take_screenshot` never floods your terminal with a screenful of base64. Open or pipe the saved file when you want the actual image.
 
 ## Scripting
 
-Output is clean stdout, errors go to stderr, and the exit code is `0` on success / `1` when the action failed (a selector that matched nothing, a missing script, a page index that does not exist, or a command that ran out of its 120-second deadline) / `2` for a usage error (wrong arguments for a function, or a `go_to` address that is not a web URL) / `3` when there is nothing to act on (no browser open yet, or an unknown `-t` tab) / `4` when another agent holds the tab / `5` when `do` has no account or credentials to run its model (`co auth`) / `6` when the running daemon is pinned to a different engine — so commands compose like any Unix tool:
+Output is clean stdout, errors go to stderr, and the exit code is `0` on success / `1` when the action failed (a selector that matched nothing, a missing script, a page index that does not exist, or a command that ran out of its 120-second deadline) / `2` for a usage error (wrong arguments for a function, or a `go_to` address that is not a web URL) / `3` when there is nothing to act on (no browser open yet, or an unknown `-t` tab) / `4` when another agent holds the tab / `5` when a quoted task has no account or credentials to run its model (`co auth`) / `6` when the running daemon is pinned to a different engine — so commands compose like any Unix tool:
 
 ```bash
 # Capture a value
@@ -271,10 +271,10 @@ The mode is fixed when the daemon starts (the first command that needs one — a
 
 ## Natural Language Agent
 
-`do` runs the full AI browser agent on the live browser and prints its final answer:
+A quoted task runs the full AI browser agent on the live browser and prints its final answer:
 
 ```bash
-co browser do "search for wireless headphones and list the top 3 prices"
+co browser "search for wireless headphones and list the top 3 prices"
 ```
 
 This path uses managed keys — run `co auth` once if you see an authentication message.
@@ -350,9 +350,9 @@ Errors print to **stderr** and exit non-zero (`1` for a failed action; see Scrip
 ```bash
 $ co browser frobnicate
 unknown command: frobnicate
-Run 'co browser help' to list functions, or 'co browser do "<instruction>"' for natural language.
+Run 'co browser help' to list functions, or 'co browser "<instruction>"' for natural language.
 ```
-The first word didn't match any browser function. List them with `co browser help`, or use `do` to describe the task in plain English.
+The first word didn't match any browser function. List them with `co browser help`, or quote a complete task: `co browser "<instruction>"`.
 
 **Wrong arguments**
 ```bash
@@ -371,9 +371,9 @@ Next: retry once that answers, or start over (logins are kept): co browser close
 ```
 Every command is answered within 120 seconds, or its own longer `--timeout` plus 15; the client gives up 10 seconds after that if a stopped daemon never answers. A driver timeout reads the same way — `go_to timed out: Timeout 30000ms exceeded.` — with a next step, not an exception name and a call log.
 
-**Authentication required** (only for `do`)
+**Authentication required** (only for a quoted browser task)
 ```bash
-$ co browser do "find the price"
+$ co browser "find the price"
 Browser agent requires authentication. Run: co auth
 ```
 The natural-language agent uses managed keys. Run `co auth` once. Direct function calls don't need this.
@@ -392,12 +392,12 @@ co browser close
 # See what the agent/daemon is doing
 cat ~/.co/browser.log
 
-# Authentication needed (only for `do`)
+# Authentication needed (only for a quoted browser task)
 co auth
 ```
 
 ## See Also
 
-- [`co auth`](auth.md) — managed keys for the `do` agent
+- [`co auth`](auth.md) — managed keys for the browser task agent
 - [Browser tools library](../useful_tools/browser_tools.md) — `BrowserAutomation` used in your own agents
 - [Templates](../templates/README.md) — scaffold a project whose agent drives this CLI

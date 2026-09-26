@@ -877,7 +877,7 @@ router, your NAS, or anything else on your LAN.
 
 #### `co browser <command>` - Browser Automation
 
-Drive one persistent browser from the shell. Call a browser function directly, or use `do` for the AI agent. State persists between commands until you `close`. See [browser.md](browser.md).
+Drive one persistent browser from the shell. Call a browser function directly, or give a quoted task to the AI agent. State persists between commands until you `close`. See [browser.md](browser.md).
 
 **Direct function calls:**
 ```bash
@@ -890,7 +890,7 @@ co browser close                      # close browser, stop daemon
 
 **Natural language (AI agent on the same browser):**
 ```bash
-co browser do "click the login button and open the dashboard"
+co browser "click the login button and open the dashboard"
 ```
 
 **Scripting (clean stdout, exit codes):**
@@ -902,7 +902,7 @@ co browser --headless go_to "$DEPLOY_URL"   # --headless for CI
 
 **When to use:**
 - Scripting exact browser steps (direct calls)
-- Letting the agent handle a task (`do`)
+- Letting the agent handle a quoted task (`co browser "<instruction>"`)
 - Visual verification and debugging
 
 ---

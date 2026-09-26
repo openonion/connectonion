@@ -79,7 +79,7 @@ grounded in the actual CLI code:
     🌐  Browser (co browser):                ready
     📦  Installed:                           connectonion vX.Y.Z
 
-    What you can do now: co status · co email · co browser do "…" · python agent.py
+    What you can do now: co status · co email · co browser "…" · python agent.py
   ```
 
 ## See Also

@@ -52,13 +52,13 @@ co browser get_text              # still 'main'
 ```
 
 **Concurrent (another agent or a second parallel task exists)** — open your own tab
-and add `-t <name>` to EVERY command, including `do`. Pick an explicit literal tab
+and add `-t <name>` to EVERY command, including a quoted task. Pick an explicit literal tab
 name — a `NAME=$(...)` capture is lost between tool calls:
 
 ```bash
 CO_WHO=alice co browser tab open scrape --for "scrape pricing" --needs 10m
 CO_WHO=alice co browser -t scrape go_to example.com/pricing
-CO_WHO=alice co browser -t scrape do "extract every plan and its monthly price"
+CO_WHO=alice co browser -t scrape "extract every plan and its monthly price"
 CO_WHO=alice co browser tab close scrape       # release when done
 ```
 
@@ -164,16 +164,15 @@ printed, unless you pass `--raw`. Keep it that way: the shape is what you need t
 understand an endpoint, and the value is someone's login — it must not go into a
 prompt, a log or a message. Only use `--raw` when the user asked for the values.
 
-**`do "<instruction>"`** (natural language — an AI agent sees the page and works out
+**`"<instruction>"`** (natural language — an AI agent sees the page and works out
 the steps). Use for judgment, not for steps you already know:
 
 ```bash
-co browser do "log in with the saved credentials and open my notifications"
+co browser "log in with the saved credentials and open my notifications"
 ```
 
-Describe the **end state**, not the steps. A `do` is a full agent run — many LLM
-calls, possibly minutes — and the daemon is busy for its whole duration, so other
-commands queue behind it. **Never wrap `do` in `timeout`**: killing the client
+Describe the **end state**, not the steps. A quoted task is a full agent run — many LLM
+calls, possibly minutes — and model waits stay in the CLI process, so other tabs can continue. **Never wrap a quoted task in `timeout`**: killing the client
 does not stop the run, it only orphans it (you pay for an answer nobody reads).
 
 For state checks, prefer the free text probes first (exit 0 = matched):
@@ -182,10 +181,10 @@ For state checks, prefer the free text probes first (exit 0 = matched):
 co browser get_current_url | grep "/feed"
 ```
 
-Only when the state is visually ambiguous, fall back to a one-word `do` probe:
+Only when the state is visually ambiguous, fall back to a short quoted task:
 
 ```bash
-co browser do "Look at the current page. Reply EXACTLY one of: STATE: feed | STATE: login | STATE: error"
+co browser "Look at the current page. Reply EXACTLY one of: STATE: feed | STATE: login | STATE: error"
 ```
 
 ## Step 4: Verify with evidence
@@ -270,7 +269,7 @@ command **starts** the daemon (`status` shows `headless=true/false`). To switch:
 
 ## Scripting hygiene
 
-- Wrap **direct functions** that might block in `timeout 60 ...`; never `timeout` a `do`.
+- Wrap **direct functions** that might block in `timeout 60 ...`; never `timeout` a quoted task.
 - Take the data line with `tail -1` when output includes env banners.
 - Batch related commands in one tool call; never spend a whole call on a bare wait.
 - **`wait` is in seconds** — every other settle knob here is milliseconds
@@ -284,8 +283,7 @@ command **starts** the daemon (`status` shows `headless=true/false`). To switch:
 
 - **"Where is my window?"** — `co browser status` says `headless=true`? An earlier
   command started the daemon headless. `co browser close`, rerun without the flag.
-- **"daemon is busy"** — a long `do` is holding the single-threaded daemon. Wait
-  and retry; `co browser status` shows the last command once it frees up.
+- **"tab busy"** — another task holds this tab. Run `co browser tab ls`, then use your own tab.
 - **"Opening in existing browser session" / profile in use (shows a PID)** — a
   manually opened Chrome or stale daemon holds the profile; kill that PID, retry.
 - **`TargetClosedError` after a crash** — the page died under the daemon; run

@@ -7,7 +7,7 @@ Drive **one persistent, logged-in browser from the shell** — and let several A
 ```bash
 co browser go_to https://news.ycombinator.com   # opens a real browser, navigates
 co browser get_text                              # dumps the page text
-co browser do "click the top story and summarize it"   # let the AI agent do it
+co browser "click the top story and summarize it"   # let the AI agent do it
 co browser close                                 # shut the browser down
 ```
 
@@ -19,7 +19,7 @@ Two ways to drive it:
 
 - **Direct functions** (deterministic): `go_to`, `get_text`, `click_element_by_selector`,
   `take_screenshot`, `type_text_by_selector`, … — run `co browser help` for the full list.
-- **`do "<instruction>"`** (natural language): an AI agent operates the same live
+- **`"<instruction>"`** (natural language): an AI agent operates the same live
   browser and figures out the steps itself.
 
 Output contract: **stdout = data, stderr = errors.** Exit code is `0` on success.
@@ -50,11 +50,11 @@ Running a distinct task (or a second agent)? Give it its own tab:
 ```bash
 NAME=$(co browser tab open --who alice --for "scrape pricing")   # prints the tab name
 co browser -t "$NAME" go_to https://example.com/pricing          # -t targets that tab
-co browser -t "$NAME" do "extract every plan and its monthly price"
+co browser -t "$NAME" "extract every plan and its monthly price"
 co browser tab close "$NAME"                                     # release it when done
 ```
 
-`-t <tab>` uses the exact same grammar for direct functions **and** `do`. A bare
+`-t <tab>` uses the exact same grammar for direct functions **and** quoted tasks. A bare
 command (no `-t`) always means the `main` tab.
 
 ## Several Agents, One Browser (contention)
@@ -70,7 +70,7 @@ tab 'main' is in use by alice — last: go_to example.com · 4s ago
 You are a second agent on this browser. Two agents cannot share one tab.
 Run your task in your own tab — three commands:
   1. co browser tab open <name> --who <your-name> --for "<what you are doing>"
-  2. co browser -t <name> <verb> [args]      # add -t <name> to EVERY command, including do
+  2. co browser -t <name> <verb> [args]      # add -t <name> to EVERY command, including quoted tasks
   3. co browser tab close <name>             # when your task is done
 
 see who owns what:  co browser tab ls
@@ -131,7 +131,7 @@ parsing prose:
 | `2`  | usage error (bad flags, empty `-t`, `tab` misuse, wrong arguments for a function — the message shows its signature — or a `go_to` address that is not a web URL) |
 | `3`  | nothing to act on: unknown tab (`-t` names a tab that was never `tab open`ed), or no browser is open yet — the message names the `go_to` that opens one |
 | `4`  | tab busy (another agent is mid-task on that tab, or an earlier command on it is still running past this one's deadline) |
-| `5`  | `do` cannot tell which account pays for its model, or has no credentials — run `co auth` |
+| `5`  | A quoted task cannot tell which account pays for its model, or has no credentials — run `co auth` |
 | `6`  | the running daemon is pinned to a different engine than the one asked for — the message names the commands that work |
 
 A selector that matches nothing is a failure for the functions that act on it
@@ -152,7 +152,7 @@ name (`"not a url"`). A bare host still gets a scheme, as always:
 
 ```
 co browser [-t TAB] <function> [args]    run a browser function (bare = the shared 'main' tab)
-co browser [-t TAB] do "<instruction>"   let the AI agent do it — same targeting grammar
+co browser [-t TAB] "<instruction>"   let the AI agent do it — same targeting grammar
 co browser tab open [NAME] [--who <agent>] [--for "<purpose>"] [--needs 10m]   register a tab; prints its name
 co browser tab ls [--json]               the board: every tab, who runs it, last command
 co browser tab close <NAME>              release your tab when the task is done
@@ -289,20 +289,20 @@ writes and `BrowserAutomation(seed_state=...)` reads, and it is written 0600: it
 is a live login. A tab with no site open is told to `go_to` one (or pass
 `--all`) rather than being shown every cookie in the browser.
 
-### `do` — natural language
+### A quoted task — natural language
 
-`do` hands the same live browser to an AI agent that sees the page and works out
+A quoted task hands the same live browser to an AI agent that sees the page and works out
 the steps itself — clicking, typing, scrolling, reading — until your instruction
 is done:
 
 ```bash
-co browser do "log into github with the saved credentials and open my notifications"
-co browser -t scrape do "collect every plan name and monthly price into a list"
+co browser "log into github with the saved credentials and open my notifications"
+co browser -t scrape "collect every plan name and monthly price into a list"
 ```
 
 Describe the **end state** you want ("download the June invoice PDF"), not the
-steps. `do` costs LLM calls and is slower than direct functions — use functions
-for anything deterministic, `do` for judgment. The model loop runs in the CLI
+steps. A quoted task costs LLM calls and is slower than direct functions — use functions
+for anything deterministic, a quoted task for judgment. The model loop runs in the CLI
 process; each browser action takes one short daemon turn, so other tabs can make
 progress while the model thinks. A command targeting the same claimed tab still
 exits 4, preserving ownership instead of interleaving two tasks on one page.
@@ -336,7 +336,7 @@ once, so they cannot fix the mode before the `go_to` that was meant to.
   someone else to take the tab — wrong when you are waiting on a slow page or
   a human.
 - **Concurrent agents:** each `tab open`s once, adds `-t <name>` to **every**
-  command (including `do`), and `tab close`s when finished. Set `CO_WHO`.
+  command (including a quoted task), and `tab close`s when finished. Set `CO_WHO`.
 - **On an exit-4:** don't retry the same bare command — open your own tab (the error
   tells you how). Two agents on one page corrupt each other's navigation.
 - **On an exit-3:** `tab open` the name first, then target it — a tab must be
@@ -411,7 +411,7 @@ loser exits and its command is served by the winner.
 ### Restart the daemon after an upgrade or downgrade
 
 Installing a new ConnectOnion package does not replace a browser daemon that is
-already running. Before the first `co browser do` on the new version, stop the
+already running. Before the first `co browser "<instruction>"` on the new version, stop the
 old process cleanly:
 
 ```bash

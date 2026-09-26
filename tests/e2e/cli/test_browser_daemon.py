@@ -293,7 +293,7 @@ def test_dispatch_unknown_command(tmp_path):
     assert payload.startswith("unknown command: frobnicate")
     # agent-friendly next steps
     assert "co browser help" in payload
-    assert 'do "<instruction>"' in payload
+    assert 'co browser "<instruction>"' in payload
 
 
 def test_dispatch_wrong_args_shows_signature(tmp_path):
@@ -320,7 +320,7 @@ def test_dispatch_do_refuses_a_resident_agent(tmp_path):
         "do find the cheapest flight", account="0xsame-account"
     ))
     assert code == 2
-    assert "CLI process" in payload
+    assert "do verb was removed" in payload
     assert daemon.browser._tab_meta == {}
 
 
@@ -677,7 +677,7 @@ def test_do_model_wait_does_not_hold_the_daemon_lane(short_sock, monkeypatch):
     monkeypatch.setattr(agent_module, "build_browser_agent", lambda browser, key: WaitingAgent())
 
     worker = threading.Thread(
-        target=lambda: result.append(c._run_do('do "wait for the model"', True, None))
+        target=lambda: result.append(c._run_instruction('"wait for the model"', True, None))
     )
     worker.start()
     assert thinking.wait(timeout=2)
@@ -844,7 +844,7 @@ def test_do_thinks_in_the_client_without_opening_a_daemon_request(monkeypatch, c
     monkeypatch.setattr(agent_module, "resolve_api_key", lambda: "key")
     monkeypatch.setattr(agent_module, "build_browser_agent", lambda browser, key: FakeAgent())
 
-    assert c.send('do "send the form"') == 0
+    assert c.send('"send the form"') == 0
     assert captured["command"] == "send the form"
     assert capsys.readouterr().out.strip() == "done"
 
@@ -873,7 +873,7 @@ def test_do_tool_calls_are_short_raw_daemon_requests(monkeypatch, capsys):
         agent_module, "build_browser_agent", lambda browser, key: FakeAgent(browser)
     )
 
-    assert c.send('do "visit the site"', headless=True, tab="research") == 0
+    assert c.send('"visit the site"', headless=True, tab="research") == 0
     assert requests == [(
         "go_to https://example.com",
         {"headless": True, "tab": "research", "raw_result": True},
@@ -898,7 +898,7 @@ def test_client_refuses_do_when_it_cannot_name_the_payer(monkeypatch, capsys):
     monkeypatch.setattr(c, "_caller_account", lambda: "")
     monkeypatch.setattr(c, "_connect", Mock(side_effect=AssertionError("no socket")))
 
-    assert c.send("do submit the form") == 5
+    assert c.send('"submit the form"') == 5
     assert "cannot determine" in capsys.readouterr().err
 
 
@@ -1118,9 +1118,32 @@ def test_do_instruction_is_not_quote_mangled(monkeypatch):
     monkeypatch.setattr(c, "_caller_account", lambda: "0xsame-account")
     monkeypatch.setattr(agent_module, "resolve_api_key", lambda: "key")
     monkeypatch.setattr(agent_module, "build_browser_agent", lambda browser, key: FakeAgent())
-    line = _shlex.join(["do", "log in and download my invoices"])   # what client.send builds
+    line = _shlex.join(["log in and download my invoices"])   # what client.send builds
     assert c.send(line) == 0
     assert captured["cmd"] == "log in and download my invoices"
+
+
+def test_old_do_form_is_rejected_without_running_a_model(monkeypatch, capsys):
+    monkeypatch.setattr(c, "_caller_account", lambda: (_ for _ in ()).throw(
+        AssertionError("model path must not run")))
+    assert c.send('do "submit the form"') == 2
+    assert 'co browser "<instruction>"' in capsys.readouterr().err
+
+
+def test_quoted_browser_task_reaches_client_as_one_argument(monkeypatch):
+    import shlex
+    from typer.testing import CliRunner
+    from connectonion.cli import main
+    from connectonion.cli.commands import browser_commands
+
+    received = []
+    monkeypatch.setattr(browser_commands, "send", lambda line, **kwargs: received.append(
+        (line, kwargs)) or 0)
+    monkeypatch.setattr(browser_commands, "_next_tip", lambda: "")
+    result = CliRunner().invoke(main.app, ["browser", "find the pricing page"])
+
+    assert result.exit_code == 0, result.output
+    assert shlex.split(received[0][0]) == ["find the pricing page"]
 
 
 def test_readonly_verb_on_unregistered_tab_is_not_exit_3(tmp_path):
