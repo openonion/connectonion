@@ -175,6 +175,11 @@ tests/cli/logs/
 test-package-*.tar.gz
 # Agent runtime directory
 .co/
+# Keep the authored example standards, but not their runtime traces.
+!examples/communication-benchmark/.co/
+examples/communication-benchmark/.co/*
+!examples/communication-benchmark/.co/benchmarks/
+!examples/communication-benchmark/.co/benchmarks/*.yaml
 NIGHT_RUNNER_PROGRESS.md
 IMPLEMENTATION_PLAN.md
 STATUS.md
