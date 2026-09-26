@@ -158,6 +158,7 @@ co browser tab ls [--json]               the board: every tab, who runs it, last
 co browser tab close <NAME>              release your tab when the task is done
 co browser status                        browser state, stealth-driver health, last command, the board
 co browser close                         close the browser and stop the daemon
+co browser import [--domain SITE] [--dry-run]   carry Chrome's logins (cookies) into this browser
 co browser help                          list every browser function
 co browser --headless <function>         run without a visible window (first command decides — see below)
 ```
@@ -288,6 +289,59 @@ A saved file is Playwright's `storage_state` shape, the same one `save_state`
 writes and `BrowserAutomation(seed_state=...)` reads, and it is written 0600: it
 is a live login. A tab with no site open is told to `go_to` one (or pass
 `--all`) rather than being shown every cookie in the browser.
+
+### Importing logins from Chrome
+
+A new browser profile starts signed out of everything, and signing in again
+from a new browser is exactly what some sites flag as unusual. `co browser
+import` carries the session you already have in Google Chrome into the co
+browser profile instead:
+
+```bash
+co browser import --profile "Profile 1" --domain linkedin.com --dry-run   # sites and counts, nothing written
+co browser import --profile "Profile 1" --domain linkedin.com             # asks once, then imports
+co browser --engine wtf go_to https://www.linkedin.com/feed/              # check it landed signed in
+```
+
+- `--profile` takes Chrome's folder name (`Default`, `Profile 1`) or the name
+  Chrome shows for the profile (`openonion`). Default: `Default`.
+- `--domain` keeps one site and its subdomains; repeat it for more. Without it
+  every site in the profile is imported.
+- `--engine` picks the target. Without it the import goes to the engine
+  `co browser config` names, else to the paid WTF Browser, since that is the
+  profile that starts empty. A real import starts a browser session, and a WTF
+  Browser session is billed.
+- `--dry-run` lists sites and cookie counts only: no Keychain, no browser.
+- `--yes` skips the one confirmation; without a terminal it is required.
+- A site the target browser already holds cookies for is left alone and
+  reported as "already signed in in the target", so an import never switches
+  an account the target is using. `--replace` imports over it; cookies with
+  the same name, domain and path are overwritten and the others stay.
+
+How it works: the command reads a private copy of Chrome's cookie database
+(Chrome locks the file while it runs, and the source profile is never
+modified), decrypts it with the "Chrome Safe Storage" key from the macOS
+Keychain the way Chrome does, and writes each site through the target
+browser's own cookie API (Playwright `add_cookies`) — so the target encrypts
+them however it stores cookies, including a mock keychain. Cookie values are
+never printed. The report names every cookie that was skipped and why:
+expired, partitioned (it belongs to one embedding site), undecryptable, or
+rejected by the target browser.
+
+Limits of this first version:
+
+- **macOS and Google Chrome only.** Other browsers and platforms are not read yet.
+- **Cookies only.** Local storage, saved passwords, history and extensions are
+  not imported; saved passwords are never read.
+- **The Keychain dialog.** macOS may ask whether `security` may read
+  "Chrome Safe Storage". That is the key Chrome encrypts its cookies with;
+  choose Allow. Deny, and nothing is imported.
+- **Device-bound sessions.** A site that ties its session to the device
+  (Google, some banks) may still ask you to sign in. Verify with
+  `co browser --engine wtf go_to https://<site>`.
+- Playwright cannot create host-only cookies, so a cookie Chrome held for one
+  exact host is set as a domain cookie for that host; a `__Host-` cookie may be
+  rejected for the same reason and is reported as such.
 
 ### `do` — natural language
 

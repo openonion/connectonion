@@ -105,7 +105,7 @@ NEXT = {
     "co ai": HANDLER,                 # the answer is the output
     "co announce": "Give subscribers the address they follow:  co keys",
     "co auth": HANDLER,               # every path ends "Next: co status" / "co outlook inbox"
-    "co browser": HANDLER,            # rotating tip on stderr; exits by raise
+    "co browser": HANDLER,            # rotating tip on stderr; `import` names its own go_to check; exits by raise
     "co claude run": 'Continue this Claude session:  co claude run "<next task>" --session <session-id>',
     "co call": HANDLER,               # prints the remote's own output; exits by raise
     "co commands": HANDLER,
