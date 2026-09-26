@@ -73,7 +73,6 @@ from .remote_browser import RemoteBrowserService
 from .replay import MemoryReplayStore, SignatureReplayStore
 from .inbox import create_inbox_lifespan
 from .schedule import create_schedule_lifespan
-from .watch import create_watch_lifespan
 from .session import ActiveSessionRegistry, SessionStorage, SessionViewers, start_cleanup_job
 from .session.mode import HostPermissionPolicy
 from .ws_router import run_ws_session
@@ -1319,11 +1318,6 @@ def host(
     on_startup = _both(on_startup, inbox_startup)
     on_shutdown = _both(inbox_shutdown, on_shutdown)
 
-    watch_startup, watch_shutdown = create_watch_lifespan(
-        co_dir, create_agent, storage, result_ttl, console=Console())
-    on_startup = _both(on_startup, watch_startup)
-    on_shutdown = _both(watch_shutdown, on_shutdown)
-
     on_startup = _both(on_startup, cleanup_startup)
     on_shutdown = _both(cleanup_shutdown, on_shutdown)
 
@@ -1433,10 +1427,6 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
             extra_tick=route_handlers['control_center'].tick)
         balance_startup = _both(balance_startup, sched_startup)
         balance_shutdown = _both(sched_shutdown, balance_shutdown)
-    watch_startup, watch_shutdown = create_watch_lifespan(
-        replay_dir, create_agent, storage, result_ttl)
-    balance_startup = _both(balance_startup, watch_startup)
-    balance_shutdown = _both(watch_shutdown, balance_shutdown)
     balance_startup = _both(balance_startup, cleanup_startup)
     balance_shutdown = _both(cleanup_shutdown, balance_shutdown)
     return asgi_create_app(

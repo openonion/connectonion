@@ -15,6 +15,7 @@ import pytest
 
 from connectonion.cli.commands.deploy_to_server import RSYNC_FILTERS, _rsync_filters
 
+
 pytestmark = pytest.mark.skipif(
     shutil.which("rsync") is None, reason="needs rsync on PATH"
 )

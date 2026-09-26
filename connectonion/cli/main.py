@@ -1084,37 +1084,6 @@ schedule_app = _typer_app(
 )
 app.add_typer(schedule_app, name="schedule")
 
-watch_app = _typer_app(
-    help="See this agent's event watchers and their last delivery, declared in .co/host.yaml.",
-    epilog="Example:  co watch list --json  |  Back: co --help",
-)
-app.add_typer(watch_app, name="watch")
-
-
-@watch_app.callback(invoke_without_command=True)
-def watch_callback(ctx: typer.Context,
-                   json_output: bool = typer.Option(False, "--json", help="Watchers and delivery state as JSON")):
-    """List event watchers, their source, last event and status. Read-only."""
-    if ctx.invoked_subcommand is None:
-        from .commands.watch_commands import handle_list
-        handle_list(json_output)
-    elif json_output:
-        raise typer.BadParameter("Put --json on bare co watch or after co watch list.")
-
-
-@watch_app.command("list", epilog="Example:  co watch list --json  |  Back: co watch --help")
-def watch_list(json_output: bool = typer.Option(False, "--json", help="Watchers and delivery state as JSON")):
-    """List declared watchers and their last delivery. Read-only."""
-    from .commands.watch_commands import handle_list
-    handle_list(json_output)
-
-
-@watch_app.command("retry", epilog="Example:  co watch retry <event-id>  |  Back: co watch --help")
-def watch_retry(event_id: str = typer.Argument(..., help="Failed event ID from co watch list --json")):
-    """Requeue one failed event after fixing its cause. Writes watch state."""
-    from .commands.watch_commands import handle_retry
-    handle_retry(event_id)
-
 
 @schedule_app.callback(invoke_without_command=True)
 def schedule_callback(ctx: typer.Context,
