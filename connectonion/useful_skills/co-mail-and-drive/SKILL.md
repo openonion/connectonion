@@ -50,7 +50,7 @@ co gmail sent -n 20
 ```bash
 co outlook                   # bare command = inbox
 co outlook inbox -n 25 -u
-co outlook read 3
+co outlook read 3 --listing <listing-id>            # same token rule as Gmail
 co outlook search "invoice" -n 20
 co outlook sent -n 20
 ```
@@ -111,6 +111,10 @@ An uncertain result is recorded before submission; repeat attempts inspect a
 unique Message-ID in sent mail and never blindly submit again. Keep the global
 `gmail-send-attempts/` records when investigating an uncertain result.
 
+Outlook inbox/search row numbers follow the same rule (`--listing`, 15
+minutes, same account); `co outlook cancel` numbers still come from the last
+`co outlook scheduled`.
+
 Gmail message and draft row numbers require `--listing <listing-id>` from
 the corresponding listing. Tokens bind to the provider-confirmed account and
 expire after 15 minutes; only the newest 128 are retained. Full IDs work without
@@ -151,7 +155,7 @@ before 1.8.4b1 copying a third person meant a fresh `send` with "RE:" in the
 subject, which the recipient saw as a new conversation:
 
 ```bash
-co outlook reply 3 "Looping in Sam" --cc sam@example.com
+co outlook reply 3 "Looping in Sam" --listing <listing-id> --cc sam@example.com
 ```
 
 Outlook additionally schedules. A scheduled send or reply ends with the cancel
@@ -159,12 +163,12 @@ path; run it as printed rather than looking for a separate command:
 
 ```bash
 co outlook send bob@example.com "Nudge" "Following up" --at +2h    # +30m, +2h, or 2026-07-06T15:30:00Z
-co outlook reply 3 "On it" --at +30m
+co outlook reply 3 "On it" --listing <listing-id> --at +30m
 co outlook scheduled          # what is queued, numbered
 co outlook cancel 1           # pull one back before it goes
 ```
 
-Outlook can also save an email's attachments: `co outlook download 3 --to ~/Downloads`.
+Outlook can also save an email's attachments: `co outlook download 3 --listing <listing-id> --to ~/Downloads`.
 
 ## Gmail mailbox actions and incoming attachments (1.8.4 candidate)
 

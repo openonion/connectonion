@@ -5,8 +5,8 @@ LLM-Note: Tests for cli/commands/outlook_commands
 What it tests:
 - _outlook() credential/scope guard (prints 'co auth microsoft' hint, returns None)
 - _parse_send_at relative (+30m/+2h) and ISO pass-through parsing
-- _resolve_email_id short-number resolution via cache file and list_inbox fallback
-- handle_outlook_inbox writes the {#: message_id} cache
+- _resolve_email_id resolves short numbers only inside the listing token they came with (#1754)
+- handle_outlook_inbox/search freeze each listing, empty ones included; --json freezes none
 - handle_outlook_send reads the body from stdin when message is '-'
 - handle_outlook_reply forwards --attach files (and stdin bodies, and --at) to Outlook.reply, rejects missing/oversize files before replying, and keeps `at` third positional with attachments keyword-only
 
@@ -36,6 +36,7 @@ from connectonion.cli.commands.outlook_commands import (
     handle_outlook_contact_search,
     handle_outlook_inbox,
     handle_outlook_reply,
+    handle_outlook_search,
     handle_outlook_send,
 )
 
@@ -161,28 +162,31 @@ class TestParseSendAt:
 class TestResolveEmailId:
     """_resolve_email_id maps short inbox numbers to Graph message ids."""
 
-    def test_short_number_resolves_from_cache(self, tmp_path, monkeypatch):
-        cache = tmp_path / "outlook_last_inbox.json"
-        cache.write_text(json.dumps({"1": "msg-cached-1", "2": "msg-cached-2"}))
-        monkeypatch.setattr(outlook_commands, "INBOX_CACHE", cache)
+    @pytest.fixture(autouse=True)
+    def _listings(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(outlook_commands, "LISTINGS", tmp_path / "outlook-listings")
+        with patch.dict(os.environ, CONNECTED_ENV, clear=False):
+            yield
+
+    def test_short_number_resolves_from_its_listing(self, tmp_path):
+        from connectonion.cli.commands.gmail_listings import save_listing
+        token = save_listing(tmp_path / "outlook-listings", "aaron@example.com", "messages",
+                             ["msg-1", "msg-2"], provider="outlook")
 
         outlook = MagicMock()
-        assert _resolve_email_id(outlook, "2") == "msg-cached-2"
+        assert _resolve_email_id(outlook, "2", listing=token) == "msg-2"
         outlook.list_inbox.assert_not_called()
 
-    def test_short_number_falls_back_to_list_inbox(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(outlook_commands, "INBOX_CACHE", tmp_path / "missing.json")
+    def test_short_number_without_a_listing_is_refused_not_guessed(self):
+        # The old fallback fetched a fresh inbox and took its row N — a
+        # different list from the one the number was read off (#1754).
+        from connectonion.cli.commands.gmail_listings import ListingError
 
         outlook = MagicMock()
         outlook.list_inbox.return_value = sample_emails(3)
-        assert _resolve_email_id(outlook, "2") == "msg-2"
-
-    def test_short_number_beyond_inbox_returns_empty(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(outlook_commands, "INBOX_CACHE", tmp_path / "missing.json")
-
-        outlook = MagicMock()
-        outlook.list_inbox.return_value = sample_emails(1)
-        assert _resolve_email_id(outlook, "5") == ""
+        with pytest.raises(ListingError):
+            _resolve_email_id(outlook, "2")
+        outlook.list_inbox.assert_not_called()
 
     def test_long_numeric_id_passes_through(self, tmp_path, monkeypatch):
         monkeypatch.setattr(outlook_commands, "INBOX_CACHE", tmp_path / "missing.json")
@@ -202,9 +206,9 @@ class TestResolveEmailId:
 class TestHandleOutlookInbox:
     """handle_outlook_inbox lists emails and remembers the numbering."""
 
-    def test_writes_cache_mapping(self, tmp_path, monkeypatch, capsys):
-        cache = tmp_path / ".co" / "outlook_last_inbox.json"
-        monkeypatch.setattr(outlook_commands, "INBOX_CACHE", cache)
+    def test_freezes_the_numbering_under_a_listing_token(self, tmp_path, monkeypatch, capsys):
+        listings = tmp_path / ".co" / "outlook-listings"
+        monkeypatch.setattr(outlook_commands, "LISTINGS", listings)
         # Pin the interactive branch — CI has no tty, dev shells may force color.
         monkeypatch.setattr(outlook_commands, "console", Console(force_terminal=True, width=120))
 
@@ -215,15 +219,15 @@ class TestHandleOutlookInbox:
             with patch.object(outlook_commands, "_outlook", return_value=outlook):
                 handle_outlook_inbox(last=2)
 
-        assert json.loads(cache.read_text()) == {
-            "kind": "inbox", "rows": {"1": "msg-1", "2": "msg-2"}}
+        [saved] = listings.glob("*.json")
+        assert json.loads(saved.read_text())["ids"] == ["msg-1", "msg-2"]
         output = capsys.readouterr().out
         assert "Subject 1" in output
-        assert "co outlook read" in output
+        assert f"co outlook read 1 --listing {saved.stem}" in output
 
-    def test_piped_output_prints_plain_listing_with_cache(self, tmp_path, monkeypatch, capsys):
-        cache = tmp_path / ".co" / "outlook_last_inbox.json"
-        monkeypatch.setattr(outlook_commands, "INBOX_CACHE", cache)
+    def test_piped_output_prints_plain_listing_with_its_token(self, tmp_path, monkeypatch, capsys):
+        listings = tmp_path / ".co" / "outlook-listings"
+        monkeypatch.setattr(outlook_commands, "LISTINGS", listings)
         # Pin the non-tty branch: scripts get the untruncated tool format.
         monkeypatch.setattr(outlook_commands, "console", Console(force_terminal=False))
 
@@ -235,21 +239,27 @@ class TestHandleOutlookInbox:
             with patch.object(outlook_commands, "_outlook", return_value=outlook):
                 handle_outlook_inbox(last=2)
 
-        assert json.loads(cache.read_text()) == {
-            "kind": "inbox", "rows": {"1": "msg-1", "2": "msg-2"}}
-        assert "Found 2 email(s) with full ids" in capsys.readouterr().out
+        [saved] = listings.glob("*.json")
+        assert json.loads(saved.read_text())["ids"] == ["msg-1", "msg-2"]
+        output = capsys.readouterr().out
+        assert "Found 2 email(s) with full ids" in output
+        assert f"Listing: {saved.stem}" in output
 
-    def test_empty_inbox_prints_message_without_cache(self, tmp_path, monkeypatch, capsys):
-        cache = tmp_path / ".co" / "outlook_last_inbox.json"
-        monkeypatch.setattr(outlook_commands, "INBOX_CACHE", cache)
+    def test_empty_inbox_is_a_listing_with_no_rows(self, tmp_path, monkeypatch, capsys):
+        # Leaving the older numbering in place is how `reply 1` reached an
+        # email the user was not looking at (#1754).
+        listings = tmp_path / ".co" / "outlook-listings"
+        monkeypatch.setattr(outlook_commands, "LISTINGS", listings)
 
         outlook = MagicMock()
         outlook.list_inbox.return_value = []
 
-        with patch.object(outlook_commands, "_outlook", return_value=outlook):
-            handle_outlook_inbox(last=10, unread=True)
+        with patch.dict(os.environ, CONNECTED_ENV, clear=False):
+            with patch.object(outlook_commands, "_outlook", return_value=outlook):
+                handle_outlook_inbox(last=10, unread=True)
 
-        assert not cache.exists()
+        [saved] = listings.glob("*.json")
+        assert json.loads(saved.read_text())["ids"] == []
         assert "no unread emails" in capsys.readouterr().out
 
 
@@ -340,7 +350,7 @@ class TestHandleOutlookReply:
     def _reply(self, outlook, monkeypatch, **kwargs):
         cache = {"3": "msg-cached-3"}
         monkeypatch.setattr(outlook_commands, "_resolve_email_id",
-                            lambda _outlook, email_id: cache.get(email_id, ""))
+                            lambda _outlook, email_id, listing=None: cache.get(email_id, ""))
         with patch.dict(os.environ, CONNECTED_ENV, clear=False):
             with patch.object(outlook_commands, "_outlook", return_value=outlook):
                 handle_outlook_reply(**kwargs)
@@ -447,7 +457,7 @@ class TestHandleOutlookReplyPositionalCompatibility:
     def _call(self, outlook, monkeypatch, *args, **kwargs):
         cache = {"3": "msg-cached-3"}
         monkeypatch.setattr(outlook_commands, "_resolve_email_id",
-                            lambda _outlook, email_id: cache.get(email_id, ""))
+                            lambda _outlook, email_id, listing=None: cache.get(email_id, ""))
         with patch.dict(os.environ, CONNECTED_ENV, clear=False):
             with patch.object(outlook_commands, "_outlook", return_value=outlook):
                 handle_outlook_reply(*args, **kwargs)
@@ -481,8 +491,8 @@ class TestHandleOutlookReplyPositionalCompatibility:
         import inspect
 
         params = inspect.signature(handle_outlook_reply).parameters
-        assert list(params) == ["email_id", "message", "at", "attachments", "cc", "bcc"]
-        for name in ("attachments", "cc", "bcc"):
+        assert list(params) == ["email_id", "message", "at", "attachments", "cc", "bcc", "listing"]
+        for name in ("attachments", "cc", "bcc", "listing"):
             assert params[name].kind is inspect.Parameter.KEYWORD_ONLY
 
 
@@ -561,7 +571,6 @@ class TestCancelCannotReachTheInbox:
         outlook_commands._remember_listing("inbox", sample_emails(3))
 
         assert _resolve_email_id(MagicMock(), "1", expect="scheduled") == ""
-        assert _resolve_email_id(MagicMock(), "1", expect="inbox") == "msg-1"
 
     def test_cancel_refuses_rather_than_deleting_whatever_is_at_that_row(
             self, tmp_path, monkeypatch, capsys):
@@ -605,13 +614,12 @@ class TestCancelCannotReachTheInbox:
 
         assert _resolve_email_id(MagicMock(), "1", expect="scheduled") == "draft-a"
 
-    def test_a_cache_from_an_older_version_is_read_as_an_inbox_one(self, tmp_path, monkeypatch):
+    def test_a_cache_from_an_older_version_is_not_a_scheduled_one(self, tmp_path, monkeypatch):
         # Upgrading must not turn every existing number into a scheduled one.
         cache = tmp_path / "outlook_last_inbox.json"
         cache.write_text(json.dumps({"1": "msg-old"}))
         monkeypatch.setattr(outlook_commands, "INBOX_CACHE", cache)
 
-        assert _resolve_email_id(MagicMock(), "1", expect="inbox") == "msg-old"
         assert _resolve_email_id(MagicMock(), "1", expect="scheduled") == ""
 
     def test_with_no_listing_at_all_cancel_does_not_fall_back_to_the_inbox(
@@ -709,3 +717,91 @@ class TestContactPipedOutput:
 
         row = capsys.readouterr().out.splitlines()[0]
         assert row.split("\t") == ["Zhou Yifei", "zhou@example.com", "contact-1"]
+
+
+class TestReplyUsesTheListingYouSaw:
+    """A row number means a row of the listing whose token came with it (#1754).
+
+    The saved numbering used to be one file that `inbox --json`, an empty search
+    and an empty unread listing all left alone, with no expiry and no account.
+    After new mail arrived, `reply 1` answered the CEO from yesterday's table
+    although the listing on screen had a customer at the top.
+    """
+
+    @staticmethod
+    def _mail(message_id, sender):
+        return {"id": message_id, "from": sender, "from_name": sender, "subject": "s",
+                "date": "2026-09-26T00:00:00Z", "unread": False}
+
+    @pytest.fixture
+    def outlook(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(outlook_commands, "INBOX_CACHE", tmp_path / ".co" / "outlook_last_inbox.json")
+        monkeypatch.setattr(outlook_commands, "LISTINGS", tmp_path / ".co" / "outlook-listings")
+        monkeypatch.setattr(outlook_commands, "console", Console(force_terminal=False, width=200))
+        outlook = MagicMock()
+        outlook.list_inbox.return_value = [self._mail("CEO", "ceo@corp.com")]
+        outlook._format_dicts.side_effect = lambda emails: "\n".join(e["id"] for e in emails)
+        with patch.dict(os.environ, CONNECTED_ENV, clear=False):
+            with patch.object(outlook_commands, "_outlook", return_value=outlook):
+                yield outlook
+
+    @staticmethod
+    def _token(output):
+        return re.search(r"Listing: ([a-f0-9]{32})", output).group(1)
+
+    def test_a_bare_number_after_a_json_listing_does_not_reply_to_an_older_one(self, outlook, capsys):
+        handle_outlook_inbox(last=10)
+        outlook.list_inbox.return_value = [self._mail("CUSTOMER", "customer@client.com"),
+                                           self._mail("CEO", "ceo@corp.com")]
+        handle_outlook_inbox(last=10, json_output=True)
+
+        with pytest.raises(typer.Exit):
+            handle_outlook_reply("1", "Thanks, invoice attached")
+
+        outlook.reply.assert_not_called()
+        assert "--listing" in capsys.readouterr().err
+
+    def test_an_empty_search_does_not_leave_an_older_numbering_in_force(self, outlook, capsys):
+        handle_outlook_inbox(last=10)
+        outlook.list_search.return_value = []
+        handle_outlook_search("nomatch")
+
+        with pytest.raises(typer.Exit):
+            handle_outlook_reply("1", "yes")
+
+        outlook.reply.assert_not_called()
+
+    def test_a_number_with_its_listing_replies_to_that_row(self, outlook, capsys):
+        handle_outlook_inbox(last=10)
+        token = self._token(capsys.readouterr().out)
+
+        handle_outlook_reply("1", "yes", listing=token)
+
+        assert outlook.reply.call_args.args[0] == "CEO"
+
+    def test_a_listing_from_another_account_is_refused(self, outlook, capsys):
+        handle_outlook_inbox(last=10)
+        token = self._token(capsys.readouterr().out)
+
+        with patch.dict(os.environ, {"MICROSOFT_EMAIL": "someone-else@example.com"}):
+            with pytest.raises(typer.Exit):
+                handle_outlook_reply("1", "yes", listing=token)
+
+        outlook.reply.assert_not_called()
+
+    def test_a_listing_expires(self, outlook, capsys, monkeypatch):
+        import time
+        handle_outlook_inbox(last=10)
+        token = self._token(capsys.readouterr().out)
+        later = time.time() + 16 * 60
+        monkeypatch.setattr("connectonion.cli.commands.gmail_listings.time.time", lambda: later)
+
+        with pytest.raises(typer.Exit):
+            handle_outlook_reply("1", "yes", listing=token)
+
+        outlook.reply.assert_not_called()
+
+    def test_a_full_message_id_needs_no_listing(self, outlook):
+        handle_outlook_reply("AAMkAGI2NGVhZTVlLTI=", "yes")
+
+        assert outlook.reply.call_args.args[0] == "AAMkAGI2NGVhZTVlLTI="
