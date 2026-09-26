@@ -375,7 +375,21 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b3
+## Current Version: 1.8.9b4
+
+1.8.9b4 is an opt-in Claude Station reliability preview. A browser approval
+used to reach OIP while its provider invocation still said `running`, leaving
+the owner with no button and Claude waiting indefinitely. The invocation now
+enters `awaiting_approval` before the request and returns to `running` after
+the answer (#1747). Station also stops advertising selectable native permission
+profiles because its browser turns always use Claude's default owner-review
+mode. The O Chat label correction remains a separate preview deployment.
+Stable is 1.8.8; this beta does not claim Happy Code permission parity.
+See [1.8.9b4 notes](docs/releases/1.8.9b4.md).
+
+- 1.8.9b4 (Claude Station approval state follows the blocking Hook; fixed owner review cannot be switched to Auto through the provider profile endpoint.)
+
+Earlier in this line:
 
 1.8.9b3 is the third preview of the 1.8.9 fix line (#1722): six bugs reported
 in real use, each a tool that reported success or blamed the wrong party. A
