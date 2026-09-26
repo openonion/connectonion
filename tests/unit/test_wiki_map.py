@@ -23,10 +23,13 @@ def test_map_groups_project_worktrees_preserves_pages_and_keeps_noise(tmp_path, 
     assert first['projects'][0]['sessions'] == 4
     assert '/worktree/atlas' in nb.read(record)
     assert first['people'][0]['classification'] == 'automated candidate'
-    nb.write(record, nb.read(record).replace('## What it is\n', '## What it is\nCurated purpose.\n'))
+    curated = nb.read(record).replace('## What it is\n', '## What it is\nCurated purpose.\n')
+    curated = curated.replace('- /repo/atlas\n', '- /repo/atlas [1]\n')
+    nb.write(record, curated)
     second = build_map(tmp_path, {}, {}, skill_directories=[skills])
     assert not second['created']
-    assert 'Curated purpose.' in nb.read(record)
+    assert nb.read(record) == curated
+    assert nb.read(record).count('/repo/atlas') == 1
     assert source.read_bytes() == original
     assert second['investigation'] == 'not started'
 

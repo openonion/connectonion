@@ -25,6 +25,7 @@ committed with this report. The notebook lived under a temporary, private root.
 | Generated projects in the map | Nine same-name `notebook` entries came from other Wiki task copies and test fixtures. | Exclude these execution workspaces during project scanning. |
 | Partial category outcome reported success | Category investigation could return exit zero after a failed page. | Return a nonzero status while preserving per-page outcomes. |
 | Project page can hide the chosen window | The fresh candidate cited older project files but did not say that both coding-session sources had zero relevant messages in the requested five days. After a page gained a citation on its `Paths` line, the next scan also treated `[1]` as part of the directory name. | Pass the requested window into coverage, add a sourced no-relevant-session notice to project pages, and strip citation markers before later path reads or session matching. |
+| Map rerun duplicated a cited project path | An actual second `init --days 5` preserved the investigated page's prose but inserted a bare copy of its already-cited project directory. | Compare normalized `Paths` when reusing a project page and when refreshing its deterministic metadata. |
 
 The interrupted full owner run produced no candidate and did not replace a page.
 Its prior preview version had no chunk checkpoint or live aggregate usage. The
@@ -105,6 +106,10 @@ candidate and passed structural/citation review without repeating the model
 call. The cited-path parser now recovers the actual directory on a subsequent
 investigation; focused regressions cover both changes. These post-run fixes
 have not yet been exercised by a second live project model call.
+The first real map rerun created zero new pages and preserved the owner page,
+but exposed the duplicate cited-path defect. After removing that duplicate
+from only the isolated test notebook, a third real `init --days 5` created
+zero new pages, left one project path, and preserved that page byte-for-byte.
 
 The full non-network repository suite first reported 12,351 passed, 31
 skipped, 267 deselected, and six failures. One was this change's stale quick

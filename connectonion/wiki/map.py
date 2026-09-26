@@ -392,10 +392,10 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
         group['first'] = min(group['first'], row['first'])
         group['last'] = max(group['last'], row['last'])
     for identity, row in groups.items():
+        from .investigate import project_paths
         record = _record('projects', row['name'], identity)
         existing = next((r for r in notebook.list('projects')
-                         if any(path in notebook.read(r).splitlines() or f'- {path}' in notebook.read(r).splitlines()
-                                for path in row['paths'])), None)
+                         if any(path in project_paths(notebook.read(r)) for path in row['paths'])), None)
         record = existing or record
         if notebook.stub_project(record, row['name'], row['paths'], sessions=row['sessions'],
                                  first_seen=row['first'], last_seen=row['last']):
@@ -407,8 +407,9 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
             body = section.group(1)
             for label, value in (('Sessions', row['sessions']), ('First seen', row['first']), ('Last seen', row['last'])):
                 body = re.sub(r'^- ' + label + r': (?:[0-9-]+)$', '- ' + label + ': ' + str(value), body, flags=re.M)
+            recorded_paths = set(project_paths(page))
             for path in row['paths']:
-                if '- ' + path not in body.splitlines():
+                if path not in recorded_paths:
                     body = '- ' + path + '\n' + body
             updated = page[:section.start(1)] + body + page[section.end(1):]
             if updated != page:
