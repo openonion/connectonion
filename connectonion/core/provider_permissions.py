@@ -101,7 +101,10 @@ def reconcile_provider_permission_events(session: dict[str, Any], host_mode: str
             and not isinstance(event.get("stateRevision"), bool)
         ):
             workroom_id = event.get("workroomId") or event["invocationId"]
-            if isinstance(workroom_id, str):
+            if isinstance(workroom_id, str) and not (
+                event["provider"] == "claude_code"
+                and workroom_id.startswith("claude_code:station:")
+            ):
                 latest_by_workroom[workroom_id] = event
     stored = session.setdefault("_provider_permission_options", {})
     if not isinstance(stored, dict):
