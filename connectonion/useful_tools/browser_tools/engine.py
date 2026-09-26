@@ -20,7 +20,12 @@ MODES = (AUTO, SYSTEM, ONION)
 # What a person or an agent may type. `onion` is kept and answered.
 ACCEPTED_MODES = (AUTO, SYSTEM, WTF, ONION)
 ENGINE_SETTING = "CO_BROWSER_ENGINE"
-BROWSER_REVISION = "151.0.7922.222"
+# 154 carries the headless identity fix (openonion/browser#139): a headless
+# session sends the same UA, Client Hints and headers as a headed one. Artifact
+# keys are immutable per revision, so the fix could only ship by moving the pin.
+# Every platform listed here must be in oo-api's catalogue at this revision
+# before this ships: a client asks for exactly this revision and nothing else.
+BROWSER_REVISION = "154.0.8037.58"
 MIN_ONIONWRIGHT_VERSION = "0.0.14"
 
 
