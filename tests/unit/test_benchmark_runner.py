@@ -126,6 +126,33 @@ def test_explicit_goes_through_the_real_plugin_and_records_what_was_sent(project
         "a project skill is named by its project path, not an absolute one"
 
 
+@pytest.mark.parametrize("invoke, prefix", [("auto", ""), ("explicit", "/refund ")])
+def test_given_is_sent_to_the_agent_before_the_input(project, invoke, prefix):
+    case = Case(id="context", kind="normal", given="Yesterday had 20 contracts.",
+                input="How many contracts now?", must=["Say 20 belongs to yesterday"])
+    seen = []
+
+    def complete(messages, tools):
+        seen.extend(message.get("content", "") for message in messages if message.get("role") == "user")
+        return LLMResponse(content="20 belongs to yesterday.", tool_calls=[],
+                           raw_response=None, usage=TokenUsage())
+
+    bot = Agent("context-bot", plugins=[skills], llm=MockLLM(on_complete=complete), log=False)
+    chosen = runner.resolve_skill("refund") if invoke == "explicit" else None
+    report = runner.run(suite(project, case), bot, agent_path="agent.py", skill=chosen,
+                        invoke=invoke, judge_model="judge-model",
+                        judge_call=judge_says("occurred"))
+    expected = prefix + "Given context:\nYesterday had 20 contracts.\n\nUser request:\nHow many contracts now?"
+    assert runner.effective_input(case, {"name": "refund"}, invoke) == expected
+    assert report["cases"][0]["effective_input"] == expected
+    assert any("Yesterday had 20 contracts." in message for message in seen)
+
+
+def test_without_given_keeps_the_original_input(project):
+    assert runner.effective_input(CASE, None, "auto") == CASE.input
+    assert runner.effective_input(CASE, {"name": "refund"}, "explicit") == f"/refund {CASE.input}"
+
+
 def test_explicit_without_the_plugin_is_caught_not_assumed(project):
     bare = Agent("no-plugin", llm=MockLLM(on_complete=lambda m, t: LLMResponse(
         content="ok", tool_calls=[], raw_response=None, usage=TokenUsage())), log=False)
