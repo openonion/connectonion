@@ -1,8 +1,7 @@
-"""The 1.8.2 product default is Gemini 3.8 everywhere it can be omitted.
+"""The managed text default is Llama; audio and direct Gemini remain Gemini.
 
-The managed gateway, direct-Gemini client, Agent, llm_do, transcription, and
-`co ai` must agree. Explicit OpenAI and Gemini 3.7 selections stay untouched:
-3.7 is a selectable rollback model, never an implicit fallback.
+The managed gateway, Agent, llm_do, and `co ai` must agree. Transcription needs
+an audio-capable model, and direct Gemini needs a Google model.
 """
 
 import inspect
@@ -26,7 +25,7 @@ import pytest
 pytestmark = pytest.mark.usefixtures("own_project")
 
 
-MANAGED_DEFAULT = "co/gemini-3.8-flash"
+MANAGED_DEFAULT = "co/llama"
 DIRECT_DEFAULT = "gemini-3.8-flash"
 ROLLBACK = "co/gemini-3.7-flash"
 ROOT = Path(__file__).resolve().parents[2]
@@ -36,7 +35,7 @@ def _model_default(fn):
     return inspect.signature(fn).parameters["model"].default
 
 
-class TestOmittedModelSelectsGemini38:
+class TestOmittedModelSelectsLlama:
 
     def test_the_shared_constants(self):
         assert DEFAULT_MODEL == MANAGED_DEFAULT
@@ -52,7 +51,7 @@ class TestOmittedModelSelectsGemini38:
         assert _model_default(create_agent) == MANAGED_DEFAULT
 
     def test_transcribe(self):
-        assert _model_default(transcribe) == MANAGED_DEFAULT
+        assert _model_default(transcribe) == f"co/{DIRECT_DEFAULT}"
 
     def test_direct_gemini(self):
         assert _model_default(GeminiLLM.__init__) == DIRECT_DEFAULT
@@ -62,8 +61,6 @@ class TestOmittedModelSelectsGemini38:
             _model_default(Agent.__init__),
             _model_default(llm_do),
             _model_default(create_agent),
-            _model_default(transcribe),
-            f"co/{_model_default(GeminiLLM.__init__)}",
         } == {MANAGED_DEFAULT}
 
     def test_model_picker_puts_the_default_first(self):
