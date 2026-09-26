@@ -8,9 +8,9 @@ from types import SimpleNamespace
 import pytest
 
 from connectonion.wiki.config import default_config, prepare
+from connectonion.wiki.extract import run_extract
 from connectonion.wiki.files import Notebook
 from connectonion.wiki.runner import RunFailed, run_stage
-from connectonion.wiki.extract import run_extract
 
 
 @pytest.fixture
@@ -196,6 +196,7 @@ def test_skill_composition_keeps_source_and_page_definition(notebook, delegate):
     ("refused_without_receipt", False),
     ("wrong_source_receipt", False),
     ("blocked_receipt", False),
+    ("missing_material", False),
     ("reviewed_no_change", True),
     ("local_page_update", True),
 ])
@@ -209,12 +210,16 @@ def test_offline_maintenance_benchmark(notebook, monkeypatch, scenario, accepted
         assert 'no shell' not in prompt
         assert 'local file reads and writes' in prompt
         assert 'do not run commands, browse or search' not in prompt
-        material = json.loads((task / 'material-readable.json').read_text())
-        assert material[0]['source'] == source
+        material_path = task / 'material-readable.json'
+        if scenario == 'missing_material':
+            material_path.unlink()
+        else:
+            material = json.loads(material_path.read_text())
+            assert material[0]['source'] == source
         if scenario == 'local_page_update':
             page = task / 'notebook/notes/old.md'
             page.write_text(page.read_text() + '\n\nA durable update.\n')
-        elif scenario != 'refused_without_receipt':
+        elif scenario not in ('refused_without_receipt', 'missing_material'):
             status = 'blocked' if scenario == 'blocked_receipt' else 'no_change'
             sources = ['wrong:source'] if scenario == 'wrong_source_receipt' else [source]
             (task / 'completion.json').write_text(json.dumps({

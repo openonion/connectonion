@@ -7,8 +7,8 @@ import subprocess
 import sys
 import tempfile
 import time
-from pathlib import Path
 from contextlib import nullcontext
+from pathlib import Path
 
 from ..skills_catalog import useful_skills_dir
 from .files import Notebook, WikiError, maintenance_lock, read_json, state_path, write_json
@@ -228,7 +228,7 @@ def _verify_no_change(directory: Path, items: list[dict], usage) -> None:
 
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage):
-    from .page_review import drop_owner_addresses, drop_uncited_sources, validate
+    from .page_review import drop_owner_addresses, drop_uncited_sources, normalize_numbered_sources, validate
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     text = candidate.read_text(encoding="utf-8")
@@ -236,7 +236,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     removed = []
     if record.startswith("people/") and record != owner.get("record"):
         text, removed = drop_owner_addresses(text, {a.casefold() for a in owner.get("addresses", [])})
-    text = drop_uncited_sources(text)
+    text = drop_uncited_sources(normalize_numbered_sources(text))
     errors = validate(record, text, original, items)
     # Sync owns this same lock. Compare and write together so a completed
     # concurrent update cannot be silently replaced by an older candidate.
@@ -263,7 +263,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
     Nothing is lost by refusing a page on its own: its candidate is kept under
     refused/, and investigating that page reads every source again.
     """
-    from .page_review import drop_uncited_sources, validate, headings
+    from .page_review import drop_uncited_sources, headings, normalize_numbered_sources, validate
     after = {record: working.read(record) for record in working.list()}
     changed = sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
     accepted, refusals = [], []
@@ -271,7 +271,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         if record not in after:
             refusals.append({"record": record, "errors": ["Maintenance must preserve existing page"]})
             continue
-        text = drop_uncited_sources(after[record])
+        text = drop_uncited_sources(normalize_numbered_sources(after[record]))
         working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
         errors = validate(record, text, before.get(record, ''), items, pages=set(before)) if headings(record) else []
         if errors:
@@ -301,7 +301,8 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
     workdir = notebook.root / ".state" / "tasks"
     workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
     directory = Path(tempfile.mkdtemp(prefix=f"{stage}-", dir=workdir))
-    from .reflections import context as reflections, POLICY
+    from .reflections import POLICY
+    from .reflections import context as reflections
     from .reviews import context as reviews
     subject = next((i.get("record", "") for i in items if i.get("role") == "page"), "")
     additions = [*reflections(notebook.root, subject), *reviews(notebook.root, subject)]
@@ -347,6 +348,7 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
                        "Write notebook Markdown pages directly, and report unresolved gaps. ")
 
     if stage in ("maintain", "investigate"):
+        prompt += " For each cited claim, define its real source ID under Sources as `- [1] source-id`, not a bare numbered list. "
         prompt += (f" Optionally write {directory / 'review-candidates.json'} as a JSON list of zero to two evidence-linked questions or connections. "
                    'Each item has kind (question/link), subjects (one/two existing notebook paths), question, basis. '
                    'A connection is only a candidate; do not establish it before user review. Do not repeat rejected proposals. ')
@@ -371,7 +373,8 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
     inquiry_usage = {}
     refusals = []
     try:
-        from .inquiry import routing, run as inquiry_run, stage_config
+        from .inquiry import routing, stage_config
+        from .inquiry import run as inquiry_run
         if candidate and routing(notebook.root):
             inquiry_result = inquiry_run(
                 notebook.root, directory, items, config,

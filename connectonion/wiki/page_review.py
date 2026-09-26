@@ -133,6 +133,22 @@ def drop_uncited_sources(text: str) -> str:
     return head + marker + ''.join(kept) + rest
 
 
+def normalize_numbered_sources(text: str) -> str:
+    """Accept Markdown's numbered-list spelling for an otherwise valid citation.
+
+    The model sometimes cites [1] in prose but writes `1. source-id` under
+    Sources. Convert only the label, inside that section; source content and
+    citation validation remain unchanged.
+    """
+    head, marker, tail = text.partition('\n## Sources\n')
+    if not marker:
+        return text
+    after = re.search(r'^(?:## |Investigation:)', tail, re.M)
+    sources, rest = (tail[:after.start()], tail[after.start():]) if after else (tail, '')
+    sources = re.sub(r'(?m)^([ \t]*)(\d+)\.\s+', r'\1- [\2] ', sources)
+    return head + marker + sources + rest
+
+
 IDENTITY_LINE = re.compile(r'^(- (?:Email|Handles|Also known as): )(.*)$', re.M)
 
 
