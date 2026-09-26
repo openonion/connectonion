@@ -290,7 +290,11 @@ co outlook calendar create "Standup" 2026-09-10T09:00:00+10:00 2026-09-10T09:15:
 ```
 
 Times: an ISO offset is converted to UTC, and a naive time means UTC — Graph
-receives every event with `timeZone: UTC`. `update` preserves omitted fields;
+receives every event with `timeZone: UTC`. Every printed time names its zone:
+listings say `UTC`, and a create typed with an offset is confirmed in that
+offset (`Start: 2026-09-10 09:00 AM +10:00`), so it can be checked against what
+was typed. Before 1.8.9 times printed bare, and a 4 pm Sydney meeting read as
+`06:00 AM` (#1755). `update` preserves omitted fields;
 empty strings do not clear a field. `free` covers 09:00–17:00 UTC on this
 calendar only, not attendees'. Needs the `Calendars` scope.
 
