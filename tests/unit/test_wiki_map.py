@@ -283,7 +283,8 @@ def test_coverage_separates_scanned_empty_from_never_scanned(tmp_path):
                      'claude-code': {'kind': 'claude-code', 'root': str(off), 'enabled': False}}
     result = build_map(tmp_path, subscriptions, {'gmail': Empty()}, skill_directories=[skills])
     coverage = '\n'.join(result['coverage'])
-    assert 'gmail: metadata only, 150 days, at most 200 messages per seven-day window; no correspondents in this window' in coverage
+    assert ('gmail: metadata only, 90 days; cap-hit windows subdivided for complete enumeration '
+            'within the observed range; no correspondents in this window') in coverage
     assert f'codex: {missing} — no session directory at this path; nothing to scan' in coverage
     assert f'claude-code: {off} — disabled; not scanned' in coverage
 

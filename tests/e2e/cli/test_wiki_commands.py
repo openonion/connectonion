@@ -294,13 +294,85 @@ def test_init_builds_all_maps_without_model_or_investigation(tmp_path, monkeypat
     assert data['phase'] == 'mapped' and data['investigation'] == 'not started'
     for record in ('notes/people-map.md', 'notes/projects-map.md', 'notes/orgs-map.md', 'skills/catalog/index.md'):
         assert (tmp_path / record).is_file()
+    assert (tmp_path / '.state/source-inventory.md').is_file()
+    assert (tmp_path / '.state/source-inventory.jsonl').is_file()
+    plain = invoke(tmp_path, 'init', '--skills-dir', str(empty))
+    assert plain.exit_code == 0, plain.output
+    assert '[wiki init] Skills:' in plain.output
+    assert '[wiki init] Map saved:' in plain.output
+
+
+def test_init_archives_connected_mail_body_for_later_investigation(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    monkeypatch.setattr('connectonion.wiki.service.subscriptions', lambda root: {})
+    monkeypatch.setattr('connectonion.wiki.service.mail_available', lambda kind: kind == 'gmail')
+    when = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+
+    class Mail:
+        def my_addresses(self): return {'me@example.org'}
+        def list_between(self, start, end, limit):
+            return ([{'id': 'm1', 'date': when, 'from': 'alice@example.org',
+                      'to': ['me@example.org'], 'subject': 'Decision'}]
+                    if start <= when < end else [])
+        def get_email_body(self, message_id): return '--- Email Body ---\nThe decision'
+
+    monkeypatch.setattr('connectonion.wiki.service.mail_client', lambda kind: Mail())
+    skills = tmp_path / 'empty-skills'
+    skills.mkdir()
+    result = invoke(tmp_path, '--json', 'init', '--days', '1', '--skills-dir', str(skills))
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)['data']
+    assert data['mail_archive']['phase'] == 'complete'
+    assert data['mail_archive']['saved'] == 1
+    assert len(list((tmp_path / '.state/mail/messages/gmail').glob('*.json'))) == 1
+    person = next(row['record'] for row in data['people'] if row.get('address') == 'alice@example.org')
+    assert 'The decision' not in (tmp_path / person).read_text()
+
+    skipped = tmp_path / 'skipped'
+    result = invoke(skipped, '--json', 'init', '--days', '1', '--skills-dir', str(skills), '--no-mail-archive')
+    assert result.exit_code == 0, result.output
+    assert not (skipped / '.state/mail/archive.json').exists()
+
+    previous = (tmp_path / '.state/mail/archive.json').read_bytes()
+    monkeypatch.setattr('connectonion.wiki.service.mail_available', lambda kind: False)
+    disconnected = invoke(tmp_path, '--json', 'init', '--days', '1', '--skills-dir', str(skills))
+    assert disconnected.exit_code == 0, disconnected.output
+    assert json.loads(disconnected.stdout)['data']['mail_archive']['phase'] == 'previous_preserved'
+    assert (tmp_path / '.state/mail/archive.json').read_bytes() == previous
+
+
+def test_init_reports_failed_body_without_claiming_complete_archive(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    monkeypatch.setattr('connectonion.wiki.service.subscriptions', lambda root: {})
+    monkeypatch.setattr('connectonion.wiki.service.mail_available', lambda kind: kind == 'gmail')
+    when = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+
+    class Mail:
+        def my_addresses(self): return {'me@example.org'}
+        def list_between(self, start, end, limit):
+            return ([{'id': 'm1', 'date': when, 'from': 'alice@example.org',
+                      'to': ['me@example.org'], 'subject': 'Decision'}]
+                    if start <= when < end else [])
+        def get_email_body(self, message_id): raise TimeoutError('temporary')
+
+    monkeypatch.setattr('connectonion.wiki.service.mail_client', lambda kind: Mail())
+    skills = tmp_path / 'empty-skills'
+    skills.mkdir()
+    result = invoke(tmp_path, '--json', 'init', '--days', '1', '--skills-dir', str(skills))
+    assert result.exit_code == 1
+    data = json.loads(result.stdout)['data']
+    assert data['phase'] == 'partial'
+    assert data['mail_archive']['phase'] == 'partial'
+    assert data['mail_archive']['failed'] == 1
+    assert (tmp_path / '.state/mail/archive.json').exists()
+    assert any(row['source'] == 'mail-archive' for row in data['errors'])
 
 
 def test_init_asks_whether_a_write_only_address_is_the_owner_s_own(tmp_path, monkeypatch):
     """The question is useless without the command that answers it, and the command
     is useless if it forgets the root the user chose (#1635)."""
     monkeypatch.setattr('connectonion.wiki.service.subscriptions', lambda root: {})
-    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: ([
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a, **kw: ([
         {'name': 'openonion ai', 'address': 'aaronplus1996@gmail.com', 'mails': 106, 'sent': 106,
          'received': 0, 'one_way': True, 'first': '2026-06-25', 'last': '2026-09-23', 'boxes': ['gmail']}], set()))
     empty = tmp_path / 'empty-skills'

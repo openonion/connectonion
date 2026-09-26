@@ -32,6 +32,13 @@ def test_own_addresses_are_never_correspondents_even_across_mailboxes():
     assert [p["address"] for p in people] == ["ody@g.com"]
 
 
+def test_one_sent_mail_maps_every_recipient_without_duplicate_person_counts():
+    rows = [{"id": "shared", "from": "me@x.y", "to": ["a@g.com", "b@g.com"],
+             "cc": ["b@g.com"], "date": "2026-09-10", "subject": "plan"}]
+    people = scan_people({"outlook": Box("me@x.y", rows)}, days=30, own_addresses=set())
+    assert {p["address"]: p["mails"] for p in people} == {"a@g.com": 1, "b@g.com": 1}
+
+
 def test_signals_are_handed_over_and_verdicts_are_not():
     rows = [{"id": "1", "from": "no-reply.products@edm.bank.au", "to": ["me@x.y"], "cc": [], "date": "2026-09-10", "subject": "Statement"},
             {"id": "2", "from": "no-reply.products@edm.bank.au", "to": ["me@x.y"], "cc": [], "date": "2026-09-11", "subject": "Statement"},

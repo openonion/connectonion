@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .config import read_config
 from .files import Notebook, WikiError, maintenance_lock
-from .mail import _address, correspondent, strip_noise, strip_quoted
+from .mail import _address, _list_all, correspondent, strip_noise, strip_quoted
 from .source import KINDS, collect
 
 MAIL_KINDS = ("outlook", "gmail")
@@ -71,7 +71,8 @@ def _matches(row: dict, handles: list[str], mine: set) -> bool:
 
 def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscriptions: dict,
            progress=None, attachments_dir: Path | None = None,
-           sent_only: bool = False, mail_skipped: str = "") -> tuple[list[dict], list[str]]:
+           sent_only: bool = False, mail_skipped: str = "", archive_root: Path | None = None,
+           record: str = "") -> tuple[list[dict], list[str]]:
     """Everything every source holds about the subject, oldest first, plus what was searched.
 
     `sent_only` is the owner's own page: every message in a mailbox involves
@@ -85,42 +86,96 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     start = end - timedelta(days=days)
     items, coverage = [], []
     own_addresses = set()
-    for kind, client in clients.items():
-        mine = {a.lower() for a in client.my_addresses()}
+    archived = None
+    if archive_root is not None and record.startswith("people/"):
+        from .mail_archive import person_material
+        archived = person_material(archive_root, record)
+    cached_by_provider, cached_start, cached_end = archived if archived else ({}, None, None)
+    covered_kinds = set()
+    if archived and archive_root is not None:
+        from .files import read_json, state_path
+        manifest = read_json(state_path(archive_root, "mail/archive.json"), {})
+        own_addresses.update(address.casefold() for address in manifest.get("owner_addresses", []))
+    for kind in dict.fromkeys([*clients, *cached_by_provider]):
+        client = clients.get(kind)
+        mine = {a.lower() for a in client.my_addresses()} if client else set()
         if sent_only:
             # Each mailbox knows only its own login. The owner's other addresses
             # are the owner too, not correspondents to search the server for: a
             # first `investigate me` searched for them and found 6 of ~150 mails.
             mine |= {h for h in handles if "@" in h}
         own_addresses.update(mine)
-        emails = sorted({h for h in handles if "@" in h and h not in mine})
-        if emails and hasattr(client, "list_with"):
-            # Ask the server for this person's mail. Listing the whole window and
-            # filtering took minutes per person, and a week past the 200-row cap
-            # lost mail without saying so; this is complete and takes a second.
-            hit, taken = [], set()
-            for address in emails:
-                for r in _patient(client.list_with, address, start.isoformat(), end.isoformat()) or []:
-                    if r["id"] not in taken:
-                        taken.add(r["id"])
-                        hit.append(r)
-            if progress:
-                progress(kind, end, len(hit))
-            searched = f"searched on the server for {', '.join(emails)}"
-        else:
-            rows, cursor = [], start
-            while cursor < end:
-                stop = min(cursor + timedelta(days=7), end)
-                rows += _patient(client.list_between, cursor.isoformat(), stop.isoformat(), 200) or []
-                if progress:
-                    progress(kind, stop, len(rows))
-                cursor = stop
-            hit = [r for r in rows if _matches(r, handles, mine)]
-            searched = f"scanned {len(rows)} mails"
-            if sent_only:
-                hit = [r for r in hit if _address(r["from"]) in mine]
-                searched += ", kept the owner's own sent mail"
+        from .source import timestamp
+        local = [item for item in cached_by_provider.get(kind, [])
+                 if start <= timestamp(item["timestamp"]) < end
+                 and (not sent_only or item["role"] == "user")]
+        items.extend(local)
         attached = 0
+
+        def add_attachments(message_id: str, sender: str, stamp: str, subject: str) -> None:
+            nonlocal attached
+            if attachments_dir is None or not hasattr(client, "download_attachments"):
+                return
+            from .attachments import extract_text
+            short = hashlib.sha256(message_id.encode()).hexdigest()[:12]
+            folder = attachments_dir / kind / short
+            try:
+                folder.mkdir(parents=True, exist_ok=True)
+                paths = _saved_paths(_patient(_download, client, message_id, str(folder)))
+            except Exception as error:  # noqa: BLE001 -- one bad attachment is not the run
+                paths = []
+                coverage.append(f"{kind}:{short}: attachments could not be saved ({type(error).__name__})")
+            for saved in paths or []:
+                attached += 1
+                items.append({"role": "attachment", "speaker": sender, "timestamp": stamp,
+                              "subject": f"{subject} — {Path(saved).name}",
+                              "text": extract_text(Path(saved), limit=None), "file": saved,
+                              "source": f"{kind}:{short}:{Path(saved).name}"})
+
+        seen = {item["_mail_id"] for item in local}
+        intervals = [(start, end)]
+        if archived and kind in cached_by_provider:
+            intervals = ([(start, min(end, cached_start))] if start < cached_start else [])
+            intervals += ([(max(start, cached_end), end)] if cached_end < end else [])
+            intervals = [(begin, finish) for begin, finish in intervals if begin < finish]
+            covered_kinds.add(kind)
+        hit, taken = [], set(seen)
+        searched = f"{len(local)} loaded from private init archive"
+        if client is None:
+            if intervals:
+                coverage.append(f"{kind}: {searched}; {len(intervals)} uncovered interval(s), provider unavailable")
+            else:
+                coverage.append(f"{kind}: {searched}; requested body interval covered by local archive; "
+                                "attachments unavailable without provider")
+            continue
+        for item in local:
+            add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""))
+        emails = sorted({h for h in handles if "@" in h and h not in mine})
+        for begin, finish in intervals:
+            if emails and hasattr(client, "list_with"):
+                # A verified address is server-searchable; the local archive
+                # supplies the older interval so only gaps need a query.
+                rows = [r for address in emails
+                        for r in (_patient(client.list_with, address, begin.isoformat(), finish.isoformat()) or [])]
+                searched += f"; searched on the server for {', '.join(emails)}"
+            else:
+                rows, cursor = [], begin
+                while cursor < finish:
+                    stop = min(cursor + timedelta(days=7), finish)
+                    rows += _patient(_list_all, client, cursor, stop)
+                    if progress:
+                        progress(kind, stop, len(rows))
+                    cursor = stop
+                rows = [r for r in rows if _matches(r, handles, mine)]
+                searched += f"; scanned {len(rows)} matched mails"
+            for row in rows:
+                if row["id"] not in taken and (not sent_only or _address(row["from"]) in mine):
+                    taken.add(row["id"])
+                    hit.append(row)
+        if progress:
+            progress(kind, end, len(local) + len(hit))
+        if sent_only:
+            searched += ", kept the owner's own sent mail"
         for r in sorted(hit, key=lambda r: str(r["date"])):
             body = _patient(client.get_email_body, r["id"])
             head, _, rest = body.partition("--- Email Body ---")
@@ -130,25 +185,11 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             items.append({"role": "user" if own else "other", "speaker": r["from"],
                           "text": body, "timestamp": str(r["date"]),
                           "subject": r.get("subject", ""), "source": f"{kind}:{short}"})
-            if attachments_dir is not None and hasattr(client, "download_attachments"):
-                from .attachments import extract_text
-                folder = attachments_dir / kind / short
-                try:
-                    folder.mkdir(parents=True, exist_ok=True)
-                    paths = _saved_paths(_patient(_download, client, r["id"], str(folder)))
-                except Exception as error:  # noqa: BLE001 -- one bad attachment is not the run
-                    paths = []
-                    coverage.append(f"{kind}:{short}: attachments could not be saved ({type(error).__name__})")
-                for saved in paths or []:
-                    attached += 1
-                    items.append({"role": "attachment", "speaker": r["from"], "timestamp": str(r["date"]),
-                                  "subject": f"{r.get('subject', '')} — {Path(saved).name}",
-                                  "text": extract_text(Path(saved), limit=None), "file": saved,
-                                  "source": f"{kind}:{short}:{Path(saved).name}"})
+            add_attachments(r["id"], r["from"], str(r["date"]), r.get("subject", ""))
         coverage.append(f"{kind} ({', '.join(sorted(mine))}): {searched} over {days} days, "
-                        f"{len(hit)} matched, {attached} attachments read")
+                        f"{len(local) + len(hit)} matched, {attached} attachments read")
     for kind in ("outlook", "gmail"):
-        if kind not in clients:
+        if kind not in clients and kind not in covered_kinds:
             # Say it. A mailbox left out used to vanish from coverage, so the model
             # and the reader could not tell "no mail with this person" from "not asked".
             # A mailbox left out on purpose says why; "not connected" sent a user
@@ -183,6 +224,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                         + (" (account owner's own messages)" if is_owner else " (handle or project match)"))
         items += picked
     items.sort(key=lambda i: i["timestamp"])
+    for item in items:
+        item.pop("_mail_id", None)
     return items, coverage
 
 
@@ -219,7 +262,8 @@ def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: P
     if extractor is None:
         if root is None:
             raise WikiError("Wiki root is required for model extraction")
-        extractor = lambda chunk, settings, kind: run_extract(chunk, settings, kind, root=root)
+        def extractor(chunk, settings, kind):
+            return run_extract(chunk, settings, kind, root=root)
     chunks, current, size = [], [], 2  # The serialized list's brackets count too.
     for item in items:
         for part in _split_item(item, limits["extract_chars_per_batch"]):
@@ -255,12 +299,14 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         raise WikiError(f"{record} does not exist; create it with `co wiki stub` first")
     items, coverage = gather(subject, handles, days=days, clients=clients, subscriptions=subscriptions,
                              progress=progress, attachments_dir=root / ".state" / "attachments",
-                             sent_only=sent_only, mail_skipped=mail_skipped)
+                             sent_only=sent_only, mail_skipped=mail_skipped,
+                             archive_root=root, record=record)
     config = read_config(root)
     from .inquiry import routing, stage_config
     original_material = None
     if routing(root):
         import uuid
+
         from .files import state_path, write_json
         original_material = state_path(root, f"evidence/{uuid.uuid4().hex}.json")
         write_json(original_material, items)
