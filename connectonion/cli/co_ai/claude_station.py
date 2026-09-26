@@ -40,6 +40,7 @@ class ClaudeStation:
         self.invocation_id = f"claude_code:station:{self.session_id}"
         self.parent_id = f"claude_station:{self.session_id}"
         self.claude_session_id = ""
+        self._resume_ready = False
         self.pairing_code = secrets.token_urlsafe(24)
         self._pairing_hash = hashlib.sha256(self.pairing_code.encode()).digest()
         self._condition = threading.Condition()
@@ -127,6 +128,7 @@ class ClaudeStation:
             "parentToolCallId": self.parent_id,
             "workroomId": self.invocation_id,
             "sessionId": self.claude_session_id,
+            "resumeReady": self._resume_ready,
             "taskTitle": "Claude Code session",
             "status": status,
             "currentSummary": summary,
@@ -137,6 +139,8 @@ class ClaudeStation:
         kind = fact["hook_event_name"]
         if kind == "SessionStart":
             with self._condition:
+                if fact["session_id"] != self.claude_session_id:
+                    self._resume_ready = False
                 self.claude_session_id = fact["session_id"]
                 self._transition("local_observing")
                 self._append(self._invocation("running"))
@@ -145,6 +149,7 @@ class ClaudeStation:
                 self._append(self._invocation("running"))
         elif kind == "Stop":
             with self._condition:
+                self._resume_ready = True
                 self._append(self._invocation("completed"))
                 self._commit()
         elif kind in {"PreToolUse", "PostToolUse", "PostToolUseFailure", "SubagentStart", "SubagentStop"}:
@@ -242,7 +247,8 @@ class ClaudeStation:
                            and event.get("provider") == "claude_code"
                            and event.get("sessionId")), None)
             if latest:
-                self.claude_session_id = latest["sessionId"]
+                self._resume_ready = latest.get("resumeReady") is not False
+                self.claude_session_id = latest["sessionId"] if self._resume_ready else ""
             self._transition("handover_to_local")
             self._resume_local.set()
             return {"accepted": True, "stateRevision": self._revision}
@@ -342,6 +348,7 @@ def launch_claude_station(workspace: Path, session_id: str, model: str) -> tuple
     storage.reconcile_interrupted()
     station = ClaudeStation(workspace, storage, model)
     station.claude_session_id = session_id
+    station._resume_ready = bool(session_id)
 
     def create_agent() -> Agent:
         return Agent(

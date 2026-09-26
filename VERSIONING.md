@@ -375,7 +375,39 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b5
+## Current Version: 1.8.9b8
+
+1.8.9b8 adds `co audit <command>`, which judges whether a CLI, `co` or any
+other, is fit for an agent harness from its printed help alone: rules first,
+an optional model review last (#1735). Every `co` help page now passes it, after a
+full audit and review (#1748). Stable remains 1.8.8. See
+[1.8.9b8 notes](docs/releases/1.8.9b8.md).
+
+- 1.8.9b8 (co audit for any CLI: black-box walk of --help pages, rules for prints/hangs/writes/usage/example/self_example/flags/private/params, optional parallel model review, per-rule score; help-gate workflow reviews changed pages; 281 co pages pass every rule; 113 option/argument descriptions and 4 wiki examples added; model review flags 114 → 12.)
+
+Earlier in this line:
+
+
+1.8.9b7 fixes the first browser turn of a new Claude Station. A SessionStart
+ID without a completed native turn is not resumed; the browser starts a new
+Claude session and can return it to the terminal. An early native-start failure
+rejects the browser request promptly. Stable remains 1.8.8. See
+[1.8.9b7 notes](docs/releases/1.8.9b7.md).
+
+- 1.8.9b7 (New Claude Stations can start in the browser; failed native starts reject the matching message.)
+
+Earlier in this line:
+
+1.8.9b6 is an opt-in Wiki maintenance reliability preview. Offline batches
+can read their staged local files without interpreting the network restriction
+as a ban on local file work. An unchanged batch now needs an explicit,
+source-linked no-change receipt before it advances, and numbered Markdown
+source labels are normalized before citation validation. Stable remains 1.8.8.
+See [1.8.9b6 notes](docs/releases/1.8.9b6.md).
+
+- 1.8.9b6 (Offline Wiki maintenance can use local files; unchanged batches require a receipt; numbered source labels pass citation validation.)
+
+Earlier in this line:
 
 1.8.9b5 is an opt-in Claude Station reliability preview. A browser approval
 used to reach OIP while its provider invocation still said `running`, leaving
