@@ -198,6 +198,8 @@ NEXT = {
     "co schedule run": "co schedule list",
     "co schedule pause": HANDLER,  # names the resume for this entry
     "co schedule resume": "co schedule list",
+    "co watch list": "co watch list --json",
+    "co watch retry": "co watch list",
     "co outlook calendar *": HANDLER,
     "co gcalendar *": HANDLER,
     "co gdrive *": HANDLER,
