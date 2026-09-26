@@ -58,7 +58,8 @@ def test_quick_owner_run_uses_one_turn_and_reports_partial_coverage(tmp_path, mo
     assert result['quick'] is True and result['items_available'] == 30
     assert result['items'] == 24
     assert any('Quick first pass' in text for text in result['coverage'])
-    assert len(received) == 26  # page, coverage, 24 bounded source items
+    assert len(received) == 27  # page, coverage, quick-scope marker, 24 source items
+    assert received[2]['role'] == 'quick-first-pass'
 
 
 def test_quick_owner_fetches_only_recent_mail_bodies():

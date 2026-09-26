@@ -68,11 +68,27 @@ items, used 21,396 input characters, and reported 429,022 input tokens
 reported model usage means this is a functioning first pass, not yet a cheap
 one; cost is an explicit beta limitation.
 
+After changing the quick prompt to read the already-bounded `material.json`
+once rather than reconstructing split strings through repeated tool reads, a
+fresh isolated owner first pass completed in 499.7 seconds. It again used 24
+of 60 gathered items (21,404 source characters), generated a source-linked
+page with an explicit 24-of-60 warning, and reported 169,548 input tokens
+(112,640 cached) plus 20,852 output tokens. The input-token count is about
+60% lower than the prior quick trial; elapsed time fell only about 7%.
+Structural review accepted the page, but `factual_quality` remains `not
+automatically assessed`. Three sampled source references were checked against
+the supplied items. No claim of comprehensive factual approval follows from
+this limited spot check.
+
 The actual 519-page, 6.1 MB local reader snapshot loaded in Chrome in 0.18
 seconds. Search returned results, a 375px viewport had no horizontal overflow,
 and the run had zero script errors or external HTTP requests. Screenshots of
 the private notebook remain in the temporary test directory and are not part
 of the repository.
 
-Release tests, PR review, and public preview smoke check are pending at the
-time of this report update.
+The full non-network repository suite first reported 12,351 passed, 31
+skipped, 267 deselected, and six failures. One was this change's stale quick
+material-count assertion, fixed immediately. Five other tests constructed a
+gateway agent without `OPENONION_API_KEY`; all six passed in a targeted rerun
+with a deliberately nonfunctional local test value. PR review and public
+preview smoke check remain pending at the time of this report update.
