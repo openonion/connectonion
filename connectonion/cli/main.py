@@ -115,7 +115,8 @@ def _start_here_help() -> str:
 @app.callback(invoke_without_command=True, help=_start_here_help())
 def main(
     ctx: typer.Context,
-    version: bool = typer.Option(False, "--version", "-v", callback=version_callback, is_eager=True),
+    version: bool = typer.Option(False, "--version", "-v", callback=version_callback, is_eager=True,
+        help="Print the installed co version and exit."),
     env_file: Optional[Path] = typer.Option(None, "--env-file", callback=env_file_callback,
         is_eager=True, help="Use this env file instead of global keys.env; put before the command. Process overrides win."),
     no_tips: bool = typer.Option(False, "--no-tips",
@@ -1345,7 +1346,8 @@ sms_app.add_typer(sms_devices_app, name="devices")
 
 
 @sms_devices_app.callback(invoke_without_command=True)
-def sms_devices_callback(ctx: typer.Context, json_output: bool = typer.Option(False, "--json")):
+def sms_devices_callback(ctx: typer.Context, json_output: bool = typer.Option(
+        False, "--json", help="Print the paired phones as one JSON array")):
     """With no subcommand, list paired phones."""
     if ctx.invoked_subcommand is None:
         from .commands.sms_commands import handle_sms_devices
@@ -1791,7 +1793,8 @@ app.add_typer(gmail_app, name="gmail")
 
 
 @gmail_app.callback(invoke_without_command=True)
-def gmail_callback(ctx: typer.Context, json_output: bool = typer.Option(False, "--json")):
+def gmail_callback(ctx: typer.Context, json_output: bool = typer.Option(
+        False, "--json", help="With bare co gmail: print the last 10 inbox emails as JSON with full IDs and the account used")):
     """With no subcommand, show the Gmail inbox."""
     if ctx.invoked_subcommand is None:
         if json_output:
@@ -2020,7 +2023,7 @@ def gmail_draft_send(
     draft_id: str = typer.Argument(..., help="Full draft ID, or row # together with --listing ID"),
     listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co gmail draft list; needed with a row number"),
     confirm: Optional[str] = typer.Option(None, "--confirm", help="Token printed by co gmail draft review; required when not run in a terminal"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = typer.Option(False, "--json", help="Print JSON with full IDs and the account used"),
 ):
     """Send a draft exactly as draft review shows it. Asks you to confirm (default No), or takes --confirm with the review token. Sends the email once confirmed."""
     if json_output:
@@ -2169,9 +2172,9 @@ def youtube_video(item: str = typer.Argument(..., help="Number from your last co
     "Uploads are private unless you pass --privacy, and YouTube can still keep them private "
     f"while the Google app doing the upload is unverified. {_YOUTUBE_PREVIEW}"))
 def youtube_put(path: str = typer.Argument(..., help="Local video file"),
-                title: str = typer.Option(..., "--title"),
+                title: str = typer.Option(..., "--title", help="Video title, up to 100 characters, no < or >"),
                 channel: str = typer.Option(..., "--channel", help="Your channel ID (starts with UC, see co youtube channel); checked again before upload"),
-                description: str = typer.Option("", "--description"),
+                description: str = typer.Option("", "--description", help="Video description, up to 5000 bytes, no < or >"),
                 privacy: str = typer.Option("private", "--privacy", help="private, unlisted, or public"),
                 category: str = typer.Option("22", "--category", help="YouTube category number; 22 is People & Blogs"),
                 dry_run: bool = typer.Option(False, "--dry-run", help="Preview only; also the default without --confirm"),
@@ -2229,7 +2232,7 @@ def tiktok_post(path: str = typer.Argument(..., help="Local video file; it is ne
 
 @tiktok_app.command("inspect", epilog="Example:  co tiktok inspect --tab <tab-id>")
 def tiktok_inspect(tab: str = typer.Option(..., "--tab", help="An existing co browser tab owned by this task"),
-                   json_output: bool = typer.Option(False, "--json")):
+                   json_output: bool = typer.Option(False, "--json", help="Print one JSON object")):
     """Capture and verify login/readiness evidence; never click or upload. Writes local evidence: screenshots and a saved page context."""
     from .commands.tiktok_browser_commands import handle_inspect
     handle_inspect(tab, json_output)

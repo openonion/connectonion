@@ -106,9 +106,9 @@ def free(date: str = typer.Argument(..., help="YYYY-MM-DD; business hours in UTC
 def create(title: str = typer.Argument(..., help="Event title"),
            start: str = typer.Argument(..., help=TIME_HELP),
            end: str = typer.Argument(..., help=TIME_HELP),
-           description: Optional[str] = typer.Option(None, "--description"),
+           description: Optional[str] = typer.Option(None, "--description", help="Event description, plain text"),
            attendees: Optional[str] = typer.Option(None, "--attendees", help="Comma-separated emails"),
-           location: Optional[str] = typer.Option(None, "--location"),
+           location: Optional[str] = typer.Option(None, "--location", help="Location text shown on the event"),
            yes: bool = typer.Option(False, "--yes", help="Create this event; default is a local preview")):
     """Create an event. Previews until --yes, which Creates it in your calendar and invites any --attendees."""
     options = dict(description=description, attendees=attendees, location=location)
@@ -121,7 +121,7 @@ def teams(title: str = typer.Argument(..., help="Meeting title"),
           start: str = typer.Argument(..., help=TIME_HELP),
           end: str = typer.Argument(..., help=TIME_HELP),
           attendees: str = typer.Option(..., "--attendees", help="Comma-separated emails"),
-          description: Optional[str] = typer.Option(None, "--description"),
+          description: Optional[str] = typer.Option(None, "--description", help="Event description, plain text"),
           yes: bool = typer.Option(False, "--yes", help="Create the event and its Teams link; default previews")):
     """Create an event with a Microsoft Teams meeting link. Previews until --yes, which Creates it and invites the --attendees.
 
@@ -134,12 +134,12 @@ def teams(title: str = typer.Argument(..., help="Meeting title"),
 
 @outlook_calendar_app.command("update", epilog="Example:  co outlook calendar update <event-id> --location \"Room 4\" --yes")
 def update(event_id: str = typer.Argument(..., help="Exact event ID from co outlook calendar list"),
-           title: Optional[str] = typer.Option(None, "--title"),
+           title: Optional[str] = typer.Option(None, "--title", help="New event title"),
            start: Optional[str] = typer.Option(None, "--start", help=TIME_HELP),
            end: Optional[str] = typer.Option(None, "--end", help=TIME_HELP),
-           description: Optional[str] = typer.Option(None, "--description"),
+           description: Optional[str] = typer.Option(None, "--description", help="Event description, plain text"),
            attendees: Optional[str] = typer.Option(None, "--attendees", help="Comma-separated emails"),
-           location: Optional[str] = typer.Option(None, "--location"),
+           location: Optional[str] = typer.Option(None, "--location", help="Location text shown on the event"),
            yes: bool = typer.Option(False, "--yes", help="Apply the supplied fields to this exact event; default previews")):
     """Update the supplied fields; omitted fields are preserved. Previews until --yes, which Changes the event."""
     options = dict(title=title, start=start, end=end, description=description, attendees=attendees, location=location)

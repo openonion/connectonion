@@ -58,8 +58,8 @@ LABEL_HELP = 'Label name as shown in co gmail label list, or its full ID'
 
 def register_mailbox_commands(app: typer.Typer, group_class: type) -> None:
     @app.command('mark', cls=MailboxCommand, epilog=f'Example:  co gmail mark {MESSAGE_ID} --read')
-    def mark(email_id: str = typer.Argument(..., help=ID_HELP), read: bool = typer.Option(False, '--read'),
-             unread: bool = typer.Option(False, '--unread'),
+    def mark(email_id: str = typer.Argument(..., help=ID_HELP), read: bool = typer.Option(False, '--read', help='Mark the message read'),
+             unread: bool = typer.Option(False, '--unread', help='Mark the message unread'),
              listing: Optional[str] = typer.Option(None, '--listing', help=LISTING_HELP),
              json_output: bool = typer.Option(False, '--json', help=JSON_HELP)):
         """Set read state; choose exactly one of --read and --unread. Changes the message in Gmail."""
@@ -89,7 +89,7 @@ def register_mailbox_commands(app: typer.Typer, group_class: type) -> None:
     app.add_typer(labels, name='label')
 
     @labels.command('list', cls=MailboxCommand, epilog='Example:  co gmail label list --json')
-    def label_list(json_output: bool = typer.Option(False, '--json')):
+    def label_list(json_output: bool = typer.Option(False, '--json', help=JSON_HELP)):
         """List full label IDs, names and types. Read-only."""
         handle_mailbox('label.list', json_output=json_output)
 
@@ -121,7 +121,7 @@ def register_mailbox_commands(app: typer.Typer, group_class: type) -> None:
                         f'co gmail download {MESSAGE_ID} --attachment <attachment-id from co gmail attachments> --to .')
     def download(email_id: str = typer.Argument(..., help=ID_HELP), to: str = typer.Option(..., '--to', help='Existing local destination directory'),
                  attachment: Optional[str] = typer.Option(None, '--attachment', help='Full attachment/part ID from attachments'),
-                 all_attachments: bool = typer.Option(False, '--all'),
+                 all_attachments: bool = typer.Option(False, '--all', help='Download every attachment co gmail attachments lists, inline parts included'),
                  listing: Optional[str] = typer.Option(None, '--listing', help=LISTING_HELP),
                  json_output: bool = typer.Option(False, '--json', help=JSON_HELP)):
         """Download selected attachments; keep existing files and report partial failures. Writes files to --to; Gmail is unchanged."""
@@ -136,7 +136,7 @@ def register_mailbox_commands(app: typer.Typer, group_class: type) -> None:
                    last: int = typer.Option(20, '--last', '-n', min=1, max=100, help='Maximum threads scanned in one page; filtering may return fewer'),
                    exclude_automated: bool = typer.Option(False, '--exclude-automated', help='Filter Auto-Submitted and bulk/list/junk headers'),
                    cursor: Optional[str] = typer.Option(None, '--cursor', help='Continuation from the same account, days, filter and limit'),
-                   json_output: bool = typer.Option(False, '--json')):
+                   json_output: bool = typer.Option(False, '--json', help=JSON_HELP)):
         """Find threads whose latest non-draft message is incoming, regardless of who started them. Read-only."""
         handle_mailbox('unanswered', within_days=within_days, last=last,
                        exclude_automated=exclude_automated, cursor=cursor, json_output=json_output)
