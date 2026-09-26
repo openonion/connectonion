@@ -383,7 +383,9 @@ subscriber's own paths, verify and mirror published companion files, and expose
 mirrored skills to `co ai`. Natural-language browser tasks use
 `co browser "<instruction>"` without the `do` verb. The companion-file relay
 change is deployed before this SDK preview is published. Stable remains
-1.8.8. See [1.8.9b12 notes](docs/releases/1.8.9b12.md).
+1.8.8. The experimental Host watcher introduced in b9 is removed in this
+preview; Agent-owned watches are tracked in #1788. See
+[1.8.9b12 notes](docs/releases/1.8.9b12.md).
 
 - 1.8.9b12 (subscription reconciliation and signed companion files; browser task syntax without `do`.)
 
