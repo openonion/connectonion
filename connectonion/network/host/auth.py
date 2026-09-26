@@ -279,6 +279,47 @@ def request_from_http_headers(
     }
 
 
+def authenticate_http_request(
+    headers: dict,
+    method: str,
+    path: str,
+    *,
+    query: str | bytes = "",
+    body: bytes = b"",
+    blacklist=None,
+    recipient_address=None,
+    replay_check=None,
+):
+    """Verify a ``sign_http_request`` request: signature, recipient, one use.
+
+    Returns ``(identity, status, error)``; ``error`` is None on success. The
+    publisher routes were the first to use this; GET /sessions uses it too
+    (#1752), because the older ``sign_request`` shape has neither a recipient
+    nor a nonce, and a deterministic Ed25519 signature over {method, path,
+    second} cannot tell a replay from a second read in the same second.
+    """
+    from .replay import ReplayProtectionError
+
+    try:
+        data = request_from_http_headers(headers, method, path, query=query, body=body)
+    except (TypeError, ValueError, UnicodeDecodeError):
+        return None, 401, "unauthorized: malformed signature headers"
+    if not data["payload"].get("request_id"):
+        return None, 401, "unauthorized: request id required"
+    _, identity, error = _authenticate_signed(
+        data, blacklist=blacklist, recipient_address=recipient_address,
+    )
+    if error:
+        return identity, 403 if error.startswith("forbidden") else 401, error
+    try:
+        already_used = (replay_check or signature_already_used)(data)
+    except ReplayProtectionError:
+        return identity, 503, "misconfigured: replay protection unavailable"
+    if already_used:
+        return identity, 401, "unauthorized: signature already used"
+    return identity, 200, None
+
+
 def sign_request(keys: dict, method: str, path: str, timestamp=None) -> dict:
     """Headers a client sends with a signed GET.
 

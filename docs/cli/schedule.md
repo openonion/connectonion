@@ -85,7 +85,7 @@ running, paused, when it last ran, and why a run failed.
 | file | holds |
 |---|---|
 | `.co/schedule-state.json` | per entry: last run, status (`running`, `done`, `failed`), failure reason, session id, `paused` |
-| `.co/session_results.jsonl` | the full session of each `run` entry: prompt, transcript, result, duration |
+| `.co/session_results.jsonl` | the full session of each `run` entry: prompt, transcript, result, duration. Over HTTP, `GET /sessions` shows these to the agent's admins only: nobody signed for them, so they belong to the agent. |
 
 `done` means the turn returned, not that the work succeeded: a model that
 answered "I could not reach the drive" also returned. Check the session, or

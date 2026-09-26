@@ -200,8 +200,8 @@ print(agent.input("Hello").text)
 Or open the `chat.openonion.ai` link the banner prints and talk to it in a browser.
 
 **Flow:**
-1. Client sends HTTP POST with `{prompt, session?}`
-2. Server checks trust (blacklist/whitelist/policy)
+1. Client sends HTTP POST with a signed `{payload: {prompt, to, timestamp, nonce, session?}, from, signature}`
+2. Server checks the signature, that `to` is this agent, that the signature is unused, then trust (blacklist/whitelist/policy) -- the same gate as a WebSocket CONNECT
 3. Server calls `create_agent()` for fresh instance
 4. Server calls `agent.input(prompt)`
 5. Server returns `{result, session_id, session}`
@@ -335,11 +335,34 @@ host(create_agent, workers=4)  # 4 OS processes, each with isolated agents
 
 Submit input. Creates a session, returns session_id.
 
-```bash
-curl -X POST http://localhost:8000/input \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Translate hello to Spanish"}'
+The body is a signed envelope, checked exactly as a WebSocket CONNECT is:
+
+```json
+{
+  "payload": {
+    "prompt": "Translate hello to Spanish",
+    "to": "0x<this agent's address, from GET /info>",
+    "timestamp": 1790000000,
+    "nonce": "5f0c...",
+    "session": {"session_id": "abc-123"}
+  },
+  "from": "0x<your public key>",
+  "signature": "<Ed25519 over the payload as sorted, compact JSON>"
+}
 ```
+
+- `to` must be this agent's address. A request signed for another agent is
+  refused with `401 unauthorized: wrong recipient`, so an agent you talk to
+  cannot forward your signed request to another agent of yours.
+- A signature is accepted once. Sending the same body again is refused with
+  `401 unauthorized: this CONNECT was already used` (the message is shared
+  with CONNECT, whose ledger it uses); sign each request with a fresh `nonce`.
+- `session`, `images` and `files` are read from inside `payload` only. Copies
+  beside the signature are ignored: whoever relayed the request could have
+  written them.
+
+Bodies over 256 MB (the WebSocket message limit) are refused with `413`
+before anything is parsed.
 
 **Response:**
 ```json
@@ -362,29 +385,25 @@ curl -X POST http://localhost:8000/input \
 To continue a conversation, pass the `session` from the previous response:
 
 ```bash
-# First request
-curl -X POST http://localhost:8000/input \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "My name is John"}'
+# First request (payload shown; sign it as above)
+{"prompt": "My name is John", "to": "0x...", "timestamp": ..., "nonce": "..."}
 
 # Response includes session
 # {"result": "Nice to meet you, John!", "session": {...}}
 
-# Second request - pass session back
-curl -X POST http://localhost:8000/input \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "What is my name?",
-    "session": {...}
-  }'
+# Second request - pass session back, inside the signed payload
+{"prompt": "What is my name?", "session": {...}, "to": "0x...", "timestamp": ..., "nonce": "..."}
 
 # Agent remembers: "Your name is John"
 ```
 
-**Request format:**
+**Payload format** (the fields inside the signed `payload`):
 ```json
 {
   "prompt": "What is my name?",
+  "to": "0xAgentAddress",         // Required - this agent
+  "timestamp": 1790000000,        // Required - within 5 minutes
+  "nonce": "5f0c...",             // Fresh per request
   "session": {                    // Optional - pass previous session to continue
     "session_id": "abc-123",      // Server-generated, included in session
     "messages": [...],
@@ -427,9 +446,26 @@ See [Multimodal Input](#multimodal-input-images--files) for details on sending i
 
 Fetch session result anytime.
 
-```bash
-curl http://localhost:8000/sessions/550e8400-e29b-41d4-a716-446655440000
+Reading a session is signed with the same `X-Co-*` headers as a protected
+[publisher route](http-routes.md): they name this agent as the recipient and
+carry a one-use request id.
+
+```python
+import httpx
+from connectonion import address
+from connectonion.network.host.auth import sign_http_request
+
+keys = address.load(".co")
+path = "/sessions/550e8400-e29b-41d4-a716-446655440000"
+headers = sign_http_request(keys, "GET", path, recipient_address="0xAgentAddress")
+httpx.get(f"http://localhost:8000{path}", headers=headers)
 ```
+
+You read the sessions you started. A session nobody signed for -- a
+[scheduled](../cli/schedule.md) turn, or one stored before owners were recorded --
+belongs to the agent itself and is readable only by its admins
+(`.co/admins.txt`). A blocked caller is refused with `403`. Anything else is
+`404`, the same answer as a session that does not exist.
 
 **Response (running):**
 ```json
@@ -451,11 +487,8 @@ curl http://localhost:8000/sessions/550e8400-e29b-41d4-a716-446655440000
 
 ### GET /sessions
 
-List recent sessions.
-
-```bash
-curl http://localhost:8000/sessions
-```
+List recent sessions: your own, plus the agent's ownerless ones if you are an
+admin. Signed as for `GET /sessions/{session_id}` above.
 
 **Response:**
 ```json
