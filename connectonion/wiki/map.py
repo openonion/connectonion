@@ -17,7 +17,7 @@ def _record(category: str, name: str, identity: str) -> str:
     return f'{category}/{slug}-{hashlib.sha256(identity.encode()).hexdigest()[:10]}.md'
 
 
-def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None) -> tuple[list[dict], set]:
+def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None, progress=None) -> tuple[list[dict], set]:
     own, available, merged = set(mine), {}, {}
     for kind, client in clients.items():
         try:
@@ -27,6 +27,8 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None) -> t
             coverage.append(f'{kind}: unavailable ({type(error).__name__}); not searched')
             if errors is not None: errors.append({'source': kind, 'stage': 'account', 'error': type(error).__name__})
     for kind, client in available.items():
+        if progress:
+            progress(f"scanning {kind} mail metadata")
         try:
             rows = scan_people({kind: client}, days, own)
         except Exception as error:
@@ -39,6 +41,8 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None) -> t
         # names first (#1616).
         found = f'{len(rows)} correspondents' if rows else 'no correspondents in this window'
         coverage.append(f'{kind}: metadata only, {days} days, at most 200 messages per seven-day window; ' + found)
+        if progress:
+            progress(f"scanned {kind} mail metadata", len(rows))
         for row in rows:
             old = merged.get(row['address'])
             if old:
@@ -254,7 +258,8 @@ def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
 
 
 def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150,
-              skill_directories=None, mine=(), source_errors=None, absent=None, name: str = '') -> dict:
+              skill_directories=None, mine=(), source_errors=None, absent=None, name: str = '',
+              progress=None) -> dict:
     """Map observed identities; correspondent classification remains unassessed."""
     notebook = Notebook(root)
     report = {'phase': 'mapping', 'started': datetime.now(timezone.utc).isoformat(),
@@ -270,9 +275,11 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
     def save():
         atomic_write(state, json.dumps(report, ensure_ascii=False, indent=2) + '\n')
     save()
+    if progress:
+        progress("mapping installed skills")
     report['skills'] = map_skills(notebook, skill_directories)
     save()
-    people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'])
+    people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress)
     roster = notebook.people()
     if own:
         aliases = sorted({address.casefold() for address in own})
@@ -366,12 +373,16 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
     report['coverage'] += [f'{kind}: ' + (absent.get(kind) or 'not configured or disabled; not searched')
                            for kind in ('gmail', 'outlook') if kind not in clients]
     report['orgs'], created_orgs = map_orgs(notebook, org_rows, report['started'], days, _record)
+    if progress:
+        progress("mapped people and organizations", len(report['people']) + len(report['orgs']))
     report['created'] += created_orgs
     report['coverage'].append('Organizations: exact observed mail domains, including single contacts and notices; '
                               'known public mailbox domains excluded; mailbox-provider list is not exhaustive; '
                               'organization identity unverified; existing organization pages preserved')
     save()
     groups = {}
+    if progress:
+        progress("scanning local projects")
     for row in scan_projects(subscriptions, days, root):
         identity = canonical_origin(row['origin']) or row['repo'] or row['path']
         group = groups.setdefault(identity, {'name': Path(row['repo'] or row['path']).name,
@@ -409,6 +420,8 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
         _fill_owner(notebook, report, owner_name)
     report.update(phase='partial' if report['errors'] else 'mapped', finished=datetime.now(timezone.utc).isoformat(),
                   investigation='not started', classification='unassessed; no correspondents filtered')
+    if progress:
+        progress("mapped projects", len(report['projects']))
     save()
     for category in ('people', 'projects', 'orgs'):
         lines = [f'# {category.capitalize()} map', '', 'Generated enumeration; not an investigation or importance ranking.', '']

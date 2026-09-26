@@ -319,6 +319,12 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
                "Work from the supplied material and notebook copy; name what you could not check. ")
 
     record = next((i.get("record") for i in items if i.get("role") == "page"), None)
+    if stage == "investigate" and record and record.startswith("projects/"):
+        prompt += (" Project exception: the local Paths already listed on the supplied page may be read "
+                   "as evidence. Stay inside those paths; inspect at most twelve relevant text files "
+                   "and at most four directory levels. Do not search the home directory, hidden files, "
+                   "credentials, or unrelated folders. Cite each inspected file separately. If those "
+                   "paths have no usable evidence, leave unsupported fields Unknown. ")
     candidate = directory / "candidate.md" if stage == "investigate" and record else None
     before = {r: notebook.read(r) for r in notebook.list()}
     task_root = notebook.root
@@ -328,7 +334,8 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
         prompt += (f"The working notebook copy is {task_root}. Read its existing page at {task_root / record}. "
                    f"Write the complete revised page to the NEW file {candidate}. "
                    "Write only that candidate file using an available local file tool. "
-                   "The runner owns validation and replacement. Do not start nested Wiki jobs. ")
+                   "The runner owns validation and replacement. Do not start nested Wiki jobs. "
+                   "After the candidate is complete, stop using tools and return a brief coverage summary. ")
     else:
         if stage in ("maintain", "abstract"):
             task_root = directory / "notebook"
@@ -360,6 +367,11 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
                    "Do not write this receipt if you could not read or assess the material; report that as a failure. ")
 
     def changed():
+        if candidate:
+            # The candidate can replace only this one page. Another
+            # investigation may finish concurrently on a different page;
+            # do not claim its edit or charge it to this run.
+            return [record] if notebook.read(record) != before[record] else []
         after = {r: notebook.read(r) for r in notebook.list()}
         return sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
 

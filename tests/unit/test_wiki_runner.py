@@ -60,6 +60,45 @@ def test_model_runs_use_the_running_installation_not_the_first_co_on_path(notebo
     assert calls[0][:5] == ["/work/venv/bin/python", "-m", "connectonion.cli.main", "ai", "--json"]
 
 
+def test_project_investigation_bounds_local_file_search(notebook, monkeypatch):
+    notebook.stub_project('projects/reader.md', 'Reader', ['/work/reader'])
+    prompts = []
+
+    def stop_after_capture(argv, **kwargs):
+        prompts.append(argv[-1])
+        raise OSError('synthetic stop')
+
+    monkeypatch.setattr('connectonion.wiki.runner.subprocess.run', stop_after_capture)
+    with pytest.raises(RunFailed):
+        run_stage(notebook, [{'role': 'page', 'record': 'projects/reader.md',
+                              'text': notebook.read('projects/reader.md'),
+                              'source': 'investigation:page'}], default_config(), stage='investigate')
+    assert 'at most twelve relevant text files' in prompts[0]
+    assert 'stop using tools and return a brief coverage summary' in prompts[0]
+
+
+def test_investigation_does_not_claim_another_concurrent_page_change(notebook, monkeypatch):
+    first = 'people/first.md'
+    other = 'people/other.md'
+    notebook.stub_person(first, 'First', ['first@example.org'], email='first@example.org')
+    notebook.stub_person(other, 'Other', ['other@example.org'], email='other@example.org')
+
+    def run_model(*args, **kwargs):
+        notebook.write(other, notebook.read(other) + '\nConcurrent edit.\n')
+        return {'usage': None, 'result': 'complete'}
+
+    def promote(book, record, candidate, original, items, directory, usage):
+        book.write(record, original + '\nInvestigated.\n')
+
+    monkeypatch.setattr('connectonion.wiki.runner.run_task', run_model)
+    monkeypatch.setattr('connectonion.wiki.runner._promote_candidate', promote)
+    result = run_stage(notebook, [{'role': 'page', 'record': first,
+                                   'text': notebook.read(first),
+                                   'source': 'investigation:page'}], default_config(), stage='investigate')
+    assert result['changed'] == [first]
+    assert 'Concurrent edit.' in notebook.read(other)
+
+
 @pytest.mark.parametrize("stage", ["maintain", "investigate", "abstract", "init"])
 @pytest.mark.parametrize("harness", ["codex", "coai", "claude-code"])
 def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stage, harness):

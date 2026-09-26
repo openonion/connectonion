@@ -74,19 +74,23 @@ def _emit(ctx, value, arguments, *, failed=False):
         raise typer.Exit(1)
 
 
-def _handle(ctx, operation, recovery):
+def _handle(ctx, operation, recovery, *, retry=None):
     from ...wiki.files import WikiError
 
     try:
-        value, arguments = operation(ctx.obj["root"])
+        response = operation(ctx.obj["root"])
+        value, arguments = response[:2]
+        failed = response[2] if len(response) > 2 else False
     except (WikiError, OSError, UnicodeError) as error:
         message = str(error) if isinstance(error, WikiError) else "Cannot read or write the selected Wiki files"
         # An error that says what to run is the Next line too. `sync` before
         # `start` said "run co wiki start" and then printed "Next: co wiki logs".
         named = re.search(r"`co wiki ([^`<>]+)`", message)
-        _emit(ctx, message, shlex.split(named.group(1)) if named else recovery, failed=True)
+        next_step = (shlex.split(named.group(1)) if named else
+                     retry if retry and getattr(error, "_wiki_retry_page", False) else recovery)
+        _emit(ctx, message, next_step, failed=True)
         return
-    _emit(ctx, value, arguments)
+    _emit(ctx, value, arguments, failed=failed)
 
 
 def _moved(ctx, old: str, new: list):
@@ -112,8 +116,26 @@ def _logged(root, record, phase, call):
            "runner_attempts": 0, "usage": None, "changed": [], "sources": [], "items": 0}
     path = state_path(root, f"runs/{run['id']}.json")
     write_json(path, run)
+
+    def update(stage, processed=None, total=None, usage=None):
+        run["stage"] = stage
+        run["stage_updated_at"] = now().isoformat()
+        if processed is not None:
+            run["stage_processed"] = processed
+        else:
+            run.pop("stage_processed", None)
+        if total is not None:
+            run["stage_total"] = total
+        else:
+            run.pop("stage_total", None)
+        if usage is not None:
+            run["usage"] = usage
+        write_json(path, run)
+        detail = f" ({processed}/{total})" if processed is not None and total is not None else ""
+        typer.echo(f"Wiki investigation: {stage}{detail}", err=True)
+
     try:
-        result = call()
+        result = call(update)
         run.update(outcome="completed", usage=result.get("usage"), usage_by_stage=result.get("usage_by_stage") or {},
                    changed=result.get("changed") or [], items=result.get("items", 0),
                    chars_in=result.get("chars_gathered") or 0, coverage=result.get("coverage") or [])
@@ -121,8 +143,17 @@ def _logged(root, record, phase, call):
     except BaseException as error:
         run.update(outcome=("refused" if isinstance(error, RunFailed) and "rejected" in str(error) else
                             "interrupted" if isinstance(error, KeyboardInterrupt) else "failed"),
-                   error=str(error)[:1000], usage=getattr(error, "usage", None))
-        raise
+                   error=str(error)[:1000], usage=getattr(error, "usage", None) or run.get("usage"))
+        if isinstance(error, KeyboardInterrupt):
+            raise
+        from ...wiki.files import WikiError
+        if isinstance(error, WikiError):
+            error._wiki_retry_page = True
+            raise
+        failure = WikiError(f"Investigation could not finish ({type(error).__name__}); "
+                            "check co wiki logs and retry this page")
+        failure._wiki_retry_page = True
+        raise failure from error
     finally:
         run["finished_at"] = now().isoformat()
         from datetime import datetime
@@ -202,6 +233,7 @@ def make_wiki_app(factory):
 
         def run(root):
             prepare(root)
+            window = [] if days == 150 else ["--days", str(days)]
             sources = subscriptions(root)
             from ...wiki.files import WikiError
             selected = set(mail)
@@ -222,14 +254,21 @@ def make_wiki_app(factory):
                 except Exception as error:
                     errors.append({"source": kind, "stage": "client", "error": type(error).__name__})
             failed = {row["source"]: row["error"] for row in errors}
+            def progress(stage, count=None):
+                if ctx.obj["json"]:
+                    return
+                suffix = f": {count}" if count is not None else "..."
+                typer.echo(f"Wiki init: {stage}{suffix}", err=True)
+
             result = build_map(root, sources, clients, days=days,
                                skill_directories=skills_dir or None, mine=mine, source_errors=errors,
-                               absent=_absent_mail(selected, available, failed, sources, bool(mail)), name=name)
+                               absent=_absent_mail(selected, available, failed, sources, bool(mail)), name=name,
+                               progress=progress if not ctx.obj["json"] else None)
             tips = []
             for kind, provider in (("gmail", "google"), ("outlook", "microsoft")):
                 if kind not in available:
                     tips.append(f"Connect {provider.title()} for People: co auth {provider}; then run "
-                                + _next(ctx, ["init"]) + ".")
+                                + _next(ctx, ["init", *window]) + ".")
             if tips:
                 result["tips"] = tips
             candidates = result.get("possible_own_addresses") or []
@@ -239,7 +278,7 @@ def make_wiki_app(factory):
                 # they actually used. Five at a time: the rest stay in the report.
                 result["confirm_own_addresses"] = [
                     f"{row['address']}: {row['sent']} sent, none received. If it is yours, run "
-                    + _next(ctx, ["init", "--mine", row["address"]])
+                    + _next(ctx, ["init", *window, "--mine", row["address"]])
                     + "; if it is an assistant or a relative, leave it as a person."
                     for row in candidates[:5]]
                 if len(candidates) > 5:
@@ -248,12 +287,15 @@ def make_wiki_app(factory):
             if not selected:
                 result["people_setup"] = "No connected mail source. Local maps are ready; connect mail to add People."
             if result.get("errors"):
-                result["recovery"] = "Check mailbox access with co auth status; retry init with --mail after resolving access. Completed maps are preserved."
-                _emit(ctx, result, ["init", "--mail", sorted(selected)[0]], failed=True)
+                retry = ["init", *window]
+                if mail:
+                    retry += [part for kind in mail for part in ("--mail", kind)]
+                result["recovery"] = "Check mailbox access with co auth status; retry init after resolving access. Completed maps are preserved."
+                _emit(ctx, result, retry, failed=True)
                 raise typer.Exit(1)
             # A page made from --name alone has no address for investigate me to use.
-            return result, (["investigate", "me"] if (result.get("owner") or {}).get("addresses")
-                            else ["investigate"])
+            return result, (["investigate", "me", *window, "--quick"] if (result.get("owner") or {}).get("addresses")
+                            else ["investigate", *window])
         _handle(ctx, run, ["sources"])
 
     @wiki.command("investigate", cls=V("co wiki investigate"))
@@ -261,6 +303,7 @@ def make_wiki_app(factory):
                          target: str = typer.Argument(""),
                          handle: List[str] = typer.Option([], "--handle"),
                          days: Optional[int] = typer.Option(None, "--days", min=1),
+                         quick: bool = typer.Option(False, "--quick", help="Bounded first pass for your own page"),
                          limit: int = typer.Option(5, "--limit", min=0),
                          list_only: bool = typer.Option(False, "--list"),
                          eval_dir: List[Path] = typer.Option([], "--eval-dir")):
@@ -313,9 +356,10 @@ def make_wiki_app(factory):
                 clients = {kind: client for kind, client in clients.items() if handle}
             skipped = "" if clients or not record.startswith("projects/") else \
                 "not read for a project page; name its mail with --handle"
-            return _logged(root, record, "investigate", lambda: investigate(
+            return _logged(root, record, "investigate", lambda update: investigate(
                 root, record, title, handles, days=days or 150, clients=clients,
-                subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped))
+                subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped,
+                stage_progress=update))
 
         def overview(root):
             state = read_json(state_path(root, "map.json"), {})
@@ -330,7 +374,7 @@ def make_wiki_app(factory):
             if owner:
                 rows["me"] = {"page": owner, "unfinished": owner in {p["path"] for p in Notebook(root).unfinished("people")}}
             first = next((c for c in CATEGORIES if rows[c]["next"]), None)
-            return rows, (["investigate", "me"] if owner and rows["me"]["unfinished"]
+            return rows, (["investigate", "me", "--quick"] if owner and rows["me"]["unfinished"]
                           else ["investigate", first] if first else ["list"])
 
         def by_category(root, category):
@@ -360,7 +404,8 @@ def make_wiki_app(factory):
             accepted = [row["page"] for row in done if row["outcome"] == "accepted"]
             return ({"category": category, "pages": done, "skipped_recent": skipped,
                      "left": max(len(queue) - len(chosen), 0)},
-                    ["show", accepted[0]] if accepted else ["logs"])
+                    ["show", accepted[0]] if accepted else ["logs"],
+                    any(row["outcome"] != "accepted" for row in done))
 
         def me(root):
             state = read_json(state_path(root, "map.json"), {})
@@ -377,12 +422,15 @@ def make_wiki_app(factory):
                                 "run `co wiki init`")
             title = next((l[2:].strip() for l in Notebook(root).read(record).splitlines() if l.startswith("# ")),
                          "Account owner")
-            result = _logged(root, record, "investigate me", lambda: investigate(
+            result = _logged(root, record, "investigate me", lambda update: investigate(
                 root, record, title, [*owner.get("addresses", []), *handle], days=days or 30,
-                clients=clients_for(root), subscriptions=subscriptions(root), progress=progress, sent_only=True))
+                clients=clients_for(root), subscriptions=subscriptions(root), progress=progress, sent_only=True,
+                stage_progress=update, quick=quick))
             return result, ["show", record]
 
         def run(root):
+            if quick and target != "me":
+                raise WikiError("--quick is for `co wiki investigate me` only")
             if list_only and target not in CATEGORIES:
                 raise WikiError("--list goes with a category: co wiki investigate people --list "
                                 "(or projects, orgs, skills)")
@@ -396,7 +444,10 @@ def make_wiki_app(factory):
             record = _resolve_page(notebook, target)
             result = one(root, notebook, record)
             return result, ["show", result["report"] if record.startswith("skills/") else record]
-        _handle(ctx, run, ["investigate"])
+        retry = ["investigate", *([target] if target else []),
+                 *(["--days", str(days)] if days is not None else []),
+                 *(["--quick"] if quick else [])]
+        _handle(ctx, run, ["investigate"], retry=retry)
 
     # ------------------------------------------------------------------- Read
 
