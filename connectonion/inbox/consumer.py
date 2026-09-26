@@ -16,6 +16,7 @@ strict order where a human would notice, and no waiting where they would not.
 
 import queue
 import threading
+import time
 from typing import Callable, Optional
 
 
@@ -195,3 +196,84 @@ def serve(inbox, handler: Callable, *, lane_key: Optional[Callable] = None,
                  lease_seconds=lease_seconds, max_attempts=max_attempts,
                  idle_seconds=idle_seconds, should_stop=should_stop, by=by)
     loop.run(once=once)
+
+
+# The listener's own code for "a person has to act": a missing SDK, a token the
+# platform refused. Restarting it only repeats the refusal.
+EXIT_CONFIG = 3
+# How long a listener we start gets to say whether its connection is up; the
+# same window `co <provider> receive` gives it.
+SETTLE_SECONDS = 3.0
+# How often to look again at a listener we did not start, or one that would
+# not restart. `receive` looks this often too.
+WATCH_SECONDS = 60.0
+
+
+def serve_with_listener(inbox, handler: Callable, *, say: Callable[[str], None],
+                        should_stop: Optional[threading.Event] = None,
+                        settle: float = SETTLE_SECONDS, every: float = WATCH_SECONDS,
+                        poll: float = 1.0, **options) -> Optional[int]:
+    """serve(), for as long as there is a listener filling the directory.
+
+    A consumer that only reads new/ cannot tell a quiet chat from a dead
+    listener: `co ai` and the Host started one, did not look at whether it
+    lived, and went on saying they were answering a channel nobody was
+    receiving (#1751). This is the watch `co <provider> receive` keeps, for a
+    consumer that runs for days, with the same rule a supervisor follows:
+
+    - a listener that died is restarted;
+    - one that exited 3 is reported with its reason and the channel is no
+      longer served, because a person has to act before a restart can help;
+    - one that exits any other way and will not restart is reported once and
+      tried again every `every` seconds, and what is already queued is still
+      answered meanwhile.
+
+    Returns the exit code that stopped it, or None when `should_stop` (or
+    `once`) did. `say` gets one line per change, for the operator's console.
+    """
+    stop = should_stop or threading.Event()
+    mine = threading.Event()   # ends this channel's loop without ending the caller's others
+    loop = threading.Thread(target=serve, args=(inbox, handler),
+                            kwargs={**options, "should_stop": mine},
+                            name=f"serve-{inbox.provider}", daemon=True)
+    try:
+        return _watch(inbox, stop, loop, say=say, settle=settle, every=every, poll=poll)
+    finally:
+        mine.set()
+        if loop.is_alive():
+            loop.join(timeout=30)
+
+
+def _watch(inbox, stop, loop, *, say, settle, every, poll) -> Optional[int]:
+    failing = False
+    due = 0.0                      # the first look is now: it is what starts the listener
+    while not stop.is_set():
+        code = inbox.exited_listener()
+        if code != EXIT_CONFIG and (code is None or failing) and time.monotonic() < due:
+            if loop.ident is not None and not loop.is_alive():
+                return None        # `once` has had its message
+            stop.wait(poll)
+            continue
+        due = time.monotonic() + every
+        if code != EXIT_CONFIG and inbox.ensure_listener(settle=settle) is not None:
+            if failing:
+                say(f"{inbox.provider}: the listener is running again")
+            failing = False
+            if loop.ident is None:
+                loop.start()
+            continue
+        if code != EXIT_CONFIG:
+            code = inbox.listener_exit_code
+        how = "did not start" if code is None else f"exited {code}"
+        reason = "; ".join(inbox.why_listener_stopped()) or "no reason in the log"
+        if code == EXIT_CONFIG:
+            say(f"{inbox.provider}: the listener {how}: {reason}. Stopped answering "
+                f"{inbox.provider} until that is fixed and this is restarted. Log: {inbox.logfile}")
+            return code
+        if not failing:
+            say(f"{inbox.provider}: the listener {how} and did not restart: {reason}. "
+                f"Trying again every {int(every)}s. Log: {inbox.logfile}")
+        failing = True
+        if loop.ident is None:
+            loop.start()           # what is already queued can still be answered
+    return None

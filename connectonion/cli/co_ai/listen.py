@@ -3,7 +3,7 @@ Purpose: Answer inbox messages with the co-ai agent — the first consumer of th
 LLM-Note:
   Dependencies: imports from [threading, inbox/ (Inbox, provider, settings)] | imported by [cli/commands/ai_commands.py] | tested by [tests/unit/test_co_ai_listen.py]
   Data flow: Channel → Inbox.serve(handler) → channel.answers(message)? → agent.input(text, session per conversation) → provider.send(reply) → Inbox.record_sent + done
-  State/Effects: one background listener per channel (auto-started), one session dict per conversation held in memory, replies sent through the provider
+  State/Effects: one background listener per channel (auto-started, restarted if it dies, the channel given up with its reason if it exits 3), one session dict per conversation held in memory and never shared, replies sent through the provider
   Integration: this is the consumer half DD-063 left to whoever consumes the directory; the inbox package still knows nothing about Agents
   Performance: one conversation answered at a time by default — see the note on workers below
   Errors: a turn that raises leaves its message in cur/ for the hourly sweep, so a model outage costs a delay and not an unanswered question
@@ -16,11 +16,13 @@ renewal and the give-up rule, and a slow turn delays the next answer rather
 than corrupting it.
 """
 
+import sys
 import threading
 from typing import Callable, Optional, Sequence
 
 from ...inbox import Inbox
 from ...inbox import provider as _provider
+from ...inbox.consumer import serve_with_listener
 from ...inbox.settings import Channel
 
 
@@ -50,10 +52,19 @@ def _handler(channel: Channel, inbox: Inbox, provider, agent, sessions: dict, gu
 
         key = conversation_of(message)
         with guard:
-            # A first turn passes no session: a session dict without the
-            # system prompt in `messages` would start the agent with no
-            # instructions at all, which is worse than starting fresh.
-            reply = agent.input(message.text, session=sessions.get(key))
+            previous = sessions.get(key)
+            if previous is None:
+                # A first turn starts from nothing, and has to say so: to
+                # Agent.input, no session means "carry on with the one you
+                # have", which was the last chat's. Client B's first question
+                # went to the model after client A's whole conversation, and
+                # from then on the two chats shared one dict (#1751). Reset
+                # rather than pass an empty dict, which would start the turn
+                # without the system prompt.
+                agent.reset_conversation()
+            # Given a session, input() works on a copy, so the dict kept here
+            # for one chat is never the one another chat's turn appends to.
+            reply = agent.input(message.text, session=previous)
             session = agent.current_session
             # Anyone who can address the bot may command it in 1.8.5. The
             # sender is written down anyway, so the allowlist in #1479 starts
@@ -76,11 +87,20 @@ def _handler(channel: Channel, inbox: Inbox, provider, agent, sessions: dict, gu
     return answer
 
 
+def _say_on_stderr(line: str) -> None:
+    print(line, file=sys.stderr, flush=True)
+
+
 def listen(channels: Sequence[Channel], agent_factory: Callable, *,
            workers: int = 1, idle_seconds: float = 600.0,
            should_stop: Optional[threading.Event] = None,
-           once: bool = False) -> None:
-    """Answer every channel's messages with one agent. Blocks until stopped."""
+           once: bool = False, say: Callable[[str], None] = _say_on_stderr) -> None:
+    """Answer every channel's messages with one agent. Blocks until stopped.
+
+    Each channel is served only while its listener runs: one that dies is
+    restarted, and one that exits 3 is reported through `say` and that channel
+    is no longer answered. The others carry on.
+    """
     if not channels:
         return
     agent = agent_factory()
@@ -92,11 +112,10 @@ def listen(channels: Sequence[Channel], agent_factory: Callable, *,
     for channel in channels:
         inbox = _inbox_for(channel.provider)
         provider = _provider_for(channel.provider)
-        inbox.ensure_listener()
         handler = _handler(channel, inbox, provider, agent, sessions, guard)
         loops.append(threading.Thread(
-            target=inbox.serve, args=(handler,),
-            kwargs={"workers": workers, "idle_seconds": idle_seconds,
+            target=serve_with_listener, args=(inbox, handler),
+            kwargs={"say": say, "workers": workers, "idle_seconds": idle_seconds,
                     "should_stop": stop, "once": once, "by": "co-ai"},
             name=f"listen-{channel.provider}", daemon=True))
 

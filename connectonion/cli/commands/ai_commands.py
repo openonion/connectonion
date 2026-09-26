@@ -15,6 +15,7 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 
 from ...core.usage import DEFAULT_MODEL
 from ..co_ai import harness as _harness
@@ -226,8 +227,12 @@ def _start_listening(channels, agent_factory, model, max_iterations, full_access
     def build():
         return agent_factory(model, max_iterations, False, full_access_turns)
 
-    threading.Thread(target=consume, args=(channels, build), daemon=True,
-                     name="co-ai-listen").start()
+    def say(line: str) -> None:
+        # Not markup: a listener's reason can contain [brackets].
+        console.print(f"[yellow]{escape(line)}[/yellow]", soft_wrap=True, highlight=False)
+
+    threading.Thread(target=consume, args=(channels, build), kwargs={"say": say},
+                     daemon=True, name="co-ai-listen").start()
     console.print(f"[dim]answering {', '.join(c.provider for c in channels)}[/dim]")
 
 

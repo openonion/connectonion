@@ -234,3 +234,50 @@ class TestConcurrencyCap:
         settle(inbox, stop, thread, until=lambda: inbox.completed.exists())
         time.sleep(0.5)
         assert threading.active_count() <= before + 1
+
+
+class TestServingWhileTheListenerLives:
+    """serve_with_listener: the watch a long-running consumer keeps (#1751)."""
+
+    def rig(self, tmp_path, monkeypatch, starts):
+        from connectonion.inbox import consumer
+
+        inbox = box(tmp_path)
+        state = {"starts": list(starts), "calls": 0, "exited": None}
+
+        def ensure_listener(settle=0.0):
+            state["calls"] += 1
+            pid = state["starts"].pop(0) if state["starts"] else 1
+            if pid is None:
+                inbox.listener_exit_code = 1
+                state["exited"] = 1
+            else:
+                state["exited"] = None
+            return pid
+
+        monkeypatch.setattr(inbox, "ensure_listener", ensure_listener)
+        monkeypatch.setattr(inbox, "exited_listener", lambda: state["exited"])
+        said, stop = [], threading.Event()
+        thread = threading.Thread(
+            target=consumer.serve_with_listener, args=(inbox, lambda message: None),
+            kwargs={"say": said.append, "should_stop": stop, "every": 0.5, "poll": 0.05,
+                    "idle_seconds": 0.2}, daemon=True)
+        return inbox, state, said, stop, thread
+
+    def test_one_that_will_not_restart_is_said_once_retried_and_the_queue_still_answered(self, tmp_path, monkeypatch):
+        inbox, state, said, stop, thread = self.rig(tmp_path, monkeypatch, starts=[None, None, None, 1])
+        inbox.log("the platform said 503")
+        put(inbox, "m1")
+        thread.start()
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and state["calls"] < 4:
+            time.sleep(0.02)
+        stop.set()
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+        assert state["calls"] == 4, "a listener that would not start was not tried again"
+        assert inbox.completed.exists() and "m1" in inbox.completed.read_text(), \
+            "what was already queued waited for the listener"
+        failures = [line for line in said if "did not restart" in line]
+        assert len(failures) == 1 and "503" in failures[0], said
+        assert any("running again" in line for line in said), said

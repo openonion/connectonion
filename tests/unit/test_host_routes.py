@@ -228,7 +228,8 @@ class TestSessionHandler:
         )
         storage.save(session)
 
-        result = session_handler(storage, "test-123")
+        # Ownerless, so the host's own: an admin reads it (#1752).
+        result = session_handler(storage, "test-123", "0xadmin", is_admin=True)
 
         assert result is not None
         assert result["session_id"] == "test-123"
@@ -247,14 +248,14 @@ class TestSessionsHandler:
     """Test sessions_handler route."""
 
     def test_returns_all_sessions(self, tmp_path):
-        """sessions_handler returns list of all sessions."""
+        """An admin sees the host's ownerless sessions (#1752)."""
         storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
 
         now = time.time()
         storage.save(Session(session_id="a", status="done", prompt="A", created=now))
         storage.save(Session(session_id="b", status="done", prompt="B", created=now + 1))
 
-        result = sessions_handler(storage)
+        result = sessions_handler(storage, "0xadmin", is_admin=True)
 
         assert "sessions" in result
         assert len(result["sessions"]) == 2
