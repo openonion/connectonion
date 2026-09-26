@@ -112,6 +112,9 @@ User Input
     ▼
 ┌─────────────────── ITERATION LOOP ──────────────────┐
 │                                                     │
+│  before_iteration (watch_events: claim and inject)  │
+│                   │                                 │
+│                   ▼                                 │
 │  before_llm → LLM Call → after_llm                  │
 │                   │                                 │
 │                   ▼                                 │
@@ -137,6 +140,8 @@ User Input
 │  │ (re_act: reflect, image_result_formatter)   │    │
 │  │ Safe to modify messages after a tool batch │    │
 │  └─────────────────────────────────────────────┘    │
+│                   │                                 │
+│  after_iteration (watch_events: check late events)  │
 │                   │                                 │
 │           Continue or Exit Loop                     │
 └─────────────────────────────────────────────────────┘
