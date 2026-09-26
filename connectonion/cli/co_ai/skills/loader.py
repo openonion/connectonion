@@ -41,6 +41,7 @@ from typing import Any, Dict, List, Optional
 from ....project import project_co_dir
 from ....skill_requirements import SkillRequirements, parse_skill_requirements
 from ....skills_catalog import default_skill_files
+from ....subscription_paths import active_subscription_skills
 
 
 @dataclass
@@ -134,6 +135,22 @@ def discover_skills(base_path: Optional[Path] = None) -> List[SkillInfo]:
             elif skill_dir.suffix == ".md" and skill_dir.stem != "SKILL":
                 skill_info = _read_skill_or_skip(skill_dir)
                 if skill_info and skill_info.name not in seen:
+                    seen.add(skill_info.name)
+                    skills.append(skill_info)
+
+    # Names are qualified with the locally pinned publisher alias so two
+    # subscriptions cannot silently replace each other's skill in co ai.
+    for alias, skills_dir in active_subscription_skills(Path.home()):
+        if not skills_dir.is_dir():
+            continue
+        for skill_dir in skills_dir.iterdir():
+            skill_file = skill_dir / "SKILL.md"
+            if not skill_file.is_file():
+                continue
+            skill_info = _read_skill_or_skip(skill_file)
+            if skill_info:
+                skill_info.name = f"{alias}-{skill_dir.name}"
+                if skill_info.name not in seen:
                     seen.add(skill_info.name)
                     skills.append(skill_info)
 

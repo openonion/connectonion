@@ -18,6 +18,7 @@ Per-tool layout produced:
 from __future__ import annotations
 
 import re
+import json
 from pathlib import Path
 
 HOME = Path.home()
@@ -59,10 +60,14 @@ def _may_write(dst: Path) -> bool:
     overwritten with the publisher's content. Measured before this — both lost
     their contents on a sync.
     """
+    if dst.is_symlink():
+        return False
     if not dst.exists():
         return True
     try:
-        return OURS_MARKER in dst.read_text(encoding="utf-8", errors="replace")
+        leading_lines = dst.read_text(encoding="utf-8", errors="replace").splitlines()[:8]
+        return any(line.strip() in (f"<!-- {OURS_MARKER} -->", f"# {OURS_MARKER}")
+                   for line in leading_lines)
     except OSError:
         return False
 
@@ -88,13 +93,42 @@ def _replace(dst: Path, src: Path) -> bool:
     """
     dst.parent.mkdir(parents=True, exist_ok=True)
     if dst.is_symlink():
-        dst.unlink()          # ours, or stale — either way replaceable
+        if not _points_to(dst, src):
+            return False
+        dst.unlink()
     elif dst.exists():
-        if dst.is_dir():
-            return False      # somebody's real directory; not ours to delete
-        dst.unlink()          # a plain file we wrote before
+        return False          # neither real directories nor files are ours
     dst.symlink_to(src)
     return True
+
+
+def _points_to(link: Path, target: Path) -> bool:
+    """Compare a link's exact destination, including when that target vanished."""
+    if not link.is_symlink():
+        return False
+    return (link.parent / link.readlink()).resolve(strict=False) == target.resolve(strict=False)
+
+
+def _state_path(alias: str) -> Path:
+    return HOME / ".co" / "subscription-installs" / f"{alias}.json"
+
+
+def _record_bundle(alias: str, bundle: Path) -> None:
+    path = _state_path(alias)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"bundle": str(bundle.resolve(strict=False))}), encoding="utf-8")
+
+
+def _known_bundle(alias: str) -> Path | None:
+    path = _state_path(alias)
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data.get("bundle"), str):
+                return Path(data["bundle"])
+        except (OSError, ValueError, AttributeError):
+            pass
+    return None
 
 
 def install_claude(bundle: Path, alias: str) -> int:
@@ -110,11 +144,14 @@ def install_claude(bundle: Path, alias: str) -> int:
     The link is right and stays; every other tool in this module counts skills,
     so the number is what was out of step.
     """
+    count = _skill_count(bundle)
+    if not count:
+        return 0
     dst = HOME / ".claude" / "plugins" / alias
     if not _replace(dst, bundle):
         _report_kept(dst)
         return 0
-    return _skill_count(bundle)
+    return count
 
 
 def _skills_in(bundle: Path):
@@ -199,6 +236,7 @@ def install_kiro(bundle: Path, alias: str) -> int:
 
 def install_all(bundle: Path, alias: str) -> dict[str, int]:
     """Install into every detected tool. Returns {tool: skill_count}."""
+    _record_bundle(alias, bundle)
     handlers = {
         "claude":   lambda: install_claude(bundle, alias),
         "codex":    lambda: install_skill_dirs(bundle, alias, "codex"),
@@ -209,8 +247,45 @@ def install_all(bundle: Path, alias: str) -> dict[str, int]:
     return {tool: handlers[tool]() for tool in detected_tools()}
 
 
-def uninstall_all(alias: str) -> None:
-    """Remove every per-tool install for `alias`."""
+def installation_status(bundle: Path, alias: str) -> dict[str, int]:
+    """Count current owned installs for each detected coding agent."""
+    skills = _skills_in(bundle)
+    counts = {}
+    for tool in detected_tools():
+        if tool == "claude":
+            link = HOME / ".claude" / "plugins" / alias
+            counts[tool] = len(skills) if _points_to(link, bundle) else 0
+        elif tool in ("codex", "openclaw"):
+            root = HOME / f".{tool}" / "skills"
+            counts[tool] = sum(
+                _points_to(root / f"{alias}-{skill.name}", skill)
+                for skill in skills
+            )
+        else:
+            root = (HOME / ".cursor" / "rules" if tool == "cursor"
+                    else HOME / ".kiro" / "steering")
+            suffix = ".mdc" if tool == "cursor" else ".md"
+            counts[tool] = sum(
+                (root / f"{alias}-{skill.name}{suffix}").is_file()
+                and _may_write(root / f"{alias}-{skill.name}{suffix}")
+                for skill in skills
+            )
+    return counts
+
+
+def expected_skill_count(bundle: Path, tool: str) -> int:
+    """Cursor requires frontmatter; the other tools accept every mirrored skill."""
+    skills = _skills_in(bundle)
+    if tool == "cursor":
+        return sum(bool(FRONTMATTER_RE.match(
+            (skill / "SKILL.md").read_text(encoding="utf-8")
+        )) for skill in skills)
+    return len(skills)
+
+
+def uninstall_all(alias: str, bundle: Path | None = None) -> None:
+    """Remove only this bundle's installs before a refresh or unsubscribe."""
+    bundle = bundle or _known_bundle(alias)
     targets: list[Path] = [HOME / ".claude" / "plugins" / alias]
     for tool in ("codex", "openclaw"):
         skills_dir = HOME / f".{tool}" / "skills"
@@ -225,14 +300,27 @@ def uninstall_all(alias: str) -> None:
     # subscription must not delete it either. Matching by prefix is a guess about
     # ownership; being a symlink we made is not.
     for t in targets:
+        if t.name.startswith(f"{alias}-"):
+            skill_name = t.name[len(alias) + 1:]
+            if t.suffix in (".md", ".mdc"):
+                skill_name = t.stem[len(alias) + 1:]
         if t.is_symlink():
-            t.unlink()            # a link we made
+            source = bundle if t.name == alias else (
+                bundle / "skills" / skill_name if bundle else None
+            )
+            if source is not None and _points_to(t, source):
+                t.unlink()
+            else:
+                _report_kept(t, removing=True)
         elif t.is_file():
             # A file with our marker is ours; one without it is the user's, and
             # the name prefix alone is a guess about who wrote it.
-            if _may_write(t):
+            expected_copy = ((t.parent == HOME / ".cursor" / "rules" and t.suffix == ".mdc")
+                             or (t.parent == HOME / ".kiro" / "steering" and t.suffix == ".md"))
+            if expected_copy and _may_write(t):
                 t.unlink()
             else:
                 _report_kept(t, removing=True)
         elif t.is_dir():
             _report_kept(t, removing=True)
+    _state_path(alias).unlink(missing_ok=True)

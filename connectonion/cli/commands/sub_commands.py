@@ -27,8 +27,12 @@ Security: profile metadata and every mirrored body must verify against the pinne
 from __future__ import annotations
 
 import json
+import base64
+import binascii
+import os
 import re
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -43,7 +47,7 @@ from ...network.profile_freshness import (
     validate_revision,
     write_state,
 )
-from .fanout import install_all, uninstall_all
+from .fanout import expected_skill_count, install_all, installation_status, uninstall_all
 
 console = Console()
 
@@ -88,7 +92,13 @@ def _write_subs(subs: list[tuple[str, str]]) -> None:
         "# Managed by `co sub`. Re-run `co sub sync <address>` to refresh one.\n"
     )
     body = "\n".join(f"{addr} {alias}" for addr, alias in subs)
-    SUBS_LIST.write_text(header + body + ("\n" if body else ""), encoding="utf-8")
+    fd, temporary = tempfile.mkstemp(dir=SUBS_LIST.parent, prefix=".subscriptions.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(header + body + ("\n" if body else ""))
+        os.replace(temporary, SUBS_LIST)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
 
 
 def _fetch_profile(address: str, relay: str) -> dict:
@@ -117,12 +127,14 @@ def _fetch_skill(address: str, name: str, relay: str):
     A real transport or server failure still raises; only a 200 that carries no
     body is treated as "nothing to mirror".
     """
+    return _fetch_skill_record(address, name, relay).get("body")
+
+
+def _fetch_skill_record(address: str, name: str, relay: str) -> dict:
     r = httpx.get(f"{relay}/api/agents/{address}/skills/{name}", timeout=30)
     r.raise_for_status()
     payload = r.json()
-    if isinstance(payload, dict) and "body" in payload:
-        return payload["body"]
-    return None
+    return payload if isinstance(payload, dict) else {}
 
 
 def _declared_tools(body: str) -> str:
@@ -223,12 +235,17 @@ def _verified_bundle(address: str, envelope: dict, relay: str):
         name = skill.get("name") if isinstance(skill, dict) else None
         if not isinstance(name, str) or not LOCAL_NAME_RE.fullmatch(name):
             raise ValueError("signed skill name is not a safe local directory name")
-        body = _fetch_skill(address, name, relay)
+        record = _fetch_skill_record(address, name, relay)
+        body = record.get("body")
         if body is not None:
             if not isinstance(body, str):
                 raise ValueError(f"relay returned a non-text body for {name}")
             skill["body"] = body
             bodies[name] = body
+            if "files" in record:
+                if not isinstance(record["files"], dict):
+                    raise ValueError(f"relay returned invalid companion files for {name}")
+                skill["files"] = record["files"]
 
     from ...network.host.auth import verify_signature
 
@@ -260,33 +277,67 @@ def _accept_freshness(address: str, revision: int, signature: str) -> None:
 def _mirror_bundle(alias: str, profile: dict, bodies: dict) -> int:
     """Write a verified profile and bodies under ~/.co/subs/<alias>/."""
     bundle = SUBS_DIR / alias
-    skills_root = bundle / "skills"
-    skills_root.mkdir(parents=True, exist_ok=True)
+    SUBS_DIR.mkdir(parents=True, exist_ok=True)
+    staged = Path(tempfile.mkdtemp(prefix=f".{alias}.staged.", dir=SUBS_DIR))
+    skills_root = staged / "skills"
+    skills_root.mkdir()
     metadata = json.loads(json.dumps(profile))
     for skill in metadata.get("skills", []):
         skill.pop("body", None)
-    (bundle / "agent.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        skill.pop("files", None)
+    try:
+        (staged / "agent.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        n = 0
+        for skill in profile.get("skills", []):
+            name = skill["name"]
+            body = bodies.get(name)
+            if body is None:
+                console.print(f"[dim]{name}: skipped — the publisher did not "
+                              f"publish its body[/dim]")
+                continue
+            skill_dir = skills_root / name
+            skill_dir.mkdir()
+            cleaned = strip_tool_grants(body, name)
+            if cleaned != body:
+                console.print(f"[yellow]{name}: removed its tools: grant[/yellow] "
+                              f"[dim]{_declared_tools(body)}[/dim]")
+            (skill_dir / "SKILL.md").write_text(cleaned, encoding="utf-8")
+            for relative, encoded in skill.get("files", {}).items():
+                if (not isinstance(relative, str) or not relative or relative == "SKILL.md"
+                    or ":" in relative
+                    or "\\" in relative or any(part in ("", ".", "..")
+                                               for part in relative.split("/"))
+                    or any(ord(char) < 32 for char in relative)
+                    or not isinstance(encoded, str)):
+                    raise ValueError(f"unsafe companion file path in {name}")
+                try:
+                    contents = base64.b64decode(encoded, validate=True)
+                except (ValueError, binascii.Error) as exc:
+                    raise ValueError(f"invalid companion file data in {name}") from exc
+                if len(contents) > 64_000:
+                    raise ValueError(f"companion file too large in {name}")
+                target = skill_dir / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(contents)
+            n += 1
 
-    n = 0
-    for skill in profile.get("skills", []):
-        name = skill["name"]
-        body = bodies.get(name)
-        if body is None:
-            # Announced but not published. Named, because the profile promised a
-            # skill the subscriber will not find, and skipped rather than written
-            # — an error document saved as SKILL.md would reach an agent as
-            # instructions.
-            console.print(f"[dim]{name}: skipped — the publisher did not "
-                          f"publish its body[/dim]")
-            continue
-        (skills_root / name).mkdir(parents=True, exist_ok=True)
-        cleaned = strip_tool_grants(body, name)
-        if cleaned != body:
-            console.print(f"[yellow]{name}: removed its tools: grant[/yellow] "
-                          f"[dim]{_declared_tools(body)}[/dim]")
-        (skills_root / name / "SKILL.md").write_text(cleaned, encoding="utf-8")
-        n += 1
-    return n
+        previous = None
+        if bundle.exists():
+            previous = Path(tempfile.mkdtemp(prefix=f".{alias}.previous.", dir=SUBS_DIR))
+            previous.rmdir()
+            os.replace(bundle, previous)
+        try:
+            os.replace(staged, bundle)
+        except OSError:
+            if previous is not None:
+                os.replace(previous, bundle)
+            raise
+        if previous is not None:
+            shutil.rmtree(previous)
+        return n
+    finally:
+        if staged.exists():
+            shutil.rmtree(staged)
 
 
 def _resolve_target(target: str) -> tuple[str, Optional[str]]:
@@ -319,13 +370,16 @@ def handle_sub_sync_all(relay: Optional[str] = None) -> None:
 def handle_sub_sync_one(target: str, relay: Optional[str] = None) -> None:
     """Sync one publisher: resolve, fetch profile, record, mirror bodies, fan out."""
     address, alias_hint = _resolve_target(target)
+    alias_hint = next((al for addr, al in _read_subs() if addr == address), alias_hint)
     base = _relay_base(relay)
 
     with revision_lock(_freshness_path(address)):
         console.print(f"[cyan]Fetching profile[/cyan] {address}")
         envelope = _fetch_profile(address, base)
         profile, bodies, revision, signature = _verified_bundle(address, envelope, base)
-        alias = profile.get("alias") or alias_hint or address[:10]
+        # The signed display alias may change; the locally pinned name owns the
+        # mirror and fan-out paths for the lifetime of this subscription.
+        alias = alias_hint or profile.get("alias") or address[:10]
 
         owner = next(
             (saved_address for saved_address, saved_alias in _read_subs()
@@ -342,14 +396,19 @@ def handle_sub_sync_one(target: str, relay: Optional[str] = None) -> None:
         # later filesystem write is interrupted, the exact same signature is
         # still accepted on retry; an older or different bundle is not.
         _accept_freshness(address, revision, signature)
+        bundle = SUBS_DIR / alias
         n_skills = _mirror_bundle(alias, profile, bodies)
+        uninstall_all(alias, bundle=bundle)
 
         subs = [(a, al) for a, al in _read_subs() if a != address]
         subs.append((address, alias))
         _write_subs(subs)
 
-        results = install_all(SUBS_DIR / alias, alias)
-    console.print(f"[green]✓ Subscribed to {alias}[/green] ({address})")
+        results = install_all(bundle, alias)
+    partial = any(count < expected_skill_count(bundle, tool)
+                  for tool, count in (results or {}).items())
+    status = f"[yellow]Partially installed {alias}[/yellow]" if partial else f"[green]✓ Subscribed to {alias}[/green]"
+    console.print(f"{status} ({address})")
     console.print(f"  mirrored {n_skills} skill(s) → {SUBS_DIR / alias}")
 
     # Report the roll-call and the restart only when something was actually
@@ -383,17 +442,25 @@ def handle_sub_list() -> None:
     table.add_column("Alias", style="cyan", no_wrap=True)
     table.add_column("Address", overflow="fold")
     table.add_column("Version", style="green", no_wrap=True)
-    table.add_column("Skills", justify="right", no_wrap=True)
+    table.add_column("Listed/Mirrored", justify="right", no_wrap=True)
+    table.add_column("Installed", overflow="fold")
 
     for address, alias in subs:
         profile_path = SUBS_DIR / alias / "agent.json"
+        shown_alias = alias
         version = "—"
         skill_count = "—"
+        installed = "—"
         if profile_path.exists():
             data = json.loads(profile_path.read_text(encoding="utf-8"))
             version = data.get("version", "—")
-            skill_count = str(len(data.get("skills", [])))
-        table.add_row(alias, address, version, skill_count)
+            if data.get("alias") and data["alias"] != alias:
+                shown_alias = f"{alias} (publisher: {data['alias']})"
+            mirrored = len(list((SUBS_DIR / alias / "skills").glob("*/SKILL.md")))
+            skill_count = f"{len(data.get('skills', []))}/{mirrored}"
+            status = installation_status(SUBS_DIR / alias, alias)
+            installed = ", ".join(f"{tool}:{count}" for tool, count in status.items()) or "none"
+        table.add_row(shown_alias, address, version, skill_count, installed)
 
     console.print()
     console.print(table)
@@ -411,7 +478,7 @@ def handle_sub_remove(target: str) -> None:
         return
     address, alias = match
 
-    uninstall_all(alias)
+    uninstall_all(alias, bundle=SUBS_DIR / alias)
     bundle = SUBS_DIR / alias
     if bundle.exists():
         shutil.rmtree(bundle)
