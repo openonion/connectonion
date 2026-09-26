@@ -61,7 +61,7 @@ _MAKE_VERIFICATION_TARGETS = {
     "build", "coverage", "cov", "ci", "verify", "audit",
 }
 _PACKAGE_RUNNERS = {"npm", "pnpm", "yarn", "bun"}
-_DESTRUCTIVE_COMMANDS = {"rm", "rmdir", "shred", "truncate", "del", "erase", "format"}
+_DESTRUCTIVE_COMMANDS = {"rm", "rmdir", "unlink", "shred", "truncate", "del", "erase", "format"}
 _EXTERNAL_COMMANDS = {
     "curl", "wget", "ssh", "scp", "rsync", "mail", "sendmail",
     # These reached the network too and were refused only because nothing had
@@ -81,9 +81,18 @@ _EXTERNAL_COMMANDS = {
 _CODE_EXECUTING_COMMANDS = {
     "bash", "sh", "zsh", "fish", "dash", "ksh", "csh", "tcsh",
     "python", "python2", "python3", "node", "deno", "bun", "ruby", "perl",
-    "php", "lua", "Rscript", "osascript", "eval", "exec", "source",
-    "awk", "gawk", "mawk", "nawk", "sed", "xargs", "env",
+    "php", "lua", "Rscript", "osascript", "eval", "source",
+    "awk", "gawk", "mawk", "nawk", "sed",
+    # A SQL client's argument is a program too: `psql -c 'DROP TABLE users'`.
+    "psql", "mysql", "mariadb", "sqlite3", "duckdb", "mongo", "mongosh",
+    "redis-cli", "sqlcmd", "cqlsh", "clickhouse-client",
+    # Builds an environment from the network and runs whatever it is told.
+    "nix-shell",
 }
+# `exec`, `xargs` and `env` were in the set above. They are wrappers now
+# (_WRAPPERS below): what they run is what decides, which is stricter for
+# `exec rm -rf ~` (deny, not ask) and looser only for `env FOO=1 pytest`.
+
 # Subcommands that send something to somebody. Under default allow these are
 # the other half of the line: `co email send`, `co feishu send`, `gh pr create`
 # and `git push` are not dangerous to this machine, they are visible to other
@@ -93,7 +102,30 @@ _CODE_EXECUTING_COMMANDS = {
 _OUTWARD_SUBCOMMANDS = {
     "send", "reply", "post", "publish", "deploy", "release", "push",
     "transfer", "pay", "invite", "announce", "broadcast", "comment", "merge",
+    "share", "unshare", "notify", "apply",
 }
+# Subcommands that delete or cancel something through a CLI — usually
+# something remote, where there is no undo: `gh repo delete`, `kubectl
+# delete`, `terraform destroy`, `co gdrive rm`, `co outlook cancel`. These are
+# verbs, not program names, so the list does not grow with every CLI anyone
+# installs; a new CLI's `delete` is caught the day it is installed (#1750).
+_DELETING_SUBCOMMANDS = {
+    "delete", "destroy", "drop", "prune", "purge", "cancel", "wipe", "erase",
+    "rm", "rmi", "remove", "revoke", "terminate", "uninstall",
+}
+# Installing a package runs its setup code, fetched from the network.
+_INSTALLING_SUBCOMMANDS = {"install", "reinstall"}
+# Flags that name the people an action reaches: `co gcalendar create
+# --attendees ceo@corp.com` makes Google email the CEO. `--to` is left out
+# on purpose — `pandoc --to html` is a format, and every sender that takes
+# `--to` is already caught by its verb.
+_RECIPIENT_FLAGS = ("--attendees", "--attendee", "--invite", "--invitees", "--cc", "--bcc", "--recipients")
+# A word in subcommand position: `delete`, `+send`, `messages-send`. Not a
+# path (`send.py`), not an ID (`EVENTID`), not a message with spaces.
+_SUBCOMMAND_WORD = re.compile(r"^\+?[a-z][a-z0-9]*(?:[+_-][a-z0-9]+)*$")
+# Commands whose words are data, not subcommands, and which have their own
+# rule below: `grep send notes.txt` and `echo delete` read and print.
+_NO_SUBCOMMANDS = {"echo", "printf", "git"}
 
 # Commands that write a file named in their arguments rather than through a
 # redirect, so `_redirect_targets` never sees them. They are held to the write
@@ -107,8 +139,61 @@ _PATH_WRITING_COMMANDS = {
 # is allowed above; anything else they are asked to do runs that file.
 _CONFIG_EXECUTING_COMMANDS = {"make", "cargo", "go", "npm", "pnpm", "yarn", "bun", "gradle", "mvn"}
 
-# Wrappers that run their next word: `uv run python -c` is `python -c`.
-_COMMAND_RUNNERS = {"uv", "poetry", "pipx", "npx", "bunx", "pdm", "rye", "hatch", "nix-shell"}
+# Commands whose argument is another command, and so are judged by it:
+# `nice rm -rf ~` is `rm -rf ~`. #1750: only the first word was classified,
+# and `nice` is not `rm`, so `nice rm -rf ~` ran unattended in the default
+# mode. Each entry: (options that take a value, options that do not, how
+# many positional arguments come before the command). An option not listed
+# means the command's position is unknown, and that asks rather than guesses
+# — `uv run --with requests python x.py` must not be read as `requests`.
+_WRAPPERS = {
+    "timeout": ({"-s", "--signal", "-k", "--kill-after"}, {"--preserve-status", "--foreground", "-v", "--verbose"}, 1),
+    "gtimeout": ({"-s", "--signal", "-k", "--kill-after"}, {"--preserve-status", "--foreground", "-v", "--verbose"}, 1),
+    "nice": ({"-n", "--adjustment"}, set(), 0),
+    "ionice": ({"-c", "--class", "-n", "--classdata"}, {"-t", "--ignore"}, 0),
+    "nohup": (set(), set(), 0),
+    "command": (set(), {"-p"}, 0),
+    "exec": ({"-a"}, {"-c", "-l"}, 0),
+    "time": ({"-f", "--format", "-o", "--output"}, {"-p", "-v", "--verbose", "-a", "--append", "--portability"}, 0),
+    "stdbuf": ({"-i", "-o", "-e", "--input", "--output", "--error"}, set(), 0),
+    "caffeinate": ({"-t", "-w"}, {"-d", "-i", "-m", "-s", "-u"}, 0),
+    "sudo": (
+        {"-u", "--user", "-g", "--group", "-C", "--close-from", "-D", "--chdir", "-h", "--host",
+         "-p", "--prompt", "-r", "--role", "-t", "--type", "-U", "--other-user", "-T", "--command-timeout"},
+        {"-E", "--preserve-env", "-H", "--set-home", "-n", "--non-interactive", "-P", "-S", "--stdin",
+         "-b", "--background", "-k", "-A", "-B"}, 0),
+    "doas": ({"-u", "-C"}, {"-n"}, 0),
+    "env": ({"-u", "--unset", "-C", "--chdir"}, {"-i", "--ignore-environment", "-0", "--null", "-v"}, 0),
+    "xargs": (
+        {"-I", "-L", "-n", "-P", "-s", "-d", "-E", "-a", "--max-args", "--max-procs", "--max-lines",
+         "--delimiter", "--arg-file", "--eof"},
+        {"-0", "--null", "-r", "--no-run-if-empty", "-t", "--verbose", "-x", "--exit", "-o", "--open-tty"}, 0),
+    "watch": ({"-n", "--interval"}, {"-d", "--differences", "-t", "--no-title", "-b", "--beep", "-e",
+                                     "--errexit", "-g", "--chgexit", "-c", "--color", "-x", "--exec", "-p", "--precise"}, 0),
+}
+# Wrappers that do not lower the bar to what they wrap. sudo runs it as
+# another user; xargs gives it arguments from stdin, which nothing here sees.
+# What they run can make them stricter (deny), never looser than ask.
+_ASKING_WRAPPERS = {"sudo": "running as another user requires human approval",
+                    "doas": "running as another user requires human approval",
+                    "xargs": "xargs takes the command's arguments from input the policy cannot see"}
+# Project runners whose second word is `run`: `uv run pytest` is `pytest`.
+_ENV_RUNNERS = {
+    "uv": {"--with", "--python", "-p", "--project", "--directory", "--env-file", "--extra", "--group",
+           "--package", "--from", "--with-requirements", "--with-editable", "--index", "--index-url"},
+    "poetry": set(), "pdm": set(), "rye": set(), "hatch": set(),
+}
+_ENV_RUNNER_FLAGS = {"--frozen", "--locked", "--no-sync", "--isolated", "--no-project", "--all-extras",
+                     "--no-dev", "-q", "--quiet", "-v", "--verbose", "--active", "--offline"}
+# Runners that fetch a package from the network and run it. A test or lint
+# tool by name is the project's own dev dependency; anything else is a
+# stranger's code, and asks.
+_FETCHING_RUNNERS = {"npx": {"-y", "--yes", "--no", "-q", "--quiet"},
+                     "bunx": {"--bun"}, "uvx": {"-q", "--quiet"}}
+# Package managers: `pip list` reads, `pip install x` runs x's setup code.
+_PACKAGE_MANAGERS = {"pip", "pip3", "pipx", "gem", "brew", "apt", "apt-get", "conda", "mamba", "port",
+                     "uv", "poetry", "pdm", "rye"}
+_PACKAGE_CHANGING = {"install", "reinstall", "add", "sync", "upgrade", "update", "uninstall", "remove", "run"}
 
 _SENSITIVE_COMMANDS = {
     "env", "printenv", "security", "keychain", "gcloud", "aws", "az",
@@ -125,6 +210,31 @@ _CO_SUBCOMMAND_EFFECTS = {
     "keys": ("credentials", "deny", "credential access is never auto-approved"),
     "auth": ("credentials", "ask", "changing an account login requires human approval"),
     "reset": ("deletion", "ask", "resetting a project requires human approval"),
+    "call": ("external_effect", "ask", "calling another agent sends it a message"),
+}
+# Longer `co` paths whose verb means something only in that place. `edit` and
+# `react` are visible to a whole chat, `update` notifies everyone invited, and
+# `youtube put` uploads a video; elsewhere `put` is a file into one's own
+# storage and `update` is local. Matched as a prefix of the non-flag words.
+_CO_MESSAGING = ("feishu", "lark", "discord", "whatsapp", "telegram")
+_CO_PATH_EFFECTS = {
+    **{(group, verb): ("external_effect", "ask", "changing a message other people see requires human approval")
+       for group in _CO_MESSAGING for verb in ("edit", "react")},
+    ("whatsapp", "group"): ("external_effect", "ask", "a WhatsApp group reaches other people"),
+    ("gcalendar", "update"): ("external_effect", "ask", "updating an event notifies everyone invited to it"),
+    ("outlook", "calendar", "update"): ("external_effect", "ask", "updating an event notifies everyone invited to it"),
+    ("outlook", "calendar", "teams"): ("external_effect", "ask", "a Teams meeting invites other people"),
+    ("youtube", "put"): ("publication", "ask", "uploading a video publishes it"),
+    ("youtube", "update"): ("publication", "ask", "changing a published video requires human approval"),
+    ("gmail", "draft", "send"): ("external_effect", "ask", "sending mail requires human approval"),
+    ("env", "get"): ("credentials", "deny", "credential access is never auto-approved"),
+    ("env", "set"): ("credentials", "ask", "changing a stored setting requires human approval"),
+    ("env", "unset"): ("credentials", "ask", "changing a stored setting requires human approval"),
+    ("env", "rotate"): ("credentials", "ask", "changing a stored setting requires human approval"),
+    **{("trust", verb): ("authorization_control", "ask", "changing who may reach this agent requires human approval")
+       for verb in ("add", "remove", "block", "unblock", "level", "admin")},
+    ("claude", "run"): ("code_execution", "ask", "the command runs another agent this policy cannot read"),
+    ("schedule", "run"): ("code_execution", "ask", "the command runs a scheduled job this policy cannot read"),
 }
 # Commands that read, filter or print and do nothing else. They run unattended
 # in Auto, on workspace paths, with no output redirect. Before this list only
@@ -321,6 +431,187 @@ def _reads_outside_workspace(words: list[str], root: Path) -> bool:
     return False
 
 
+def _command_start(words: list[str], with_value: set, without_value: set, positionals: int = 0) -> int | None:
+    """Where the wrapped command begins in `words`, or None if an option is unknown.
+
+    `words[0]` is the wrapper. `-o0` and `--signal=KILL` carry their value;
+    `-dims` is several value-less flags; `nice -10` is a number.
+    """
+    i = 1
+    while i < len(words):
+        word = words[i]
+        if word == "--":
+            i += 1
+            break
+        if not word.startswith("-") or word == "-":
+            break
+        name = word.partition("=")[0]
+        if word in with_value:
+            i += 2
+        elif word in without_value or (word != name and name in with_value):
+            i += 1
+        elif not word.startswith("--") and (
+            word[:2] in with_value
+            or all(f"-{letter}" in without_value for letter in word[1:])
+            or word[1:].isdigit()
+        ):
+            i += 1
+        else:
+            return None
+    return i + positionals
+
+
+def _ask_code(reason: str) -> dict:
+    return decision("code_execution", "ask", reason, "call", requires_human=True)
+
+
+def _classify_what_it_runs(first: str, words: list[str], root: Path | None) -> dict | None:
+    """The verdict for a command that runs another one, or None if it does not.
+
+    `nice rm -rf ~` is judged as `rm -rf ~`, `uv run pytest` as `pytest`. A
+    runner that fetches a stranger's package asks unless what it runs is one
+    of the project's own test tools.
+    """
+    if first == "command" and any(word in ("-v", "-V") for word in words[1:]):
+        return decision("read", "allow", "looking up a command runs nothing", "workspace")
+    if first in _WRAPPERS:
+        with_value, without_value, positionals = _WRAPPERS[first]
+        start = _command_start(words, with_value, without_value, positionals)
+    elif first in _ENV_RUNNERS and len(words) > 1 and words[1] == "run":
+        start = _command_start(words[1:], _ENV_RUNNERS[first], _ENV_RUNNER_FLAGS)
+        start = None if start is None else start + 1
+    elif first in _FETCHING_RUNNERS:
+        start = _command_start(words, set(), _FETCHING_RUNNERS[first])
+        inner = words[start:] if start is not None else []
+        if inner and Path(inner[0]).name.lower() in _FOCUSED_COMMANDS:
+            return _classify_single_command(shlex.join(inner), root)
+        return _ask_code("the command fetches a package and runs it")
+    else:
+        return None
+    if start is None:
+        return _ask_code(f"`{first}` has an option this policy cannot read, so what it runs is unknown")
+    inner = words[start:]
+    if first == "watch":
+        # watch hands its arguments to `sh -c` as one string.
+        inner = _command_words(" ".join(inner))
+    if not inner:
+        if first in _ASKING_WRAPPERS:
+            return decision("command", "ask", _ASKING_WRAPPERS[first], "call", requires_human=True)
+        if first == "env":
+            return decision("credentials", "deny", "credential access is never auto-approved", "call")
+        return decision("command", "allow", "a wrapper with nothing to run", "workspace")
+    verdict = _classify_single_command(shlex.join(inner), root)
+    if first in _ASKING_WRAPPERS and verdict["decision"] == "allow":
+        return decision(verdict["effect_class"], "ask", _ASKING_WRAPPERS[first], "call", requires_human=True)
+    return verdict
+
+
+def _subcommand_verbs(words: list[str]) -> set[str]:
+    """The parts of the words in subcommand position: `+messages-send` → messages, send.
+
+    Subcommands come before arguments, so the scan stops at the first word
+    that is not shaped like one. A flag's value is skipped — `kubectl -n prod
+    delete` — which also keeps `pytest -k delete` a test run.
+    """
+    verbs: set[str] = set()
+    after_flag = False
+    for word in words[1:8]:
+        if word.startswith("-"):
+            after_flag = "=" not in word
+            continue
+        if after_flag:
+            after_flag = False
+            continue
+        if not _SUBCOMMAND_WORD.match(word):
+            break
+        verbs.update(re.split(r"[+_-]", word.lstrip("+")))
+    return verbs
+
+
+# Every git subcommand. Anything else is an alias or a `git-<name>` program on
+# PATH, and either runs something this policy cannot read.
+_GIT_SUBCOMMANDS = {
+    "add", "am", "apply", "archive", "bisect", "blame", "branch", "bundle", "cat-file", "check-ignore",
+    "checkout", "cherry", "cherry-pick", "clean", "clone", "commit", "config", "count-objects", "describe",
+    "diff", "difftool", "fetch", "for-each-ref", "format-patch", "fsck", "gc", "grep", "hash-object", "help",
+    "init", "log", "ls-files", "ls-remote", "ls-tree", "merge", "merge-base", "mv", "name-rev", "notes",
+    "prune", "pull", "push", "range-diff", "rebase", "reflog", "remote", "repack", "restore", "rev-list",
+    "rev-parse", "revert", "rm", "shortlog", "show", "show-ref", "sparse-checkout", "stash", "status",
+    "submodule", "switch", "symbolic-ref", "tag", "update-index", "update-ref", "var", "version",
+    "whatchanged", "worktree", "filter-branch",
+}
+_GIT_CONFIG_READS = {"--get", "--get-all", "--get-regexp", "--list", "-l", "--show-origin", "--show-scope"}
+
+
+def _short_flag_has(args: list[str], letter: str) -> bool:
+    return any(a.startswith("-") and not a.startswith("--") and letter in a[1:] for a in args)
+
+
+def _git_discards_work(sub: str, args: list[str]) -> bool:
+    """git's own ways of throwing away work that no commit holds."""
+    if sub == "reset":
+        return "--hard" in args
+    if sub == "clean":
+        return not ("--dry-run" in args or _short_flag_has(args, "n"))
+    if sub == "checkout":
+        return "--" in args or "." in args or "--force" in args or "-f" in args
+    if sub == "restore":
+        staged_only = ("--staged" in args or "-S" in args) and not ("--worktree" in args or "-W" in args)
+        return not staged_only
+    if sub == "switch":
+        return any(a in ("-f", "--force", "--discard-changes") for a in args)
+    if sub == "stash":
+        return bool(args) and args[0] in ("drop", "clear")
+    if sub == "branch":
+        return any(a in ("-D", "-M", "-C", "--force", "-f") for a in args)
+    if sub == "rm":
+        return "--force" in args or _short_flag_has(args, "f")
+    if sub in ("reflog", "worktree"):
+        return bool(args) and args[0] in ("expire", "delete", "remove", "prune")
+    if sub == "update-ref":
+        return "-d" in args
+    return sub in ("gc", "prune", "filter-branch")
+
+
+def _classify_git(words: list[str]) -> dict | None:
+    i = 1
+    while i < len(words) and words[i].startswith("-"):
+        flag = words[i]
+        if flag == "-c" or flag.startswith(("--config-env", "--exec-path=")):
+            return _ask_code("git -c and --exec-path can make git run any program")
+        i += 2 if flag in ("-C", "--git-dir", "--work-tree", "--namespace") else 1
+    if i >= len(words):
+        return None
+    sub, args = words[i].lower(), words[i + 1:]
+    if sub not in _GIT_SUBCOMMANDS:
+        return _ask_code("a git alias or extension runs a program this policy cannot read")
+    if sub == "config" and not (set(args) & _GIT_CONFIG_READS or len([a for a in args if not a.startswith("-")]) <= 1):
+        return _ask_code("git config can set an alias or hook that runs any program")
+    if _git_discards_work(sub, args):
+        return decision("deletion", "ask", "this git command discards work no commit holds", "call", requires_human=True)
+    if sub == "merge":
+        return decision("external_effect", "ask", "merging requires human approval", "call", requires_human=True)
+    return None
+
+
+def _classify_known_multiplexer(first: str, words: list[str]) -> dict | None:
+    """Rules for the few commands whose danger sits in a flag, not a verb."""
+    if first == "git":
+        return _classify_git(words)
+    if first in _PACKAGE_MANAGERS:
+        verbs = [w.lower() for w in words[1:] if not w.startswith("-")][:2]
+        if any(verb in _PACKAGE_CHANGING for verb in verbs):
+            return _ask_code("installing or running a package runs code this policy cannot read")
+    if first == "crontab" and "-l" not in words:
+        return decision("external_effect", "ask", "crontab installs or removes jobs that run later, unattended", "call", requires_human=True)
+    if first == "gh" and len(words) > 1 and words[1] == "api":
+        method = next((words[j + 1] for j, w in enumerate(words[:-1]) if w in ("-X", "--method")), "GET")
+        writes = any(w in ("-f", "-F", "--field", "--raw-field", "--input") for w in words)
+        if method.upper() != "GET" or writes:
+            return decision("external_effect", "ask", "a GitHub API call that changes something requires human approval", "call", requires_human=True)
+    return None
+
+
 def _classify_single_command(command: str, root: Path | None = None) -> dict:
     words = _command_words(command)
     if not words:
@@ -331,6 +622,11 @@ def _classify_single_command(command: str, root: Path | None = None) -> dict:
     while len(words) > 1 and "=" in words[0] and not words[0].startswith("-"):
         words, lowered = words[1:], lowered[1:]
     first = Path(words[0]).name.lower()
+    # Before any rule reads `first`: a wrapper's name says nothing, what it
+    # runs does (#1750).
+    unwrapped = _classify_what_it_runs(first, words, root)
+    if unwrapped is not None:
+        return unwrapped
     if first in _DESTRUCTIVE_COMMANDS:
         return decision("deletion", "deny", "destructive command requires an explicit safer workflow", "call")
     if any(token in lowered for token in ("publish", "deploy", "release", "push")):
@@ -338,29 +634,31 @@ def _classify_single_command(command: str, root: Path | None = None) -> dict:
     if first in _EXTERNAL_COMMANDS:
         return decision("external_network", "ask", "external network access requires human approval", "call", requires_human=True)
     if first == "co" and len(words) > 1:
-        effect = _CO_SUBCOMMAND_EFFECTS.get(words[1].lower())
+        path = tuple(word.lower() for word in words[1:] if not word.startswith("-"))
+        effect = next((value for key, value in _CO_PATH_EFFECTS.items() if path[:len(key)] == key), None)
+        effect = effect or _CO_SUBCOMMAND_EFFECTS.get(words[1].lower())
         if effect:
             effect_class, verdict, reason = effect
             return decision(effect_class, verdict, reason, "call", requires_human=(verdict == "ask"))
-    if any(word.lower() in _OUTWARD_SUBCOMMANDS for word in words[1:4]):
+    if any(word.split("=", 1)[0] in _RECIPIENT_FLAGS for word in words[1:]):
+        return decision("external_effect", "ask", "the command names people it will reach", "call", requires_human=True)
+    verbs = set() if first in _NO_SUBCOMMANDS | _PATH_READING_COMMANDS | _PATH_WRITING_COMMANDS else _subcommand_verbs(words)
+    if verbs & _OUTWARD_SUBCOMMANDS:
         return decision("external_effect", "ask", "sending something to other people requires human approval", "call", requires_human=True)
+    if verbs & _DELETING_SUBCOMMANDS:
+        return decision("deletion", "ask", "deleting or cancelling through a command requires human approval", "call", requires_human=True)
+    if verbs & _INSTALLING_SUBCOMMANDS:
+        return decision("code_execution", "ask", "installing a package runs code this policy cannot read", "call", requires_human=True)
     if first in _SENSITIVE_COMMANDS or any(
         ".env" in token or "credential" in token or "secret" in token for token in lowered
     ) or any(_is_key_material(word) for word in words[1:] if not word.startswith("-")):
         return decision("credentials", "deny", "credential access is never auto-approved", "call")
-
-    # The runner's own name says nothing; what it runs does.
-    executing = first
-    if first in _COMMAND_RUNNERS:
-        after = [word for word in words[1:] if not word.startswith("-")]
-        if after and after[0] == "run":
-            after = after[1:]
-        if after:
-            executing = Path(after[0]).name.lower()
+    special = _classify_known_multiplexer(first, words)
+    if special is not None:
+        return special
 
     focused = first in _FOCUSED_COMMANDS
     focused = focused or (first in {"python", "python3"} and words[1:3] == ["-m", "pytest"])
-    focused = focused or (first == "uv" and len(words) > 2 and words[1] == "run" and Path(words[2]).name in _FOCUSED_COMMANDS)
     if first in _PACKAGE_RUNNERS:
         focused = any(token in lowered[1:4] for token in ("test", "lint", "build", "check", "typecheck"))
     if first == "cargo":
@@ -388,7 +686,7 @@ def _classify_single_command(command: str, root: Path | None = None) -> dict:
             "code_execution", "ask",
             "the command runs a project script this policy cannot read", "call",
             requires_human=True)
-    if first in _CODE_EXECUTING_COMMANDS or executing in _CODE_EXECUTING_COMMANDS:
+    if first in _CODE_EXECUTING_COMMANDS:
         return decision(
             "code_execution", "ask",
             "the command runs a program this policy cannot read", "call",
