@@ -375,7 +375,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b9
+## Current Version: 1.8.9b10
+
+1.8.9b10 makes the free, locally hosted `co/llama` the default managed text
+model and exposes `co/gemma` as another free choice. Credit errors name the
+free route so a session can continue. The default path and tool calling were
+exercised against oo-api v0.1.22 in production; audio transcription still uses
+Gemini. Stable remains 1.8.8. See [1.8.9b10 notes](docs/releases/1.8.9b10.md).
+
+- 1.8.9b10 (free `co/llama` managed default, `co/gemma` alternative, zero-cost pricing metadata, credit-error free-model tip, preserved Gemini audio transcription; live production completion and tool call verified.)
+
+Earlier in this line:
 
 1.8.9b9 lets a hosted Agent react to a declared file change, timer firing, or
 push event in a continuing session (#1499). A durable Host queue wakes an idle

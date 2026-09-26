@@ -22,14 +22,14 @@ python -m pip install --upgrade 'connectonion==1.8.8'
 
 ## Current preview
 
-Beta **1.8.9b9** lets a hosted Agent notice declared file, timer, and push
-events in a continuing session. Events observed during an active turn enter at
-Agent iteration boundaries through a copyable plugin. It includes the CLI help
-audit from b8. See [1.8.9b9 release notes](releases/1.8.9b9.md) for the
-scope and limits.
+Beta **1.8.9b10** uses the free `co/llama` model by default for managed text
+requests. `co/gemma` is another free choice, and credit errors name a free model
+to keep using. Audio transcription continues to use Gemini. It includes the
+Host watcher work from b9. See [1.8.9b10 release notes](releases/1.8.9b10.md)
+for the scope and limits.
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.9b9'
+python -m pip install --upgrade 'connectonion==1.8.9b10'
 co --version
 ```
 

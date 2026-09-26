@@ -19,3 +19,11 @@ way to keep an agent going, not a claim that a local 8B model is interchangeable
 with a large paid model. Audio transcription keeps Gemini because this Llama
 model takes text. When credits run out, the SDK now names `co/gemma` as a free
 next step instead of leaving the user with only a payment link.
+
+We then exercised the whole path through oo-api v0.1.22: a newly authenticated
+account omitted `model` and received `co/llama`, `OK`, and a zero-dollar usage
+record, while its five-dollar balance stayed intact. A second request asked
+`co/llama` to call `get_weather` for Sydney and received the named tool call.
+The SDK's default `llm_do()` also returned `OK` through that production API.
+Those checks prove the route and billing path that this preview uses; they do
+not measure how many simultaneous users the one-request GPU proxy can serve.
