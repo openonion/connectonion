@@ -88,6 +88,11 @@ Your agent can now read and manage Gmail.
 - Agent-facing `Gmail()` instances can attach only files inside the current project; resolved symlinks cannot escape it
 - Attachments have a 25 MB combined limit, enforced before file contents are read
 
+**`reply(email_id, body)`**
+- Sends in the original thread with `In-Reply-To` and the `References` chain (header names matched case-insensitively, so `Message-Id` works)
+- Goes to the original `Reply-To` when set, otherwise `From` — a web form or booking site that sends from a noreply reaches the person
+- Replying to your own sent mail goes to its `To` recipients, not back to you
+
 ### Drafts
 
 Draft methods edit provider-native Gmail drafts and never send them. The
