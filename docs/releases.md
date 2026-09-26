@@ -22,18 +22,17 @@ python -m pip install --upgrade 'connectonion==1.8.8'
 
 ## Current preview
 
-Beta **1.8.9b11** makes the experimental Personal Wiki's first five-day map
-and investigation pass easier to follow and resume. It retains the free managed
-model defaults from b10 and the Host watcher work from b9. See
-[1.8.9b11 release notes](releases/1.8.9b11.md) for the scope and limits.
+Beta **1.8.9b12** fixes subscribed skill reconciliation, preserves signed
+companion files, and removes the `do` verb from natural-language browser tasks.
+See [1.8.9b12 release notes](releases/1.8.9b12.md) for the scope and limits.
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.9b11'
+python -m pip install --upgrade 'connectonion==1.8.9b12'
 co --version
 ```
 
-The Host watcher shipped in b9 and remains in b11. It is being removed from
-subsequent source builds; Agent-owned watches belong to the session runtime
+The Host watcher shipped in b9 and remains in b11. It is removed from b12;
+Agent-owned watches belong to the session runtime
 tracked in [#1788](https://github.com/openonion/connectonion/issues/1788).
 
 <details>

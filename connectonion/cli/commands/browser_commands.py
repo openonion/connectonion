@@ -3,7 +3,7 @@ Purpose: Thin CLI handler for `co browser` — parses -t/--tab targeting, forwar
 LLM-Note:
   Dependencies: imports from [sys, shlex, browser_agent.client.send | lazy: command_tips.rotating_tip for the success tip, browser_agent.daemon.list_functions for help] | imported by [cli/main.py via browser()] | tested by [tests/e2e/cli/test_browser_daemon.py]
   Data flow: receives args: list[str] (+ headless and engine_mode) from CLI → validates auto/system/onion → `install-onion` (alone or with --break-system-packages) runs the signed private-client bootstrap and returns before daemon contact → `help`/`--list` printed locally by introspecting BrowserAutomation (no browser launched) → else _extract_tab() pulls the LEADING -t/--tab NAME run (stops at the verb, so a -t that is a function's own arg passes through; empty --tab= is a usage error) → shlex.join(remaining args) + tab + engine mode → client.send() → a mode-pinned daemon runs it → payload/exit code surfaced by the client
-  State/Effects: `install-onion` explicitly installs onionwright from PyPI into the current Python environment, and on an externally-managed interpreter says so and names the opt-in flag rather than reporting an exit code | otherwise no local state except a best-effort rotating-tip index at ~/.co/.browser_tip (a garbled index resets to the first tip) | a session-starting verb on the paid engine prints a billing notice to STDERR BEFORE the command is sent | an explicit --engine wtf whose private client is missing fetches it first, so the free engine and a bare import still never mutate the environment | the success tip is printed to STDERR (stdout stays pure data) | `help` introspects the class only | direct verbs delegate to the daemon; `do` runs its model loop in this CLI process and delegates each tool call
+  State/Effects: `install-onion` explicitly installs onionwright from PyPI into the current Python environment, and on an externally-managed interpreter says so and names the opt-in flag rather than reporting an exit code | otherwise no local state except a best-effort rotating-tip index at ~/.co/.browser_tip (a garbled index resets to the first tip) | a session-starting verb on the paid engine prints a billing notice to STDERR BEFORE the command is sent | an explicit --engine wtf whose private client is missing fetches it first, so the free engine and a bare import still never mutate the environment | the success tip is printed to STDERR (stdout stays pure data) | `help` introspects the class only | direct verbs delegate to the daemon; a quoted task runs its model loop in this CLI process and delegates each tool call
   Integration: exposes _extract_tab(args) -> (tab|None, remaining|None), _next_tip(), handle_browser(args, headless=False, engine_mode="auto") -> int | called from main.py browser command | USAGE/TIPS document the tab lifecycle, engine modes, and exit-code contract
   Performance: direct verbs do not import the browser-owning daemon, Agent, or Playwright; `help` lazily imports the schema (no socket, no Chrome) | other verbs: one socket round-trip, first call spawns the daemon
   Errors: no-args / bad -t → prints usage to stderr, exit 2 | daemon errors come back as ERR[ <code>] → stderr + the mirrored exit code (0 ok · 1 failure · 2 usage · 3 unknown tab or no browser open · 4 tab busy)
@@ -20,7 +20,7 @@ USAGE = (
     "  co browser [-t TAB] <function> [args]    run a browser function (bare = the shared 'main' tab)\n"
     "  co browser --engine wtf <function> [args]     pay for the WTF Browser (default: system Chrome)\n"
     "  co browser config wtf                     make the WTF Browser this machine's default\n"
-    '  co browser [-t TAB] do "<instruction>"   let the AI agent do it — same targeting grammar\n'
+    '  co browser [-t TAB] "<instruction>"      let the AI agent run one task\n'
     '  co browser tab open [NAME] [--who <agent>] [--for "<purpose>"]   register a tab; prints its name\n'
     "  co browser tab ls [--json]               the board: every tab, who runs it, last command\n"
     "  co browser tab close <NAME>              release your tab when the task is done\n"
@@ -34,7 +34,7 @@ USAGE = (
     "\n"
     "One task = one tab. Solo use needs no -t at all. Running several agents on this\n"
     "browser? Each opens its own tab once, adds -t <name> to EVERY command (including\n"
-    "do), and closes it when finished. The browser stays open until `close`.\n"
+    "a quoted task), and closes it when finished. The browser stays open until `close`.\n"
     "\n"
     "Contention: if another agent is mid-task on the shared main tab, your bare command\n"
     "fails with exit 4 and tells you who has it and what to run instead — agents discover\n"
@@ -42,7 +42,7 @@ USAGE = (
     "shows a real name for you (Claude Code sessions are identified automatically).\n"
     "Add --headless before the function to run without a visible window.\n"
     "stdout = data, stderr = errors; exit 0 ok · 1 failure · 2 usage · 3 unknown tab or no browser open · 4 tab busy\n"
-    "· 5 `do` has no account to bill (co auth) · 6 daemon pinned to another engine. Every command ends within 120s."
+    "· 5 a quoted task has no account to bill (co auth) · 6 daemon pinned to another engine. Every command ends within 120s."
 )
 
 TIPS = [
@@ -50,7 +50,7 @@ TIPS = [
     'Your own tab for a task:  co browser tab open mytask --who me --for "posting"',
     "Target your tab on every command:  co browser -t mytask go_to <url>",
     "Done with a task? Release its tab:  co browser tab close mytask",
-    'Let the AI do it:  co browser do "log in and download my invoices"',
+    'Give the AI one browser task:  co browser "log in and download my invoices"',
     "List every function you can call directly:  co browser help",
     "Run without a visible window:  co browser --headless <function>",
     "The browser stays open between commands, one shared session, until you run:  co browser close",

@@ -467,7 +467,7 @@ def _closes_only(args: List[str]) -> bool:
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-             epilog='Example:  co browser go_to example.com  |  co browser do "find the pricing page"')
+             epilog='Example:  co browser go_to example.com  |  co browser "find the pricing page"')
 def browser(
     headless: Optional[bool] = typer.Option(
         None, "--headless/--no-headless",
@@ -480,12 +480,12 @@ def browser(
              "or auto (free Chrome; keeps using a WTF Browser that is already running). "
              "Wins over the default set with `co browser config`.",
     ),
-    args: List[str] = typer.Argument(None, help="Browser function + args, or: do \"<instruction>\""),
+    args: List[str] = typer.Argument(None, help="Browser function + args, or: \"<instruction>\""),
 ):
     """Drive one persistent browser: open pages, click, read and automate them. Starts it on first use: your installed Chrome (free) unless you choose the WTF Browser, whose sessions are billed.
 
     Run a function directly (co browser go_to x.com),
-    use `do` for the AI agent (co browser do "..."), or `co browser help` to list functions.
+    give a quoted task to the AI agent (co browser "..."), or `co browser help` to list functions.
 
     Also: -t TAB to target your own tab · tab open|ls|close · status · network ·
     cookies · close. `co browser help` shows how to use each one."""

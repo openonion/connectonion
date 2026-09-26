@@ -146,3 +146,29 @@ def test_uninstall_all_removes_every_per_tool_install(fake_home, bundle):
     assert list((fake_home / ".kiro" / "steering").iterdir()) == []
 
 
+def test_uninstall_preserves_unrelated_same_prefix_link(fake_home, bundle):
+    (fake_home / ".codex").mkdir()
+    fanout.install_all(bundle, "alice")
+    unrelated = fake_home / "personal-skill"
+    unrelated.mkdir()
+    extra = fake_home / ".codex" / "skills" / "alice-personal"
+    extra.symlink_to(unrelated)
+
+    fanout.uninstall_all("alice", bundle=bundle)
+
+    assert extra.is_symlink()
+    assert extra.resolve() == unrelated.resolve()
+    assert not (fake_home / ".codex" / "skills" / "alice-alpha").is_symlink()
+
+
+def test_install_preserves_a_same_named_file_and_broken_link(fake_home, bundle):
+    skills = fake_home / ".codex" / "skills"
+    skills.mkdir(parents=True)
+    handwritten = skills / "alice-alpha"
+    handwritten.write_text("my notes")
+    broken = skills / "alice-beta"
+    broken.symlink_to(fake_home / "missing")
+
+    assert fanout.install_skill_dirs(bundle, "alice", "codex") == 0
+    assert handwritten.read_text() == "my notes"
+    assert broken.is_symlink()
