@@ -78,3 +78,26 @@ def test_batch_limit_resets_for_the_next_turn():
                if message.get("internal"))
     assert any("Second observation" in message["content"] for message in calls[1]
                if message.get("internal"))
+
+
+def test_plugin_preserves_structured_observation_metadata():
+    metadata = {"event_id": "mail-1", "watch_id": "mail", "kind": "probe_changed"}
+    pending = [{"id": "mail-1", "content": "New mail", "metadata": metadata}]
+
+    def poll():
+        events = pending[:]
+        pending.clear()
+        return events
+
+    class LLM:
+        model = "fake"
+
+        def complete(self, messages, tools=None, **kwargs):
+            return LLMResponse(content="seen", tool_calls=[], raw_response=None)
+
+    agent = Agent("plugin-test", llm=LLM(),
+                  plugins=[watch_events(poll)],
+                  log=False, quiet=True)
+    agent.input("Begin")
+
+    assert agent.current_session["messages"][2]["watch_events"] == [metadata]
