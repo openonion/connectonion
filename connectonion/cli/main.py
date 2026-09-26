@@ -235,6 +235,7 @@ def deploy(
     name: Optional[str] = typer.Option(None, "--name", help="Project name for template deploys (default: {template}-agent)"),
     to: Optional[str] = typer.Option(None, "--to", help="Deploy onto a server you own (see: co server ls)"),
     own_identity: bool = typer.Option(False, "--own-identity", help="With --to, let the agent mint its own identity instead of deriving it from your recovery phrase — for an agent you are handing to someone else"),
+    push_trust_lists: bool = typer.Option(False, "--push-trust-lists", help="With --to, replace the server's .co/whitelist.txt and .co/blocklist.txt with your local copies. Without it the server's lists are kept, since blocks made on the server live there"),
 ):
     """Deploy to ConnectOnion Cloud, or with --to onto a server you own. Deploys the project in this directory."""
     if to:
@@ -245,13 +246,18 @@ def deploy(
             console.print("[dim]Those belong to the cloud deploy. --to syncs the project you are in.[/dim]")
             raise typer.Exit(2)
         from .commands.deploy_to_server import handle_deploy_to
-        if not handle_deploy_to(server=to, own_identity=own_identity):
+        if not handle_deploy_to(server=to, own_identity=own_identity,
+                                push_trust_lists=push_trust_lists):
             raise typer.Exit(1)
         return
 
     if own_identity:
         console.print("[red]--own-identity only applies with --to.[/red]")
         console.print("[dim]A Cloud deploy does not carry an identity you derived.[/dim]")
+        raise typer.Exit(2)
+    if push_trust_lists:
+        console.print("[red]--push-trust-lists only applies with --to.[/red]")
+        console.print("[dim]Next: co deploy --to <server> --push-trust-lists[/dim]")
         raise typer.Exit(2)
 
     from .commands.deploy_commands import handle_deploy

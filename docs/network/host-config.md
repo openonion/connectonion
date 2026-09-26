@@ -36,7 +36,7 @@ your-project/
 └── .co/
     ├── host.yaml       # Configuration (required)
     ├── whitelist.txt   # Allowed addresses (optional)
-    ├── blacklist.txt   # Blocked addresses (optional)
+    ├── blocklist.txt   # Blocked addresses (optional)
     └── logs/           # Activity logs (auto-generated)
 ```
 
@@ -164,6 +164,13 @@ blacklist: ./security/blocked-users.txt
 0xtrusted456def...
 0xfriend789ghi...
 ```
+
+**On a deployed agent the server's lists win.** The running agent writes these
+files too: a block made through the admin endpoint or `co trust` goes into the
+server's copy. `co deploy --to` keeps the server's `whitelist.txt` and
+`blocklist.txt`, and only sends yours when the server has none. Use
+`co deploy --to <server> --push-trust-lists` to replace them with your local
+copies. See [deploy: trust lists](deploy.md#trust-lists).
 
 ### Server Settings
 
