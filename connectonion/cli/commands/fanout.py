@@ -2,9 +2,9 @@
 Purpose: Per-tool fan-out — materialize one canonical bundle into every detected coding agent (Claude, Codex, OpenClaw, Cursor, Kiro).
 LLM-Note:
   Dependencies: imports from [re, shutil, pathlib] | imported by [cli/commands/sub_commands.py for subscription install] | tested by [tests/unit/test_fanout.py]
-  Data flow: receives bundle: Path (layout `<root>/skills/<name>/SKILL.md`) + alias: str → walks bundle/skills/* → for each detected tool (~/.claude, ~/.codex, ~/.openclaw, ~/.cursor, ~/.kiro), materializes in that tool's expected shape → returns {tool: skill_count}. Cursor needs frontmatter rewritten to `.mdc` (alwaysApply: false). Kiro gets the body written out as `.md`. Claude/Codex/OpenClaw get symlinks. Cursor and Kiro output carries OURS_MARKER in the body, which is how a re-sync tells its own file from one the user wrote — a symlink needs no marker, being ours is already evident.
-  State/Effects: creates symlinks under ~/.<tool>/ | mkdir -p for missing target dirs | rm + relink on idempotent re-runs (_replace clears a symlink or a plain file, and REFUSES a real directory — it used to rmtree one, which deleted hand-written work) | never overwrites a file without OURS_MARKER | no network, no logs
-  Integration: exposes detected_tools(), install_claude(), install_skill_dirs(bundle, alias, tool), install_cursor(), install_kiro(), install_all(bundle, alias) -> {tool: int}, uninstall_all(alias) | HOME module attribute is monkeypatched by tests to redirect away from real ~/
+  Data flow: receives bundle: Path (layout `<root>/skills/<name>/SKILL.md`) + alias: str → walks bundle/skills/* → for each detected tool (~/.claude, ~/.codex, ~/.openclaw, ~/.cursor, ~/.kiro), materializes in that tool's expected shape → returns {tool: skill_count}. Cursor needs frontmatter rewritten to `.mdc` (alwaysApply: false). Kiro gets the body written out as `.md`. Claude/Codex/OpenClaw get symlinks whose exact targets establish ownership. Cursor and Kiro output carries OURS_MARKER in the body, which is how a re-sync tells its own file from one the user wrote.
+  State/Effects: creates symlinks under ~/.<tool>/ | mkdir -p for missing target dirs | rm + relink on idempotent re-runs (_replace clears only a link to this bundle and REFUSES a real directory or file) | never overwrites a file without OURS_MARKER | no network, no logs
+  Integration: exposes detected_tools(), install_claude(), install_skill_dirs(bundle, alias, tool), install_cursor(), install_kiro(), install_all(bundle, alias) -> {tool: int}, uninstall_all(alias), installation_status(), expected_skill_count() | HOME module attribute is monkeypatched by tests to redirect away from real ~/
   Performance: O(skills × tools) filesystem ops | no I/O beyond symlink/copy/write | typical bundle (20 skills) installs in <50ms
   Errors: lets OSError bubble (permission denied, broken symlink targets); FRONTMATTER_RE.match returns None for cursor → skill silently skipped (intentional — non-frontmatter bodies aren't valid cursor rules); a target that is a real directory, or a file without OURS_MARKER, is KEPT: _report_kept names it and the returned count is lower, so a caller cannot read the number as "everything installed"
 
@@ -145,8 +145,6 @@ def install_claude(bundle: Path, alias: str) -> int:
     so the number is what was out of step.
     """
     count = _skill_count(bundle)
-    if not count:
-        return 0
     dst = HOME / ".claude" / "plugins" / alias
     if not _replace(dst, bundle):
         _report_kept(dst)
