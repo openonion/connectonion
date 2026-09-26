@@ -26,3 +26,11 @@ This is what onboarding needs to prove: the user can see which stage is
 running, what the system actually learned, and where its view remains thin.
 A neat page without those boundaries would only make an incomplete memory
 look more certain than it is.
+
+For the 1.8.9b11 preview, we kept the page and its sources separate from the
+release image: the image shows only aggregate counts and the next command.
+That is part of the same boundary. A useful first-run explanation should be
+publicly inspectable without publishing anyone's correspondence. The deeper
+project pass remains a measured limit: it completed, but took about 17 minutes
+and reported more than a million input tokens. A beta should show that limit
+beside the result so a newcomer can decide when to use the deeper route.

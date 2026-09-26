@@ -22,14 +22,13 @@ python -m pip install --upgrade 'connectonion==1.8.8'
 
 ## Current preview
 
-Beta **1.8.9b10** uses the free `co/llama` model by default for managed text
-requests. `co/gemma` is another free choice, and credit errors name a free model
-to keep using. Audio transcription continues to use Gemini. It includes the
-Host watcher work from b9. See [1.8.9b10 release notes](releases/1.8.9b10.md)
-for the scope and limits.
+Beta **1.8.9b11** makes the experimental Personal Wiki's first five-day map
+and investigation pass easier to follow and resume. It retains the free managed
+model defaults from b10 and the Host watcher work from b9. See
+[1.8.9b11 release notes](releases/1.8.9b11.md) for the scope and limits.
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.9b10'
+python -m pip install --upgrade 'connectonion==1.8.9b11'
 co --version
 ```
 
