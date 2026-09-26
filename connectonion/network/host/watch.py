@@ -198,14 +198,32 @@ def _release_interrupted_session(storage, event, session_id: str) -> None:
 
 
 def process_one(co_dir: Path, create_agent, storage, result_ttl: int) -> dict | None:
-    """Consume one event under an OS lock, including interrupted-run recovery."""
+    """Consume one event; preserve order within a watch, not across watches."""
+    for name in _pending_names(co_dir):
+        result = _process_watch(co_dir, name, create_agent, storage, result_ttl)
+        if result is not None:
+            return result
+    return None
+
+
+def _pending_names(co_dir: Path) -> list[str]:
+    with _database(co_dir) as db:
+        return [row["name"] for row in db.execute(
+            "SELECT name FROM events WHERE status IN ('pending', 'running') "
+            "GROUP BY name ORDER BY MIN(rowid)")]
+
+
+def _process_watch(co_dir: Path, name: str, create_agent, storage, result_ttl: int) -> dict | None:
+    """Hold this watch's OS lock through its turn and recover an interrupted claim."""
     co_dir.mkdir(parents=True, exist_ok=True)
-    lock = _lock(co_dir / "watch.consume.lock", attempts=1)
+    lock_name = hashlib.sha256(name.encode()).hexdigest()[:24]
+    lock = _lock(co_dir / f"watch.consume.{lock_name}.lock", attempts=1)
     if lock is None:
         return None
     try:
         with _database(co_dir) as db:
-            for stale in db.execute("SELECT * FROM events WHERE status = 'running'").fetchall():
+            for stale in db.execute("SELECT * FROM events WHERE name=? AND status='running'",
+                                    (name,)).fetchall():
                 session_id = _session_id(co_dir, stale["name"])
                 if _already_delivered(storage, stale, session_id):
                     db.execute("UPDATE events SET status='done', session_id=?, completed_at=? WHERE id=?",
@@ -213,12 +231,13 @@ def process_one(co_dir: Path, create_agent, storage, result_ttl: int) -> dict | 
                 else:
                     _release_interrupted_session(storage, stale, session_id)
                     db.execute("UPDATE events SET status='pending' WHERE id=?", (stale["id"],))
-            # A queued user turn waits for its session to become idle. A long
-            # turn is not a delivery failure, and another watch may proceed.
-            event = next((candidate for candidate in db.execute(
-                "SELECT * FROM events WHERE status='pending' ORDER BY observed_at, rowid")
-                if not _session_busy(storage, _session_id(co_dir, candidate["name"]))), None)
+            # A queued turn waits for this session to become idle. Other
+            # watches have their own locks and continue independently.
+            event = db.execute("SELECT * FROM events WHERE name=? AND status='pending' "
+                               "ORDER BY observed_at, rowid LIMIT 1", (name,)).fetchone()
             if event is None:
+                return None
+            if _session_busy(storage, _session_id(co_dir, name)):
                 return None
             db.execute("UPDATE events SET status='running', attempts=attempts+1 WHERE id=?", (event["id"],))
         session_id = _session_id(co_dir, event["name"])
@@ -312,14 +331,14 @@ def create_watch_lifespan(co_dir: Path, create_agent, storage, result_ttl: int,
                           console=None):
     """Start observation and delivery without blocking the Host event loop."""
     task = None
-    running: set[asyncio.Task] = set()
+    running: dict[str, asyncio.Task] = {}
 
     def _say(message: str) -> None:
         if console:
             console.print(f"[dim][watch][/dim] {message}")
 
-    def _finished(work: asyncio.Task) -> None:
-        running.discard(work)
+    def _finished(name: str, work: asyncio.Task) -> None:
+        running.pop(name, None)
         if work.cancelled():
             return
         try:
@@ -344,11 +363,19 @@ def create_watch_lifespan(co_dir: Path, create_agent, storage, result_ttl: int,
                 if message != last_error:
                     _say(f"[red]{message}[/red]")
                     last_error = message
-            if (watches or (co_dir / "watch-state.sqlite3").exists()) and not running:
-                work = asyncio.create_task(asyncio.to_thread(
-                    process_one, co_dir, create_agent, storage, result_ttl))
-                running.add(work)
-                work.add_done_callback(_finished)
+            if watches or (co_dir / "watch-state.sqlite3").exists():
+                try:
+                    names = await asyncio.to_thread(_pending_names, co_dir)
+                except Exception as exc:
+                    _say(f"[red]queue read failed: {type(exc).__name__}: {exc}[/red]")
+                    names = []
+                for name in names:
+                    if name in running:
+                        continue
+                    work = asyncio.create_task(asyncio.to_thread(
+                        _process_watch, co_dir, name, create_agent, storage, result_ttl))
+                    running[name] = work
+                    work.add_done_callback(lambda done, watch_name=name: _finished(watch_name, done))
             await asyncio.sleep(POLL_SECONDS)
 
     async def on_startup() -> None:
@@ -368,7 +395,7 @@ def create_watch_lifespan(co_dir: Path, create_agent, storage, result_ttl: int,
                 await task
             except asyncio.CancelledError:
                 pass
-        for work in tuple(running):
+        for work in tuple(running.values()):
             work.cancel()
 
     return on_startup, on_shutdown

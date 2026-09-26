@@ -170,6 +170,39 @@ def test_two_host_workers_cannot_deliver_the_same_event(tmp_path, monkeypatch):
     assert len(calls) == 1
 
 
+def test_slow_watch_does_not_block_another_watch(tmp_path, monkeypatch):
+    co_dir = _co_dir(tmp_path, "watch: []\n")
+    emit_event(co_dir, "slow", "webhook", {"value": 1}, "slow-1")
+    emit_event(co_dir, "fast", "webhook", {"value": 2}, "fast-1")
+    from connectonion.network.host import http_router
+
+    slow_started, release_slow = threading.Event(), threading.Event()
+    calls = []
+
+    def input_handler(*args, **kwargs):
+        calls.append(args[2])
+        if '"watch": "slow"' in args[2]:
+            slow_started.set()
+            assert release_slow.wait(2)
+        return {"status": "done"}
+
+    monkeypatch.setattr(http_router, "input_handler", input_handler)
+
+    class EmptyStorage:
+        def get(self, _):
+            return None
+
+    storage = EmptyStorage()
+    slow = threading.Thread(target=process_one, args=(co_dir, lambda: None, storage, 3600))
+    slow.start()
+    assert slow_started.wait(2)
+    assert process_one(co_dir, lambda: None, storage, 3600)["id"] == "fast-1"
+    release_slow.set()
+    slow.join(2)
+    assert not slow.is_alive()
+    assert len(calls) == 2
+
+
 def test_failed_event_is_visible_and_can_be_retried(tmp_path, monkeypatch):
     co_dir = _co_dir(tmp_path, "watch:\n  - name: pulse\n    source: timer\n    every: 10s\n")
     emit_event(co_dir, "pulse", "timer", {"event": "fired"}, "event-1")

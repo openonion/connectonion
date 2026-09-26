@@ -70,6 +70,6 @@ queued event and does not spend a failure attempt. The queue retries delivery
 failures up to three times and exposes failed events for manual retry. A
 completed Host turn is checked before replaying an unacknowledged event after
 a crash. This reduces duplicate turns but cannot promise exactly-once effects
-from an agent's external tools. Events from different watches currently share
-one consumer: a long turn can delay another watch. This is an explicit preview
-limit, to be lifted with per-session dispatch if real workloads require it.
+from an agent's external tools. Each watch has its own OS lock and delivery
+task: turns remain ordered within one watch while a slow turn does not hold up
+another watch.
