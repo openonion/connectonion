@@ -221,6 +221,21 @@ def _safe_file_names(value: object) -> list[str]:
     return names
 
 
+def _watch_event_to_item(event: dict, fallback_id: str) -> dict:
+    return {
+        'id': event.get('event_id') or fallback_id,
+        'type': 'tool_call',
+        'name': 'Watch observation',
+        'status': 'done',
+        'args': {'watch_id': event.get('watch_id'), 'kind': event.get('kind')},
+        'result': event.get('summary'),
+        'source': 'watch_event',
+        'watch_id': event.get('watch_id'),
+        'kind': event.get('kind'),
+        'observed_at': event.get('observed_at'),
+    }
+
+
 def session_to_chat_items(session: dict) -> list[dict]:
     """Convert session → ChatItem[] for UI rendering, interleaved chronologically by turn.
 
@@ -259,19 +274,13 @@ def session_to_chat_items(session: dict) -> list[dict]:
             # carries `internal`, and a user who literally types
             # "<system-reminder>" must see their own words back unchanged.
             if isinstance(msg.get('watch_event'), dict):
-                event = msg['watch_event']
-                items_ui.append({
-                    'id': event.get('event_id') or f"watch-{msg_idx}",
-                    'type': 'tool_call',
-                    'name': 'Watch observation',
-                    'status': 'done',
-                    'args': {'watch_id': event.get('watch_id'), 'kind': event.get('kind')},
-                    'result': event.get('summary'),
-                    'source': 'watch_event',
-                    'watch_id': event.get('watch_id'),
-                    'kind': event.get('kind'),
-                    'observed_at': event.get('observed_at'),
-                })
+                items_ui.append(_watch_event_to_item(msg['watch_event'], f"watch-{msg_idx}"))
+            elif isinstance(msg.get('watch_events'), list):
+                items_ui.extend(
+                    _watch_event_to_item(event, f"watch-{msg_idx}-{idx}")
+                    for idx, event in enumerate(msg['watch_events'])
+                    if isinstance(event, dict)
+                )
             elif not msg.get('internal'):
                 items_ui.append({'id': f"msg-{msg_idx}", 'type': 'user', 'content': content})
 

@@ -61,6 +61,8 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
     session_id = session.get('session_id')
     if not session_id:
         raise ValueError("session_id required in session dict")
+    from ...core.mode import READ_ONLY, mode_of, set_mode
+    prior_mode = mode_of(session) if watch_event is not None else None
 
     # Preserve the legacy internal/scheduler order when no Host policy is in
     # play. Network routes always pass a policy and must claim before factory
@@ -75,6 +77,7 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
         requester=requester,
         policy=mode_policy,
         is_admin=is_admin,
+        force_read_only=watch_event is not None,
     )
     # claim_host_prompt() atomically rechecks the verified owner and replaces
     # every SERVER_OWNED_SESSION_KEYS value with the durable server snapshot.
@@ -88,11 +91,6 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
         agent.io = connection
         agent.storage = storage
         agent._watch_store = getattr(storage, "watch_store", None)
-        prior_mode = None
-        if watch_event is not None:
-            from ...core.mode import READ_ONLY, mode_of, set_mode
-            prior_mode = mode_of(session)
-            set_mode(session, READ_ONLY)
         if mode_policy is not None:
             if hasattr(agent, "_full_access_turns"):
                 agent._full_access_turns = None
@@ -106,6 +104,9 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
         )
         duration_ms = int((time.time() - start) * 1000)
 
+        if watch_event is not None:
+            resume_mode = READ_ONLY if prior_mode == READ_ONLY else AUTO
+            set_mode(agent.current_session, resume_mode)
         if mode_policy is not None:
             agent.current_session = _normalized_host_result(
                 agent.current_session,
@@ -113,9 +114,6 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
                 mode_policy=mode_policy,
                 is_admin=is_admin,
             )
-        if watch_event is not None:
-            from ...core.mode import AUTO, READ_ONLY, set_mode
-            set_mode(agent.current_session, READ_ONLY if prior_mode == READ_ONLY else AUTO)
 
         agent.current_session['updated'] = time.time()
 

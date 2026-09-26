@@ -1,33 +1,42 @@
 # The agent came back
 
-An agent can start a command that takes half an hour. Until now, the useful
-part of the conversation ended there. The command might finish, but the agent
-had no reason to return unless a person asked again. Polling `task_output()`
-kept the model busy with waiting rather than the work it was meant to do.
+“Run the CRCD check. It may take half an hour; tell me when it finishes.”
 
-A watch gives that waiting a home in the Host. The agent starts a managed task,
-records a watch for its task ID, and finishes its turn. The task runner writes
-its final status and a bounded slice of output. The Host stores an observation,
-claims the original session, and starts a new turn. The observation is labelled
-as source data; the agent's answer is a separate message. A failed command
-does not become a successful user task merely because the watcher fired.
+That is an ordinary request in a conversation with a coding agent. The agent
+starts the command, gets a background task ID, and answers that it is running.
+Then its turn ends. Thirty minutes later, the process exits with code 2. Its
+output is available to anyone who remembers to ask for it, but the agent has
+no reason to open the conversation again. From the user's side, the promise to
+report the result was never kept.
 
-The same path handles a recurring mail check. For a request such as “check for
-CRCD mail every 30 minutes,” the Host remembers the first set of matching
-message IDs. Later checks that find the same IDs use no model turn. A new ID
-produces an observation and wakes the original session. The watch has a bounded
-life and can be cancelled; a source error pauses it instead of silently
-claiming that nothing happened.
+The first tempting fix was a callback in the task's reader thread: when the
+process exits, call the Agent. That works only while everything is quiet. If
+the user is already talking to the Agent, two calls may write the same session
+history. If the Host restarts after the process ends, a callback kept only in
+memory disappears. If the Agent answers and the Host dies before marking the
+callback delivered, running it again may duplicate the turn.
 
-The hard part was the boundary between waiting and conversation. A completion
-can arrive while a user turn is still running, or just before the agent has
-registered its watch. The task receipt is durable, so registration can notice
-an already finished task. The Host's existing atomic session claim keeps two
-turns from writing the same history at once. On restart, an unresolved task is
-reported as unknown rather than guessed to have succeeded.
+We already had the harder half of this problem in the Host's event watcher. It
+records an observed file change or timer firing before trying to deliver it,
+then waits for the target session to be free. The task needed to become another
+source for that queue. So did the request to check a mailbox every 30 minutes:
+most checks find the same messages and should never call the model at all.
+Only a new message ID becomes an event.
 
-This first version is for a long-lived `co ai` Host and its owner. It keeps
-`co listen` as the separate path for external messages. The offline tests cover
-the task registration race, unchanged and changed mail results, restart,
-busy-session delivery, and a real short background process. An authenticated
-mailbox check remains an installed acceptance step before the 1.9.0 release.
+One detail changed the design. A Host-configured watch can keep its own
+conversation, but this task was started *inside* a conversation. Its completion
+belongs in that original session. The registration now carries the verified
+owner and session ID into the event record. The Host checks those fields again
+before it claims a turn. It records the event ID in the session trace, so a
+saved answer can be recognized after a crash without searching for a fragment
+of JSON in the user's messages.
+
+When the Agent returns, the event appears as a watch observation. Its answer
+comes afterward and can say plainly that the command failed. The wake-up is
+Read only, even if a previous user turn had Full Access. The task's exit code
+is evidence about the command, not a verdict that the user's larger job is
+done.
+
+A short process and a controlled mail cursor can prove the ordering and the
+no-change path offline. A real mailbox remains the final check before the
+1.9.0 release.

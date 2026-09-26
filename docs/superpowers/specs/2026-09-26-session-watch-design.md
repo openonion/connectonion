@@ -1,101 +1,73 @@
-# Session-owned watches for COAI
+# Session-owned watches on the Host event runtime
 
-Status: implemented for the 1.9.0 milestone, 2026-09-26. Related: [#1499](https://github.com/openonion/connectonion/issues/1499), [#339](https://github.com/openonion/connectonion/issues/339), [#353](https://github.com/openonion/connectonion/issues/353).
+Status: implementation draft for [#1788](https://github.com/openonion/connectonion/issues/1788), stacked on the Host event runtime in [#1781](https://github.com/openonion/connectonion/pull/1781). The Agent-owned feature targets 1.9.0. `co listen` is a separate inbound channel.
 
-## Problem and boundary
+## The boundary
 
-COAI can start a long task and poll `task_output()`, but cannot leave a watch behind that brings the result back to the same conversation after the current AI turn ends. A user may also ask it to check something periodically, such as mail every 30 minutes, and report relevant changes without keeping an LLM call open.
-
-A **watch** is created by the Agent during a session. It observes a specific task or runs a bounded read-only probe on an interval. Its output is an observation, not a user request or an AI answer. The Host delivers the observation into that same session and starts another AI turn so the Agent can inspect, decide, and explain. This feature does not use `co listen` as its product API: `co listen` admits messages from a configured external channel, while a watch belongs to a session and is created by that session's Agent.
+A watch has four steps: **register a source**, **observe without an LLM call**, **persist an event**, and **submit that event to the original session**. “Event driven” describes the last two steps: the Agent runs when a source reports a meaningful change. Observation remains source-specific. A task completion pushes a receipt immediately; a Gmail search runs at an interval and emits only when its result changes. File and timer watches declared in `host.yaml` already use the same Host event queue, but start in dedicated watch sessions.
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant Agent as COAI session
-    participant Host as Host watch runtime
-    participant Source as Task or read-only probe
-
-    User->>Agent: Start the long task and tell me when it finishes
-    Agent->>Source: Start task
-    Agent->>Host: Create watch for task completion
-    Agent-->>User: Task started; I will check its result
-    Note over Agent: This turn ends; no model call waits
-    Source-->>Host: Finished, with exit status and bounded output
-    Host->>Host: Persist observation for the original session
-    Host->>Agent: Claim next turn with watch event
-    Agent->>Source: Inspect result if needed
-    Agent-->>User: Outcome and evidence
+    participant Agent as Agent turn in session S
+    participant Store as watch-state.sqlite3
+    participant Source as Task / Gmail
+    participant Host as Host dispatcher
+    Agent->>Store: Register watch W(owner, S, source, expiry)
+    Agent-->>Agent: End current turn
+    Source->>Store: Completion receipt or changed probe result
+    Store->>Store: Atomically persist event E and source cursor
+    Host->>Store: Claim E under W's per-watch lock
+    Host->>Host: Claim S through input_handler (Read only)
+    Host->>Agent: Watch observation E, then new Agent turn
+    Agent-->>Agent: Report evidence and conclusion
+    Host->>Store: Mark E done after durable session result
 ```
 
-“Same session” means the same session ID, owner, history, and Workroom. It is a **new turn**, not a half-hour-long model call or a second Agent writing concurrently to the history.
+## Durable records and ownership
 
-## Product behavior
+The single Host database is `.co/watch-state.sqlite3`. The `events` table from #1781 is the only delivery queue. It gains `target_session_id` and `owner_address` columns, migrated when an existing 1.8.9 database opens. The source tables are `watches` (registration, probe config, cursor, next check, expiry, state) and `tasks` (session, owner, Host PID, terminal status, bounded output). These tables do not contain another event queue.
 
-### One-time task completion
+An Agent-created watch binds its verified session ID and owner address when registered. The internal queue name is `session-watch:<watch_id>` so it cannot collide with a Host-declared watch name. An event carries its stable ID, queue name, source, observed time, payload, target session, and owner. `target_session_id` and `owner_address` are authoritative columns, never read from the source payload. A Host-declared watch has neither target column and continues to use its stable dedicated session.
 
-1. The Agent starts a managed background task and receives a durable task ID.
-2. The Agent creates a one-time `task_completed` watch for that ID. Creating the watch is visible in the session. Registration checks an existing terminal receipt, so a task that finishes between steps 1 and 2 is not missed.
-3. On completion or failure, the task runner records the exit status and bounded output, then the watch records one observation.
-4. The Host starts a new turn in the original session. The Agent checks the result and reports it. An exit code is evidence; the monitor never asserts that the user's broader goal succeeded.
-5. The watch becomes complete after its observation is delivered. Cancelling the task or watch has an explicit recorded outcome.
+Only the authenticated Host owner can call `watch_task`, `watch_every`, `list_watches`, and `cancel_watch`. A task ID must belong to that same owner and session. One-shot CLI runs have no Host watch store and refuse persistent watches. A session may have at most ten active watches; interval checks run no more often than once a minute; watches expire within seven days. Creating a watch extends that session's retention through its expiry.
 
-If the Host restarts and cannot prove the task's final exit status, the observation is `outcome_unknown` and says why. It must not infer success from a missing process. The task runner should write its own terminal receipt before exiting so normal restart recovery can distinguish completed, failed, and unknown tasks.
+## Source adapters
 
-### Repeating checks
+### Managed background task
 
-The Agent can create a watch such as “check this mailbox every 30 minutes for new mail about CRCD.” A watch has an interval, a named read-only probe, bounded arguments, a cursor, and a stop condition or expiry. The Host runs the probe without invoking the LLM on each tick. The probe returns `{changed, observation, next_cursor}`. No change updates the last-check time and cursor but does not wake the AI. A change persists an observation and wakes the original session once; multiple changes while a turn is busy can be grouped into one bounded batch.
+`run_background()` registers a durable task receipt before launching its process. The reader thread records `completed`, `failed`, or `cancelled` with bounded output. In the same SQLite transaction, every active watch for the task emits one event and becomes complete. Registration checks an existing receipt under a write lock: a task that finished between `run_background()` and `watch_task()` still emits once. At Host startup, running receipts owned by a dead Host PID become `unknown`; the event says that the exit status was not recorded. A missing process is never labelled successful.
 
-The first repeating probe is new mail since a cursor. A generic extension point may let a custom Agent register other **explicitly watchable read-only probes**. Arbitrary shell commands and arbitrary tool names are not accepted as unattended repeating probes. A probe that needs interactive approval pauses the watch and reports that state instead of silently expanding permissions. The cursor and any resulting observation are committed together; a crash cannot advance the cursor while losing the message that should wake the AI. On restart, an overdue recurring watch checks once, rather than replaying every missed interval.
+### Recurring Gmail search
 
-The Agent can list and cancel its watches. A probe error pauses the watch; the owner can cancel and recreate it after fixing the source. The owner sees what is being checked and the last/next check. V1 limits watch creation to the authenticated Host owner; a contact's ability to send a prompt does not grant them recurring access to the owner's mail or task results.
+`watch_every(minutes=30, probe="gmail_search", query="...")` reads one baseline and stores matching message IDs as its cursor. At `next_at`, a Host probe claims the check, queries a bounded result set, compares IDs, and atomically commits the new cursor and any resulting event. No new IDs means no Agent turn. A crash after claiming a check but before committing its cursor retries after the claim timeout; the old cursor is still present, so new mail is not lost. An oversized result set or source error pauses the watch and emits an error event; the owner can cancel and recreate it after fixing the source. Arbitrary unattended shell commands or Agent tools are not accepted as recurring probes.
 
-### Where it runs
+The recurring probe runs in a separate Host task from the event dispatcher. A slow Gmail request does not stop file/timer observation or queued event delivery. Task completion emits directly and does not wait for the probe loop.
 
-The first implementation targets a long-lived `co ai` Host session (`co ai` server mode, local or deployed). The Host owns the watch scheduler and session store, so a browser or terminal client may disconnect while watches continue. `co ai "one-shot prompt"` exits after its answer; it must refuse creating a persistent watch with a clear explanation unless a long-lived Host is attached. It must never claim that an in-process daemon thread will outlive the CLI process. Automatic local Host startup for one-shot work can be considered later.
+## Delivery and conversation semantics
 
-## Runtime model
+The dispatcher uses #1781's per-watch OS lock and `events` status claim. Different watch names may be processed concurrently. Before starting a turn it resolves the target session from the event row, verifies that the durable session still belongs to the recorded owner, and checks whether it is busy. A busy session leaves the event pending without consuming a failure attempt. Two watches targeting one session race through the existing atomic `claim_host_prompt`; one wins, the other remains queued.
 
-Use one Host-owned watch store under the agent's `.co/` directory, with atomic claims for watches and pending observations. SQLite from the Python standard library is suitable here because a watch may fire as a user turn finishes, and two workers must not start two turns for the same session. Keep this feature's store separate from the global `schedule.yaml`: schedules are operator-authored jobs, while watches are Agent-authored and session-bound.
+`input_handler` is the only way to wake the Agent. Its claim persists the new turn in **Read only** mode before constructing or calling the Agent, so an old Full Access grant cannot be inherited even if the model fails. The event enters the model as framed, untrusted source data. Session history records `watch_event_id` in trace and source metadata on the user-role model message. Session Sync renders a `Watch observation` card instead of a human-authored bubble. The Agent's later assistant message is a distinct conclusion. After a successful watch turn, the session returns to Read only if it was already Read only; otherwise it returns to Auto. A failed turn remains Read only.
 
-Minimum records:
+The #1781 runtime can also add newly queued events from the *same watch* at `before_iteration`, or request another iteration after a final model answer. Those events use internal reminders with structured event IDs and visible observation cards. A normal user turn is not interrupted: an event arriving while it is active waits for the next turn. Live injection is bounded to four batches of sixteen events; the rest stay queued.
 
-| Record | Required fields |
-| --- | --- |
-| Watch | `watch_id`, `session_id`, verified owner, kind, task/probe reference, interval, cursor, next check, expiry, status |
-| Observation | stable `event_id`, `watch_id`, observed time, source outcome, bounded payload, delivery state |
-| Managed task receipt | task ID, process identity, start/end time, exit status, bounded output reference |
+## Crash and concurrency outcomes
 
-One dispatcher owns **one active Agent turn per session**. An observation arriving during a turn is persisted and delivered after that turn; it does not mutate the live message list from a background thread. User prompts and watch observations use the same session claim, so whichever is claimed first runs first. The next turn may receive a bounded batch of pending observations. The session owner and Host permission ceiling come from the durable session record, never from watch payload text.
+| Stop point | Durable state | Recovery |
+| --- | --- | --- |
+| Source changes before event transaction commits | Old cursor/receipt | Reobserve and emit after restart |
+| Event committed, no turn claimed | Pending event | Dispatcher claims it |
+| Turn claimed, Host dies before session result | Running event; session may be interrupted | Release interrupted claim and retry, up to three failed attempts |
+| Session result saved, event acknowledgement lost | Trace contains structured event ID | Mark event done without another Agent turn |
+| User session busy | Pending event; no attempt spent | Deliver after that turn |
+| Watch cancelled while event pending | Event marked cancelled | No new wake-up; a turn already running may finish |
 
-The Agent sees a structured `watch_event` with source, watch ID, event ID, timestamp, and observation. Session Sync renders it as a `Watch observation` card using the existing tool-call ChatItem shape, tagged with `source: watch_event` for clients that want a distinct presentation. It is never a message authored by the user or the Agent's conclusion. The model receives a framed textual representation, but the event remains untrusted source data. The AI's reply is a separate assistant message. A wake-up starts in Read only mode and cannot inherit a temporary Full access grant or a previous approval.
+This is at-least-once delivery across uncertain crashes. No queue can guarantee exactly-once external tool effects after a process dies between an effect and its recorded result. The Read only wake-up prevents unattended effects that require approval. Failed events remain inspectable and can be retried through the Host event runtime.
 
-Delivery is **at least once** across crashes. Persist the observation before claiming a turn; record its event ID in the session trace and settle it only after the resulting turn is durable. On restart, an unsettled event is retried. The dispatcher checks the trace for an already applied event ID to avoid duplicate visible messages. Failed or busy delivery waits at least 60 seconds before retry. No claim of exactly-once external side effects is made; an unattended wake-up cannot bypass approval for such effects.
+## Verification gates
 
-An active watch keeps its session available until the watch ends or expires. V1 sets a bounded lifetime (default: 7 days), a minimum repeating interval (1 minute), and a per-session active-watch cap (10).
-
-## Relationship to current code
-
-- `cli/co_ai/tools/background.py` has a process-global task registry and `task_output()` polling. It needs a durable completion receipt and notification path for watched tasks; merely adding a callback to the daemon reader thread will fail across process exit or restart.
-- `useful_plugins/runtime_input.py` drains client input into an **active** turn and seals the window at completion. Watch delivery needs a separate idle-session wake-up path; it should not impersonate `RUNTIME_INPUT` or a client `INPUT`.
-- `network/host/schedule.py` already demonstrates a Host lifespan ticker and durable claim, but scheduled `run` creates its own turn/session. Reuse its lifecycle pattern, not its operator-authored schedule format.
-- `network/host/http_router.py` and the session claim are the point at which a watch-triggered turn must preserve the original session, verified owner, mode ceiling, and history. A plain `input_handler(prompt="watch says...")` would mislabel the source as a user prompt.
-- Workroom/Session Sync must expose the watch event and the later assistant turn on reconnect, including when no browser is connected at trigger time. Push notification outside the session is a separate feature.
-
-## Implementation sequence
-
-1. **Session wake-up contract:** define `watch_event` storage, owner binding, serialization with user turns, event-ID replay behavior, and Workroom rendering. Prove an injected test observation starts a new turn in the same completed session, including no connected browser and a busy-session race.
-2. **Managed task completion:** persist a task receipt, let the Agent watch a task ID, and drive the session wake-up from real success, failure, cancellation, and restart-unknown outcomes. Preserve `task_output()` for manual inspection.
-3. **Repeating probe:** add the Host tick, cursor-based Gmail search, no-change suppression, bounded observations, cancellation, and restart recovery. Prove “every 30 minutes” using a controllable clock rather than waiting in a test.
-4. **User surface and installed acceptance:** expose watches and watch events in session data; verify a real long task and a real mail account in an installed Host/O Chat path. Provider-dependent live acceptance remains separate from offline tests.
-
-## Acceptance examples
-
-- A 30-minute task ends after the Agent's first turn. The original session receives exactly one visible completion observation and a new AI explanation. Reconnecting from another device shows both in order.
-- A watched task fails with exit code 2. The AI receives that status and cannot display a success badge from the watch alone.
-- A mail watch checks at 10:00 and 10:30 with no new mail: no AI turns. At 11:00, two new messages produce one observation and one AI turn. A restart at 10:45 does not reset the cursor or replay old mail.
-- An observation arrives while the AI is answering a user. It waits; only one Agent turn writes the session at a time.
-- A user cancels the watch; later source changes do not wake the Agent. A one-shot CLI attempt to create a persistent watch gives a truthful unsupported-runtime result.
-
-## Decisions
-
-The first runtime is a long-lived `co ai` Host. One-shot CLI cannot create persistent watches. A repeating check wakes the AI on new Gmail search matches, while an unchanged check only updates watch status. Wake-up turns start in Read only mode and cannot inherit Full access.
+1. Real managed process writes one receipt and one event; failure, cancellation, registration-after-finish, and restart-unknown are distinct.
+2. A controlled clock proves a 30-minute no-change check uses no model turn, while a new ID emits one event; reopening the database retains the cursor.
+3. A real `Agent.input()` through `process_one()` resumes the original session, records a structured event ID, renders a watch card, and leaves mode at Auto/Read only as required.
+4. Busy-session and two-watch races preserve order without concurrent writes or wasted retry attempts. A saved-turn/failed-ack test does not rerun the model.
+5. Opening a 1.8.9 event database migrates target columns without losing queued events. An installed Host and authenticated Gmail account exercise the provider path before release.

@@ -68,15 +68,15 @@ from .http_router import (
     session_handler,
     sessions_handler,
 )
+from .inbox import create_inbox_lifespan
 from .provider_workroom import prepare_provider_workroom_turn
 from .remote_browser import RemoteBrowserService
 from .replay import MemoryReplayStore, SignatureReplayStore
-from .inbox import create_inbox_lifespan
 from .schedule import create_schedule_lifespan
-from .watch import create_watch_lifespan
 from .session import ActiveSessionRegistry, SessionStorage, SessionViewers, start_cleanup_job
 from .session.mode import HostPermissionPolicy
-from .session.watches import WatchStore, create_watch_lifespan
+from .session.watches import WatchStore
+from .watch import create_watch_lifespan
 from .ws_router import run_ws_session
 
 EXEC_REQUIRES = ("admin", "whitelist", "contact")
@@ -1211,7 +1211,7 @@ def host(
 
     # co_dir, not the default: host(co_dir=...) must put the sessions there too.
     storage = provider_station.storage if provider_station is not None else SessionStorage(co_dir / "session_results.jsonl")
-    storage.watch_store = WatchStore(co_dir / "session-watches.sqlite3")
+    storage.watch_store = WatchStore(co_dir)
 
     # Any session still marked `running` belongs to a process that is gone —
     # this one just started and owns none. Left alone they are permanent, since
@@ -1312,12 +1312,6 @@ def host(
     on_startup = _both(on_startup, sched_startup)
     on_shutdown = _both(sched_shutdown, on_shutdown)   # stop the clock first
 
-    watch_startup, watch_shutdown = create_watch_lifespan(
-        storage.watch_store, storage, create_agent, _host_mode_policy(sample), result_ttl,
-    )
-    on_startup = _both(on_startup, watch_startup)
-    on_shutdown = _both(watch_shutdown, on_shutdown)
-
     # Channels are a third ingress, beside the socket and the clock, and they
     # arrive through the same input_handler: a message from a group lands in
     # session_results.jsonl beside the interactive turns. The listener that
@@ -1328,7 +1322,8 @@ def host(
     on_shutdown = _both(inbox_shutdown, on_shutdown)
 
     watch_startup, watch_shutdown = create_watch_lifespan(
-        co_dir, create_agent, storage, result_ttl, console=Console())
+        co_dir, create_agent, storage, result_ttl, console=Console(),
+        mode_policy=_host_mode_policy(sample), session_watches=storage.watch_store)
     on_startup = _both(on_startup, watch_startup)
     on_shutdown = _both(watch_shutdown, on_shutdown)
 
@@ -1386,7 +1381,7 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
 
     if storage is None:
         storage = SessionStorage()
-    storage.watch_store = WatchStore(storage.path.parent / "session-watches.sqlite3")
+    storage.watch_store = WatchStore(storage.path.parent)
     storage.reconcile_interrupted()      # see the note at the other call site
     storage.compact()
 
@@ -1436,11 +1431,6 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     balance_startup, balance_shutdown = _create_balance_lifespan(
         sample, agent_metadata
     )
-    watch_startup, watch_shutdown = create_watch_lifespan(
-        storage.watch_store, storage, create_agent, _host_mode_policy(sample), result_ttl,
-    )
-    balance_startup = _both(balance_startup, watch_startup)
-    balance_shutdown = _both(watch_shutdown, balance_shutdown)
     if route_handlers['control_center'] is not None:
         sched_startup, sched_shutdown = create_schedule_lifespan(
             replay_dir, create_agent, storage, result_ttl,
@@ -1448,7 +1438,8 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
         balance_startup = _both(balance_startup, sched_startup)
         balance_shutdown = _both(sched_shutdown, balance_shutdown)
     watch_startup, watch_shutdown = create_watch_lifespan(
-        replay_dir, create_agent, storage, result_ttl)
+        replay_dir, create_agent, storage, result_ttl,
+        mode_policy=_host_mode_policy(sample), session_watches=storage.watch_store)
     balance_startup = _both(balance_startup, watch_startup)
     balance_shutdown = _both(watch_shutdown, balance_shutdown)
     balance_startup = _both(balance_startup, cleanup_startup)
