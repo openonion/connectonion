@@ -61,7 +61,7 @@ Output:   Pages under ~/.co/wiki (or --root). A summary of what was read, what w
 Effects:  Writes pages. Reads mail headers. No model, no cost, no schedule.
 Takes:    About 10 minutes for 90 days of two mailboxes.
 
-Next:     co wiki investigate me         (fill your own page first)
+Next:     co wiki investigate me --quick (bounded, partial first pass; retain --days N)
 Back:     co wiki --help
 ```
 
@@ -80,6 +80,7 @@ Usage:
   co wiki investigate CATEGORY [--limit N]     Investigate the unfinished pages in one category,
                                                most useful first. Default --limit 5.
   co wiki investigate me                       Investigate your own page from your recent work.
+  co wiki investigate me --quick               Bounded first pass; says what it did not cover.
 
   CATEGORY is one of: people, projects, orgs, skills
 
@@ -99,6 +100,7 @@ What each kind reads:
 
 Options:
   --days N       How far back to read (default 150; 30 for me)
+  --quick        With me: sample recent evidence for one model turn; explicitly partial
   --limit N      With CATEGORY: at most N pages this run (default 5; 0 for all)
   --list         With CATEGORY: print the order and stop; no model
   --handle TEXT  PAGE only: another address or name for the subject (repeatable)

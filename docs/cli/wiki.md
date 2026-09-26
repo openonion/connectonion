@@ -27,7 +27,7 @@ names in old help text, such as `people/emma.md`, are not built-in records.
 
 ```bash
 co wiki investigate          # What is left to investigate, by category; no model
-co wiki investigate me       # Fill your own page first
+co wiki investigate me --quick --days 5  # Bounded first pass; disclose uncovered sources
 co wiki open                 # Open the full-page Wiki in your browser
 co wiki sync --dry-run       # Inspect pending metadata, without running a model
 co wiki sync                 # One update: new material, then at most one unfinished page
@@ -64,6 +64,10 @@ Piping human output does not hide the next step. Grouped help covers:
 plus at most one unfinished-page investigation per local day when the day's
 call budget allows;
 `init` does neither. A mapped page is not an investigated or quality-approved page.
+For an initial trial, `co wiki init --days 5` preserves the same five-day
+window in its suggested next command. `investigate me --quick` samples recent
+evidence, takes one synthesis turn, and marks its coverage as partial. A full
+owner investigation can read substantially more material and cost much more.
 
 ## Installed-skill skeletons at initialization
 
