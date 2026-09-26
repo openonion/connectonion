@@ -6,8 +6,9 @@ import threading
 import time
 
 from connectonion import Agent
-from connectonion.core.llm import LLMResponse
+from connectonion.core.llm import LLMResponse, ToolCall
 from connectonion.network.host.session import SessionStorage
+from connectonion.network.host.session.ui import session_to_chat_items
 from connectonion.network.host.watch import (
     create_watch_lifespan,
     emit_event,
@@ -61,6 +62,115 @@ def test_file_event_is_a_user_message_in_the_same_session(tmp_path, monkeypatch)
     assert asked[-1][0] == asked[0][0]
     assert len(asked[-1]) == 2
     assert watch_status(co_dir)[0]["last_event"]["session_id"] == storage.list()[0].session_id
+
+
+def test_event_arriving_during_iteration_becomes_internal_reminder(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    co_dir = _co_dir(tmp_path, "watch: []\n")
+    storage = SessionStorage(co_dir / "session_results.jsonl")
+    calls = []
+
+    class LLM:
+        model = "fake"
+
+        def complete(self, messages, tools=None, **kwargs):
+            calls.append(messages)
+            if len(calls) == 1:
+                emit_event(co_dir, "notes", "file", {"event": "changed", "revision": 2},
+                           "event-2")
+            return LLMResponse(content=f"answer-{len(calls)}", tool_calls=[], raw_response=None)
+
+    emit_event(co_dir, "notes", "file", {"event": "changed", "revision": 1}, "event-1")
+    result = process_one(co_dir, lambda: Agent("watch-test", llm=LLM(), log=False, quiet=True),
+                         storage, 3600)
+
+    assert result["status"] == "done"
+    assert len(calls) == 2, "a late event must get another iteration before the turn ends"
+    reminders = [message for message in calls[1]
+                 if message.get("internal") and "<system-reminder>" in message["content"]]
+    assert len(reminders) == 1
+    assert '"id": "event-2"' in reminders[0]["content"]
+    assert '"revision": 2' in reminders[0]["content"]
+    record = storage.list()[0]
+    assert record.status == "done"
+    assert not any(item["type"] == "user" and "event-2" in item.get("content", "")
+                   for item in session_to_chat_items(record.session))
+    assert watch_status(co_dir)[0]["pending"] == 0
+    assert watch_status(co_dir)[0]["last_event"]["status"] == "done"
+    assert process_one(co_dir, lambda: None, storage, 3600) is None
+
+    # The session commit can outlive its queue acknowledgement. Recovery reads
+    # the persisted reminder and must not run the event a second time.
+    import sqlite3
+
+    with sqlite3.connect(co_dir / "watch-state.sqlite3") as db:
+        db.execute("UPDATE events SET status='running' WHERE id='event-2'")
+    assert process_one(co_dir, lambda: None, storage, 3600) is None
+    assert watch_status(co_dir)[0]["last_event"]["status"] == "done"
+
+
+def test_event_during_tool_batch_is_seen_before_next_iteration(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    co_dir = _co_dir(tmp_path, "watch: []\n")
+    storage = SessionStorage(co_dir / "session_results.jsonl")
+    calls = []
+
+    def change_file():
+        emit_event(co_dir, "notes", "file", {"revision": 2}, "event-2")
+        return "changed"
+
+    class LLM:
+        model = "fake"
+
+        def complete(self, messages, tools=None, **kwargs):
+            calls.append(messages)
+            if len(calls) == 1:
+                return LLMResponse(content=None, tool_calls=[
+                    ToolCall(name="change_file", arguments={}, id="call-1")
+                ], raw_response=None)
+            return LLMResponse(content="handled", tool_calls=[], raw_response=None)
+
+    emit_event(co_dir, "notes", "file", {"revision": 1}, "event-1")
+    assert process_one(
+        co_dir,
+        lambda: Agent("watch-test", tools=[change_file], llm=LLM(), log=False, quiet=True),
+        storage, 3600,
+    )["status"] == "done"
+    assert len(calls) == 2
+    second = calls[1]
+    tool_index = next(i for i, message in enumerate(second) if message["role"] == "tool")
+    reminder_index = next(i for i, message in enumerate(second)
+                          if message.get("internal") and '"id": "event-2"' in message["content"])
+    assert tool_index < reminder_index
+
+
+def test_live_reminders_are_bounded_and_remaining_events_stay_queued(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    co_dir = _co_dir(tmp_path, "watch: []\n")
+    storage = SessionStorage(co_dir / "session_results.jsonl")
+    calls = []
+
+    class LLM:
+        model = "fake"
+
+        def complete(self, messages, tools=None, **kwargs):
+            calls.append(messages)
+            if len(calls) <= 5:
+                emit_event(co_dir, "notes", "file", {"revision": len(calls) + 1},
+                           f"event-{len(calls) + 1}")
+            return LLMResponse(content="handled", tool_calls=[], raw_response=None)
+
+    emit_event(co_dir, "notes", "file", {"revision": 1}, "event-1")
+
+    def make_agent():
+        return Agent("watch-test", llm=LLM(), log=False, quiet=True)
+
+    assert process_one(co_dir, make_agent, storage, 3600)["status"] == "done"
+    assert len(calls) == 5
+    assert watch_status(co_dir)[0]["pending"] == 1
+    assert process_one(co_dir, make_agent, storage, 3600)["status"] == "done"
+    assert len(calls) == 6
+    assert watch_status(co_dir)[0]["pending"] == 0
 
 
 def test_timer_coalesces_gap_and_push_id_deduplicates(tmp_path, monkeypatch):

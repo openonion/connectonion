@@ -192,6 +192,7 @@ exclude = [
     "!docs/design-decisions/068-gmail-mailbox-pages-and-downloads.md",
     "!docs/design-decisions/070-synology-inspections-and-durable-operations.md",
     "!docs/design-decisions/071-control-center-revisions-and-runtime-approval.md",
+    "!docs/design-decisions/073-watch-events-as-user-turns.md",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -224,6 +225,7 @@ exclude = [
     "!docs/design-decisions/068-gmail-mailbox-pages-and-downloads.md",
     "!docs/design-decisions/070-synology-inspections-and-durable-operations.md",
     "!docs/design-decisions/071-control-center-revisions-and-runtime-approval.md",
+    "!docs/design-decisions/073-watch-events-as-user-turns.md",
 ]
 
 # Include all non-Python files (md, txt, etc.) in the package

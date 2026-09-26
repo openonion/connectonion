@@ -191,19 +191,27 @@ The first observation of a file establishes a baseline. Later creates, writes,
 and deletes enqueue events. A timer's first event occurs after its interval;
 after a restart, missed intervals are coalesced into one event. Events are
 persisted in `.co/watch-state.sqlite3` before the agent is called. Each watch
-uses a stable session across restarts, and its event arrives as a `user` message
-with the watch name, source, observation time, event ID, and data. An event
-producer can also call `connectonion.network.host.watch.emit_event()` with a
-stable event ID; duplicate IDs are ignored.
+uses a stable session across restarts. The event that starts an idle watch
+turn arrives as a `user` message with the watch name, source, observation time,
+event ID, and data. An event arriving while that watch turn is active enters
+the next model iteration as an internal `<system-reminder>` message. If it
+arrives during a final model call, the agent gets another iteration to handle
+it. The reminder is a model-visible `user` role message marked `internal` for
+the UI; it does not have provider `system` role authority. A turn takes at most
+four batches of 16 live events, and leaves additional events queued for the
+next turn. An event producer can also call
+`connectonion.network.host.watch.emit_event()` with a stable event ID;
+duplicate IDs are ignored.
 
 Run `co watch list` (or `co watch list --json`) to see the latest event, status,
 error, and session ID. Delivery is retried up to three times; after correcting
 a failure, use `co watch retry <event-id>` to requeue it. The Host polls
 every two seconds; file writes between two polls can be combined. Watcher
 events are local Host authority, so only declare paths and event producers you
-trust. An event waits in the queue while its continuing session is busy; this
-does not count as a failed delivery. The event data itself is framed as
-untrusted data for the agent. See [DD-073](../design-decisions/073-watch-events-as-user-turns.md)
+trust. An event waits in the queue if the watch turn is not running but its
+continuing session is busy; this does not count as a failed delivery. The
+event data itself is framed as untrusted data for the agent. See
+[DD-073](../design-decisions/073-watch-events-as-user-turns.md)
 for the Codex, Claude Code, and file watcher research behind this design.
 
 ### Server Settings

@@ -32,3 +32,4 @@ design-decisions/*
 !design-decisions/068-gmail-mailbox-pages-and-downloads.md
 !design-decisions/070-synology-inspections-and-durable-operations.md
 !design-decisions/071-control-center-revisions-and-runtime-approval.md
+!design-decisions/073-watch-events-as-user-turns.md

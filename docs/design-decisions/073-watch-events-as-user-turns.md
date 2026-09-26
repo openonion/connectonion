@@ -1,4 +1,4 @@
-# DD-073 — Watch events enter a Host session as user turns
+# DD-073 — Watch events enter a Host session at turn or iteration boundaries
 
 Status: 1.8.9 preview proposal, under review in #1499 and #1781. Research checked 2026-09-26.
 
@@ -33,7 +33,7 @@ no claim about that private implementation.
 
 | Option | Good fit | Cost or mismatch for this preview |
 | --- | --- | --- |
-| Agent lifecycle hook | React within an already running turn. | Cannot observe an external event while no turn exists. |
+| Agent lifecycle hook | Inject queued events before the next model decision in an active turn. | Cannot observe an external event while no turn exists. |
 | Call `agent.input()` in a file callback | Tiny demo. | A slow turn blocks observation; no durable receipt or Host session claim. |
 | OS file notifications (`watchdog`/Watchman) | Many paths, low latency. | Dependency or daemon, platform edge cases, and a reconciliation path after missed notifications. |
 | Fixed-path metadata polling | A few explicit files where a coalesced “changed” signal is enough. | Up to the poll interval of latency; intermediate writes can be coalesced. |
@@ -43,19 +43,30 @@ no claim about that private implementation.
 
 There is no defensible single “most popular” implementation for all event
 sources. The repeated design across the official examples is to separate
-observation from scheduling a normal agent turn. Source-specific mechanisms
-remain source-specific: a file watch, a timer, and a push webhook have
-different observation and replay semantics.
+observation from delivery into an agent session. An idle session needs a turn
+starter; an active session can receive input at an iteration boundary.
+Source-specific mechanisms remain source-specific: a file watch, a timer, and
+a push webhook have different observation and replay semantics.
 
 ## Preview decision
 
 Declare fixed file and timer sources under `watch:` in `.co/host.yaml`; accept
 push events with a stable producer event ID through `emit_event()`. A Host
 background task observes sources and records a common envelope in a SQLite
-queue before delivery. A queue consumer waits for the watch's session to be
-idle and calls `input_handler()` with the envelope as a user message. A stable
-session ID per watch keeps context across events. The envelope contains ID,
-watch, source, observation time, and data; data is framed as untrusted.
+queue before delivery. When the watch's session is idle, a consumer calls
+`input_handler()` with the first envelope as a user message. A stable session
+ID per watch keeps context across events. The envelope contains ID, watch,
+source, observation time, and data; data is framed as untrusted.
+
+Events that arrive during that watch's active turn are claimed from the same
+queue at `before_iteration`, then appended to the model's message list using
+the existing `reminder_message()` format. If an event arrives during a final
+model call, `after_iteration` claims it and requests another iteration so the
+agent can act before finishing. This is an internal `<system-reminder>` marker,
+not a provider `system` role: structurally it is a `user` role message with
+`internal: true`, so the Host UI does not present it as a human message. The
+event data remains untrusted. A turn accepts at most four batches of 16 live
+events; remaining events stay in the queue for the next turn.
 
 SQLite is chosen for *queue state*: atomic insert/dedup, restart recovery,
 status inspection, and coordination between Host workers. The Host session
@@ -65,11 +76,14 @@ it explicitly promises a changed-state signal, not every filesystem write.
 The existing schedule remains available for ordinary recurring prompts; the
 `timer` watch is for a timer event in the common event envelope.
 
-Observation never waits for model work. A busy continuing session retains its
-queued event and does not spend a failure attempt. The queue retries delivery
+Observation never waits for model work. An active watch turn receives queued
+events at iteration boundaries; an event left after the live batch limit waits
+for the next turn. A session busy with another input also leaves its watch
+events queued without spending a failure attempt. The queue retries delivery
 failures up to three times and exposes failed events for manual retry. A
-completed Host turn is checked before replaying an unacknowledged event after
-a crash. This reduces duplicate turns but cannot promise exactly-once effects
+completed Host turn is checked for both the initiating user message and any
+persisted internal reminders before replaying unacknowledged events after a
+crash. This reduces duplicate turns but cannot promise exactly-once effects
 from an agent's external tools. Each watch has its own OS lock and delivery
 task: turns remain ordered within one watch while a slow turn does not hold up
 another watch.
