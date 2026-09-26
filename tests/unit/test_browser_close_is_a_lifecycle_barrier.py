@@ -31,12 +31,22 @@ class _ReplyConnection:
 
 
 def _windows_client(monkeypatch):
+    class _ExitedHandle:
+        def is_running(self):
+            return False
+
     connection = _ReplyConnection()
     monkeypatch.setattr(client.transport, "IS_WINDOWS", True)
     monkeypatch.setattr(client, "default_sock_path", lambda: "pipe")
     monkeypatch.setattr(client, "_connect", lambda _path: connection)
     monkeypatch.setattr(client, "_caller_account", lambda: "")
     monkeypatch.setattr(client, "_owner_pid", lambda _path: 4242)
+    # A fixed fake PID can belong to a real CI process; never inspect or stop it.
+    monkeypatch.setattr(
+        client,
+        "_process_tree",
+        lambda pid: [client._Proc(pid, "test-start", "daemon", _ExitedHandle())] if pid else [],
+    )
     return connection
 
 

@@ -22,17 +22,19 @@ python -m pip install --upgrade 'connectonion==1.8.8'
 
 ## Current preview
 
-Beta **1.8.9b9** was published with the Host watcher preview. That design is
-being removed from subsequent source builds in favor of session-owned watches.
-The b10 source tag has been prepared, but its package release is not yet
-published. See the [b9 release notes](releases/1.8.9b9.md) for its historical
-scope and [#1788](https://github.com/openonion/connectonion/issues/1788) for
-the replacement.
+Beta **1.8.9b11** makes the experimental Personal Wiki's first five-day map
+and investigation pass easier to follow and resume. It retains the free managed
+model defaults from b10 and the Host watcher work from b9. See
+[1.8.9b11 release notes](releases/1.8.9b11.md) for the scope and limits.
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.9b9'
+python -m pip install --upgrade 'connectonion==1.8.9b11'
 co --version
 ```
+
+The Host watcher shipped in b9 and remains in b11. It is being removed from
+subsequent source builds; Agent-owned watches belong to the session runtime
+tracked in [#1788](https://github.com/openonion/connectonion/issues/1788).
 
 <details>
 <summary>The preview line that became 1.8.5</summary>
