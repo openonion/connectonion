@@ -49,3 +49,11 @@ queue acknowledgement, and the copied plugin loading outside the package.
 The merged PR's Python 3.10–3.13 CI matrix passed. A different kind of watch,
 registered by an Agent to resume its original conversation days later, still
 needs the session-owned runtime planned in #1788.
+
+After b9 was published, the boundary itself changed. A Host can keep a source
+alive, but its network lifetime is wider than the Agent conversation that
+asked to be notified. The desired watch belongs to that original session:
+its owner, event inbox and next turn should be recovered together. b12 removes
+the Host observer and queue while keeping the iteration plugin. That leaves a
+visible gap until #1788 supplies the session runner; pretending the copied
+plugin could wake an idle Agent would hide that gap from anyone upgrading.

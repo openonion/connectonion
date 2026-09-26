@@ -375,7 +375,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b11
+## Current Version: 1.8.9b12
+
+1.8.9b12 removes the Host-owned file/timer/push watch runtime and `co watch`
+commands introduced in b9. Watch delivery for an idle, original Agent session
+belongs in the session runtime (#1788); that replacement is not yet shipped.
+The editable `watch_events` plugin still injects events at Agent iteration
+boundaries while a turn is running. Existing Host watch queue files remain on
+disk and are still excluded from deploy sync. Stable remains 1.8.8. See
+[1.8.9b12 notes](docs/releases/1.8.9b12.md).
+
+- 1.8.9b12 (remove Host watch observers, queue and CLI; retain copyable Agent iteration plugin and legacy queue deploy protection.)
+
+Earlier in this line:
 
 1.8.9b11 improves the experimental Personal Wiki's first five-day onboarding
 pass (#1793): concise, scoped map progress; bounded owner investigation with

@@ -1,0 +1,2 @@
+version: v1.8.9b12
+no_visual_change: "This preview removes the Host watcher runtime and CLI command without changing an application screen or visual layout; the copyable Agent plugin remains"
