@@ -24,10 +24,8 @@ import webbrowser
 from contextlib import contextmanager
 from pathlib import Path
 
-from connectonion.environment import (global_config_dir, explicit_env_file,
-                                      read_env_file, publish_values)
-
 from connectonion import address, host
+from connectonion.environment import explicit_env_file, publish_values, read_env_file
 
 logging.basicConfig(level=logging.WARNING, format="[%(levelname)s] %(name)s: %(message)s")
 
@@ -128,10 +126,10 @@ def start_server(
     - GET http://localhost:{port}/health
     - GET http://localhost:{port}/info
     """
-    from ...network.host.config import load_host_config
-
     # Use global ~/.co/ for consistent identity across all co ai sessions.
     from connectonion.project import selected_identity_dir
+
+    from ...network.host.config import load_host_config
     co_dir = selected_identity_dir()
     if invite_code is None and _prepare_owner_onboarding(co_dir):
         from ..commands.project_cmd_lib import console
@@ -143,7 +141,7 @@ def start_server(
         from ..commands.project_cmd_lib import ensure_global_config
 
         ensure_global_config()
-    load_host_config(co_dir)
+    config = load_host_config(co_dir)
     addr_data = address.load(co_dir)
 
     if full_access:
@@ -168,4 +166,55 @@ def start_server(
         from ...network.trust import TrustAgent
 
         trust = TrustAgent("careful", invite_code=invite_code, co_dir=co_dir)
-    host(agent, port=port, trust=trust, co_dir=co_dir, wiki_root=Path.home() / ".co/wiki")
+    if agent_factory is None:
+        host(agent, port=port, trust=trust, co_dir=co_dir, wiki_root=Path.home() / ".co/wiki")
+        return
+
+    from ...network.host.session import SessionStorage
+    from ...network.host.session.mode import HostPermissionPolicy, ModeTransactionError
+    from ...network.host.session.turn import input_handler
+    from .session_watch import SessionBusy, SessionWatchRuntime, SessionWatchStore
+
+    store = SessionWatchStore(co_dir)
+    storage = SessionStorage(co_dir / "session_results.jsonl")
+    storage.reconcile_interrupted()
+
+    def session_agent():
+        created = agent_factory(model, max_iterations, False, full_access_turns)
+        created._watch_store = store
+        if full_access:
+            from ...useful_plugins.full_access import offer_full_access
+            offer_full_access(created, full_access_turns)
+        return created
+
+    def run_watch_turn(event):
+        record = storage.get(event["session_id"])
+        if record is None:
+            raise ValueError("Watch target session no longer exists")
+        requester = (record.session or {}).get("requester") or {}
+        if requester.get("address") != event["owner"] or requester.get("level") != "admin":
+            raise PermissionError("Watch target session owner changed")
+        try:
+            input_handler(
+                session_agent, storage, event["content"],
+                config.get("result_ttl", 86400), session=record.session,
+                requester=requester,
+                mode_policy=HostPermissionPolicy(
+                    full_access_turns=full_access_turns if full_access else None),
+                is_admin=True, watch_event=event["metadata"],
+            )
+        except ModeTransactionError as exc:
+            if exc.code == -32000:
+                raise SessionBusy() from exc
+            raise
+
+    runtime = SessionWatchRuntime(store, storage, run_watch_turn)
+    async def start_watches():
+        runtime.start()
+
+    async def stop_watches():
+        runtime.stop()
+
+    host(session_agent, port=port, trust=trust, co_dir=co_dir,
+         wiki_root=Path.home() / ".co/wiki",
+         on_agent_startup=start_watches, on_agent_shutdown=stop_watches)

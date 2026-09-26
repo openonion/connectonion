@@ -34,8 +34,8 @@ The limit resets when the Agent starts another input turn.
 An Agent plugin runs only while `Agent.input()` is active. The caller supplies
 the event source through `claim_events`. Waking an idle session requires a
 running session owner that can start another Agent turn; the plugin does not
-start one on its own. See [#1788](https://github.com/openonion/connectonion/issues/1788)
-for the session-owned watch runtime.
+start one on its own. `co ai` runs a session-owned watch service for this
+purpose. See [co ai watches](../cli/ai.md#watch-work-in-this-session).
 
 To edit the plugin for your own Agent, run `co copy watch_events` and import
 `watch_events` from `plugins.watch_events`. The copied file uses absolute

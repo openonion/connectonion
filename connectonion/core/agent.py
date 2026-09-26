@@ -367,7 +367,8 @@ class Agent:
     def input(self, prompt: str, max_iterations: Optional[int] = None,
               session: Optional[Dict] = None, images: list[str] | None = None,
               files: list[dict] | None = None,
-              _upload_reservation: Any = None) -> str:
+              _upload_reservation: Any = None,
+              _watch_event: dict | None = None) -> str:
         """Provide input to the agent and get response.
 
         Args:
@@ -432,7 +433,12 @@ class Agent:
                 )
 
             # Add user message to conversation (multimodal if images provided)
-            if images:
+            if _watch_event is not None:
+                self.current_session['messages'].append({
+                    "role": "user", "content": prompt,
+                    "watch_event": _watch_event,
+                })
+            elif images:
                 content = [{"type": "text", "text": prompt}]
                 for img in images:
                     content.append({"type": "image_url", "image_url": {"url": img}})
@@ -447,6 +453,8 @@ class Agent:
                 'content': prompt,
                 'turn': self.current_session['turn'],
                 'ts': turn_start,
+                **({'source': 'watch', 'watch_event_id': _watch_event['event_id']}
+                   if _watch_event is not None else {}),
             })
 
             # Save uploaded files to .co/uploads/ and build file path references.

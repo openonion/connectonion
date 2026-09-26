@@ -16,14 +16,12 @@ Session ID ownership:
 
 import copy
 import json
-import logging
 import time
 import uuid
 from functools import partial
 from pathlib import Path
 from typing import Callable
 
-from ...core.mode import AUTO
 from ...project import project_co_dir
 from ..asgi.http import (
     CORS_HEADERS,
@@ -36,140 +34,14 @@ from ..asgi.http import (
 )
 from ..trust.http_admin import handle_admin_routes
 from .protocol import oip_descriptor
-from .session import SessionStorage, session_to_chat_items
+from .session import SessionStorage
 from .session.mode import SERVER_OWNED_SESSION_KEYS as SERVER_OWNED_SESSION_KEYS
-from .session.mode import (
-    HostPermissionPolicy,
-    ModeTransactionError,
-    claim_host_prompt,
-)
-
-logger = logging.getLogger(__name__)
-
+from .session.mode import ModeTransactionError
+from .session.turn import input_handler as input_handler
 
 # ═══════════════════════════════════════════════════════
 # Handlers
 # ═══════════════════════════════════════════════════════
-
-def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, result_ttl: int,
-                  session: dict | None = None, connection=None, images: list[str] | None = None,
-                  files: list[dict] | None = None, requester: dict | None = None,
-                  mode_policy: HostPermissionPolicy | None = None,
-                  is_admin: bool = False) -> dict:
-    """POST /input (and WebSocket /ws) with session merge and UI conversion."""
-    session = session or {}
-    session_id = session.get('session_id')
-    if not session_id:
-        raise ValueError("session_id required in session dict")
-
-    # Preserve the legacy internal/scheduler order when no Host policy is in
-    # play. Network routes always pass a policy and must claim before factory
-    # side effects; standalone callers historically construct first.
-    agent = create_agent() if mode_policy is None else None
-    record, server_newer = claim_host_prompt(
-        storage,
-        session_id,
-        prompt,
-        result_ttl,
-        session,
-        requester=requester,
-        policy=mode_policy,
-        is_admin=is_admin,
-    )
-    # claim_host_prompt() atomically rechecks the verified owner and replaces
-    # every SERVER_OWNED_SESSION_KEYS value with the durable server snapshot.
-    # This is the OIP successor to the 1.6.11 merge-and-restore guard.
-    session = record.session
-
-    start = time.time()
-    try:
-        if agent is None:
-            agent = create_agent()
-        agent.io = connection
-        agent.storage = storage
-        if mode_policy is not None:
-            if hasattr(agent, "_full_access_turns"):
-                agent._full_access_turns = None
-            if hasattr(agent, "_full_access_needs_activation"):
-                agent._full_access_needs_activation = False
-            agent._host_full_access_turns_ceiling = mode_policy.full_access_turns
-
-        result = agent.input(
-            prompt, session=session, images=images, files=files
-        )
-        duration_ms = int((time.time() - start) * 1000)
-
-        if mode_policy is not None:
-            agent.current_session = _normalized_host_result(
-                agent.current_session,
-                requester=requester,
-                mode_policy=mode_policy,
-                is_admin=is_admin,
-            )
-
-        agent.current_session['updated'] = time.time()
-
-        record.status = "done"
-        record.result = result
-        record.duration_ms = duration_ms
-        record.session = agent.current_session
-        storage.save(record)
-    except Exception:
-        # The claim is already durable. Always terminate it so a factory/model
-        # exception cannot leave this session busy until Host restarts.
-        record.status = "failed"
-        record.duration_ms = int((time.time() - start) * 1000)
-        if mode_policy is not None:
-            record.session = _normalized_host_result(
-                record.session,
-                requester=requester,
-                mode_policy=mode_policy,
-                is_admin=is_admin,
-            )
-        try:
-            storage.save(record)
-        except Exception:
-            logger.exception(
-                "Unable to persist failed Host prompt %s", session_id
-            )
-        raise
-
-    chat_items = session_to_chat_items(agent.current_session)
-
-    return {
-        "session_id": session_id,
-        "status": "done",
-        "result": result,
-        "duration_ms": duration_ms,
-        "session": agent.current_session,
-        "chat_items": chat_items,
-        "server_newer": server_newer,
-    }
-
-
-def _normalized_host_result(
-    session: dict,
-    *,
-    requester: dict | None,
-    mode_policy: HostPermissionPolicy,
-    is_admin: bool,
-) -> dict:
-    """Restore verified identity and fail invalid Agent mode state to Auto."""
-    final_session = copy.deepcopy(session)
-    if requester is not None:
-        final_session["requester"] = copy.deepcopy(requester)
-    else:
-        final_session.pop("requester", None)
-    try:
-        return mode_policy.normalized(final_session, is_admin=is_admin)
-    except ModeTransactionError:
-        logger.exception(
-            "Agent produced invalid Host session mode; resetting to auto"
-        )
-        return mode_policy.apply(
-            final_session, AUTO, is_admin=is_admin
-        )
-
 
 def exec_handler(create_agent: Callable, permissions: dict, tool_name: str, args: dict) -> dict:
     """Direct tool execution (WS EXEC) — run one registered tool by name, no LLM loop.

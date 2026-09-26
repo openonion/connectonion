@@ -1041,6 +1041,8 @@ def host(
     http=None,
     provider_station=None,
     wiki_root: Path = None,
+    on_agent_startup=None,
+    on_agent_shutdown=None,
 ):
     """
     Host an agent over HTTP/WebSocket with P2P relay discovery (enabled by default).
@@ -1320,6 +1322,8 @@ def host(
 
     on_startup = _both(on_startup, cleanup_startup)
     on_shutdown = _both(cleanup_shutdown, on_shutdown)
+    on_startup = _both(on_startup, on_agent_startup)
+    on_shutdown = _both(on_agent_shutdown, on_shutdown)
 
     app = asgi_create_app(
         route_handlers=route_handlers,

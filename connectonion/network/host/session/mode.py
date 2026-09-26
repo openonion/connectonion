@@ -286,6 +286,7 @@ def claim_host_prompt(
     requester: dict | None,
     policy: HostPermissionPolicy | None,
     is_admin: bool,
+    force_read_only: bool = False,
 ) -> tuple[Session, bool]:
     """Atomically claim an idle session and return its prepared prompt state."""
 
@@ -320,6 +321,11 @@ def claim_host_prompt(
             session.pop("requester", None)
         if policy is not None:
             session = policy.normalized(session, is_admin=is_admin)
+        if force_read_only:
+            if policy is not None:
+                session = policy.apply(session, READ_ONLY, is_admin=is_admin)
+            else:
+                set_mode(session, READ_ONLY)
 
         now = time.time()
         metadata = dict(current.metadata) if current is not None else {}

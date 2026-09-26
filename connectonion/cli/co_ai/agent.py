@@ -36,6 +36,7 @@ from pathlib import Path
 
 from connectonion import Agent, ClaudeCodePlugin, CodexPlugin, TodoList, bash
 from connectonion.core.events import after_user_input
+from connectonion.core.mode import FULL_ACCESS, mode_of
 from connectonion.core.usage import DEFAULT_MODEL
 from connectonion.useful_plugins import (
     auto_compact,
@@ -46,6 +47,7 @@ from connectonion.useful_plugins import (
     runtime_input,
     subagents,
     tool_approval,
+    watch_events,
 )
 from connectonion.useful_plugins.skills import skills as skills_plugin
 from connectonion.useful_plugins.tool_approval.policy import (
@@ -59,10 +61,14 @@ from .skills import skill
 from .tools import (
     FileTools,
     ask_user,
+    cancel_watch,
     kill_task,
+    list_watches,
     load_guide,
     run_background,
     task_output,
+    watch_every,
+    watch_task,
 )
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
@@ -140,6 +146,10 @@ def create_agent(
         todo,
         skill,
         *([run_background, task_output, kill_task] if background_tools else []),
+        watch_task,
+        watch_every,
+        list_watches,
+        cancel_watch,
         load_guide,
         ask_user,
     ]
@@ -160,6 +170,15 @@ def create_agent(
     # so panels no longer share a page and 40 tool schemas leave the request.
     # image_result_formatter stays — it turns the screenshot path the CLI prints
     # back into an image the model and the user can actually see.
+    watch_agent = {}
+
+    def claim_watch_events():
+        current = watch_agent["agent"].current_session or {}
+        store = getattr(watch_agent["agent"], "_watch_store", None)
+        if store is None or mode_of(current) == FULL_ACCESS:
+            return []
+        return store.claim_iteration(current)
+
     plugins = [
         codex_plugin,
         claude_plugin,
@@ -175,6 +194,7 @@ def create_agent(
         full_access,
         image_result_formatter,
         runtime_input,
+        watch_events(claim_watch_events),
     ]
     agent = Agent(
         name=agent_name(co_dir),
@@ -187,6 +207,7 @@ def create_agent(
         co_dir=co_dir,
         state_dir=state_dir,
     )
+    watch_agent["agent"] = agent
     agent._delegation_workspace = Path.cwd().resolve()
     # This browser helper blocks on stdin, which is wrong for co ai's websocket
     # chat runtime. Use browser tools plus frontend-mediated user handoffs.
