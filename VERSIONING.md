@@ -375,16 +375,26 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b10
+## Current Version: 1.8.9b11
 
-1.8.9b10 improves the experimental Personal Wiki's first five-day onboarding
+1.8.9b11 improves the experimental Personal Wiki's first five-day onboarding
 pass (#1793): concise, scoped map progress; bounded owner investigation with
 explicit partial coverage; and an idempotent map after project investigation.
 The isolated end-to-end run and its quality limits are recorded in
 [the five-day acceptance report](docs/testing/wiki-onboarding-five-day-2026-09-26.md).
-Stable remains 1.8.8. See [1.8.9b10 notes](docs/releases/1.8.9b10.md).
+Stable remains 1.8.8. See [1.8.9b11 notes](docs/releases/1.8.9b11.md).
 
-- 1.8.9b10 (five-day Wiki onboarding progress and scope, bounded quick owner pass, project source-window disclosure, and idempotent map reruns.)
+- 1.8.9b11 (five-day Wiki onboarding progress and scope, bounded quick owner pass, project source-window disclosure, and idempotent map reruns.)
+
+Earlier in this line:
+
+1.8.9b10 makes the free, locally hosted `co/llama` the default managed text
+model and exposes `co/gemma` as another free choice. Credit errors name the
+free route so a session can continue. The default path and tool calling were
+exercised against oo-api v0.1.22 in production; audio transcription still uses
+Gemini. Stable remains 1.8.8. See [1.8.9b10 notes](docs/releases/1.8.9b10.md).
+
+- 1.8.9b10 (free `co/llama` managed default, `co/gemma` alternative, zero-cost pricing metadata, credit-error free-model tip, preserved Gemini audio transcription; live production completion and tool call verified.)
 
 Earlier in this line:
 

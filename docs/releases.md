@@ -22,14 +22,13 @@ python -m pip install --upgrade 'connectonion==1.8.8'
 
 ## Current preview
 
-Beta **1.8.9b9** lets a hosted Agent notice declared file, timer, and push
-events in a continuing session. Events observed during an active turn enter at
-Agent iteration boundaries through a copyable plugin. It includes the CLI help
-audit from b8. See [1.8.9b9 release notes](releases/1.8.9b9.md) for the
-scope and limits.
+Beta **1.8.9b11** makes the experimental Personal Wiki's first five-day map
+and investigation pass easier to follow and resume. It retains the free managed
+model defaults from b10 and the Host watcher work from b9. See
+[1.8.9b11 release notes](releases/1.8.9b11.md) for the scope and limits.
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.9b9'
+python -m pip install --upgrade 'connectonion==1.8.9b11'
 co --version
 ```
 
