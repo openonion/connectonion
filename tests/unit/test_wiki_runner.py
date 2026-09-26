@@ -32,6 +32,13 @@ def delegate(monkeypatch):
             import re
             path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
             path.write_text((Path(kw['cwd']).parent.parent / 'notes/old.md').read_text())
+        if argv[-1].startswith('/wiki-maintain'):
+            workspace = Path(kw['cwd'])
+            directory = max(workspace.glob('maintain-*'), key=lambda path: path.stat().st_mtime_ns)
+            items = json.loads((directory / 'material.json').read_text())
+            sources = sorted({item['source'] for item in items if item.get('source')})
+            (directory / 'completion.json').write_text(json.dumps({
+                'status': 'no_change', 'sources': sources, 'reason': 'No durable new fact.'}))
         return SimpleNamespace(returncode=0, stdout=json.dumps({
             "outcome": "natural", "result": "done", "usage": {"input_tokens": 13}}), stderr="")
 
@@ -70,8 +77,8 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
     assert options["timeout"] == seconds + (0 if harness == "coai" else 15)
     if harness != "coai":
         assert argv[argv.index("--timeout") + 1] == str(seconds)
-    # Every stage, not only investigation: all of them read source text a
-    # correspondent could have written, and none needs a shell or the network.
+    # Every stage, not only investigation, reads untrusted source text. Codex
+    # may use its sandboxed shell for local file operations, never the network.
     if harness == "claude-code":
         assert argv[argv.index("--permission-mode") + 1] == "acceptEdits"
     else:
@@ -183,6 +190,69 @@ def test_skill_composition_keeps_source_and_page_definition(notebook, delegate):
     text = next((notebook.root / ".state/tasks").glob("*/instructions.md")).read_text()
     assert "wiki-source-codex" in text and "# A person's page" in text
     assert "wiki_write" not in text and "wiki_people" not in text
+
+
+@pytest.mark.parametrize("scenario,accepted", [
+    ("refused_without_receipt", False),
+    ("wrong_source_receipt", False),
+    ("blocked_receipt", False),
+    ("reviewed_no_change", True),
+    ("local_page_update", True),
+])
+def test_offline_maintenance_benchmark(notebook, monkeypatch, scenario, accepted):
+    """Fixed local-file cases distinguish a completed turn from completed work."""
+    source = "codex:synthetic:1"
+
+    def simulated_agent(argv, **kw):
+        prompt = argv[-1]
+        task = next(Path(kw['cwd']).glob('maintain-*'))
+        assert 'no shell' not in prompt
+        assert 'local file reads and writes' in prompt
+        assert 'do not run commands, browse or search' not in prompt
+        material = json.loads((task / 'material-readable.json').read_text())
+        assert material[0]['source'] == source
+        if scenario == 'local_page_update':
+            page = task / 'notebook/notes/old.md'
+            page.write_text(page.read_text() + '\n\nA durable update.\n')
+        elif scenario != 'refused_without_receipt':
+            status = 'blocked' if scenario == 'blocked_receipt' else 'no_change'
+            sources = ['wrong:source'] if scenario == 'wrong_source_receipt' else [source]
+            (task / 'completion.json').write_text(json.dumps({
+                'status': status, 'sources': sources, 'reason': 'Reviewed; no durable change.'}))
+        return SimpleNamespace(returncode=0, stderr='', stdout=json.dumps({
+            'outcome': 'natural', 'result': 'done', 'usage': {'input_tokens': 23}}))
+
+    monkeypatch.setattr('connectonion.wiki.runner.subprocess.run', simulated_agent)
+    item = {'role': 'user', 'source': source, 'text': 'Synthetic maintenance input.'}
+    if accepted:
+        result = run_stage(notebook, [item], default_config())
+        assert bool(result['changed']) == (scenario == 'local_page_update')
+    else:
+        with pytest.raises(RunFailed, match='no accepted changes') as caught:
+            run_stage(notebook, [item], default_config())
+        assert caught.value.usage == {'input_tokens': 23}
+        assert 'A durable update' not in notebook.read('notes/old.md')
+
+
+def test_rejected_maintenance_page_cannot_be_disguised_as_no_change(notebook, monkeypatch):
+    notebook.stub_person('people/alice.md', 'Alice', [])
+    original = notebook.read('people/alice.md')
+
+    def simulated_agent(argv, **kw):
+        task = next(Path(kw['cwd']).glob('maintain-*'))
+        page = task / 'notebook/people/alice.md'
+        page.write_text('# Alice\n\n## Who they are\n- Unsourced claim. [1]\n')
+        (task / 'completion.json').write_text(json.dumps({
+            'status': 'no_change', 'sources': ['codex:synthetic:2'],
+            'reason': 'Nothing changed.'}))
+        return SimpleNamespace(returncode=0, stderr='', stdout=json.dumps({
+            'outcome': 'natural', 'result': 'done', 'usage': {'input_tokens': 17}}))
+
+    monkeypatch.setattr('connectonion.wiki.runner.subprocess.run', simulated_agent)
+    with pytest.raises(RunFailed, match='only rejected pages'):
+        run_stage(notebook, [{'role': 'user', 'source': 'codex:synthetic:2',
+                              'text': 'Synthetic update.'}], default_config())
+    assert notebook.read('people/alice.md') == original
 
 
 def test_one_bad_page_does_not_hold_back_the_rest_of_a_maintenance_batch(tmp_path):
