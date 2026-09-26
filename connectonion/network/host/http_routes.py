@@ -357,56 +357,22 @@ async def dispatch_http_route(
     identity = None
 
     if route.audience != "public":
-        from .auth import (
-            _authenticate_signed,
-            request_from_http_headers,
-            signature_already_used,
-        )
-        from .replay import ReplayProtectionError
+        from .auth import authenticate_http_request
 
-        try:
-            data = request_from_http_headers(
-                headers,
-                scope["method"],
-                scope["path"],
-                query=scope.get("query_string") or b"",
-                body=body,
-            )
-        except (TypeError, ValueError, UnicodeDecodeError):
-            await _send(send, HTTPResponse(
-                json.dumps({"error": "unauthorized: malformed signature headers"}),
-                status=401, media_type="application/json",
-            ))
-            return
-        if not data["payload"].get("request_id"):
-            await _send(send, HTTPResponse(
-                json.dumps({"error": "unauthorized: request id required"}),
-                status=401, media_type="application/json",
-            ))
-            return
-        _, identity, error = _authenticate_signed(
-            data, blacklist=blacklist, recipient_address=recipient_address,
+        identity, status, error = authenticate_http_request(
+            headers,
+            scope["method"],
+            scope["path"],
+            query=scope.get("query_string") or b"",
+            body=body,
+            blacklist=blacklist,
+            recipient_address=recipient_address,
+            replay_check=replay_check,
         )
         if error:
             await _send(send, HTTPResponse(
                 json.dumps({"error": error}),
-                status=403 if error.startswith("forbidden") else 401,
-                media_type="application/json",
-            ))
-            return
-        check_replay = replay_check or signature_already_used
-        try:
-            already_used = check_replay(data)
-        except ReplayProtectionError:
-            await _send(send, HTTPResponse(
-                json.dumps({"error": "misconfigured: replay protection unavailable"}),
-                status=503, media_type="application/json",
-            ))
-            return
-        if already_used:
-            await _send(send, HTTPResponse(
-                json.dumps({"error": "unauthorized: signature already used"}),
-                status=401, media_type="application/json",
+                status=status, media_type="application/json",
             ))
             return
 

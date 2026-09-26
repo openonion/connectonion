@@ -141,7 +141,9 @@ The example never executes instructions found inside a log.
 - Model not found: inspect `ollama list`, then explicitly pull/import the model.
 - Unsupported tools/schema: choose a compatible runtime/model or use plain text.
 - Context/output overflow: reduce the input chunk, adjust Ollama context or the
-  output limit. No automatic truncation/retry summary is performed.
+  output limit. A response cut at the output limit raises
+  `TruncatedResponseError` (still a `ValueError`); inside an agent run the model
+  is first told to shorten or split its reply and asked again.
 
 Network bounds use the same finite timeouts/retries as other providers.
 SDK status errors preserve runtime diagnostics; connection errors name the

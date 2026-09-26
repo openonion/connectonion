@@ -153,10 +153,36 @@ class MicrosoftCalendar:
             return {}
         return response.json()
 
+    def _confirmed_time(self, typed: str, converted: datetime) -> str:
+        """The time as the caller wrote it, when they said which zone they meant.
+
+        Same contract as GoogleCalendar (#1755): an input with an offset is
+        confirmed in that offset, so the line can be checked against what was
+        typed; a naive input was sent to Graph as UTC and is confirmed as UTC.
+        """
+        try:
+            original = _graph_datetime(str(typed))
+        except ValueError:
+            return self._format_datetime(converted.isoformat())
+        if original.tzinfo is None:
+            return self._format_datetime(converted.isoformat())
+        return self._format_datetime(original.isoformat())
+
     def _format_datetime(self, dt_str: str) -> str:
-        """Format datetime string to readable format."""
+        """A readable time that says which zone it is in.
+
+        Graph returns event times as bare wall clock in UTC (no Prefer:
+        outlook.timezone header is sent), and every event is written with
+        timeZone "UTC". Printed without a zone, a Sydney user read "Client call
+        06:00 AM" for a 4 pm meeting (#1755). Naive therefore means UTC here; a
+        value carrying its own offset keeps it.
+        """
         dt = _graph_datetime(dt_str)
-        return dt.strftime('%Y-%m-%d %I:%M %p')
+        shown = dt.strftime('%Y-%m-%d %I:%M %p')
+        if dt.tzinfo is None or dt.utcoffset() == timedelta(0):
+            return f"{shown} UTC"
+        offset = dt.strftime('%z')
+        return f"{shown} {offset[:3]}:{offset[3:]}"
 
     def _parse_time(self, time_str: str) -> datetime:
         """Parse a time as naive UTC: offsets are converted, naive means UTC.
@@ -365,7 +391,7 @@ class MicrosoftCalendar:
 
         created_event = self._request("POST", "/me/calendar/events", json=event)
 
-        return f"Event created: {title}\nStart: {self._format_datetime(start_dt.isoformat())}\nEvent ID: {created_event['id']}\nLink: {created_event.get('webLink', '')}"
+        return f"Event created: {title}\nStart: {self._confirmed_time(start_time, start_dt)}\nEvent ID: {created_event['id']}\nLink: {created_event.get('webLink', '')}"
 
     def create_teams_meeting(self, title: str, start_time: str, end_time: str,
                              attendees: str, description: str = None) -> str:
@@ -427,7 +453,7 @@ class MicrosoftCalendar:
                 'Microsoft accepted the request but returned no confirmed Teams link or usable event ID. '
                 'Inspect the calendar before retrying creation.', 'co outlook calendar list')
 
-        return f"Teams meeting created: {title}\nStart: {self._format_datetime(start_dt.isoformat())}\nTeams link: {meeting_url}\nEvent ID: {created_event['id']}"
+        return f"Teams meeting created: {title}\nStart: {self._confirmed_time(start_time, start_dt)}\nTeams link: {meeting_url}\nEvent ID: {created_event['id']}"
 
     def _require_teams_provider(self) -> None:
         """Refuse before the POST when this calendar cannot host Teams (#1719).
@@ -619,7 +645,8 @@ class MicrosoftCalendar:
         if not free_slots:
             return f"No free slots available on {date} for {duration_minutes} minute meetings."
 
-        return f"Free slots on {date} ({duration_minutes}+ minutes):\n" + "\n".join(f"  - {slot}" for slot in free_slots)
+        # The day is searched 09:00-17:00 UTC and the slots are UTC wall times.
+        return f"Free slots on {date} ({duration_minutes}+ minutes, times in UTC):\n" + "\n".join(f"  - {slot}" for slot in free_slots)
 
     def check_availability(self, datetime_str: str) -> str:
         """Check if a specific time is free.

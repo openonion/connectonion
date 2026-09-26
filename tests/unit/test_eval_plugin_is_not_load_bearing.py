@@ -7,19 +7,27 @@ sentence, and the run it was describing never happened.
 """
 
 import importlib
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
+
+from connectonion import Agent
+from connectonion.core.llm import OpenAICompatibleLLM
 
 # The package exports a plugin list under this name, which shadows the module.
 eval_plugin = importlib.import_module("connectonion.useful_plugins.eval")
 
 
-def make_agent(model="gemini-2.5-pro", prompt="整理合同"):
-    agent = MagicMock()
-    agent.model = model
+def make_agent(prompt="整理合同"):
+    # A real Agent: the fake this replaced had an `agent.model` a real one
+    # never has, which is how scoring went to co/ unnoticed (#1758).
+    def bash(command: str) -> str:
+        """Run a command."""
+        return ""
+
+    llm = OpenAICompatibleLLM(model="qwen3", base_url="http://localhost:11434/v1")
+    agent = Agent("t", llm=llm, tools=[bash], log=False, quiet=True)
     agent.current_session = {"user_prompt": prompt}
-    agent.tools.names.return_value = ["bash"]
     return agent
 
 
@@ -37,22 +45,12 @@ def test_a_refused_call_does_not_stop_the_turn():
 
 def test_the_call_follows_the_model_the_agent_was_built_with():
     """A hardcoded co/ model billed an account the agent was configured away from."""
-    agent = make_agent(model="gemini-2.5-pro")
-
-    with patch.object(eval_plugin, "llm_do", return_value="ok") as called:
-        eval_plugin.generate_expected(agent)
-
-    assert called.call_args.kwargs["model"] == "gemini-2.5-pro"
-
-
-def test_an_agent_with_no_model_still_has_a_default():
     agent = make_agent()
-    del agent.model
 
     with patch.object(eval_plugin, "llm_do", return_value="ok") as called:
         eval_plugin.generate_expected(agent)
 
-    assert called.call_args.kwargs["model"]
+    assert called.call_args.kwargs["llm"] is agent.llm
 
 
 def test_a_working_call_is_still_stored():

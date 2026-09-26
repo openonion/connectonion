@@ -21,6 +21,7 @@ def make_llm(response):
 def test_complete_passes_combined_system_prompt():
     response = SimpleNamespace(
         content=[SimpleNamespace(type="text", text="ok")],
+        stop_reason="end_turn",
         usage=SimpleNamespace(input_tokens=1, output_tokens=1),
     )
     llm = make_llm(response)
@@ -41,6 +42,7 @@ def test_complete_passes_combined_system_prompt():
 def test_complete_omits_system_parameter_when_absent():
     response = SimpleNamespace(
         content=[SimpleNamespace(type="text", text="ok")],
+        stop_reason="end_turn",
         usage=SimpleNamespace(input_tokens=1, output_tokens=1),
     )
     llm = make_llm(response)
@@ -58,7 +60,9 @@ def test_structured_complete_passes_system_prompt():
                 name="return_structured_output",
                 input={"value": "ok"},
             )
-        ]
+        ],
+        stop_reason="tool_use",
+        usage=SimpleNamespace(input_tokens=1, output_tokens=1),
     )
     llm = make_llm(response)
 

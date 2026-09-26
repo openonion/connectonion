@@ -10,6 +10,7 @@ LLM-Note:
 """
 
 import base64
+import contextvars
 import os
 import time
 from contextlib import suppress
@@ -20,6 +21,7 @@ from uuid import uuid4
 from ..logger import Logger
 from ..prompts import load_system_prompt
 from .events import EventHandler
+from .exceptions import TruncatedResponseError
 from .interrupt import InterruptibleStepTimeout, run_interruptible
 from .llm import LLM, TokenUsage, create_llm
 from .mode import FULL_ACCESS, full_access_turns_left, mode_of, set_mode
@@ -29,6 +31,25 @@ from .tool_factory import create_tool_from_function, extract_methods_from_instan
 from .tool_registry import ToolRegistry
 from .usage import DEFAULT_MODEL, get_context_limit, turn_usage_from_trace
 from .wire_events import normalize_wire_event
+
+# The agent whose input() is running in this context, so an llm_do made by a
+# plugin or tool during the run can put its cost on that agent (#730). A
+# ContextVar rather than an attribute because agents nest (a tool can run a
+# sub-agent) and each run must see its own; run_interruptible copies the
+# context into its worker thread so tools see it too.
+_RUNNING_AGENT: contextvars.ContextVar = contextvars.ContextVar(
+    "connectonion_running_agent", default=None)
+
+# How many times one turn tells the model its response was cut off at the
+# output limit and asks it to shorten or split, before failing the turn (#1758).
+_TRUNCATED_RETRIES = 2
+
+
+def record_side_call(model: str, usage: Optional[TokenUsage], status: str = "success") -> None:
+    """Count an llm_do call against the agent running in this context, if any."""
+    agent = _RUNNING_AGENT.get()
+    if agent is not None and usage is not None:
+        agent._record_side_call(model, usage, status)
 
 _REMOVED_MODE_FIELDS = {
     "approval_profile",
@@ -401,6 +422,7 @@ class Agent:
         self.current_session['user_prompt'] = prompt  # Store user prompt for xray/debugging
         turn_start = time.time()
         turn_trace_start = len(self.current_session['trace'])
+        running = _RUNNING_AGENT.set(self)
 
         try:
             if start_logger_session:
@@ -512,6 +534,7 @@ class Agent:
             with suppress(Exception):
                 self._drain_completed_turn_interrupt(reason)
         except BaseException as error:
+            _RUNNING_AGENT.reset(running)
             # Outcome streaming must not replace the exception that ended the
             # turn. _record_trace appends before sending, so a failing adapter
             # still leaves the local terminal entry available.
@@ -523,6 +546,7 @@ class Agent:
                 )
             raise
 
+        _RUNNING_AGENT.reset(running)
         self._record_turn_result(reason=reason, trace_start=turn_trace_start)
 
         # Calculate duration
@@ -661,6 +685,7 @@ class Agent:
         provider_settlement_required = False
         provider_timeout_retries = 0
         provider_tool_retries = 0
+        truncated_retries = 0
         while self.current_session['iteration'] < max_iterations:
             self.current_session['iteration'] += 1
 
@@ -705,6 +730,25 @@ class Agent:
                 raise TimeoutError(
                     "LLM did not settle native provider tool results after one bounded retry"
                 ) from error
+            except TruncatedResponseError as error:
+                # Its cost is already on total_cost and the trace. Half an
+                # answer is not an answer, and a tool call cut mid-JSON cannot
+                # be run, so neither is kept: the model is told why and asked
+                # again. It fails the turn only if it keeps running out (#1758).
+                if truncated_retries >= _TRUNCATED_RETRIES:
+                    raise
+                from ..useful_plugins.system_reminder import reminder_message
+
+                spent = f" after {error.usage.output_tokens} tokens" if error.usage else ""
+                self.current_session['messages'].append(reminder_message(
+                    f"Your previous response was cut off at the output limit{spent} "
+                    "and was discarded, including any tool call in it. Reply more "
+                    "briefly, or split the work into smaller steps: for example, "
+                    "write a long file in several smaller tool calls."
+                ))
+                truncated_retries += 1
+                max_iterations += 1
+                continue
 
             if response is not None:
                 if not response.tool_calls:
@@ -877,6 +921,21 @@ class Agent:
                 'error_type': 'TimeoutError',
             })
             raise
+        except TruncatedResponseError as error:
+            if error.usage:
+                self.last_usage = error.usage
+                self.total_cost += error.usage.cost
+            self._record_trace({
+                'type': 'llm_result',
+                'id': llm_id,
+                'model': self.llm.model,
+                'iteration': self.current_session['iteration'],
+                'duration_ms': (time.time() - start) * 1000,
+                'usage': error.usage.model_dump(exclude_none=True) if error.usage else None,
+                'status': 'truncated',
+                'finish_reason': error.reason,
+            })
+            raise
         duration = (time.time() - start) * 1000  # milliseconds
 
         if interrupted:
@@ -931,6 +990,25 @@ class Agent:
         self.logger.log_llm_response(self.llm.model, duration, len(response.tool_calls), response.usage, self.context_percent)
 
         return response
+
+    def _record_side_call(self, model: str, usage: TokenUsage, status: str) -> None:
+        """Put an llm_do made during this run on total_cost and the trace.
+
+        Recorded as an `llm_result` so turn usage and totals_from_trace, which
+        sum those, include it; `source` tells it apart from the agent's own
+        calls. last_usage is left alone: it measures this conversation's
+        context, and a side call's prompt is not this conversation.
+        """
+        self.total_cost += usage.cost
+        self._record_trace({
+            'type': 'llm_result',
+            'id': self._next_trace_id(),
+            'source': 'llm_do',
+            'model': model,
+            'iteration': (self.current_session or {}).get('iteration'),
+            'usage': usage.model_dump(exclude_none=True),
+            'status': status,
+        })
 
     def _execute_and_record_tools(self, tool_calls):
         """Execute requested tools and update conversation messages."""

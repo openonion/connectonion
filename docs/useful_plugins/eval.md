@@ -25,6 +25,10 @@ agent.input("Search for Python docs")
 # ✓ Task completed successfully
 ```
 
+Scoring calls use the agent's own model (`agent.llm`): an agent on
+`ollama/qwen3` or a direct provider key is scored by that model, and the cost of
+scoring is included in `agent.total_cost`.
+
 ## How It Works
 
 The plugin hooks into two lifecycle events:

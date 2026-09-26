@@ -331,7 +331,22 @@ def _approve_claude_permission(event: dict, agent, workspace: Path) -> bool:
         "allowSession": False,
         "files": [target.name],
     }
-    return bool(io.request_approval(
+    # The Work Room presents an approval only while its provider invocation is
+    # waiting. Keep that lifecycle in step with the Hook's blocking request.
+    from ..plugins.coding_agents import _emit
+
+    lifecycle = {
+        "invocationId": f"claude_code:{parent}",
+        "parentToolCallId": parent,
+        "provider": "claude_code",
+        "providerDisplayName": "Claude Code",
+    }
+    _emit(
+        agent, "provider_invocation", **lifecycle,
+        status="awaiting_approval",
+        currentSummary=provider_status_summary("awaiting_approval"),
+    )
+    approved = bool(io.request_approval(
         "claude_code",
         {"action": presentation["action"], "scope": presentation["scope"],
          "reason": presentation["reason"]},
@@ -342,6 +357,11 @@ def _approve_claude_permission(event: dict, agent, workspace: Path) -> bool:
             "providerApproval": presentation,
         },
     ))
+    _emit(
+        agent, "provider_invocation", **lifecycle,
+        status="running", currentSummary=provider_status_summary("running"),
+    )
+    return approved
 
 
 def run_interactive_claude(
