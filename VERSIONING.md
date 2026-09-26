@@ -375,7 +375,21 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b5
+## Current Version: 1.8.9b6
+
+1.8.9b6 is an opt-in preview for subscribed skills and browser task syntax
+(#1785, #1786). Subscriptions now reconcile withdrawn skills, preserve the
+subscriber's own paths, verify and mirror published companion files, and expose
+mirrored skills to `co ai`. Natural-language browser tasks use
+`co browser "<instruction>"` without the `do` verb. The companion-file relay
+change must be deployed before this SDK preview is published. Stable remains
+1.8.8. See [1.8.9b6 notes](docs/releases/1.8.9b6.md).
+
+- 1.8.9b6 (subscription reconciliation and signed companion files; browser task syntax without `do`.)
+
+Earlier in this line:
+
+## Previous preview: 1.8.9b5
 
 1.8.9b5 is an opt-in Claude Station reliability preview. A browser approval
 used to reach OIP while its provider invocation still said `running`, leaving
