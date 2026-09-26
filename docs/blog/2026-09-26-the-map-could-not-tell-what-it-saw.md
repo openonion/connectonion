@@ -1,0 +1,7 @@
+# The map could not tell what it saw
+
+`co wiki init` could return a map of people, organizations, projects, and skills, but the person waiting for it had no indication that it was still scanning. At the end, a correspondent count looked like an answer about the mailbox even though each seven-day request was capped at 200 messages. Once the scan finished, the individual source pointers were gone; the next investigation would have to enumerate them again.
+
+The fix starts with the distinction between *observed* and *total*. The initializer now records each fetched mail header pointer and each accepted local session pointer in a private JSONL snapshot, alongside a Markdown inventory that names the time window and marks every cap-hit window as possibly truncated. It never copies message bodies or session transcripts into this snapshot. The files live in `.state`, outside the reader, and an init rerun replaces the snapshot while retaining edited pages.
+
+Progress appears as the work happens: skills, each mail window, projects, and the final map count. A failed provider still leaves the local map and its coverage evidence. This makes the first run legible without spending a model call, and gives later investigation a basis to decide what was actually seen. A bounded model-powered onboarding pass is a separate decision: the CLI can count its own calls, but it cannot pretend to know the remaining percentage of a user's provider subscription.

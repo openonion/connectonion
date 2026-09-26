@@ -294,13 +294,19 @@ def test_init_builds_all_maps_without_model_or_investigation(tmp_path, monkeypat
     assert data['phase'] == 'mapped' and data['investigation'] == 'not started'
     for record in ('notes/people-map.md', 'notes/projects-map.md', 'notes/orgs-map.md', 'skills/catalog/index.md'):
         assert (tmp_path / record).is_file()
+    assert (tmp_path / '.state/source-inventory.md').is_file()
+    assert (tmp_path / '.state/source-inventory.jsonl').is_file()
+    plain = invoke(tmp_path, 'init', '--skills-dir', str(empty))
+    assert plain.exit_code == 0, plain.output
+    assert '[wiki init] Skills:' in plain.output
+    assert '[wiki init] Map saved:' in plain.output
 
 
 def test_init_asks_whether_a_write_only_address_is_the_owner_s_own(tmp_path, monkeypatch):
     """The question is useless without the command that answers it, and the command
     is useless if it forgets the root the user chose (#1635)."""
     monkeypatch.setattr('connectonion.wiki.service.subscriptions', lambda root: {})
-    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: ([
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a, **kw: ([
         {'name': 'openonion ai', 'address': 'aaronplus1996@gmail.com', 'mails': 106, 'sent': 106,
          'received': 0, 'one_way': True, 'first': '2026-06-25', 'last': '2026-09-23', 'boxes': ['gmail']}], set()))
     empty = tmp_path / 'empty-skills'

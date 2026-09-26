@@ -224,7 +224,10 @@ def make_wiki_app(factory):
             failed = {row["source"]: row["error"] for row in errors}
             result = build_map(root, sources, clients, days=days,
                                skill_directories=skills_dir or None, mine=mine, source_errors=errors,
-                               absent=_absent_mail(selected, available, failed, sources, bool(mail)), name=name)
+                               absent=_absent_mail(selected, available, failed, sources, bool(mail)), name=name,
+                               capture_sources=True,
+                               progress=(None if ctx.obj["json"] else
+                                         lambda message: typer.echo("[wiki init] " + message, err=True)))
             tips = []
             for kind, provider in (("gmail", "google"), ("outlook", "microsoft")):
                 if kind not in available:

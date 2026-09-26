@@ -55,7 +55,8 @@ def _display_name(row: dict, address: str) -> str:
     return ""
 
 
-def scan_people(clients: dict, days: int, own_addresses: set, progress=None) -> list[dict]:
+def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
+                on_row=None, on_window=None) -> list[dict]:
     """Every correspondent across every mailbox, with the signals a Skill ranks by."""
     mine = {a.lower() for a in own_addresses}
     for client in clients.values():
@@ -69,7 +70,12 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None) -> 
         cursor = start
         while cursor < end:
             stop = min(cursor + timedelta(days=7), end)
-            for row in client.list_between(cursor.isoformat(), stop.isoformat(), 200) or []:
+            if on_window:
+                on_window(kind, cursor.isoformat(), stop.isoformat(), None, 200)
+            rows = client.list_between(cursor.isoformat(), stop.isoformat(), 200) or []
+            for row in rows:
+                if on_row:
+                    on_row(kind, row)
                 who = correspondent(row, mine)
                 if "@" not in who or who in mine:
                     continue
@@ -89,6 +95,8 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None) -> 
                     entry["subjects"][subject] += 1
             if progress:
                 progress(kind, stop, len(people))
+            if on_window:
+                on_window(kind, cursor.isoformat(), stop.isoformat(), len(rows), 200)
             cursor = stop
     out = []
     for address, e in people.items():
@@ -133,7 +141,8 @@ def project_exclusion(path: Path) -> str:
     return ""
 
 
-def scan_projects(subscriptions: dict, days: int, wiki_root: Path | None = None) -> list[dict]:
+def scan_projects(subscriptions: dict, days: int, wiki_root: Path | None = None,
+                  on_session=None) -> list[dict]:
     """Every `cwd` a coding session ran in, with how often and how recently."""
     since = datetime.now(timezone.utc) - timedelta(days=days)
     projects = collections.defaultdict(lambda: {"sessions": 0, "first": "", "last": "", "tools": set()})
@@ -158,6 +167,8 @@ def scan_projects(subscriptions: dict, days: int, wiki_root: Path | None = None)
                 continue
             if wiki_root and Path(cwd).resolve().is_relative_to(wiki_root.resolve()):
                 continue
+            if on_session:
+                on_session(name, path, stamp, cwd)
             entry = projects[cwd]
             entry["sessions"] += 1
             entry["tools"].add(kind)

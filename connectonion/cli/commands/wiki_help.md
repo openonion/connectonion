@@ -55,8 +55,11 @@ Example:  co wiki init --days 90 --name "Aaron Xie" --mine aaron@mail.openonion.
 Inputs:   Connected mailboxes (co auth google, co auth microsoft) and local Codex /
           Claude Code sessions. --mine adds an address that is yours; init also lists
           addresses that look like yours and prints the --mine command for each.
-Output:   Pages under ~/.co/wiki (or --root). A summary of what was read, what was
-          skipped and why, and the pages created. Re-running keeps anything written.
+Output:   Pages under ~/.co/wiki (or --root), with progress on stderr and a private
+          .state/source-inventory.md summary plus .jsonl metadata pointers. Mail
+          counts are observed within the selected window, never lifetime totals;
+          a seven-day window may be capped at 200 messages. Re-running preserves
+          page prose and replaces the inventory snapshot rather than duplicating it.
 Effects:  Writes pages. Reads mail headers. No model, no cost, no schedule.
 Takes:    About 10 minutes for 90 days of two mailboxes.
 
