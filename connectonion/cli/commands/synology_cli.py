@@ -305,7 +305,7 @@ def share_create(path:str=typer.Argument(...),expires:Optional[str]=typer.Option
 
 @command(share_app,'list','co syno share list --limit 20',
          'List your sharing links with their ID, file path, expiry, password protection and status on the NAS. Read-only. '
-         'The link URLs are hidden unless --show-url, since anyone holding one can use it.')
+         'The link URLs are hidden unless --show-url, since anyone holding one can open it (a password-protected link also needs its password).')
 def share_list(limit:int=typer.Option(20,'--limit','--last','-n',min=1,max=1000),cursor:Optional[str]=typer.Option(None,'--cursor'),
                show_url:bool=typer.Option(False,'--show-url')):
     def run(o):

@@ -55,9 +55,10 @@ NOT_COMMANDS = re.compile(r"option|argument|flag|example|environment|usage|learn
 # argparse lists subcommands as `{init,run,list}`.
 BRACES = re.compile(r"\{([a-z][a-z0-9_-]*(?:,[a-z][a-z0-9_-]*)+)\}")
 USAGE = re.compile(r"^\s*usage\b", re.I | re.M)
-# A real home directory or a full 40-hex address in an example is someone's
-# data, not a placeholder. Narrow on purpose: NAS paths and chat ids are fine.
-PRIVATE = re.compile(r"/Users/[a-z][\w.-]*/|/home/[a-z][\w.-]*/[\w.-]+/|\b0x[0-9a-fA-F]{40}\b")
+# A real home directory or a full address in an example is someone's data, not
+# a placeholder: 0x plus 64 hex is a ConnectOnion address, 40 hex an Ethereum
+# one. Narrow on purpose: NAS paths, chat ids and `0x3f5a...c9e1` are fine.
+PRIVATE = re.compile(r"/Users/[a-z][\w.-]*/|/home/[a-z][\w.-]*/[\w.-]+/|\b0x(?:[0-9a-fA-F]{64}|[0-9a-fA-F]{40})\b")
 MAX_PAGES = 600
 FIXES = {
     "prints": "`--help` (or -h) must print help and exit 0",

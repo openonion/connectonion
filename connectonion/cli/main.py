@@ -1204,7 +1204,9 @@ def skills_link(
 
 # Trust command group
 # A made-up address of the real length (0x + 64 hex), so an example reads like one you would paste.
-EXAMPLE_ADDRESS = "0xbebca25107531133ae7769b44a4c8de4b65fcbad5816e7ea6b628949f5baeb63"
+# Shortened on purpose: a full 64-hex address in help reads as a real one, and
+# could be one. `co trust list` prints the full address to paste.
+EXAMPLE_ADDRESS = "0x3f5a...c9e1"
 trust_app = _typer_app(
     help="Who may call your agent: contacts, whitelist, blocklist and admins, kept in this project's .co/. "
          "trust='careful' admits contacts and the whitelist; trust='strict' admits only the whitelist.",

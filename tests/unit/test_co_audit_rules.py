@@ -48,6 +48,9 @@ def test_each_rule_fails_the_page_it_is_for():
     assert rules(GOOD.replace(" Example:  co mail send you@example.com --cc boss@example.com", "")) == {"example"}
     assert rules(GOOD.replace("--cc boss", "--bcc boss")) == {"flags"}
     assert rules(GOOD.replace("you@example.com", "/Users/aaron/notes.txt")) == {"private"}
+    full_address = "0x" + "3f5a" * 16
+    assert rules(GOOD.replace("you@example.com", full_address)) == {"private"}
+    assert rules(GOOD.replace("you@example.com", "0x3f5a...c9e1")) == set()
 
 
 def test_an_example_for_another_command_is_caught():
