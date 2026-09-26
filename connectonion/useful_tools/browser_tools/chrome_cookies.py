@@ -132,15 +132,32 @@ def _rows(connection) -> List[ChromeCookie]:
 
 
 def keychain_password() -> bytes:
-    """The "Chrome Safe Storage" secret, which is what Chrome derives its cookie key from."""
-    result = subprocess.run(
-        ["security", "find-generic-password", "-w", "-s", "Chrome Safe Storage", "-a", "Chrome"],
-        capture_output=True, timeout=120,
-    )
+    """The "Chrome Safe Storage" secret, which is what Chrome derives its cookie key from.
+
+    `security` blocks on a macOS dialog. Nobody at the screen (an unattended
+    run, a remote shell) used to end in a TimeoutExpired traceback; an unanswered
+    or denied dialog is an ordinary outcome and gets a sentence, not a stack.
+    """
+    try:
+        result = subprocess.run(
+            ["security", "find-generic-password", "-w", "-s", "Chrome Safe Storage", "-a", "Chrome"],
+            capture_output=True, timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        raise ChromeImportError(
+            "The Keychain dialog was not answered within 120 seconds. Nothing was written. "
+            "Rerun the import at this Mac's screen and choose Allow "
+            "(or Always Allow, to not be asked again).") from None
     if result.returncode != 0:
-        raise ChromeImportError("could not read \"Chrome Safe Storage\" from the Keychain "
-                                "(the dialog was denied, or Chrome has never run here). "
-                                "Run the import again and choose Allow.")
+        detail = (result.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+        if "could not be found" in " ".join(detail):
+            why = "there is no \"Chrome Safe Storage\" item in the Keychain (has Chrome run on this Mac?)"
+        else:
+            why = "the Keychain dialog was denied or cancelled"
+        raise ChromeImportError(
+            f"Could not read the Chrome cookie key: {why}. Nothing was written. "
+            "Rerun the import at this Mac's screen and choose Allow "
+            "(or Always Allow, to not be asked again).")
     return result.stdout.strip()
 
 

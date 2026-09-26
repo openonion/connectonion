@@ -117,10 +117,33 @@ def test_the_keychain_is_asked_for_chromes_own_item(monkeypatch):
     assert calls == [["security", "find-generic-password", "-w", "-s", "Chrome Safe Storage", "-a", "Chrome"]]
 
 
-def test_a_denied_keychain_dialog_says_what_to_do(monkeypatch):
-    class Denied:
-        returncode, stdout = 51, b""
+def _security_exits(monkeypatch, code, stderr):
+    class Result:
+        returncode, stdout = code, b""
 
-    monkeypatch.setattr(chrome.subprocess, "run", lambda argv, **kw: Denied())
-    with pytest.raises(chrome.ChromeImportError, match="choose Allow"):
+    Result.stderr = stderr
+    monkeypatch.setattr(chrome.subprocess, "run", lambda argv, **kw: Result())
+
+
+def test_a_denied_keychain_dialog_says_what_to_do(monkeypatch):
+    _security_exits(monkeypatch, 128, b"security: SecKeychainSearchCopyNext: User canceled the operation.\n")
+    with pytest.raises(chrome.ChromeImportError, match="denied or cancelled.*Nothing was written.*Allow"):
+        chrome.keychain_password()
+
+
+def test_a_missing_keychain_item_says_so(monkeypatch):
+    _security_exits(monkeypatch, 44, b"security: SecKeychainSearchCopyNext: The specified item "
+                                     b"could not be found in the keychain.\n")
+    with pytest.raises(chrome.ChromeImportError, match="no \"Chrome Safe Storage\" item.*Nothing was written"):
+        chrome.keychain_password()
+
+
+def test_an_unanswered_keychain_dialog_is_a_sentence_not_a_traceback(monkeypatch):
+    """Live test, 2026-09-26: nobody at the screen, and the import died with
+    TimeoutExpired after 120 seconds."""
+    def times_out(argv, **kw):
+        raise chrome.subprocess.TimeoutExpired(argv, kw.get("timeout"))
+
+    monkeypatch.setattr(chrome.subprocess, "run", times_out)
+    with pytest.raises(chrome.ChromeImportError, match="not answered.*Nothing was written.*Always Allow"):
         chrome.keychain_password()

@@ -202,3 +202,16 @@ def test_co_browser_import_help_is_its_own_page():
     assert result.exit_code == 0
     assert "co browser import — carry your Chrome logins" in result.output
     assert "Back: co browser --help" in result.output
+
+
+def test_an_unanswered_keychain_dialog_exits_1_and_writes_nothing(chrome_home, daemon, capsys, monkeypatch):
+    def no_answer():
+        raise chrome.ChromeImportError("The Keychain dialog was not answered within 120 seconds, "
+                                       "so nothing was written.")
+
+    monkeypatch.setattr(chrome, "keychain_password", no_answer)
+    code, text = run(capsys, "--domain", "github.com", "--yes")
+
+    assert code == 1
+    assert daemon.lines == []
+    assert "not answered" in text and "Traceback" not in text
