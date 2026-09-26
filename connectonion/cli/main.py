@@ -458,7 +458,38 @@ def _closes_only(args: List[str]) -> bool:
     return bool(verb) and (verb[0] == "close" or verb[:2] == ["tab", "close"])
 
 
-@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+def _browser_verb(args: List[str]) -> Optional[str]:
+    """The first word after `co browser` that is not one of its own options."""
+    skip_next = False
+    for token in args:
+        if skip_next:
+            skip_next = False
+        elif token == "--engine":
+            skip_next = True
+        elif not token.startswith("-"):
+            return token
+    return None
+
+
+class _BrowserCommand(typer.core.TyperCommand):
+    """`co browser import --help` shows the import page, not the browser's.
+
+    `co browser` is one command whose verbs are free-form arguments, so Click
+    answers every `--help` with the browser page before the handler runs. A
+    command whose job is to read a Keychain and write logins deserves its own
+    page, reachable the way every other page is.
+    """
+
+    def parse_args(self, ctx, args):
+        if _browser_verb(args) == "import" and any(t in ("--help", "-h") for t in args):
+            from .commands.browser_import import IMPORT_HELP
+            print(IMPORT_HELP)
+            ctx.exit(0)
+        return super().parse_args(ctx, args)
+
+
+@app.command(cls=_BrowserCommand,
+             context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
              epilog='Example:  co browser go_to example.com  |  co browser do "find the pricing page"')
 def browser(
     headless: Optional[bool] = typer.Option(
@@ -479,7 +510,7 @@ def browser(
     use `do` for the AI agent (co browser do "..."), or `co browser help` to list functions.
 
     Also: -t TAB to target your own tab · tab open|ls|close · status · network ·
-    cookies · close. `co browser help` shows how to use each one."""
+    cookies · close · import (Chrome logins into this browser). `co browser help` shows how to use each one."""
     # `config` is a setting, not a browser verb: it must not reach the daemon
     # or start anything, so it is answered before the engine is resolved.
     if args and args[0] == "config":
@@ -506,6 +537,11 @@ def browser(
         print("Give it a virtual one:  xvfb-run -a co browser --no-headless <command>")
         print("Or accept headless:     co browser <command>")
         raise typer.Exit(2)
+    if args and args[0] == "import":
+        # Resolved by the import itself: with no --engine it means the paid
+        # engine, where `effective_mode` would mean free Chrome.
+        from .commands.browser_import import handle_browser_import
+        raise typer.Exit(handle_browser_import(args[1:], engine=engine, headless=bool(headless)))
     try:
         mode = effective_mode(engine)
     except ValueError as error:

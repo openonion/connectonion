@@ -26,6 +26,7 @@ USAGE = (
     "  co browser tab close <NAME>              release your tab when the task is done\n"
     "  co browser -t TAB network requests|request <n>|har start|har stop [FILE]   what the tab sent; HAR\n"
     "  co browser -t TAB cookies [set|clear|save|load] [--all] [--raw]   the tab's site cookies\n"
+    "  co browser import [--domain SITE] [--dry-run]   carry Chrome's logins (cookies) into this browser\n"
     "  co browser status                        open or not, engine, last command, the tab board\n"
     "  co browser close                         close the browser and stop the daemon\n"
     "  co browser install-onion                  install the onionwright driver (--engine wtf does this for you)\n"
@@ -54,6 +55,7 @@ TIPS = [
     "List every function you can call directly:  co browser help",
     "Run without a visible window:  co browser --headless <function>",
     "The browser stays open between commands, one shared session, until you run:  co browser close",
+    "Already signed in to a site in Chrome? Carry it over:  co browser import --domain <site> --dry-run",
 ]
 
 
