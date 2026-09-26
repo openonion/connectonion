@@ -1,16 +1,16 @@
 """
 Purpose: `co sub` — record a subscription relationship to a published agent, mirror their public skills locally, and fan out to every coding agent on this machine.
 LLM-Note:
-  Dependencies: imports from [json, re, shutil, pathlib, httpx, rich.console, rich.table, .fanout] | imported by [cli/main.py via handle_sub_sync_one/sync_all/list/remove] | tested by [tests/unit/test_sub_commands.py, tests/cli/test_cli_sub.py]
+  Dependencies: imports from [json, base64, binascii, os, re, shutil, tempfile, pathlib, httpx, rich.console, rich.table, .fanout] | imported by [cli/main.py via handle_sub_sync_one/sync_all/list/remove] | tested by [tests/unit/test_sub_commands.py, tests/cli/test_cli_sub.py]
   Data flow:
-    sync_one(target, relay?) → validate/pin 0x publisher address → lock its durable local freshness watermark → GET signed profile metadata + every published body → reconstruct the exact profile and verify its Ed25519 profile-v2 signature + monotonic revision before filesystem writes → advance watermark → strip remote tools grants → mirror under ~/.co/subs/<alias>/ → record subscription → fan out to coding agents
-    sync_all(relay?) → walks ~/.co/subscriptions.txt, calls sync_one per entry, tolerates per-publisher failures, prints summary (ok/failed counts)
-    list() → reads ~/.co/subscriptions.txt + ~/.co/subs/<alias>/agent.json → Rich table with alias, full address, version, skill count
+    sync_one(target, relay?) → validate/pin 0x publisher address → lock its durable local freshness watermark → GET signed profile metadata + every published body and companion files → reconstruct the exact profile and verify its Ed25519 profile-v2 signature + monotonic revision before filesystem writes → advance watermark → strip remote tools grants → stage and replace ~/.co/subs/<alias>/ → reconcile owned fan-out paths → record subscription
+    sync_all(relay?) → walks ~/.co/subscriptions.txt, calls sync_one per entry, stops on the first failure
+    list() → reads ~/.co/subscriptions.txt + ~/.co/subs/<alias>/agent.json → Rich table with alias, full address, version, listed/mirrored counts and installed counts
     remove(target) → match by address or alias → fanout.uninstall_all() drops every per-tool install → rmtree ~/.co/subs/<alias>/ → rewrite subscriptions.txt without the line
-  State/Effects: writes ~/.co/subscriptions.txt | writes ~/.co/subs/<alias>/agent.json + skills/<name>/SKILL.md | symlinks/files under ~/.<tool>/ via fanout | one synchronous httpx.get per profile + per skill body (no auth, no cache)
+  State/Effects: atomically writes ~/.co/subscriptions.txt | stages ~/.co/subs/<alias>/agent.json + skills/<name>/SKILL.md and signed companion files before replacing the previous mirror | symlinks/files under ~/.<tool>/ via fanout | one synchronous httpx.get per profile + per skill body (no auth, no cache)
   Integration: exposes handle_sub_sync_one(target, relay=None), handle_sub_sync_all(relay=None), handle_sub_list(), handle_sub_remove(target) called from cli/main.py's `sub` typer group | module-level CO_HOME, SUBS_DIR, SUBS_LIST are monkeypatched by tests | httpx.get is the seam tests stub
   Performance: 1 + N HTTP GETs per subscribe (1 profile + 1 per skill body) | linear file I/O for mirror | idempotent (re-subscribe overwrites bundle, dedupes the line)
-  Errors: SystemExit(1) when target isn't a 0x address and isn't a locally-pinned alias (aliases are mutable; first-time subscriptions require an address) | raise_for_status() bubbles network errors | missing skill body raises (relay should never return 404 for a name listed in profile)
+  Errors: SystemExit(1) when target isn't a 0x address and isn't a locally-pinned alias (aliases are mutable; first-time subscriptions require an address) | raise_for_status() bubbles network errors | an announced but unpublished body is skipped; a signed body or companion file that changes in transit fails signature verification before mirroring
 
 Subscription persistence:
   ~/.co/subscriptions.txt — flat list, one `<address> <alias>` per line, `#` comments allowed.
@@ -18,7 +18,7 @@ Subscription persistence:
 
 Relay endpoints consumed (v1):
   GET /api/agents/{address}/profile       - {profile: {alias, bio, version, skills:[{name, description}, ...]}}
-  GET /api/agents/{address}/skills/{name} - JSON {body: "..."} or raw markdown depending on Content-Type
+  GET /api/agents/{address}/skills/{name} - JSON {body: "...", files?: {path: base64}}
 
 Security: profile metadata and every mirrored body must verify against the pinned publisher address before anything is written. Legacy unsigned profiles remain discoverable but are not installable.
 ⚠️ No alias→address resolver on relay — aliases are dangerous (mutable), so first-time subs require 0x address.

@@ -302,6 +302,7 @@ def test_publisher_alias_change_keeps_pinned_local_install_name(
 
 
 def test_failed_staging_keeps_previous_mirror(isolated_home, monkeypatch):
+    (isolated_home / ".codex").mkdir()
     _profile_relay(monkeypatch, alias="alice", revision=1, bodies={"alpha": ALPHA_BODY})
     sub.handle_sub_sync_one(ADDR)
     _profile_relay(monkeypatch, alias="alice", revision=2, bodies={"alpha": "new"})
@@ -312,3 +313,5 @@ def test_failed_staging_keeps_previous_mirror(isolated_home, monkeypatch):
         sub.handle_sub_sync_one(ADDR)
     skill = isolated_home / ".co" / "subs" / "alice" / "skills" / "alpha" / "SKILL.md"
     assert skill.read_text() == ALPHA_BODY
+    installed = isolated_home / ".codex" / "skills" / "alice-alpha" / "SKILL.md"
+    assert installed.read_text() == ALPHA_BODY
