@@ -238,6 +238,7 @@ class TestGroqLLMStructuredComplete:
 
         mock_response = Mock()
         mock_response.choices = [Mock(message=mock_message)]
+        mock_response.usage = None  # a real response without usage, not an auto-Mock
 
         llm.client.chat.completions.create = Mock(return_value=mock_response)
 
@@ -259,6 +260,7 @@ class TestGroqLLMStructuredComplete:
 
         mock_response = Mock()
         mock_response.choices = [Mock(message=mock_message)]
+        mock_response.usage = None  # a real response without usage, not an auto-Mock
 
         llm.client.chat.completions.create = Mock(return_value=mock_response)
 
@@ -276,6 +278,7 @@ class TestGroqLLMStructuredComplete:
 
         mock_response = Mock()
         mock_response.choices = [Mock(message=mock_message)]
+        mock_response.usage = None  # a real response without usage, not an auto-Mock
 
         llm.client.chat.completions.create = Mock(return_value=mock_response)
 
@@ -296,6 +299,7 @@ class TestGroqLLMStructuredComplete:
 
         mock_response = Mock()
         mock_response.choices = [Mock(message=mock_message)]
+        mock_response.usage = None  # a real response without usage, not an auto-Mock
 
         llm.client.chat.completions.create = Mock(return_value=mock_response)
 

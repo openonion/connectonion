@@ -195,6 +195,7 @@ from .exceptions import (
     LLMRateLimitError,
     PaidModelRequiredError,
     ProviderServiceError,
+    TruncatedResponseError,
 )
 from .usage import DEFAULT_DIRECT_GEMINI_MODEL, DEFAULT_MODEL, TokenUsage, calculate_cost
 
@@ -344,8 +345,53 @@ def _last_user_prompt(messages: List[Dict[str, Any]]) -> str:
     return ""
 
 
+# How providers say "I stopped because I ran out of output tokens":
+# OpenAI-shaped APIs use finish_reason "length", Anthropic stop_reason
+# "max_tokens" (#1758).
+_TRUNCATED_REASONS = ("length", "max_tokens")
+
+
+def _chat_usage(raw_usage: Any, model: str) -> Optional[TokenUsage]:
+    """Usage from a chat.completions response, priced from our table.
+
+    structured_complete() returns only the parsed object, so before this every
+    provider threw its usage away and an llm_do(output=...) was free as far as
+    anyone could tell (#730).
+    """
+    if not raw_usage:
+        return None
+    details = getattr(raw_usage, "prompt_tokens_details", None)
+    cached = getattr(details, "cached_tokens", 0) or 0
+    input_tokens = raw_usage.prompt_tokens or 0
+    output_tokens = raw_usage.completion_tokens or 0
+    return TokenUsage(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cached_tokens=cached,
+        cost=calculate_cost(model, input_tokens, output_tokens, cached),
+    )
+
+
 class LLM(ABC):
     """Abstract base class for LLM providers."""
+
+    # Usage of the most recent structured_complete(), whose return value is the
+    # parsed object and has nowhere to carry it. llm_do reads it to put the
+    # call on the running agent's total_cost (#730).
+    last_structured_usage: Optional[TokenUsage] = None
+
+    def _refuse_if_truncated(self, reason, usage, content=None) -> None:
+        """Raise instead of returning a response cut off at the output limit.
+
+        Checked before tool-call arguments are parsed: a call cut mid-JSON used
+        to raise JSONDecodeError first, and the usage that says what the cut-off
+        response cost went down with it (#1758). Callers read the reason with
+        getattr: a compatible proxy that omits the field cannot be told apart
+        from a finished answer, and is not refused for that.
+        """
+        if reason in _TRUNCATED_REASONS:
+            raise TruncatedResponseError(
+                getattr(self, "model", "unknown"), reason, usage, content)
 
     def _call_provider(self, send, base_url: str = ""):
         """Run one provider request and translate its failure to a shared type.
@@ -447,14 +493,6 @@ class OpenAICompatibleLLM(LLM):
         if not response.choices:
             raise ValueError("The endpoint returned no completion choices")
         choice = response.choices[0]
-        if choice.finish_reason in ("length", "content_filter"):
-            raise ValueError(f"Response incomplete: {choice.finish_reason}; check output/context limits")
-        message = choice.message
-        if getattr(message, "refusal", None):
-            raise ValueError(f"Model refused to respond: {message.refusal}")
-        tool_calls = self._tool_calls(message)
-        if message.content is None and not tool_calls:
-            raise ValueError("The endpoint returned neither text nor parsed tool calls")
         usage = None
         if response.usage:
             usage = TokenUsage(
@@ -463,6 +501,15 @@ class OpenAICompatibleLLM(LLM):
                 total_tokens=response.usage.total_tokens or 0,
                 cost=0.0,  # Custom endpoint pricing is untracked; local inference has no API fee.
             )
+        self._refuse_if_truncated(getattr(choice, "finish_reason", None), usage, choice.message.content)
+        if choice.finish_reason == "content_filter":
+            raise ValueError("Response incomplete: content_filter")
+        message = choice.message
+        if getattr(message, "refusal", None):
+            raise ValueError(f"Model refused to respond: {message.refusal}")
+        tool_calls = self._tool_calls(message)
+        if message.content is None and not tool_calls:
+            raise ValueError("The endpoint returned neither text nor parsed tool calls")
         return LLMResponse(message.content, tool_calls, response, usage)
 
     @staticmethod
@@ -486,6 +533,7 @@ class OpenAICompatibleLLM(LLM):
             "name": output_schema.__name__, "schema": schema,
         }}
         response = self.complete([{"role": "system", "content": instruction}, *messages], **kwargs)
+        self.last_structured_usage = response.usage
         if response.tool_calls or response.content is None:
             raise ValueError("Expected structured text, but the endpoint returned no JSON content")
         return output_schema.model_validate_json(response.content)
@@ -531,6 +579,19 @@ class OpenAILLM(LLM):
             lambda: self.client.chat.completions.create(**api_kwargs))
         message = response.choices[0].message
 
+        # Extract token usage
+        input_tokens = response.usage.prompt_tokens
+        output_tokens = response.usage.completion_tokens
+        cached_tokens = response.usage.prompt_tokens_details.cached_tokens if response.usage.prompt_tokens_details else 0
+        cost = calculate_cost(self.model, input_tokens, output_tokens, cached_tokens)
+        usage = TokenUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
+            cost=cost,
+        )
+        self._refuse_if_truncated(getattr(response.choices[0], "finish_reason", None), usage, message.content)
+
         # Parse tool calls if present
         tool_calls = []
         if hasattr(message, 'tool_calls') and message.tool_calls:
@@ -541,22 +602,11 @@ class OpenAILLM(LLM):
                     id=tc.id
                 ))
 
-        # Extract token usage
-        input_tokens = response.usage.prompt_tokens
-        output_tokens = response.usage.completion_tokens
-        cached_tokens = response.usage.prompt_tokens_details.cached_tokens if response.usage.prompt_tokens_details else 0
-        cost = calculate_cost(self.model, input_tokens, output_tokens, cached_tokens)
-
         return LLMResponse(
             content=message.content,
             tool_calls=tool_calls,
             raw_response=response,
-            usage=TokenUsage(
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cached_tokens=cached_tokens,
-                cost=cost,
-            ),
+            usage=usage,
         )
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
@@ -572,10 +622,23 @@ class OpenAILLM(LLM):
             **kwargs  # Pass through temperature, max_tokens, etc.
         )
 
+        raw_usage = getattr(response, "usage", None)
+        if raw_usage:
+            details = getattr(raw_usage, "input_tokens_details", None)
+            cached = getattr(details, "cached_tokens", 0) or 0
+            self.last_structured_usage = TokenUsage(
+                input_tokens=raw_usage.input_tokens,
+                output_tokens=raw_usage.output_tokens,
+                cached_tokens=cached,
+                cost=calculate_cost(self.model, raw_usage.input_tokens,
+                                    raw_usage.output_tokens, cached),
+            )
+
         # Handle edge cases
         if response.status == "incomplete":
             if response.incomplete_details.reason == "max_output_tokens":
-                raise ValueError("Response incomplete: maximum output tokens reached")
+                raise TruncatedResponseError(
+                    self.model, "max_output_tokens", self.last_structured_usage)
             elif response.incomplete_details.reason == "content_filter":
                 raise ValueError("Response incomplete: content filtered")
 
@@ -623,6 +686,7 @@ class AnthropicLLM(LLM):
 
         response = self._call_provider(
             lambda: self.client.messages.create(**api_kwargs))
+        usage = self._usage(response)
 
         # Parse tool calls if present
         tool_calls = []
@@ -638,24 +702,30 @@ class AnthropicLLM(LLM):
                     id=block.id
                 ))
 
-        # Extract token usage - Anthropic uses input_tokens/output_tokens
-        input_tokens = response.usage.input_tokens
-        output_tokens = response.usage.output_tokens
-        cached_tokens = getattr(response.usage, 'cache_read_input_tokens', 0) or 0
-        cache_write_tokens = getattr(response.usage, 'cache_creation_input_tokens', 0) or 0
-        cost = calculate_cost(self.model, input_tokens, output_tokens, cached_tokens, cache_write_tokens)
+        # A tool_use block cut at max_tokens arrives with whatever input the
+        # SDK could salvage, so the check covers tool calls as well as text.
+        self._refuse_if_truncated(getattr(response, "stop_reason", None), usage, content or None)
 
         return LLMResponse(
             content=content if content else None,
             tool_calls=tool_calls,
             raw_response=response,
-            usage=TokenUsage(
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cached_tokens=cached_tokens,
-                cache_write_tokens=cache_write_tokens,
-                cost=cost,
-            ),
+            usage=usage,
+        )
+
+    def _usage(self, response) -> TokenUsage:
+        """Anthropic uses input_tokens/output_tokens, plus cache read/write."""
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
+        cached_tokens = getattr(response.usage, 'cache_read_input_tokens', 0) or 0
+        cache_write_tokens = getattr(response.usage, 'cache_creation_input_tokens', 0) or 0
+        return TokenUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
+            cache_write_tokens=cache_write_tokens,
+            cost=calculate_cost(self.model, input_tokens, output_tokens,
+                                cached_tokens, cache_write_tokens),
         )
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
@@ -690,6 +760,8 @@ class AnthropicLLM(LLM):
         # Force the model to use this tool
         response = self._call_provider(
             lambda: self.client.messages.create(**api_kwargs))
+        self.last_structured_usage = self._usage(response)
+        self._refuse_if_truncated(getattr(response, "stop_reason", None), self.last_structured_usage)
 
         # Extract structured data from tool call
         for block in response.content:
@@ -915,19 +987,6 @@ class GeminiLLM(LLM):
             lambda: self.client.chat.completions.create(**api_kwargs))
         message = response.choices[0].message
 
-        # Parse tool calls if present
-        # Preserve extra_content for providers that need it (e.g., Gemini 3 thought_signature)
-        tool_calls = []
-        if hasattr(message, 'tool_calls') and message.tool_calls:
-            for tc in message.tool_calls:
-                extra = getattr(tc, 'extra_content', None)
-                tool_calls.append(ToolCall(
-                    name=tc.function.name,
-                    arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
-                    id=tc.id,
-                    extra_content=extra
-                ))
-
         # Extract token usage (OpenAI-compatible format)
         usage = None
         if hasattr(response, 'usage') and response.usage:
@@ -943,6 +1002,21 @@ class GeminiLLM(LLM):
                 cached_tokens=cached_tokens,
                 cost=cost,
             )
+
+        self._refuse_if_truncated(getattr(response.choices[0], "finish_reason", None), usage, message.content)
+
+        # Parse tool calls if present
+        # Preserve extra_content for providers that need it (e.g., Gemini 3 thought_signature)
+        tool_calls = []
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            for tc in message.tool_calls:
+                extra = getattr(tc, 'extra_content', None)
+                tool_calls.append(ToolCall(
+                    name=tc.function.name,
+                    arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
+                    id=tc.id,
+                    extra_content=extra
+                ))
 
         return LLMResponse(
             content=message.content,
@@ -978,6 +1052,7 @@ class GeminiLLM(LLM):
             response_format=output_schema,
             **kwargs
         ))
+        self.last_structured_usage = _chat_usage(getattr(completion, "usage", None), self.model)
         return completion.choices[0].message.parsed
 
 
@@ -1014,15 +1089,6 @@ class GroqLLM(LLM):
 
         message = response.choices[0].message
 
-        tool_calls = []
-        if hasattr(message, 'tool_calls') and message.tool_calls:
-            for tc in message.tool_calls:
-                tool_calls.append(ToolCall(
-                    name=tc.function.name,
-                    arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
-                    id=tc.id
-                ))
-
         usage = None
         if hasattr(response, 'usage') and response.usage:
             input_tokens = response.usage.prompt_tokens
@@ -1033,6 +1099,17 @@ class GroqLLM(LLM):
                 output_tokens=output_tokens,
                 cost=cost,
             )
+
+        self._refuse_if_truncated(getattr(response.choices[0], "finish_reason", None), usage, message.content)
+
+        tool_calls = []
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            for tc in message.tool_calls:
+                tool_calls.append(ToolCall(
+                    name=tc.function.name,
+                    arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
+                    id=tc.id
+                ))
 
         return LLMResponse(content=message.content, tool_calls=tool_calls, raw_response=response, usage=usage)
 
@@ -1056,6 +1133,7 @@ class GroqLLM(LLM):
             response_format={"type": "json_object"},
             **kwargs,
         ))
+        self.last_structured_usage = _chat_usage(getattr(completion, "usage", None), self.model)
         content = completion.choices[0].message.content or "{}"
         return output_schema.model_validate_json(content)
 
@@ -1092,15 +1170,6 @@ class GrokLLM(LLM):
             lambda: self.client.chat.completions.create(**api_kwargs))
         message = response.choices[0].message
 
-        tool_calls = []
-        if hasattr(message, 'tool_calls') and message.tool_calls:
-            for tc in message.tool_calls:
-                tool_calls.append(ToolCall(
-                    name=tc.function.name,
-                    arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
-                    id=tc.id
-                ))
-
         usage = None
         if hasattr(response, 'usage') and response.usage:
             input_tokens = response.usage.prompt_tokens
@@ -1111,6 +1180,17 @@ class GrokLLM(LLM):
                 output_tokens=output_tokens,
                 cost=cost,
             )
+
+        self._refuse_if_truncated(getattr(response.choices[0], "finish_reason", None), usage, message.content)
+
+        tool_calls = []
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            for tc in message.tool_calls:
+                tool_calls.append(ToolCall(
+                    name=tc.function.name,
+                    arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
+                    id=tc.id
+                ))
 
         return LLMResponse(content=message.content, tool_calls=tool_calls, raw_response=response, usage=usage)
 
@@ -1130,6 +1210,7 @@ class GrokLLM(LLM):
             response_format={"type": "json_object"},
             **kwargs,
         ))
+        self.last_structured_usage = _chat_usage(getattr(completion, "usage", None), self.model)
         content = completion.choices[0].message.content or "{}"
         return output_schema.model_validate_json(content)
 
@@ -1183,15 +1264,6 @@ class OpenRouterLLM(LLM):
             lambda: self.client.chat.completions.create(**api_kwargs))
         message = response.choices[0].message
 
-        tool_calls = []
-        if hasattr(message, 'tool_calls') and message.tool_calls:
-            for tc in message.tool_calls:
-                tool_calls.append(ToolCall(
-                    name=tc.function.name,
-                    arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
-                    id=tc.id
-                ))
-
         usage = None
         if hasattr(response, 'usage') and response.usage:
             input_tokens = response.usage.prompt_tokens
@@ -1202,6 +1274,17 @@ class OpenRouterLLM(LLM):
                 output_tokens=output_tokens,
                 cost=cost,
             )
+
+        self._refuse_if_truncated(getattr(response.choices[0], "finish_reason", None), usage, message.content)
+
+        tool_calls = []
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            for tc in message.tool_calls:
+                tool_calls.append(ToolCall(
+                    name=tc.function.name,
+                    arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
+                    id=tc.id
+                ))
 
         return LLMResponse(
             content=_extract_text(message),
@@ -1231,6 +1314,7 @@ class OpenRouterLLM(LLM):
             response_format={"type": "json_object"},
             **kwargs,
         ))
+        self.last_structured_usage = _chat_usage(getattr(completion, "usage", None), self.model)
         content = completion.choices[0].message.content or "{}"
         return output_schema.model_validate_json(content)
 
@@ -1267,15 +1351,6 @@ class MistralLLM(LLM):
             lambda: self.client.chat.completions.create(**api_kwargs))
         message = response.choices[0].message
 
-        tool_calls = []
-        if hasattr(message, 'tool_calls') and message.tool_calls:
-            for tc in message.tool_calls:
-                tool_calls.append(ToolCall(
-                    name=tc.function.name,
-                    arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
-                    id=tc.id
-                ))
-
         usage = None
         if hasattr(response, 'usage') and response.usage:
             input_tokens = response.usage.prompt_tokens
@@ -1286,6 +1361,17 @@ class MistralLLM(LLM):
                 output_tokens=output_tokens,
                 cost=cost,
             )
+
+        self._refuse_if_truncated(getattr(response.choices[0], "finish_reason", None), usage, message.content)
+
+        tool_calls = []
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            for tc in message.tool_calls:
+                tool_calls.append(ToolCall(
+                    name=tc.function.name,
+                    arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
+                    id=tc.id
+                ))
 
         return LLMResponse(content=message.content, tool_calls=tool_calls, raw_response=response, usage=usage)
 
@@ -1309,6 +1395,7 @@ class MistralLLM(LLM):
             response_format={"type": "json_object"},
             **kwargs,
         ))
+        self.last_structured_usage = _chat_usage(getattr(completion, "usage", None), self.model)
         content = completion.choices[0].message.content or "{}"
         return output_schema.model_validate_json(content)
 
@@ -1489,6 +1576,14 @@ class OpenOnionLLM(LLM):
 
         message = response.choices[0].message
 
+        usage = (
+            _managed_token_usage(response.usage, self.model)
+            if hasattr(response, 'usage') and response.usage
+            else None
+        )
+
+        self._refuse_if_truncated(getattr(response.choices[0], "finish_reason", None), usage, message.content)
+
         # Parse tool calls if present
         # Preserve extra_content for providers that need it (e.g., Gemini 3 thought_signature)
         tool_calls = []
@@ -1501,12 +1596,6 @@ class OpenOnionLLM(LLM):
                     id=tc.id,
                     extra_content=extra
                 ))
-
-        usage = (
-            _managed_token_usage(response.usage, self.model)
-            if hasattr(response, 'usage') and response.usage
-            else None
-        )
 
         return LLMResponse(
             content=message.content,
@@ -1568,6 +1657,9 @@ class OpenOnionLLM(LLM):
             response_format=output_schema,
             **kwargs
         ))
+        raw_usage = getattr(completion, "usage", None)
+        self.last_structured_usage = (
+            _managed_token_usage(raw_usage, self.model) if raw_usage else None)
         return completion.choices[0].message.parsed
 
     def get_balance(self) -> Optional[float]:

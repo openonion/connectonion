@@ -37,11 +37,13 @@ class Answer(BaseModel):
 
 class _RecordingLLM:
     """Records what llm_do handed the provider. Mirrors the real LLM contract:
-    complete(messages, tools=None, **kwargs) -> object with .content;
-    structured_complete(messages, schema, **kwargs) -> schema instance."""
+    complete(messages, tools=None, **kwargs) -> object with .content and
+    .usage; structured_complete(messages, schema, **kwargs) -> schema instance;
+    and a .model."""
 
     def __init__(self, **init_kwargs):
         self.init_kwargs = init_kwargs
+        self.model = init_kwargs.get("model")
         self.calls = []
 
     def complete(self, messages, tools=None, **kwargs):
@@ -49,6 +51,7 @@ class _RecordingLLM:
 
         class _Response:
             content = "the answer"
+            usage = None
 
         return _Response()
 
