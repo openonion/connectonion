@@ -634,6 +634,10 @@ RSYNC_FILTERS = [
     "--exclude", ".co/schedule-state.json",
     "--exclude", ".co/schedule-state.json.lock",
     "--exclude", ".co/schedule.tick.lock",
+    # Watch observations and pending events belong to the serving Host. A
+    # laptop's queue must not replace the server's undelivered events.
+    "--exclude", ".co/watch-state.sqlite3*",
+    "--exclude", ".co/watch.consume.*.lock",
     # Everything else the running agent writes into `.co/` (#1694). Each of
     # these exists on a laptop that ever ran the agent, and rsync sends a file
     # that exists. Session history with its lock and sync epoch (the glob also

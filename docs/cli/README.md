@@ -70,7 +70,9 @@ includes the Claude session ID. Pass `--session <id>` on a later run to continue
 that conversation. A failed run prints a JSON error and exits nonzero.
 
 The connector installs a temporary `SessionStart` Hook and checks its session
-ID and transcript path before accepting a Work Room input. Host/COAI Claude
+ID and transcript path. A shared terminal can hand over before its first
+prompt: that first browser message starts a new native Claude session, while
+later messages resume the session that already has a completed turn. Host/COAI Claude
 delegation uses this same path. Every headless run (`co claude run`, `co ai`
 delegation, and browser turns in a shared terminal) loads only your user
 settings plus the connector's Hooks (`--setting-sources user
@@ -79,13 +81,8 @@ settings plus the connector's Hooks (`--setting-sources user
 cloned repo cannot add Hooks or allow Bash in a turn nobody is watching. The
 interactive `co claude` terminal keeps Claude's normal project settings,
 because you are at the keyboard and Claude's own folder-trust prompt applies
-there. The interactive
-wrapper currently observes locally; Host registration, OIP mirroring to O Chat,
-terminal-to-web handover, approval routing, and release to terminal in
-[issue #1134](https://github.com/openonion/connectonion/issues/1134) remain in
-progress. Neither `co claude` nor `co claude run` by itself creates a
-ConnectOnion Host session or Work Room; a Host/COAI delegation supplies those
-for headless runs.
+there. With sharing enabled, `co claude` hosts a paired OIP Work Room. The
+`co claude run` command runs one turn and does not host a Work Room.
 
 Every command ends by naming the next one. Commands whose next step depends on
 what they found print it themselves (`Read one with: co gmail read <#>`); every
@@ -250,7 +247,8 @@ response = llm_do("Hello", model="co/gemini-3.8-flash")
 **Available models:**
 - OpenAI: `co/gpt-4o`, `co/gpt-4o-mini`, `co/o4-mini`
 - Anthropic: `co/claude-sonnet-4-5`, `co/claude-haiku-4-5`
-- Google: `co/gemini-3.8-flash` (default), `co/gemini-3.7-flash` (rollback), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
+- Local GPU: `co/llama` (default, free), `co/gemma` (free)
+- Google: `co/gemini-3.8-flash`, `co/gemini-3.7-flash` (rollback), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
 - And more...
 
 **Benefits:**

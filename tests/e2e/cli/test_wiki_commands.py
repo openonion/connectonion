@@ -296,11 +296,26 @@ def test_init_builds_all_maps_without_model_or_investigation(tmp_path, monkeypat
         assert (tmp_path / record).is_file()
 
 
+def test_init_human_output_summarizes_map_instead_of_dumping_contacts():
+    from connectonion.cli.commands.wiki_output import render
+
+    report = {'phase': 'mapped', 'days': 5, 'people': [{'address': f'user{i}@example.org'}
+              for i in range(500)], 'orgs': [{}] * 10, 'projects': [{}] * 3,
+              'skills': {'skills': [{'name': f'Skill {i % 2}'} for i in range(400)],
+                         'created': ['one', 'two']},
+              'created': ['three'], 'investigation': 'not started'}
+    text = render(report, 'init')
+    assert 'People: 500' in text and 'Projects: 3' in text
+    assert 'Skills: 2 names (400 installed copies)' in text and 'New pages: 3' in text
+    assert 'user0@example.org' not in text
+    assert len(text.splitlines()) < 20
+
+
 def test_init_asks_whether_a_write_only_address_is_the_owner_s_own(tmp_path, monkeypatch):
     """The question is useless without the command that answers it, and the command
     is useless if it forgets the root the user chose (#1635)."""
     monkeypatch.setattr('connectonion.wiki.service.subscriptions', lambda root: {})
-    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: ([
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a, **kw: ([
         {'name': 'openonion ai', 'address': 'aaronplus1996@gmail.com', 'mails': 106, 'sent': 106,
          'received': 0, 'one_way': True, 'first': '2026-06-25', 'last': '2026-09-23', 'boxes': ['gmail']}], set()))
     empty = tmp_path / 'empty-skills'
@@ -315,6 +330,8 @@ def test_init_asks_whether_a_write_only_address_is_the_owner_s_own(tmp_path, mon
 
     plain = invoke(root, 'init', '--skills-dir', str(empty))
     assert plain.exit_code == 0, plain.output
+    assert 'Wiki init: mapping installed skills' in plain.output
+    assert 'Wiki init: scanning local projects' in plain.output
     assert 'aaronplus1996@gmail.com' in Text.from_ansi(plain.output).plain
 
 
@@ -549,6 +566,59 @@ def test_an_investigation_is_a_run_in_the_logs_with_its_cost(tmp_path, monkeypat
     assert runs[0]['outcome'] == 'completed' and runs[0]['runner_attempts'] == 0   # not the background cap
     usage = json.loads(invoke(tmp_path, '--json', 'logs', '--usage').stdout)['data']
     assert usage['total']['input_tokens'] == 1200 and usage['by_stage']['investigate']['output_tokens'] == 300
+
+
+def test_investigation_source_failure_is_structured_and_keeps_run(tmp_path, monkeypatch):
+    from connectonion.wiki.files import state_path, write_json
+
+    prepare(tmp_path)
+    Notebook(tmp_path).stub_person('people/ada.md', 'Ada', ['ada@example.org'], email='ada@example.org')
+    write_json(state_path(tmp_path, 'map.json'), {
+        'owner': {'record': 'people/ada.md', 'addresses': ['ada@example.org']}})
+    monkeypatch.setattr('connectonion.wiki.service.subscriptions', lambda root: {})
+    monkeypatch.setattr('connectonion.wiki.investigate.gather',
+                        lambda *a, **kw: (_ for _ in ()).throw(ConnectionError('private provider detail')))
+    result = invoke(tmp_path, '--json', 'investigate', 'me', '--days', '5')
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload['ok'] is False
+    assert 'ConnectionError' in payload['data'] and 'private provider detail' not in result.stdout
+    assert payload['next'].endswith('investigate me --days 5')
+    run = json.loads(next((tmp_path / '.state/runs').glob('*.json')).read_text())
+    assert run['outcome'] == 'failed' and run['stage'] == 'gathering sources'
+
+
+def test_interrupted_investigation_keeps_completed_chunk_usage(tmp_path):
+    from connectonion.cli.commands.wiki_commands import _logged
+
+    prepare(tmp_path)
+
+    def interrupt(update):
+        update('extracting long evidence', 2, 5, {'input_tokens': 1200})
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        _logged(tmp_path, 'people/owner.md', 'investigate me', interrupt)
+    run = json.loads(next((tmp_path / '.state/runs').glob('*.json')).read_text())
+    assert run['outcome'] == 'interrupted'
+    assert run['stage_processed'] == 2 and run['stage_total'] == 5
+    assert run['usage'] == {'input_tokens': 1200}
+
+
+def test_category_run_reports_partial_failure_nonzero(tmp_path, monkeypatch):
+    prepare(tmp_path)
+    Notebook(tmp_path).stub_person('people/ada.md', 'Ada', ['ada@example.org'], email='ada@example.org')
+    monkeypatch.setattr('connectonion.wiki.queue.order', lambda root, category: [
+        {'path': 'people/ada.md', 'recent': False, 'weight': 1, 'unknown': 1,
+         'last_investigated': None}])
+    from connectonion.wiki.runner import RunFailed
+    monkeypatch.setattr('connectonion.wiki.investigate.investigate',
+                        lambda *a, **kw: (_ for _ in ()).throw(RunFailed('model rejected')))
+    result = invoke(tmp_path, '--json', 'investigate', 'people', '--days', '5', '--limit', '1')
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload['ok'] is False
+    assert payload['data']['pages'][0]['outcome'] == 'refused'
 
 
 def test_an_error_that_names_a_command_makes_it_the_next_line(tmp_path):

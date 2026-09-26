@@ -76,6 +76,41 @@ def test_invocation_revision_advances_from_persisted_trace(tmp_path):
     assert completed["stateRevision"] == 2
 
 
+def test_blank_terminal_can_be_taken_over_and_returned_without_resuming(tmp_path, monkeypatch):
+    native_session = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    storage = SessionStorage(tmp_path / "station" / "session_results.jsonl")
+    station = claude_station.ClaudeStation(tmp_path, storage)
+    launched = []
+
+    def terminal(**options):
+        launched.append(options["session_id"])
+        options["on_private_fact"]({
+            "hook_event_name": "SessionStart", "session_id": native_session,
+        })
+        if len(launched) == 1:
+            assert options["stop_event"].wait(3)
+        return 0, native_session
+
+    monkeypatch.setattr(claude_station, "run_interactive_claude", terminal)
+    worker = threading.Thread(target=station.run)
+    worker.start()
+    deadline = time.monotonic() + 3
+    while station._phase != "local_observing" and time.monotonic() < deadline:
+        time.sleep(0.01)
+    station.attach("0xowner", station.pairing_code)
+    taken = station.take_control("0xowner", station._revision)
+
+    trace = storage.get(station.session_id).session["trace"]
+    source = next(event for event in reversed(trace)
+                  if event.get("type") == "provider_invocation")
+    assert taken["accepted"] is True
+    assert source["resumeReady"] is False
+    assert station.release_control("0xowner", taken["stateRevision"])["accepted"] is True
+    worker.join(timeout=3)
+    assert not worker.is_alive()
+    assert launched == ["", ""]
+
+
 def test_browser_approval_requires_owned_workspace_edit(tmp_path):
     class ApprovalIO:
         def __init__(self):

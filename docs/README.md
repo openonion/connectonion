@@ -1577,6 +1577,11 @@ agent = Agent(
 
 ConnectOnion provides ready-to-use plugins:
 
+For events that arrive while an Agent is running, the copyable
+[`watch_events` plugin](useful_plugins/watch_events.md) inserts them at the
+next iteration boundary. A Host watch supplies the durable queue and wakes an
+idle session; the plugin handles only the active turn.
+
 **ReAct Plugin (`re_act`)** - Uses ReAct-style reasoning to plan next steps:
 
 ```python

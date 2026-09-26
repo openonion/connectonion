@@ -109,8 +109,9 @@ co status      # see what is running
 Python runtime below is there whenever you need a custom tool, hook, provider or
 host boundary.
 
-The 1.8.2 default is `co/gemini-3.8-flash`, routed through the managed gateway
-without exposing Google's key to the client. Select `gemini-3.8-flash` to use
+The default is `co/llama`, a free Llama 3.1 8B model on the managed gateway.
+`co/gemma` is another free local model. Both currently share a 4,096-token
+context window and a single GPU inference slot. Select `gemini-3.8-flash` to use
 your own `GEMINI_API_KEY`, or explicitly choose an OpenAI, Anthropic, or older
 Gemini model. Provider failures do not silently move a request to another model.
 
@@ -731,7 +732,7 @@ agent = Agent(name="test", api_key="your-api-key-here")
 
 ### Model Selection
 ```python
-agent = Agent(name="test", model="gpt-5")  # Default: co/gemini-3.8-flash
+agent = Agent(name="test", model="gpt-5")  # Default: co/llama
 ```
 
 ### Iteration Control

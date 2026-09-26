@@ -22,13 +22,12 @@ python -m pip install --upgrade 'connectonion==1.8.8'
 
 ## Current preview
 
-Beta **1.8.9b7** fixes subscribed skill reconciliation, preserves signed
+Beta **1.8.9b12** fixes subscribed skill reconciliation, preserves signed
 companion files, and removes the `do` verb from natural-language browser tasks.
-See [1.8.9b7 release notes](releases/1.8.9b7.md) for the scope and relay
-deployment dependency.
+See [1.8.9b12 release notes](releases/1.8.9b12.md) for the scope and limits.
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.9b7'
+python -m pip install --upgrade 'connectonion==1.8.9b12'
 co --version
 ```
 

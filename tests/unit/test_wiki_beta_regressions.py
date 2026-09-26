@@ -36,6 +36,29 @@ def test_setup_commands_keep_custom_root(tmp_path):
     assert shlex.split(command)==['co','wiki','--root',str(root),'init']
 
 
+def test_init_keeps_five_day_window_in_next_steps_and_partial_retry(tmp_path):
+    root = tmp_path / 'wiki'
+    with patch('connectonion.wiki.map.build_map', return_value={
+        'owner': {'addresses': ['me@example.org']}, 'possible_own_addresses': []
+    }), patch('connectonion.wiki.service.mail_available', return_value=False):
+        result = CliRunner().invoke(app, ['wiki', '--root', str(root), '--json',
+                                          'init', '--days', '5'])
+    payload = json.loads(result.stdout)
+    assert result.exit_code == 0
+    assert payload['next'].endswith('investigate me --days 5 --quick')
+    assert all('init --days 5' in tip for tip in payload['data']['tips'])
+
+    with patch('connectonion.wiki.map.build_map', return_value={
+        'errors': [{'source': 'gmail'}, {'source': 'outlook'}]
+    }), patch('connectonion.wiki.service.mail_available', return_value=True), \
+            patch('connectonion.wiki.service.mail_client', side_effect=ConnectionError):
+        result = CliRunner().invoke(app, ['wiki', '--root', str(root), '--json',
+                                          'init', '--days', '5', '--mail', 'gmail', '--mail', 'outlook'])
+    payload = json.loads(result.stdout)
+    assert result.exit_code == 1
+    assert payload['next'].endswith('init --days 5 --mail gmail --mail outlook')
+
+
 def test_equivalent_remotes_and_metadata_refresh_preserve_prose(tmp_path):
     assert canonical_origin('git@Example.org:team/Demo.git')==canonical_origin('https://example.org/team/Demo.git')
     assert canonical_origin('https://example.org/team/demo.git')!=canonical_origin('https://example.org/team/Demo.git')

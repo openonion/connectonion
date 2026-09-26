@@ -1,36 +1,42 @@
-# A subscription has to remember what it installed
+# The skill that stayed after its publisher withdrew it
 
-The first `co sub sync` looked complete. It fetched a publisher's profile,
-copied each public `SKILL.md` into a local mirror, and linked those directories
-into installed coding agents. The trouble appeared on the second sync. If the
-publisher withdrew a skill, the mirror still contained its old directory. The
-agent could continue following instructions that the publisher no longer
-published. A renamed publisher could leave a second bundle beside the first.
+A publisher removed a skill and a subscriber ran `co sub sync` again. The
+command finished, but the skill was still on the subscriber's machine. Its old
+`SKILL.md` remained in the mirror and its link remained visible to a coding
+agent. The publisher's current profile no longer promised that body, yet the
+agent could still read yesterday's instructions.
 
-There was also a more immediate cost to treating a matching name as proof of
-ownership. A subscriber might already have a hand-written skill directory at
-`~/.codex/skills/<alias>-<skill>`. The old install path could remove it while
-making room for a symlink. Unsubscribing used the same broad name match. The
-local notes in that directory had no relationship to the publisher, but the
-command could still delete them.
+I reproduced that with two signed revisions: one with two public skills, then
+one withholding the second body. The original sync wrote new files into the
+existing directory but never asked which old files should leave. A publisher
+rename produced a similar trace: the refreshed profile supplied a new alias,
+so the old local path was left behind. Those failures made it clear that a
+subscription was being treated as a one-time copy, even though users expect a
+continuing relationship.
 
-The fix treats a subscription as a relationship with a pinned local alias and
-an owned set of installations. A refreshed bundle is built in a temporary
-directory from a verified publisher signature, then swapped into place.
-Fan-out removes its previous links and marked copies before installing the new
-set. A same-name real directory, ordinary file, or link to another target is
-left in place and reported as a conflict. A missing public body stays missing;
-it cannot survive as an old installed instruction.
+While tracing removal, I found a more serious problem. The cleanup code
+treated the `<alias>-<skill>` prefix as proof that a path belonged to the
+subscription. I put hand-written notes in a same-name Codex skill directory;
+the old install path could replace that directory with a link. A name can be
+chosen by a publisher or a subscriber. It cannot tell us who owns the files
+under it.
 
-The same boundary exposed another gap: a skill can depend on a script or
-reference file next to `SKILL.md`. Sending only the Markdown body made the
-subscription appear installed while the skill was unusable. Publisher and
-relay now carry bounded companion files inside the signed profile. The
-subscriber verifies the reconstructed profile before writing any of them.
-The relay must deploy that support before the SDK preview is published, since
-an older relay would omit bytes the signature covers.
+The turning point was to make the local alias stable and check the destination
+of each link before touching it. A refresh now builds a complete verified
+bundle off to the side, swaps it into place, and reconciles only the links and
+marked copies it installed. The hand-written directory stays. The withdrawn
+skill leaves. When I forced an error during staging, the previous mirror and
+its Codex link still read the old body, so an interrupted download did not
+turn a working installation into half a new one.
 
-We exercised the withdrawal, rename, collision, staging failure, tampered
-file, and publish-to-mirror paths in focused tests. The command now reports
-listed, mirrored, and installed counts separately, so someone can see whether
-a published name actually reached their agent.
+That test exposed one last false success. A skill that said “run
+`scripts/run.js`” arrived with only `SKILL.md`; its script was absent. We made
+the companion file part of the publisher's signed profile and checked it again
+before writing the subscriber's mirror. Changing one byte in the relay reply
+now rejects the sync. This also dictates the rollout order: the relay must
+serve those signed bytes before the SDK preview can publish them.
+
+The lesson is that a successful subscription needs two answers: what the
+publisher currently signed, and which local paths this subscriber actually
+owns. `co sub list` now reports listed, mirrored, and installed counts so the
+operator can see when those answers differ.

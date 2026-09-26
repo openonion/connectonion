@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "1.8.9b7"
+version = "1.8.9b12"
 description = "Connect your AI agent to Gmail, a real browser and your files, one command each. The agent CLI harness."
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -192,6 +192,7 @@ exclude = [
     "!docs/design-decisions/068-gmail-mailbox-pages-and-downloads.md",
     "!docs/design-decisions/070-synology-inspections-and-durable-operations.md",
     "!docs/design-decisions/071-control-center-revisions-and-runtime-approval.md",
+    "!docs/design-decisions/073-watch-events-as-user-turns.md",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -224,6 +225,7 @@ exclude = [
     "!docs/design-decisions/068-gmail-mailbox-pages-and-downloads.md",
     "!docs/design-decisions/070-synology-inspections-and-durable-operations.md",
     "!docs/design-decisions/071-control-center-revisions-and-runtime-approval.md",
+    "!docs/design-decisions/073-watch-events-as-user-turns.md",
 ]
 
 # Include all non-Python files (md, txt, etc.) in the package

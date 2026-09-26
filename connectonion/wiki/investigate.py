@@ -8,6 +8,8 @@ read alike on a page and mean different things.
 
 import hashlib
 import json
+import os
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -17,6 +19,89 @@ from .mail import _address, correspondent, strip_noise, strip_quoted
 from .source import KINDS, collect
 
 MAIL_KINDS = ("outlook", "gmail")
+
+
+def quick_evidence(items: list[dict], *, max_items: int = 24,
+                   chars_per_item: int = 2500) -> list[dict]:
+    """A bounded first look, with source diversity and recent items.
+
+    This is explicitly partial evidence. A quick onboarding turn should not
+    quietly spawn a sequence of expensive extraction agents for the owner.
+    """
+    latest = list(reversed(items))
+    chosen, seen = [], set()
+    for item in latest:
+        source = item.get("source", "").split(":", 1)[0]
+        if source not in seen:
+            chosen.append(item)
+            seen.add(source)
+    for item in latest:
+        if len(chosen) >= max_items:
+            break
+        if item not in chosen:
+            chosen.append(item)
+    selected = []
+    for item in sorted(chosen[:max_items], key=lambda row: row["timestamp"]):
+        copy = dict(item)
+        body = copy.get("text", "")
+        if len(body) > chars_per_item:
+            copy["text"] = body[:chars_per_item] + "\n[truncated for quick first-pass review]"
+        selected.append(copy)
+    return selected
+
+
+def project_paths(page: str) -> list[str]:
+    """Recover mapped project directories after a cited investigation page.
+
+    Citation markers belong to Markdown, not to the path used for local reads
+    or session matching on the next run.
+    """
+    section = page.partition("## Paths\n")[2].split("\n## ", 1)[0]
+    return [re.sub(r"\s+\[\d+\](?:\s*\[\d+\])*\s*$", "", line[2:].strip())
+            for line in section.splitlines() if line.startswith("- /")]
+
+
+def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
+    """Give a project investigation bounded file leads, never file contents.
+
+    Session metadata can name a project with no user messages. A short inventory
+    lets the model pick evidence from the recorded path without repeatedly
+    searching the user's home directory. File names alone prove no project fact.
+    """
+    roots = [Path(path).expanduser() for path in project_paths(page)]
+    leads = []
+    excluded = {".git", ".venv", "venv", "node_modules", "__pycache__", "dist", "build", ".state"}
+    suffixes = {".md", ".txt", ".toml", ".py", ".js", ".ts", ".tsx", ".html", ".css", ".swift", ".go", ".rs"}
+    for root in roots[:4]:
+        resolved = root.resolve()
+        if (not root.is_dir() or root.is_symlink() or resolved == Path.home()
+                or resolved in Path.home().parents or len(resolved.parts) < 3):
+            continue
+        seen = 0
+        for current, dirs, files in os.walk(root, followlinks=False):
+            depth = len(Path(current).relative_to(root).parts)
+            dirs[:] = sorted(d for d in dirs if d not in excluded and not d.startswith(".")
+                             and not (Path(current) / d).is_symlink()) if depth < 4 else []
+            for name in sorted(files):
+                if name.startswith(".") or Path(name).suffix.lower() not in suffixes:
+                    continue
+                if any(word in name.lower() for word in ("secret", "password", "credential", "private", "token")):
+                    continue
+                path = Path(current) / name
+                if path.is_symlink():
+                    continue
+                leads.append(str(path))
+                seen += 1
+                if seen >= 1000:
+                    break
+            if seen >= 1000:
+                break
+    def priority(path):
+        name = Path(path).name.lower()
+        return (0 if name.startswith("readme") else
+                1 if name in ("pyproject.toml", "package.json") else
+                2 if "wiki" in path.lower() else 3, len(Path(path).parts), path)
+    return sorted(set(leads), key=priority)[:max_files]
 
 
 def _patient(call, *args, attempts: int = 4):
@@ -32,7 +117,9 @@ def _patient(call, *args, attempts: int = 4):
         try:
             return call(*args)
         except Exception as error:  # noqa: BLE001 -- the providers raise their own timeout types
-            transient = "timeout" in type(error).__name__.lower() or "timed out" in str(error).lower()
+            name = type(error).__name__.lower()
+            transient = any(part in name for part in ("timeout", "connecterror", "connectionerror")) \
+                or "timed out" in str(error).lower()
             if not transient or attempt == attempts - 1:
                 raise
             time.sleep(2 ** attempt)
@@ -71,7 +158,8 @@ def _matches(row: dict, handles: list[str], mine: set) -> bool:
 
 def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscriptions: dict,
            progress=None, attachments_dir: Path | None = None,
-           sent_only: bool = False, mail_skipped: str = "") -> tuple[list[dict], list[str]]:
+           sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
+           quick: bool = False) -> tuple[list[dict], list[str]]:
     """Everything every source holds about the subject, oldest first, plus what was searched.
 
     `sent_only` is the owner's own page: every message in a mailbox involves
@@ -121,7 +209,10 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 hit = [r for r in hit if _address(r["from"]) in mine]
                 searched += ", kept the owner's own sent mail"
         attached = 0
-        for r in sorted(hit, key=lambda r: str(r["date"])):
+        mail_to_read = sorted(hit, key=lambda r: str(r["date"]))
+        if quick:
+            mail_to_read = mail_to_read[-12:]
+        for number, r in enumerate(mail_to_read, 1):
             body = _patient(client.get_email_body, r["id"])
             head, _, rest = body.partition("--- Email Body ---")
             body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
@@ -145,8 +236,12 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                                   "subject": f"{r.get('subject', '')} — {Path(saved).name}",
                                   "text": extract_text(Path(saved), limit=None), "file": saved,
                                   "source": f"{kind}:{short}:{Path(saved).name}"})
+            if stage_progress and (number % 10 == 0 or number == len(mail_to_read)):
+                stage_progress(f"gathering {kind} mail", number, len(mail_to_read))
         coverage.append(f"{kind} ({', '.join(sorted(mine))}): {searched} over {days} days, "
-                        f"{len(hit)} matched, {attached} attachments read")
+                        f"{len(hit)} matched, {len(mail_to_read)} bodies read"
+                        + (" (recent quick sample)" if quick else "")
+                        + f", {attached} attachments read")
     for kind in ("outlook", "gmail"):
         if kind not in clients:
             # Say it. A mailbox left out used to vanish from coverage, so the model
@@ -177,9 +272,16 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 if batch.progress == cursor:
                     break
                 cursor = batch.progress
+                if stage_progress:
+                    stage_progress(f"gathering {name} sessions", scanned)
         except WikiError as error:
             coverage.append(f"{name}: unreadable ({error})")
-        coverage.append(f"{name}: {scanned} messages in window, {len(picked)} related to subject"
+        related = len(picked)
+        if quick:
+            picked = picked[-12:]
+        coverage.append(f"{name}: {scanned} messages in window, {related} related to subject, "
+                        f"{len(picked)} read"
+                        + (" (recent quick sample)" if quick else "")
                         + (" (account owner's own messages)" if is_owner else " (handle or project match)"))
         items += picked
     items.sort(key=lambda i: i["timestamp"])
@@ -212,9 +314,10 @@ def _split_item(item: dict, limit_chars: int):
 
 
 def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: Path | None = None,
-                     max_calls=None) -> tuple[list[dict], dict]:
+                     max_calls=None, progress=None) -> tuple[list[dict], dict]:
     """Oldest first, each chunk within the extract limits, one digest item per chunk."""
-    from .extract import NOTHING, extraction_item, run_extract
+    from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
+    from .files import read_json, state_path, write_json
     limits = config["limits"]
     if extractor is None:
         if root is None:
@@ -235,27 +338,65 @@ def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: P
     if max_calls is not None and len(chunks) > max_calls:
         raise WikiError("Extraction exceeds remaining call budget; page preserved")
     digests, usage = [], {}
-    for chunk in chunks:
+    for number, chunk in enumerate(chunks, 1):
         kinds = {i["source"].split(":")[0] for i in chunk}
         kind = kinds.pop() if len(kinds) == 1 else ""
-        out = extractor(chunk, config, kind)
+        checkpoint = None
+        if root is not None:
+            # A cancelled page investigation must not pay for every completed
+            # digest again. Hash the material, model settings and Skill text so
+            # a changed source or prompt cannot reuse stale conclusions.
+            fingerprint = hashlib.sha256(json.dumps(
+                [chunk, config.get("runner"), config.get("model"), extraction_instructions(kind)],
+                ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+            checkpoint = state_path(root, f"extracts/investigate/{fingerprint}.json")
+        saved = read_json(checkpoint, {}) if checkpoint else {}
+        if isinstance(saved, dict) and isinstance(saved.get("notes"), str) and saved["notes"].strip():
+            out = {"notes": saved["notes"], "usage": None}
+        else:
+            out = extractor(chunk, config, kind)
+            if checkpoint and isinstance(out.get("notes"), str) and out["notes"].strip():
+                write_json(checkpoint, {"notes": out["notes"]})
         for key, value in (out.get("usage") or {}).items():
             usage[key] = usage.get(key, 0) + value
         if (out.get("notes") or "").strip() != NOTHING:
             digests.append(extraction_item(out["notes"].strip(), chunk))
+        if progress:
+            progress("extracting long evidence", number, len(chunks), dict(usage))
     return digests, usage
 
 
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
-                sent_only: bool = False, mail_skipped: str = "") -> dict:
+                sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
+                quick: bool = False) -> dict:
     """Fill the page's gaps from everything gathered; the page itself is the first input."""
     notebook = Notebook(root)
     if not notebook.path(record).is_file():
         raise WikiError(f"{record} does not exist; create it with `co wiki stub` first")
+    if stage_progress:
+        stage_progress("gathering sources")
     items, coverage = gather(subject, handles, days=days, clients=clients, subscriptions=subscriptions,
                              progress=progress, attachments_dir=root / ".state" / "attachments",
-                             sent_only=sent_only, mail_skipped=mail_skipped)
+                             sent_only=sent_only, mail_skipped=mail_skipped, stage_progress=stage_progress,
+                             quick=quick)
+    coverage.append(f"Requested investigation window: {days} days ending "
+                    f"{datetime.now(timezone.utc).date().isoformat()}")
+    available_items = len(items)
+    if quick:
+        items = quick_evidence(items)
+        coverage.append(f"Quick first pass: reviewed {len(items)} of {available_items} gathered items; "
+                        "individual texts capped at 2,500 characters. Other material was not evaluated; "
+                        "do not claim comprehensive coverage or resolve unsupported conflicts.")
+    if record.startswith("projects/"):
+        leads = project_file_inventory(notebook.read(record))
+        if leads:
+            items.append({"role": "project-inventory", "source": "investigation:project-inventory",
+                          "text": "Candidate local evidence files, not proof of their contents:\n" +
+                                  "\n".join(leads),
+                          "timestamp": datetime.now(timezone.utc).isoformat()})
+    if stage_progress:
+        stage_progress("preparing evidence", len(items))
     config = read_config(root)
     from .inquiry import routing, stage_config
     original_material = None
@@ -276,13 +417,16 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     if max_calls is not None and max_calls < synthesis_calls:
         raise WikiError("Insufficient call budget for investigation; page preserved")
     if gathered_chars > room:
+        if stage_progress:
+            stage_progress("extracting long evidence")
         # Too much for one turn. Not "keep the newest and drop the rest": the
         # oldest mail is where a relationship's terms were set. Digest it in
         # order, through the extraction Skill, and let the one investigate turn read the
         # digests -- the same two-pass shape the timeline mode already runs.
         items, digest_usage = digest_in_chunks(items, stage_config(root, config, "extract"), extractor,
                                                root=root,
-                                               max_calls=None if max_calls is None else max_calls - synthesis_calls)
+                                               max_calls=None if max_calls is None else max_calls - synthesis_calls,
+                                               progress=stage_progress)
         usage_by_stage["extract"] = digest_usage
         coverage.append(f"digest: {gathered_chars:,} chars gathered (~{gathered_chars // 4:,} tokens), over the "
                         f"{room:,}-char room for one turn; summarised in {len(items)} chunk(s) first")
@@ -296,7 +440,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
          "timestamp": now, "source": "investigation:page"},
         {"role": "coverage", "text": "Sources searched for handles " + ", ".join(handles) + ":\n"
                                      + "\n".join(coverage), "timestamp": now, "source": "investigation:coverage"},
-    ] + items
+    ] + ([{"role": "quick-first-pass", "source": "investigation:quick-scope",
+           "timestamp": now, "text": "This is a bounded, partial first pass. Use only the supplied sample; "
+                                     "disclose the sampling limit in Uncertainties."}]
+         if quick else []) + items
     if original_material:
         prompt_items.append({"role": "original_evidence", "source": "investigation:original-evidence",
                              "text": f"Original uncompressed evidence is retained at {original_material}. Read it to check summaries and counterevidence.",
@@ -306,7 +453,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # delegated through `co ai --harness codex`. Either one can reach the web.
     if runner is None:
         runner = run_stage
+    if stage_progress:
+        stage_progress("writing investigation")
     result = runner(notebook, prompt_items, config, stage="investigate")
+    if stage_progress:
+        stage_progress("recording result")
     usage_by_stage["investigate"] = result.get("usage")
     total = {}
     for stage_usage in usage_by_stage.values():
@@ -320,7 +471,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         from .reviews import ingest
         ingest(root, result.get("review_candidates", []))
         notebook.note_investigation(record, ", ".join(dict.fromkeys(searched)))
-    return {"record": record, "items": len(items), "chars_gathered": gathered_chars,
+    return {"record": record, "items": len(items), "items_available": available_items,
+            "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,
             "usage_by_stage": usage_by_stage, "report": result.get("report", "")}

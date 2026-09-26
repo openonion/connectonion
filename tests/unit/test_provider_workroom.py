@@ -176,6 +176,46 @@ def test_owned_terminal_claude_session_resumes_only_the_native_provider(tmp_path
     assert agent.current_session["_provider_direct_approved_tool"] == "claude_code"
 
 
+def test_empty_claude_station_starts_new_session_and_rejects_unstarted_turn(tmp_path):
+    storage = SessionStorage(tmp_path / "sessions.jsonl")
+    source = _stored_claude_session()
+    source["trace"][0]["resumeReady"] = False
+    storage.save(Session(
+        session_id="session-claude", status="done", prompt="",
+        session=source,
+    ))
+
+    class DirectAgent:
+        current_session = None
+
+        def execute_tool(self, name, arguments):
+            assert name == "claude_code"
+            assert arguments["session_id"] == ""
+
+    class IO:
+        def __init__(self):
+            self.messages = []
+
+        def send(self, message):
+            self.messages.append(message)
+
+    io = IO()
+    prepared = prepare_provider_workroom_turn(
+        DirectAgent, storage, "session-claude", "claude_code:current",
+        "First browser message", "request-1", "0xowner",
+    )
+    prepared["run"](io)
+
+    assert io.messages == [{
+        "type": "PROVIDER_INPUT_ACK",
+        "requestId": "request-1",
+        "invocationId": "claude_code:current",
+        "accepted": False,
+        "stateRevision": 7,
+        "reason": "provider_start_failed",
+    }]
+
+
 def test_direct_workroom_session_keeps_the_durable_full_access_budget(tmp_path):
     """Provider-only turns must not publish a fake outer Auto mode."""
     session = _stored_codex_session()

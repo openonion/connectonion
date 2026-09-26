@@ -121,6 +121,7 @@ class InsufficientCreditsError(LLMProviderError):
         self.address = detail.get('address', 'unknown')  # Server provides formatted address
         self.public_key = detail.get('public_key', 'unknown')  # Full public key
         self.original_message = detail.get('message', '')
+        self.free_model = detail.get('free_model')
 
         # Create clear, beautiful error message
         message = self._format_message()
@@ -131,6 +132,7 @@ class InsufficientCreditsError(LLMProviderError):
 
     def _format_message(self):
         """Format a clear, actionable error message."""
+        free_tip = f"💡 Keep going for free with {self.free_model}.\n\n" if self.free_model else ""
         return (
             f"\n"
             f"{'='*70}\n"
@@ -142,6 +144,7 @@ class InsufficientCreditsError(LLMProviderError):
             f"Required:    ${self.required:.4f}\n"
             f"Shortfall:   ${self.shortfall:.4f}\n"
             f"\n"
+            f"{free_tip}"
             f"💡 How to add credits:\n"
             f"   • Purchase: https://o.openonion.ai/purchase\n"
             f"   • Check balance: Run 'co status' in terminal\n"
@@ -253,12 +256,14 @@ class PaidModelRequiredError(LLMProviderError):
         self.model_requested = detail.get('model_requested', 'unknown')
         self.free_models = FREE_MANAGED_MODELS
         self.original_message = detail.get('message', '')
+        self.free_model = detail.get('free_model')
 
         super().__init__(self._format_message())
         self.__cause__ = original_error
 
     def _format_message(self):
         offered = "\n".join(f"   • {m}" for m in self.free_models)
+        free_tip = f"💡 No credits? Keep going with {self.free_model} for free.\n\n" if self.free_model else ""
         return (
             f"\n"
             f"{'='*70}\n"
@@ -268,6 +273,7 @@ class PaidModelRequiredError(LLMProviderError):
             f"Free credits cover Google-routed models. These work now:\n"
             f"{offered}\n"
             f"\n"
+            f"{free_tip}"
             f"💡 To use {self.model_requested}:\n"
             f"   • Purchase credits: https://o.openonion.ai\n"
             f"   • Check balance: Run 'co status' in terminal\n"

@@ -42,7 +42,7 @@ Agent(
     name="my_bot",                        # Required: agent identifier
     tools=[func1, func2],                 # Optional: functions agent can call
     system_prompt="You are helpful",      # Optional: personality/behavior
-    model="co/gemini-3.8-flash",            # Optional: LLM model (default: co/gemini-3.8-flash)
+    model="co/llama",                       # Optional: LLM model (default: co/llama)
     max_iterations=100,                   # Optional: how many tool calls allowed (default: 100)
     api_key="sk-...",                     # Optional: override environment variable
     llm=custom_llm,                       # Optional: bring your own LLM instance
@@ -448,7 +448,7 @@ See [max_iterations.md](max_iterations.md) for detailed guide.
 
 ### Supported Providers
 
-Default model is `co/gemini-3.8-flash`. You can use:
+Default model is `co/llama`. You can use:
 
 ```python
 # OpenAI models
