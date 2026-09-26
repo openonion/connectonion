@@ -10,7 +10,7 @@ import pytest
 from connectonion.wiki.config import default_config, prepare
 from connectonion.wiki.extract import run_extract
 from connectonion.wiki.files import Notebook
-from connectonion.wiki.runner import RunFailed, run_stage
+from connectonion.wiki.runner import RunFailed, _project_window_notice, run_stage, task_prompt
 
 
 @pytest.fixture
@@ -58,6 +58,70 @@ def test_model_runs_use_the_running_installation_not_the_first_co_on_path(notebo
                         SimpleNamespace(returncode=0, stdout='{"outcome": "natural"}', stderr=""))
     run_stage(notebook, [], default_config())
     assert calls[0][:5] == ["/work/venv/bin/python", "-m", "connectonion.cli.main", "ai", "--json"]
+
+
+def test_project_investigation_bounds_local_file_search(notebook, monkeypatch):
+    notebook.stub_project('projects/reader.md', 'Reader', ['/work/reader'])
+    prompts = []
+
+    def stop_after_capture(argv, **kwargs):
+        prompts.append(argv[-1])
+        raise OSError('synthetic stop')
+
+    monkeypatch.setattr('connectonion.wiki.runner.subprocess.run', stop_after_capture)
+    with pytest.raises(RunFailed):
+        run_stage(notebook, [{'role': 'page', 'record': 'projects/reader.md',
+                              'text': notebook.read('projects/reader.md'),
+                              'source': 'investigation:page'}], default_config(), stage='investigate')
+    assert 'at most twelve relevant text files' in prompts[0]
+    assert 'stop using tools and return a brief coverage summary' in prompts[0]
+
+
+def test_quick_investigation_reads_complete_bounded_material_once(tmp_path):
+    items = [{'role': 'quick-first-pass', 'source': 'investigation:quick-scope',
+              'text': 'Only use the gathered items.'},
+             {'role': 'page', 'record': 'people/me.md', 'text': 'A' * 200}]
+    prompt = task_prompt(tmp_path, items, 'investigate')
+    assert f'at {tmp_path / "material.json"}' in prompt
+    assert 'once' in prompt
+    assert 'continued_text' not in prompt
+    assert json.loads((tmp_path / 'material.json').read_text()) == items
+    assert (tmp_path / 'material-readable.json').exists()
+
+
+def test_project_page_keeps_zero_session_window_separate_from_old_files():
+    page = ('# Reader\n\n## Uncertainties\n- Unknown\n\n## Sources\n'
+            '- [1] project-file — observed today\n\nInvestigation: mapped today')
+    items = [{'role': 'coverage', 'source': 'investigation:coverage',
+              'text': 'codex: 10 messages in window, 0 related to subject, 0 read\n'
+                      'claude-code: 101 messages in window, 0 related to subject, 0 read\n'
+                      'Requested investigation window: 5 days ending 2026-09-26'}]
+    result = _project_window_notice(page, items)
+    assert 'No related Codex and Claude Code messages were found in the requested 5-day window' in result
+    assert '- [2] investigation:coverage' in result
+    assert _project_window_notice(result, items) == result
+
+
+def test_investigation_does_not_claim_another_concurrent_page_change(notebook, monkeypatch):
+    first = 'people/first.md'
+    other = 'people/other.md'
+    notebook.stub_person(first, 'First', ['first@example.org'], email='first@example.org')
+    notebook.stub_person(other, 'Other', ['other@example.org'], email='other@example.org')
+
+    def run_model(*args, **kwargs):
+        notebook.write(other, notebook.read(other) + '\nConcurrent edit.\n')
+        return {'usage': None, 'result': 'complete'}
+
+    def promote(book, record, candidate, original, items, directory, usage):
+        book.write(record, original + '\nInvestigated.\n')
+
+    monkeypatch.setattr('connectonion.wiki.runner.run_task', run_model)
+    monkeypatch.setattr('connectonion.wiki.runner._promote_candidate', promote)
+    result = run_stage(notebook, [{'role': 'page', 'record': first,
+                                   'text': notebook.read(first),
+                                   'source': 'investigation:page'}], default_config(), stage='investigate')
+    assert result['changed'] == [first]
+    assert 'Concurrent edit.' in notebook.read(other)
 
 
 @pytest.mark.parametrize("stage", ["maintain", "investigate", "abstract", "init"])

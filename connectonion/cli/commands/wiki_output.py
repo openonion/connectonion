@@ -59,6 +59,33 @@ def render(value, command: str, *, failed: bool = False) -> str:
     """Render readable results without interpreting source text as terminal markup."""
     if isinstance(value, str):
         text = ('Error: ' if failed else '') + value
+    elif command == 'init' and isinstance(value, dict):
+        # The complete map is persisted and available through --json. Printing
+        # every contact, subject and installed skill made a normal first run
+        # thousands of lines long and buried the next action.
+        title = 'Wiki init' + (' — needs attention' if failed else '')
+        skills = value.get('skills') or {}
+        skill_count = len(skills.get('skills') or []) if isinstance(skills, dict) else len(skills)
+        skill_names = (len({str(row.get('name', '')).casefold() for row in skills.get('skills') or []})
+                       if isinstance(skills, dict) else skill_count)
+        skills_created = len(skills.get('created') or []) if isinstance(skills, dict) else 0
+        text = '\n'.join([
+            title, '',
+            f"Map: {value.get('phase', 'unknown')} · {value.get('days', '?')} days",
+            *(f"{label}: {len(value.get(kind) or [])}"
+              for kind, label in (('people', 'People'), ('orgs', 'Organizations'),
+                                  ('projects', 'Projects'))),
+            f"Skills: {skill_names} names ({skill_count} installed copies)",
+            f"New pages: {len(value.get('created') or []) + skills_created}",
+            'Investigation: not started',
+            'Detailed map: .state/map.json inside this Wiki root (or rerun with --json).',
+            *(f"{error.get('source', 'source')}: {error.get('error', 'unavailable')}"
+              for error in value.get('errors') or []),
+            *(value.get('confirm_own_addresses') or []),
+            *(value.get('tips') or []),
+            *([value['people_setup']] if value.get('people_setup') else []),
+            *([value['recovery']] if value.get('recovery') else []),
+        ])
     else:
         title = 'Wiki ' + ('status' if command == 'wiki' else command.replace('-', ' '))
         if command in ('status', 'wiki') and isinstance(value, dict):
