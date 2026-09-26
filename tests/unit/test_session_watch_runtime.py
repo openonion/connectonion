@@ -1,6 +1,10 @@
 """A session watch runs without the network Host and preserves the original turn."""
 
 import json
+import os
+import shlex
+import subprocess
+import sys
 import time
 
 import pytest
@@ -250,7 +254,9 @@ def test_managed_background_process_emits_task_receipt(tmp_path):
         "current_session": {"session_id": "s1", "requester": OWNER},
     })()
     try:
-        started = run_background("python -c 'print(42)'", agent=agent)
+        args = [sys.executable, "-c", "print(42)"]
+        command = subprocess.list2cmdline(args) if os.name == "nt" else shlex.join(args)
+        started = run_background(command, agent=agent)
         task_id = started.split()[1]
         store.watch_task("s1", "owner", task_id)
         _tasks[task_id].reader.join(timeout=5)

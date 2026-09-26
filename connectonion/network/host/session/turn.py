@@ -81,7 +81,7 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
         record.result = result
         record.duration_ms = duration_ms
         record.session = agent.current_session
-        watch_store = getattr(agent, "_watch_store", None)
+        watch_store = vars(agent).get("_watch_store")
         if watch_store is not None:
             expiry = watch_store.latest_expiry(session_id)
             if expiry is not None:
@@ -99,7 +99,7 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
                 mode_policy=mode_policy,
                 is_admin=is_admin,
             )
-        watch_store = getattr(agent, "_watch_store", None)
+        watch_store = vars(agent).get("_watch_store")
         if watch_store is not None:
             expiry = watch_store.latest_expiry(session_id)
             if expiry is not None:
