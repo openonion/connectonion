@@ -634,8 +634,8 @@ RSYNC_FILTERS = [
     "--exclude", ".co/schedule-state.json",
     "--exclude", ".co/schedule-state.json.lock",
     "--exclude", ".co/schedule.tick.lock",
-    # Watch observations and pending events belong to the serving Host. A
-    # laptop's queue must not replace the server's undelivered events.
+    # Existing b9-b11 Host watch queues may remain on disk after upgrade.
+    # Never copy a laptop's private observations to a deployed agent.
     "--exclude", ".co/watch-state.sqlite3*",
     "--exclude", ".co/watch.consume.*.lock",
     # Everything else the running agent writes into `.co/` (#1694). Each of

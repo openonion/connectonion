@@ -1,5 +1,9 @@
 # The file changed. Why didn't the agent wake up?
 
+**Historical note:** This article describes the 1.8.9b9 Host watch preview.
+The implementation is being removed from subsequent source builds; Agent-owned
+session watches are tracked in [#1788](https://github.com/openonion/connectonion/issues/1788).
+
 Issue #1499 asked for an agent that notices events by itself. Picture a Host
 waiting quietly while `notes.md` changes. The tempting answer was to add a
 `before_iteration` hook that checks the file. I followed that path through the

@@ -412,13 +412,12 @@ Gemini. Stable remains 1.8.8. See [1.8.9b10 notes](docs/releases/1.8.9b10.md).
 
 Earlier in this line:
 
-1.8.9b9 lets a hosted Agent react to a declared file change, timer firing, or
-push event in a continuing session (#1499). A durable Host queue wakes an idle
-watch session; the copyable `watch_events` plugin puts later events at Agent
-iteration boundaries. Stable remains 1.8.8. See
-[1.8.9b9 notes](docs/releases/1.8.9b9.md).
+The b9 preview was published with Host-owned watchers. Their runtime is being
+removed in subsequent source builds in favor of session-owned watches (#1788).
+The copyable `watch_events` plugin remains available for Agent turns. Stable
+remains 1.8.8.
 
-- 1.8.9b9 (Host file/timer/push watchers with SQLite event queue, per-watch continuing sessions, bounded in-flight iteration reminders through a copyable Agent plugin, status and retry commands.)
+- 1.8.9b9 (published Host file/timer/push watcher preview, subsequently withdrawn from source; copyable Agent iteration plugin retained.)
 
 Earlier in this line:
 

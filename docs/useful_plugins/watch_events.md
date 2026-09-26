@@ -26,15 +26,16 @@ agent.input("Check the project")
 ```
 
 The callback owns its queue and should claim events atomically when multiple
-workers may run. The plugin records event IDs in the session trace, marks the
-reminder internal for the Host UI, and accepts at most four batches per turn by
-default. Use `watch_events(claim_events, max_batches=2)` to change that limit.
+workers may run. The plugin records event IDs and the internal reminder in
+the session trace. It accepts at most four batches per turn by default. Use
+`watch_events(claim_events, max_batches=2)` to change that limit.
 The limit resets when the Agent starts another input turn.
 
-An Agent plugin runs only while `Agent.input()` is active. It cannot observe
-events or wake an idle session by itself. Host watches use a background source
-observer and SQLite queue for that job, then bind this plugin to the watch's
-active turn. See [Host watches](../network/host-config.md#event-watchers-189-preview).
+An Agent plugin runs only while `Agent.input()` is active. The caller supplies
+the event source through `claim_events`. Waking an idle session requires a
+running session owner that can start another Agent turn; the plugin does not
+start one on its own. See [#1788](https://github.com/openonion/connectonion/issues/1788)
+for the session-owned watch runtime.
 
 To edit the plugin for your own Agent, run `co copy watch_events` and import
 `watch_events` from `plugins.watch_events`. The copied file uses absolute

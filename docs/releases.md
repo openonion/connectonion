@@ -31,6 +31,10 @@ python -m pip install --upgrade 'connectonion==1.8.9b12'
 co --version
 ```
 
+The Host watcher shipped in b9 and remains in b11. It is being removed from
+subsequent source builds; Agent-owned watches belong to the session runtime
+tracked in [#1788](https://github.com/openonion/connectonion/issues/1788).
+
 <details>
 <summary>The preview line that became 1.8.5</summary>
 
