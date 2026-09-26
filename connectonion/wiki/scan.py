@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import WikiError
-from .mail import _address, _list_all, correspondent
+from .mail import _address, _addresses, _list_all, correspondent
 from .source import KINDS, source_files
 
 # Rings a bell on its own; the Skill still decides. Matched anywhere before the
@@ -79,23 +79,27 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
             for row in rows:
                 if on_row:
                     on_row(kind, row)
-                who = correspondent(row, mine)
-                if "@" not in who or who in mine:
-                    continue
-                entry = people[who]
-                entry["mails"] += 1
-                entry["boxes"].add(kind)
                 own = _address(row.get("from", "")) in mine or "@" not in _address(row.get("from", ""))
-                entry["sent" if own else "received"] += 1
-                name = _display_name(row, who)
-                if name:
-                    entry["names"][name] += 1
-                day = str(row.get("date", ""))[:10]
-                entry["first"] = min(entry["first"] or day, day)
-                entry["last"] = max(entry["last"] or day, day)
-                subject = re.sub(r"^(re|fw|fwd|回复|转发)\s*:\s*", "", str(row.get("subject", "")), flags=re.I)[:80]
-                if subject:
-                    entry["subjects"][subject] += 1
+                # One sent message can be relevant to several people. Map each
+                # recipient, while the body archive still stores it only once.
+                recipients = _addresses(row.get("to")) + _addresses(row.get("cc"))
+                whos = dict.fromkeys(recipients if own else [correspondent(row, mine)])
+                for who in whos:
+                    if "@" not in who or who in mine:
+                        continue
+                    entry = people[who]
+                    entry["mails"] += 1
+                    entry["boxes"].add(kind)
+                    entry["sent" if own else "received"] += 1
+                    name = _display_name(row, who)
+                    if name:
+                        entry["names"][name] += 1
+                    day = str(row.get("date", ""))[:10]
+                    entry["first"] = min(entry["first"] or day, day)
+                    entry["last"] = max(entry["last"] or day, day)
+                    subject = re.sub(r"^(re|fw|fwd|回复|转发)\s*:\s*", "", str(row.get("subject", "")), flags=re.I)[:80]
+                    if subject:
+                        entry["subjects"][subject] += 1
             if progress:
                 progress(kind, stop, len(people))
             if on_window:

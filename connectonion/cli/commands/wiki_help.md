@@ -10,7 +10,7 @@ co wiki — a notebook about the people, projects and tools in your work, kept u
 Experimental: a preview; its commands may change before 1.9.0.
 
 Build (once)
-  init          Build the notebook's frame from mail headers and coding sessions. No model.
+  init          Build the notebook's frame and private 90-day mail materials. No model.
   investigate   Fill a page, a whole category, or your own page, using a model.
 Read
   open          Browse the notebook in your browser.
@@ -45,11 +45,11 @@ Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, 
 ```
 Build the notebook's frame: a page for each person you write to, each organization,
 each coding project and each installed Skill, plus your own page, already titled
-with your name and filled with who you write to most and where you work. Reads mail headers
-and session metadata only. Does not read message bodies, does not run a model, does
-not turn on the schedule.
+with your name and filled with who you write to most and where you work. Lists
+90 days of mail by default, saves private body snapshots and per-person indexes,
+and records local project session pointers. Does not run a model or schedule.
 
-Usage:    co wiki init [--days N] [--mine ADDRESS]... [--name NAME] [--mail gmail|outlook]...
+Usage:    co wiki init [--days N] [--mine ADDRESS]... [--name NAME] [--mail gmail|outlook]... [--no-mail-archive]
 Example:  co wiki init --days 90 --name "Aaron Xie" --mine aaron@mail.openonion.ai
 
 Inputs:   Connected mailboxes (co auth google, co auth microsoft) and local Codex /
@@ -61,8 +61,12 @@ Output:   Pages under ~/.co/wiki (or --root), with progress on stderr and a priv
           a full seven-day listing is subdivided past its 200-message cap. If a
           provider cannot enumerate a dense window, init reports a gap. Re-running preserves
           page prose and replaces the inventory snapshot rather than duplicating it.
-Effects:  Writes pages. Reads mail headers. No model, no cost, no schedule.
-Takes:    About 10 minutes for 90 days of two mailboxes.
+          Private .state/mail/ files hold one body per message, per-person references,
+          and per-project session indexes; they never appear in shared pages.
+Effects:  Writes pages and private source files. Reads mail bodies unless
+          --no-mail-archive is set. No model calls or schedule.
+Takes:    Depends on mailbox size; body download can take substantially longer
+          than map building. Interrupted downloads resume on the next init.
 
 Next:     co wiki investigate me         (fill your own page first)
 Back:     co wiki --help

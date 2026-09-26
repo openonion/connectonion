@@ -22,12 +22,14 @@ class SourceInventory:
     def mail(self, provider: str, row: dict) -> None:
         # Provider listings may contain bodyPreview or arbitrary extra fields.
         # Explicitly allowlist the metadata needed to locate an original mail.
+        def headers(value):
+            return [str(item) for item in value] if isinstance(value, (list, tuple)) else [str(value)] if value else []
         self.records.append({"source": provider, "type": "mail",
                              "id": str(row.get("id") or ""),
                              "date": str(row.get("date") or ""),
                              "from": str(row.get("from") or ""),
-                             "to": [str(item) for item in (row.get("to") or [])],
-                             "cc": [str(item) for item in (row.get("cc") or [])],
+                             "to": headers(row.get("to")),
+                             "cc": headers(row.get("cc")),
                              "subject": str(row.get("subject") or "")})
 
     def window(self, provider: str, start: str, end: str, count: int | None, limit: int,
