@@ -41,7 +41,8 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None,
         # and an empty one read identically, which is the state the init contract
         # names first (#1616).
         found = f'{len(rows)} correspondents' if rows else 'no correspondents in this window'
-        coverage.append(f'{kind}: metadata only, {days} days, at most 200 messages per seven-day window; ' + found)
+        coverage.append(f'{kind}: metadata only, {days} days; cap-hit windows subdivided for complete '
+                        'enumeration within the observed range; ' + found)
         for row in rows:
             old = merged.get(row['address'])
             if old:
@@ -256,7 +257,7 @@ def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
         notebook.write(record, page)
 
 
-def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150,
+def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90,
               skill_directories=None, mine=(), source_errors=None, absent=None, name: str = '',
               capture_sources: bool = False, progress=None) -> dict:
     """Map observed identities; correspondent classification remains unassessed."""

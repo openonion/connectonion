@@ -28,7 +28,7 @@ abbreviate it for readability. Replace placeholders with observed values.
 
 ## 1. Build the frame without a model
 
-Run `co wiki --root '<absolute-notebook-root>' init --days 150`. This command
+Run `co wiki --root '<absolute-notebook-root>' init --days 90`. This command
 creates all four maps and complete page skeletons before returning. It never
 starts a model or investigates a page. Do not invoke this Skill from that command.
 Connected mailboxes are mapped by default; `--mail` selects explicit mailboxes. Read the init coverage report.

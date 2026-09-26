@@ -58,7 +58,8 @@ Inputs:   Connected mailboxes (co auth google, co auth microsoft) and local Code
 Output:   Pages under ~/.co/wiki (or --root), with progress on stderr and a private
           .state/source-inventory.md summary plus .jsonl metadata pointers. Mail
           counts are observed within the selected window, never lifetime totals;
-          a seven-day window may be capped at 200 messages. Re-running preserves
+          a full seven-day listing is subdivided past its 200-message cap. If a
+          provider cannot enumerate a dense window, init reports a gap. Re-running preserves
           page prose and replaces the inventory snapshot rather than duplicating it.
 Effects:  Writes pages. Reads mail headers. No model, no cost, no schedule.
 Takes:    About 10 minutes for 90 days of two mailboxes.

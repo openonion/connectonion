@@ -191,7 +191,7 @@ def make_wiki_app(factory):
 
     @wiki.command("init", cls=V("co wiki init"))
     def init_wiki(ctx: typer.Context,
-                  days: int = typer.Option(150, "--days", min=1),
+                  days: int = typer.Option(90, "--days", min=1),
                   skills_dir: List[Path] = typer.Option([], "--skills-dir"),
                   mine: List[str] = typer.Option([], "--mine"),
                   mail: List[str] = typer.Option([], "--mail"),

@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import WikiError
-from .mail import _address, correspondent
+from .mail import _address, _list_all, correspondent
 from .source import KINDS, source_files
 
 # Rings a bell on its own; the Skill still decides. Matched anywhere before the
@@ -72,7 +72,10 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
             stop = min(cursor + timedelta(days=7), end)
             if on_window:
                 on_window(kind, cursor.isoformat(), stop.isoformat(), None, 200)
-            rows = client.list_between(cursor.isoformat(), stop.isoformat(), 200) or []
+            # Both providers cap a listing at 200, but at opposite ends of the
+            # window. Reuse the importer that bisects a full window until every
+            # message in this interval has been enumerated.
+            rows = _list_all(client, cursor, stop)
             for row in rows:
                 if on_row:
                     on_row(kind, row)
@@ -96,7 +99,7 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
             if progress:
                 progress(kind, stop, len(people))
             if on_window:
-                on_window(kind, cursor.isoformat(), stop.isoformat(), len(rows), 200)
+                on_window(kind, cursor.isoformat(), stop.isoformat(), len(rows), 200, True)
             cursor = stop
     out = []
     for address, e in people.items():

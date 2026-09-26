@@ -2,7 +2,9 @@
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+import pytest
 
 from connectonion.wiki.config import prepare
 from connectonion.wiki.map import build_map
@@ -59,3 +61,52 @@ def test_init_captures_mail_metadata_and_progress_without_model(tmp_path):
                       capture_sources=True)
     assert again["source_inventory"]["mail_observed"] == 1
     assert len((tmp_path / ".state/source-inventory.jsonl").read_text().splitlines()) == 1
+
+
+@pytest.mark.parametrize("cap_end", ["oldest", "newest"])
+def test_init_enumerates_all_90_day_mail_past_provider_page_cap(tmp_path, cap_end):
+    prepare(tmp_path)
+    skills = tmp_path / "empty-skills"
+    skills.mkdir()
+    first = datetime.now(timezone.utc) - timedelta(hours=1)
+    messages = [{"id": str(i), "date": (first + timedelta(seconds=i)).isoformat(),
+                 "from": "a@example.org", "to": ["me@example.org"], "subject": "Project"}
+                for i in range(250)]
+
+    class Mail:
+        def my_addresses(self):
+            return {"me@example.org"}
+
+        def list_between(self, start, end, limit):
+            hits = [row for row in messages if start <= row["date"] < end]
+            return (hits[:limit] if cap_end == "oldest" else hits[-limit:])
+
+    result = build_map(tmp_path, {}, {"gmail": Mail()}, days=90, skill_directories=[skills],
+                       capture_sources=True)
+    assert result["phase"] == "mapped"
+    assert result["source_inventory"]["mail_observed"] == 250
+    assert result["source_inventory"]["capped_mail_windows"] == 0
+    assert result["source_inventory"]["split_mail_windows"] == 1
+    assert len((tmp_path / ".state/source-inventory.jsonl").read_text().splitlines()) == 250
+    assert next(row for row in result["people"] if row.get("address") == "a@example.org")["mails"] == 250
+
+
+def test_unenumerable_dense_mail_window_is_partial_not_complete(tmp_path):
+    prepare(tmp_path)
+    skills = tmp_path / "empty-skills"
+    skills.mkdir()
+
+    class Mail:
+        def my_addresses(self):
+            return {"me@example.org"}
+
+        def list_between(self, start, end, limit):
+            # A provider that always reports a full page, even at one second.
+            return [{"id": str(i), "date": start, "from": "a@example.org"}
+                    for i in range(limit)]
+
+    result = build_map(tmp_path, {}, {"gmail": Mail()}, days=1, skill_directories=[skills],
+                       capture_sources=True)
+    assert result["phase"] == "partial"
+    assert result["errors"] == [{"source": "gmail", "stage": "metadata", "error": "WikiError"}]
+    assert result["source_inventory"]["mail_observed"] == 0
