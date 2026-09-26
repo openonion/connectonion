@@ -36,6 +36,8 @@ def test_numbered_source_list_is_normalized_without_changing_claims():
     assert '   Continued description.' in normalized
     assert normalized.count('The date is open. [1]') == 1
     assert normalize_numbered_sources(normalized) == normalized
+    assert normalize_numbered_sources('# Page\n\n## Sources\n1.\nnext line\n') == (
+        '# Page\n\n## Sources\n1.\nnext line\n')
 
 
 def test_candidate_checks_duplicate_headings_and_missing_citations(tmp_path):

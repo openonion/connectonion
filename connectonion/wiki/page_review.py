@@ -145,7 +145,7 @@ def normalize_numbered_sources(text: str) -> str:
         return text
     after = re.search(r'^(?:## |Investigation:)', tail, re.M)
     sources, rest = (tail[:after.start()], tail[after.start():]) if after else (tail, '')
-    sources = re.sub(r'(?m)^([ \t]*)(\d+)\.\s+', r'\1- [\2] ', sources)
+    sources = re.sub(r'(?m)^([ \t]*)(\d+)\.[ \t]+', r'\1- [\2] ', sources)
     return head + marker + sources + rest
 
 
