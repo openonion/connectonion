@@ -65,7 +65,7 @@ def today():
     _run("get_today_events")
 
 
-@gcalendar_app.command("read", epilog="Example:  co gcalendar read <event-id>")
+@gcalendar_app.command("read", epilog="Example:  co gcalendar read 7nc7u7q2b09p6g8q3k1r3b1m40")
 def read(event_id: str = typer.Argument(..., help="Exact event ID from co gcalendar list")):
     """Read one event by ID. Read-only."""
     _run("get_event", event_id)
@@ -115,13 +115,13 @@ def meet(title: str, start: str, end: str, attendees: str = typer.Option(..., "-
 
 
 @gcalendar_app.command("update", epilog=(
-    "Example:  co gcalendar update <event-id> --title \"Team sync (moved)\" "
+    "Example:  co gcalendar update 7nc7u7q2b09p6g8q3k1r3b1m40 --title \"Team sync (moved)\" "
     "--start 2026-10-01T11:00:00+10:00 --end 2026-10-01T11:30:00+10:00 --yes"))
 def update(event_id: str, title: Optional[str] = None, start: Optional[str] = None,
            end: Optional[str] = None, description: Optional[str] = None,
            attendees: Optional[str] = None, location: Optional[str] = None,
            yes: bool = typer.Option(False, "--yes", help="Apply fields to this exact event; default previews")):
-    """Update supplied nonempty fields; other fields are preserved. Changes the event only with --yes; otherwise previews.
+    """Change an existing event's title, time, description, attendees or location; fields you leave out stay as they are. Changes the event only with --yes; otherwise previews.
 
     Google emails the event's attendees about the change.
     """
@@ -133,7 +133,8 @@ def update(event_id: str, title: Optional[str] = None, start: Optional[str] = No
         _run("update_event", event_id, **values)
 
 
-@gcalendar_app.command("delete", epilog="Example:  co gcalendar delete <event-id> --yes")
+@gcalendar_app.command("delete", epilog="Example:  co gcalendar delete 7nc7u7q2b09p6g8q3k1r3b1m40  |  "
+                                         "co gcalendar delete 7nc7u7q2b09p6g8q3k1r3b1m40 --yes")
 def delete(event_id: str, yes: bool = typer.Option(False, "--yes", help="Delete the exact event; default previews")):
     """Delete an event by stable ID, never by a listing number. Deletes it only with --yes; otherwise previews.
 
