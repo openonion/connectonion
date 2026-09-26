@@ -22,13 +22,14 @@ python -m pip install --upgrade 'connectonion==1.8.8'
 
 ## Current preview
 
-Beta **1.8.9b7** lets a new Claude Station start its first browser turn before
-any terminal prompt, and promptly rejects a native startup failure. It includes
-the offline Wiki maintenance fixes from b6. See [1.8.9b7 release notes](releases/1.8.9b7.md)
-for the tested scope and limits.
+Beta **1.8.9b9** lets a hosted Agent notice declared file, timer, and push
+events in a continuing session. Events observed during an active turn enter at
+Agent iteration boundaries through a copyable plugin. It includes the CLI help
+audit from b8. See [1.8.9b9 release notes](releases/1.8.9b9.md) for the
+scope and limits.
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.9b7'
+python -m pip install --upgrade 'connectonion==1.8.9b9'
 co --version
 ```
 

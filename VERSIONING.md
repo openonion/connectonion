@@ -375,7 +375,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b8
+## Current Version: 1.8.9b9
+
+1.8.9b9 lets a hosted Agent react to a declared file change, timer firing, or
+push event in a continuing session (#1499). A durable Host queue wakes an idle
+watch session; the copyable `watch_events` plugin puts later events at Agent
+iteration boundaries. Stable remains 1.8.8. See
+[1.8.9b9 notes](docs/releases/1.8.9b9.md).
+
+- 1.8.9b9 (Host file/timer/push watchers with SQLite event queue, per-watch continuing sessions, bounded in-flight iteration reminders through a copyable Agent plugin, status and retry commands.)
+
+Earlier in this line:
 
 1.8.9b8 adds `co audit <command>`, which judges whether a CLI, `co` or any
 other, is fit for an agent harness from its printed help alone: rules first,

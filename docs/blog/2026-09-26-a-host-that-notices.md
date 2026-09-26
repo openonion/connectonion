@@ -38,3 +38,10 @@ The lesson was about where to put the boundary. A plugin helps an agent
 *during* a turn; a watcher must also make an idle turn possible. The queue
 makes that handoff survive a restart and gives the operator a place to see
 what happened. Neither part needs to pretend it owns the other's lifetime.
+
+The focused watcher and plugin suite passed 17 cases, including an event
+arriving during a tool batch, one arriving during a final model call, a lost
+queue acknowledgement, and the copied plugin loading outside the package.
+The merged PR's Python 3.10–3.13 CI matrix passed. A different kind of watch,
+registered by an Agent to resume its original conversation days later, still
+needs the session-owned runtime planned in #1788.
