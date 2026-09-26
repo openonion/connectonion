@@ -23,10 +23,13 @@ def test_map_groups_project_worktrees_preserves_pages_and_keeps_noise(tmp_path, 
     assert first['projects'][0]['sessions'] == 4
     assert '/worktree/atlas' in nb.read(record)
     assert first['people'][0]['classification'] == 'automated candidate'
-    nb.write(record, nb.read(record).replace('## What it is\n', '## What it is\nCurated purpose.\n'))
+    curated = nb.read(record).replace('## What it is\n', '## What it is\nCurated purpose.\n')
+    curated = curated.replace('- /repo/atlas\n', '- /repo/atlas [1]\n')
+    nb.write(record, curated)
     second = build_map(tmp_path, {}, {}, skill_directories=[skills])
     assert not second['created']
-    assert 'Curated purpose.' in nb.read(record)
+    assert nb.read(record) == curated
+    assert nb.read(record).count('/repo/atlas') == 1
     assert source.read_bytes() == original
     assert second['investigation'] == 'not started'
 
@@ -158,6 +161,31 @@ def test_project_scan_does_not_turn_wiki_runs_into_a_project(tmp_path, monkeypat
     assert [row['path'] for row in rows] == [str(project)]
 
 
+def test_project_scan_excludes_other_notebooks_task_copies_and_fixtures(tmp_path):
+    from pathlib import Path
+    from connectonion.wiki.scan import project_exclusion
+
+    task_copy = tmp_path / 'another-wiki/.state/tasks/investigate-1/notebook'
+    fixture = tmp_path / '.worktree/wiki-improve-fixture/notebook'
+    real = Path('/Users/fictional/company/notebook')
+    for path in (task_copy, fixture):
+        path.mkdir(parents=True)
+    assert project_exclusion(task_copy) == 'Wiki task workspace copy'
+    assert project_exclusion(fixture) == 'test fixture notebook'
+    assert project_exclusion(real) == ''
+
+
+def test_project_scan_excludes_a_multi_repository_workspace_root(tmp_path):
+    from connectonion.wiki.scan import project_exclusion
+
+    root = tmp_path / 'projects'
+    root.mkdir()
+    (root / 'AGENTS.md').write_text('This directory is a workspace, not a repository.\n')
+    for name in ('first', 'second'):
+        (root / name / '.git').mkdir(parents=True)
+    assert project_exclusion(root) == 'multi-repository workspace container'
+
+
 def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_path, monkeypatch):
     """On a real mailbox Ody Zhou was four pages -- two Gmail addresses, an event
     platform's relay, and a Drive share notice -- and notice senders were 165 of
@@ -246,7 +274,7 @@ def test_confirming_an_own_address_stops_the_question_and_keeps_the_page_as_the_
     rows = [{'name': 'openonion ai', 'address': 'aaronplus1996@gmail.com', 'mails': 106, 'sent': 106,
              'received': 0, 'one_way': True, 'first': '2026-06-25', 'last': '2026-09-23', 'boxes': ['gmail']}]
 
-    def mail_rows(clients, days, mine, coverage, errors=None):
+    def mail_rows(clients, days, mine, coverage, errors=None, progress=None):
         own = {a.lower() for a in mine}
         return [row for row in rows if row['address'] not in own], own
 
