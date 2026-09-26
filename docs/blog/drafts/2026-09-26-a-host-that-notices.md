@@ -1,25 +1,34 @@
-# A Host that notices (draft)
+# The file changed. Why didn't the agent wake up?
 
-Status: draft for the 1.8.9 preview. Publish only after the tagged package and
+Status: draft for the 1.8.9 preview. Publish after the tagged package and
 GitHub Release are visible.
 
-The missing piece was the space between events and turns. A lifecycle hook
-cannot hear a file change while the agent is idle: there is no turn in which
-the hook could run. The Host could already accept a chat message or a scheduled
-prompt, but those paths were wired separately.
+Issue #1499 asked for an agent that notices events by itself. Picture a Host
+waiting quietly while `notes.md` changes. The tempting answer was to add a
+`before_iteration` hook that checks the file. I followed that path through the
+code and found the catch: every iteration begins *after* somebody calls
+`agent.input()`. While the Host is idle, the hook never runs. There is no turn
+to attach the file change to.
 
-The watcher now keeps observation cheap and turns ordinary. A file change or
-timer firing first becomes a durable event. The Host then feeds that event to
-the same input path as a conversation prompt. It reaches the agent as a user
-message in a stable session, and the result lands in the existing session log.
+The Host already had two ways to start a turn without a person typing in the
+UI. Its scheduler starts a turn when the clock fires; its inbox consumer starts
+one when a chat message arrives. Both eventually call `input_handler()`. That
+was the useful discovery. The missing piece was a common way to record an
+observed event before asking the agent to do anything with it.
 
-We chose a persistent queue because a model may spend minutes answering an
-event, while observing another source should take milliseconds. A Host restart
-must not erase events it has already seen. The queue also lets the operator see
-which watch fired, which session handled it, and what failed.
+We first separated the two jobs. A small background poll records a file change
+or timer firing in a durable queue. A worker then reads the event and hands its
+envelope to `input_handler()` as a user message in a stable session. The agent
+can be busy for minutes; observation does not have to wait for its answer.
 
-There is a deliberate limit: a two-second file poll detects the latest file
-state, so rapid intermediate writes can combine. A watcher tells the agent
-that something happened; it is not a filesystem journal. The same event
-envelope can later accept inbox and callback producers without changing the
-agent's input path.
+A restart exposed the harder edge. Suppose the agent's answer reaches the
+session log, then the process dies before the queue records completion. Blindly
+retrying would give the agent the same event twice and might repeat a tool's
+side effect. Recovery now checks the saved session for that event ID before it
+starts another turn. It cannot promise exactly-once external side effects after
+an uncertain crash, but it can avoid repeating a turn whose completion is
+already in the Host's own record.
+
+The lesson was about where to put the boundary. A hook helps an agent *during*
+a turn. A watcher must first make a turn possible. The queue makes that handoff
+survive a restart and gives the operator a place to see what happened.
