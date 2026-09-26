@@ -15,6 +15,7 @@ import pytest
 
 from connectonion.cli.commands.deploy_to_server import RSYNC_FILTERS, _rsync_filters
 
+
 pytestmark = pytest.mark.skipif(
     shutil.which("rsync") is None, reason="needs rsync on PATH"
 )
@@ -225,10 +226,6 @@ def test_a_local_schedule_state_does_not_rewind_the_servers(tmp_path):
     ".co/served_by.json",
     ".co/schedule-state.json.lock",
     ".co/schedule.tick.lock",
-    ".co/watch-state.sqlite3",
-    ".co/watch-state.sqlite3-wal",
-    ".co/watch-state.sqlite3-shm",
-    ".co/watch.consume.*.lock",
 ])
 def test_a_local_copy_cannot_overwrite_what_the_running_agent_wrote(tmp_path, relpath):
     """Protect-from-delete keeps these when the laptop has none. Anyone who ran

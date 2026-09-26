@@ -22,14 +22,15 @@ python -m pip install --upgrade 'connectonion==1.8.8'
 
 ## Current preview
 
-Beta **1.8.9b10** uses the free `co/llama` model by default for managed text
-requests. `co/gemma` is another free choice, and credit errors name a free model
-to keep using. Audio transcription continues to use Gemini. It includes the
-Host watcher work from b9. See [1.8.9b10 release notes](releases/1.8.9b10.md)
-for the scope and limits.
+Beta **1.8.9b9** was published with the Host watcher preview. That design is
+being removed from subsequent source builds in favor of session-owned watches.
+The b10 source tag has been prepared, but its package release is not yet
+published. See the [b9 release notes](releases/1.8.9b9.md) for its historical
+scope and [#1788](https://github.com/openonion/connectonion/issues/1788) for
+the replacement.
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.9b10'
+python -m pip install --upgrade 'connectonion==1.8.9b9'
 co --version
 ```
 

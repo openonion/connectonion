@@ -1,6 +1,7 @@
 # DD-073 — Watch events enter a Host session at turn or iteration boundaries
 
-Status: 1.8.9 preview proposal, under review in #1499 and #1781. Research checked 2026-09-26.
+Status: historical 1.8.9b9 design. The Host runtime is being removed by #1806;
+the Agent-owned session design is tracked in #1788. Research checked 2026-09-26.
 
 ## What a watcher is
 
