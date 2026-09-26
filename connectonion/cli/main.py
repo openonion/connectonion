@@ -1570,11 +1570,11 @@ def telegram_send(
 
 # The ids each provider's help examples use: (chat, message).
 _INBOX_IDS = {
-    "feishu": ("oc_abc...", "om_abc..."),
-    "lark": ("oc_abc...", "om_abc..."),
-    "whatsapp": ("61412345678@s.whatsapp.net", "<message-id>"),
-    "telegram": ("-1001234567890", "<message-id>"),
-    "discord": ("<channel-id>", "<message-id>"),
+    "feishu": ("oc_5ce6d572455d361153b7cb51da133945", "om_dc13264520392913993dd051dba21dcf"),
+    "lark": ("oc_5ce6d572455d361153b7cb51da133945", "om_dc13264520392913993dd051dba21dcf"),
+    "whatsapp": ("61412345678@s.whatsapp.net", "3EB0C127D8F1A2B4E5F6"),
+    "telegram": ("-1001234567890", "-1001234567890.42"),  # "<chat>.<message_id>"
+    "discord": ("1180123456789012345", "1180123987654321098"),
 }
 
 
@@ -1594,8 +1594,9 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
     group = group if group is not None else _typer_app(
         help=help_text,
         epilog=f'Example:  {co} check  |  {co} receive -t 60  |  {co} reply {msg} "On it"')
-    refuses = None if writes else ("Not implemented for this provider yet; says which endpoint would do it. "
-                                   "Read-only: it refuses and sends nothing.")
+    def refuses(what: str) -> Optional[str]:
+        return None if writes else (f"{what} Not implemented for {name.capitalize()} yet: it refuses, "
+                                    "names the API endpoint that would do it, and sends nothing. Read-only.")
 
     @group.command("listen", epilog=f"Example:  {co} listen  |  {co} listen --raw")
     def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl")):
@@ -1639,11 +1640,11 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         again: bool = typer.Option(False, "--again", help="Reply even if this message was already answered"),
         plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
     ):
-        """Reply where a received message was asked. Prints the new id. Sends a message to that chat."""
+        """Reply to a received message, in the chat it came from. Prints the new message id. Sends a message to that chat."""
         from .commands.listen_commands import handle_reply
         handle_reply(name, message_id, text, again=again, plain=plain)
 
-    @group.command("edit", cls=NegativeIds, help=refuses,
+    @group.command("edit", cls=NegativeIds, help=refuses("Edit a message this account sent."),
                    epilog=f'Example:  {co} edit {msg} "Fixed typo"  |  echo "Fixed typo" | {co} edit {msg}')
     def _edit(
         message_id: str = typer.Argument(..., help="Id of a message this account sent"),
@@ -1654,13 +1655,13 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         from .commands.listen_commands import handle_edit
         handle_edit(name, message_id, text, plain=plain)
 
-    @group.command("delete", cls=NegativeIds, help=refuses, epilog=f"Example:  {co} delete {msg}")
+    @group.command("delete", cls=NegativeIds, help=refuses("Delete a message for everyone."), epilog=f"Example:  {co} delete {msg}")
     def _delete(message_id: str = typer.Argument(..., help="Id of a message to delete for everyone")):
         """Delete a message for everyone. Prints the deletion's id. Deletes it from the chat."""
         from .commands.listen_commands import handle_delete
         handle_delete(name, message_id)
 
-    @group.command("react", cls=NegativeIds, help=refuses,
+    @group.command("react", cls=NegativeIds, help=refuses("React to a message with an emoji."),
                    epilog=f'Example:  {co} react {msg} "👍"  |  {co} react {msg} ""')
     def _react(
         message_id: str = typer.Argument(..., help="Id of any message, received or sent"),
@@ -1672,25 +1673,25 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
 
     @group.command("done", cls=NegativeIds, epilog=f"Example:  {co} done {msg}")
     def _done(message_id: str = typer.Argument(..., help="Id of a taken message")):
-        """Forget a taken message without replying, so it does not come back in an hour. Changes the local queue; sends nothing."""
+        """Mark a message you took with `receive` as handled without replying; otherwise it returns to the queue after an hour. Changes the local queue; sends nothing."""
         from .commands.listen_commands import handle_done
         handle_done(name, message_id)
 
     @group.command("check", epilog=f"Example:  {co} check")
     def _check():
-        """Credentials, connectivity, listener state, unread count. Exit 3 on a problem. Changes nothing in the chat or the queue."""
+        """Check this inbox is set up and working: credentials, connection, background listener, unread count. Exits 3 on a problem. Changes nothing in the chat or the queue."""
         from .commands.listen_commands import handle_check
         handle_check(name)
 
     @group.command("ls", epilog=f"Example:  {co} ls")
     def _ls():
-        """Unread messages: id, chat, sender, text. Nothing is taken from the queue; malformed queue files are moved to quarantine. Changes nothing in the chat."""
+        """List unread messages (id, chat, sender, text) without taking them from the queue. Changes nothing in the chat; a broken queue file is moved to a quarantine folder."""
         from .commands.listen_commands import handle_ls
         handle_ls(name)
 
     @group.command("chats", epilog=f"Example:  {co} chats")
     def _chats():
-        """Conversations seen: chat id, kind, messages, for-us, last activity. Read-only."""
+        """List the chats this inbox has seen: chat id, group or direct, message count, how many were addressed to the bot, last activity. Read-only."""
         from .commands.listen_commands import handle_chats
         handle_chats(name)
 
@@ -1723,7 +1724,7 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         context: int = typer.Option(0, "--context", min=0, max=200, metavar="N",
                                     help="Also give the command the N turns before each message"),
     ):
-        """Loop: receive, run COMMAND with the message on stdin, reply with its stdout. Runs COMMAND and sends its output as the reply."""
+        """Answer incoming messages with your own program: for each one, run COMMAND with the message on stdin and send its stdout as the reply. Runs until Ctrl-C, or for one message with --once."""
         from .commands.listen_commands import handle_consume
         handle_consume(name, command, once=once, workers=workers, context=context)
 
