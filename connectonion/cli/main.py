@@ -96,6 +96,7 @@ START_HERE = (
         "co init                  Set up your identity and keys (~/.co/keys.env)",
         "co create my-agent       New project; then: cd my-agent && python agent.py",
         "co auth                  Log in to OpenOnion for managed models and credits",
+        "co commands              Every command and subcommand; add --help to any",
     )),
     ("Build or improve a skill:", (
         "1. Define the standard first: co benchmark --help",
@@ -106,10 +107,16 @@ START_HERE = (
 )
 
 
+# The first thing a person or an agent reads. It said "A simple Python
+# framework for creating AI agents", which is what the package was before the
+# CLI became the product; docs/PRODUCT.md §0 has the current sentence.
+TAGLINE = "CLI is all you need. ConnectOnion is the agent CLI harness."
+
+
 def _start_here_help() -> str:
     """START_HERE as Click help: \\b keeps each block from being re-wrapped."""
     blocks = ["\b\n" + title + "\n" + "\n".join("  " + line for line in lines) for title, lines in START_HERE]
-    return "ConnectOnion - A simple Python framework for creating AI agents.\n\n" + "\n\n".join(blocks)
+    return TAGLINE + "\n\n" + "\n\n".join(blocks)
 
 
 @app.callback(invoke_without_command=True, help=_start_here_help())
@@ -141,7 +148,7 @@ def _show_help():
     console.print()
     console.print(f"[bold cyan]co[/bold cyan] - ConnectOnion v{__version__}")
     console.print()
-    console.print("A simple Python framework for creating AI agents.")
+    console.print(TAGLINE, markup=False, highlight=False)
     console.print()
     # The workflow, not just the commands: an agent handed "improve this skill"
     # must find that the test cases come first without being told a command
