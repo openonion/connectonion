@@ -170,7 +170,7 @@ co deploy --skills ~/skills/linkedin-post-submit
 
 # Or drive one persistent, logged-in browser straight from the shell — no project:
 #   co browser go_to example.com
-#   co browser do "log in and download my invoices"
+#   co browser "log in and download my invoices"
 # See co-browser.md for the full command reference and multi-agent tabs.
 
 # Initialize globally, or explicitly select an existing directory

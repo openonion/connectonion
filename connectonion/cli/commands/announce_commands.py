@@ -15,7 +15,9 @@ LLM-Note:
 """
 
 import asyncio
+import base64
 import json
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -31,6 +33,7 @@ console = Console()
 CO_HOME = Path.home() / ".co"
 AGENT_JSON = CO_HOME / "agent.json"
 SKILLS_DIR = CO_HOME / "skills"
+LOCAL_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 
 
 def _revision_path(publisher: str) -> Path:
@@ -48,14 +51,41 @@ def _build_listed_skills(profile: dict) -> list:
     skills_out = []
     for skill in profile.get("skills", []):
         name = skill["name"]
+        if not isinstance(name, str) or not LOCAL_NAME_RE.fullmatch(name):
+            raise ValueError("published skill name is not a safe local directory name")
         listed = {
             "name": name,
             "description": skill.get("description", ""),
         }
         if skill.get("publish"):
             body_path = SKILLS_DIR / name / "SKILL.md"
+            if body_path.parent.is_symlink():
+                raise ValueError(f"{name}: published skill directory must be a regular directory")
             if body_path.exists():
+                if body_path.is_symlink():
+                    raise ValueError(f"{name}: published SKILL.md must be a regular file")
                 listed["body"] = body_path.read_text(encoding="utf-8")
+                if len(listed["body"].encode("utf-8")) > 50_000:
+                    raise ValueError(f"{name}: published SKILL.md exceeds the relay's 50 KB limit")
+                from .skills_commands import _is_secret
+
+                files = {}
+                for item in sorted(body_path.parent.rglob("*")):
+                    if not item.is_file() or item == body_path:
+                        continue
+                    relative = item.relative_to(body_path.parent)
+                    components = [body_path.parent.joinpath(*relative.parts[:i])
+                                  for i in range(1, len(relative.parts) + 1)]
+                    if any(part.is_symlink() or _is_secret(part) for part in components):
+                        continue
+                    if len(files) >= 32 or item.stat().st_size > 64_000:
+                        raise ValueError(
+                            f"{name} has too many or oversized companion files; "
+                            "publish at most 32 files of 64 KB each"
+                        )
+                    files[relative.as_posix()] = base64.b64encode(item.read_bytes()).decode("ascii")
+                if files:
+                    listed["files"] = files
             else:
                 console.print(f"[yellow]Listing {name} without body: {body_path} not found[/yellow]")
         skills_out.append(listed)
@@ -132,6 +162,9 @@ def handle_announce(relay: Optional[str] = None, dry_run: bool = False):
             "revision": revision,
             "skills": skills,
         }
+        if any("files" in skill for skill in skills):
+            if len(json.dumps(profile).encode("utf-8")) > 500_000:
+                raise ValueError("Published skill files exceed the relay's 500 KB profile limit")
         summary = profile_file.get("bio") or f"Agent {profile['alias']}"
 
         relay_url = relay or backend_ws_url()

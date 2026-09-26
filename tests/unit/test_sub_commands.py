@@ -226,3 +226,92 @@ def test_sync_all_refreshes_every_pinned_publisher(isolated_home, fake_relay):
 
     # Profile should be re-pulled (alias restored)
     assert json.loads((bundle / "agent.json").read_text())["alias"] == ALIAS
+
+
+def _profile_relay(monkeypatch, *, alias, revision, bodies):
+    """Serve one coherent signed revision, including omitted public bodies."""
+    profile = {
+        "alias": alias, "bio": "Test publisher", "version": "v0.2.0",
+        "attestation_version": "profile-v2", "revision": revision,
+        "skills": [{"name": name, "description": name} for name in bodies],
+    }
+    signed = json.loads(json.dumps(profile))
+    for skill in signed["skills"]:
+        if bodies[skill["name"]] is not None:
+            skill["body"] = bodies[skill["name"]]
+    canonical = json.dumps(signed, sort_keys=True, separators=(",", ":"))
+    envelope = {
+        "profile": profile, "publisher": ADDR,
+        "signature_version": "profile-v2",
+        "signature": address.sign(KEYS, canonical.encode()).hex(),
+    }
+
+    def get(url, timeout=None):
+        if url.endswith("/profile"):
+            return _Response(json=envelope)
+        name = url.rsplit("/", 1)[-1]
+        return _Response(json={"body": bodies[name]} if bodies[name] is not None
+                         else {"error": "skill body not published"})
+
+    monkeypatch.setattr(sub.httpx, "get", get)
+
+
+def test_refresh_removes_withdrawn_skill_from_mirror_and_installs(
+    isolated_home, monkeypatch,
+):
+    (isolated_home / ".codex").mkdir()
+    _profile_relay(monkeypatch, alias="alice", revision=1,
+                   bodies={"alpha": ALPHA_BODY, "beta": BETA_BODY})
+    sub.handle_sub_sync_one(ADDR)
+    _profile_relay(monkeypatch, alias="alice", revision=2,
+                   bodies={"alpha": ALPHA_BODY, "beta": None})
+    sub.handle_sub_sync_one(ADDR)
+    bundle = isolated_home / ".co" / "subs" / "alice"
+    assert not (bundle / "skills" / "beta").exists()
+    assert not (isolated_home / ".codex" / "skills" / "alice-beta").is_symlink()
+    assert (isolated_home / ".codex" / "skills" / "alice-alpha").is_symlink()
+
+
+def test_refresh_removes_cursor_rule_when_frontmatter_disappears(
+    isolated_home, monkeypatch,
+):
+    (isolated_home / ".cursor").mkdir()
+    _profile_relay(monkeypatch, alias="alice", revision=1, bodies={"alpha": ALPHA_BODY})
+    sub.handle_sub_sync_one(ADDR)
+    rule = isolated_home / ".cursor" / "rules" / "alice-alpha.mdc"
+    assert rule.exists()
+
+    _profile_relay(monkeypatch, alias="alice", revision=2,
+                   bodies={"alpha": "Skill body without frontmatter"})
+    sub.handle_sub_sync_one(ADDR)
+    assert not rule.exists()
+
+
+def test_publisher_alias_change_keeps_pinned_local_install_name(
+    isolated_home, monkeypatch,
+):
+    (isolated_home / ".codex").mkdir()
+    _profile_relay(monkeypatch, alias="alice", revision=1, bodies={"alpha": ALPHA_BODY})
+    sub.handle_sub_sync_one(ADDR)
+    _profile_relay(monkeypatch, alias="alice-new", revision=2, bodies={"alpha": ALPHA_BODY})
+    sub.handle_sub_sync_one(ADDR)
+    assert (isolated_home / ".co" / "subs" / "alice" / "agent.json").exists()
+    assert not (isolated_home / ".co" / "subs" / "alice-new").exists()
+    assert (isolated_home / ".codex" / "skills" / "alice-alpha").is_symlink()
+    assert f"{ADDR} alice" in (isolated_home / ".co" / "subscriptions.txt").read_text()
+
+
+def test_failed_staging_keeps_previous_mirror(isolated_home, monkeypatch):
+    (isolated_home / ".codex").mkdir()
+    _profile_relay(monkeypatch, alias="alice", revision=1, bodies={"alpha": ALPHA_BODY})
+    sub.handle_sub_sync_one(ADDR)
+    _profile_relay(monkeypatch, alias="alice", revision=2, bodies={"alpha": "new"})
+    def fail_before_commit(body, name):
+        raise OSError("disk full")
+    monkeypatch.setattr(sub, "strip_tool_grants", fail_before_commit)
+    with pytest.raises(OSError, match="disk full"):
+        sub.handle_sub_sync_one(ADDR)
+    skill = isolated_home / ".co" / "subs" / "alice" / "skills" / "alpha" / "SKILL.md"
+    assert skill.read_text() == ALPHA_BODY
+    installed = isolated_home / ".codex" / "skills" / "alice-alpha" / "SKILL.md"
+    assert installed.read_text() == ALPHA_BODY

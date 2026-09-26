@@ -1,0 +1,16 @@
+version: v1.8.9b12
+images:
+  - file: subscription-status.png
+    alt: "Terminal co sub list table showing two listed skills, one mirrored body, and one Codex installation"
+    caption: "A disposable example subscription makes the distinction visible: two names listed, one body mirrored, one skill installed in Codex. The temporary HOME path is redacted to tilde."
+    scenario: "scripts/capture_189b12_release_cli.py creates a disposable local subscription and runs co sub list from this checkout"
+    viewport: "160-column dark terminal capture"
+    commit: 7ecd6137
+    source_run: "scripts/capture_189b12_release_cli.py"
+  - file: browser-task-syntax.png
+    alt: "Terminal co browser usage showing a quoted natural-language task without do, followed by the old syntax's migration message"
+    caption: "Browser help presents the quoted task syntax; the old do form exits with a direct migration instruction. Both blocks come from the CLI without starting a browser."
+    scenario: "scripts/capture_189b12_release_cli.py runs co browser and the old do form against this checkout"
+    viewport: "96-column dark terminal capture"
+    commit: 7ecd6137
+    source_run: "scripts/capture_189b12_release_cli.py"

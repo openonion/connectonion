@@ -42,7 +42,7 @@ def watch_events(poll: Callable[[], list[dict]], max_batches: int = 4) -> list:
             reminder["watch_events"] = metadata
         agent.current_session["messages"].append(reminder)
         # Internal reminders are user-role model input. A matching trace
-        # boundary keeps Host transcript grouping and recovery aligned.
+        # boundary keeps session transcript grouping and recovery aligned.
         agent._record_trace({
             "type": "user_input",
             "content": content,

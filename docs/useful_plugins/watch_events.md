@@ -26,9 +26,9 @@ agent.input("Check the project")
 ```
 
 The callback owns its queue and should claim events atomically when multiple
-workers may run. The plugin records event IDs in the session trace, marks the
-reminder internal for the Host UI, and accepts at most four batches per turn by
-default. Use `watch_events(claim_events, max_batches=2)` to change that limit.
+workers may run. The plugin records event IDs and the internal reminder in
+the session trace. It accepts at most four batches per turn by default. Use
+`watch_events(claim_events, max_batches=2)` to change that limit.
 The limit resets when the Agent starts another input turn.
 
 An Agent plugin runs only while `Agent.input()` is active. The caller supplies

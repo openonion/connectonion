@@ -375,7 +375,34 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b10
+## Current Version: 1.8.9b12
+
+1.8.9b12 is an opt-in preview for subscribed skills and browser task syntax
+(#1785, #1786). Subscriptions reconcile withdrawn skills, preserve the
+subscriber's own paths, verify and mirror published companion files, and expose
+mirrored skills to `co ai`. Natural-language browser tasks use
+`co browser "<instruction>"` without the `do` verb. The companion-file relay
+change is deployed before this SDK preview is published. Stable remains
+1.8.8. The experimental Host watcher introduced in b9 is removed in this
+preview; Agent-owned watches are tracked in #1788. See
+[1.8.9b12 notes](docs/releases/1.8.9b12.md).
+
+- 1.8.9b12 (subscription reconciliation and signed companion files; browser task syntax without `do`.)
+
+Earlier in this line:
+
+## Previous preview: 1.8.9b11
+
+1.8.9b11 improves the experimental Personal Wiki's first five-day onboarding
+pass (#1793): concise, scoped map progress; bounded owner investigation with
+explicit partial coverage; and an idempotent map after project investigation.
+The isolated end-to-end run and its quality limits are recorded in
+[the five-day acceptance report](docs/testing/wiki-onboarding-five-day-2026-09-26.md).
+Stable remains 1.8.8. See [1.8.9b11 notes](docs/releases/1.8.9b11.md).
+
+- 1.8.9b11 (five-day Wiki onboarding progress and scope, bounded quick owner pass, project source-window disclosure, and idempotent map reruns.)
+
+Earlier in this line:
 
 1.8.9b10 makes the free, locally hosted `co/llama` the default managed text
 model and exposes `co/gemma` as another free choice. Credit errors name the

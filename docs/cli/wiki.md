@@ -27,7 +27,7 @@ names in old help text, such as `people/emma.md`, are not built-in records.
 
 ```bash
 co wiki investigate          # What is left to investigate, by category; no model
-co wiki investigate me       # Fill your own page first
+co wiki investigate me --quick --days 5  # Bounded first pass; disclose uncovered sources
 co wiki open                 # Open the full-page Wiki in your browser
 co wiki sync --dry-run       # Inspect pending metadata, without running a model
 co wiki sync                 # One update: new material, then at most one unfinished page
@@ -64,6 +64,10 @@ Piping human output does not hide the next step. Grouped help covers:
 plus at most one unfinished-page investigation per local day when the day's
 call budget allows;
 `init` does neither. A mapped page is not an investigated or quality-approved page.
+For an initial trial, `co wiki init --days 5` preserves the same five-day
+window in its suggested next command. `investigate me --quick` samples recent
+evidence, takes one synthesis turn, and marks its coverage as partial. A full
+owner investigation can read substantially more material and cost much more.
 
 ## Installed-skill skeletons at initialization
 
@@ -386,6 +390,7 @@ to add People. To restrict mapping to a specific mailbox:
 ```sh
 co wiki init --mail outlook
 # or: co wiki init --mail gmail
+co wiki init --days 5       # small first-run trial
 co wiki open
 ```
 
@@ -393,15 +398,42 @@ This reads correspondent metadata for the initialization window, not mail bodies
 and does not install a schedule or enable ongoing mail collection. With `--mail`, only explicitly selected
 mailboxes are read. Missing or failed sources appear in the mapping coverage;
 without a selected mailbox the command explains why People is empty.
+The terminal shows mapping stages and a short count of People, Organizations,
+Projects and Skills. Full per-source details stay in `.state/map.json` under the
+Wiki root and in `--json` output. A custom `--days` window is preserved in the
+printed next command and retry tips.
 
 Skills lists one catalog entry per name. Open it to inspect each installed copy
 and its source path; implementations may differ. All underlying pages, links and
 annotations are preserved. The generated index is not counted as another skill.
 Project discovery excludes system temporary directories and removed Codex worktrees.
+It also excludes Wiki task copies under any notebook's `.state/tasks` and
+generated fixture notebooks, plus workspace containers holding multiple Git
+repositories, so repeated runs do not turn scratch pages or the enclosing
+projects folder into separate projects.
 
 ### Preview reliability checks
 
 Initialization reports partial failure with a nonzero exit if a selected mail source cannot be initialized or read. Completed maps remain available; provider error text is not exposed. Recovery commands retain the notebook root. Automated-looking correspondents are explicitly labelled candidates, not silently certified as people.
+
+After init, the suggested `co wiki investigate me --quick` is a bounded first
+pass: it samples recent items across available source types and labels the
+result partial. Remove `--quick` for a comprehensive owner investigation;
+that can take several extraction turns and substantially more time and model
+usage. `--quick` is only for `me`, and neither mode approves a candidate
+without review.
+
+`co wiki investigate <page> --days 5` reports source gathering, evidence
+preparation, extraction chunk counts when the material exceeds one model turn,
+and candidate writing in its run log and terminal. A failed model or provider
+call exits nonzero and keeps the page unchanged. Project investigations may
+inspect a bounded set of files in the page's recorded local Paths; the file
+inventory is a lead, not proof of file contents. Review the candidate and its
+citations before treating it as a verified Wiki page.
+Completed extraction chunks are checkpointed under `.state/extracts/investigate/`;
+rerunning the same evidence and model settings can reuse them after an
+interruption. The running log records the current chunk and usage from completed
+chunks. A changed source or extraction prompt invalidates the checkpoint.
 
 Repeated mapping refreshes generated project counts, dates and paths while preserving written notes. Skill pages retain authored descriptions and show current installed metadata in a separate managed section. Unchanged content is not rewritten. Equivalent SSH/HTTPS Git remotes share an identity; distinct case-sensitive repository paths remain distinct. Search groups skill installations just like the catalog, and the homepage labels its content as a snapshot rather than claiming every skeleton is maintained.
 

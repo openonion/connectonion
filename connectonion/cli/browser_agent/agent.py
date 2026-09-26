@@ -1,9 +1,9 @@
 """Browser Agent CLI - High-level command execution wrapper.
 
-Purpose: Build the ConnectOnion browser Agent; `co browser do` supplies a daemon-backed proxy so model waits stay in the CLI process.
+Purpose: Build the ConnectOnion browser Agent; `co browser "<instruction>"` supplies a daemon-backed proxy so model waits stay in the CLI process.
 LLM-Note:
   Dependencies: imports from [pathlib, connectonion.Agent, connectonion.useful_plugins (image_result_formatter, ui_stream), connectonion.useful_tools.browser_tools.BrowserAutomation, cli.commands.project_cmd_lib.load_api_key (lazy)] | imported by [cli/browser_agent/__init__.py (re-exported), cli/commands/browser_commands.py (lazy import), cli/browser_agent/daemon.py] | tested by [tests/unit/test_the_browser_agent_bills_this_account.py]
-  Data flow: browser_commands.handle_browser() → client._run_do() resolves OPENONION_API_KEY through load_api_key(), which verifies the token belongs to this machine's account → builds Agent("browser_cli", model="co/gemini-3.8-flash", tools=[DaemonBrowserProxy]) → model thinking stays local and each tool call is one short daemon request
+  Data flow: browser_commands.handle_browser() → client._run_instruction() resolves OPENONION_API_KEY through load_api_key(), which verifies the token belongs to this machine's account → builds Agent("browser_cli", model="co/gemini-3.8-flash", tools=[DaemonBrowserProxy]) → model thinking stays local and each tool call is one short daemon request
   State/Effects: resolves OPENONION_API_KEY in the caller environment (env, ./.env, ~/.co/keys.env; re-authenticates if the token names another account) | may create screenshots/files through daemon-backed tool calls | streams UI events via ui_stream plugin
   Integration: exposes execute_browser_command(command, headless=False) -> str | PROMPT_PATH points to ./prompts/agent.md (sibling to this file)
   Performance: synchronous in the caller, blocks that CLI for up to 200 iterations | does not block the daemon between tool calls | reuses the daemon's persistent browser/profile
@@ -28,7 +28,7 @@ def resolve_api_key() -> str:
     is `load_api_key()` minus the one thing that matters here: the check that the
     token belongs to the account whose key this machine holds.
 
-    That check belongs on this path more than on most. `co browser do` bills a
+    That check belongs on this path more than on most. a quoted browser task bills a
     model call to whatever the caller's token says. A stray ``.env`` naming a
     drained agent once showed up as "insufficient credit" against an account
     that had plenty; resolving in the caller keeps the payer explicit per run.
