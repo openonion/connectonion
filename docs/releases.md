@@ -13,26 +13,23 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current release
 
-Stable **1.8.7** repairs large Control Center snapshots: the Host accepts up
-to 128 MiB of HTML within a 256 MiB WebSocket envelope and gives a visible
-failure when a load cannot complete. See [1.8.7 release notes](releases/1.8.7.md).
+Stable **1.8.8** is the default production channel. See
+[1.8.8 release notes](releases/1.8.8.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.7'
+python -m pip install --upgrade 'connectonion==1.8.8'
 ```
 
 ## Current preview
 
-Beta **1.8.8b4** adds a native Claude Code terminal Work Room to the Wiki
-preview line. `co claude --cwd /path/to/project` prints a private pairing code
-and an O Chat link. After pairing, the browser can watch the same Claude
-session, take control, send a direct continuation, and return it to the
-terminal. See [1.8.8b4 release notes](releases/1.8.8b4.md) for tested scope
-and current limits.
+Beta **1.8.9b6** fixes offline Wiki maintenance: staged local files are
+available to the agent, and an unchanged batch needs a source-linked receipt
+before progress advances. See [1.8.9b6 release notes](releases/1.8.9b6.md)
+for the tested scope and limits.
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.8b4'
-co claude --cwd /path/to/project
+python -m pip install --upgrade 'connectonion==1.8.9b6'
+co --version
 ```
 
 <details>
