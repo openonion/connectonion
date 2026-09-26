@@ -80,6 +80,7 @@ def test_detect_intent_and_inject_tool(monkeypatch):
         current_session={"user_prompt": "build", "messages": [], "trace": []},
         io=FakeIO(),
         logger=FakeLogger(),
+        llm=object(),  # the intent step calls the agent's own LLM (#1758)
     )
     agent._record_trace = lambda entry: agent.current_session.setdefault("trace", []).append(entry)
 

@@ -300,5 +300,32 @@ class ProviderServiceError(LLMProviderError):
         self.__cause__ = original_error
 
 
+class TruncatedResponseError(LLMProviderError, ValueError):
+    """The provider stopped at its output-token limit before the answer ended.
+
+    OpenAI-shaped providers say `finish_reason == "length"`, Anthropic says
+    `stop_reason == "max_tokens"`. Nothing checked either, so half an answer
+    came back as the final answer, and a tool call cut mid-JSON raised
+    JSONDecodeError with the tokens already billed and never recorded (#1758).
+
+    `usage` is what the provider charged for the cut-off response, so a caller
+    can still count it; `content` is the partial text, if any. Also a
+    ValueError because OpenAICompatibleLLM raised a plain ValueError for this
+    before, and callers written against that should keep working.
+    """
+
+    def __init__(self, model: str, reason: str, usage=None, content=None):
+        self.model = model
+        self.reason = reason
+        self.usage = usage
+        self.content = content
+        spent = f" after {usage.output_tokens} output tokens" if usage else ""
+        super().__init__(
+            f"{model} stopped at its output limit ({reason}){spent}; the "
+            "response is incomplete. Ask for a shorter answer, split the work "
+            "into smaller steps, or raise max_tokens."
+        )
+
+
 class ToolRejectedError(ValueError):
     """Raised when a user rejects a tool execution request."""

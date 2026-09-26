@@ -32,7 +32,6 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 from connectonion.core.events import after_each_tool, after_user_input
-from connectonion.core.usage import DEFAULT_MODEL
 from connectonion.llm_do import llm_do
 
 if TYPE_CHECKING:
@@ -189,7 +188,9 @@ def detect_intent(agent: 'Agent') -> None:
 
     # Use llm_do with structured output
     #
-    # Follows agent.model, and cannot stop the run. This handler is the reason
+    # Uses agent.llm, and cannot stop the run. It used to read agent.model,
+    # which a real Agent does not have, so every intent step went to the
+    # managed default whatever model the user chose (#1758). This handler is the reason
     # a deployed agent failed every fifteen minutes for an hour: it fires
     # before the first tool, and what it produces is a sentence telling the
     # user they were understood. Being unable to say "I understand" is not a
@@ -197,7 +198,7 @@ def detect_intent(agent: 'Agent') -> None:
     try:
         analysis = llm_do(
             INTENT_PROMPT.format(user_prompt=user_prompt),
-            model=getattr(agent, "model", None) or DEFAULT_MODEL,
+            llm=agent.llm,
             output=IntentAnalysis,
             temperature=0,
         )
