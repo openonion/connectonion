@@ -196,7 +196,9 @@ turn arrives as a `user` message with the watch name, source, observation time,
 event ID, and data. An event arriving while that watch turn is active enters
 the next model iteration as an internal `<system-reminder>` message. If it
 arrives during a final model call, the agent gets another iteration to handle
-it. The reminder is a model-visible `user` role message marked `internal` for
+it. The Host binds the [watch_events plugin](../useful_plugins/watch_events.md)
+to that active Agent; observation, queueing, and idle-session wakeup stay in
+the Host process. The reminder is a model-visible `user` role message marked `internal` for
 the UI; it does not have provider `system` role authority. A turn takes at most
 four batches of 16 live events, and leaves additional events queued for the
 next turn. An event producer can also call

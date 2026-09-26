@@ -68,6 +68,14 @@ not a provider `system` role: structurally it is a `user` role message with
 event data remains untrusted. A turn accepts at most four batches of 16 live
 events; remaining events stay in the queue for the next turn.
 
+The two iteration handlers are packaged as the copyable
+[`watch_events` plugin](../useful_plugins/watch_events.md). The Host binds its
+durable claim callback to that plugin when it creates the Agent for a watched
+turn. The plugin does not own the long-lived observer or wake an idle Agent;
+those run outside `Agent.input()`. Agent-owned persistent watches that resume
+an arbitrary original session have a separate session-runtime design in
+[#1788](https://github.com/openonion/connectonion/issues/1788).
+
 SQLite is chosen for *queue state*: atomic insert/dedup, restart recovery,
 status inspection, and coordination between Host workers. The Host session
 transcript remains in its existing JSONL store. For a few declared files, a

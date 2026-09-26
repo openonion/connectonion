@@ -12,6 +12,7 @@ Pre-built plugins that extend agent behavior via event hooks.
 | [re_act](re_act.md) | ReAct reasoning pattern | `from connectonion.useful_plugins import re_act` |
 | [eval](eval.md) | Task evaluation/debugging | `from connectonion.useful_plugins import eval` |
 | [system_reminder](system_reminder.md) | Inject contextual guidance | `from connectonion.useful_plugins import system_reminder` |
+| [watch_events](watch_events.md) | Add claimed events at iteration boundaries | `from connectonion.useful_plugins import watch_events` |
 | [image_result_formatter](image_result_formatter.md) | Format images for vision | `from connectonion.useful_plugins import image_result_formatter` |
 | [human_jitter](human_jitter.md) | Organic cursor motion before clicks | `from connectonion.useful_plugins import human_jitter` |
 | [shell_approval](shell_approval.md) | Shell command approval | `from connectonion.useful_plugins import shell_approval` |
@@ -134,7 +135,7 @@ User Input
 │  ┌─────────────────────────────────────────────┐    │
 │  │ after_tools (fires ONCE after ALL tools)    │    │
 │  │ (re_act: reflect, image_result_formatter)   │    │
-│  │ ⚠️  ONLY place safe to modify messages       │    │
+│  │ Safe to modify messages after a tool batch │    │
 │  └─────────────────────────────────────────────┘    │
 │                   │                                 │
 │           Continue or Exit Loop                     │
@@ -150,7 +151,8 @@ User Input
 ### Key Distinction
 
 - **`after_each_tool`**: Fires for EACH tool individually. Use for logging, monitoring, side effects. **DO NOT modify messages here.**
-- **`after_tools`**: Fires ONCE after ALL tools complete. **ONLY place safe to modify messages.**
+- **`after_tools`**: Fires ONCE after ALL tools complete. Safe to add context after a tool batch.
+- **`before_iteration` / `after_iteration`**: Run at model decision boundaries. `watch_events` uses them to add in-flight events, including one that arrives during a final model call.
 
 ### Why This Matters
 
@@ -164,7 +166,9 @@ tool_1 result → modify messages → tool_2 result → API ERROR!
 tool_1 result → tool_2 result → tool_3 result → after_tools → modify messages → OK
 ```
 
-**Rule:** If your plugin modifies `agent.current_session['messages']`, use `after_tools`.
+**Rule:** Do not insert a message between one model tool call and its required
+tool result. Use `after_tools` or an iteration boundary once the batch is
+complete.
 
 ### Error You'll See If You Get This Wrong
 
