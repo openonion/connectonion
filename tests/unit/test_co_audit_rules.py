@@ -53,6 +53,15 @@ def test_each_rule_fails_the_page_it_is_for():
     assert rules(GOOD.replace("you@example.com", "0x3f5a...c9e1")) == set()
 
 
+def test_an_option_or_argument_without_a_description_is_caught():
+    bare = GOOD.replace("│ --cc   TEXT  Copy to  │", "│ --cc   TEXT           │")
+    assert rules(bare) == {"params"}
+    plain = "usage: tool [-h] [--fast]\n\noptions:\n  -h, --help  show help\n  --fast\n  --slow      Take the slow path\n\nExample:  tool --fast\n"
+    assert audit.undocumented(plain) == ["--fast"]
+    continued = GOOD.replace("│ --cc   TEXT  Copy to  │", "│ --cc   TEXT  Copy to  │\n│               [default: none] │")
+    assert rules(continued) == set()
+
+
 def test_an_example_for_another_command_is_caught():
     other = GOOD.replace("Example:  co mail send you@example.com --cc boss@example.com", "Example:  co mail you@example.com")
     assert rules(other) == {"self_example"}
