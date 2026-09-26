@@ -192,6 +192,50 @@ def test_failed_event_is_visible_and_can_be_retried(tmp_path, monkeypatch):
     assert not retry_event(co_dir, "event-1")
 
 
+def test_busy_session_defers_event_without_spending_retries(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    co_dir = _co_dir(tmp_path, "watch:\n  - name: notes\n    source: file\n    path: notes.md\n")
+    import sqlite3
+
+    from connectonion.network.host.session.storage import Session
+    from connectonion.network.host.watch import _session_id
+
+    storage = SessionStorage(co_dir / "session_results.jsonl")
+    session_id = _session_id(co_dir, "notes")
+    storage.save(Session(session_id=session_id, status="running", prompt="earlier event",
+                         session={"messages": [], "trace": [], "turn": 0},
+                         expires=time.time() + 3600))
+    emit_event(co_dir, "notes", "file", {"event": "changed"}, "event-2")
+    emit_event(co_dir, "other", "webhook", {"value": 1}, "other-1")
+    asked = []
+    make_agent = _agent_factory(asked)
+    assert process_one(co_dir, make_agent, storage, 3600)["id"] == "other-1"
+    assert process_one(co_dir, make_agent, storage, 3600) is None
+    with sqlite3.connect(co_dir / "watch-state.sqlite3") as db:
+        assert db.execute("SELECT status, attempts FROM events WHERE id='event-2'").fetchone() == (
+            "pending", 0)
+    storage.save(Session(session_id=session_id, status="done", prompt="earlier event",
+                         session={"messages": [], "trace": [], "turn": 0},
+                         expires=time.time() + 3600))
+    assert process_one(co_dir, make_agent, storage, 3600)["id"] == "event-2"
+
+
+def test_session_that_becomes_busy_during_claim_is_deferred(tmp_path, monkeypatch):
+    co_dir = _co_dir(tmp_path, "watch:\n  - name: notes\n    source: file\n    path: notes.md\n")
+    emit_event(co_dir, "notes", "file", {"event": "changed"}, "event-1")
+    from connectonion.network.host import http_router
+    from connectonion.network.host.session.mode import ModeTransactionError
+
+    def busy(*args, **kwargs):
+        raise ModeTransactionError(-32000, "Session is busy", {"retryable": True})
+
+    monkeypatch.setattr(http_router, "input_handler", busy)
+    storage = SessionStorage(co_dir / "session_results.jsonl")
+    assert process_one(co_dir, lambda: None, storage, 3600) is None
+    assert watch_status(co_dir)[0]["pending"] == 1
+    assert watch_status(co_dir)[0]["last_event"]["attempts"] == 0
+
+
 def test_saved_turn_is_not_repeated_when_delivery_ack_fails(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     co_dir = _co_dir(tmp_path, "watch:\n  - name: pulse\n    source: timer\n    every: 10s\n")

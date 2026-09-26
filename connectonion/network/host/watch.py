@@ -213,7 +213,11 @@ def process_one(co_dir: Path, create_agent, storage, result_ttl: int) -> dict | 
                 else:
                     _release_interrupted_session(storage, stale, session_id)
                     db.execute("UPDATE events SET status='pending' WHERE id=?", (stale["id"],))
-            event = db.execute("SELECT * FROM events WHERE status='pending' ORDER BY observed_at, rowid LIMIT 1").fetchone()
+            # A queued user turn waits for its session to become idle. A long
+            # turn is not a delivery failure, and another watch may proceed.
+            event = next((candidate for candidate in db.execute(
+                "SELECT * FROM events WHERE status='pending' ORDER BY observed_at, rowid")
+                if not _session_busy(storage, _session_id(co_dir, candidate["name"]))), None)
             if event is None:
                 return None
             db.execute("UPDATE events SET status='running', attempts=attempts+1 WHERE id=?", (event["id"],))
@@ -229,6 +233,14 @@ def process_one(co_dir: Path, create_agent, storage, result_ttl: int) -> dict | 
             input_handler(create_agent, storage, event_prompt(event), result_ttl,
                           session={"session_id": session_id, "via": f"watch:{event['source']}"})
         except Exception as exc:
+            from .session.mode import ModeTransactionError
+
+            if isinstance(exc, ModeTransactionError) and exc.code == -32000:
+                # The session may have become busy after the check above.
+                with _database(co_dir) as db:
+                    db.execute("UPDATE events SET status='pending', attempts=attempts-1 WHERE id=?",
+                               (event["id"],))
+                return None
             with _database(co_dir) as db:
                 status = "failed" if event["attempts"] + 1 >= 3 else "pending"
                 db.execute("UPDATE events SET status=?, error=? WHERE id=?",
@@ -240,6 +252,13 @@ def process_one(co_dir: Path, create_agent, storage, result_ttl: int) -> dict | 
         return {"id": event["id"], "name": event["name"], "status": "done"}
     finally:
         _release_tick_lock(lock)
+
+
+def _session_busy(storage, session_id: str) -> bool:
+    from .session import SessionStorage
+
+    record = storage.get(session_id)
+    return record is not None and record.status in SessionStorage.UNFINISHED
 
 
 def watch_status(co_dir: Path) -> list[dict]:

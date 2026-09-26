@@ -201,7 +201,10 @@ error, and session ID. Delivery is retried up to three times; after correcting
 a failure, use `co watch retry <event-id>` to requeue it. The Host polls
 every two seconds; file writes between two polls can be combined. Watcher
 events are local Host authority, so only declare paths and event producers you
-trust. The event data itself is framed as untrusted data for the agent.
+trust. An event waits in the queue while its continuing session is busy; this
+does not count as a failed delivery. The event data itself is framed as
+untrusted data for the agent. See [DD-073](../design-decisions/073-watch-events-as-user-turns.md)
+for the Codex, Claude Code, and file watcher research behind this design.
 
 ### Server Settings
 
