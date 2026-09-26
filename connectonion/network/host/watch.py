@@ -185,13 +185,15 @@ def _already_delivered(storage, event, session_id: str) -> bool:
 
 def _release_interrupted_session(storage, event, session_id: str) -> None:
     """A dead watcher must not leave its dedicated session permanently busy."""
+    from .session import SessionStorage
+
     def release(record):
-        if record and record.status in storage.UNFINISHED and record.prompt == event_prompt(event):
+        if record and record.status in SessionStorage.UNFINISHED and record.prompt == event_prompt(event):
             return record.model_copy(update={"status": "failed"})
         return record
 
     record = storage.get(session_id)
-    if record and record.status in storage.UNFINISHED and record.prompt == event_prompt(event):
+    if record and record.status in SessionStorage.UNFINISHED and record.prompt == event_prompt(event):
         storage.atomic_update(session_id, release)
 
 
