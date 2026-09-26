@@ -117,5 +117,8 @@ material-count assertion, fixed immediately. Five other tests constructed a
 gateway agent without `OPENONION_API_KEY`; all six passed in a targeted rerun
 with a deliberately nonfunctional local test value. The full non-network suite
 then passed with that test value: 12,357 passed, 31 skipped, 267 deselected in
-570.54 seconds. PR review and public
+570.54 seconds. After the final cited-path map fix, the full local suite passed
+again: 12,358 passed, 31 skipped, 267 deselected in 476.31 seconds. The
+focused Wiki map, investigation, runner, and CLI suite also passed on a
+separate Python 3.10 environment: 167 passed. CI matrix checks and the public
 preview smoke check remain pending at the time of this report update.
