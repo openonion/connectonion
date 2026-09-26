@@ -35,3 +35,12 @@ source IDs and claims. The refused candidate remains on disk for comparison;
 its two citation errors drop to zero after that narrow conversion. On a retest
 with the same source messages, the page was accepted with both source IDs and
 the date still marked unapproved. The quoted command was never run.
+
+The preview release adds one more boundary to that lesson: source-tree tests
+do not prove that the installed package carries the same Wiki instructions.
+For 1.8.9b6, the wheel was installed into a fresh virtual environment and
+its CLI, included data files and Wiki reflection path were exercised there.
+All 13 installed-wheel checks passed. That establishes what is shipped, not
+whether the next real mailbox batch will produce a good page. The preview
+keeps that production-quality question open instead of calling a synthetic
+success a finished Wiki.
