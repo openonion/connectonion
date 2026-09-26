@@ -1,0 +1,9 @@
+version: v1.8.9b8
+images:
+  - file: co-audit.png
+    alt: "Terminal output of co audit co passing every rule on 281 pages, then co audit yt-dlp failing the example rule on its one page"
+    caption: "co audit takes any command as typed. co passes every rule on all 281 of its help pages; yt-dlp's single help page has no example, so it is not yet fit for an agent harness."
+    scenario: "python scripts/capture_189b8_release_cli.py: the released co audit, run on co and on the yt-dlp installed on the capture machine, unedited"
+    viewport: "terminal, 96 columns"
+    commit: 53cbd734
+    source_run: "scripts/capture_189b8_release_cli.py"

@@ -375,7 +375,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b7
+## Current Version: 1.8.9b8
+
+1.8.9b8 adds `co audit <command>`, which judges whether a CLI, `co` or any
+other, is fit for an agent harness from its printed help alone: rules first,
+an optional model review last (#1735). Every `co` help page now passes it, after a
+full audit and review (#1748). Stable remains 1.8.8. See
+[1.8.9b8 notes](docs/releases/1.8.9b8.md).
+
+- 1.8.9b8 (co audit for any CLI: black-box walk of --help pages, rules for prints/hangs/writes/usage/example/self_example/flags/private/params, optional parallel model review, per-rule score; help-gate workflow reviews changed pages; 281 co pages pass every rule; 113 option/argument descriptions and 4 wiki examples added; model review flags 114 → 12.)
+
+Earlier in this line:
+
 
 1.8.9b7 fixes the first browser turn of a new Claude Station. A SessionStart
 ID without a completed native turn is not resumed; the browser starts a new
