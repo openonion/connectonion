@@ -3,6 +3,7 @@
 import json
 import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from connectonion.wiki.config import prepare
 from connectonion.wiki.investigate import gather
@@ -63,15 +64,25 @@ def test_init_archive_is_private_resumable_and_people_read_it_without_listing(tm
     assert any("loaded from private init archive" in note for note in coverage)
     class DeltaMail:
         calls = []
+        attachments = []
         def my_addresses(self): return {"me@example.org"}
         def list_with(self, address, start, end):
             self.calls.append((address, start, end))
             return []
+        def download_attachments(self, message_id, folder):
+            self.attachments.append(message_id)
+            if message_id != "shared":
+                return []
+            path = Path(folder) / "decision.txt"
+            path.write_text("Decision attached", encoding="utf-8")
+            return [str(path)]
     delta = DeltaMail()
-    gather("A", ["a@example.org"], days=1, clients={"gmail": delta}, subscriptions={},
-           archive_root=tmp_path, record=a)
+    items, _ = gather("A", ["a@example.org"], days=1, clients={"gmail": delta}, subscriptions={},
+                      archive_root=tmp_path, record=a, attachments_dir=tmp_path / ".state/attachments")
     assert len(delta.calls) == 1
     assert delta.calls[0][1] >= archive["range_end"]
+    assert delta.attachments == ["shared", "reply"]
+    assert any(item["role"] == "attachment" and item["text"] == "Decision attached" for item in items)
 
 
 def test_init_archive_builds_project_source_file(tmp_path, monkeypatch):

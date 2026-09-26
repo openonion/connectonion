@@ -110,6 +110,28 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                  if start <= timestamp(item["timestamp"]) < end
                  and (not sent_only or item["role"] == "user")]
         items.extend(local)
+        attached = 0
+
+        def add_attachments(message_id: str, sender: str, stamp: str, subject: str) -> None:
+            nonlocal attached
+            if attachments_dir is None or not hasattr(client, "download_attachments"):
+                return
+            from .attachments import extract_text
+            short = hashlib.sha256(message_id.encode()).hexdigest()[:12]
+            folder = attachments_dir / kind / short
+            try:
+                folder.mkdir(parents=True, exist_ok=True)
+                paths = _saved_paths(_patient(_download, client, message_id, str(folder)))
+            except Exception as error:  # noqa: BLE001 -- one bad attachment is not the run
+                paths = []
+                coverage.append(f"{kind}:{short}: attachments could not be saved ({type(error).__name__})")
+            for saved in paths or []:
+                attached += 1
+                items.append({"role": "attachment", "speaker": sender, "timestamp": stamp,
+                              "subject": f"{subject} — {Path(saved).name}",
+                              "text": extract_text(Path(saved), limit=None), "file": saved,
+                              "source": f"{kind}:{short}:{Path(saved).name}"})
+
         seen = {item["_mail_id"] for item in local}
         intervals = [(start, end)]
         if archived and kind in cached_by_provider:
@@ -123,8 +145,11 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             if intervals:
                 coverage.append(f"{kind}: {searched}; {len(intervals)} uncovered interval(s), provider unavailable")
             else:
-                coverage.append(f"{kind}: {searched}; requested interval covered by local archive")
+                coverage.append(f"{kind}: {searched}; requested body interval covered by local archive; "
+                                "attachments unavailable without provider")
             continue
+        for item in local:
+            add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""))
         emails = sorted({h for h in handles if "@" in h and h not in mine})
         for begin, finish in intervals:
             if emails and hasattr(client, "list_with"):
@@ -151,7 +176,6 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             progress(kind, end, len(local) + len(hit))
         if sent_only:
             searched += ", kept the owner's own sent mail"
-        attached = 0
         for r in sorted(hit, key=lambda r: str(r["date"])):
             body = _patient(client.get_email_body, r["id"])
             head, _, rest = body.partition("--- Email Body ---")
@@ -161,21 +185,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             items.append({"role": "user" if own else "other", "speaker": r["from"],
                           "text": body, "timestamp": str(r["date"]),
                           "subject": r.get("subject", ""), "source": f"{kind}:{short}"})
-            if attachments_dir is not None and hasattr(client, "download_attachments"):
-                from .attachments import extract_text
-                folder = attachments_dir / kind / short
-                try:
-                    folder.mkdir(parents=True, exist_ok=True)
-                    paths = _saved_paths(_patient(_download, client, r["id"], str(folder)))
-                except Exception as error:  # noqa: BLE001 -- one bad attachment is not the run
-                    paths = []
-                    coverage.append(f"{kind}:{short}: attachments could not be saved ({type(error).__name__})")
-                for saved in paths or []:
-                    attached += 1
-                    items.append({"role": "attachment", "speaker": r["from"], "timestamp": str(r["date"]),
-                                  "subject": f"{r.get('subject', '')} — {Path(saved).name}",
-                                  "text": extract_text(Path(saved), limit=None), "file": saved,
-                                  "source": f"{kind}:{short}:{Path(saved).name}"})
+            add_attachments(r["id"], r["from"], str(r["date"]), r.get("subject", ""))
         coverage.append(f"{kind} ({', '.join(sorted(mine))}): {searched} over {days} days, "
                         f"{len(local) + len(hit)} matched, {attached} attachments read")
     for kind in ("outlook", "gmail"):
