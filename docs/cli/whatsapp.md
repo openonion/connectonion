@@ -198,6 +198,10 @@ well (#1859). This applies to every provider's `listen`, not only WhatsApp.
   running 1.8.9b13: restarting`. WhatsApp holds messages for an offline device
   and delivers them on reconnect, so nothing is lost in the gap.
 - `check` names both versions while they differ.
+- The background listener starts in the inbox directory, so a connectonion
+  checkout in whatever directory you ran the command from is never what it
+  loads (#1878). A restart is tried once per installed version: if the
+  versions still differ after it, the log says so and it is not retried.
 - A listener started before this existed cannot restart itself. `check` says
   `listener started before version tracking`, and one command replaces it:
 
