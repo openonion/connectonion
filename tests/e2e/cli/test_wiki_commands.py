@@ -200,11 +200,11 @@ def test_default_open_is_a_snapshot_that_exists_and_renders_the_pages(tmp_path, 
 
 
 def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch):
-    """Until O Chat serves the Wiki route (openonion/oo-chat#246) and the flag in
-    connectonion/wiki/reader.py flips, the default must not send anyone to a page
-    that cannot load (#1828). Even with the Host online."""
+    """Opening locally is the default (owner's decision on #1828): even with the
+    Host online and O Chat serving the route, a bare `co wiki open` opens the
+    snapshot, which loads offline too."""
     from connectonion.wiki import reader
-    assert reader.LIVE_WIKI_SERVED is False, "flipped: replace this test with one for the live default"
+    assert reader.LIVE_IS_DEFAULT is False, "the owner chose local by default (#1828)"
     _, _, opened = _owner_notebook(tmp_path, monkeypatch, host="direct")
     result = runner.invoke(app, ["wiki", "--json", "open"])
     assert result.exit_code == 0, result.output
