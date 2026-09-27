@@ -176,8 +176,11 @@ DEFAULT_CONTEXT_LIMIT = 128000
 # "what is the default model" was previously answered by separate literals
 # that drifted apart. The previous default stays on FREE_MANAGED_MODELS
 # below as the rollback.
-DEFAULT_MODEL = "co/llama"
-DEFAULT_DIRECT_GEMINI_MODEL = "gemini-3.8-flash"
+# Gemini 3.8, by the owner's decision (#1869). 1.8.9b10 made the free co/llama
+# (Llama 3.1 8B) the default; free models are what `co status` suggests when
+# the balance reaches 0, not what every new Agent silently gets.
+DEFAULT_MODEL = "co/gemini-3.8-flash"
+DEFAULT_DIRECT_GEMINI_MODEL = DEFAULT_MODEL.removeprefix("co/")
 
 # Which managed models a free account can call. The backend refuses the rest
 # with error='paid_account_required': "Your free $5 credits work with
@@ -190,9 +193,9 @@ DEFAULT_DIRECT_GEMINI_MODEL = "gemini-3.8-flash"
 # completing a real call per model; see
 # tests/unit/test_the_models_we_advertise_answer.py.
 FREE_MANAGED_MODELS = (
+    "co/gemini-3.8-flash",
     "co/llama",
     "co/gemma",
-    "co/gemini-3.8-flash",
     "co/gemini-3.7-flash",
     "co/gemini-3.6-flash",
     "co/gemini-3.5-flash",

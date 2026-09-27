@@ -15,7 +15,7 @@ Compaction strategy:
 - Replaces old messages with single summary message
 
 Summarization:
-- Uses the product default: co/llama
+- Uses the product default: co/gemini-3.8-flash
 - Prompt asks for concise summary preserving key decisions/facts
 - Summary becomes new "assistant" message in conversation
 - Reduces token count while maintaining continuity

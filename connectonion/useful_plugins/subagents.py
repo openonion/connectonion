@@ -18,7 +18,7 @@ AGENT.md Format:
 ---
 name: explore
 description: Fast codebase exploration agent
-model: co/llama
+model: co/gemini-3.8-flash
 max_iterations: 15
 tools:
   - glob
