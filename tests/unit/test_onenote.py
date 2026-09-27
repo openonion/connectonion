@@ -114,3 +114,33 @@ def test_an_expired_token_is_refreshed_once_for_page_content():
 def test_onenote_is_exported_for_agents():
     from connectonion import OneNote as exported
     assert exported is OneNote
+
+
+def test_the_cli_lists_notebooks_and_names_the_next_command(monkeypatch, capsys):
+    from types import SimpleNamespace
+    from connectonion.cli.commands import onenote_commands
+    monkeypatch.setattr(onenote_commands, "_onenote",
+                        lambda: SimpleNamespace(list_notebooks=lambda: "COMP3900  (notebook nb1)"))
+    onenote_commands.handle_onenote_ls()
+    out = capsys.readouterr().out
+    assert "COMP3900" in out and "co onenote pages" in out
+
+
+def test_the_cli_turns_a_refusal_into_one_line_and_exit_1(monkeypatch, capsys):
+    from connectonion.cli.commands import onenote_commands
+
+    def refuse():
+        raise ValueError("Missing Microsoft Notes.ReadWrite.All scope.\n  co auth microsoft")
+    monkeypatch.setattr(onenote_commands, "_onenote", refuse)
+    with pytest.raises(SystemExit) as exit_:
+        onenote_commands.handle_onenote_ls()
+    assert exit_.value.code == 1 and "co auth microsoft" in capsys.readouterr().err
+
+
+def test_onenote_is_a_co_command():
+    import re
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    result = CliRunner().invoke(app, ["onenote", "--help"], env={"COLUMNS": "200"})
+    text = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    assert all(verb in text for verb in ("ls", "pages", "read", "create"))

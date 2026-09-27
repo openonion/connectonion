@@ -198,6 +198,10 @@ NEXT = {
     "co schedule run": "co schedule list",
     "co schedule pause": HANDLER,  # names the resume for this entry
     "co schedule resume": "co schedule list",
+    "co onenote ls": HANDLER,        # each handler names the next onenote command (#1887)
+    "co onenote pages": HANDLER,
+    "co onenote read": HANDLER,
+    "co onenote create": HANDLER,
     "co outlook calendar *": HANDLER,
     "co gcalendar *": HANDLER,
     "co gdrive *": HANDLER,
