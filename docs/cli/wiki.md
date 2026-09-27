@@ -28,7 +28,7 @@ names in old help text, such as `people/emma.md`, are not built-in records.
 ```bash
 co wiki investigate          # What is left to investigate, by category; no model
 co wiki investigate me --quick --days 5  # Bounded first pass; disclose uncovered sources
-co wiki open                 # Open the full-page Wiki in your browser
+co wiki open                 # Open a fresh snapshot of the notebook in your browser
 co wiki sync --dry-run       # Inspect pending metadata, without running a model
 co wiki sync                 # One update: new material, then at most one unfinished page
 co wiki logs                 # Inspect results, partial coverage and failures
@@ -188,9 +188,15 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co wiki sources remove codex` | Disable that source. |
 | `co wiki list people` / `show people/alice.md` / `search Alice` | Inspect Markdown without model calls. |
 | `co wiki status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. |
-| `co wiki open` | Open the full-page private Wiki through the current `co ai` Host when its identity is configured; otherwise open a local snapshot. |
-| `co wiki open --local` | Render and open the self-contained local HTML snapshot. |
-| `co wiki open --no-launch` | Return the page address without opening the browser. |
+| `co wiki open` | Render a fresh self-contained HTML snapshot to a temporary file and open it. Works offline; prints the file path and a `file://` link. |
+| `co wiki open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Checks first that the Host is online; if it is not, says so (start it with `co ai`) and opens the snapshot instead. Default notebook only. |
+| `co wiki open --no-launch` | Print the page without opening the browser. |
+
+Until 1.8.9 the default opened `https://chat.openonion.ai/<address>/wiki`. O Chat
+does not serve that route yet (openonion/oo-chat#246), so the page never loaded
+(#1828). The snapshot is the default until it does; the route and the switch
+back live together in `connectonion/wiki/reader.py` (`LIVE_WIKI_URL`,
+`LIVE_WIKI_SERVED`). `--local` is still accepted and always means the snapshot.
 
 `init` is the foreground Skill workflow. `start` remains the explicit
 background lifecycle command; initialization does not install a schedule.

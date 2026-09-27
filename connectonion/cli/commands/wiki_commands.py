@@ -453,25 +453,23 @@ def make_wiki_app(factory):
     @wiki.command("open", cls=V("co wiki open"))
     def open_page(ctx: typer.Context,
                   launch: bool = typer.Option(True, "--launch/--no-launch"),
+                  live: bool = typer.Option(False, "--live"),
                   local: bool = typer.Option(False, "--local")):
-        from ...wiki.reader import open_reader
+        from ...wiki import reader
 
         def operation(root):
             from connectonion.project import selected_identity_dir
             from connectonion import address
 
+            # The live view reads the default notebook through the co ai identity
+            # (#1637); a custom --root is never assumed to belong to it.
             identity = (address.load(selected_identity_dir())
-                        if not local and ctx.obj["default_root"] and root.is_dir() else None)
-            if identity:
-                import webbrowser
-
-                url = f"https://chat.openonion.ai/{identity['address']}/wiki"
-                if launch:
-                    webbrowser.open(url)
-                return {"page": url, "launched": launch}, ["status"]
-            opened = open_reader(root, launch=launch)
-            return {"page": str(opened), "launched": launch,
-                    "note": "local snapshot; run again after the next maintenance pass"}, ["status"]
+                        if ctx.obj["default_root"] and root.is_dir() else None)
+            # The snapshot is the default until O Chat serves the route (#1828).
+            wanted = not local and (live or reader.LIVE_WIKI_SERVED)
+            result = reader.live_or_snapshot(root, identity and identity["address"],
+                                             live=wanted, launch=launch)
+            return result, ["status"]
         _handle(ctx, operation, ["doctor"])
 
     @wiki.command("list", cls=V("co wiki list"))

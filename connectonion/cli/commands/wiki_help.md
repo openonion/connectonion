@@ -125,14 +125,17 @@ Back:     co wiki --help
 ```
 Open the notebook in your web browser to read it. Read-only: pages do not change.
 
-Usage:    co wiki open [--local] [--no-launch]
+Usage:    co wiki open [--live] [--no-launch]
 Example:  co wiki open
-          Opens your agent's private notebook page on chat.openonion.ai.
-          --local (or no agent identity yet) writes a snapshot to a temporary file
-          and opens that instead.
-          --no-launch prints the address without opening a browser.
-Effects:  Reads pages and changes none. The --local snapshot is written outside
-          the notebook, to a temporary file.
+          Renders a fresh snapshot of the notebook to a temporary file and opens
+          it. Works offline; run it again to see newer pages.
+          co wiki open --live
+          Opens the live view in O Chat, read from your co ai Host. Checks the
+          Host first; if it is not online, says so (start it with co ai) and
+          opens the snapshot instead. Only for the default notebook.
+          --no-launch prints the page without opening a browser.
+Effects:  Reads pages and changes none. The snapshot is written outside the
+          notebook, to a temporary file.
 Next:     co wiki show PAGE   (to read one page in the terminal)
 Back:     co wiki --help
 ```
