@@ -2,7 +2,7 @@
 Purpose: `co browser import` — carry the logins (cookies) of a Chrome profile on this Mac into the co browser profile, through that browser's own cookie API.
 LLM-Note:
   Dependencies: imports from [sys, json, shlex, tempfile, shutil, collections, useful_tools/browser_tools/chrome_cookies, useful_tools/browser_tools/engine | lazy: browser_agent.client._request, browser_commands._ensure_paid_client] | imported by [cli/main.py browser()] | tested by [tests/unit/test_browser_import.py]
-  Data flow: parse_args → resolve the Chrome profile → read a private copy of its cookie DB → filter by --domain → print sites and counts (never values) → --dry-run stops | confirm once (TTY, or --yes) → Keychain key → decrypt → `open_browser` on the daemon → `cookies ls --all --json` (names only) to find sites the target is already signed in to → `cookies load FILE --all` per site from a 0600 file in a 0700 temp dir that is removed afterwards → per-site report
+  Data flow: parse_args → resolve the Chrome profile → read a private copy of its cookie DB → filter by --domain → print sites and counts (never values) → --dry-run stops | confirm once (TTY, or --yes) → Keychain key → decrypt → `open_browser` on the daemon → `cookies ls --all --json` (values shaped) to find sites where the target already holds a login cookie (LOGIN_COOKIES, else a session-named Secure+HttpOnly cookie the source also has) → `cookies load FILE --all` per site from a 0600 file in a 0700 temp dir that is removed afterwards → per-site report
   State/Effects: reads the source profile only through a copy; writes cookies into the target browser via Playwright add_cookies in the daemon, never by editing its files | CO_BROWSER_SOCK / CO_BROWSER_PROFILE_DIR apply because every write goes through the same daemon client as other browser verbs | a real import starts a browser session (billed on the WTF Browser)
   Integration: exposes handle_browser_import(args, engine=None, headless=False) -> int and IMPORT_HELP | the daemon is reached through _daemon(), which tests replace
   Errors: exit 2 on usage or a missing confirmation, 1 when the source cannot be read or nothing could be written; a site whose batch the browser rejects is retried cookie by cookie so the report can say which ones and why
@@ -36,6 +36,7 @@ co browser import — carry your Chrome logins into the co browser profile
   --dry-run        list the sites and cookie counts, write nothing, touch no Keychain
   --yes            skip the confirmation (needed when there is no terminal)
   --replace        also import into sites the target is already signed in to
+                   (holds a login cookie; anonymous cookies do not count)
 
 Writes cookies into the target browser's profile through its own cookie API
 (Playwright add_cookies), so the target encrypts them its own way. Reads a copy
@@ -250,38 +251,82 @@ def _write(options, target, headless, meta_version, by_site, skipped) -> int:
     if code:
         print(f"could not open the {target} browser: {payload}", file=sys.stderr)
         return code
-    existing = _target_sites(engine_mode, headless, list(ready))
+    existing = _target_cookies(engine_mode, headless, list(ready))
     if existing is None:
         return 1
     return _load_and_report(options, target, engine_mode, headless, ready, skipped, existing)
 
 
-def _target_sites(engine_mode: str, headless: bool, sites: List[str]) -> Optional[Counter]:
-    """How many cookies the target already holds per site. Names and domains are
-    all that is read; the listing's values are shaped by the daemon anyway."""
+# The cookie that means "signed in" on sites people import most. Any cookie at
+# all was the first rule, and the live test showed why it is wrong: the WTF
+# profile held two anonymous github.com cookies from a visit, no user_session,
+# and the import skipped GitHub as "already signed in". A name with a value
+# (logged_in=yes) is matched on the value's length, because the daemon's
+# listing shapes values ("<3 chars>") and this command never asks for them.
+LOGIN_COOKIES = {
+    "github.com": {"user_session": None, "__Host-user_session_same_site": None, "logged_in": "yes"},
+    "linkedin.com": {"li_at": None},
+    "google.com": {"SID": None, "__Secure-1PSID": None, "__Secure-3PSID": None},
+    "x.com": {"auth_token": None},
+    "twitter.com": {"auth_token": None},
+    "facebook.com": {"c_user": None},
+    "airbnb.com": {"_aat": None},
+}
+_SESSION_WORDS = ("session", "auth", "token", "sid")
+
+
+def _target_cookies(engine_mode: str, headless: bool, sites: List[str]) -> Optional[Dict[str, list]]:
+    """The target's cookies per site, as the daemon lists them: values shaped,
+    so names, domains and flags are all this command ever sees."""
     code, payload = _daemon("cookies ls --all --json", engine_mode=engine_mode, headless=headless)
     if code:
         print(f"could not read the target browser's cookies: {payload}", file=sys.stderr)
         return None
-    held = Counter()
+    held: Dict[str, list] = defaultdict(list)
     for cookie in json.loads(payload or "[]"):
         host = str(cookie.get("domain", "")).lstrip(".")
         for site in sites:
             if chrome.matches(host, site):
-                held[site] += 1
+                held[site].append(cookie)
     return held
+
+
+def login_cookie(site: str, held: List[dict], source_names: set) -> Optional[str]:
+    """The name of the target's login cookie for this site, or None if it holds
+    only anonymous ones. Unknown sites: a Secure, HttpOnly cookie whose name
+    says session/auth/token/sid and that Chrome's signed-in profile also has."""
+    known = next((names for domain, names in LOGIN_COOKIES.items() if chrome.matches(site, domain)), None)
+    for cookie in held:
+        name = str(cookie.get("name", ""))
+        if known is not None:
+            if name in known and (known[name] is None
+                                  or cookie.get("value") in (known[name], f"<{len(known[name])} chars>")):
+                return name
+        elif (cookie.get("secure") and cookie.get("httpOnly") and name in source_names
+              and any(word in name.lower() for word in _SESSION_WORDS)):
+            return name
+    return None
+
+
+def _overwritten(held: List[dict], imported: List[dict]) -> int:
+    """How many of the target's cookies the import replaces: same name, domain and path."""
+    keys = {(c["name"], c["domain"], c["path"]) for c in imported}
+    return sum((c.get("name"), c.get("domain"), c.get("path")) in keys for c in held)
 
 
 def _load_and_report(options, target, engine_mode, headless, ready, skipped, existing) -> int:
     scratch = Path(tempfile.mkdtemp(prefix="co-browser-import-"))  # 0700: the files are live logins
     written: Dict[str, int] = {}
+    signed_in: Dict[str, str] = {}
     left_alone, replaced = [], []
     try:
         for site in sorted(ready):
-            if existing[site] and not options["replace"]:
-                left_alone.append(site)
-                continue
-            if existing[site]:
+            login = login_cookie(site, existing[site], {c["name"] for c in ready[site]})
+            if login:
+                signed_in[site] = login
+                if not options["replace"]:
+                    left_alone.append(site)
+                    continue
                 replaced.append(site)
             written[site] = _load_site(scratch, site, ready[site], skipped[site],
                                        engine_mode=engine_mode, headless=headless)
@@ -292,10 +337,12 @@ def _load_and_report(options, target, engine_mode, headless, ready, skipped, exi
     for site in sorted(set(ready) | set(skipped)):
         if site in left_alone:
             print(f"  {site:<32} skipped: already signed in in the target "
-                  f"({existing[site]} cookie(s) there). --replace imports over them")
+                  f"({signed_in[site]} is there). --replace imports over it")
             continue
-        verb = "replaced with" if site in replaced else "wrote"
-        print(f"  {site:<32} {verb} {written.get(site, 0)} cookie(s){_skips(skipped[site])}")
+        verb = "replaced the target's login with" if site in replaced else "wrote"
+        over = _overwritten(existing[site], ready.get(site, [])) if site in written else 0
+        anonymous = f", replaced {over} anonymous cookie(s)" if over and site not in replaced else ""
+        print(f"  {site:<32} {verb} {written.get(site, 0)} cookie(s){anonymous}{_skips(skipped[site])}")
     if replaced:
         print("Replaced sites: cookies with the same name, domain and path were overwritten; "
               "other cookies the target held for them are still there.")

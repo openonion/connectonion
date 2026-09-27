@@ -349,3 +349,54 @@ def test_the_guard_is_called_from_the_page_command_entry_point():
 
     source = inspect.getsource(async_mod.AsyncBrowserCore._tab_operation)
     assert "_require_live_paid_session()" in source
+
+
+def _hold(profile_dir, pid):
+    """A live Chrome's SingletonLock: a symlink to <host>-<pid>."""
+    import os
+
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    os.symlink(f"somehost-{pid}", profile_dir / "SingletonLock")
+
+
+def _paid_browser(monkeypatch):
+    playwright = FakePlaywright()
+    monkeypatch.setattr(async_mod, "ASYNC_BROWSER_AVAILABLE", True)
+    monkeypatch.setattr(async_mod, "async_playwright", lambda: FakeManager(playwright))
+
+    async def launch(resolution, owner, key, **kwargs):
+        return FakePaidRun()
+
+    monkeypatch.setattr(async_mod.browser_engine, "launch_async", launch)
+    return mod.BrowserAutomation(engine_resolver=lambda mode: onion_resolution())
+
+
+def test_an_idle_free_engine_does_not_block_the_paid_one(monkeypatch, tmp_path):
+    """Live test, 2026-09-27: a system-Chrome daemon held ~/.co/browser_profile
+    and `--engine wtf` was refused for it, though the paid engine opens
+    ~/.onionwright/profiles/<address>."""
+    import os
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("CO_BROWSER_PROFILE_DIR", raising=False)
+    _hold(tmp_path / ".co" / "browser_profile", os.getpid())
+    browser = _paid_browser(monkeypatch)
+
+    assert "Onion Browser opened" in browser.open_browser()
+    browser.close()
+
+
+def test_the_paid_engine_still_refuses_its_own_locked_profile(monkeypatch, tmp_path):
+    import os
+
+    monkeypatch.setenv("CO_BROWSER_PROFILE_DIR", str(tmp_path / "profile"))
+    _hold(tmp_path / "profile", os.getpid())            # the free engine's: not ours
+    browser = _paid_browser(monkeypatch)
+    assert "Onion Browser opened" in browser.open_browser()
+    browser.close()
+
+    _hold(tmp_path / "profile" / "onion", os.getpid())  # the paid engine's own
+    browser = _paid_browser(monkeypatch)
+    with pytest.raises(RuntimeError, match="already in use"):
+        browser.open_browser()
+    browser.close()

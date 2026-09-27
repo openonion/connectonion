@@ -346,10 +346,17 @@ co browser --engine wtf go_to https://www.linkedin.com/feed/              # chec
   Browser session is billed.
 - `--dry-run` lists sites and cookie counts only: no Keychain, no browser.
 - `--yes` skips the one confirmation; without a terminal it is required.
-- A site the target browser already holds cookies for is left alone and
-  reported as "already signed in in the target", so an import never switches
-  an account the target is using. `--replace` imports over it; cookies with
-  the same name, domain and path are overwritten and the others stay.
+- A site the target browser is already signed in to is left alone and
+  reported as "already signed in in the target", naming the login cookie it
+  found, so an import never switches an account the target is using. Signed
+  in means a login cookie, not any cookie: `user_session` on github.com,
+  `li_at` on linkedin.com, `SID`/`__Secure-1PSID` on google.com, `auth_token`
+  on x.com, `c_user` on facebook.com, `_aat` on airbnb.com; on other sites a
+  Secure, HttpOnly cookie named like a session (session/auth/token/sid) that
+  Chrome's profile also has. Anonymous cookies from an earlier visit do not
+  count: the import goes ahead and reports how many it replaced. `--replace`
+  imports over a real login; cookies with the same name, domain and path are
+  overwritten and the others stay.
 
 How it works: the command reads a private copy of Chrome's cookie database
 (Chrome locks the file while it runs, and the source profile is never

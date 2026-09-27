@@ -131,12 +131,12 @@ def test_a_site_the_target_is_signed_in_to_is_left_alone(chrome_home, monkeypatc
 
     assert code == 0
     assert fake.loaded == []
-    assert "already signed in in the target (1 cookie(s) there)" in text
+    assert "already signed in in the target (li_at is there)" in text
 
     code, text = run(capsys, "--profile", "Profile 1", "--domain", "linkedin.com", "--yes", "--replace",
                      "--engine", "system")
     assert sorted(c["name"] for c in fake.loaded) == ["JSESSIONID", "li_at"]
-    assert re.search(r"linkedin\.com\s+replaced with 2 cookie\(s\)", text)
+    assert re.search(r"linkedin\.com\s+replaced the target.s login with 2 cookie\(s\)", text)
 
 
 def test_a_rejected_cookie_is_named_and_the_rest_still_land(chrome_home, monkeypatch, capsys):
@@ -215,3 +215,58 @@ def test_an_unanswered_keychain_dialog_exits_1_and_writes_nothing(chrome_home, d
     assert code == 1
     assert daemon.lines == []
     assert "not answered" in text and "Traceback" not in text
+
+
+def test_anonymous_cookies_in_the_target_are_not_a_login(chrome_home, monkeypatch, capsys):
+    """Live test, 2026-09-27: the WTF profile held two anonymous github.com
+    cookies from a visit and GitHub was skipped as "already signed in"."""
+    fake = FakeDaemon(target_cookies=[
+        {"name": "_gh_sess", "domain": "github.com", "path": "/", "value": "<40 chars>",
+         "secure": True, "httpOnly": True},
+        {"name": "logged_in", "domain": ".github.com", "path": "/", "value": "<2 chars>",
+         "secure": True, "httpOnly": True},
+    ])
+    monkeypatch.setattr(browser_import, "_daemon", fake)
+
+    code, text = run(capsys, "--domain", "github.com", "--yes", "--engine", "system")
+
+    assert code == 0
+    assert [c["name"] for c in fake.loaded] == ["user_session"]
+    assert re.search(r"github\.com\s+wrote 1 cookie\(s\)", text)
+    assert "already signed in" not in text
+
+
+def test_a_login_in_the_target_is_named_when_skipped(chrome_home, monkeypatch, capsys):
+    fake = FakeDaemon(target_cookies=[
+        {"name": "logged_in", "domain": ".github.com", "path": "/", "value": "<3 chars>"},
+    ])
+    monkeypatch.setattr(browser_import, "_daemon", fake)
+
+    code, text = run(capsys, "--domain", "github.com", "--yes", "--engine", "system")
+
+    assert code == 0 and fake.loaded == []
+    assert "already signed in in the target (logged_in is there)" in text
+
+
+def test_the_import_says_how_many_anonymous_cookies_it_replaced(chrome_home, monkeypatch, capsys):
+    fake = FakeDaemon(target_cookies=[
+        {"name": "JSESSIONID", "domain": ".www.linkedin.com", "path": "/", "value": "<20 chars>"},
+        {"name": "bcookie", "domain": ".linkedin.com", "path": "/", "value": "<30 chars>"},
+    ])
+    monkeypatch.setattr(browser_import, "_daemon", fake)
+
+    code, text = run(capsys, "--profile", "Profile 1", "--domain", "linkedin.com", "--yes", "--engine", "system")
+
+    assert code == 0
+    assert re.search(r"linkedin\.com\s+wrote 2 cookie\(s\), replaced 1 anonymous cookie\(s\)", text)
+
+
+@pytest.mark.parametrize("cookie, signed_in", [
+    ({"name": "sessionid", "secure": True, "httpOnly": True}, True),
+    ({"name": "sessionid", "secure": True, "httpOnly": False}, False),   # readable by scripts: not a login
+    ({"name": "other_sid", "secure": True, "httpOnly": True}, False),    # Chrome's profile has no such cookie
+    ({"name": "theme", "secure": True, "httpOnly": True}, False),
+])
+def test_unknown_sites_fall_back_to_a_conservative_rule(cookie, signed_in):
+    found = browser_import.login_cookie("example.org", [cookie], {"sessionid", "theme"})
+    assert (found is not None) == signed_in
