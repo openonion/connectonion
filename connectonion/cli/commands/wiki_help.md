@@ -10,7 +10,7 @@ co wiki — a notebook about the people, projects and tools in your work, kept u
 Experimental: a preview; its commands may change before 1.9.0.
 
 Build (once)
-  init          Build the notebook's frame from mail headers and coding sessions. No model.
+  init          Build the notebook's frame and private 90-day mail materials. No model.
   investigate   Fill a page, a whole category, or your own page, using a model.
 Read
   open          Browse the notebook in your browser.
@@ -46,21 +46,29 @@ Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, 
 ```
 Build the notebook's frame: a page for each person you write to, each organization,
 each coding project and each installed Skill, plus your own page, already titled
-with your name and filled with who you write to most and where you work. Reads mail headers,
-the preview line your provider lists with each message (to name people by your
-greeting), saved contacts, and session metadata. Does not open message bodies, does
-not run a model, does not turn on the schedule.
+with your name and filled with who you write to most and where you work. Lists
+90 days of mail headers, the preview line your provider lists with each message (to
+name people by your greeting), saved contacts, and session metadata. Then saves a
+private copy of each listed message body, once, so investigating a person later
+reads it from disk. Does not run a model, does not turn on the schedule.
 
-Usage:    co wiki init [--days N] [--mine ADDRESS]... [--name NAME] [--mail gmail|outlook]...
+Usage:    co wiki init [--days N] [--mine ADDRESS]... [--name NAME] [--mail gmail|outlook]... [--no-mail-archive]
 Example:  co wiki init --days 90 --name "Aaron Xie" --mine aaron@mail.openonion.ai
 
 Inputs:   Connected mailboxes (co auth google, co auth microsoft) and local Codex /
           Claude Code sessions. --mine adds an address that is yours; init also lists
           addresses that look like yours and prints the --mine command for each.
-Output:   Pages under ~/.co/wiki (or --root). A summary of what was read, what was
-          skipped and why, and the pages created. Re-running keeps anything written.
-Effects:  Writes pages. Reads mail headers. No model, no cost, no schedule.
-Takes:    About 10 minutes for 90 days of two mailboxes.
+Output:   Pages under ~/.co/wiki (or --root), progress on stderr, and private
+          files under .state/: source-inventory.md and .jsonl (what was listed,
+          window by window), and mail/ (one body per message, per-person and
+          per-project indexes). A seven-day window at the 200-message listing cap
+          is split until all of it is listed. Mail bodies never go into a page and
+          never leave this machine. Re-running keeps anything written and reuses
+          saved bodies.
+Effects:  Writes pages and private files (owner-only). Reads mail bodies unless
+          --no-mail-archive. No model, no cost, no schedule.
+Takes:    About 10 minutes to map 90 days of two mailboxes; saving bodies takes
+          longer. An interrupted run resumes where it stopped.
 
 Next:     co wiki investigate me --quick (bounded, partial first pass; retain --days N)
 Back:     co wiki --help

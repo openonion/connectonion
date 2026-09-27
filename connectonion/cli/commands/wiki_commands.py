@@ -230,18 +230,19 @@ def make_wiki_app(factory):
 
     @wiki.command("init", cls=V("co wiki init"))
     def init_wiki(ctx: typer.Context,
-                  days: int = typer.Option(150, "--days", min=1),
+                  days: int = typer.Option(90, "--days", min=1),
                   skills_dir: List[Path] = typer.Option([], "--skills-dir"),
                   mine: List[str] = typer.Option([], "--mine"),
                   mail: List[str] = typer.Option([], "--mail"),
-                  name: str = typer.Option("", "--name")):
+                  name: str = typer.Option("", "--name"),
+                  archive_mail: bool = typer.Option(True, "--archive-mail/--no-mail-archive")):
         from ...wiki.config import prepare
         from ...wiki.map import build_map
         from ...wiki.service import mail_available, mail_client, subscriptions
 
         def run(root):
             prepare(root)
-            window = [] if days == 150 else ["--days", str(days)]
+            window = [] if days == 90 else ["--days", str(days)]
             sources = subscriptions(root)
             from ...wiki.files import WikiError
             selected = set(mail)
@@ -271,7 +272,28 @@ def make_wiki_app(factory):
             result = build_map(root, sources, clients, days=days,
                                skill_directories=skills_dir or None, mine=mine, source_errors=errors,
                                absent=_absent_mail(selected, available, failed, sources, bool(mail)), name=name,
+                               capture_sources=True,
                                progress=progress if not ctx.obj["json"] else None)
+            if archive_mail and result.get("source_inventory"):
+                from ...wiki.files import read_json, state_path, write_json
+                from ...wiki.mail_archive import archive_init
+                previous = read_json(state_path(root, "mail/archive.json"), {})
+                incomplete_scan = any(row.get("source") in ("gmail", "outlook")
+                                      for row in result.get("errors", []))
+                if previous and (not clients or incomplete_scan):
+                    body_report = {"phase": "previous_preserved", "started": previous.get("started"),
+                                   "target": previous.get("target", 0),
+                                   "reason": "Current mail enumeration unavailable; previous private archive retained"}
+                else:
+                    body_report = archive_init(
+                        root, result, clients,
+                        progress=progress if not ctx.obj["json"] else None)
+                result["mail_archive"] = body_report
+                if body_report.get("failed"):
+                    result["errors"].append({"source": "mail-archive", "stage": "body",
+                                             "error": f"{body_report['failed']} messages unavailable"})
+                    result["phase"] = "partial"
+                write_json(state_path(root, "map.json"), result)
             tips = []
             for kind, provider in (("gmail", "google"), ("outlook", "microsoft")):
                 if kind not in available:
@@ -298,7 +320,8 @@ def make_wiki_app(factory):
                 retry = ["init", *window]
                 if mail:
                     retry += [part for kind in mail for part in ("--mail", kind)]
-                result["recovery"] = "Check mailbox access with co auth status; retry init after resolving access. Completed maps are preserved."
+                result["recovery"] = ("Check mailbox access with co auth status; retry init after resolving access. "
+                                      "Completed maps and saved mail bodies are reused.")
                 _emit(ctx, result, retry, failed=True)
                 raise typer.Exit(1)
             # A page made from --name alone has no address for investigate me to use.

@@ -32,6 +32,13 @@ def test_own_addresses_are_never_correspondents_even_across_mailboxes():
     assert [p["address"] for p in people] == ["ody@g.com"]
 
 
+def test_one_sent_mail_maps_every_recipient_without_duplicate_person_counts():
+    rows = [{"id": "shared", "from": "me@x.y", "to": ["a@g.com", "b@g.com"],
+             "cc": ["b@g.com"], "date": "2026-09-10", "subject": "plan"}]
+    people = scan_people({"outlook": Box("me@x.y", rows)}, days=30, own_addresses=set())
+    assert {p["address"]: p["mails"] for p in people} == {"a@g.com": 1, "b@g.com": 1}
+
+
 def test_signals_are_handed_over_and_verdicts_are_not():
     rows = [{"id": "1", "from": "no-reply.products@edm.bank.au", "to": ["me@x.y"], "cc": [], "date": "2026-09-10", "subject": "Statement"},
             {"id": "2", "from": "no-reply.products@edm.bank.au", "to": ["me@x.y"], "cc": [], "date": "2026-09-11", "subject": "Statement"},
@@ -309,7 +316,9 @@ def test_a_greeting_to_several_people_names_none_of_them():
     rows = [_sent(["a@q.com", "b@q.com"], "Hi Larry, both of you"),
             _sent(["c@q.com"], "Hi Larry, you too", cc=["d@q.com"])]
     people = {p["address"]: p["name"] for p in scan_people({"gmail": Box("me@x.y", rows)}, 30, set())}
-    assert people == {"a@q.com": "", "c@q.com": ""}   # a mail is filed under its first recipient
+    # Every recipient is mapped (one mail to several people is about each of
+    # them); the greeting still names none, since nobody can say which it meant.
+    assert people == {"a@q.com": "", "b@q.com": "", "c@q.com": "", "d@q.com": ""}
 
 
 def test_the_name_they_write_under_beats_the_owners_greeting():

@@ -17,7 +17,8 @@ def _record(category: str, name: str, identity: str) -> str:
     return f'{category}/{slug}-{hashlib.sha256(identity.encode()).hexdigest()[:10]}.md'
 
 
-def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None, progress=None) -> tuple[list[dict], set]:
+def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None, progress=None,
+               inventory=None) -> tuple[list[dict], set]:
     own, available, merged = set(mine), {}, {}
     for kind, client in clients.items():
         try:
@@ -30,7 +31,9 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None, prog
         if progress:
             progress(f"scanning {kind} mail metadata")
         try:
-            rows = scan_people({kind: client}, days, own)
+            rows = scan_people({kind: client}, days, own,
+                               on_row=inventory.mail if inventory else None,
+                               on_window=inventory.window if inventory else None)
         except Exception as error:
             coverage.append(f'{kind}: metadata scan failed ({type(error).__name__}); incomplete')
             if errors is not None: errors.append({'source': kind, 'stage': 'metadata', 'error': type(error).__name__})
@@ -40,7 +43,8 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None, prog
         # and an empty one read identically, which is the state the init contract
         # names first (#1616).
         found = f'{len(rows)} correspondents' if rows else 'no correspondents in this window'
-        coverage.append(f'{kind}: metadata only, {days} days, at most 200 messages per seven-day window; ' + found)
+        coverage.append(f'{kind}: metadata only, {days} days; a seven-day window at the 200-message '
+                        'listing cap is split until every message in it is listed; ' + found)
         if progress:
             progress(f"scanned {kind} mail metadata", len(rows))
         for row in rows:
@@ -335,9 +339,9 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *args, **options) 
         return _build_map(root, subscriptions, clients, *args, **options)
 
 
-def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150,
+def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90,
                skill_directories=None, mine=(), source_errors=None, absent=None, name: str = '',
-               progress=None) -> dict:
+               progress=None, capture_sources: bool = False) -> dict:
     """Map observed identities; correspondent classification remains unassessed."""
     notebook = Notebook(root)
     report = {'phase': 'mapping', 'started': datetime.now(timezone.utc).isoformat(),
@@ -345,6 +349,11 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 15
               'errors': list(source_errors or []), 'automated_correspondents': [],
               'possible_own_addresses': []}
     state = root / '.state' / 'map.json'
+    from .source_inventory import SourceInventory
+    inventory = SourceInventory(root, progress) if capture_sources else None
+    if inventory:
+        inventory.snapshot_report = report
+        report['source_inventory'] = inventory.save(report)
     state.parent.mkdir(parents=True, exist_ok=True)
     # The owner's page from an earlier init, so a page made from --name alone
     # is the one a mailbox connected later fills, not a second owner.
@@ -356,8 +365,16 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 15
     if progress:
         progress("mapping installed skills")
     report['skills'] = map_skills(notebook, skill_directories, lock_held=True)
+    if inventory:
+        for skill in report['skills']['skills']:
+            inventory.skill(skill)
+        inventory.save(report)
     save()
-    people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress)
+    if inventory:
+        people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress,
+                                 inventory=inventory)
+    else:
+        people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress)
     roster = notebook.people()
     if own:
         aliases = sorted({address.casefold() for address in own})
@@ -468,7 +485,9 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 15
     groups = {}
     if progress:
         progress("scanning local projects")
-    for row in scan_projects(subscriptions, days, root):
+    project_rows = (scan_projects(subscriptions, days, root, on_session=inventory.session)
+                    if inventory else scan_projects(subscriptions, days, root))
+    for row in project_rows:
         identity = canonical_origin(row['origin']) or row['repo'] or _scratch_identity(row['path']) or row['path']
         group = groups.setdefault(identity, {'name': Path(row['repo'] or row['path']).name,
                                             'paths': [], 'sessions': 0, 'first': row['first'], 'last': row['last']})
@@ -510,6 +529,8 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 15
                                   "duplicates or sandboxes; moved to .state/archived/")
     report.update(phase='partial' if report['errors'] else 'mapped', finished=datetime.now(timezone.utc).isoformat(),
                   investigation='not started', classification='unassessed; no correspondents filtered')
+    if inventory:
+        report['source_inventory'] = inventory.save(report)
     if progress:
         progress("mapped projects", len(report['projects']))
     save()
