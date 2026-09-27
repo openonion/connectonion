@@ -67,27 +67,16 @@ class _Judgement(BaseModel):
 
 
 def load_agent(path: str):
-    """The Agent in `path`, imported without letting it start serving.
-
-    The `co create` template ends with `host(agent)`, which never returns: a
-    plain import of it would hang the run before the first case. host() is
-    swapped for a no-op for exactly the duration of the import.
-    """
-    import connectonion
-
+    """The Agent in `path`, imported without letting it start serving (get_agent_from_file)."""
     from ..cli.commands.eval_commands import get_agent_from_file
 
     file = Path(path)
     if not file.exists():
         raise RunnerError(f"--agent {path} does not exist. Next: co eval run <name> --agent agent.py", code=2)
-    original = connectonion.host
-    connectonion.host = lambda *args, **kwargs: None
     try:
         return get_agent_from_file(str(file), str(file.resolve().parent))
     except Exception as error:  # an import error in someone's agent.py is theirs to read, in one line
         raise RunnerError(f"could not load an Agent from {path}: {type(error).__name__}: {error}") from error
-    finally:
-        connectonion.host = original
 
 
 def agent_identity(agent, path: str) -> dict:

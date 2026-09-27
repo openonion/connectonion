@@ -119,7 +119,7 @@ def start_server(
         max_iterations: Tool iteration limit for the hosted coding agent
         full_access: Whether bounded Full access is configured
         full_access_turns: User-driven turns before Full access expires
-        agent_factory: Reserved configured factory for hosted sessions
+        agent_factory: Builds a fresh Agent per hosted request; preferred over `agent`
         invite_code: Optional in-memory invite for this server invocation
 
     The server will be accessible at:
@@ -146,12 +146,23 @@ def start_server(
     load_host_config(co_dir)
     addr_data = address.load(co_dir)
 
-    if full_access:
-        from ...useful_plugins.full_access import offer_full_access
+    def configured(new_agent):
+        if full_access:
+            from ...useful_plugins.full_access import offer_full_access
 
-        # Web sessions still begin in Auto. This configures only the Host-owned
-        # ceiling that makes Full access selectable after CONNECT.
-        offer_full_access(agent, full_access_turns)
+            # Web sessions still begin in Auto. This configures only the Host-owned
+            # ceiling that makes Full access selectable after CONNECT.
+            offer_full_access(new_agent, full_access_turns)
+        return new_agent
+
+    # Each request gets an Agent built from scratch, so two sessions never
+    # share one object's conversation state. The instance form is kept for
+    # callers that pass no factory.
+    if agent_factory is not None:
+        create = lambda: configured(agent_factory(model, max_iterations, False, full_access_turns))
+    else:
+        agent = configured(agent)
+        create = agent
 
     # Open chat URL after agent successfully starts (2 second delay)
     if addr_data:
@@ -168,4 +179,4 @@ def start_server(
         from ...network.trust import TrustAgent
 
         trust = TrustAgent("careful", invite_code=invite_code, co_dir=co_dir)
-    host(agent, port=port, trust=trust, co_dir=co_dir, wiki_root=Path.home() / ".co/wiki")
+    host(create, port=port, trust=trust, co_dir=co_dir, wiki_root=Path.home() / ".co/wiki")
