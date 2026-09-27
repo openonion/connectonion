@@ -64,6 +64,8 @@ class TokenUsage(BaseModel):
 # Pricing per 1M tokens (USD)
 # Format: {"input": $, "output": $, "cached": $, "cache_write": $}
 MODEL_PRICING = {
+    "llama": {"input": 0.0, "output": 0.0, "cached": 0.0},
+    "gemma": {"input": 0.0, "output": 0.0, "cached": 0.0},
     # OpenAI models - cached = 50% of input
     "o3-mini": {"input": 1.10, "output": 4.40, "cached": 0.55},
     "o4-mini": {"input": 1.10, "output": 4.40, "cached": 0.55},
@@ -130,6 +132,9 @@ MODEL_PRICING = {
 
 # Context window limits (tokens)
 MODEL_CONTEXT_LIMITS = {
+    # The shared GPU proxy currently runs Ollama with a 4,096-token context.
+    "llama": 4096,
+    "gemma": 4096,
     # OpenAI
     "o3-mini": 200000,
     "o4-mini": 200000,
@@ -171,8 +176,8 @@ DEFAULT_CONTEXT_LIMIT = 128000
 # "what is the default model" was previously answered by separate literals
 # that drifted apart. The previous default stays on FREE_MANAGED_MODELS
 # below as the rollback.
-DEFAULT_MODEL = "co/gemini-3.8-flash"
-DEFAULT_DIRECT_GEMINI_MODEL = DEFAULT_MODEL.removeprefix("co/")
+DEFAULT_MODEL = "co/llama"
+DEFAULT_DIRECT_GEMINI_MODEL = "gemini-3.8-flash"
 
 # Which managed models a free account can call. The backend refuses the rest
 # with error='paid_account_required': "Your free $5 credits work with
@@ -185,6 +190,8 @@ DEFAULT_DIRECT_GEMINI_MODEL = DEFAULT_MODEL.removeprefix("co/")
 # completing a real call per model; see
 # tests/unit/test_the_models_we_advertise_answer.py.
 FREE_MANAGED_MODELS = (
+    "co/llama",
+    "co/gemma",
     "co/gemini-3.8-flash",
     "co/gemini-3.7-flash",
     "co/gemini-3.6-flash",

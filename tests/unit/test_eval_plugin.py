@@ -30,6 +30,8 @@ class FakeAgent:
         self.tools = Mock()
         self.tools.names.return_value = ['tool1', 'tool2']
         self.logger = Mock()
+        # Scoring calls go to the agent's own LLM, as on a real Agent (#1758).
+        self.llm = Mock(model="fake-model")
 
     def _record_trace(self, entry: dict) -> None:
         self.current_session['trace'].append(entry)

@@ -363,3 +363,53 @@ class TestMicrosoftCalendarAvailability:
 
             assert "BUSY" in result
             assert "Existing Meeting" in result
+
+
+class TestMicrosoftCalendarSaysWhichZone:
+    """Graph returns UTC wall times with no offset; printing them bare is a trap (#1755).
+
+    A Sydney user saw "Client call 06:00 AM" for a 4 pm meeting, and a create at
+    "16:00" was confirmed as "Start: 04:00 PM" while Graph was sent 16:00 UTC.
+    Same contract as GoogleCalendar: every printed time names its zone.
+    """
+
+    @staticmethod
+    def _calendar(response):
+        from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
+        calendar = MicrosoftCalendar.__new__(MicrosoftCalendar)
+        calendar.sent = []
+
+        def fake_request(method, endpoint, **kwargs):
+            calendar.sent.append((method, endpoint, kwargs))
+            return response
+        calendar._request = fake_request
+        return calendar
+
+    def test_a_listed_event_is_labelled_utc(self):
+        calendar = self._calendar({"value": [{
+            "id": "E1", "subject": "Client call",
+            "start": {"dateTime": "2026-09-28T06:00:00.0000000", "timeZone": "UTC"},
+            "end": {"dateTime": "2026-09-28T07:00:00.0000000", "timeZone": "UTC"}}]})
+
+        assert "2026-09-28 06:00 AM UTC: Client call" in calendar.list_events()
+
+    def test_a_naive_create_is_confirmed_as_utc_which_is_what_graph_got(self):
+        calendar = self._calendar({"id": "NEW", "webLink": ""})
+
+        result = calendar.create_event("Dentist", "2026-09-28 16:00", "2026-09-28 17:00")
+
+        assert calendar.sent[-1][2]["json"]["start"] == {"dateTime": "2026-09-28T16:00:00", "timeZone": "UTC"}
+        assert "Start: 2026-09-28 04:00 PM UTC" in result
+
+    def test_a_create_with_an_offset_is_confirmed_in_that_offset(self):
+        calendar = self._calendar({"id": "NEW", "webLink": ""})
+
+        result = calendar.create_event("Dentist", "2026-09-28T16:00:00+10:00", "2026-09-28T17:00:00+10:00")
+
+        assert calendar.sent[-1][2]["json"]["start"]["dateTime"] == "2026-09-28T06:00:00"
+        assert "Start: 2026-09-28 04:00 PM +10:00" in result
+
+    def test_free_slots_say_their_zone(self):
+        calendar = self._calendar({"value": []})
+
+        assert "UTC" in calendar.find_free_slots("2026-09-28")

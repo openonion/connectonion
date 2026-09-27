@@ -42,6 +42,13 @@ _UNSAFE = re.compile(r"[^A-Za-z0-9._:@+=-]")
 # and is neither claimed, swept, nor deleted.
 _QUEUE_NAME = re.compile(r"^\d+-.+")
 
+# What a listener writes about its own start and stop, as opposed to why it
+# stopped. The last three log lines of a refused Telegram token were
+# "listener stopped", "exited at once with 3" and the tail of a path, with the
+# sentence that says to copy the token from @BotFather just above them.
+_BOOKKEEPING = re.compile(r"(listener stopped|listener exited at once with \d+.*|"
+                          r"listening · .*|details: .*)$")
+
 
 def iso_utc(seconds: Optional[float] = None) -> str:
     """A UTC timestamp with second precision, `2026-09-02T10:31:07Z`. The one
@@ -499,6 +506,15 @@ class Inbox:
         except FileNotFoundError:
             return []
         return [line for line in lines if line.strip()][-count:]
+
+    def why_listener_stopped(self, count: int = 3) -> list:
+        """The last few log lines that say why, not that, the listener stopped.
+
+        Here and not in the CLI because every consumer that watches a listener
+        has to say this: `receive`, `co ai` answering channels, and the Host.
+        """
+        lines = [line for line in self.last_log_lines(12) if not _BOOKKEEPING.search(line)]
+        return lines[-count:]
 
     def context(self, chat: str, count: int, before: Optional[str] = None) -> list[dict]:
         """The conversation around a message: what was said in `chat` before it.

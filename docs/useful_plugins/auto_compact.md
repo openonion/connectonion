@@ -14,7 +14,7 @@ agent = Agent("assistant", plugins=[auto_compact])
 ## What it does
 
 When the context window hits 90% full:
-1. Summarizes old messages into a single compact message using the current product default (`co/gemini-3.8-flash`)
+1. Summarizes old messages into a single compact message using the current product default (`co/llama`)
 2. Replaces old messages with the summary (keeps system prompt + summary + last 5 messages)
 3. Continues the session without interruption
 

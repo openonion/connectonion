@@ -62,6 +62,7 @@ agent = Agent("a", plugins=[re_act, logger])
 | `tool_approval` | Web-based approval for dangerous tools | [tool_approval.md](../useful_plugins/tool_approval.md) |
 | `ui_stream` | Stream agent events to WebSocket clients | [ui_stream.md](../useful_plugins/ui_stream.md) |
 | `system_reminder` | Inject contextual reminders into tool results | [system_reminder.md](../useful_plugins/system_reminder.md) |
+| `watch_events` | Add claimed events to a running Agent at iteration boundaries | [watch_events.md](../useful_plugins/watch_events.md) |
 | `auto_compact` | Compact conversation when context gets large | [auto_compact.md](../useful_plugins/auto_compact.md) |
 | `prefer_write_tool` | Guide agent to prefer write over edit for new files | [prefer_write_tool.md](../useful_plugins/prefer_write_tool.md) |
 | `full_access` | Bounded approval bypass for user-driven turns | [full_access.md](../useful_plugins/full_access.md) |

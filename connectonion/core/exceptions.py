@@ -121,6 +121,7 @@ class InsufficientCreditsError(LLMProviderError):
         self.address = detail.get('address', 'unknown')  # Server provides formatted address
         self.public_key = detail.get('public_key', 'unknown')  # Full public key
         self.original_message = detail.get('message', '')
+        self.free_model = detail.get('free_model')
 
         # Create clear, beautiful error message
         message = self._format_message()
@@ -131,6 +132,7 @@ class InsufficientCreditsError(LLMProviderError):
 
     def _format_message(self):
         """Format a clear, actionable error message."""
+        free_tip = f"💡 Keep going for free with {self.free_model}.\n\n" if self.free_model else ""
         return (
             f"\n"
             f"{'='*70}\n"
@@ -142,6 +144,7 @@ class InsufficientCreditsError(LLMProviderError):
             f"Required:    ${self.required:.4f}\n"
             f"Shortfall:   ${self.shortfall:.4f}\n"
             f"\n"
+            f"{free_tip}"
             f"💡 How to add credits:\n"
             f"   • Purchase: https://o.openonion.ai/purchase\n"
             f"   • Check balance: Run 'co status' in terminal\n"
@@ -253,12 +256,14 @@ class PaidModelRequiredError(LLMProviderError):
         self.model_requested = detail.get('model_requested', 'unknown')
         self.free_models = FREE_MANAGED_MODELS
         self.original_message = detail.get('message', '')
+        self.free_model = detail.get('free_model')
 
         super().__init__(self._format_message())
         self.__cause__ = original_error
 
     def _format_message(self):
         offered = "\n".join(f"   • {m}" for m in self.free_models)
+        free_tip = f"💡 No credits? Keep going with {self.free_model} for free.\n\n" if self.free_model else ""
         return (
             f"\n"
             f"{'='*70}\n"
@@ -268,6 +273,7 @@ class PaidModelRequiredError(LLMProviderError):
             f"Free credits cover Google-routed models. These work now:\n"
             f"{offered}\n"
             f"\n"
+            f"{free_tip}"
             f"💡 To use {self.model_requested}:\n"
             f"   • Purchase credits: https://o.openonion.ai\n"
             f"   • Check balance: Run 'co status' in terminal\n"
@@ -298,6 +304,33 @@ class ProviderServiceError(LLMProviderError):
         )
         super().__init__(message)
         self.__cause__ = original_error
+
+
+class TruncatedResponseError(LLMProviderError, ValueError):
+    """The provider stopped at its output-token limit before the answer ended.
+
+    OpenAI-shaped providers say `finish_reason == "length"`, Anthropic says
+    `stop_reason == "max_tokens"`. Nothing checked either, so half an answer
+    came back as the final answer, and a tool call cut mid-JSON raised
+    JSONDecodeError with the tokens already billed and never recorded (#1758).
+
+    `usage` is what the provider charged for the cut-off response, so a caller
+    can still count it; `content` is the partial text, if any. Also a
+    ValueError because OpenAICompatibleLLM raised a plain ValueError for this
+    before, and callers written against that should keep working.
+    """
+
+    def __init__(self, model: str, reason: str, usage=None, content=None):
+        self.model = model
+        self.reason = reason
+        self.usage = usage
+        self.content = content
+        spent = f" after {usage.output_tokens} output tokens" if usage else ""
+        super().__init__(
+            f"{model} stopped at its output limit ({reason}){spent}; the "
+            "response is incomplete. Ask for a shorter answer, split the work "
+            "into smaller steps, or raise max_tokens."
+        )
 
 
 class ToolRejectedError(ValueError):

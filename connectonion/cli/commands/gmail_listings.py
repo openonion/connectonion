@@ -1,4 +1,4 @@
-"""Immutable, short-lived row references for one authenticated Google provider account."""
+"""Immutable, short-lived row references for one authenticated provider account (Gmail, Drive, Outlook)."""
 
 import hashlib
 import json
@@ -34,7 +34,7 @@ def _modified(path: Path) -> float:
 
 def save_listing(directory: Path, account: str, family: str, ids: list[str], *, now: float | None = None, provider: str = 'gmail') -> str:
     """Persist IDs only; never cache message bodies, subjects, recipients or tokens."""
-    if (provider, family) not in {('gmail','messages'), ('gmail','drafts'), ('gdrive','files')} or len(ids) > 500 or any(not isinstance(i, str) or not i or len(i) > 256 for i in ids):
+    if (provider, family) not in {('gmail','messages'), ('gmail','drafts'), ('gdrive','files'), ('outlook','messages')} or len(ids) > 500 or any(not isinstance(i, str) or not i or len(i) > 256 for i in ids):
         raise ListingError('Invalid provider listing. List again.')
     created = time.time() if now is None else now
     token = uuid4().hex

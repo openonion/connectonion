@@ -113,9 +113,12 @@ def resolve_skill(name: str) -> dict:
 
 
 def effective_input(case: Case, skill: Optional[dict], invoke: str) -> str:
+    prompt = case.input
+    if case.given:
+        prompt = f"Given context:\n{case.given}\n\nUser request:\n{case.input}"
     if invoke == "explicit" and skill:
-        return f"/{skill['name']} {case.input}"
-    return case.input
+        return f"/{skill['name']} {prompt}"
+    return prompt
 
 
 def activation(skill: Optional[dict], invoke: str, session: dict, sent: str) -> Optional[dict]:

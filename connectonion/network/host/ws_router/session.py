@@ -433,7 +433,7 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                                 active_io, forward_task = result
                             track_viewer()
             elif msg_type and msg_type.startswith("ADMIN_"):
-                await handle_admin_message(data, send_msg, route_handlers)
+                await handle_admin_message(data, send_msg, route_handlers, conn)
 
             elif msg_type == 'CONTROL_CENTER_COMMAND':
                 from .control_center import handle_control_center

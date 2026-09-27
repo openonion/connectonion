@@ -92,6 +92,14 @@ Folders and Forms have no export format at all; `download()` raises with a
 clear message rather than writing something unopenable. Shortcuts resolve to
 whatever they point at.
 
+**Downloads never replace a file, and agents stay in the project.** A Drive
+name is picked by whoever shared the file, so `download()` keeps only its last
+path segment (`../../.zshrc` lands as `.zshrc` in your folder), never writes
+through a symlink, and gives a taken name a `-1`, `-2`… suffix instead of
+overwriting. By default the destination must be inside the project; pass
+`GDrive(allow_external_downloads=True)` when your own code, not a model, picks
+the folder. The `co gdrive` CLI does that, because there you typed `--to`.
+
 **Deleting trashes.** `delete()` moves the file to the Drive trash rather than
 destroying it, so an agent calling it by mistake stays recoverable from
 drive.google.com.
@@ -103,13 +111,13 @@ from connectonion import Agent, GDrive
 
 drive = GDrive()
 
-# Find and fetch, programmatically
+# Find and fetch, programmatically (into the project; see above for elsewhere)
 matches = drive.search_files("invoice", last=5)
 for f in matches:
     print(f["name"], f["size"], f["link"])
 
 if matches:
-    drive.download(matches[0]["id"], dest="~/Downloads")
+    drive.download(matches[0]["id"], dest="downloads")
 
 # Or hand it to an agent and let it decide
 agent = Agent("assistant", tools=[drive])

@@ -1,0 +1,6 @@
+version: v1.8.9b7
+browser: local Chromium, O Chat development app, real Haiku Claude Station
+before: before-blank-session-desktop.png
+after_desktop: after-first-turn-approval-desktop.png
+after_mobile: after-completed-mobile.png
+note: Browser message text is masked in the after screenshots; the test workspace and invite code are not shown.

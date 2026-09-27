@@ -9,6 +9,7 @@ LLM-Note:
 
 import json
 import shutil
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import typer
@@ -40,8 +41,12 @@ def handle_audit(words: list, review: bool, since: Path, inventory: bool, as_jso
         findings = [f for f in findings if f.path in changed]
     if review:
         failing = {f.path for f in findings}
-        findings += [f for path, page in checked.items() if path not in failing
-                     for f in [audit.review(path, page.text, model)] if f]
+        passing = [(path, page.text) for path, page in checked.items() if path not in failing]
+        # Model calls wait on the network, not the CPU: eight at once turned a
+        # 24-minute review of every co page into a few minutes.
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            verdicts = pool.map(lambda item: audit.review(item[0], item[1], model), passing)
+        findings += [f for f in verdicts if f]
     table = audit.score(findings, checked)
     if as_json:
         print(json.dumps({"target": " ".join(target), "checked": sorted(checked),
@@ -49,11 +54,8 @@ def handle_audit(words: list, review: bool, since: Path, inventory: bool, as_jso
                           "findings": [{"command": f.path, "check": f.check, "fix": f.fix} for f in findings]},
                          indent=1))
     else:
-        shown = findings[:40]
-        for f in shown:
+        for f in findings:
             console.print(f"[red]✗[/red] {f.path}  [bold]{f.check}[/bold]: {f.fix}")
-        if len(findings) > len(shown):
-            console.print(f"… and {len(findings) - len(shown)} more; see --json")
         console.print(f"\n{' '.join(target)}: {len(checked)} pages")
         for rule, passing, pages in table:
             console.print(f"  {rule:<13} {passing:>4}/{pages}")

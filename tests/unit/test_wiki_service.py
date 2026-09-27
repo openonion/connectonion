@@ -63,6 +63,20 @@ def test_failure_preserves_progress_and_counts_attempt(wiki):
     assert status(root)["runner_attempts_today"] == 1
 
 
+def test_natural_refusal_does_not_advance_source_progress(wiki, monkeypatch):
+    root, sessions = wiki
+    rollout(sessions / 'rollout-refusal.jsonl', [('user', 'Remember the Aurora decision')])
+    monkeypatch.setattr('connectonion.wiki.runner.run_task', lambda *args, **kwargs: {
+        'outcome': 'natural', 'result': 'I could not read the material.',
+        'usage': {'input_tokens': 7}})
+
+    result = run_sync(root)
+    assert result['outcome'] == 'failed'
+    assert result['usage'] == {'input_tokens': 7}
+    assert read_json(state_path(root, 'progress.json'), {}) == {}
+    assert status(root)['runner_attempts_today'] == 1
+
+
 def test_unsubscribe_survives_approval_and_does_not_erase(wiki):
     root, sessions = wiki
     Notebook(root).write("people/alice.md", "Keep this")
@@ -637,7 +651,9 @@ def test_whatsapp_is_a_source_chat_by_chat_and_a_new_chat_asks_again(tmp_path, m
     monkeypatch.setattr("connectonion.wiki.service.now", lambda: datetime(2026, 9, 7, 12, tzinfo=timezone.utc))
     root = tmp_path / "wiki"
     asked, seen = [], []
-    runner = lambda notebook, items, config, *a, **k: seen.extend(items) or {"usage": None, "changed": []}
+    def runner(notebook, items, config, *a, **k):
+        seen.extend(items)
+        return {"usage": None, "changed": []}
     scheduler = FakeScheduler()
     start(root, confirm=lambda summary: asked.append(summary) or True, scheduler=scheduler, runner=runner)
     assert subscriptions(root)["whatsapp"]["adapter"] == "available"

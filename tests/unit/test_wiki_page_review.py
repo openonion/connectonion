@@ -1,13 +1,13 @@
-from pathlib import Path
 import json
 import re
+from pathlib import Path
 
 import pytest
 
-from connectonion.wiki.files import Notebook
-from connectonion.wiki.page_review import normalize, validate
-from connectonion.wiki.runner import task_prompt, run_stage, RunFailed
 from connectonion.wiki.config import default_config, prepare
+from connectonion.wiki.files import Notebook
+from connectonion.wiki.page_review import normalize, normalize_numbered_sources, validate
+from connectonion.wiki.runner import RunFailed, run_stage, task_prompt
 
 
 def test_legacy_project_gets_missing_sections_without_losing_content():
@@ -25,6 +25,19 @@ def test_material_readable_reconstructs_long_single_line(tmp_path):
     assert max(map(len, readable.splitlines())) < 500
     assert ''.join(json.loads(readable)[0]['text']['continued_text']) == item['text']
     assert 'material-readable.json' in prompt
+
+
+def test_numbered_source_list_is_normalized_without_changing_claims():
+    text = ('# Aurora\n\nThe date is open. [1]\n\n## Sources\n'
+            '1. `codex:synthetic:1` — user correction\n'
+            '   Continued description.\n\nInvestigation: mapped today\n')
+    normalized = normalize_numbered_sources(text)
+    assert '- [1] `codex:synthetic:1` — user correction' in normalized
+    assert '   Continued description.' in normalized
+    assert normalized.count('The date is open. [1]') == 1
+    assert normalize_numbered_sources(normalized) == normalized
+    assert normalize_numbered_sources('# Page\n\n## Sources\n1.\nnext line\n') == (
+        '# Page\n\n## Sources\n1.\nnext line\n')
 
 
 def test_candidate_checks_duplicate_headings_and_missing_citations(tmp_path):
@@ -214,8 +227,8 @@ def test_exact_supplied_file_uri_is_a_citable_source(tmp_path):
 
 def test_malformed_maintenance_keeps_page_and_pending_correction(tmp_path, monkeypatch):
     from connectonion.wiki import reflections
-    from connectonion.wiki.service import approve_sources, run_sync
     from connectonion.wiki.files import write_json
+    from connectonion.wiki.service import approve_sources, run_sync
     prepare(tmp_path)
     nb = Notebook(tmp_path)
     nb.stub_project('projects/atlas.md', 'Atlas')
@@ -273,8 +286,8 @@ def test_maintenance_may_cite_the_page_that_existed_before_it():
 def test_a_malformed_review_proposal_is_dropped_not_the_batch(tmp_path):
     """A real maintenance pass proposed a link with one subject; the whole batch
     failed after its pages were written, and would have been redone every run."""
-    from connectonion.wiki.reviews import ingest, listing
     from connectonion.wiki.files import read_json, state_path
+    from connectonion.wiki.reviews import ingest, listing
     prepare(tmp_path)
     Notebook(tmp_path).stub_person('people/ody.md', 'Ody', [])
     kept = ingest(tmp_path, [

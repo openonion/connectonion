@@ -768,6 +768,7 @@ class TestSendReply:
             }
         }
         mock_service.users().messages().send().execute.return_value = {'id': 'reply123'}
+        gmail.my_addresses = Mock(return_value={'me@example.com'})
 
         result = gmail.reply(email_id='original123', body='Thanks for your email!')
 
@@ -1760,3 +1761,81 @@ class TestGmailDraftAttachments:
         assert result == {"id": "message-1"}
         assert service.users().drafts().send.call_args.kwargs["body"] == {"id": "draft-1", "message": {"raw": "reviewed-raw"}}
         service.users().messages().send.assert_not_called()
+
+
+class TestReplyGoesWhereTheSenderAsked:
+    """reply() answered From: even when Reply-To said otherwise (#1755).
+
+    Web forms, booking sites and lists send From a noreply and put the person in
+    Reply-To. Replying to your own sent mail went back to yourself. And the
+    header lookup was case-sensitive, so a `Message-Id` lost In-Reply-To and
+    the reply fell out of the thread in every other client.
+    """
+
+    @staticmethod
+    def _gmail(headers, mine=("me@mybiz.com",)):
+        import base64
+        import email
+        from connectonion.useful_tools.gmail import Gmail
+
+        gmail = Gmail.__new__(Gmail)
+        service = MagicMock()
+        service.users().messages().get().execute.return_value = {
+            "threadId": "T1", "payload": {"headers": [{"name": k, "value": v} for k, v in headers]}}
+        service.users().messages().send().execute.return_value = {"id": "S1"}
+        gmail._get_service = lambda: service
+        gmail.my_addresses = lambda: set(mine)
+
+        def sent():
+            body = service.users().messages().send.call_args.kwargs["body"]
+            return email.message_from_bytes(base64.urlsafe_b64decode(body["raw"])), body
+        return gmail, sent
+
+    def test_reply_to_wins_over_a_noreply_from(self):
+        gmail, sent = self._gmail([
+            ("From", "Website Forms <noreply@forms.example.com>"),
+            ("Reply-To", "Jane Customer <jane@customer.com>"),
+            ("To", "me@mybiz.com"),
+            ("Subject", "New enquiry"),
+            ("Message-Id", "<abc@forms.example.com>"),
+        ])
+
+        gmail.reply("M1", "Thanks Jane")
+
+        message, body = sent()
+        assert message["To"] == "Jane Customer <jane@customer.com>"
+        assert body["threadId"] == "T1"
+
+    def test_message_id_is_found_whatever_its_case(self):
+        gmail, sent = self._gmail([
+            ("From", "a@example.com"), ("To", "me@mybiz.com"), ("Subject", "Hi"),
+            ("Message-Id", "<abc@example.com>"),
+        ])
+
+        gmail.reply("M1", "ok")
+
+        message, _ = sent()
+        assert message["In-Reply-To"] == "<abc@example.com>"
+        assert message["References"] == "<abc@example.com>"
+
+    def test_references_keep_the_earlier_chain(self):
+        gmail, sent = self._gmail([
+            ("From", "a@example.com"), ("To", "me@mybiz.com"), ("Subject", "Re: Hi"),
+            ("Message-ID", "<two@example.com>"), ("References", "<one@example.com>"),
+        ])
+
+        gmail.reply("M1", "ok")
+
+        message, _ = sent()
+        assert message["References"] == "<one@example.com> <two@example.com>"
+
+    def test_replying_to_my_own_sent_mail_goes_to_its_recipient(self):
+        gmail, sent = self._gmail([
+            ("From", "Me <ME@mybiz.com>"), ("To", "client@example.com"), ("Subject", "Quote"),
+            ("Message-ID", "<q@mybiz.com>"),
+        ])
+
+        gmail.reply("M1", "Following up")
+
+        message, _ = sent()
+        assert message["To"] == "client@example.com"

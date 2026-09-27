@@ -31,6 +31,9 @@ from connectonion.network.trust.ws_admin import (
 from connectonion.network.host.session import ActiveSessionRegistry
 
 
+VERIFIED_CONN = {"authenticated": True, "agent_address": "0xadmin", "signed_commands": True}
+
+
 def _extract_ws_messages(sent_messages):
     return [
         json.loads(m["text"])
@@ -310,6 +313,11 @@ class TestHandleOnboardSubmit:
 
 @pytest.mark.asyncio
 class TestHandleAdminMessage:
+    """Dispatch after verification. The verification itself -- authenticated
+    socket, signed type, recipient, one use (#1752) -- is covered in
+    test_http_routes_check_like_connect.py; here the socket is a signed-commands
+    one whose session loop has already verified the frame."""
+
     async def test_auth_error_rejected(self):
         sent_messages = []
 
@@ -325,7 +333,7 @@ class TestHandleAdminMessage:
             "admin_trust_promote": Mock(),
         }
 
-        await handle_admin_message({"type": "ADMIN_PROMOTE"}, send, handlers)
+        await handle_admin_message({"type": "ADMIN_PROMOTE"}, send, handlers, VERIFIED_CONN)
 
         assert sent_messages[0]["type"] == "ERROR"
         assert "unauthorized" in sent_messages[0]["message"]
@@ -345,7 +353,7 @@ class TestHandleAdminMessage:
             "admin_trust_promote": Mock(),
         }
 
-        await handle_admin_message({"type": "ADMIN_PROMOTE"}, send, handlers)
+        await handle_admin_message({"type": "ADMIN_PROMOTE"}, send, handlers, VERIFIED_CONN)
 
         assert sent_messages[0]["type"] == "ERROR"
         assert sent_messages[0]["message"] == "forbidden: admin only"
@@ -365,7 +373,7 @@ class TestHandleAdminMessage:
             "admin_trust_promote": Mock(),
         }
 
-        await handle_admin_message({"type": "ADMIN_PROMOTE", "payload": {}}, send, handlers)
+        await handle_admin_message({"type": "ADMIN_PROMOTE", "payload": {}}, send, handlers, VERIFIED_CONN)
 
         assert sent_messages[0]["type"] == "ERROR"
         assert sent_messages[0]["message"] == "client_id required"
@@ -386,7 +394,7 @@ class TestHandleAdminMessage:
         }
 
         data = {"type": "ADMIN_PROMOTE", "payload": {"client_id": "0xclient"}}
-        await handle_admin_message(data, send, handlers)
+        await handle_admin_message(data, send, handlers, VERIFIED_CONN)
 
         assert sent_messages[0]["type"] == "ADMIN_RESULT"
         assert sent_messages[0]["action"] == "promote"
@@ -410,7 +418,7 @@ class TestHandleAdminMessage:
         }
 
         data = {"type": "ADMIN_ADD", "payload": {"admin_id": "0xnew"}}
-        await handle_admin_message(data, send, handlers)
+        await handle_admin_message(data, send, handlers, VERIFIED_CONN)
 
         assert sent_messages[0]["type"] == "ERROR"
         assert sent_messages[0]["message"] == "forbidden: super admin only"
@@ -432,7 +440,7 @@ class TestHandleAdminMessage:
         }
 
         data = {"type": "ADMIN_ADD", "payload": {"admin_id": "0xnew"}}
-        await handle_admin_message(data, send, handlers)
+        await handle_admin_message(data, send, handlers, VERIFIED_CONN)
 
         assert sent_messages[0]["type"] == "ADMIN_RESULT"
         assert sent_messages[0]["action"] == "add_admin"
@@ -453,7 +461,7 @@ class TestHandleAdminMessage:
         }
 
         data = {"type": "ADMIN_UNKNOWN", "payload": {}}
-        await handle_admin_message(data, send, handlers)
+        await handle_admin_message(data, send, handlers, VERIFIED_CONN)
 
         assert sent_messages[0]["type"] == "ERROR"
         assert "Unknown admin action" in sent_messages[0]["message"]

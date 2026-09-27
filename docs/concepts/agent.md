@@ -42,7 +42,7 @@ Agent(
     name="my_bot",                        # Required: agent identifier
     tools=[func1, func2],                 # Optional: functions agent can call
     system_prompt="You are helpful",      # Optional: personality/behavior
-    model="co/gemini-3.8-flash",            # Optional: LLM model (default: co/gemini-3.8-flash)
+    model="co/llama",                       # Optional: LLM model (default: co/llama)
     max_iterations=100,                   # Optional: how many tool calls allowed (default: 100)
     api_key="sk-...",                     # Optional: override environment variable
     llm=custom_llm,                       # Optional: bring your own LLM instance
@@ -448,7 +448,7 @@ See [max_iterations.md](max_iterations.md) for detailed guide.
 
 ### Supported Providers
 
-Default model is `co/gemini-3.8-flash`. You can use:
+Default model is `co/llama`. You can use:
 
 ```python
 # OpenAI models
@@ -572,6 +572,22 @@ print(f"After turn 2: ${agent.total_cost:.4f}")
 agent.input("Now divide by 3")
 print(f"Total spent: ${agent.total_cost:.4f}")
 ```
+
+`total_cost` includes every `llm_do` a plugin or tool makes during a run
+(intent detection, eval scoring, auto-compact, web_fetch, ...), not only the
+agent's own calls; the trace records those as `llm_result` entries with
+`"source": "llm_do"`. Built-in plugins make those calls with `agent.llm`, the
+model you configured, never a hard-coded managed model.
+
+### Responses cut off at the output limit
+
+When the provider stops at its output-token limit (`finish_reason: "length"`,
+Anthropic `stop_reason: "max_tokens"`), the half-finished response is not used
+as the answer and a tool call cut mid-arguments is not run. The call's cost is
+still added to `total_cost`, the trace records it with `"status": "truncated"`,
+and the model is told its response was cut off and asked to shorten it or split
+the work. If it is cut off again after two such reminders in one turn, `input()`
+raises `TruncatedResponseError` (from `connectonion.core.exceptions`).
 
 ### Context Window Monitoring
 

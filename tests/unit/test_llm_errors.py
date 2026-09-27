@@ -28,6 +28,7 @@ Critical error paths from coverage analysis:
 
 import pytest
 import os
+from types import SimpleNamespace
 from unittest.mock import Mock, MagicMock, patch
 from pydantic import BaseModel
 from connectonion.core.llm import (
@@ -159,6 +160,7 @@ class TestStructuredOutputErrors:
 
             # Mock incomplete response due to max tokens
             mock_response = Mock()
+            mock_response.usage = None  # a real response carries numbers or nothing, not an auto-Mock
             mock_response.status = "incomplete"
             mock_response.incomplete_details.reason = "max_output_tokens"
 
@@ -167,7 +169,7 @@ class TestStructuredOutputErrors:
             with pytest.raises(ValueError) as exc_info:
                 llm.structured_complete([{"role": "user", "content": "test"}], StructuredOutputSchema)
 
-            assert "maximum output tokens" in str(exc_info.value)
+            assert "output limit" in str(exc_info.value)
 
     def test_openai_structured_content_filter(self):
         """Test handling when OpenAI filters content in structured response."""
@@ -176,6 +178,7 @@ class TestStructuredOutputErrors:
 
             # Mock incomplete response due to content filter
             mock_response = Mock()
+            mock_response.usage = None  # a real response carries numbers or nothing, not an auto-Mock
             mock_response.status = "incomplete"
             mock_response.incomplete_details.reason = "content_filter"
 
@@ -200,6 +203,7 @@ class TestStructuredOutputErrors:
             mock_output.content = [mock_content]
 
             mock_response = Mock()
+            mock_response.usage = None  # a real response carries numbers or nothing, not an auto-Mock
             mock_response.status = "complete"
             mock_response.output = [mock_output]
 
@@ -222,6 +226,7 @@ class TestStructuredOutputErrors:
             mock_content_block.text = "I don't want to use the tool"
 
             mock_response = Mock()
+            mock_response.usage = SimpleNamespace(input_tokens=1, output_tokens=1)  # a real response carries numbers or nothing, not an auto-Mock
             mock_response.content = [mock_content_block]
 
             llm.client.messages.create = Mock(return_value=mock_response)
@@ -251,6 +256,7 @@ class TestJSONParsingErrors:
             mock_message.tool_calls = [mock_tool_call]
 
             mock_response = Mock()
+            mock_response.usage = SimpleNamespace(prompt_tokens=1, completion_tokens=1, prompt_tokens_details=None)  # a real response carries numbers or nothing, not an auto-Mock
             mock_response.choices = [Mock()]
             mock_response.choices[0].message = mock_message
 
@@ -281,6 +287,7 @@ class TestJSONParsingErrors:
             mock_message.tool_calls = [mock_tool_call]
 
             mock_response = Mock()
+            mock_response.usage = None  # a real response carries numbers or nothing, not an auto-Mock
             mock_response.choices = [Mock()]
             mock_response.choices[0].message = mock_message
 
@@ -356,6 +363,7 @@ class TestOpenAICompatibleProviders:
             mock_message = Mock()
             mock_message.content = '{"value": 7, "message": "ok"}'
             mock_response = Mock()
+            mock_response.usage = None  # a real response carries numbers or nothing, not an auto-Mock
             mock_response.choices = [Mock(message=mock_message)]
             llm.client.chat.completions.create = Mock(return_value=mock_response)
 
@@ -378,6 +386,7 @@ class TestOpenAICompatibleProviders:
             mock_message = Mock()
             mock_message.content = '{"value": 11, "message": "xai"}'
             mock_response = Mock()
+            mock_response.usage = None  # a real response carries numbers or nothing, not an auto-Mock
             mock_response.choices = [Mock(message=mock_message)]
             llm.client.chat.completions.create = Mock(return_value=mock_response)
 
@@ -400,6 +409,7 @@ class TestOpenAICompatibleProviders:
             mock_message = Mock()
             mock_message.content = '{"value": 9, "message": "great"}'
             mock_response = Mock()
+            mock_response.usage = None  # a real response carries numbers or nothing, not an auto-Mock
             mock_response.choices = [Mock(message=mock_message)]
             llm.client.chat.completions.create = Mock(return_value=mock_response)
 

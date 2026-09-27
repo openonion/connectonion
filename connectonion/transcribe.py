@@ -38,7 +38,7 @@ from typing import Optional
 import httpx
 
 from connectonion.backend import backend_url
-from connectonion.core.usage import DEFAULT_MODEL
+from connectonion.core.usage import DEFAULT_DIRECT_GEMINI_MODEL
 from connectonion.credentials import require_ambient_api_key
 
 # MIME type mapping for audio formats
@@ -84,7 +84,7 @@ def _get_api_key(model: str) -> str:
 def transcribe(
     audio: str,
     prompt: Optional[str] = None,
-    model: str = DEFAULT_MODEL,
+    model: str = f"co/{DEFAULT_DIRECT_GEMINI_MODEL}",
     timestamps: bool = False,
 ) -> str:
     """

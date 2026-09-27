@@ -903,6 +903,7 @@ class Gmail(GmailMailbox):
             Confirmation message with sent message ID
         """
         from email.mime.text import MIMEText
+        from email.utils import getaddresses
 
         service = self._get_service()
 
@@ -911,23 +912,34 @@ class Gmail(GmailMailbox):
             userId='me',
             id=email_id,
             format='metadata',
-            metadataHeaders=['From', 'To', 'Subject', 'Message-ID']
+            metadataHeaders=['From', 'Reply-To', 'To', 'Subject', 'Message-ID', 'References']
         ).execute()
 
-        headers = {h['name']: h['value'] for h in original['payload']['headers']}
-        original_subject = headers.get('Subject', '')
-        original_from = headers.get('From', '')
-        original_message_id = headers.get('Message-ID', '')
+        # Header names are case-insensitive; senders write "Message-Id" as often
+        # as "Message-ID", and an exact-case lookup dropped In-Reply-To (#1755).
+        headers = {h['name'].lower(): h['value'] for h in original['payload']['headers']}
+        original_subject = headers.get('subject', '')
+        original_message_id = headers.get('message-id', '')
         thread_id = original.get('threadId', '')
+
+        # Reply-To is where the sender asked replies to go: web forms, booking
+        # sites and lists send From a noreply and put the person there (#1755).
+        recipient = headers.get('reply-to') or headers.get('from', '')
+        # Replying to my own sent mail means following up with its recipients,
+        # not writing to myself.
+        addresses = [address.lower() for _, address in getaddresses([recipient]) if address]
+        if addresses and set(addresses) <= self.my_addresses() and headers.get('to'):
+            recipient = headers['to']
 
         # Create reply
         message = MIMEText(body)
-        message['To'] = original_from
+        message['To'] = recipient
         message['Subject'] = original_subject if original_subject.startswith('Re: ') else f"Re: {original_subject}"
 
         if original_message_id:
             message['In-Reply-To'] = original_message_id
-            message['References'] = original_message_id
+            references = headers.get('references', '')
+            message['References'] = f"{references} {original_message_id}".strip()
 
         # Encode message
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')

@@ -246,7 +246,7 @@ once by hand; every later command reuses that session. No Python.
 `cli/browser_agent/daemon.py:2-8`). ~40 operations including
 `wait_for_manual_login`, `upload_file_by_selector`, `extract_items_by_selector`,
 `take_screenshot`, `run_page_script` (`useful_tools/browser_tools/browser.py:667-2002`).
-`co browser do "<instruction>"` puts an LLM agent on that same live browser
+`co browser "<instruction>"` puts an LLM agent on that same live browser
 (`daemon.py:6`).
 **Default or opt-in.** Available immediately after install.
 **Limit.** One browser, with multi-agent tab contention signalled by exit code 4

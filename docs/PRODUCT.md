@@ -79,9 +79,10 @@ glob, grep, bash, plan mode, a todo list, background tasks, subagents, skills, a
 `ask_user`. Browsing is via bash calling `co browser`. Email is **not** a wired tool
 on this agent — it is a separate CLI path (§3).
 
-**Default model** for `co ai` is `co/gemini-3.8-flash`, sourced from the shared
+**Default model** for `co ai` is `co/llama`, sourced from the shared
 `core.usage.DEFAULT_MODEL` constant used by the CLI, `Agent()`, `llm_do()`,
-transcription, and project templates. Gemini 3.7 stays selectable as an explicit
+and project templates. Transcription keeps Gemini 3.8 because Llama is text only.
+Gemini 3.7 stays selectable as an explicit
 rollback; OpenAI and Anthropic remain selectable and are never chosen as a silent
 fallback.
 
@@ -138,7 +139,7 @@ answer to "do I have to buy into all of this?" is that you do not.
 
 | Command | What it does |
 |---|---|
-| `co browser` | a persistent daemon owning **one real browser**. Log in by hand once — including 2FA — and every later command reuses that session. ~40 operations: click, type, upload, extract a table, screenshot, run a script. `co browser do "…"` puts an LLM on the same live browser (`cli/commands/browser_commands.py:20-40`, `useful_tools/browser_tools/browser.py`) |
+| `co browser` | a persistent daemon owning **one real browser**. Log in by hand once — including 2FA — and every later command reuses that session. ~40 operations: click, type, upload, extract a table, screenshot, run a script. `co browser "…"` puts an LLM on the same live browser (`cli/commands/browser_commands.py:20-40`, `useful_tools/browser_tools/browser.py`) |
 | `co gmail` | inbox, read, reply, send, sent, search (`cli/main.py:498-569`) |
 | `co outlook` | mail plus contacts, deferred and scheduled send |
 | `co gdrive` | list, search, get, put, rm |

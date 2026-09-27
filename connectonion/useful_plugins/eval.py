@@ -32,7 +32,6 @@ from pydantic import BaseModel
 
 from ..core.events import after_user_input, on_complete
 from ..core.trace import current_turn_trace
-from ..core.usage import DEFAULT_MODEL
 from ..llm_do import llm_do
 
 if TYPE_CHECKING:
@@ -59,19 +58,14 @@ Focus on the USER'S INTENT, not exact text matching:
 Be lenient - if the core task was done, mark it passed."""
 
 
-DEFAULT_SCORING_MODEL = DEFAULT_MODEL
-
-
-def _scoring_model(agent: 'Agent') -> str:
-    """Score with the model the agent was built with.
-
-    This used to be the literal below. An agent explicitly created with
-    `model="gemini-2.5-pro"` still sent these calls to `co/`, which is not a
-    detail when the reason for the override was that the co/ account was empty
-    (#543). Configuring a provider is rarely cosmetic — it is billing, data
-    residency, or simply the key that works.
-    """
-    return getattr(agent, "model", None) or DEFAULT_SCORING_MODEL
+# Scoring calls pass llm=agent.llm: score with the model the agent was built
+# with. An agent explicitly created with `model="gemini-2.5-pro"` used to send
+# these calls to `co/`, which is not a detail when the reason for the override
+# was that the co/ account was empty (#543). Configuring a provider is rarely
+# cosmetic — it is billing, data residency, or simply the key that works.
+#
+# The #543 fix read `agent.model`, which a real Agent does not have (the model
+# is on agent.llm), so it still always fell back to co/ (#1758).
 
 
 def _generate_expected(agent: 'Agent') -> str:
@@ -91,7 +85,7 @@ What should happen to complete this task? (1-2 sentences)"""
 
     return llm_do(
         prompt,
-        model=_scoring_model(agent),
+        llm=agent.llm,
         temperature=0.2,
         system_prompt=EXPECTED_PROMPT
     )
@@ -246,7 +240,7 @@ Is this task truly complete? What was achieved or what's missing?"""
         eval_result = llm_do(
             prompt,
             output=EvalResult,
-            model=_scoring_model(agent),
+            llm=agent.llm,
             temperature=0,
             system_prompt=EVALUATE_PROMPT_TEXT
         )

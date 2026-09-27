@@ -1,0 +1,9 @@
+version: v1.8.9b11
+images:
+  - file: wiki-init-five-day-redacted.png
+    alt: "Privacy-redacted terminal view of a five-day Wiki map with aggregate People, Organizations, Projects, and Skills counts and one next command"
+    caption: "Aggregate rendering of the isolated five-day Wiki map; private names and paths were deliberately omitted from this release image."
+    scenario: "user runs co wiki init --days 5 and sees map progress and a scoped next step"
+    viewport: "2080x578, light terminal"
+    commit: c97a1e9a
+    source_run: "docs/testing/wiki-onboarding-five-day-2026-09-26.md"

@@ -1086,6 +1086,12 @@ not a value the client chose. From here the connection proceeds exactly as an un
 
 Reply to `ADMIN_PROMOTE` / `ADMIN_DEMOTE` from an admin caller.
 
+`ADMIN_*` frames are accepted only on a socket whose CONNECT succeeded, and
+each is a signed command like any other: signed by the socket's own identity,
+with the signed `type` equal to the frame's, `to` naming this agent, a fresh
+`nonce`, and used once. Without these a captured `ADMIN_BLOCK` could be
+replayed as `ADMIN_UNBLOCK`, or one `ADMIN_PROMOTE` applied twice.
+
 ```json
 { "type": "ADMIN_RESULT", "action": "promote", "ok": true, "level": "whitelisted" }
 ```

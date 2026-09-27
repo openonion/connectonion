@@ -8,9 +8,9 @@ from types import SimpleNamespace
 import pytest
 
 from connectonion.wiki.config import default_config, prepare
-from connectonion.wiki.files import Notebook
-from connectonion.wiki.runner import RunFailed, run_stage
 from connectonion.wiki.extract import run_extract
+from connectonion.wiki.files import Notebook
+from connectonion.wiki.runner import RunFailed, _project_window_notice, run_stage, task_prompt
 
 
 @pytest.fixture
@@ -32,6 +32,13 @@ def delegate(monkeypatch):
             import re
             path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
             path.write_text((Path(kw['cwd']).parent.parent / 'notes/old.md').read_text())
+        if argv[-1].startswith('/wiki-maintain'):
+            workspace = Path(kw['cwd'])
+            directory = max(workspace.glob('maintain-*'), key=lambda path: path.stat().st_mtime_ns)
+            items = json.loads((directory / 'material.json').read_text())
+            sources = sorted({item['source'] for item in items if item.get('source')})
+            (directory / 'completion.json').write_text(json.dumps({
+                'status': 'no_change', 'sources': sources, 'reason': 'No durable new fact.'}))
         return SimpleNamespace(returncode=0, stdout=json.dumps({
             "outcome": "natural", "result": "done", "usage": {"input_tokens": 13}}), stderr="")
 
@@ -53,6 +60,70 @@ def test_model_runs_use_the_running_installation_not_the_first_co_on_path(notebo
     assert calls[0][:5] == ["/work/venv/bin/python", "-m", "connectonion.cli.main", "ai", "--json"]
 
 
+def test_project_investigation_bounds_local_file_search(notebook, monkeypatch):
+    notebook.stub_project('projects/reader.md', 'Reader', ['/work/reader'])
+    prompts = []
+
+    def stop_after_capture(argv, **kwargs):
+        prompts.append(argv[-1])
+        raise OSError('synthetic stop')
+
+    monkeypatch.setattr('connectonion.wiki.runner.subprocess.run', stop_after_capture)
+    with pytest.raises(RunFailed):
+        run_stage(notebook, [{'role': 'page', 'record': 'projects/reader.md',
+                              'text': notebook.read('projects/reader.md'),
+                              'source': 'investigation:page'}], default_config(), stage='investigate')
+    assert 'at most twelve relevant text files' in prompts[0]
+    assert 'stop using tools and return a brief coverage summary' in prompts[0]
+
+
+def test_quick_investigation_reads_complete_bounded_material_once(tmp_path):
+    items = [{'role': 'quick-first-pass', 'source': 'investigation:quick-scope',
+              'text': 'Only use the gathered items.'},
+             {'role': 'page', 'record': 'people/me.md', 'text': 'A' * 200}]
+    prompt = task_prompt(tmp_path, items, 'investigate')
+    assert f'at {tmp_path / "material.json"}' in prompt
+    assert 'once' in prompt
+    assert 'continued_text' not in prompt
+    assert json.loads((tmp_path / 'material.json').read_text()) == items
+    assert (tmp_path / 'material-readable.json').exists()
+
+
+def test_project_page_keeps_zero_session_window_separate_from_old_files():
+    page = ('# Reader\n\n## Uncertainties\n- Unknown\n\n## Sources\n'
+            '- [1] project-file — observed today\n\nInvestigation: mapped today')
+    items = [{'role': 'coverage', 'source': 'investigation:coverage',
+              'text': 'codex: 10 messages in window, 0 related to subject, 0 read\n'
+                      'claude-code: 101 messages in window, 0 related to subject, 0 read\n'
+                      'Requested investigation window: 5 days ending 2026-09-26'}]
+    result = _project_window_notice(page, items)
+    assert 'No related Codex and Claude Code messages were found in the requested 5-day window' in result
+    assert '- [2] investigation:coverage' in result
+    assert _project_window_notice(result, items) == result
+
+
+def test_investigation_does_not_claim_another_concurrent_page_change(notebook, monkeypatch):
+    first = 'people/first.md'
+    other = 'people/other.md'
+    notebook.stub_person(first, 'First', ['first@example.org'], email='first@example.org')
+    notebook.stub_person(other, 'Other', ['other@example.org'], email='other@example.org')
+
+    def run_model(*args, **kwargs):
+        notebook.write(other, notebook.read(other) + '\nConcurrent edit.\n')
+        return {'usage': None, 'result': 'complete'}
+
+    def promote(book, record, candidate, original, items, directory, usage):
+        book.write(record, original + '\nInvestigated.\n')
+
+    monkeypatch.setattr('connectonion.wiki.runner.run_task', run_model)
+    monkeypatch.setattr('connectonion.wiki.runner._promote_candidate', promote)
+    result = run_stage(notebook, [{'role': 'page', 'record': first,
+                                   'text': notebook.read(first),
+                                   'source': 'investigation:page'}], default_config(), stage='investigate')
+    assert result['changed'] == [first]
+    assert 'Concurrent edit.' in notebook.read(other)
+
+
 @pytest.mark.parametrize("stage", ["maintain", "investigate", "abstract", "init"])
 @pytest.mark.parametrize("harness", ["codex", "coai", "claude-code"])
 def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stage, harness):
@@ -70,8 +141,8 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
     assert options["timeout"] == seconds + (0 if harness == "coai" else 15)
     if harness != "coai":
         assert argv[argv.index("--timeout") + 1] == str(seconds)
-    # Every stage, not only investigation: all of them read source text a
-    # correspondent could have written, and none needs a shell or the network.
+    # Every stage, not only investigation, reads untrusted source text. Codex
+    # may use its sandboxed shell for local file operations, never the network.
     if harness == "claude-code":
         assert argv[argv.index("--permission-mode") + 1] == "acceptEdits"
     else:
@@ -183,6 +254,74 @@ def test_skill_composition_keeps_source_and_page_definition(notebook, delegate):
     text = next((notebook.root / ".state/tasks").glob("*/instructions.md")).read_text()
     assert "wiki-source-codex" in text and "# A person's page" in text
     assert "wiki_write" not in text and "wiki_people" not in text
+
+
+@pytest.mark.parametrize("scenario,accepted", [
+    ("refused_without_receipt", False),
+    ("wrong_source_receipt", False),
+    ("blocked_receipt", False),
+    ("missing_material", False),
+    ("reviewed_no_change", True),
+    ("local_page_update", True),
+])
+def test_offline_maintenance_benchmark(notebook, monkeypatch, scenario, accepted):
+    """Fixed local-file cases distinguish a completed turn from completed work."""
+    source = "codex:synthetic:1"
+
+    def simulated_agent(argv, **kw):
+        prompt = argv[-1]
+        task = next(Path(kw['cwd']).glob('maintain-*'))
+        assert 'no shell' not in prompt
+        assert 'local file reads and writes' in prompt
+        assert 'do not run commands, browse or search' not in prompt
+        material_path = task / 'material-readable.json'
+        if scenario == 'missing_material':
+            material_path.unlink()
+        else:
+            material = json.loads(material_path.read_text())
+            assert material[0]['source'] == source
+        if scenario == 'local_page_update':
+            page = task / 'notebook/notes/old.md'
+            page.write_text(page.read_text() + '\n\nA durable update.\n')
+        elif scenario not in ('refused_without_receipt', 'missing_material'):
+            status = 'blocked' if scenario == 'blocked_receipt' else 'no_change'
+            sources = ['wrong:source'] if scenario == 'wrong_source_receipt' else [source]
+            (task / 'completion.json').write_text(json.dumps({
+                'status': status, 'sources': sources, 'reason': 'Reviewed; no durable change.'}))
+        return SimpleNamespace(returncode=0, stderr='', stdout=json.dumps({
+            'outcome': 'natural', 'result': 'done', 'usage': {'input_tokens': 23}}))
+
+    monkeypatch.setattr('connectonion.wiki.runner.subprocess.run', simulated_agent)
+    item = {'role': 'user', 'source': source, 'text': 'Synthetic maintenance input.'}
+    if accepted:
+        result = run_stage(notebook, [item], default_config())
+        assert bool(result['changed']) == (scenario == 'local_page_update')
+    else:
+        with pytest.raises(RunFailed, match='no accepted changes') as caught:
+            run_stage(notebook, [item], default_config())
+        assert caught.value.usage == {'input_tokens': 23}
+        assert 'A durable update' not in notebook.read('notes/old.md')
+
+
+def test_rejected_maintenance_page_cannot_be_disguised_as_no_change(notebook, monkeypatch):
+    notebook.stub_person('people/alice.md', 'Alice', [])
+    original = notebook.read('people/alice.md')
+
+    def simulated_agent(argv, **kw):
+        task = next(Path(kw['cwd']).glob('maintain-*'))
+        page = task / 'notebook/people/alice.md'
+        page.write_text('# Alice\n\n## Who they are\n- Unsourced claim. [1]\n')
+        (task / 'completion.json').write_text(json.dumps({
+            'status': 'no_change', 'sources': ['codex:synthetic:2'],
+            'reason': 'Nothing changed.'}))
+        return SimpleNamespace(returncode=0, stderr='', stdout=json.dumps({
+            'outcome': 'natural', 'result': 'done', 'usage': {'input_tokens': 17}}))
+
+    monkeypatch.setattr('connectonion.wiki.runner.subprocess.run', simulated_agent)
+    with pytest.raises(RunFailed, match='only rejected pages'):
+        run_stage(notebook, [{'role': 'user', 'source': 'codex:synthetic:2',
+                              'text': 'Synthetic update.'}], default_config())
+    assert notebook.read('people/alice.md') == original
 
 
 def test_one_bad_page_does_not_hold_back_the_rest_of_a_maintenance_batch(tmp_path):

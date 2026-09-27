@@ -254,7 +254,11 @@ Claude Code message, and return control to the terminal.
 `co claude --resume <session-id>` resumes an existing Claude session; `--model haiku` selects a
 smaller model for a trial. `--no-share` starts the terminal without a Work Room.
 
-The terminal process must remain running while the Work Room is available.
+The terminal process must remain running while the Work Room is available. You
+can hand control to the browser before typing a terminal prompt. The first
+browser message starts a new native Claude session; subsequent turns resume
+its session ID. If Claude cannot start, O Chat keeps the draft and reports the
+failed start instead of waiting for a confirmation timeout.
 Only one side writes the Claude session at a time. Pairing claims the private
 OIP session for that browser identity; later control and message commands are
 signed. The station's scoped Hooks expose session identity and live activity,

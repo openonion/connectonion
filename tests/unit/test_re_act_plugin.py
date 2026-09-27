@@ -92,7 +92,7 @@ class TestAcknowledgeRequest:
             agent.logger.print.assert_called_once()
             call_args = agent.logger.print.call_args[0][0]
             assert 'understanding' in call_args.lower()
-            assert 'gemini' in call_args.lower()  # Model name should be shown
+            assert 'co/llama' in call_args.lower()  # Model name should be shown
 
     def test_acknowledge_request_records_trace(self):
         """Test that acknowledge_request records trace entry."""

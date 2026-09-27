@@ -17,7 +17,7 @@ def _gemini_response(*, tool_calls=None):
         choices=[SimpleNamespace(message=SimpleNamespace(
             content="done",
             tool_calls=tool_calls,
-        ))],
+        ), finish_reason="tool_calls" if tool_calls else "stop")],
         usage=SimpleNamespace(
             prompt_tokens=12,
             completion_tokens=4,

@@ -815,14 +815,13 @@ class BrowserDaemon:
         # unknown verb BEFORE the claim, or a typo would hold the tab for GUARD_WINDOW.
         if verb == "do":
             return 2, (
-                "`do` runs in the CLI process so model waits do not block the shared "
-                "browser daemon. Upgrade this client and retry."
+                'The do verb was removed. Upgrade this client and run: co browser "<instruction>"'
             )
         if not _is_verb(self.browser, verb):
             return False, (
                 f"unknown command: {verb}\n"
                 f"Run 'co browser help' to list functions, or "
-                f"'co browser do \"<instruction>\"' for natural language."
+                f"'co browser \"<instruction>\"' for natural language."
             )
 
         # Every page-driving command (and a targeted close) claims its tab: a DIFFERENT
@@ -1252,7 +1251,7 @@ class BrowserDaemon:
             "usage: co browser tab open [NAME] [--who <agent>] [--for \"<purpose>\"] [--needs 10m]\n"
             "       co browser tab ls [--json]                                        # who runs where\n"
             "       co browser tab close <NAME>                                       # release when done\n"
-            "then target your tab on EVERY command, including do:\n"
+            "then target your tab on EVERY command, including quoted tasks:\n"
             "       co browser -t <NAME> <verb> [args]\n\n"
             "--needs is your estimate of how long you will hold the tab (30s / 10m / 2h).\n"
             "Other agents leave it alone until then, and may close it afterwards — an\n"
@@ -1276,7 +1275,7 @@ class BrowserDaemon:
             f"You are a second agent on this browser. Two agents cannot share one tab.\n"
             f"Run your task in your own tab — three commands:\n"
             f"  1. co browser tab open <name> --who <your-name> --for \"<what you are doing>\"\n"
-            f"  2. co browser -t <name> <verb> [args]      # add -t <name> to EVERY command, including do\n"
+            f"  2. co browser -t <name> <verb> [args]      # add -t <name> to EVERY command, including quoted tasks\n"
             f"  3. co browser tab close <name>             # when your task is done\n\n"
             f"see who owns what:  co browser tab ls"
         )
@@ -1328,7 +1327,7 @@ class BrowserDaemon:
             f"no tab named '{name}'\n\n"
             f"{self.browser.tab_status()}\n\n"
             f"create it first:  co browser tab open {name} --who <your-name> --for \"<one-line purpose>\"\n"
-            f"then target it on every command, including do:\n"
+            f"then target it on every command, including quoted tasks:\n"
             f"                  co browser -t {name} <verb> [args]\n"
             f"when finished:    co browser tab close {name}"
         )
@@ -1351,7 +1350,7 @@ class BrowserDaemon:
             f"no tab named '{name}'\n\n"
             f"{board}\n\n"
             f"create it first:  co browser tab open {name} --who <your-name> --for \"<one-line purpose>\"\n"
-            f"then target it on every command, including do:\n"
+            f"then target it on every command, including quoted tasks:\n"
             f"                  co browser -t {name} <verb> [args]\n"
             f"when finished:    co browser tab close {name}"
         )

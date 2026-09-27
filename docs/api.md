@@ -27,7 +27,7 @@ Agent(
   - `Path`: Path object pointing to a prompt file
   - `None`: Uses default prompt
 - **api_key** (`Optional[str]`): OpenAI API key (if not using custom LLM)
-- **model** (`str`): Model to use (default: "co/gemini-3.8-flash")
+- **model** (`str`): Model to use (default: "co/llama")
   - Managed keys: `co/gemini-3.8-flash`, `co/gpt-4o-mini`, `co/claude-sonnet-4-5`
   - Your own key: `gpt-4o-mini`, `claude-sonnet-4-5`, `gemini-3.8-flash`
 
@@ -260,12 +260,13 @@ agent = Agent(name="bot", model="co/gemini-3.8-flash")
 **How it works:**
 1. Client detects `co/` prefix → routes to `OpenOnionLLM`
 2. Prefix is stripped before sending to server
-3. Server routes to appropriate provider (OpenAI, Anthropic, Gemini)
+3. Server routes to the local GPU or the selected provider (OpenAI, Anthropic, Gemini)
 4. Response returned in OpenAI-compatible format
 
 **Available co/ models:**
 - `co/gpt-4o-mini`, `co/gpt-4o`, `co/gpt-5`, `co/gpt-5-mini`, `co/gpt-5-nano`, `co/o4-mini`
-- `co/gemini-3.8-flash` (default), `co/gemini-3.7-flash` (rollback), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
+- `co/llama` (default, free), `co/gemma` (free)
+- `co/gemini-3.8-flash`, `co/gemini-3.7-flash` (rollback), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
 - `co/claude-opus-4-5`, `co/claude-sonnet-4-5`, `co/claude-haiku-4-5`
 
 **Environment variable:** `OPENONION_API_KEY` (auto-loaded from `.env`)

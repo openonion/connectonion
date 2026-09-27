@@ -32,5 +32,6 @@ from .subagents import subagents, task
 from .system_reminder import system_reminder
 from .tool_approval import handle_mode_change, tool_approval
 from .ui_stream import ui_stream
+from .watch_events import watch_events
 
-__all__ = ['re_act', 'eval', 'image_result_formatter', 'shell_approval', 'gmail_plugin', 'calendar_plugin', 'ui_stream', 'system_reminder', 'tool_approval', 'handle_mode_change', 'auto_compact', 'prefer_write_tool', 'full_access', 'enable_full_access', 'handle_full_access_mode_change', 'skills', 'skill', 'subagents', 'task', 'runtime_input', 'RUNTIME_INPUT_FRAME_PREFIX', 'no_progress_guard', 'human_jitter', 'bind_browser_session']
+__all__ = ['re_act', 'eval', 'image_result_formatter', 'shell_approval', 'gmail_plugin', 'calendar_plugin', 'ui_stream', 'system_reminder', 'tool_approval', 'handle_mode_change', 'auto_compact', 'prefer_write_tool', 'full_access', 'enable_full_access', 'handle_full_access_mode_change', 'skills', 'skill', 'subagents', 'task', 'runtime_input', 'RUNTIME_INPUT_FRAME_PREFIX', 'no_progress_guard', 'human_jitter', 'bind_browser_session', 'watch_events']

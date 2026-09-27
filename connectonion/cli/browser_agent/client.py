@@ -1,11 +1,11 @@
 """
-Purpose: Browser daemon client — sends short browser commands over the platform transport and runs the natural-language `do` agent locally so model waits never occupy the daemon.
+Purpose: Browser daemon client — sends short browser commands over the platform transport and runs the natural-language browser agent locally so model waits never occupy the daemon.
 LLM-Note:
-  Dependencies: imports from [socket, os, sys, time, shlex, inspect, functools, pathlib, OIP framing, browser_agent.artifacts, browser_agent.transport | lazy: BrowserAutomation and browser_agent.agent for `do`] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_daemon.py]
-  Data flow: direct verb → typed OIP 0.2 BrowserCommand argv → BrowserResult and optional Artifact Stream → verified caller-owned file; Host request_target_as() selects an explicit private endpoint/profile/authkey/log and forces engine=onion; an explicit Onion request probes the warm daemon before any page action; `do` keeps model calls local and sends only short tool requests
+  Dependencies: imports from [socket, os, sys, time, shlex, inspect, functools, pathlib, OIP framing, browser_agent.artifacts, browser_agent.transport | lazy: BrowserAutomation and browser_agent.agent for a quoted browser task] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_daemon.py]
+  Data flow: direct verb → typed OIP 0.2 BrowserCommand argv → BrowserResult and optional Artifact Stream → verified caller-owned file; Host request_target_as() selects an explicit private endpoint/profile/authkey/log and forces engine=onion; an explicit Onion request probes the warm daemon before any page action; a quoted task keeps model calls local and sends only short tool requests
   State/Effects: may spawn the daemon via `python -m connectonion.cli.browser_agent.daemon <sock> [--headless] [--engine=MODE]` detached, logging to ~/.co/browser.log or the explicit private target log | private proxy credentials never enter daemon argv | writes to stdout/stderr
   Integration: exposes _caller() -> str, send(line, headless=False, tab=None, engine_mode="auto") -> int and Host-only request_target_as(); system/auto may provision per-user Chromium, while explicit Onion/private-target requests never install or fall back to a system browser; PAGELESS_VERBS never provision
-  Performance: direct verbs import only the lightweight transport client, then make one connect + request/response; Agent/Playwright and browser tool schemas load only for `do` or inside the daemon | daemon spawn adds browser launch latency on first call | model thinking happens in the caller process and holds no daemon lane
+  Performance: direct verbs import only the lightweight transport client, then make one connect + request/response; Agent/Playwright and browser tool schemas load only for a quoted browser task or inside the daemon | daemon spawn adds browser launch latency on first call | model thinking happens in the caller process and holds no daemon lane
   Errors: _connect() retries transient refusal/backpressure and never unlinks an endpoint whose recorded owner is alive; only a truly stale POSIX socket is removed | missing endpoint → spawn daemon and wait until ready or timeout | setup RuntimeErrors become one clean stderr line, never a traceback containing HMAC-path locals | daemon death, overload shedding, or disconnect mid-request becomes a clean exit 1
 """
 
@@ -493,7 +493,7 @@ def _caller() -> str:
 
 
 def _caller_account() -> str:
-    """Public address of the account this invocation expects `do` to bill."""
+    """Public address of the account this invocation expects a browser task to bill."""
     from connectonion import address
 
     try:
@@ -501,7 +501,7 @@ def _caller_account() -> str:
     except Exception:
         # Page-only commands and `status` must remain usable while diagnosing a
         # broken local identity. An empty account keeps compatibility; the
-        # Page-only commands remain usable; `do` refuses before starting its model.
+        # Page-only commands remain usable; the browser task refuses before starting its model.
         return ""
     return str((data or {}).get("address") or "")
 
@@ -1102,7 +1102,7 @@ _proxy_methods_installed = False
 
 
 def _install_proxy_methods() -> None:
-    """Mirror BrowserAutomation's tool schema only for the natural-language `do` path.
+    """Mirror BrowserAutomation's tool schema only for the natural-language task path.
 
     Direct verbs already know their wire command and must not spend seconds importing
     Playwright, Agent, TUI, and provider integrations before they can connect to the
@@ -1122,18 +1122,18 @@ def _install_proxy_methods() -> None:
     _proxy_methods_installed = True
 
 
-def _run_do(line: str, headless: bool, tab: str, engine_mode: str = "auto") -> tuple:
+def _run_instruction(line: str, headless: bool, tab: str, engine_mode: str = "auto") -> tuple:
     """Run the model loop here; only its browser tool calls enter the daemon."""
     account = _caller_account()
     if not account:
         return 5, (
-            "cannot determine which OpenOnion account should pay for `do`; "
+            "cannot determine which OpenOnion account should pay for this browser task; "
             "run `co status` or `co auth` first"
         )
     tokens = shlex.split(line)
-    command = " ".join(tokens[1:])
-    if not command:
-        return 2, 'usage: co browser do "<instruction>"'
+    if len(tokens) != 1 or not tokens[0].strip():
+        return 2, 'usage: co browser "<instruction>"'
+    command = tokens[0]
 
     from .agent import build_browser_agent, resolve_api_key
 
@@ -1155,16 +1155,18 @@ def send(line: str, headless: bool = False, tab: str = None,
          _provisioned: bool = False, engine_mode: str = "auto") -> int:
     """Run a CLI command, print its result, and return its process exit code."""
     try:
-        verb = shlex.split(line)[:1]
+        tokens = shlex.split(line)
     except ValueError as exc:
         print(f"unparseable request: {exc}", file=sys.stderr)
         return 2
 
-    if verb == ["do"]:
+    if tokens[:1] == ["do"]:
+        code, payload = 2, 'The do verb was removed. Run: co browser "<instruction>"'
+    elif len(tokens) == 1 and any(char.isspace() for char in tokens[0]):
         code, payload = (
-            _run_do(line, headless, tab)
+            _run_instruction(line, headless, tab)
             if engine_mode == "auto"
-            else _run_do(line, headless, tab, engine_mode)
+            else _run_instruction(line, headless, tab, engine_mode)
         )
     else:
         request_kwargs = {

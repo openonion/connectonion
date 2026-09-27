@@ -361,7 +361,7 @@ async def test_v2_session_binds_admin_action_to_signed_type(keys, monkeypatch):
     signed["type"] = "ADMIN_BLOCK"
     called = []
 
-    async def fake_admin(data, send, handlers):
+    async def fake_admin(data, send, handlers, conn=None):
         called.append(data)
 
     monkeypatch.setattr(session, "handle_admin_message", fake_admin)
@@ -385,7 +385,7 @@ async def test_v2_session_passes_verified_admin_frame_to_independent_auth(keys, 
     signed["client_id"] = "0xattacker-choice"
     called = []
 
-    async def fake_admin(data, send, handlers):
+    async def fake_admin(data, send, handlers, conn=None):
         assert auth.extract_and_authenticate(data, "open")[2] is True
         called.append(data)
 

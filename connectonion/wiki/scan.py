@@ -126,6 +126,21 @@ def canonical_origin(origin: str) -> str:
 def project_exclusion(path: Path) -> str:
     """Ignore execution sandboxes, not legitimate projects sharing a display name."""
     normalized = str(path.resolve())
+    parts = Path(normalized).parts
+    if any(parts[i:i + 2] == (".state", "tasks") for i in range(len(parts) - 1)):
+        return "Wiki task workspace copy"
+    if path.name == "notebook" and any(parent.name.endswith("-fixture") for parent in path.parents):
+        return "test fixture notebook"
+    if path.is_dir() and not (path / ".git").exists() and (path / "AGENTS.md").is_file():
+        repositories = 0
+        try:
+            for child in path.iterdir():
+                if child.is_dir() and (child / ".git").exists():
+                    repositories += 1
+                    if repositories >= 2:
+                        return "multi-repository workspace container"
+        except OSError:
+            pass
     if normalized.startswith(("/private/tmp/", "/tmp/", "/private/var/folders/", "/var/folders/")):
         return "temporary execution directory"
     if not path.is_dir() and "/.codex/worktrees/" in normalized:

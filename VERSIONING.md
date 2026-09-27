@@ -375,7 +375,99 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b3
+## Current Version: 1.8.9b12
+
+1.8.9b12 is an opt-in preview for subscribed skills and browser task syntax
+(#1785, #1786). Subscriptions reconcile withdrawn skills, preserve the
+subscriber's own paths, verify and mirror published companion files, and expose
+mirrored skills to `co ai`. Natural-language browser tasks use
+`co browser "<instruction>"` without the `do` verb. The companion-file relay
+change is deployed before this SDK preview is published. Stable remains
+1.8.8. The experimental Host watcher introduced in b9 is removed in this
+preview; Agent-owned watches are tracked in #1788. See
+[1.8.9b12 notes](docs/releases/1.8.9b12.md).
+
+- 1.8.9b12 (subscription reconciliation and signed companion files; browser task syntax without `do`.)
+
+Earlier in this line:
+
+## Previous preview: 1.8.9b11
+
+1.8.9b11 improves the experimental Personal Wiki's first five-day onboarding
+pass (#1793): concise, scoped map progress; bounded owner investigation with
+explicit partial coverage; and an idempotent map after project investigation.
+The isolated end-to-end run and its quality limits are recorded in
+[the five-day acceptance report](docs/testing/wiki-onboarding-five-day-2026-09-26.md).
+Stable remains 1.8.8. See [1.8.9b11 notes](docs/releases/1.8.9b11.md).
+
+- 1.8.9b11 (five-day Wiki onboarding progress and scope, bounded quick owner pass, project source-window disclosure, and idempotent map reruns.)
+
+Earlier in this line:
+
+1.8.9b10 makes the free, locally hosted `co/llama` the default managed text
+model and exposes `co/gemma` as another free choice. Credit errors name the
+free route so a session can continue. The default path and tool calling were
+exercised against oo-api v0.1.22 in production; audio transcription still uses
+Gemini. Stable remains 1.8.8. See [1.8.9b10 notes](docs/releases/1.8.9b10.md).
+
+- 1.8.9b10 (free `co/llama` managed default, `co/gemma` alternative, zero-cost pricing metadata, credit-error free-model tip, preserved Gemini audio transcription; live production completion and tool call verified.)
+
+Earlier in this line:
+
+The b9 preview was published with Host-owned watchers. Their runtime is being
+removed in subsequent source builds in favor of session-owned watches (#1788).
+The copyable `watch_events` plugin remains available for Agent turns. Stable
+remains 1.8.8.
+
+- 1.8.9b9 (published Host file/timer/push watcher preview, subsequently withdrawn from source; copyable Agent iteration plugin retained.)
+
+Earlier in this line:
+
+1.8.9b8 adds `co audit <command>`, which judges whether a CLI, `co` or any
+other, is fit for an agent harness from its printed help alone: rules first,
+an optional model review last (#1735). Every `co` help page now passes it, after a
+full audit and review (#1748). Stable remains 1.8.8. See
+[1.8.9b8 notes](docs/releases/1.8.9b8.md).
+
+- 1.8.9b8 (co audit for any CLI: black-box walk of --help pages, rules for prints/hangs/writes/usage/example/self_example/flags/private/params, optional parallel model review, per-rule score; help-gate workflow reviews changed pages; 281 co pages pass every rule; 113 option/argument descriptions and 4 wiki examples added; model review flags 114 → 12.)
+
+Earlier in this line:
+
+
+1.8.9b7 fixes the first browser turn of a new Claude Station. A SessionStart
+ID without a completed native turn is not resumed; the browser starts a new
+Claude session and can return it to the terminal. An early native-start failure
+rejects the browser request promptly. Stable remains 1.8.8. See
+[1.8.9b7 notes](docs/releases/1.8.9b7.md).
+
+- 1.8.9b7 (New Claude Stations can start in the browser; failed native starts reject the matching message.)
+
+Earlier in this line:
+
+1.8.9b6 is an opt-in Wiki maintenance reliability preview. Offline batches
+can read their staged local files without interpreting the network restriction
+as a ban on local file work. An unchanged batch now needs an explicit,
+source-linked no-change receipt before it advances, and numbered Markdown
+source labels are normalized before citation validation. Stable remains 1.8.8.
+See [1.8.9b6 notes](docs/releases/1.8.9b6.md).
+
+- 1.8.9b6 (Offline Wiki maintenance can use local files; unchanged batches require a receipt; numbered source labels pass citation validation.)
+
+Earlier in this line:
+
+1.8.9b5 is an opt-in Claude Station reliability preview. A browser approval
+used to reach OIP while its provider invocation still said `running`, leaving
+the owner with no button and Claude waiting indefinitely. The invocation now
+enters `awaiting_approval` before the request and returns to `running` after
+the answer (#1747). Station also stops advertising selectable native permission
+profiles because its browser turns always use Claude's default owner-review
+mode. The O Chat label correction remains a separate preview deployment.
+Stable is 1.8.8; this beta does not claim Happy Code permission parity.
+See [1.8.9b5 notes](docs/releases/1.8.9b5.md).
+
+- 1.8.9b5 (Claude Station approval state follows the blocking Hook; fixed owner review cannot be switched to Auto through the provider profile endpoint.)
+
+Earlier in this line:
 
 1.8.9b3 is the third preview of the 1.8.9 fix line (#1722): six bugs reported
 in real use, each a tool that reported success or blamed the wrong party. A

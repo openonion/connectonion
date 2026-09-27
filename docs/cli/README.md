@@ -70,7 +70,9 @@ includes the Claude session ID. Pass `--session <id>` on a later run to continue
 that conversation. A failed run prints a JSON error and exits nonzero.
 
 The connector installs a temporary `SessionStart` Hook and checks its session
-ID and transcript path before accepting a Work Room input. Host/COAI Claude
+ID and transcript path. A shared terminal can hand over before its first
+prompt: that first browser message starts a new native Claude session, while
+later messages resume the session that already has a completed turn. Host/COAI Claude
 delegation uses this same path. Every headless run (`co claude run`, `co ai`
 delegation, and browser turns in a shared terminal) loads only your user
 settings plus the connector's Hooks (`--setting-sources user
@@ -79,13 +81,8 @@ settings plus the connector's Hooks (`--setting-sources user
 cloned repo cannot add Hooks or allow Bash in a turn nobody is watching. The
 interactive `co claude` terminal keeps Claude's normal project settings,
 because you are at the keyboard and Claude's own folder-trust prompt applies
-there. The interactive
-wrapper currently observes locally; Host registration, OIP mirroring to O Chat,
-terminal-to-web handover, approval routing, and release to terminal in
-[issue #1134](https://github.com/openonion/connectonion/issues/1134) remain in
-progress. Neither `co claude` nor `co claude run` by itself creates a
-ConnectOnion Host session or Work Room; a Host/COAI delegation supplies those
-for headless runs.
+there. With sharing enabled, `co claude` hosts a paired OIP Work Room. The
+`co claude run` command runs one turn and does not host a Work Room.
 
 Every command ends by naming the next one. Commands whose next step depends on
 what they found print it themselves (`Read one with: co gmail read <#>`); every
@@ -250,7 +247,8 @@ response = llm_do("Hello", model="co/gemini-3.8-flash")
 **Available models:**
 - OpenAI: `co/gpt-4o`, `co/gpt-4o-mini`, `co/o4-mini`
 - Anthropic: `co/claude-sonnet-4-5`, `co/claude-haiku-4-5`
-- Google: `co/gemini-3.8-flash` (default), `co/gemini-3.7-flash` (rollback), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
+- Local GPU: `co/llama` (default, free), `co/gemma` (free)
+- Google: `co/gemini-3.8-flash`, `co/gemini-3.7-flash` (rollback), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
 - And more...
 
 **Benefits:**
@@ -470,8 +468,8 @@ Requires `co auth microsoft` once (Mail/Contacts scopes; saved as `MICROSOFT_*` 
 ```bash
 co outlook                                            # show inbox (default)
 co outlook inbox -n 25 -u                             # last 25, unread only
-co outlook read 3                                     # read #3, preserve unread state
-co outlook read 3 --mark-read                         # explicitly mark it read
+co outlook read 3 --listing <listing-id>              # read #3, preserve unread state
+co outlook read 3 --listing <listing-id> --mark-read  # explicitly mark it read
 co outlook send bob@example.com "Hi" "Body text"      # send now
 co outlook send bob@example.com "Hi" - < body.txt     # body from stdin
 co outlook contact add "Zhou Yifei" zhou@example.com  # save contact
@@ -480,7 +478,7 @@ co outlook contact search yifei                       # find by name/email
 
 **Subcommands:**
 - `co outlook` / `co outlook inbox` - numbered inbox table (`--last/-n`, `--unread/-u`)
-- `co outlook read <#>` - print one message's body; add `--mark-read` to consume it
+- `co outlook read <#> --listing <listing-id>` - print one message's body; add `--mark-read` to consume it. Numbers need the token their listing printed (15 minutes, same account); full message IDs need none
 - `co outlook send <to> <subject> <message>` - send, with `--cc`, `--bcc`, repeatable `--attach FILE` (~3MB Graph limit), and `--at` to schedule (`+30m`, `+2h`, or UTC ISO time — Exchange holds delivery)
 - `co outlook sent` - list recently sent emails
 - `co outlook search <query>` - search subject and body
@@ -877,7 +875,7 @@ router, your NAS, or anything else on your LAN.
 
 #### `co browser <command>` - Browser Automation
 
-Drive one persistent browser from the shell. Call a browser function directly, or use `do` for the AI agent. State persists between commands until you `close`. See [browser.md](browser.md).
+Drive one persistent browser from the shell. Call a browser function directly, or give a quoted task to the AI agent. State persists between commands until you `close`. See [browser.md](browser.md).
 
 **Direct function calls:**
 ```bash
@@ -890,7 +888,7 @@ co browser close                      # close browser, stop daemon
 
 **Natural language (AI agent on the same browser):**
 ```bash
-co browser do "click the login button and open the dashboard"
+co browser "click the login button and open the dashboard"
 ```
 
 **Scripting (clean stdout, exit codes):**
@@ -902,7 +900,7 @@ co browser --headless go_to "$DEPLOY_URL"   # --headless for CI
 
 **When to use:**
 - Scripting exact browser steps (direct calls)
-- Letting the agent handle a task (`do`)
+- Letting the agent handle a quoted task (`co browser "<instruction>"`)
 - Visual verification and debugging
 
 ---

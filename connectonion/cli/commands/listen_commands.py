@@ -2,7 +2,7 @@
 Purpose: The verbs of an inbox provider — `co feishu listen | receive | send | reply | done | check | ls | log | consume`
 LLM-Note:
   Dependencies: imports from [json, os, subprocess, sys, threading, time, typing, rich.console, inbox/] | imported by [cli/main.py via _inbox_group()] | tested by [tests/unit/test_listen_commands.py]
-  Data flow: handle_listen → provider.run(inbox) until Ctrl-C | handle_receive → inbox.receive() → one JSON line on stdout | handle_send/handle_reply → stdin or argument → provider.send() → sent.jsonl → the new message id on stdout | handle_consume → Inbox.serve(handler) → subprocess(stdin=message) → reply(stdout)
+  Data flow: handle_listen → provider.run(inbox) until Ctrl-C | handle_receive → inbox.receive() → one JSON line on stdout | handle_send/handle_reply → stdin or argument → provider.send() → sent.jsonl → the new message id on stdout | handle_consume → serve_with_listener(handler), which restarts a dead listener and stops on exit 3 → subprocess(stdin=message) → reply(stdout)
   State/Effects: everything durable lives in the inbox directory | listen holds listen.lock and returns stale cur/ files every minute | receive and serve start a background listener when none runs
   Integration: one set of handlers for every provider name in inbox.PROVIDERS; main.py registers the same nine commands under each group | exit codes: 0 ok, 1 failure, 2 usage (Typer), 3 configuration missing, 124 receive timed out (as timeout(1))
   Errors: a missing credential prints the item and the next action and exits 3 | a provider refusal prints its own words and exits 1 | nothing is printed on the success path of listen (Rule of Silence); the log has it
@@ -22,6 +22,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from ...inbox import ANSWERING, Inbox, ListenerStopped, provider, reactions_enabled
+from ...inbox.consumer import serve_with_listener
 from .command_tips import print_tip
 
 console = Console()
@@ -161,25 +162,11 @@ def _listener_died(inbox: Inbox, code, when: str = "at once") -> None:
     # The reason is the child's last few lines; an agent that reads
     # stderr should not have to go and open the log to learn "pip
     # install lark-oapi".
-    for line in _reason_lines(inbox):
+    for line in inbox.why_listener_stopped():
         # Unwrapped: a pip command split across two lines cannot be copied.
         errors.print(f"  {line}", style="red", soft_wrap=True, highlight=False)
     errors.print(f"full log: {inbox.logfile}", style="dim")
     sys.exit(EXIT_CONFIG if code == EXIT_CONFIG else 1)
-
-
-# What a listener writes about its own start and stop, as opposed to why it
-# stopped. The last three log lines of a refused Telegram token were
-# "listener stopped", "exited at once with 3" and the tail of a path, with the
-# sentence that says to copy the token from @BotFather just above them.
-_BOOKKEEPING = re.compile(r"(listener stopped|listener exited at once with \d+.*|"
-                          r"listening · .*|details: .*)$")
-
-
-def _reason_lines(inbox: Inbox, count: int = 3) -> List[str]:
-    """The last few log lines that say why, not that, the listener stopped."""
-    lines = [line for line in inbox.last_log_lines(12) if not _BOOKKEEPING.search(line)]
-    return lines[-count:]
 
 
 def handle_done(name: str, message_id: str) -> None:
@@ -770,6 +757,12 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
         # time, and some of them are not safe to run twice at once. The lanes
         # still give it ordering, lease renewal and the give-up rule; anyone
         # who wants the parallelism asks for it with --workers.
-        inbox.serve(answer, workers=workers, once=once, by=consumer)
+        # Watched, not just started: the docs promise consume restarts a
+        # listener that died, and it had only checked once, at the start.
+        code = serve_with_listener(
+            inbox, answer, workers=workers, once=once, by=consumer,
+            say=lambda line: errors.print(line, style="red", soft_wrap=True, highlight=False))
     except KeyboardInterrupt:
         return
+    if code is not None:
+        sys.exit(EXIT_CONFIG if code == EXIT_CONFIG else 1)

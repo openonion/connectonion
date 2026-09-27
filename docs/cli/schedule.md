@@ -36,7 +36,7 @@ Start the hosted agent (`python agent.py` when it calls `host(...)`, or
 |---|---|
 | `name` | How the entry is shown and addressed (`co schedule run <name>`). Defaults to the `run` or `exec` text. Must be unique. |
 | `run` | A prompt. It runs as an agent turn through the same path as a message sent to the agent, and lands in `.co/session_results.jsonl` like any other session. |
-| `exec` | A shell command, run in the project directory. Recorded by exit code, with the end of stderr kept on failure. Use it for deterministic work: a model's "I ran the script" is not evidence the script ran (#709). Limited to 10 minutes. |
+| `exec` | A shell command, run in the project directory. Recorded by exit code, with the end of stderr kept on failure. Use it for deterministic work: a model's "I ran the script" is not evidence the script ran (#709). Limited to 10 minutes; on timeout the command and everything it started are killed and the run is recorded `failed`. |
 | `every` | An interval: `30s`, `15m`, `2h`, `1d`. Must be greater than zero. |
 | `at` | A time: `"09:00"` (daily) or `"Mon 09:00"` (weekly). |
 | `tz` | IANA timezone for `at`, e.g. `Australia/Sydney`. Defaults to UTC. |
@@ -47,7 +47,8 @@ Each entry needs exactly one of `run` or `exec`, and one of `every` or `at`.
 
 - **One tick a minute.** Each minute the agent finds the due entries, marks
   each one `running` in `.co/schedule-state.json`, and runs each as its own
-  task. A slow entry never delays another one.
+  task. A slow entry never delays another one, and a claimed entry starts
+  even if the tick's own housekeeping fails.
 - **One copy at a time.** An entry still running when it comes due again is
   skipped, and the log says so. An entry that overruns every time is
   configured with the wrong interval.
@@ -67,7 +68,7 @@ Each entry needs exactly one of `run` or `exec`, and one of `every` or `at`.
 |---|---|---|
 | `co schedule` / `co schedule list` | each entry: cadence, next run, last run, status, failure reason, session id, paused. `--json` for scripts. | nothing |
 | `co schedule check` | validate `schedule.yaml` exactly as the scheduler reads it; exit 1 naming each ignored entry | nothing |
-| `co schedule run <name>` | run the entry on the next tick, even if it is paused or not due | schedule state |
+| `co schedule run <name>` | run the entry on the next tick, even if it is paused or not due; if it is running now, on the first tick after that run ends | schedule state |
 | `co schedule pause <name>` | stop the entry firing | schedule state |
 | `co schedule resume <name>` | put it back on its schedule | schedule state |
 
@@ -85,7 +86,7 @@ running, paused, when it last ran, and why a run failed.
 | file | holds |
 |---|---|
 | `.co/schedule-state.json` | per entry: last run, status (`running`, `done`, `failed`), failure reason, session id, `paused` |
-| `.co/session_results.jsonl` | the full session of each `run` entry: prompt, transcript, result, duration |
+| `.co/session_results.jsonl` | the full session of each `run` entry: prompt, transcript, result, duration. Over HTTP, `GET /sessions` shows these to the agent's admins only: nobody signed for them, so they belong to the agent. |
 
 `done` means the turn returned, not that the work succeeded: a model that
 answered "I could not reach the drive" also returned. Check the session, or

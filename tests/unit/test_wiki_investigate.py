@@ -15,6 +15,78 @@ class Quiet:
     def get_email_body(self, i): return ""
 
 
+def test_transient_connection_error_retries_body_fetch(monkeypatch):
+    monkeypatch.setattr('time.sleep', lambda seconds: None)
+    attempts = []
+
+    def fetch():
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise ConnectionError('temporary outage')
+        return 'body'
+
+    assert inv._patient(fetch) == 'body'
+    assert len(attempts) == 3
+
+
+def test_quick_evidence_bounds_the_first_turn_and_keeps_source_diversity():
+    items = [{'source': 'gmail:old', 'timestamp': '2026-09-20', 'text': 'a' * 9000},
+             *[{'source': f'codex:{i}', 'timestamp': f'2026-09-{21 + i:02d}',
+                'text': 'b' * 9000} for i in range(4)],
+             {'source': 'outlook:new', 'timestamp': '2026-09-26', 'text': 'c' * 9000}]
+    selected = inv.quick_evidence(items, max_items=3, chars_per_item=100)
+    assert len(selected) == 3
+    assert {item['source'].split(':')[0] for item in selected} == {'gmail', 'codex', 'outlook'}
+    assert all(len(item['text']) < 200 for item in selected)
+    assert all(item['text'].endswith('[truncated for quick first-pass review]') for item in selected)
+
+
+def test_quick_owner_run_uses_one_turn_and_reports_partial_coverage(tmp_path, monkeypatch):
+    root = _notebook(tmp_path, 'codex')
+    rows = [{'source': f'gmail:{i}', 'timestamp': f'2026-09-{(i % 25) + 1:02d}',
+             'text': 'A' * 9000} for i in range(30)]
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (rows, ['gmail: 30 messages found']))
+    received = []
+
+    def runner(notebook, items, config, stage):
+        received.extend(items)
+        return {'changed': [], 'usage': None}
+
+    result = inv.investigate(root, 'people/vern.md', 'Vern', ['vern'], days=5,
+                             clients={}, subscriptions={}, runner=runner, quick=True,
+                             extractor=lambda *a: pytest.fail('quick pass must fit one model turn'))
+    assert result['quick'] is True and result['items_available'] == 30
+    assert result['items'] == 24
+    assert any('Quick first pass' in text for text in result['coverage'])
+    assert len(received) == 27  # page, coverage, quick-scope marker, 24 source items
+    assert received[2]['role'] == 'quick-first-pass'
+
+
+def test_quick_owner_fetches_only_recent_mail_bodies():
+    class Mailbox:
+        def __init__(self):
+            self.fetched = []
+
+        def my_addresses(self):
+            return ['me@example.org']
+
+        def list_between(self, start, end, limit):
+            return [{'id': str(i), 'from': 'me@example.org', 'to': 'other@example.org',
+                     'date': f'2026-09-25T{i:02d}:00:00Z', 'subject': 'Subject'}
+                    for i in range(20)]
+
+        def get_email_body(self, email_id):
+            self.fetched.append(email_id)
+            return 'Body'
+
+    box = Mailbox()
+    items, coverage = inv.gather('Me', ['me@example.org'], days=5,
+                                 clients={'outlook': box}, subscriptions={},
+                                 sent_only=True, quick=True)
+    assert len(items) == 12 and box.fetched == [str(i) for i in range(8, 20)]
+    assert any('20 matched, 12 bodies read (recent quick sample)' in line for line in coverage)
+
+
 @pytest.fixture
 def co_ai(monkeypatch):
     """A `co` that answers at once and remembers how it was called."""
@@ -53,6 +125,40 @@ def test_runner_codex_is_co_ai_delegating_to_codex_in_the_workspace_sandbox(tmp_
     # The Skill is told the page's real path, extension included: an earlier
     # version cut the record at its first "." and pointed it at people/vern.
     assert argv[-1].startswith("/wiki-investigate ") and "/notebook/people/vern.md" in argv[-1]
+
+
+def test_investigation_reports_privacy_safe_stages(tmp_path):
+    root = _notebook(tmp_path, "codex")
+    stages = []
+
+    def fake_runner(notebook, items, config, stage):
+        assert stage == "investigate"
+        return {"changed": [], "usage": None}
+
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=5,
+                    clients={"outlook": Quiet()}, subscriptions={}, runner=fake_runner,
+                    stage_progress=lambda stage, *counts: stages.append((stage, counts)))
+    assert [stage for stage, _ in stages] == [
+        "gathering sources", "preparing evidence", "writing investigation", "recording result"]
+
+
+def test_project_inventory_is_bounded_and_excludes_hidden_or_sensitive_files(tmp_path):
+    project = tmp_path / 'project'
+    (project / 'docs').mkdir(parents=True)
+    (project / '.git').mkdir()
+    for name in ('README.md', 'password.txt', '.env', 'a.py'):
+        (project / name).write_text('fixture')
+    (project / 'docs' / 'wiki-guide.md').write_text('fixture')
+    (project / '.git' / 'config').write_text('fixture')
+    page = f'# Project\n## Paths\n- {project}\n- Sessions: 1\n## Sources\n'
+    leads = inv.project_file_inventory(page, max_files=2)
+    assert len(leads) == 2
+    assert leads[0].endswith('/README.md')
+    assert any(path.endswith('/wiki-guide.md') for path in leads)
+    assert not any('password' in path or '/.git/' in path or '/.env' in path for path in leads)
+    cited = page.replace(f'- {project}\n', f'- {project} [1][2]\n')
+    assert inv.project_paths(cited) == [str(project)]
+    assert inv.project_file_inventory(cited, max_files=2) == leads
 
 
 # The whole command line before the prompt, pinned per executor. Investigation
@@ -144,14 +250,36 @@ def test_chunk_limit_includes_json_framing():
     limit = len(json.dumps([item, item], ensure_ascii=False)) - 1
     config = {"limits": {"extract_items_per_batch": 40, "extract_chars_per_batch": limit}}
     batches = []
+    stages = []
 
     def extract(chunk, config, kind):
         batches.append(chunk)
         return {"notes": "Notes"}
 
-    inv.digest_in_chunks([item, item], config, extract)
+    inv.digest_in_chunks([item, item], config, extract,
+                         progress=lambda stage, current, total, usage: stages.append((stage, current, total, usage)))
     assert len(batches) == 2
+    assert stages == [("extracting long evidence", 1, 2, {}),
+                      ("extracting long evidence", 2, 2, {})]
     assert all(len(json.dumps(c, ensure_ascii=False)) <= limit for c in batches)
+
+
+def test_completed_extraction_chunks_are_reused_after_interruption(tmp_path):
+    root = _notebook(tmp_path, "codex")
+    item = {"source": "gmail:one", "timestamp": "2026-09-20", "text": "A" * 60}
+    config = {"runner": "codex", "model": "gpt-6-luna", "limits": {
+        "extract_items_per_batch": 1, "extract_chars_per_batch": 300}}
+    calls = []
+
+    def extract(chunk, settings, kind):
+        calls.append(chunk)
+        return {"notes": "Supported note", "usage": {"input_tokens": 20}}
+
+    first, usage = inv.digest_in_chunks([item], config, extract, root=root)
+    second, reused_usage = inv.digest_in_chunks([item], config, extract, root=root)
+    assert first == second and len(calls) == 1
+    assert usage == {"input_tokens": 20} and reused_usage == {}
+    assert (root / '.state/extracts/investigate').is_dir()
 
 
 def test_owner_over_input_limit_reaches_writer_with_every_digest_and_existing_page(tmp_path, monkeypatch):
