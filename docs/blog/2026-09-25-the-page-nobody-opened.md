@@ -45,13 +45,19 @@ older than the notebook, and `co wiki open` prints its path and its `file://`
 link. The live view is still there, behind `--live`, and the snapshot output
 says so in one line.
 
-`--live` now asks before it sends anyone anywhere. It does the same
-resolution a client does before connecting: the relay lists the endpoints the
-address announces, and one of them must answer `/info` as that address. No
-model, no login, a three-second timeout. If nothing answers, it says the Host
-is not online, says to start it with `co ai`, and opens the snapshot. A Host
-reachable only through the relay reads as offline from here; that costs a
-snapshot, never a dead page.
+`--live` now asks before it sends anyone anywhere, and it asks the two
+questions a client's connect() depends on. Does the relay hold the Host's
+announce socket, and has it heard a heartbeat in the last three minutes? That
+is how O Chat reaches a Host behind NAT or on another machine. Failing that,
+does one of the endpoints the Host announces answer `/info` as that address?
+No model, no login, three seconds for the whole check. If neither answers, it
+says the Host is not online, says to start it with `co ai`, and opens the
+snapshot.
+
+The first draft only did the second check, and a reviewer caught what that
+meant: the owner's Host on a home network, perfectly reachable through the
+relay, would have read as offline from a laptop anywhere else. "Online" has to
+mean what the page that opens will find, not what this machine can dial.
 
 The route itself lives in one constant next to one flag, `LIVE_WIKI_SERVED`,
 set to False with a comment naming oo-chat#246. When that page ships, flipping

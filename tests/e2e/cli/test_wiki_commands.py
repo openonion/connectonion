@@ -8,6 +8,7 @@ import sys
 import urllib.parse
 from pathlib import Path
 
+import httpx
 import pytest
 import yaml
 from rich.text import Text
@@ -140,21 +141,36 @@ OWNER = "0x" + "a" * 64
 
 def _owner_notebook(tmp_path, monkeypatch, *, host):
     """The default ~/.co/wiki under a tmp home, an identity, and a Host that is
-    online (resolves to an endpoint) or not. Faked at resolve_endpoint, the seam
-    the client already uses to find a Host, so the real presence check runs."""
+    offline (None), answers directly ("direct"), or is reachable only through the
+    relay ("relay": behind NAT, on another machine). The relay's HTTP answer is
+    faked at the transport and direct resolution at resolve_endpoint, so the real
+    presence check runs on the record shape production sends."""
+    from datetime import datetime, timezone
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     root = tmp_path / ".co/wiki"
     prepare(root)
     Notebook(root).write("people/alice.md", "# Alice\nWorks on Project Aurora.")
     monkeypatch.setattr("connectonion.address.load", lambda directory: {"address": OWNER})
     asked = []
-
-    async def resolve(address, relay_url, timeout=3.0):
-        asked.append(address)
-        return "ws://127.0.0.1:8000/ws" if host else None
     # By module object: connectonion.network re-exports a `connect` function
     # that shadows the module in a dotted-string lookup.
-    monkeypatch.setattr(importlib.import_module("connectonion.network.connect"), "resolve_endpoint", resolve)
+    connect = importlib.import_module("connectonion.network.connect")
+
+    def relay_api(request):
+        asked.append(request.url.path.rsplit("/", 1)[-1])
+        held = host == "relay"
+        return httpx.Response(200, json={
+            "endpoints": ["http://10.0.0.5:8000", "ws://10.0.0.5:8000/ws"],
+            "relay": "wss://oo.openonion.ai" if held else None,
+            "last_seen": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() if held else None,
+            "profile": None})
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(connect.httpx, "AsyncClient",
+                        lambda **kw: real_client(**kw, transport=httpx.MockTransport(relay_api)))
+
+    async def resolve(address, relay_url, timeout=3.0):
+        return "ws://127.0.0.1:8000/ws" if host == "direct" else None
+    monkeypatch.setattr(connect, "resolve_endpoint", resolve)
     opened = []
     monkeypatch.setattr("webbrowser.open", lambda url, *a, **k: opened.append(url) or True)
     return root, asked, opened
@@ -168,7 +184,7 @@ def test_default_open_is_a_snapshot_that_exists_and_renders_the_pages(tmp_path, 
     """#1828: the default opened chat.openonion.ai/<address>/wiki, a route O Chat
     does not serve, for a Host nobody had started. The default is the snapshot,
     which loads offline, and it asks no Host anything."""
-    _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=False)
+    _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=None)
     result = runner.invoke(app, ["wiki", "open", "--no-launch"])
     assert result.exit_code == 0, result.output
     output = _plain(result.output)
@@ -189,7 +205,7 @@ def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch)
     that cannot load (#1828). Even with the Host online."""
     from connectonion.wiki import reader
     assert reader.LIVE_WIKI_SERVED is False, "flipped: replace this test with one for the live default"
-    _, _, opened = _owner_notebook(tmp_path, monkeypatch, host=True)
+    _, _, opened = _owner_notebook(tmp_path, monkeypatch, host="direct")
     result = runner.invoke(app, ["wiki", "--json", "open"])
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)["data"]
@@ -198,7 +214,7 @@ def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch)
 
 
 def test_live_with_the_host_offline_falls_back_to_the_snapshot_and_names_co_ai(tmp_path, monkeypatch):
-    _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=False)
+    _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=None)
     result = runner.invoke(app, ["wiki", "open", "--live"])
     assert result.exit_code == 0, result.output
     output = _plain(result.output)
@@ -209,7 +225,17 @@ def test_live_with_the_host_offline_falls_back_to_the_snapshot_and_names_co_ai(t
 
 
 def test_live_with_the_host_online_opens_the_live_url(tmp_path, monkeypatch):
-    _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=True)
+    _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host="direct")
+    result = runner.invoke(app, ["wiki", "open", "--live", "--no-launch"])
+    assert result.exit_code == 0, result.output
+    assert asked == [OWNER] and opened == []
+    assert f"https://chat.openonion.ai/{OWNER}/wiki" in _plain(result.output)
+
+
+def test_live_with_the_host_reachable_only_through_the_relay_opens_the_live_url(tmp_path, monkeypatch):
+    """A Host behind NAT or on another machine has no endpoint this machine can
+    reach, but O Chat reaches it through the relay, so it is online."""
+    _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host="relay")
     result = runner.invoke(app, ["wiki", "open", "--live", "--no-launch"])
     assert result.exit_code == 0, result.output
     assert asked == [OWNER] and opened == []
@@ -219,7 +245,7 @@ def test_live_with_the_host_online_opens_the_live_url(tmp_path, monkeypatch):
 def test_live_on_a_custom_root_says_why_and_opens_the_snapshot(tmp_path, monkeypatch):
     """The live view reads the default notebook through the co ai identity (#1637);
     a custom --root is not assumed to belong to it."""
-    _, asked, _ = _owner_notebook(tmp_path, monkeypatch, host=True)
+    _, asked, _ = _owner_notebook(tmp_path, monkeypatch, host="direct")
     root = tmp_path / "other"
     prepare(root)
     result = invoke(root, "open", "--live", "--no-launch")

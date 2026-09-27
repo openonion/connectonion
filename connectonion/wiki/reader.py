@@ -110,18 +110,30 @@ LIVE_HINT = "co wiki open --live   (the live view in O Chat; needs your co ai Ho
 def host_online(address: str, timeout: float = 3.0) -> bool:
     """Is the Host for this address answering right now? No model, no login.
 
-    The same resolution a client does before connecting: ask the relay which
-    endpoints the address announces, and require one to answer /info as that
-    address. A Host reachable only through the relay (behind NAT, on another
-    machine) reads as offline here; that costs a snapshot, never a dead page.
+    Online is what a client can connect to: the relay holds the Host's announce
+    socket (how O Chat reaches a Host behind NAT or on another machine), or,
+    failing that, an announced endpoint answers /info as that address -- the
+    same two routes connect() takes. The whole check is bounded by `timeout`;
+    no answer in time reads as offline and costs a snapshot, never a dead page.
     """
     import asyncio
     import importlib
     from ..backend import backend_ws_url
     # By import_module: connectonion.network re-exports a connect() that shadows the module.
     connect = importlib.import_module("connectonion.network.connect")
+    relay = backend_ws_url()
 
-    return asyncio.run(connect.resolve_endpoint(address, backend_ws_url(), timeout)) is not None
+    async def check() -> bool:
+        if await connect.relay_presence(address, relay, timeout):
+            return True
+        return await connect.resolve_endpoint(address, relay, timeout) is not None
+
+    async def bounded() -> bool:
+        try:
+            return await asyncio.wait_for(check(), timeout)
+        except asyncio.TimeoutError:
+            return False
+    return asyncio.run(bounded())
 
 
 def open_snapshot(root: Path, *, launch: bool, **notes) -> dict:
