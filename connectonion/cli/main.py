@@ -1701,10 +1701,14 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
         again: bool = typer.Option(False, "--again", help="Reply even if this message was already answered"),
         plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
+        image: Optional[str] = typer.Option(None, "--image", metavar="PATH",
+                                            help="Answer with a picture (JPEG, PNG, WebP, up to 16 MB); the text becomes its optional caption"),
+        file: Optional[str] = typer.Option(None, "--file", metavar="PATH",
+                                           help="Answer with any file as a document (up to 100 MB); the text becomes its optional caption"),
     ):
         """Reply to a received message, in the chat it came from. Prints the new message id. Sends a message to that chat."""
         from .commands.listen_commands import handle_reply
-        handle_reply(name, message_id, text, again=again, plain=plain)
+        handle_reply(name, message_id, text, again=again, plain=plain, image=image, file=file)
 
     @group.command("edit", cls=NegativeIds, help=refuses("Edit a message this account sent."),
                    epilog=f'Example:  {co} edit {msg} "Fixed typo"  |  echo "Fixed typo" | {co} edit {msg}')
