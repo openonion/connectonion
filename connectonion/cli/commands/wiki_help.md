@@ -81,14 +81,18 @@ Usage:
                                                most useful first. Default --limit 5.
   co wiki investigate me                       Investigate your own page from your recent work.
   co wiki investigate me --quick               Bounded first pass; says what it did not cover.
+  co wiki investigate all --budget 10          The first pass after init: the whole queue, highest
+                                               first, until 10 points of your Codex week are spent.
 
-  CATEGORY is one of: people, projects, orgs, skills
+  CATEGORY is one of: people, projects, orgs, skills, all (people, projects and orgs
+  in one queue, by weight)
 
 Examples:
   co wiki investigate
   co wiki investigate people/ody-zhou-c6a901ffd8.md
   co wiki investigate people --limit 3
   co wiki investigate projects --list          (show the order, run nothing)
+  co wiki investigate all --list               (the first pass's order, run nothing)
 
 What each kind reads:
   people    Every message to or from their addresses, searched on the server, with
@@ -103,11 +107,20 @@ Options:
   --quick        With me: sample recent evidence for one model turn; explicitly partial
   --limit N      With CATEGORY: at most N pages this run (default 5; 0 for all)
   --list         With CATEGORY: print the order and stop; no model
+  --budget N     With CATEGORY: stop starting pages once this run has used N points of
+                 the Codex week (1-100). With --budget, --limit defaults to 0 (all).
   --handle TEXT  PAGE only: another address or name for the subject (repeatable)
   --eval-dir DIR skills only: where the run records are
 
 Order within a category: pages still marked Unknown first, then those with the
 most mail or sessions. A page investigated in the last 7 days is skipped.
+
+Budget: with the Codex runner every investigation records your Codex week before
+and after, and counts toward investigation's weekly budget (limits.
+investigation_quota_points, default 10). A CATEGORY run stops starting pages when
+that budget is spent, when --budget is spent, or once the week is at
+limits.quota_floor_percent (default 70%), and says which. The page in flight
+finishes. Without a meter (another runner, Codex signed out) --limit is the bound.
 
 Effects:  Reads message bodies and files. Calls the model configured in co wiki config:
           one call for most pages. A subject with hundreds of messages is summarised
