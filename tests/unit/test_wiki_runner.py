@@ -112,7 +112,7 @@ def test_investigation_does_not_claim_another_concurrent_page_change(notebook, m
         notebook.write(other, notebook.read(other) + '\nConcurrent edit.\n')
         return {'usage': None, 'result': 'complete'}
 
-    def promote(book, record, candidate, original, items, directory, usage):
+    def promote(book, record, candidate, original, items, directory, usage, **options):
         book.write(record, original + '\nInvestigated.\n')
 
     monkeypatch.setattr('connectonion.wiki.runner.run_task', run_model)

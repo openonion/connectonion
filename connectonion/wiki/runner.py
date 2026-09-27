@@ -199,7 +199,8 @@ def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "") 
     """Keep large input out of argv; supply the canonical stage/source/page Skills."""
     record = next((i.get("record", "") for i in items if i.get("role") == "page"), "")
     page_kind = {"people": "person", "projects": "project", "skills": "skill"}.get(record.split("/")[0], "")
-    text = instructions(stage, kind, page_kind=page_kind if stage == "investigate" else "")
+    one_page = stage == "investigate" or (stage == "maintain" and any(item.get("one_page") for item in items))
+    text = instructions(stage, kind, page_kind=page_kind if one_page and record else "")
     material = directory / "material.json"
     skill = directory / "instructions.md"
     material.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -280,11 +281,12 @@ def _project_window_notice(text: str, items: list[dict]) -> str:
     return head.rstrip() + "\n" + notice + marker + tail
 
 
-def _promote_candidate(notebook, record, candidate, original, items, directory, usage):
-    from .page_review import drop_owner_addresses, drop_uncited_sources, normalize_numbered_sources, validate
+def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False):
+    from .page_review import (drop_owner_addresses, drop_uncited_sources, normalize_numbered_sources,
+                              restore_runner_fields, validate)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
-    text = candidate.read_text(encoding="utf-8")
+    text = restore_runner_fields(record, candidate.read_text(encoding="utf-8"), original)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {})
     removed = []
     if record.startswith("people/") and record != owner.get("record"):
@@ -295,7 +297,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     errors = validate(record, text, original, items)
     # Sync owns this same lock. Compare and write together so a completed
     # concurrent update cannot be silently replaced by an older candidate.
-    with maintenance_lock(notebook.root):
+    with nullcontext() if lock_held else maintenance_lock(notebook.root):
         if not notebook.path(record).is_file() or notebook.read(record) != original:
             errors.append("Page changed during investigation; preserve current page and retry")
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,
@@ -389,7 +391,9 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
                    "and at most four directory levels. Do not search the home directory, hidden files, "
                    "credentials, or unrelated folders. Cite each inspected file separately. If those "
                    "paths have no usable evidence, leave unsupported fields Unknown. ")
-    candidate = directory / "candidate.md" if stage == "investigate" and record else None
+    # One page at a time: investigation, and maintenance handed a single page (#1656).
+    one_page = stage == "maintain" and any(item.get("one_page") for item in items)
+    candidate = directory / "candidate.md" if record and (stage == "investigate" or one_page) else None
     before = {r: notebook.read(r) for r in notebook.list()}
     task_root = notebook.root
     if candidate:
@@ -463,7 +467,8 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
         result["usage"] = {key: inquiry_usage.get(key, 0) + (result.get("usage") or {}).get(key, 0)
                            for key in inquiry_usage.keys() | (result.get("usage") or {}).keys()} or None
         if candidate:
-            _promote_candidate(notebook, record, candidate, before[record], items, directory, result.get("usage"))
+            _promote_candidate(notebook, record, candidate, before[record], items, directory, result.get("usage"),
+                               lock_held=maintenance_lock_held)
         elif stage in ("maintain", "abstract"):
             refusals = _promote_maintenance(notebook, Notebook(task_root), before, items, directory,
                                             result.get("usage"), maintenance_lock_held)
