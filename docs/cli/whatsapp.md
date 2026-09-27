@@ -130,6 +130,17 @@ file — a zero-byte document is worse than an error, because a consumer reads
 it as an empty document. Anything over 64 MB is refused the same way rather
 than filling the disk the inbox lives on.
 
+**What `kind` means.** It names what a person sent: `text`, `image`, `audio`
+and so on. WhatsApp also attaches delivery metadata to messages
+(`messageContextInfo` on nearly every group message, and a
+`senderKeyDistributionMessage` the first time someone posts to a group). That
+metadata never names the kind. Until #1858 it did, and 46% of one owner's
+group messages arrived as `kind: "messagecontextinfo"`, so a consumer that
+answered only `text` skipped them. A frame that carries nothing but that
+metadata is not a message and is not recorded. Before #1837 it was recorded,
+and because the sender's real first message shares its id, the real message
+was then dropped as a duplicate.
+
 ## Groups: when the bot answers
 
 In a group, `mentioned` is true when the message @-mentions the linked number,
