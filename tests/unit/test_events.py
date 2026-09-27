@@ -17,6 +17,10 @@ from connectonion import Agent, after_user_input, before_llm, after_llm, before_
 from connectonion.core.llm import LLMResponse, ToolCall
 from connectonion.core.usage import TokenUsage
 
+# Agents and hosts built here write .co/ under the working directory; each
+# test gets its own, not the repository's shared one (tests/conftest.py).
+pytestmark = pytest.mark.usefixtures("own_project")
+
 
 @pytest.fixture(autouse=True)
 def _mock_llm(monkeypatch):

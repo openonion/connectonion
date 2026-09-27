@@ -170,7 +170,7 @@ def test_daily_maintains_before_one_investigation(root, monkeypatch):
         return {'changed': [], 'usage': {'input_tokens': 1}}
     result = run_daily(root, maintain=maintain, investigate_one=investigate_one)
     assert result['outcome'] == 'completed'
-    assert result['run']['runner_attempts'] == 4
+    assert result['run']['runner_attempts'] == 8          # a bounded share, not the night's calls
     assert calls == ['maintain', 'investigate']
     again = run_daily(root, maintain=maintain, investigate_one=investigate_one)
     assert again['reason'] == 'already_attempted_today'

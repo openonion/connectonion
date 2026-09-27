@@ -171,17 +171,23 @@ class TestWhatTheCallerSees:
 
         assert session_handler(storage, "s0", caller["address"])["result"] == "r"
 
-    def test_an_unowned_session_is_still_readable(self, tmp_path, caller):
-        """Stored before any owner was recorded. Same rule as #698: nobody is
-        evicted from those on upgrade."""
-        from connectonion.network.host.http_router import session_handler
+    def test_an_unowned_session_is_the_hosts(self, tmp_path, caller):
+        """No owner: a scheduled turn, or one stored before owners were
+        recorded. These were readable by any key, which is how a stranger read
+        a scheduled inbox digest (#1752). They are the host's own, so its
+        admins read them and nobody else does."""
+        from connectonion.network.host.http_router import session_handler, sessions_handler
         from connectonion.network.host.session import SessionStorage
         from connectonion.network.host.session.storage import Session
 
         storage = SessionStorage(path=tmp_path / "s.jsonl")
         storage.save(Session(session_id="old", status="done", prompt="p", result="r"))
 
-        assert session_handler(storage, "old", caller["address"])["result"] == "r"
+        assert session_handler(storage, "old", caller["address"]) is None
+        assert sessions_handler(storage, caller["address"])["sessions"] == []
+        assert session_handler(storage, "old", caller["address"], is_admin=True)["result"] == "r"
+        assert [s["session_id"] for s in
+                sessions_handler(storage, caller["address"], is_admin=True)["sessions"]] == ["old"]
 
     def test_nothing_is_listed_for_nobody(self, tmp_path, caller, other):
         """No caller address means the request was not authenticated."""

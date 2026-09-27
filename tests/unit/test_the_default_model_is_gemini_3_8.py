@@ -19,6 +19,11 @@ from connectonion.core.usage import (
     DEFAULT_MODEL,
     FREE_MANAGED_MODELS,
 )
+import pytest
+
+# Agents and hosts built here write .co/ under the working directory; each
+# test gets its own, not the repository's shared one (tests/conftest.py).
+pytestmark = pytest.mark.usefixtures("own_project")
 
 
 MANAGED_DEFAULT = "co/gemini-3.8-flash"
@@ -123,3 +128,24 @@ class TestNoGemini37DefaultRemains:
                 ):
                     descriptions.append(f"{relative}:{number}: {line.strip()}")
         assert descriptions == []
+
+
+class TestFreeModelsAreATipNotTheDefault:
+    """#1869: 1.8.9b10 made co/llama (8B) the default without the owner's decision.
+    Free models are what `co status` suggests when the balance is 0."""
+
+    def test_the_free_models_stay_selectable(self):
+        assert {"co/llama", "co/gemma"} <= set(FREE_MANAGED_MODELS)
+
+    def test_active_docs_do_not_call_llama_the_default(self):
+        found = []
+        for path in [ROOT / "README.md", *(ROOT / "docs").rglob("*.md")]:
+            relative = path.relative_to(ROOT)
+            if relative.parts[:2] in {("docs", "blog"), ("docs", "releases"), ("docs", "design-decisions")}:
+                continue
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                # "co/llama (default…" or "default is/: co/llama", not a list
+                # where Gemini is the default and Llama sits beside it as free.
+                if re.search(r"co/llama`?\s*\(default|default(?: model)?(?: is|:)\s*`?co/llama", line, re.I):
+                    found.append(f"{relative}:{number}: {line.strip()}")
+        assert found == []

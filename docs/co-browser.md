@@ -7,7 +7,7 @@ Drive **one persistent, logged-in browser from the shell** — and let several A
 ```bash
 co browser go_to https://news.ycombinator.com   # opens a real browser, navigates
 co browser get_text                              # dumps the page text
-co browser do "click the top story and summarize it"   # let the AI agent do it
+co browser "click the top story and summarize it"   # let the AI agent do it
 co browser close                                 # shut the browser down
 ```
 
@@ -19,7 +19,7 @@ Two ways to drive it:
 
 - **Direct functions** (deterministic): `go_to`, `get_text`, `click_element_by_selector`,
   `take_screenshot`, `type_text_by_selector`, … — run `co browser help` for the full list.
-- **`do "<instruction>"`** (natural language): an AI agent operates the same live
+- **`"<instruction>"`** (natural language): an AI agent operates the same live
   browser and figures out the steps itself.
 
 Output contract: **stdout = data, stderr = errors.** Exit code is `0` on success.
@@ -50,11 +50,11 @@ Running a distinct task (or a second agent)? Give it its own tab:
 ```bash
 NAME=$(co browser tab open --who alice --for "scrape pricing")   # prints the tab name
 co browser -t "$NAME" go_to https://example.com/pricing          # -t targets that tab
-co browser -t "$NAME" do "extract every plan and its monthly price"
+co browser -t "$NAME" "extract every plan and its monthly price"
 co browser tab close "$NAME"                                     # release it when done
 ```
 
-`-t <tab>` uses the exact same grammar for direct functions **and** `do`. A bare
+`-t <tab>` uses the exact same grammar for direct functions **and** quoted tasks. A bare
 command (no `-t`) always means the `main` tab.
 
 ## Several Agents, One Browser (contention)
@@ -70,7 +70,7 @@ tab 'main' is in use by alice — last: go_to example.com · 4s ago
 You are a second agent on this browser. Two agents cannot share one tab.
 Run your task in your own tab — three commands:
   1. co browser tab open <name> --who <your-name> --for "<what you are doing>"
-  2. co browser -t <name> <verb> [args]      # add -t <name> to EVERY command, including do
+  2. co browser -t <name> <verb> [args]      # add -t <name> to EVERY command, including quoted tasks
   3. co browser tab close <name>             # when your task is done
 
 see who owns what:  co browser tab ls
@@ -131,7 +131,7 @@ parsing prose:
 | `2`  | usage error (bad flags, empty `-t`, `tab` misuse, wrong arguments for a function — the message shows its signature — or a `go_to` address that is not a web URL) |
 | `3`  | nothing to act on: unknown tab (`-t` names a tab that was never `tab open`ed), or no browser is open yet — the message names the `go_to` that opens one |
 | `4`  | tab busy (another agent is mid-task on that tab, or an earlier command on it is still running past this one's deadline) |
-| `5`  | `do` cannot tell which account pays for its model, or has no credentials — run `co auth` |
+| `5`  | A quoted task cannot tell which account pays for its model, or has no credentials — run `co auth` |
 | `6`  | the running daemon is pinned to a different engine than the one asked for — the message names the commands that work |
 
 A selector that matches nothing is a failure for the functions that act on it
@@ -152,12 +152,13 @@ name (`"not a url"`). A bare host still gets a scheme, as always:
 
 ```
 co browser [-t TAB] <function> [args]    run a browser function (bare = the shared 'main' tab)
-co browser [-t TAB] do "<instruction>"   let the AI agent do it — same targeting grammar
+co browser [-t TAB] "<instruction>"   let the AI agent do it — same targeting grammar
 co browser tab open [NAME] [--who <agent>] [--for "<purpose>"] [--needs 10m]   register a tab; prints its name
 co browser tab ls [--json]               the board: every tab, who runs it, last command
 co browser tab close <NAME>              release your tab when the task is done
 co browser status                        browser state, stealth-driver health, last command, the board
 co browser close                         close the browser and stop the daemon
+co browser import [--domain SITE] [--dry-run]   carry Chrome's logins (cookies) into this browser
 co browser help                          list every browser function
 co browser --headless <function>         run without a visible window (first command decides — see below)
 ```
@@ -289,20 +290,80 @@ writes and `BrowserAutomation(seed_state=...)` reads, and it is written 0600: it
 is a live login. A tab with no site open is told to `go_to` one (or pass
 `--all`) rather than being shown every cookie in the browser.
 
-### `do` — natural language
+### Importing logins from Chrome
 
-`do` hands the same live browser to an AI agent that sees the page and works out
+A new browser profile starts signed out of everything, and signing in again
+from a new browser is exactly what some sites flag as unusual. `co browser
+import` carries the session you already have in Google Chrome into the co
+browser profile instead:
+
+```bash
+co browser import --profile "Profile 1" --domain linkedin.com --dry-run   # sites and counts, nothing written
+co browser import --profile "Profile 1" --domain linkedin.com             # asks once, then imports
+co browser --engine wtf go_to https://www.linkedin.com/feed/              # check it landed signed in
+```
+
+- `--profile` takes Chrome's folder name (`Default`, `Profile 1`) or the name
+  Chrome shows for the profile (`openonion`). Default: `Default`.
+- `--domain` keeps one site and its subdomains; repeat it for more. Without it
+  every site in the profile is imported.
+- `--engine` picks the target. Without it the import goes to the engine
+  `co browser config` names, else to the paid WTF Browser, since that is the
+  profile that starts empty. A real import starts a browser session, and a WTF
+  Browser session is billed.
+- `--dry-run` lists sites and cookie counts only: no Keychain, no browser.
+- `--yes` skips the one confirmation; without a terminal it is required.
+- A site the target browser is already signed in to is left alone and
+  reported as "already signed in in the target", naming the login cookie it
+  found, so an import never switches an account the target is using. Signed
+  in means a login cookie, not any cookie: `user_session` on github.com,
+  `li_at` on linkedin.com, `SID`/`__Secure-1PSID` on google.com, `auth_token`
+  on x.com, `c_user` on facebook.com, `_aat` on airbnb.com; on other sites a
+  Secure, HttpOnly cookie named like a session (session/auth/token/sid) that
+  Chrome's profile also has. Anonymous cookies from an earlier visit do not
+  count: the import goes ahead and reports how many it replaced. `--replace`
+  imports over a real login; cookies with the same name, domain and path are
+  overwritten and the others stay.
+
+How it works: the command reads a private copy of Chrome's cookie database
+(Chrome locks the file while it runs, and the source profile is never
+modified), decrypts it with the "Chrome Safe Storage" key from the macOS
+Keychain the way Chrome does, and writes each site through the target
+browser's own cookie API (Playwright `add_cookies`) — so the target encrypts
+them however it stores cookies, including a mock keychain. Cookie values are
+never printed. The report names every cookie that was skipped and why:
+expired, partitioned (it belongs to one embedding site), undecryptable, or
+rejected by the target browser.
+
+Limits of this first version:
+
+- **macOS and Google Chrome only.** Other browsers and platforms are not read yet.
+- **Cookies only.** Local storage, saved passwords, history and extensions are
+  not imported; saved passwords are never read.
+- **The Keychain dialog.** macOS may ask whether `security` may read
+  "Chrome Safe Storage". That is the key Chrome encrypts its cookies with;
+  choose Allow. Deny, and nothing is imported.
+- **Device-bound sessions.** A site that ties its session to the device
+  (Google, some banks) may still ask you to sign in. Verify with
+  `co browser --engine wtf go_to https://<site>`.
+- Playwright cannot create host-only cookies, so a cookie Chrome held for one
+  exact host is set as a domain cookie for that host; a `__Host-` cookie may be
+  rejected for the same reason and is reported as such.
+
+### A quoted task — natural language
+
+A quoted task hands the same live browser to an AI agent that sees the page and works out
 the steps itself — clicking, typing, scrolling, reading — until your instruction
 is done:
 
 ```bash
-co browser do "log into github with the saved credentials and open my notifications"
-co browser -t scrape do "collect every plan name and monthly price into a list"
+co browser "log into github with the saved credentials and open my notifications"
+co browser -t scrape "collect every plan name and monthly price into a list"
 ```
 
 Describe the **end state** you want ("download the June invoice PDF"), not the
-steps. `do` costs LLM calls and is slower than direct functions — use functions
-for anything deterministic, `do` for judgment. The model loop runs in the CLI
+steps. A quoted task costs LLM calls and is slower than direct functions — use functions
+for anything deterministic, a quoted task for judgment. The model loop runs in the CLI
 process; each browser action takes one short daemon turn, so other tabs can make
 progress while the model thinks. A command targeting the same claimed tab still
 exits 4, preserving ownership instead of interleaving two tasks on one page.
@@ -336,7 +397,7 @@ once, so they cannot fix the mode before the `go_to` that was meant to.
   someone else to take the tab — wrong when you are waiting on a slow page or
   a human.
 - **Concurrent agents:** each `tab open`s once, adds `-t <name>` to **every**
-  command (including `do`), and `tab close`s when finished. Set `CO_WHO`.
+  command (including a quoted task), and `tab close`s when finished. Set `CO_WHO`.
 - **On an exit-4:** don't retry the same bare command — open your own tab (the error
   tells you how). Two agents on one page corrupt each other's navigation.
 - **On an exit-3:** `tab open` the name first, then target it — a tab must be
@@ -411,7 +472,7 @@ loser exits and its command is served by the winner.
 ### Restart the daemon after an upgrade or downgrade
 
 Installing a new ConnectOnion package does not replace a browser daemon that is
-already running. Before the first `co browser do` on the new version, stop the
+already running. Before the first `co browser "<instruction>"` on the new version, stop the
 old process cleanly:
 
 ```bash

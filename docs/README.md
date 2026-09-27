@@ -1577,6 +1577,9 @@ agent = Agent(
 
 ConnectOnion provides ready-to-use plugins:
 
+The copyable [`watch_events` plugin](useful_plugins/watch_events.md) inserts
+events supplied by its caller at the next Agent iteration boundary.
+
 **ReAct Plugin (`re_act`)** - Uses ReAct-style reasoning to plan next steps:
 
 ```python

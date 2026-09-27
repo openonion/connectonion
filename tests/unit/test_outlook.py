@@ -1701,3 +1701,20 @@ class TestDownloadAttachments:
         ])
 
         assert outlook.download_attachments("msg-id", tmp_path / "out") == []
+
+
+def test_list_between_keeps_the_recipients_names(monkeypatch):
+    """Graph returns each recipient's name next to the address; the listing kept
+    only the address, so every person the owner wrote to from Outlook was mapped
+    as a bare address (#1844)."""
+    from connectonion.useful_tools.outlook import Outlook
+    outlook = Outlook.__new__(Outlook)
+    message = {"id": "1", "from": {"emailAddress": {"address": "me@x.y", "name": "Me"}},
+               "toRecipients": [{"emailAddress": {"address": "ody@g.com", "name": "Ody Zhou"}},
+                                {"emailAddress": {"address": "bare@g.com", "name": "bare@g.com"}}],
+               "ccRecipients": [{"emailAddress": {"address": "dora@g.com", "name": ""}}],
+               "subject": "s", "receivedDateTime": "2026-09-10T00:00:00Z", "bodyPreview": "Hi", "isRead": True}
+    monkeypatch.setattr(outlook, "_request", lambda *a, **k: {"value": [message]}, raising=False)
+    row = outlook.list_between("2026-09-01T00:00:00+00:00", "2026-09-20T00:00:00+00:00")[0]
+    assert row["to"] == ["Ody Zhou <ody@g.com>", "bare@g.com"]
+    assert row["cc"] == ["dora@g.com"]

@@ -1,0 +1,2 @@
+version: v1.8.9b10
+no_visual_change: "The model default and credit tip change text responses and CLI error copy, without changing an application screen or visual layout; the production API evidence is recorded in the release notes"

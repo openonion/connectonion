@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .files import Notebook, atomic_write
+from .files import Notebook, atomic_write, maintenance_lock
 from .scan import scan_people, scan_projects, canonical_origin, AUTOMATED_HINT
 from .skill_map import map_skills
 from .org_map import map_orgs
@@ -17,7 +17,7 @@ def _record(category: str, name: str, identity: str) -> str:
     return f'{category}/{slug}-{hashlib.sha256(identity.encode()).hexdigest()[:10]}.md'
 
 
-def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None) -> tuple[list[dict], set]:
+def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None, progress=None) -> tuple[list[dict], set]:
     own, available, merged = set(mine), {}, {}
     for kind, client in clients.items():
         try:
@@ -27,6 +27,8 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None) -> t
             coverage.append(f'{kind}: unavailable ({type(error).__name__}); not searched')
             if errors is not None: errors.append({'source': kind, 'stage': 'account', 'error': type(error).__name__})
     for kind, client in available.items():
+        if progress:
+            progress(f"scanning {kind} mail metadata")
         try:
             rows = scan_people({kind: client}, days, own)
         except Exception as error:
@@ -39,6 +41,8 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None) -> t
         # names first (#1616).
         found = f'{len(rows)} correspondents' if rows else 'no correspondents in this window'
         coverage.append(f'{kind}: metadata only, {days} days, at most 200 messages per seven-day window; ' + found)
+        if progress:
+            progress(f"scanned {kind} mail metadata", len(rows))
         for row in rows:
             old = merged.get(row['address'])
             if old:
@@ -253,8 +257,87 @@ def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
         notebook.write(record, page)
 
 
-def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150,
-              skill_directories=None, mine=(), source_errors=None, absent=None, name: str = '') -> dict:
+SCRATCH = re.compile(r'/Documents/Codex/\d{4}-\d{2}-\d{2}/([^/]+?)(?:-\d+)?$')
+
+
+def _scratch_identity(path: str) -> str:
+    """Codex's dated scratch folders: one project, however many days it was opened.
+
+    `Documents/Codex/2026-08-22/realtime-voice-chat`, `…/2026-08-26/…` and
+    `…-2`, `…-3` were six project pages on a real notebook -- no repository to
+    join them by, so each folder was its own project.
+    """
+    match = SCRATCH.search(path)
+    return f"codex-scratch:{match.group(1)}" if match else ''
+
+
+def _mapped_only(page: str) -> bool:
+    return 'not investigated yet' in next(
+        (line for line in page.splitlines() if line.startswith('Investigation:')), '')
+
+
+def _archive_stale(notebook: Notebook, report: dict) -> list[str]:
+    """Move pages an earlier map made, and nobody investigated, that this map would not make.
+
+    Maps get better and their old output stays: a real notebook carried ten
+    project pages for the Wiki's own task folders, six for one project's scratch
+    folders, and two pages for Dora -- one titled by her address from an older
+    map. Maintenance saw the duplicates, tried to merge them by deleting one, and
+    was refused, batch after batch. Only a page that holds nothing but map output
+    is moved, and it is moved, not deleted, to .state/archived/.
+    """
+    from .investigate import project_paths
+    from .scan import project_exclusion
+    moved = []
+    used = {row.get('record') for row in report['people'] + report['projects'] + report['orgs'] if row.get('record')}
+    used.add((report.get('owner') or {}).get('record'))
+    covered = {path for row in report['projects'] for path in row.get('paths', [])}
+    emails = {email.casefold() for person in notebook.people() if person['path'] in used for email in person['emails']}
+    notices = {row['address'].casefold() for row in report.get('automated_correspondents', [])}
+    for person in notebook.people():
+        record = person['path']
+        if record in used or not _mapped_only(notebook.read(record)):
+            continue
+        addresses = {email.casefold() for email in person['emails']}
+        # Another page keeps this address, or every address is now a notice
+        # sender (an older map made a "person" called Google).
+        if addresses & emails or (addresses and addresses <= notices):
+            moved.append(record)
+    for record in notebook.list('projects'):
+        page = notebook.read(record)
+        if record in used or not _mapped_only(page):
+            continue
+        paths = project_paths(page)
+        if paths and all(path in covered or project_exclusion(Path(path)) for path in paths):
+            moved.append(record)
+    # An organisation this map would not make: a subdomain now merged into its
+    # company, or a domain only notice senders use.
+    moved += [record for record in notebook.list('orgs')
+              if record not in used and _mapped_only(notebook.read(record))]
+    for record in moved:
+        target = notebook.root / '.state' / 'archived' / record
+        target.parent.mkdir(parents=True, exist_ok=True)
+        notebook.path(record).replace(target)
+    return sorted(moved)
+
+
+def build_map(root: Path, subscriptions: dict, clients: dict, *args, **options) -> dict:
+    """Map under the lock every other writer holds.
+
+    The map moves pages now (stale ones go to .state/archived/). On a real
+    notebook a scheduled maintenance batch started while init was running,
+    chose a page as a lead, and failed when init archived it; and because pages
+    had changed during the batch -- init's, not its own -- the batch was taken
+    as written and its forty messages were skipped. One writer at a time: a
+    tick during init finds the Wiki busy and retries five minutes later.
+    """
+    with maintenance_lock(root):
+        return _build_map(root, subscriptions, clients, *args, **options)
+
+
+def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150,
+               skill_directories=None, mine=(), source_errors=None, absent=None, name: str = '',
+               progress=None) -> dict:
     """Map observed identities; correspondent classification remains unassessed."""
     notebook = Notebook(root)
     report = {'phase': 'mapping', 'started': datetime.now(timezone.utc).isoformat(),
@@ -270,9 +353,11 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
     def save():
         atomic_write(state, json.dumps(report, ensure_ascii=False, indent=2) + '\n')
     save()
-    report['skills'] = map_skills(notebook, skill_directories)
+    if progress:
+        progress("mapping installed skills")
+    report['skills'] = map_skills(notebook, skill_directories, lock_held=True)
     save()
-    people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'])
+    people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress)
     roster = notebook.people()
     if own:
         aliases = sorted({address.casefold() for address in own})
@@ -312,6 +397,13 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
         name = next((row['name'] for row in group if row.get('name')), '') or first['address']
         record = existing or _record('people', name, first['address'])
         made = notebook.stub_person(record, name, addresses, email=', '.join(addresses))
+        if not made and '@' not in name:
+            # A page an older map titled with an address, now that a name is
+            # known. Only map output is retitled; an investigated page keeps its title.
+            page = notebook.read(record)
+            title = page.split('\n', 1)[0]
+            if title.startswith('# ') and '@' in title and _mapped_only(page):
+                notebook.write(record, f'# {name}\n' + page.split('\n', 1)[1])
         mails = sum(row.get('mails', 0) for row in group)
         report['people'].append({**first, 'mails': mails, 'addresses': addresses, 'record': record,
                                  'sent': sum(row.get('sent', 0) for row in group),
@@ -366,14 +458,18 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
     report['coverage'] += [f'{kind}: ' + (absent.get(kind) or 'not configured or disabled; not searched')
                            for kind in ('gmail', 'outlook') if kind not in clients]
     report['orgs'], created_orgs = map_orgs(notebook, org_rows, report['started'], days, _record)
+    if progress:
+        progress("mapped people and organizations", len(report['people']) + len(report['orgs']))
     report['created'] += created_orgs
     report['coverage'].append('Organizations: exact observed mail domains, including single contacts and notices; '
                               'known public mailbox domains excluded; mailbox-provider list is not exhaustive; '
                               'organization identity unverified; existing organization pages preserved')
     save()
     groups = {}
+    if progress:
+        progress("scanning local projects")
     for row in scan_projects(subscriptions, days, root):
-        identity = canonical_origin(row['origin']) or row['repo'] or row['path']
+        identity = canonical_origin(row['origin']) or row['repo'] or _scratch_identity(row['path']) or row['path']
         group = groups.setdefault(identity, {'name': Path(row['repo'] or row['path']).name,
                                             'paths': [], 'sessions': 0, 'first': row['first'], 'last': row['last']})
         group['paths'].append(row['path'])
@@ -381,10 +477,10 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
         group['first'] = min(group['first'], row['first'])
         group['last'] = max(group['last'], row['last'])
     for identity, row in groups.items():
+        from .investigate import project_paths
         record = _record('projects', row['name'], identity)
         existing = next((r for r in notebook.list('projects')
-                         if any(path in notebook.read(r).splitlines() or f'- {path}' in notebook.read(r).splitlines()
-                                for path in row['paths'])), None)
+                         if any(path in project_paths(notebook.read(r)) for path in row['paths'])), None)
         record = existing or record
         if notebook.stub_project(record, row['name'], row['paths'], sessions=row['sessions'],
                                  first_seen=row['first'], last_seen=row['last']):
@@ -396,8 +492,9 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
             body = section.group(1)
             for label, value in (('Sessions', row['sessions']), ('First seen', row['first']), ('Last seen', row['last'])):
                 body = re.sub(r'^- ' + label + r': (?:[0-9-]+)$', '- ' + label + ': ' + str(value), body, flags=re.M)
+            recorded_paths = set(project_paths(page))
             for path in row['paths']:
-                if '- ' + path not in body.splitlines():
+                if path not in recorded_paths:
                     body = '- ' + path + '\n' + body
             updated = page[:section.start(1)] + body + page[section.end(1):]
             if updated != page:
@@ -407,8 +504,14 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
                            for name, sub in subscriptions.items() if sub.get('kind') in ('codex', 'claude-code')]
     if report.get('owner'):
         _fill_owner(notebook, report, owner_name)
+    report['archived'] = _archive_stale(notebook, report)
+    if report['archived']:
+        report['coverage'].append(f"{len(report['archived'])} pages an earlier map made and nobody investigated were "
+                                  "duplicates or sandboxes; moved to .state/archived/")
     report.update(phase='partial' if report['errors'] else 'mapped', finished=datetime.now(timezone.utc).isoformat(),
                   investigation='not started', classification='unassessed; no correspondents filtered')
+    if progress:
+        progress("mapped projects", len(report['projects']))
     save()
     for category in ('people', 'projects', 'orgs'):
         lines = [f'# {category.capitalize()} map', '', 'Generated enumeration; not an investigation or importance ranking.', '']

@@ -21,6 +21,11 @@ from connectonion import Agent
 from connectonion.network.host.http_router import input_handler
 from connectonion.network.host.session import Session, SessionStorage
 from tests.utils.mock_helpers import MockLLM
+import pytest
+
+# Agents and hosts built here write .co/ under the working directory; each
+# test gets its own, not the repository's shared one (tests/conftest.py).
+pytestmark = pytest.mark.usefixtures("own_project")
 
 
 class TestInputKeepsWhatItIsGiven:

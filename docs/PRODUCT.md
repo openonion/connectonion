@@ -139,7 +139,7 @@ answer to "do I have to buy into all of this?" is that you do not.
 
 | Command | What it does |
 |---|---|
-| `co browser` | a persistent daemon owning **one real browser**. Log in by hand once — including 2FA — and every later command reuses that session. ~40 operations: click, type, upload, extract a table, screenshot, run a script. `co browser do "…"` puts an LLM on the same live browser (`cli/commands/browser_commands.py:20-40`, `useful_tools/browser_tools/browser.py`) |
+| `co browser` | a persistent daemon owning **one real browser**. Log in by hand once — including 2FA — and every later command reuses that session. ~40 operations: click, type, upload, extract a table, screenshot, run a script. `co browser "…"` puts an LLM on the same live browser (`cli/commands/browser_commands.py:20-40`, `useful_tools/browser_tools/browser.py`) |
 | `co gmail` | inbox, read, reply, send, sent, search (`cli/main.py:498-569`) |
 | `co outlook` | mail plus contacts, deferred and scheduled send |
 | `co gdrive` | list, search, get, put, rm |

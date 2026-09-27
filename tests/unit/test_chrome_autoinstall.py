@@ -24,16 +24,25 @@ from connectonion.network.oip import browser_daemon_pb2 as wire
 from connectonion.network.oip.framing import decode_frame, encode_frame
 
 
+# chrome_finder.os.path is the process-wide os.path, and Path.exists goes
+# through it. Left patched until monkeypatch's own teardown, it was still
+# patched when conftest's project check ran, which then walked straight past
+# the repository's .git (it "did not exist") into whatever .co/ lies above —
+# a failure only in a worktree nested in another checkout. Undo it in the test.
 def test_find_system_chrome_hits_an_existing_candidate(monkeypatch):
     monkeypatch.setattr(chrome_finder.platform, "system", lambda: "Windows")
     win_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-    monkeypatch.setattr(chrome_finder.os.path, "exists", lambda p: p == win_path)
-    assert chrome_finder.find_system_chrome() == win_path
+    with monkeypatch.context() as patch:
+        patch.setattr(chrome_finder.os.path, "exists", lambda p: p == win_path)
+        found = chrome_finder.find_system_chrome()
+    assert found == win_path
 
 
 def test_find_system_chrome_none_when_absent(monkeypatch):
-    monkeypatch.setattr(chrome_finder.os.path, "exists", lambda p: False)
-    assert chrome_finder.find_system_chrome() is None
+    with monkeypatch.context() as patch:
+        patch.setattr(chrome_finder.os.path, "exists", lambda p: False)
+        found = chrome_finder.find_system_chrome()
+    assert found is None
 
 
 class _RecordingRun:

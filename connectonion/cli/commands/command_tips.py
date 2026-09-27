@@ -105,10 +105,11 @@ NEXT = {
     "co ai": HANDLER,                 # the answer is the output
     "co announce": "Give subscribers the address they follow:  co keys",
     "co auth": HANDLER,               # every path ends "Next: co status" / "co outlook inbox"
-    "co browser": HANDLER,            # rotating tip on stderr; exits by raise
+    "co browser": HANDLER,            # rotating tip on stderr; `import` names its own go_to check; exits by raise
     "co claude run": 'Continue this Claude session:  co claude run "<next task>" --session <session-id>',
     "co call": HANDLER,               # prints the remote's own output; exits by raise
-    "co commands": HANDLER,           # ends with the --help pointer itself
+    "co commands": HANDLER,
+    "co audit": HANDLER,              # names --review, or the rerun after a fix           # ends with the --help pointer itself
     "co copy": HANDLER,               # "co copy --list" after a copy; --list ends with usage
     "co create": HANDLER,             # "co deploy" after the resources block
     "co deploy": HANDLER,             # cloud: "co status"; --to: the journalctl line

@@ -71,8 +71,8 @@ def calendar(ctx: typer.Context):
 
 
 @outlook_calendar_app.command("list", epilog="Example:  co outlook calendar list --days 14")
-def list_events(days: int = typer.Option(7, "--days", min=1),
-                last: int = typer.Option(20, "--last", "-n", min=1, max=250)):
+def list_events(days: int = typer.Option(7, "--days", min=1, help="How many days ahead to include, starting now"),
+                last: int = typer.Option(20, "--last", "-n", min=1, max=250, help="Maximum events to show")):
     """List upcoming events with stable event IDs (not row numbers). Read-only."""
     _run("list_events", days_ahead=days, max_results=last)
 
@@ -83,21 +83,21 @@ def today():
     _run("get_today_events")
 
 
-@outlook_calendar_app.command("read", epilog="Example:  co outlook calendar read <event-id>")
+@outlook_calendar_app.command("read", epilog="Example:  co outlook calendar read AAMkAGQ5ZjE3LTJiYzEAAA=")
 def read(event_id: str = typer.Argument(..., help="Exact event ID from co outlook calendar list")):
     """Read one event by ID. Read-only."""
     _run("get_event", event_id)
 
 
 @outlook_calendar_app.command("meetings", epilog="Example:  co outlook calendar meetings --days 14")
-def meetings(days: int = typer.Option(7, "--days", min=1)):
+def meetings(days: int = typer.Option(7, "--days", min=1, help="How many days ahead to include, starting now")):
     """Read upcoming events that have attendees. Read-only."""
     _run("get_upcoming_meetings", days_ahead=days)
 
 
 @outlook_calendar_app.command("free", epilog="Example:  co outlook calendar free 2026-10-01 --minutes 30")
 def free(date: str = typer.Argument(..., help="YYYY-MM-DD; business hours in UTC"),
-         minutes: int = typer.Option(60, "--minutes", min=1, max=480)):
+         minutes: int = typer.Option(60, "--minutes", min=1, max=480, help="Length of free time to find, in minutes")):
     """Find free slots between 09:00 and 17:00 UTC on one day. Read-only."""
     _run("find_free_slots", date, duration_minutes=minutes)
 
@@ -106,9 +106,9 @@ def free(date: str = typer.Argument(..., help="YYYY-MM-DD; business hours in UTC
 def create(title: str = typer.Argument(..., help="Event title"),
            start: str = typer.Argument(..., help=TIME_HELP),
            end: str = typer.Argument(..., help=TIME_HELP),
-           description: Optional[str] = typer.Option(None, "--description"),
+           description: Optional[str] = typer.Option(None, "--description", help="Event description, plain text"),
            attendees: Optional[str] = typer.Option(None, "--attendees", help="Comma-separated emails"),
-           location: Optional[str] = typer.Option(None, "--location"),
+           location: Optional[str] = typer.Option(None, "--location", help="Location text shown on the event"),
            yes: bool = typer.Option(False, "--yes", help="Create this event; default is a local preview")):
     """Create an event. Previews until --yes, which Creates it in your calendar and invites any --attendees."""
     options = dict(description=description, attendees=attendees, location=location)
@@ -121,11 +121,11 @@ def teams(title: str = typer.Argument(..., help="Meeting title"),
           start: str = typer.Argument(..., help=TIME_HELP),
           end: str = typer.Argument(..., help=TIME_HELP),
           attendees: str = typer.Option(..., "--attendees", help="Comma-separated emails"),
-          description: Optional[str] = typer.Option(None, "--description"),
+          description: Optional[str] = typer.Option(None, "--description", help="Event description, plain text"),
           yes: bool = typer.Option(False, "--yes", help="Create the event and its Teams link; default previews")):
     """Create an event with a Microsoft Teams meeting link. Previews until --yes, which Creates it and invites the --attendees.
 
-    Teams meetings need a work or school Microsoft account; on a personal account the command refuses before anything is created or sent (#1719).
+    Teams meetings need a work or school Microsoft account; on a personal account the command stops before anything is created or sent.
     """
     options = dict(attendees=attendees, description=description)
     if _confirm(yes, "teams", [title, start, end], options):
@@ -134,12 +134,12 @@ def teams(title: str = typer.Argument(..., help="Meeting title"),
 
 @outlook_calendar_app.command("update", epilog="Example:  co outlook calendar update <event-id> --location \"Room 4\" --yes")
 def update(event_id: str = typer.Argument(..., help="Exact event ID from co outlook calendar list"),
-           title: Optional[str] = typer.Option(None, "--title"),
+           title: Optional[str] = typer.Option(None, "--title", help="New event title"),
            start: Optional[str] = typer.Option(None, "--start", help=TIME_HELP),
            end: Optional[str] = typer.Option(None, "--end", help=TIME_HELP),
-           description: Optional[str] = typer.Option(None, "--description"),
+           description: Optional[str] = typer.Option(None, "--description", help="Event description, plain text"),
            attendees: Optional[str] = typer.Option(None, "--attendees", help="Comma-separated emails"),
-           location: Optional[str] = typer.Option(None, "--location"),
+           location: Optional[str] = typer.Option(None, "--location", help="Location text shown on the event"),
            yes: bool = typer.Option(False, "--yes", help="Apply the supplied fields to this exact event; default previews")):
     """Update the supplied fields; omitted fields are preserved. Previews until --yes, which Changes the event."""
     options = dict(title=title, start=start, end=end, description=description, attendees=attendees, location=location)
@@ -151,9 +151,10 @@ def update(event_id: str = typer.Argument(..., help="Exact event ID from co outl
              description=description, attendees=attendees, location=location)
 
 
-@outlook_calendar_app.command("delete", epilog="Example:  co outlook calendar delete <event-id> --yes")
+@outlook_calendar_app.command("delete", epilog="Example:  co outlook calendar delete AAMkAGQ5ZjE3LTJiYzEAAA=  |  "
+                                               "co outlook calendar delete AAMkAGQ5ZjE3LTJiYzEAAA= --yes")
 def delete(event_id: str = typer.Argument(..., help="Exact event ID from co outlook calendar list"),
            yes: bool = typer.Option(False, "--yes", help="Delete the exact event; default previews")):
-    """Delete an event by its stable ID, never by a listing number. Previews until --yes, which Deletes it."""
+    """Delete one event by its ID from co outlook calendar list. Without --yes it only previews and changes nothing; --yes Deletes it."""
     if _confirm(yes, "delete", [event_id], {}):
         _run("delete_event", event_id)

@@ -1,5 +1,6 @@
 """Run blocking agent steps while keeping the interrupt mailbox responsive."""
 
+import contextvars
 import copy
 import threading
 import time
@@ -245,8 +246,12 @@ def run_interruptible(
         except BaseException as error:
             box["error"] = error
 
+    # Carry this thread's context into the worker: the running agent is a
+    # ContextVar, and an llm_do inside a tool must still find it (#730).
+    context = contextvars.copy_context()
     worker = threading.Thread(
-        target=run,
+        target=context.run,
+        args=(run,),
         name="connectonion-interruptible-step",
         daemon=True,
     )

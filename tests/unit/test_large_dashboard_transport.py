@@ -14,6 +14,12 @@ from connectonion.network.host.ws_router import dashboard
 
 
 @pytest.mark.slow
+# Sealing and opening 128 MiB is CPU work: about 9s on an idle Mac, 27s with
+# three busy processes per core, and the process peaks near 3.6 GB. In a full
+# `-n auto` run on a machine already busy with another suite it passed the
+# suite's 60s and was killed. The websocket round trip itself is ~2s and keeps
+# its own 30s bound below; this bounds the whole test.
+@pytest.mark.timeout(180)
 @pytest.mark.asyncio
 async def test_full_128_mib_dashboard_survives_sealed_websocket(tmp_path, monkeypatch):
     monkeypatch.setattr(dashboard, '_project_dir', tmp_path)

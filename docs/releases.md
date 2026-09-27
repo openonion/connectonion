@@ -13,27 +13,30 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current release
 
-Stable **1.8.7** repairs large Control Center snapshots: the Host accepts up
-to 128 MiB of HTML within a 256 MiB WebSocket envelope and gives a visible
-failure when a load cannot complete. See [1.8.7 release notes](releases/1.8.7.md).
+Stable **1.8.8** is the default production channel. See
+[1.8.8 release notes](releases/1.8.8.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.7'
+python -m pip install --upgrade 'connectonion==1.8.8'
 ```
 
 ## Current preview
 
-Beta **1.8.8b4** adds a native Claude Code terminal Work Room to the Wiki
-preview line. `co claude --cwd /path/to/project` prints a private pairing code
-and an O Chat link. After pairing, the browser can watch the same Claude
-session, take control, send a direct continuation, and return it to the
-terminal. See [1.8.8b4 release notes](releases/1.8.8b4.md) for tested scope
-and current limits.
+Beta **1.8.9b17** makes Gemini 3.8 the default model again; the free `co/gemma`
+and `co/llama` stay selectable and are what `co status` names at a zero
+balance. Earlier previews in this line added WhatsApp pictures and files
+(b16), named people in the Wiki map (b16), budgeted the Wiki on the Codex week
+(b15), `co browser import` and a local `co wiki open` (b13). See
+[1.8.9b17 release notes](releases/1.8.9b17.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.8b4'
-co claude --cwd /path/to/project
+python -m pip install --upgrade 'connectonion==1.8.9b17'
+co --version
 ```
+
+The Host watcher shipped in b9 and remains in b11. It is removed from b12;
+Agent-owned watches belong to the session runtime
+tracked in [#1788](https://github.com/openonion/connectonion/issues/1788).
 
 <details>
 <summary>The preview line that became 1.8.5</summary>

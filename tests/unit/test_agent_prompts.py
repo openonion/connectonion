@@ -18,6 +18,10 @@ from unittest.mock import Mock
 from connectonion import Agent
 from connectonion.prompts import DEFAULT_PROMPT
 
+# Agents and hosts built here write .co/ under the working directory; each
+# test gets its own, not the repository's shared one (tests/conftest.py).
+pytestmark = pytest.mark.usefixtures("own_project")
+
 
 class TestAgentSystemPrompts:
     """Test Agent initialization with various system prompt formats."""

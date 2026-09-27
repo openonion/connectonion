@@ -26,6 +26,14 @@ from connectonion.useful_tools.browser_tools._async_browser import (
 
 
 @pytest.mark.slow
+# Not the suite's 60s. This drives a real Chromium through every verb, and the
+# product's own pauses (a second after each humanized click, the scroll
+# fallback, the waits under test) add up to about 36s on an idle Mac. The
+# same run under `-n auto` beside other Chromium tests took 60-90s, and
+# pytest-timeout killed it mid-step — then blamed the Chromium waiter thread
+# it left behind. The assertions that prove interleaving carry their own
+# short deadlines; this only bounds the whole walk.
+@pytest.mark.timeout(240)
 def test_real_async_driver_keeps_sessions_isolated_and_interleaves(
     tmp_path, monkeypatch
 ):

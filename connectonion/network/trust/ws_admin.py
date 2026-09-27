@@ -7,9 +7,9 @@ LLM-Note:
     • doors_that_open(onboard, self_address) — the single rule: an invite code counts only if _resolve_codes yields one (an unset $CO_INVITE_CODE yields nothing, #561), a payment counts only if there is an address to send it to → {methods, payment_amount, payment_address} or None
     • get_onboard_requirements(trust_agent) — read trust_agent.config.onboard → doors_that_open(…, trust_agent.get_self_address()) or None
     • handle_onboard_submit(data, send_msg, route_handlers) — auth via route_handlers["auth"](data, "open") → check trust_agent.is_blocked → verify_invite or verify_payment → reply ONBOARD_SUCCESS with new level or ERROR
-    • handle_admin_message(data, send_msg, route_handlers) — auth + is_admin gate → ADMIN_PROMOTE/DEMOTE/BLOCK/UNBLOCK/GET_LEVEL routed to route_handlers admin_trust_* callbacks → ADMIN_ADD/REMOVE additionally gated on is_super_admin → reply ADMIN_RESULT
+    • handle_admin_message(data, send_msg, route_handlers, conn) — authenticated socket + signed type/recipient/nonce/one-use (authenticated_command_payload) + is_admin gate → ADMIN_PROMOTE/DEMOTE/BLOCK/UNBLOCK/GET_LEVEL routed to route_handlers admin_trust_* callbacks → ADMIN_ADD/REMOVE additionally gated on is_super_admin → reply ADMIN_RESULT
   State/Effects: mutates trust agent state via trust_agent.verify_invite/verify_payment and admin_trust_* / admin_admins_* callbacks | prints colored audit lines to stdout via rich.Console (✓/✗ with truncated agent_address) | sends frames to client via injected send_msg
-  Integration: exposes get_onboard_requirements(trust_agent), async handle_onboard_submit(data, send_msg, route_handlers), async handle_admin_message(data, send_msg, route_handlers) | route_handlers dict must contain auth, trust_agent, admin_trust_promote/demote/block/unblock/level, admin_admins_add/remove
+  Integration: exposes get_onboard_requirements(trust_agent), async handle_onboard_submit(data, send_msg, route_handlers), async handle_admin_message(data, send_msg, route_handlers, conn) | route_handlers dict must contain auth, replay (optional), trust_agent, admin_trust_promote/demote/block/unblock/level, admin_admins_add/remove
   Errors: returns ERROR frames (never raises) for: invalid signature, blocked agent_address, missing client_id/admin_id, bad invite code, insufficient payment, non-admin, non-super-admin, unknown admin action
   Security: ⚠️ all state-changing operations require valid signature + admin/super-admin level | invite/payment verification delegated to TrustAgent | invite values are never printed
 """
@@ -120,9 +120,45 @@ async def handle_onboard_submit(data, send_msg, route_handlers):
     await send_msg({"type": "ERROR", "message": "invite_code or payment required"})
 
 
-async def handle_admin_message(data, send_msg, route_handlers):
-    """Handle ADMIN_* messages from client."""
+def _admin_command(data, route_handlers, conn):
+    """The verified ADMIN_* command, or an error, held to what CONNECT holds.
+
+    These frames were handled on a socket that had never sent CONNECT, the
+    action was read from the unsigned top-level `type`, and nothing checked
+    the recipient or remembered the signature: an admin's signed BLOCK was
+    replayed as UNBLOCK, and as PROMOTE twice to whitelist a stranger (#1752).
+
+    Now the socket must be authenticated, and the frame must pass
+    authenticated_command_payload -- signed by the socket's owner, `type`
+    equal to the signed one, addressed to this host, carrying a nonce, used
+    once. On a signed-commands socket the session loop has already run
+    exactly that check (and spent the signature), so it is not run twice.
+    """
+    from ..host.auth import authenticated_command_payload
+    from ..host.ws_router.connect import replay_check_for
+
+    conn = conn or {}
+    if not conn.get("authenticated") or not conn.get("agent_address"):
+        return None, "unauthorized: ADMIN commands need an authenticated connection (send CONNECT first)"
+    if conn.get("signed_commands"):
+        return data, None
+    verified, error = authenticated_command_payload(
+        data, conn["agent_address"], conn.get("recipient_address"),
+        replay_check_for(conn, route_handlers),
+    )
+    if error:
+        return None, error
+    return {**verified, "payload": verified, "from": data.get("from"),
+            "signature": data.get("signature")}, None
+
+
+async def handle_admin_message(data, send_msg, route_handlers, conn=None):
+    """Handle ADMIN_* messages from an authenticated connection."""
     trust_agent = route_handlers["trust_agent"]
+    data, err = _admin_command(data, route_handlers, conn)
+    if err:
+        await send_msg({"type": "ERROR", "message": err})
+        return
     msg_type = data.get("type")
 
     _, agent_address, sig_valid, err = route_handlers["auth"](data, "open")

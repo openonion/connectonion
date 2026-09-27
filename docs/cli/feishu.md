@@ -277,12 +277,21 @@ like a working one.
 
 Each conversation keeps its own session, so a follow-up remembers the question
 it follows, and two threads of one group do not read as non-sequiturs to each
-other. On a Host the turn is recorded in `.co/session_results.jsonl` beside the
+other. One chat never sees another's messages: a new chat starts from the
+system prompt, not from whichever chat spoke last. On a Host the turn is recorded in `.co/session_results.jsonl` beside the
 interactive ones, carrying `via: feishu` and the sender.
 
 In 1.8.5 anyone who can address the bot can command it. A self-built
 application is scoped to your tenant and to the groups the bot was invited to,
 so that is your company, not the internet. Sender allowlists arrive in 1.9.
+
+Both watch the listener they depend on, the way `receive` does. One that dies
+is restarted. One that exits 3 (a missing SDK, a token the platform refused)
+is reported once with its reason, `feishu: the listener exited 3: …`, and that
+channel stops being answered until you fix it and restart; the web UI, other
+channels and the Host itself carry on. One that exits any other way and will
+not restart is reported once and tried again every minute, and messages already
+queued are still answered meanwhile.
 
 ## Any other agent, two lines
 
@@ -393,7 +402,7 @@ never sent to the Feishu console.
 
 ## Keeping it running
 
-`receive` and `consume` restart a listener that died, so a consumer loop is
+`receive`, `consume`, `co ai` and a Host restart a listener that died, so a consumer loop is
 enough for most setups. To hold the connection whether or not anything is
 consuming, run `listen` under the service manager you already have. On macOS:
 

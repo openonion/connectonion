@@ -198,6 +198,23 @@ def _paid_profile_dir():
     return True
 
 
+def _lock_dir_for(policy, resolved: str) -> Optional[Path]:
+    """The profile directory this launch will open, which is the only one whose
+    lock may refuse it — or None when onionwright chooses its own.
+
+    The check used to read the free engine's directory whatever the engine, so
+    an idle system-Chrome daemon holding ~/.co/browser_profile refused a paid
+    launch that would have opened ~/.onionwright/profiles/<address> (#1477
+    live test, 2026-09-27).
+    """
+    if policy is not None:
+        return policy.profile_dir
+    if resolved == browser_engine.ONION:
+        paid = _paid_profile_dir()
+        return paid if isinstance(paid, Path) else None
+    return _profile_dir()
+
+
 def has_display() -> bool:
     """Whether a headed browser can open a window here."""
     if platform.system() != "Linux":
@@ -738,10 +755,12 @@ class AsyncBrowserCore:
             if policy is not None and resolution.resolved != browser_engine.ONION:
                 raise native_egress_failure()
 
-            profile_dir = policy.profile_dir if policy is not None else _profile_dir()
-            profile_dir.mkdir(parents=True, exist_ok=True)
-            _clear_stale_profile_lock(profile_dir)
-            holder = _profile_lock_holder(profile_dir)
+            profile_dir = _lock_dir_for(policy, resolution.resolved)
+            holder = None
+            if profile_dir is not None:
+                profile_dir.mkdir(parents=True, exist_ok=True)
+                _clear_stale_profile_lock(profile_dir)
+                holder = _profile_lock_holder(profile_dir)
             if holder is not None:
                 error = RuntimeError(
                     f"Browser profile is already in use by another process (PID {holder}).\n"

@@ -27,7 +27,7 @@ import tempfile
 import time
 from pathlib import Path
 
-USAGE = """co proxy — share this computer's internet connection.
+USAGE = """co proxy — share this computer's internet connection. Read-only until share, which Starts lending it.
 
   co proxy share [to <address>]   lend your connection to one agent
   co proxy status                 what is shared right now

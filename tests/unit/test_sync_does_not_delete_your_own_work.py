@@ -123,7 +123,7 @@ class TestTheOtherSkillsStillInstall:
 class TestOurOwnSymlinkIsStillReplaced:
     """A re-sync has to keep working; that is what _replace is for."""
 
-    def test_a_stale_symlink_is_repointed(self, home, tmp_path):
+    def test_an_unrelated_symlink_is_not_repointed(self, home, tmp_path):
         fanout, root = home
         old = tmp_path / "old-target"
         old.mkdir()
@@ -134,9 +134,9 @@ class TestOurOwnSymlinkIsStillReplaced:
         bundle = _bundle(tmp_path, "thing")
         fanout.install_skill_dirs(bundle, "mapper", "codex")
 
-        assert dst.resolve() == (bundle / "skills" / "thing").resolve()
+        assert dst.resolve() == old.resolve()
 
-    def test_a_broken_symlink_is_replaced(self, home, tmp_path):
+    def test_an_unrelated_broken_symlink_is_not_replaced(self, home, tmp_path):
         fanout, root = home
         dst = root / ".codex" / "skills" / "mapper-thing"
         dst.parent.mkdir(parents=True)
@@ -146,7 +146,8 @@ class TestOurOwnSymlinkIsStillReplaced:
         fanout.install_skill_dirs(bundle, "mapper", "codex")
 
         assert dst.is_symlink()
-        assert dst.exists()
+        assert not dst.exists()
+        assert dst.readlink() == tmp_path / "nowhere"
 
     def test_a_fresh_install_still_works(self, home, tmp_path):
         fanout, root = home
@@ -177,13 +178,12 @@ class TestRemoveOnlyRemovesWhatWeInstalled:
 
     def test_our_symlink_is_removed(self, home, tmp_path):
         fanout, root = home
-        target = tmp_path / "bundle-skill"
-        target.mkdir()
+        bundle = _bundle(tmp_path, "thing")
         link = root / ".codex" / "skills" / "mapper-thing"
         link.parent.mkdir(parents=True)
-        link.symlink_to(target)
+        fanout.install_skill_dirs(bundle, "mapper", "codex")
 
-        fanout.uninstall_all("mapper")
+        fanout.uninstall_all("mapper", bundle=bundle)
 
         assert not link.exists() and not link.is_symlink()
 

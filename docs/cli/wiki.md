@@ -27,8 +27,8 @@ names in old help text, such as `people/emma.md`, are not built-in records.
 
 ```bash
 co wiki investigate          # What is left to investigate, by category; no model
-co wiki investigate me       # Fill your own page first
-co wiki open                 # Open the full-page Wiki in your browser
+co wiki investigate me --quick --days 5  # Bounded first pass; disclose uncovered sources
+co wiki open                 # Open a fresh snapshot of the notebook in your browser
 co wiki sync --dry-run       # Inspect pending metadata, without running a model
 co wiki sync                 # One update: new material, then at most one unfinished page
 co wiki logs                 # Inspect results, partial coverage and failures
@@ -64,6 +64,10 @@ Piping human output does not hide the next step. Grouped help covers:
 plus at most one unfinished-page investigation per local day when the day's
 call budget allows;
 `init` does neither. A mapped page is not an investigated or quality-approved page.
+For an initial trial, `co wiki init --days 5` preserves the same five-day
+window in its suggested next command. `investigate me --quick` samples recent
+evidence, takes one synthesis turn, and marks its coverage as partial. A full
+owner investigation can read substantially more material and cost much more.
 
 ## Installed-skill skeletons at initialization
 
@@ -184,9 +188,27 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co wiki sources remove codex` | Disable that source. |
 | `co wiki list people` / `show people/alice.md` / `search Alice` | Inspect Markdown without model calls. |
 | `co wiki status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. |
-| `co wiki open` | Open the full-page private Wiki through the current `co ai` Host when its identity is configured; otherwise open a local snapshot. |
-| `co wiki open --local` | Render and open the self-contained local HTML snapshot. |
-| `co wiki open --no-launch` | Return the page address without opening the browser. |
+| `co wiki open` | Render a fresh self-contained HTML snapshot to a temporary file and open it. Works offline; prints the file path and a `file://` link. |
+| `co wiki open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Checks first that the Host is online; if it is not, says so (start it with `co ai`) and opens the snapshot instead. Default notebook only. |
+| `co wiki open --no-launch` | Print the page without opening the browser. |
+
+Until 1.8.9 the default opened `https://chat.openonion.ai/<address>/wiki` before
+O Chat served that route, so the page never loaded (#1828). O Chat serves it
+since openonion/oo-chat#246; opening locally stays the default because it works
+offline and needs no Host, and the live view is asked for with `--live`. The
+route and both switches live in `connectonion/wiki/reader.py` (`LIVE_WIKI_URL`,
+`LIVE_WIKI_SERVED`, `LIVE_IS_DEFAULT`). `--local` is still accepted and always
+means the snapshot. If the live view says the Wiki is not yours, add the
+browser's address as an admin of the Host: `co trust admin add <address>`.
+
+The page reads each record for what it knows (#1836). A page carries one of
+three tags: **Mapped** (an outline from your sources; its status line still says
+"not investigated yet"), **Some findings** (written content, no investigation
+pass yet) and **Investigated**. "Unknown" lines and placeholders are not shown;
+the headings still empty are named once at the foot of the page with the
+`co wiki investigate '<page>'` command that fills them. Lists put pages with
+findings first, then newest last contact. The Markdown file is unchanged, and
+**Copy Markdown** at the foot copies it as written, unknowns included.
 
 `init` is the foreground Skill workflow. `start` remains the explicit
 background lifecycle command; initialization does not install a schedule.
@@ -318,10 +340,46 @@ a later maintenance failure. Reported tokens are not account quota or dollars.
 The input-character limit bounds gathered/digested material, not every tool
 read a delegated agent may perform.
 
-**Not implemented:** hard 2% initialization / 1% daily subscription spending
-limits, or a $1 stop budget. They need an actual provider meter in the shared
-execution layer. The init Skill now stops after the owner and ranked map by
-default and explicitly reports that percentage enforcement is unavailable.
+### Codex quota (#1843)
+
+With the Codex runner, the notebook reads your Codex plan's own meter: the
+weekly window's `used_percent`, its length and when it resets, as
+`codex app-server` reports them (`account/rateLimits/read`). Reading it starts
+no model turn and costs nothing. Codex reports whole percents, so every figure
+below is good to about one point.
+
+- **Every run records the meter before and after** (`quota` in the run log,
+  shown by `co wiki logs`). The difference is what that run cost in points of
+  your week, measured rather than estimated from tokens.
+- **Investigation has a weekly budget**, `limits.investigation_quota_points`,
+  default **10** points of the weekly window (owner, 2026-09-27). The
+  scheduled round adds up the points its investigation runs used since the
+  window last reset, and starts no new page once that reaches the budget.
+- **Manual investigation counts too** (#1842). `co wiki investigate PAGE`,
+  `me` and CATEGORY runs record the meter like the round does, and their
+  points count toward the same weekly budget. A CATEGORY run stops starting
+  pages when the weekly budget is spent, when its own `--budget N` is spent, or
+  at the floor, and says which; the page in flight finishes.
+- **The first pass after init** is `co wiki investigate all --budget 10`: one
+  queue over people, projects and organisations by weight (the same order the
+  round uses), until 10 points of the week are spent. `--list` shows that
+  order without running a model.
+- **A floor protects your own coding.** No investigation page starts once the
+  week is at `limits.quota_floor_percent` or more, default **70%**, however much
+  of the wiki's budget is left. The wiki shares this quota with your real work.
+- `co wiki status` reads the meter now and says it in two lines, for example
+  `Codex week: 5% used on pro; resets Sun 04 Oct 09:49` and
+  `Investigation this week: 0 of 10 points; nothing starts once the week is at 70%`.
+  `--json` gives the same numbers under `quota` and `investigation_quota`.
+- When the meter cannot be read (another runner, Codex not signed in, an older
+  Codex), the run says `quota: unknown (<why>)` and the daily call cap
+  (`limits.runner_calls_per_day`) is the only bound, as before.
+
+Maintenance is not quota-gated: it is the incremental daily pass and stays
+bounded by the call cap. Its cost now shows in points, so a cap can follow
+from real numbers. This supersedes the earlier unimplemented 2% initialization
+/ 1% daily targets, which needed exactly this meter.
+
 The scheduled daily round maintains first, then attempts at most one unfinished
 page per local day. It reserves a bounded number of investigation calls within
 the same daily attempt cap and leaves room for later maintenance slots when
@@ -386,22 +444,60 @@ to add People. To restrict mapping to a specific mailbox:
 ```sh
 co wiki init --mail outlook
 # or: co wiki init --mail gmail
+co wiki init --days 5       # small first-run trial
 co wiki open
 ```
 
-This reads correspondent metadata for the initialization window, not mail bodies,
-and does not install a schedule or enable ongoing mail collection. With `--mail`, only explicitly selected
+This reads correspondent metadata for the initialization window, plus the short
+preview the mail provider lists with each message; it does not open mail bodies,
+and does not install a schedule or enable ongoing mail collection.
+
+A person is named, in this order, by the name they write under, the name in the
+owner's saved contacts (Google contacts and "other contacts", Outlook contacts;
+skipped when the login cannot read them), and the owner's own greeting in a mail
+to that one person ("Hi Larry,", "Larry 你好，", "子明，"). A greeting to several
+people names none of them. On the owner's notebook this named 176 of 195 people
+the map had titled with a bare address. An organisation is the registrable
+domain (accounts.google.com and google.com are one), and a domain only notice
+senders write from gets no page. With `--mail`, only explicitly selected
 mailboxes are read. Missing or failed sources appear in the mapping coverage;
 without a selected mailbox the command explains why People is empty.
+The terminal shows mapping stages and a short count of People, Organizations,
+Projects and Skills. Full per-source details stay in `.state/map.json` under the
+Wiki root and in `--json` output. A custom `--days` window is preserved in the
+printed next command and retry tips.
 
 Skills lists one catalog entry per name. Open it to inspect each installed copy
 and its source path; implementations may differ. All underlying pages, links and
 annotations are preserved. The generated index is not counted as another skill.
 Project discovery excludes system temporary directories and removed Codex worktrees.
+It also excludes Wiki task copies under any notebook's `.state/tasks` and
+generated fixture notebooks, plus workspace containers holding multiple Git
+repositories, so repeated runs do not turn scratch pages or the enclosing
+projects folder into separate projects.
 
 ### Preview reliability checks
 
 Initialization reports partial failure with a nonzero exit if a selected mail source cannot be initialized or read. Completed maps remain available; provider error text is not exposed. Recovery commands retain the notebook root. Automated-looking correspondents are explicitly labelled candidates, not silently certified as people.
+
+After init, the suggested `co wiki investigate me --quick` is a bounded first
+pass: it samples recent items across available source types and labels the
+result partial. Remove `--quick` for a comprehensive owner investigation;
+that can take several extraction turns and substantially more time and model
+usage. `--quick` is only for `me`, and neither mode approves a candidate
+without review.
+
+`co wiki investigate <page> --days 5` reports source gathering, evidence
+preparation, extraction chunk counts when the material exceeds one model turn,
+and candidate writing in its run log and terminal. A failed model or provider
+call exits nonzero and keeps the page unchanged. Project investigations may
+inspect a bounded set of files in the page's recorded local Paths; the file
+inventory is a lead, not proof of file contents. Review the candidate and its
+citations before treating it as a verified Wiki page.
+Completed extraction chunks are checkpointed under `.state/extracts/investigate/`;
+rerunning the same evidence and model settings can reuse them after an
+interruption. The running log records the current chunk and usage from completed
+chunks. A changed source or extraction prompt invalidates the checkpoint.
 
 Repeated mapping refreshes generated project counts, dates and paths while preserving written notes. Skill pages retain authored descriptions and show current installed metadata in a separate managed section. Unchanged content is not rewritten. Equivalent SSH/HTTPS Git remotes share an identity; distinct case-sensitive repository paths remain distinct. Search groups skill installations just like the catalog, and the homepage labels its content as a snapshot rather than claiming every skeleton is maintained.
 

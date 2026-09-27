@@ -61,6 +61,14 @@ MEDIA_SUFFIX = {"image": ".jpg", "video": ".mp4", "audio": ".ogg",
 # and where it would have gone, which is recoverable; a full disk is not.
 MEDIA_MAX_BYTES = 64 * 1024 * 1024
 
+# What `send --image` / `--file` will put on the wire (#1856). WhatsApp shows a
+# picture inline only as JPEG, PNG or WebP and compresses anything past 16 MB;
+# a document is offered to open as-is. Checked before queueing, so a refusal
+# happens here, with the fix named, not as a vague error from the listener.
+IMAGE_LIMIT_BYTES = 16 * 1024 * 1024
+FILE_LIMIT_BYTES = 100 * 1024 * 1024
+_IMAGE_MAGIC = ((b"\xff\xd8\xff", "image/jpeg"), (b"\x89PNG\r\n\x1a\n", "image/png"))
+
 # How long `send` waits for the listener to pick the request up and answer.
 SEND_TIMEOUT_SECONDS = 30.0
 # A request older than the sender's wait plus this has no sender left: it gave
@@ -217,6 +225,17 @@ KINDS = {
 }
 
 
+# Delivery metadata WhatsApp attaches to a message, not something a person
+# sent. `messageContextInfo` rides on nearly every group message and
+# `senderKeyDistributionMessage` on a sender's first post to a group. Naming
+# the kind after them turned 46% of one owner's group text into
+# "messagecontextinfo" (#1858).
+CARRIERS = {"messageContextInfo", "senderKeyDistributionMessage"}
+# The kind of a frame that carries nothing but CARRIERS. Not a message: see
+# to_message, and #1837.
+PROTOCOL_ONLY = "protocol-only"
+
+
 def _kind(message) -> str:
     """Which of WhatsApp's 107 message variants this is.
 
@@ -229,7 +248,13 @@ def _kind(message) -> str:
         fields = message.ListFields()
     except AttributeError:
         return "text"
+    carried = False
     for descriptor, _ in fields:
+        name = getattr(descriptor, "name", "") or ""
+        # Plain text is a string field, so the message-typed walk below never
+        # sees it; checked first, by name.
+        if name == "conversation":
+            return "text"
         repeated = getattr(descriptor, "is_repeated", None)
         if repeated is None:
             repeated = descriptor.label == descriptor.LABEL_REPEATED
@@ -239,7 +264,9 @@ def _kind(message) -> str:
         # protobuf release had removed is precisely how every message stopped
         # being delivered in 1.8.6a1. A kind we cannot read is worth nothing
         # and must cost nothing.
-        name = getattr(descriptor, "name", "") or ""
+        if name in CARRIERS:
+            carried = True
+            continue
         if name in KINDS:
             return KINDS[name]
         if name:
@@ -247,7 +274,7 @@ def _kind(message) -> str:
             # `pollCreationMessageV3`, `documentWithCaptionMessage` — so it is
             # removed wherever it is rather than stripped as a suffix.
             return name.replace("Message", "").lower() or "text"
-    return "text"
+    return PROTOCOL_ONLY if carried else "text"
 
 
 def _mime_of(message, kind: str) -> str:
@@ -794,6 +821,11 @@ class WhatsApp:
         text = extract_text(event.Message) or ""
         context = _context_info(event.Message)
         kind = _kind(event.Message)
+        if kind == PROTOCOL_ONLY and not text:
+            # Delivery metadata alone. A sender's first group message comes as
+            # this frame and then the text under the same id; recording the
+            # frame made the text a "duplicate", and it was lost (#1837).
+            return None
         # An edit arrives as a whole message with a flag on the envelope rather
         # than as its own event. A consumer that treats it as new text answers
         # the correction as though it were a fresh question; one that can see it
@@ -977,8 +1009,46 @@ class WhatsApp:
         return self._queue({"kind": "reaction", "chat": chat, "message_id": message_id,
                             "emoji": emoji, "sender": sender, "mine": mine})
 
+    sends_media = True
+
+    def attachment(self, *, image: Optional[str] = None, file: Optional[str] = None) -> Optional[dict]:
+        """What `--image` or `--file` would send, checked; None for a text send.
+
+        Raises ValueError, naming the fix, for anything WhatsApp would refuse or
+        mangle, so nothing is queued that the listener would then fail on.
+        """
+        if image and file:
+            raise ValueError("Send one of --image or --file, not both; send twice for two attachments")
+        given = image or file
+        if not given:
+            return None
+        path = Path(given).expanduser().resolve()
+        if not path.is_file():
+            raise ValueError(f"No file at {path}")
+        size = path.stat().st_size
+        if size == 0:
+            raise ValueError(f"{path.name} is empty; nothing to send")
+        if image:
+            head = path.read_bytes()[:16]
+            mime = next((m for magic, m in _IMAGE_MAGIC if head.startswith(magic)), None)
+            if mime is None and head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+                mime = "image/webp"
+            if mime is None:
+                raise ValueError(f"{path.name} is not a JPEG, PNG or WebP picture, so WhatsApp will "
+                                 "not show it inline. Send it as a document: --file")
+            if size > IMAGE_LIMIT_BYTES:
+                raise ValueError(f"{path.name} is {size // (1024 * 1024)} MB; WhatsApp shows pictures up "
+                                 f"to {IMAGE_LIMIT_BYTES // (1024 * 1024)} MB. Send it as a document: --file")
+            return {"kind": "image", "path": str(path), "size": size, "mime": mime, "name": path.name}
+        if size > FILE_LIMIT_BYTES:
+            raise ValueError(f"{path.name} is {size // (1024 * 1024)} MB; the limit for a document "
+                             f"is {FILE_LIMIT_BYTES // (1024 * 1024)} MB")
+        import mimetypes
+        mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        return {"kind": "document", "path": str(path), "size": size, "mime": mime, "name": path.name}
+
     def send(self, chat: str, text: str, *, reply_to: Optional[str] = None, fresh: bool = False,
-             plain: bool = False) -> str:
+             plain: bool = False, image: Optional[str] = None, file: Optional[str] = None) -> str:
         """Send text to a chat. Returns the new message id.
 
         The listener owns the connection, so this hands the request over and
@@ -991,8 +1061,14 @@ class WhatsApp:
         untranslated is how `**ready**` reaches somebody's phone with the
         asterisks still on it.
         """
-        return self._queue({"chat": chat, "text": text if plain else to_whatsapp(text),
-                            "reply_to": reply_to})
+        media = self.attachment(image=image, file=file)
+        caption = text if plain else to_whatsapp(text)
+        if media:
+            # The listener reads the file from this absolute path (#1856).
+            return self._queue({"kind": media["kind"], "chat": chat, "path": media["path"],
+                                "name": media["name"], "mime": media["mime"], "caption": caption,
+                                "reply_to": reply_to})
+        return self._queue({"chat": chat, "text": caption, "reply_to": reply_to})
 
     def render(self, text: str) -> str:
         """The exact characters WhatsApp will receive, given Markdown.
@@ -1142,6 +1218,8 @@ class WhatsApp:
                 return self._group_now(payload["phones"], subject=payload["subject"])
             if kind == "group_add":
                 return self._group_now(payload["phones"], chat=payload["chat"])
+            if kind in ("image", "document"):
+                return self._media_now(payload)
             return self._send_now(payload["chat"], payload["text"], payload.get("reply_to"))
         except Exception as exc:
             raise RuntimeError(_sending_failed(exc)) from exc
@@ -1211,6 +1289,25 @@ class WhatsApp:
         quoted = self._quoted(reply_to) if reply_to else None
         body = text if quoted is None else self._client.build_reply_message(text, quoted)
         result = self._client.send_message(_build_jid(chat), body)
+        return str(getattr(result, "ID", "") or "")
+
+    def _media_now(self, payload: dict) -> str:
+        """A picture or a document, on the listener's own connection (#1856).
+
+        An empty caption goes as none: WhatsApp would otherwise show an empty
+        caption line under the picture.
+        """
+        if self._client is None:
+            raise RuntimeError("not connected")
+        to = _build_jid(payload["chat"])
+        caption = payload.get("caption") or None
+        quoted = self._quoted(payload["reply_to"]) if payload.get("reply_to") else None
+        if payload["kind"] == "image":
+            result = self._client.send_image(to, payload["path"], caption=caption, quoted=quoted)
+        else:
+            result = self._client.send_document(to, payload["path"], caption=caption,
+                                                filename=payload.get("name"),
+                                                mimetype=payload.get("mime"), quoted=quoted)
         return str(getattr(result, "ID", "") or "")
 
     def _edit_now(self, chat: str, message_id: str, text: str) -> str:

@@ -1,9 +1,14 @@
-# 🧅 ConnectOnion — the agent CLI harness
+# 🧅 ConnectOnion — CLI is all you need
 
-**Connect your AI agent to Gmail, a real browser and your files — one command each.**
+**The agent CLI harness.**
 
-No OAuth app, no DNS records, no Playwright script. Your Gmail and Outlook
-credentials stay on your machine. Works with Claude Code, Codex, or your own agent.
+You don't create an OAuth app, add DNS records or write a Playwright script.
+Gmail and Outlook credentials stay on your machine. Works with Claude Code,
+Codex, Cursor, or your own agent.
+
+<p align="center">
+  <a href="https://www.connectonion.com"><img src="https://www.connectonion.com/connections.svg" width="100%" alt="What co connects an agent to: its own 0x address, mailbox and memory; Gmail, Outlook, Google Calendar, Meet and Teams; WhatsApp, Telegram, Discord, Feishu, Lark and SMS; a real Chrome, a remote browser, Google Drive, YouTube and a Synology NAS; Claude Code, Codex, Cursor and Kiro; OpenAI, Anthropic, Gemini, Mistral, Groq, Grok, OpenRouter and Ollama models; remote agents, your servers over SSH, and schedules."></a>
+</p>
 
 <div align="center">
 
@@ -40,6 +45,9 @@ command-line tool the agent runs in its shell:
   import.
 - **You can read what it did.** The agent runs the same `co` command you would
   type. Its transcript is a list of commands, not opaque API calls.
+- **Your agent only needs to know `co`.** Bare `co` lists every command,
+  `co commands` lists every subcommand, and `--help` explains any of them. You
+  don't hand it a tool list or install skills first.
 - **Commands say what to run next.** Many finish with a
   `Next: …` hint, so an agent recovers from a missing login or a wrong flag on
   its own.
@@ -52,7 +60,7 @@ command-line tool the agent runs in its shell:
 ```bash
 pip install connectonion
 
-co auth                     # your agent's identity; new accounts get $5 of model credit
+co init                     # your agent's identity; signs in with $5 of model credit
 co auth google              # Gmail, Drive, Calendar — no Cloud project, no review queue
 co gmail                    # the inbox
 co browser go_to https://example.com   # a real browser that stays logged in
@@ -109,8 +117,10 @@ co status      # see what is running
 Python runtime below is there whenever you need a custom tool, hook, provider or
 host boundary.
 
-The 1.8.2 default is `co/gemini-3.8-flash`, routed through the managed gateway
-without exposing Google's key to the client. Select `gemini-3.8-flash` to use
+The default is `co/gemini-3.8-flash`, routed through the managed gateway
+without exposing Google's key to the client. Out of credits? `co status` says how
+to keep going for free: `co/gemma` or `co/llama` on ConnectOnion's GPU (4,096-token
+context, one shared inference slot), or a local model as `ollama/<model>`. Select `gemini-3.8-flash` to use
 your own `GEMINI_API_KEY`, or explicitly choose an OpenAI, Anthropic, or older
 Gemini model. Provider failures do not silently move a request to another model.
 

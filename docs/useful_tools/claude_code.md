@@ -118,6 +118,14 @@ actions itself. Include
 relevant project instructions in the delegated prompt. Admin-managed policy
 still applies and may be stricter. An unmatched permission request fails closed.
 
+For a browser-started Station turn, a verified workspace edit first moves the
+OIP provider invocation to `awaiting_approval`. The Work Room can then show
+**Allow once** or **Reject this request**; after the owner answers, the
+invocation returns to `running`. Station's native mode is fixed for these
+turns, so its permission profile cannot be changed through the Work Room API.
+Other tools that need permission, including Bash and MCP tools, still have no
+Station browser approval path and are denied.
+
 The subprocess receives only a small process/locale environment and
 Claude-specific authentication variables. Unrelated API keys and cloud/GitHub
 credentials from the parent process are not copied into Claude's environment.

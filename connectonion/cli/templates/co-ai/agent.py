@@ -20,6 +20,6 @@ so it improves when the SDK does.
 from connectonion import host
 from connectonion.cli.co_ai.agent import create_agent
 
-agent = create_agent(role="coding")
-
-host(agent)
+# A function, not an agent: each conversation gets its own Agent built from
+# scratch, so two conversations running at once never share state.
+host(lambda: create_agent(role="coding"))

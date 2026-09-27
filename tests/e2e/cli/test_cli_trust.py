@@ -213,6 +213,8 @@ class TestTrustCommand:
         assert long_addr in _flat(result.output)
 
 
+# `co trust admin add` writes .co/admins.txt under the working directory.
+@pytest.mark.usefixtures("own_project")
 class TestTrustAdminCommand:
     """Test the trust admin subcommand."""
 

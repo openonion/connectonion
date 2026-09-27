@@ -8,9 +8,11 @@ judgement the Skill makes; this only hands it the signals.
 """
 
 import collections
+import html
 import json
 import re
 from datetime import datetime, timedelta, timezone
+from email.utils import getaddresses
 from pathlib import Path
 
 from .files import WikiError
@@ -45,14 +47,66 @@ def _display_name(row: dict, address: str) -> str:
     # The providers split the sender into a bare `from` and a `from_name`; for
     # mail the correspondent sent, the name is there and nowhere else.
     if _address(str(row.get("from", ""))) == address and row.get("from_name"):
-        return str(row["from_name"]).strip(' "')
-    for header in ([row.get("from", "")] + list(row.get("to") or []) + list(row.get("cc") or [])):
-        header = str(header)
-        if address in header.lower():
-            name = re.sub(r"<[^>]*>", "", header).strip(' "')
-            if name and "@" not in name:
-                return name
+        name = str(row["from_name"]).strip(' "')
+        return "" if "@" in name else name
+    # Each recipient is parsed on its own: stripping every <...> out of
+    # '"Ody Zhou" <o@g>, "Dora" <d@g>' once named both of them 'Ody Zhou", "Dora'.
+    headers = [str(h) for h in [row.get("from", "")] + list(row.get("to") or []) + list(row.get("cc") or [])]
+    for name, found in getaddresses(headers):
+        if found.lower() == address and name.strip() and "@" not in name:
+            return name.strip()
     return ""
+
+
+# The owner's greeting is where the name of someone they only ever wrote to
+# lives. On the owner's map 190 of 195 nameless people were recipients whose To
+# line the owner typed as a bare address, and nearly every one of those mails
+# opened "Hi Larry," or "Larry 你好，" or "子明，".
+_GREETING = re.compile(
+    r"^\s*(?:(?:hi|hello|hey|dear|morning|g'day)\s+([A-Za-z][A-Za-z'-]{1,20}(?:\s[A-Z][A-Za-z'-]{1,20})?)\s*[,，!！]"
+    r"|([A-Za-z][A-Za-z'-]{1,20}|[\u4e00-\u9fff]{2,3})\s*(?:你好|您好)?\s*[,，])", re.IGNORECASE)
+_NOT_A_NAME = {"everyone", "all", "team", "there", "guys", "folks", "both", "again", "sir", "madam",
+               "friends", "hi", "hello", "dear", "您好", "你好", "大家", "各位", "大家好", "各位好"}
+
+
+def _greeting_name(row: dict, address: str, mine: set) -> str:
+    """The name the owner greeted the one person a mail went to, or ''.
+
+    Only the owner's own mail to a single recipient: "Hi Larry," to three
+    people names one of them, and nobody can say which.
+    """
+    if _address(str(row.get("from", ""))) not in mine:
+        return ""
+    recipients = [a for _, a in getaddresses([str(h) for h in list(row.get("to") or []) + list(row.get("cc") or [])])
+                  if a and a.lower() not in mine]
+    # An agent's address (0x…@) is greeted by its owner's name; that name is the
+    # person's, not the agent's.
+    if [a.lower() for a in recipients] != [address] or re.match(r"0x[0-9a-f]{6,}@", address):
+        return ""
+    match = _GREETING.match(html.unescape(str(row.get("snippet") or "")))
+    name = (match.group(1) or match.group(2)) if match else ""
+    if not name or name.casefold() in _NOT_A_NAME:
+        return ""
+    return name[0].upper() + name[1:] if name.islower() else name
+
+
+def _contact_names(clients: dict) -> dict:
+    """Names the owner saved, by address, from every mailbox that can list them.
+
+    A saved contact is the owner's own word for who someone is, so it outranks a
+    greeting; it does not outrank the name a person writes under. Contacts are
+    optional: a mailbox without the permission maps from its mail alone.
+    """
+    names = {}
+    for client in clients.values():
+        try:
+            listed = client.contact_names() if hasattr(client, "contact_names") else {}
+        except Exception:  # noqa: BLE001 - a missing contacts permission must not stop the map
+            continue
+        for address, name in (listed or {}).items():
+            if name and "@" not in name:
+                names.setdefault(address.lower(), name.strip())
+    return names
 
 
 def scan_people(clients: dict, days: int, own_addresses: set, progress=None) -> list[dict]:
@@ -62,7 +116,8 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None) -> 
         mine |= {a.lower() for a in client.my_addresses()}
     end = datetime.now(timezone.utc)
     start = end - timedelta(days=days)
-    people = collections.defaultdict(lambda: {"names": collections.Counter(), "mails": 0, "sent": 0,
+    people = collections.defaultdict(lambda: {"names": collections.Counter(), "greetings": collections.Counter(),
+                                              "mails": 0, "sent": 0,
                                               "received": 0, "first": "", "last": "", "boxes": set(),
                                               "subjects": collections.Counter()})
     for kind, client in clients.items():
@@ -81,6 +136,9 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None) -> 
                 name = _display_name(row, who)
                 if name:
                     entry["names"][name] += 1
+                greeting = _greeting_name(row, who, mine)
+                if greeting:
+                    entry["greetings"][greeting] += 1
                 day = str(row.get("date", ""))[:10]
                 entry["first"] = min(entry["first"] or day, day)
                 entry["last"] = max(entry["last"] or day, day)
@@ -90,10 +148,14 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None) -> 
             if progress:
                 progress(kind, stop, len(people))
             cursor = stop
+    saved = _contact_names(clients)
     out = []
     for address, e in people.items():
+        # Their own name first, then the owner's saved contact, then the owner's greeting.
+        name = (e["names"].most_common(1)[0][0] if e["names"] else "") or saved.get(address, "") \
+            or (e["greetings"].most_common(1)[0][0] if e["greetings"] else "")
         out.append({"address": address,
-                    "name": e["names"].most_common(1)[0][0] if e["names"] else "",
+                    "name": name,
                     "mails": e["mails"], "sent": e["sent"], "received": e["received"],
                     "first": e["first"], "last": e["last"], "boxes": sorted(e["boxes"]),
                     "subjects": [s for s, _ in e["subjects"].most_common(3)],
@@ -126,6 +188,24 @@ def canonical_origin(origin: str) -> str:
 def project_exclusion(path: Path) -> str:
     """Ignore execution sandboxes, not legitimate projects sharing a display name."""
     normalized = str(path.resolve())
+    parts = Path(normalized).parts
+    if any(parts[i:i + 2] == (".state", "tasks") for i in range(len(parts) - 1)):
+        return "Wiki task workspace copy"
+    if path.name == "notebook" and any(parent.name.endswith("-fixture") for parent in path.parents):
+        return "test fixture notebook"
+    # A workspace says so in its agent instructions; Claude Code reads CLAUDE.md,
+    # Codex AGENTS.md, and the owner's ~/projects had both.
+    if path.is_dir() and not (path / ".git").exists() and any(
+            (path / marker).is_file() for marker in ("AGENTS.md", "CLAUDE.md")):
+        repositories = 0
+        try:
+            for child in path.iterdir():
+                if child.is_dir() and (child / ".git").exists():
+                    repositories += 1
+                    if repositories >= 2:
+                        return "multi-repository workspace container"
+        except OSError:
+            pass
     if normalized.startswith(("/private/tmp/", "/tmp/", "/private/var/folders/", "/var/folders/")):
         return "temporary execution directory"
     if not path.is_dir() and "/.codex/worktrees/" in normalized:

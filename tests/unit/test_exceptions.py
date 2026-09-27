@@ -5,6 +5,7 @@ import pytest
 from connectonion.core.exceptions import (
     InsufficientCreditsError,
     LLMConnectionError,
+    PaidModelRequiredError,
     ProviderServiceError,
     ToolRejectedError,
 )
@@ -53,6 +54,22 @@ def test_insufficient_credits_message_includes_key_values():
     assert '0.1000' in msg
     assert '0.9000' in msg
     assert '0xabcd' in msg
+
+
+def test_insufficient_credits_offers_free_model_from_api():
+    err = InsufficientCreditsError(_FakeAPIError({
+        'balance': 0, 'required': 0.01, 'shortfall': 0.01,
+        'free_model': 'co/gemma',
+    }))
+    assert err.free_model == 'co/gemma'
+    assert 'Keep going for free with co/gemma' in str(err)
+
+
+def test_paid_model_error_offers_free_model_from_api():
+    err = PaidModelRequiredError(_FakeAPIError({
+        'model_requested': 'gpt-5', 'free_model': 'co/gemma',
+    }))
+    assert 'Keep going with co/gemma for free' in str(err)
 
 
 def test_insufficient_credits_preserves_original_as_cause():

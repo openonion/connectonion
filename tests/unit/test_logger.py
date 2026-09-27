@@ -50,6 +50,7 @@ class TestSlugify:
 class TestLoggerInit:
     """Test Logger initialization."""
 
+    @pytest.mark.usefixtures("own_project")  # the default log lands in ./.co/logs
     def test_default_init(self):
         """Test Logger with default parameters."""
         logger = Logger("test-agent")

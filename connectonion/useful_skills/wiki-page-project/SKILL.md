@@ -5,6 +5,17 @@ description: A project page with a short visual overview and evidence-backed det
 
 # A project's page
 
+**How to do it.** You are given the page as it stands and the material about
+this project. Those two are the whole input: read both in full, then write the
+page. The shape is below, so do not go looking for example pages, earlier
+outputs, logs, other skills or the repository to copy a format from. Measured
+on real runs, that search, not the writing, used up the turns, and the page was
+never written. Look beyond the material only for a gap you can name (a phone
+number, an employer), and put what you checked in `Uncertainties`.
+Write the whole page in one go, check it once against the rules below, fix
+what is wrong in one edit, and stop. Polishing it line by line spends the
+turns the page needed.
+
 This remains a project page, not a separately named onboarding page. As a design
 test, read it through the eyes of someone seeing the project for the first time:
 a designer, programmer, operator or nontechnical colleague. They should understand
@@ -67,8 +78,12 @@ Unknown; a plausible diagram is not evidence.
 
 **Current work and joining the team**
 
-- `Where it stands`: observation date, current phase, this phase's goal and
-  success criteria, and the most important completed versus planned work. Keep
+- `Where it stands`: observation date, the date anything last happened (a
+  project quiet for months says so here), current phase, this phase's goal and
+  success criteria, the most important completed versus planned work, and the
+  latest verified run or test result with its date ("11 tests pass,
+  2026-09-18"), or that none was found. A passing result belongs here, not in
+  `Latest issues`. Keep
   this a short current snapshot rather than an exhaustive change log.
 - `Latest issues`: recent concrete bugs, regressions and blockers, newest first.
   Record date, symptom, user impact, status and evidence; include a diagnostic

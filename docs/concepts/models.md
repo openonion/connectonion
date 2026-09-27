@@ -184,6 +184,8 @@ agent = Agent("assistant", model="mistral/mistral-medium-latest")
 |-------|----------|---------------|------------|
 | gpt-5 | OpenAI | Best for coding and agentic tasks | ✅ |
 | gemini-3.8-flash | Google | Default model, newest fast Gemini | ✅ |
+| co/gemma | ConnectOnion GPU | Free text and tool calling; the zero-balance tip | No |
+| co/llama | ConnectOnion GPU | Free text and tool calling | No |
 | gemini-3.7-flash | Google | Selectable rollback model | ✅ |
 | gemini-3.6-flash | Google | Legacy fast Gemini | ✅ |
 | gemini-2.5-pro | Google | Strong multimodal model for agents | ✅ |
@@ -194,6 +196,9 @@ agent = Agent("assistant", model="mistral/mistral-medium-latest")
 
 | Model | Context Window |
 |-------|---------------|
+| **ConnectOnion GPU** | |
+| co/gemma | 4,096 tokens |
+| co/llama | 4,096 tokens |
 | **OpenAI** | |
 | gpt-5 | 200K tokens |
 | gpt-5-mini | 200K tokens |
@@ -213,6 +218,11 @@ agent = Agent("assistant", model="mistral/mistral-medium-latest")
 | claude-haiku-4-5 | 200K tokens |
 
 ## Pricing (Managed Keys)
+
+`co/gemma` and `co/llama` cost $0 in credits and stay usable at a zero balance;
+`co status` names them then. The shared GPU currently handles one request at a
+time and caps each answer at 1,024 tokens. For no account at all, run a model
+locally with Ollama: `Agent("name", model="ollama/llama3.2")`.
 
 All prices are **per 1M tokens** and match official provider pricing:
 

@@ -16,6 +16,10 @@ gcalendar_app = typer.Typer(
     epilog="Example:  co gcalendar list --days 14  |  co gcalendar read <event-id>",
     no_args_is_help=False)
 
+TIME_HELP = "ISO time, e.g. 2026-10-01T10:00:00+10:00 or \"2026-10-01 10:00\"; no offset means UTC"
+EVENT_ID_HELP = "Exact event ID from co gcalendar list"
+ATTENDEES_HELP = "Comma-separated emails; Google emails each one an invitation"
+
 
 def _client():
     from ...useful_tools.google_calendar import GoogleCalendar
@@ -53,8 +57,8 @@ def calendar(ctx: typer.Context):
 
 
 @gcalendar_app.command("list", epilog="Example:  co gcalendar list --days 14 -n 50")
-def list_events(days: int = typer.Option(7, "--days", min=1),
-                last: int = typer.Option(20, "--last", "-n", min=1, max=250)):
+def list_events(days: int = typer.Option(7, "--days", min=1, help="How many days ahead to include, starting now"),
+                last: int = typer.Option(20, "--last", "-n", min=1, max=250, help="Maximum events to show")):
     """List primary-calendar events with stable event IDs (not row numbers). Read-only."""
     _run("list_events", days_ahead=days, max_results=last)
 
@@ -65,21 +69,21 @@ def today():
     _run("get_today_events")
 
 
-@gcalendar_app.command("read", epilog="Example:  co gcalendar read <event-id>")
+@gcalendar_app.command("read", epilog="Example:  co gcalendar read 7nc7u7q2b09p6g8q3k1r3b1m40")
 def read(event_id: str = typer.Argument(..., help="Exact event ID from co gcalendar list")):
     """Read one event by ID. Read-only."""
     _run("get_event", event_id)
 
 
 @gcalendar_app.command("meetings", epilog="Example:  co gcalendar meetings --days 3")
-def meetings(days: int = typer.Option(7, "--days", min=1)):
+def meetings(days: int = typer.Option(7, "--days", min=1, help="How many days ahead to include, starting now")):
     """Read upcoming events that have attendees. Read-only."""
     _run("get_upcoming_meetings", days_ahead=days)
 
 
 @gcalendar_app.command("free", epilog="Example:  co gcalendar free 2026-10-01 --minutes 30")
 def free(date: str = typer.Argument(..., help="YYYY-MM-DD; business hours in UTC"),
-         minutes: int = typer.Option(60, "--minutes", min=1, max=480)):
+         minutes: int = typer.Option(60, "--minutes", min=1, max=480, help="Length of free time to find, in minutes")):
     """Find primary-calendar free slots between 09:00 and 17:00 UTC. Read-only."""
     _run("find_free_slots", date, duration_minutes=minutes)
 
@@ -87,9 +91,13 @@ def free(date: str = typer.Argument(..., help="YYYY-MM-DD; business hours in UTC
 @gcalendar_app.command("create", epilog=(
     "Example:  co gcalendar create \"Team sync\" 2026-10-01T10:00:00+10:00 "
     "2026-10-01T10:30:00+10:00 --attendees you@example.com --yes"))
-def create(title: str, start: str, end: str,
-           description: Optional[str] = None, attendees: Optional[str] = None,
-           location: Optional[str] = None, yes: bool = typer.Option(False, "--yes", help="Create this event; default is a local preview")):
+def create(title: str = typer.Argument(..., help="Event title"),
+           start: str = typer.Argument(..., help=TIME_HELP),
+           end: str = typer.Argument(..., help=TIME_HELP),
+           description: Optional[str] = typer.Option(None, "--description", help="Event description, plain text"),
+           attendees: Optional[str] = typer.Option(None, "--attendees", help=ATTENDEES_HELP),
+           location: Optional[str] = typer.Option(None, "--location", help="Location text shown on the event"),
+           yes: bool = typer.Option(False, "--yes", help="Create this event; default is a local preview")):
     """Create an event. Creates it only with --yes; otherwise previews.
 
     Use ISO timestamps with offsets; naive times mean UTC. With --attendees,
@@ -103,8 +111,12 @@ def create(title: str, start: str, end: str,
 @gcalendar_app.command("meet", epilog=(
     "Example:  co gcalendar meet \"Intro call\" 2026-10-01T15:00:00+10:00 "
     "2026-10-01T15:30:00+10:00 --attendees you@example.com --yes"))
-def meet(title: str, start: str, end: str, attendees: str = typer.Option(..., "--attendees", help="Comma-separated emails"),
-         description: Optional[str] = None, yes: bool = typer.Option(False, "--yes", help="Create event and Meet conference; default previews")):
+def meet(title: str = typer.Argument(..., help="Meeting title"),
+         start: str = typer.Argument(..., help=TIME_HELP),
+         end: str = typer.Argument(..., help=TIME_HELP),
+         attendees: str = typer.Option(..., "--attendees", help="Comma-separated emails"),
+         description: Optional[str] = typer.Option(None, "--description", help="Event description, plain text"),
+         yes: bool = typer.Option(False, "--yes", help="Create event and Meet conference; default previews")):
     """Create a Calendar event with a Google Meet conference request. Creates it only with --yes; otherwise previews.
 
     Google emails each attendee an invitation.
@@ -115,13 +127,18 @@ def meet(title: str, start: str, end: str, attendees: str = typer.Option(..., "-
 
 
 @gcalendar_app.command("update", epilog=(
-    "Example:  co gcalendar update <event-id> --title \"Team sync (moved)\" "
+    "Example:  co gcalendar update 7nc7u7q2b09p6g8q3k1r3b1m40 --title \"Team sync (moved)\" "
     "--start 2026-10-01T11:00:00+10:00 --end 2026-10-01T11:30:00+10:00 --yes"))
-def update(event_id: str, title: Optional[str] = None, start: Optional[str] = None,
-           end: Optional[str] = None, description: Optional[str] = None,
-           attendees: Optional[str] = None, location: Optional[str] = None,
+def update(event_id: str = typer.Argument(..., help=EVENT_ID_HELP),
+           title: Optional[str] = typer.Option(None, "--title", help="New event title"),
+           start: Optional[str] = typer.Option(None, "--start", help="New start; " + TIME_HELP),
+           end: Optional[str] = typer.Option(None, "--end", help="New end; " + TIME_HELP),
+           description: Optional[str] = typer.Option(None, "--description", help="New description, plain text"),
+           attendees: Optional[str] = typer.Option(None, "--attendees",
+                                                   help="Comma-separated emails; replaces the attendee list, keeping replies of those still on it"),
+           location: Optional[str] = typer.Option(None, "--location", help="New location text"),
            yes: bool = typer.Option(False, "--yes", help="Apply fields to this exact event; default previews")):
-    """Update supplied nonempty fields; other fields are preserved. Changes the event only with --yes; otherwise previews.
+    """Change an existing event's title, time, description, attendees or location; fields you leave out stay as they are. Changes the event only with --yes; otherwise previews.
 
     Google emails the event's attendees about the change.
     """
@@ -133,8 +150,9 @@ def update(event_id: str, title: Optional[str] = None, start: Optional[str] = No
         _run("update_event", event_id, **values)
 
 
-@gcalendar_app.command("delete", epilog="Example:  co gcalendar delete <event-id> --yes")
-def delete(event_id: str, yes: bool = typer.Option(False, "--yes", help="Delete the exact event; default previews")):
+@gcalendar_app.command("delete", epilog="Example:  co gcalendar delete 7nc7u7q2b09p6g8q3k1r3b1m40  |  "
+                                         "co gcalendar delete 7nc7u7q2b09p6g8q3k1r3b1m40 --yes")
+def delete(event_id: str = typer.Argument(..., help=EVENT_ID_HELP), yes: bool = typer.Option(False, "--yes", help="Delete the exact event; default previews")):
     """Delete an event by stable ID, never by a listing number. Deletes it only with --yes; otherwise previews.
 
     Google emails the event's attendees a cancellation.

@@ -162,6 +162,15 @@ llm_do("What is 2+2?", output=Answer, model="co/claude-sonnet-4-5") # ✅
 | `system_prompt` | str\|Path | None | System prompt (string or file path) |
 | `model` | str | "co/gemini-3.8-flash" | Model to use (supports OpenAI, Gemini, Claude) |
 | `temperature` | float | 0.1 | Randomness (0=deterministic, 2=creative) |
+| `llm` | LLM | None | Call this LLM instance instead of building one from `model` — e.g. `agent.llm`, so a plugin or tool spends the provider, key and endpoint its agent was configured with |
+
+### Inside an agent run
+
+An `llm_do` made while `agent.input()` is running — from a plugin, an event
+handler or a tool — is counted on that agent: its cost is added to
+`agent.total_cost` (which is also the Control Center's budget cap) and it is
+recorded in the trace as an `llm_result` with `"source": "llm_do"`, so the
+turn's usage includes it. Outside a run nothing is recorded anywhere.
 
 ## What You Get
 
@@ -248,6 +257,12 @@ except ValidationError as e:
 except Exception as e:
     print(f"LLM call failed: {e}")
 ```
+
+A response the provider cut off at its output limit raises
+`TruncatedResponseError` (from `connectonion.core.exceptions`) rather than
+returning half an answer. `error.usage` is what the cut-off call cost and
+`error.content` is the partial text, if any; ask for less, split the task, or
+raise `max_tokens`.
 
 A rejected key raises `LLMAuthenticationError` (from
 `connectonion.core.exceptions`). With a managed `co/` model the message says

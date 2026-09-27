@@ -223,7 +223,8 @@ from typing import Optional, Type, TypeVar, Union
 
 from pydantic import BaseModel
 
-from .core.llm import create_llm
+from .core.llm import LLM, create_llm
+from .core.exceptions import TruncatedResponseError
 from .core.usage import DEFAULT_MODEL
 from .prompts import load_system_prompt
 
@@ -237,6 +238,7 @@ def llm_do(
     model: str = DEFAULT_MODEL,
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
+    llm: Optional[LLM] = None,
     **kwargs
 ) -> Union[str, T]:
     """
@@ -256,6 +258,9 @@ def llm_do(
         api_key: Optional API key (uses environment variable if not provided)
         base_url: Optional OpenAI-compatible API base. Custom/local endpoints
             use only an explicitly supplied key; see docs/concepts/local-models.md.
+        llm: Optional LLM instance to call instead of building one from
+            `model`, e.g. `agent.llm`, so a side call inside an agent spends
+            the provider, key and endpoint the agent was configured with.
         **kwargs: Additional parameters (temperature, max_tokens, etc.)
 
     Returns:
@@ -299,16 +304,28 @@ def llm_do(
         {"role": "user", "content": input}
     ]
 
-    # Create LLM using factory (only pass api_key and initialization params)
-    init_kwargs = {"base_url": base_url} if base_url is not None else {}
-    llm = create_llm(model=model, api_key=api_key, **init_kwargs)
+    if llm is None:
+        # Create LLM using factory (only pass api_key and initialization params)
+        init_kwargs = {"base_url": base_url} if base_url is not None else {}
+        llm = create_llm(model=model, api_key=api_key, **init_kwargs)
 
-    # Get response
-    if output:
-        # Structured output - use structured_complete()
-        return llm.structured_complete(messages, output, **kwargs)
-    else:
-        # Plain text - use complete()
-        # Pass through kwargs (max_tokens, temperature, etc.)
-        response = llm.complete(messages, tools=None, **kwargs)
-        return response.content
+    # An llm_do made while an agent is running (a plugin, a tool) is part of
+    # that run's cost, and agent.total_cost is also the budget cap. It used to
+    # be recorded nowhere (#730). A cut-off response is recorded too: its
+    # tokens were billed whether or not the answer was usable (#1758).
+    from .core.agent import record_side_call  # here: core.agent loads plugins that import llm_do
+
+    try:
+        if output:
+            llm.last_structured_usage = None
+            result = llm.structured_complete(messages, output, **kwargs)
+            usage = llm.last_structured_usage
+        else:
+            # Pass through kwargs (max_tokens, temperature, etc.)
+            response = llm.complete(messages, tools=None, **kwargs)
+            result, usage = response.content, response.usage
+    except TruncatedResponseError as error:
+        record_side_call(llm.model, error.usage, status="truncated")
+        raise
+    record_side_call(llm.model, usage)
+    return result

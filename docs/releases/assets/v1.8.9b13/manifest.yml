@@ -1,0 +1,16 @@
+version: v1.8.9b13
+images:
+  - file: browser-import-dry-run.png
+    alt: "Terminal co browser import --dry-run listing github.com with 2 cookies and linkedin.com with 3, noting that values are not shown and the Keychain was not read"
+    caption: "A dry run lists the sites and cookie counts it would import, and nothing else: no values, no Keychain, no browser. The Chrome profile is a disposable example built by the test fixture."
+    scenario: "scripts/capture_189b13_release_cli.py builds a fake Chrome profile in a disposable HOME and runs co browser import --dry-run from this checkout"
+    viewport: "dark terminal capture"
+    commit: 19ada763
+    source_run: "scripts/capture_189b13_release_cli.py"
+  - file: wiki-open-snapshot.png
+    alt: "The Personal Wiki snapshot in Chrome showing Contents with People Alice and Projects Aurora, the category sidebar with counts, and the Maintenance panel"
+    caption: "co wiki open writes the snapshot and opens it from file://; the page's script renders contents, counts and the theme switch with no server. The notebook holds two synthetic pages."
+    scenario: "scripts/capture_189b13_release_cli.py runs co wiki open --no-launch on a disposable notebook and opens the file:// link in installed Chrome"
+    viewport: "1200x720 at 2x"
+    commit: 19ada763
+    source_run: "scripts/capture_189b13_release_cli.py"

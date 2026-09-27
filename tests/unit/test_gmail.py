@@ -768,6 +768,7 @@ class TestSendReply:
             }
         }
         mock_service.users().messages().send().execute.return_value = {'id': 'reply123'}
+        gmail.my_addresses = Mock(return_value={'me@example.com'})
 
         result = gmail.reply(email_id='original123', body='Thanks for your email!')
 
@@ -1760,3 +1761,120 @@ class TestGmailDraftAttachments:
         assert result == {"id": "message-1"}
         assert service.users().drafts().send.call_args.kwargs["body"] == {"id": "draft-1", "message": {"raw": "reviewed-raw"}}
         service.users().messages().send.assert_not_called()
+
+
+class TestReplyGoesWhereTheSenderAsked:
+    """reply() answered From: even when Reply-To said otherwise (#1755).
+
+    Web forms, booking sites and lists send From a noreply and put the person in
+    Reply-To. Replying to your own sent mail went back to yourself. And the
+    header lookup was case-sensitive, so a `Message-Id` lost In-Reply-To and
+    the reply fell out of the thread in every other client.
+    """
+
+    @staticmethod
+    def _gmail(headers, mine=("me@mybiz.com",)):
+        import base64
+        import email
+        from connectonion.useful_tools.gmail import Gmail
+
+        gmail = Gmail.__new__(Gmail)
+        service = MagicMock()
+        service.users().messages().get().execute.return_value = {
+            "threadId": "T1", "payload": {"headers": [{"name": k, "value": v} for k, v in headers]}}
+        service.users().messages().send().execute.return_value = {"id": "S1"}
+        gmail._get_service = lambda: service
+        gmail.my_addresses = lambda: set(mine)
+
+        def sent():
+            body = service.users().messages().send.call_args.kwargs["body"]
+            return email.message_from_bytes(base64.urlsafe_b64decode(body["raw"])), body
+        return gmail, sent
+
+    def test_reply_to_wins_over_a_noreply_from(self):
+        gmail, sent = self._gmail([
+            ("From", "Website Forms <noreply@forms.example.com>"),
+            ("Reply-To", "Jane Customer <jane@customer.com>"),
+            ("To", "me@mybiz.com"),
+            ("Subject", "New enquiry"),
+            ("Message-Id", "<abc@forms.example.com>"),
+        ])
+
+        gmail.reply("M1", "Thanks Jane")
+
+        message, body = sent()
+        assert message["To"] == "Jane Customer <jane@customer.com>"
+        assert body["threadId"] == "T1"
+
+    def test_message_id_is_found_whatever_its_case(self):
+        gmail, sent = self._gmail([
+            ("From", "a@example.com"), ("To", "me@mybiz.com"), ("Subject", "Hi"),
+            ("Message-Id", "<abc@example.com>"),
+        ])
+
+        gmail.reply("M1", "ok")
+
+        message, _ = sent()
+        assert message["In-Reply-To"] == "<abc@example.com>"
+        assert message["References"] == "<abc@example.com>"
+
+    def test_references_keep_the_earlier_chain(self):
+        gmail, sent = self._gmail([
+            ("From", "a@example.com"), ("To", "me@mybiz.com"), ("Subject", "Re: Hi"),
+            ("Message-ID", "<two@example.com>"), ("References", "<one@example.com>"),
+        ])
+
+        gmail.reply("M1", "ok")
+
+        message, _ = sent()
+        assert message["References"] == "<one@example.com> <two@example.com>"
+
+    def test_replying_to_my_own_sent_mail_goes_to_its_recipient(self):
+        gmail, sent = self._gmail([
+            ("From", "Me <ME@mybiz.com>"), ("To", "client@example.com"), ("Subject", "Quote"),
+            ("Message-ID", "<q@mybiz.com>"),
+        ])
+
+        gmail.reply("M1", "Following up")
+
+        message, _ = sent()
+        assert message["To"] == "client@example.com"
+
+
+def test_list_between_fetches_each_message_once_with_its_recipients_and_retries():
+    """The wiki's map lists every message in the window with its recipients. It
+    fetched each message twice (From, then To/Cc): 2,600 calls on a 90-day map,
+    ten minutes, and one rate-limited call failed the whole Gmail scan."""
+    from connectonion.useful_tools.gmail import Gmail
+
+    gets, retries = [], []
+
+    class Call:
+        def __init__(self, result): self.result = result
+        def execute(self, num_retries=0):
+            retries.append(num_retries)
+            return self.result
+
+    class Messages:
+        def list(self, **kw): return Call({"messages": [{"id": "a"}, {"id": "b"}]})
+        def get(self, **kw):
+            gets.append(kw)
+            return Call({"id": kw["id"], "snippet": "Hi Larry,", "labelIds": [], "payload": {"headers": [
+                {"name": "From", "value": "me@x.y"}, {"name": "To", "value": "Larry <l@q.com>"},
+                {"name": "Cc", "value": "c@q.com"}, {"name": "Subject", "value": "s"},
+                {"name": "Date", "value": "Thu, 10 Sep 2026 10:00:00 +0000"}]}})
+
+    class Users:
+        def messages(self): return Messages()
+
+    class Service:
+        def users(self): return Users()
+
+    gmail = Gmail.__new__(Gmail)
+    gmail._get_service = lambda: Service()
+    rows = gmail.list_between("2026-09-01T00:00:00+00:00", "2026-09-20T00:00:00+00:00")
+    assert len(gets) == 2
+    assert {"To", "Cc", "From"} <= set(gets[0]["metadataHeaders"])
+    assert rows[0]["to"] == ["Larry <l@q.com>"] and rows[0]["cc"] == ["c@q.com"]
+    assert rows[0]["snippet"] == "Hi Larry,"
+    assert all(n >= 3 for n in retries)     # a 429 or 5xx is retried with backoff, not fatal

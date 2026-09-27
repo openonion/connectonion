@@ -227,14 +227,15 @@ def signed_scope(method: str, path: str) -> dict:
 
     Reading a session needs an identity, so a routing test that sends no
     headers now exercises the 401 branch and never reaches the route it is
-    about. The headers come from the real `sign_request`, not a hand-rolled
-    imitation of it.
+    about. The headers come from the real `sign_http_request`, not a
+    hand-rolled imitation of it; they name a recipient and a one-use request
+    id (#1752).
     """
     from connectonion import address
-    from connectonion.network.host.auth import sign_request
+    from connectonion.network.host.auth import sign_http_request
 
     keys = address.generate()
-    headers = sign_request(keys, method, path)
+    headers = sign_http_request(keys, method, path, recipient_address="0x" + "a" * 64)
     return {"method": method, "path": path,
             "headers": [[k.encode(), v.encode()] for k, v in headers.items()]}
 
@@ -334,7 +335,7 @@ class TestHandleHttpRouting:
             sent.append(msg)
 
         handlers = {
-            "sessions": lambda storage, caller: {"sessions": [{"id": "1"}, {"id": "2"}]},
+            "sessions": lambda storage, caller, **kw: {"sessions": [{"id": "1"}, {"id": "2"}]},
         }
 
         await handle_http(
@@ -360,7 +361,7 @@ class TestHandleHttpRouting:
             sent.append(msg)
 
         handlers = {
-            "session": lambda storage, id, caller: {"session_id": id, "status": "done"},
+            "session": lambda storage, id, caller, **kw: {"session_id": id, "status": "done"},
         }
 
         await handle_http(
@@ -387,7 +388,7 @@ class TestHandleHttpRouting:
             sent.append(msg)
 
         handlers = {
-            "session": lambda storage, id, caller: None,
+            "session": lambda storage, id, caller, **kw: None,
         }
 
         await handle_http(
@@ -419,7 +420,7 @@ class TestHandleHttpRouting:
             sent.append(msg)
 
         handlers = {
-            "auth": lambda data, trust, **kw: ("Hello", "0xtest", True, None),
+            "connect_auth": lambda data, trust, **kw: ("Hello", "0xtest", True, None),
             "input": lambda storage, prompt, session, **kw: {"result": "World", "session_id": "x"},
         }
 
@@ -444,11 +445,13 @@ class TestHandleHttpRouting:
         async def receive():
             return {
                 "body": json.dumps({
-                    "payload": {"prompt": "Analyze", "timestamp": 123},
+                    "payload": {
+                        "prompt": "Analyze", "timestamp": 123,
+                        "images": ["data:image/png;base64,abc"],
+                        "files": [{"name": "doc.pdf", "data": "data:application/pdf;base64,xyz"}],
+                    },
                     "from": "0xtest",
                     "signature": "0xsig",
-                    "images": ["data:image/png;base64,abc"],
-                    "files": [{"name": "doc.pdf", "data": "data:application/pdf;base64,xyz"}],
                 }).encode(),
                 "more_body": False
             }
@@ -463,7 +466,7 @@ class TestHandleHttpRouting:
             return {"result": "OK", "session_id": "x"}
 
         handlers = {
-            "auth": lambda data, trust, **kw: ("Analyze", "0xtest", True, None),
+            "connect_auth": lambda data, trust, **kw: ("Analyze", "0xtest", True, None),
             "input": mock_input,
         }
 
@@ -488,10 +491,10 @@ class TestHandleHttpRouting:
         async def receive():
             return {
                 "body": json.dumps({
-                    "payload": {"prompt": "Analyze", "timestamp": 123},
+                    "payload": {"prompt": "Analyze", "timestamp": 123,
+                                "files": [{"name": "big.pdf", "data": "x" * 100}]},
                     "from": "0xtest",
                     "signature": "0xsig",
-                    "files": [{"name": "big.pdf", "data": "x" * 100}],
                 }).encode(),
                 "more_body": False
             }
@@ -503,7 +506,7 @@ class TestHandleHttpRouting:
             raise ValueError("File too large: big.pdf (50.0MB, max: 10MB)")
 
         handlers = {
-            "auth": lambda data, trust, **kw: ("Analyze", "0xtest", True, None),
+            "connect_auth": lambda data, trust, **kw: ("Analyze", "0xtest", True, None),
             "input": mock_input,
         }
 
@@ -538,10 +541,10 @@ class TestHandleHttpRouting:
         async def receive():
             return {
                 "body": json.dumps({
-                    "payload": {"prompt": "Hello", "timestamp": 123},
+                    "payload": {"prompt": "Hello", "timestamp": 123,
+                                "session": {"session_id": "owned"}},
                     "from": "0xtest",
                     "signature": "0xsig",
-                    "session": {"session_id": "owned"},
                 }).encode(),
                 "more_body": False,
             }
@@ -550,7 +553,7 @@ class TestHandleHttpRouting:
             sent.append(message)
 
         handlers = {
-            "auth": lambda data, trust, **kw: (
+            "connect_auth": lambda data, trust, **kw: (
                 "Hello", "0xtest", True, None
             ),
             "input": Mock(side_effect=error),
@@ -585,7 +588,7 @@ class TestHandleHttpRouting:
             sent.append(msg)
 
         handlers = {
-            "auth": lambda data, trust, **kw: (None, None, False, "unauthorized: invalid"),
+            "connect_auth": lambda data, trust, **kw: (None, None, False, "unauthorized: invalid"),
         }
 
         await handle_http(
@@ -610,7 +613,7 @@ class TestHandleHttpRouting:
             sent.append(msg)
 
         handlers = {
-            "auth": lambda data, trust, **kw: (None, "0x", True, "forbidden: blacklisted"),
+            "connect_auth": lambda data, trust, **kw: (None, "0x", True, "forbidden: blacklisted"),
         }
 
         await handle_http(

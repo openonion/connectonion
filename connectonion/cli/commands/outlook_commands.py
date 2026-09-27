@@ -3,7 +3,7 @@ Purpose: CLI surface for Outlook email and contacts — send/read/search mail an
 LLM-Note:
   Dependencies: imports from [os, sys, json, pathlib, datetime, typer, dotenv, rich.console, rich.panel, rich.table, ...useful_tools.outlook.Outlook] | imported by [cli/main.py via handle_outlook_*()] | hits Microsoft Graph API through the Outlook tool
   Data flow: _microsoft_record() loads MICROSOFT_* from the global default or explicit --env-file and checks the operation scope (shared with outlook_calendar_commands) → _outlook() wraps it in an Outlook() instance | mail commands use list/read/send/reply methods and the numbered inbox cache | send and reply share _check_attachments() to reject missing or oversize --attach files before megabytes are base64-encoded | handle_outlook_reply(email_id, message, at, *, attachments, cc, bcc) keeps `at` third positional for pre-attachment callers, so attachments/cc/bcc are keyword-only | every handler ends with one print_tip() next command that survives piping; a scheduled send or reply names the cancel path (#1314) | contact commands use add_contact()/list_contacts()/search_contacts() and render Rich tables or tab-separated plain output
-  State/Effects: writes ~/.co/outlook_last_inbox.json for mail numbering | read changes mailbox state only with --mark-read; send/reply/contact commands mutate their named data | Outlook auto-refreshes expired tokens via oo-api and saves the selected credential record
+  State/Effects: writes one ~/.co/outlook-listings/<token>.json per inbox/search listing (15-minute, account-bound, via gmail_listings; numbers need --listing) and ~/.co/outlook_last_inbox.json for scheduled-send numbering | read changes mailbox state only with --mark-read; send/reply/contact commands mutate their named data | Outlook auto-refreshes expired tokens via oo-api and saves the selected credential record
   Integration: exposes handle_outlook_* functions for cli/main.py, including handle_outlook_contact_add/list/search | presentation mirrors existing mail tables | Graph logic lives in useful_tools/outlook.py | requires prior 'co auth microsoft'
   Errors: guarded failures print a hint and exit 1 (typer.Exit) — missing auth/Mail/Contacts.ReadWrite scopes, invalid files/times/ids | Graph API errors propagate from Outlook
 """
@@ -20,6 +20,7 @@ from rich.table import Table
 from .mail_window import print_json_listing, window_listing
 from .microsoft_errors import microsoft_errors
 from .command_tips import print_tip
+from .gmail_listings import resolve_reference, save_listing
 
 from ...provider_credentials import ProviderCredentialError, resolve_provider_credentials
 
@@ -28,7 +29,13 @@ console = Console()
 # the failure. A caller piping `--json` gets one or the other, never both mixed.
 errors = Console(stderr=True)
 
+# Scheduled sends only now; inbox and search rows live in LISTINGS (#1754).
 INBOX_CACHE = Path.home() / ".co" / "outlook_last_inbox.json"
+# One immutable, 15-minute, account-bound file per listing shown, the same
+# store Gmail and Drive use. A single "last listing" file could not tell which
+# table a number came from: `inbox --json` and an empty search left it alone,
+# so `reply 1` answered whoever was #1 yesterday.
+LISTINGS = Path.home() / ".co" / "outlook-listings"
 
 def _microsoft_record(required_scope: str = "Mail"):
     """Load the selected Microsoft record and require the Graph scope this command needs.
@@ -76,16 +83,30 @@ def _when(iso: str) -> str:
     return datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone().strftime("%b %d %H:%M")
 
 
+def _account(outlook) -> str:
+    """The mailbox a listing belongs to: the selected record's, which is the token's."""
+    email = resolve_provider_credentials("microsoft").get("EMAIL") or ""
+    return email or outlook.get_my_email().split(":", 1)[-1].strip()
+
+
+def _save_listing(outlook, emails: list) -> str:
+    """Freeze the rows just shown and print the token a row number must travel with."""
+    token = save_listing(LISTINGS, _account(outlook), "messages",
+                         [email["id"] for email in emails], provider="outlook")
+    print(f"Listing: {token} (expires in 15 minutes; use --listing {token} with a row number)")
+    return token
+
+
 def _print_listing(outlook, emails: list, title: str):
-    """Render emails as a numbered table (or plain ID-bearing text when piped) and cache the numbering for read/reply."""
-    _remember_listing("inbox", emails)
+    """Render emails as a numbered table (or plain ID-bearing text when piped) and freeze the numbering for read/reply."""
+    token = _save_listing(outlook, emails)
 
     if not console.is_terminal:
         # Scripts and agents get the untruncated format with full message ids —
         # and the same next-step tip: piped callers are exactly the AI audience
         # the tip exists for.
         console.print(outlook._format_dicts(emails), markup=False, highlight=False)
-        print_tip("Read one with: co outlook read <#>")
+        print_tip(f"Read one with: co outlook read 1 --listing {token}")
         return
 
     table = Table(title=title, show_header=True, header_style="bold cyan")
@@ -101,7 +122,7 @@ def _print_listing(outlook, emails: list, title: str):
 
     console.print()
     console.print(table)
-    print_tip("\n[dim]Read one with:[/dim] [bold]co outlook read <#>[/bold]\n")
+    print_tip(f"\n[dim]Read one with:[/dim] [bold]co outlook read 1 --listing {token}[/bold]\n")
 
 
 def _parse_send_at(at: str) -> str:
@@ -204,14 +225,23 @@ def handle_outlook_inbox(last: int = 10, unread: bool = False,
     else:
         emails = outlook.list_inbox(last=last, unread=unread)
     if json_output:
+        # Full ids only: the array has no row numbers, so it freezes no listing
+        # and a number typed after it cannot mean one of these rows.
         print_json_listing(emails)
         return
     if not emails:
+        # Still a listing: its token resolves no row, rather than an older one.
+        _save_listing(outlook, [])
         scope = "unread " if unread else ""
         console.print(f"\n[cyan]Outlook inbox:[/cyan] no {scope}emails\n")
         print_tip("Next: co outlook inbox -n 25" if unread else "Next: co outlook search <words>")
         return
     _print_listing(outlook, emails, f"📬 Outlook — {resolve_provider_credentials('microsoft').get('EMAIL') or ''}")
+
+
+def _ref(email_id: str, listing: str | None) -> str:
+    """How to name this email again in a next-step tip: with its listing, if it came from one."""
+    return f"{email_id} --listing {listing}" if listing else email_id
 
 
 def _remember_listing(kind: str, emails) -> None:
@@ -241,14 +271,22 @@ def _last_listing() -> tuple:
     return "inbox", cached if isinstance(cached, dict) else {}
 
 
-def _resolve_email_id(outlook, email_id: str, expect: str = "inbox") -> str:
+def _resolve_email_id(outlook, email_id: str, expect: str = "inbox", listing: str | None = None) -> str:
     """Turn a listing number into a Graph message id; full ids pass through.
 
-    Numbers mean the last listing shown **of the kind this verb reads**. A
+    An inbox or search number needs the token of the listing that showed it,
+    and resolves only there: same account, under 15 minutes old (#1754). A
+    number without one raises ListingError instead of guessing.
+
+    Scheduled numbers still mean the last `co outlook scheduled` listing. A
     number from a different listing resolves to nothing rather than to whatever
     happens to sit at that row, because the two are not interchangeable and one
     of the verbs deletes what it is given.
     """
+    if expect == "inbox":
+        return resolve_reference(LISTINGS, email_id, _account(outlook), "messages",
+                                 listing, provider="outlook")
+
     kind, cached = _last_listing()
     if email_id in cached:
         return cached[email_id] if kind == expect else ""
@@ -256,31 +294,19 @@ def _resolve_email_id(outlook, email_id: str, expect: str = "inbox") -> str:
     if not (email_id.isascii() and email_id.isdigit() and len(email_id) < 5):
         return email_id  # full Graph message id
 
-    if cached or int(email_id) < 1:
-        # The user is pointing at their last listing and that number wasn't in
-        # it — fetching a fresh (differently numbered) list would silently open
-        # the wrong email.
-        return ""
-
-    if expect != "inbox":
-        # With no listing to resolve against, the fallback below would answer a
-        # scheduled-mail number with a row of the inbox — which is how a cancel
-        # deleted received mail. Nothing is the right answer.
-        return ""
-
-    emails = outlook.list_inbox(last=int(email_id))
-    if len(emails) < int(email_id):
-        return ""
-    return emails[int(email_id) - 1]["id"]
+    # A number that was not in the last scheduled listing, or no listing at
+    # all: answering with a row of anything else is how a cancel once deleted
+    # received mail. Nothing is the right answer.
+    return ""
 
 
 @microsoft_errors("co outlook inbox")
-def handle_outlook_read(email_id: str, mark_read: bool = False):
+def handle_outlook_read(email_id: str, mark_read: bool = False, *, listing: str | None = None):
     """Show one Outlook message; mark it read only with explicit opt-in."""
     outlook = _outlook()
-    resolved = _resolve_email_id(outlook, email_id)
+    resolved = _resolve_email_id(outlook, email_id, listing=listing)
     if not resolved:
-        print_tip(f"\n[yellow]No email #{email_id} in your last listing — run co outlook, then co outlook read <#>.[/yellow]\n")
+        print_tip(f"\n[yellow]No email #{email_id} in that listing — run co outlook, then co outlook read <#> --listing <listing-id>.[/yellow]\n")
         raise typer.Exit(1)
 
     body = outlook.get_email_body(resolved)
@@ -305,34 +331,35 @@ def handle_outlook_read(email_id: str, mark_read: bool = False):
         marked = "Marked read. "
     elif mark_read:
         marked = "Not marked read: run co auth microsoft to grant Mail.ReadWrite. "
-    print_tip(f"\n[dim]{marked}Reply with:[/dim] [bold]co outlook reply <#> <message>[/bold]\n")
+    print_tip(f"\n[dim]{marked}Reply with:[/dim] [bold]co outlook reply {_ref(email_id, listing)} <message>[/bold]\n")
 
 
 @microsoft_errors("co outlook inbox")
-def handle_outlook_download(email_id: str, out_dir: str = ".", include_inline: bool = False):
-    """Save an email's attachments to disk. Accepts the listing # or a full message id."""
+def handle_outlook_download(email_id: str, out_dir: str = ".", include_inline: bool = False, *,
+                            listing: str | None = None):
+    """Save an email's attachments to disk. Accepts a listing # with --listing, or a full message id."""
     outlook = _outlook()
-    resolved = _resolve_email_id(outlook, email_id)
+    resolved = _resolve_email_id(outlook, email_id, listing=listing)
     if not resolved:
-        print_tip(f"\n[yellow]No email #{email_id} in your last listing — run co outlook, then co outlook download <#>.[/yellow]\n")
+        print_tip(f"\n[yellow]No email #{email_id} in that listing — run co outlook, then co outlook download <#> --listing <listing-id>.[/yellow]\n")
         raise typer.Exit(1)
 
     saved = outlook.download_attachments(resolved, out_dir, include_inline=include_inline)
     if not saved:
         console.print("\n[yellow]No file attachments on that email.[/yellow]")
         console.print("[dim]Embedded signature images are skipped — --include-inline saves them too.[/dim]\n")
-        print_tip(f"Next: co outlook download {email_id} --include-inline")
+        print_tip(f"Next: co outlook download {_ref(email_id, listing)} --include-inline")
         return
 
     console.print()
     for path in saved:
         console.print(f"[green]✓[/green] {path}")
-    print_tip(f"Next: co outlook read {email_id}")
+    print_tip(f"Next: co outlook read {_ref(email_id, listing)}")
 
 
 @microsoft_errors("co outlook sent")
 def handle_outlook_reply(email_id: str, message: str, at: str = None, *, attachments: list = None,
-                         cc: str = None, bcc: str = None):
+                         cc: str = None, bcc: str = None, listing: str | None = None):
     """Reply to an email from the last listing (threaded via Graph). A message of '-' reads stdin.
 
     `at` keeps its third-positional slot from before attachments existed;
@@ -346,9 +373,9 @@ def handle_outlook_reply(email_id: str, message: str, at: str = None, *, attachm
         _check_attachments(attachments)
 
     outlook = _outlook()
-    resolved = _resolve_email_id(outlook, email_id)
+    resolved = _resolve_email_id(outlook, email_id, listing=listing)
     if not resolved:
-        print_tip(f"\n[yellow]No email #{email_id} in your last listing — run co outlook, then co outlook reply <#> <message>.[/yellow]\n")
+        print_tip(f"\n[yellow]No email #{email_id} in that listing — run co outlook, then co outlook reply <#> <message> --listing <listing-id>.[/yellow]\n")
         raise typer.Exit(1)
 
     outlook.reply(resolved, message, attachments=attachments, send_at=send_at, cc=cc, bcc=bcc)
@@ -381,6 +408,8 @@ def handle_outlook_search(query: str, last: int = 10):
     outlook = _outlook()
     emails = outlook.list_search(query, max_results=last)
     if not emails:
+        # Still a listing: its token resolves no row, rather than an older one.
+        _save_listing(outlook, [])
         console.print(f"\n[cyan]Search:[/cyan] no emails matching [bold]{query}[/bold]\n")
         print_tip("Next: co outlook inbox -n 25")
         return

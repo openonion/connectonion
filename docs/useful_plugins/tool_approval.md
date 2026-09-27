@@ -225,15 +225,33 @@ What holds a command back, all checked before the default applies:
 
 | rule | example | verdict |
 |---|---|---|
-| destroys files | `rm -rf build`, `shred x` | deny |
-| credentials or key material | `env`, `aws s3 ls`, `cat ~/.ssh/id_rsa` | deny |
+| destroys files | `rm -rf build`, `shred x`, `unlink f` | deny |
+| credentials or key material | `env`, `aws s3 ls`, `cat ~/.ssh/id_rsa`, `co env get KEY` | deny |
 | writes outside the workspace | `echo x > ../out`, `cp f /etc/x` | deny |
 | rewrites an authorization control file | `> .co/host.yaml` | deny |
 | leaves the machine | `curl`, `ssh`, `git push`, `co email send`, `co feishu send` | ask |
-| runs a program this policy cannot read | `bash << EOF`, `python3 -c`, `awk`, `sed`, `uv run python -c` | ask |
+| runs a program this policy cannot read | `bash << EOF`, `python3 -c`, `awk`, `sed`, `uv run python -c`, `psql -c`, `git -c`, a git alias | ask |
+| fetches or installs a package | `npx pkg`, `uvx pkg`, `pip install x`, `uv add x`, `brew install x` | ask |
+| a subcommand that deletes or cancels, in any CLI | `gh repo delete`, `kubectl delete`, `terraform destroy`, `docker system prune`, `co gdrive rm`, `co outlook cancel` | ask |
+| a subcommand or flag that reaches other people | `gws gmail +send`, `lark-cli im +messages-send`, `co syno share create`, `co gcalendar create --attendees x`, `co gcalendar update`, `co feishu edit` | ask |
+| discards work no commit holds | `git reset --hard`, `git clean -f`, `git checkout -- .`, `git stash drop`, `git branch -D` | ask |
 | deletes or executes through a flag | `find . -delete`, `find . -exec` | ask |
 | reads outside the workspace | `cat /etc/passwd` | ask |
 | cannot be parsed | `echo 'unclosed` | ask |
+
+A command that runs another command is judged by the one it runs (#1750):
+`nice`, `timeout`, `nohup`, `command`, `exec`, `env`, `stdbuf`, `caffeinate`,
+`watch` and `uv run` are read through, so `nice rm -rf ~` is denied as the
+`rm` it is. `sudo`, `doas` and `xargs` never lower the bar below ask —
+another user's authority, and arguments from input nobody can see. A wrapper
+option the policy does not know asks rather than guessing where the wrapped
+command starts.
+
+Verbs are matched on every `+`- and `-`-separated part of the words in
+subcommand position, so a CLI installed tomorrow is covered the day it
+arrives: its `delete` asks without anyone adding its name. That is the line
+drawn instead of a list of dangerous programs, which could never be finished
+either.
 
 A chain is only as permitted as its worst link: `ls && rm -rf build` is denied.
 `co browser status && co email send ...` is still an email send nobody

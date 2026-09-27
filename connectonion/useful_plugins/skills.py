@@ -167,6 +167,12 @@ def _get_skill_paths(skill_name: str) -> List[Path]:
     # 4. User-level Claude Code: ~/.claude/skills/skill-name/SKILL.md
     paths.append(home / '.claude' / 'skills' / skill_name / 'SKILL.md')
 
+    from ..subscription_paths import active_subscription_skills
+    for alias, root in active_subscription_skills(home):
+        prefix = f"{alias}-"
+        if skill_name.startswith(prefix):
+            paths.append(root / skill_name[len(prefix):] / 'SKILL.md')
+
     # 5. Customer-facing defaults. Library-backed defaults resolve to their
     # canonical useful_skills body rather than a copied builtin.
     default = default_skill_path(skill_name)
@@ -324,14 +330,20 @@ def _skill_search_paths(co_dir: Optional[Path] = None,
     # skill answered at the root and was invisible in `sub/`.
     base = project_dir or (co_dir.parent if co_dir else project_root())
     co_base = co_dir or (base / '.co')
-    return [
+    from ..subscription_paths import active_subscription_skills
+    paths = [
         ('project', co_base / 'skills', None),
         ('claude-project', base / '.claude' / 'skills', None),
         ('user', Path.home() / '.co' / 'skills', None),
         ('claude-user', Path.home() / '.claude' / 'skills', None),
+    ]
+    paths.extend((f'subscription:{alias}', root, None)
+                 for alias, root in active_subscription_skills(Path.home()))
+    paths.extend([
         ('builtin', builtin_skills_dir(), None),
         ('builtin', useful_skills_dir(), frozenset(DEFAULT_LIBRARY_SKILLS)),
-    ]
+    ])
+    return paths
 
 
 def _discover_all_skills(co_dir: Optional[Path] = None, project_dir: Optional[Path] = None) -> List['SkillInfo']:
@@ -361,7 +373,8 @@ def _discover_all_skills(co_dir: Optional[Path] = None, project_dir: Optional[Pa
             if not skill_file.exists():
                 continue
 
-            name = skill_dir.name
+            name = (f"{location.split(':', 1)[1]}-{skill_dir.name}"
+                    if location.startswith('subscription:') else skill_dir.name)
             if name in seen:
                 continue
 

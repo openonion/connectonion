@@ -1,0 +1,58 @@
+name: help-gate
+
+# The model half of `co audit` (#1657, #1735), for PRs that touch the CLI.
+#
+# The hard rules (example, what it changes, way back, reachable, real flags)
+# already run on every PR in tests.yml through tests/unit/test_cli_help_contract.py
+# and block the merge. This job adds the judgement a rule cannot make: is each
+# new or changed page clear, accurate, realistic and simple. A model's verdict
+# varies between runs, so it is reported in the job summary and does not
+# block. Only commands whose help changed are reviewed, so a PR pays for its
+# own pages, not all of them.
+
+on:
+  pull_request:
+    paths:
+      - "connectonion/cli/**"
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the base
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Fingerprint the base's help pages
+        run: |
+          pip install -q -e .
+          # A base from before co audit existed has nothing to compare; review every page then.
+          if co audit --help >/dev/null 2>&1; then co audit co --inventory > "$RUNNER_TEMP/base.json"; else echo '{}' > "$RUNNER_TEMP/base.json"; fi
+
+      - name: Checkout the PR
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Review the pages this PR added or changed
+        env:
+          OPENONION_API_KEY: ${{ secrets.OPENONION_API_KEY }}
+        run: |
+          pip install -q -e .
+          if [ -z "$OPENONION_API_KEY" ]; then
+            # Fork PRs get no secrets; the hard rules in tests.yml still applied.
+            echo "no model credential in this context — review skipped." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "## co audit --review (advisory)"
+            echo '```'
+            co audit co --since "$RUNNER_TEMP/base.json" --review || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

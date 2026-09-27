@@ -11,6 +11,7 @@ Under pytest the Rich console is not a terminal, so calling the handlers here
 exercises the piped branch — the branch a human tester never sees.
 """
 
+import re
 import sys
 from unittest.mock import Mock, patch
 
@@ -47,9 +48,10 @@ def test_gmail_piped_listing_still_names_the_next_step(tmp_path, capsys):
 def test_outlook_piped_listing_still_names_the_next_step(tmp_path, capsys):
     outlook = Mock()
     outlook._format_dicts.return_value = "1. a@x.com  hi  ID: 18f2a"
-    with patch.object(outlook_commands, "INBOX_CACHE", tmp_path / "outlook.json"):
+    with patch.object(outlook_commands, "LISTINGS", tmp_path / "outlook-listings"), \
+         patch.object(outlook_commands, "_account", return_value="a@x.com"):
         outlook_commands._print_listing(outlook, EMAILS, "inbox")
-    assert "Read one with: co outlook read <#>" in capsys.readouterr().out
+    assert re.search(r"Read one with: co outlook read 1 --listing [a-f0-9]{32}", capsys.readouterr().out)
 
 
 def test_outlook_piped_scheduled_still_names_the_next_step(tmp_path, capsys):

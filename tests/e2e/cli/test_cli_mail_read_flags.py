@@ -20,7 +20,8 @@ def test_read_preserves_unread_state_by_default(command, handler):
         result = runner.invoke(app, [command, "read", "3"])
 
     assert result.exit_code == 0
-    read.assert_called_once_with("3", mark_read=False)
+    read.assert_called_once()
+    assert read.call_args.args == ("3",) and read.call_args.kwargs["mark_read"] is False
 
 
 @pytest.mark.parametrize(("command", "handler"), [
@@ -32,4 +33,5 @@ def test_mark_read_is_explicit_and_uniform(command, handler):
         result = runner.invoke(app, [command, "read", "3", "--mark-read"])
 
     assert result.exit_code == 0
-    read.assert_called_once_with("3", mark_read=True)
+    read.assert_called_once()
+    assert read.call_args.args == ("3",) and read.call_args.kwargs["mark_read"] is True

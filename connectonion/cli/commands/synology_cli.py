@@ -104,22 +104,39 @@ syno_app=typer.Typer(cls=SynologyRoot,no_args_is_help=False,rich_markup_mode=Non
     epilog='Examples: co syno login --name home; co syno --nas home status; co syno ls /home/docs')
 
 
-def group(name,help_text,cls=SynologyGroup):
+def group(help_text,example,cls=SynologyGroup):
     return typer.Typer(cls=cls,no_args_is_help=True,rich_markup_mode=None,help=help_text,
-                       epilog=f'Example: co syno {name} --help')
+                       epilog='Example: '+example)
 
 
-nas_app=group('nas','Inspect saved NAS profiles (Read-only) and select the default (Changes local settings).')
-network_app=group('network','Inspect NAS interfaces separately from client connectivity. Read-only.')
-storage_app=group('storage','Inspect the capacity and disk indicators supplied by the configured SNMPv3 source. Read-only.')
-service_app=group('service','Enumerate services using explicitly configured SSH read commands. Read-only.')
-share_app=group('share','Create, list and revoke sharing links. Creates or Removes links on the NAS; list is Read-only. Legacy share PATH dispatches to create.',SharingGroup)
+nas_app=group('List saved NAS profiles (Read-only) and choose which one commands use by default (Changes local settings).',
+              'co syno nas list')
+network_app=group('Show the NAS network interfaces and how quickly this computer reaches the NAS. Read-only. '
+                  'Needs SNMP monitoring set up with co syno login --monitoring.','co syno network status')
+storage_app=group('Show volume capacity and disk health as reported by the NAS. Read-only. '
+                  'Needs SNMP monitoring set up with co syno login --monitoring.','co syno storage status')
+service_app=group('List the NAS system services and whether each is running. Read-only. '
+                  'Connects over SSH, so it needs SSH settings from co syno login --monitoring.','co syno service list --running')
+share_app=group('Create, list and revoke sharing links to NAS files. Creates or Removes links on the NAS; list is Read-only. '
+                'co syno share PATH is short for co syno share create PATH.','co syno share list',SharingGroup)
 for name,child in [('nas',nas_app),('network',network_app),('storage',storage_app),('service',service_app),('share',share_app)]:
     syno_app.add_typer(child,name=name)
 
 
 def command(app,name,example,help_text=None,hidden=False):
     return app.command(name,cls=SynologyCommand,help=help_text,epilog='Example: '+example,hidden=hidden)
+
+
+# Help shared by options that mean the same thing on several commands.
+REFRESH_HELP='Accepted for compatibility; this command always checks live.'
+LIMIT_HELP='How many results to show per page.'
+CURSOR_HELP='next_cursor printed by the previous page, to show the next page.'
+LISTING_HELP='listing_id printed by ls or search; needed when PATH is a row number from that output.'
+RECURSIVE_HELP='Required to transfer a folder and everything in it.'
+TRANSFER_DRY_RUN_HELP='Show the planned transfer; copy no files.'
+DESTINATION_HELP='New NAS path, or an existing NAS folder to put it in.'
+OPERATION_OVERWRITE_HELP='Replace a file already at the destination; folders are never merged.'
+OPERATION_DRY_RUN_HELP='Check and show the planned steps; change nothing on the NAS.'
 
 
 @syno_app.callback(invoke_without_command=True)
@@ -129,10 +146,16 @@ def default(ctx:typer.Context):
 
 
 @command(syno_app,'login','co syno login --name home --url https://nas.example:5001 --username alice',
-         'Verify File Station access before saving a profile. Writes the profile locally and its credentials to the chosen store. HTTPS and interactive-only OTP; no secrets on argv.')
-def login(name:Optional[str]=typer.Option(None,'--name'),url:Optional[str]=typer.Option(None,'--url'),
-          quickconnect:Optional[str]=typer.Option(None,'--quickconnect'),username:Optional[str]=typer.Option(None,'--username'),
-          password_stdin:bool=typer.Option(False,'--password-stdin'),ca_cert:Optional[str]=typer.Option(None,'--ca-cert'),
+         'Sign in to a Synology NAS and save it as a named profile. Checks the account can open File Station first, then Writes '
+         'the profile to local settings and the password to your OS keyring (or a private file with --credential-store). '
+         'Needs an HTTPS URL or QuickConnect ID. One-time codes are asked for at the prompt; give the password at the prompt '
+         'or with --password-stdin, never as an argument.')
+def login(name:Optional[str]=typer.Option(None,'--name',help='Profile name to save as (default: the --nas value, else home).'),
+          url:Optional[str]=typer.Option(None,'--url',help='HTTPS address of the NAS, such as https://nas.example:5001.'),
+          quickconnect:Optional[str]=typer.Option(None,'--quickconnect',help='Synology QuickConnect ID to use instead of --url.'),
+          username:Optional[str]=typer.Option(None,'--username',help='DSM account name; asked for when omitted.'),
+          password_stdin:bool=typer.Option(False,'--password-stdin',help='Read the DSM password from the first line of standard input.'),
+          ca_cert:Optional[str]=typer.Option(None,'--ca-cert',help='CA certificate file to trust when the NAS uses a private certificate.'),
           credential_store:str=typer.Option('keyring','--credential-store',help='OS keyring, or explicit POSIX file fallback.'),
           monitoring:Optional[str]=typer.Option(None,'--monitoring',help='JSON file with explicit non-secret snmp/ssh settings.'),
           snmp_secrets_file:Optional[str]=typer.Option(None,'--snmp-secrets-file',help='Private JSON file with snmp_auth/snmp_priv; otherwise prompt.')):
@@ -140,7 +163,8 @@ def login(name:Optional[str]=typer.Option(None,'--name'),url:Optional[str]=typer
         password_stdin=password_stdin,ca_cert=ca_cert,credential_store=credential_store,monitoring=monitoring,snmp_secrets_file=snmp_secrets_file))
 
 
-@command(syno_app,'logout','co syno --nas home logout','Clear local authentication even when remote session invalidation is unavailable; retain settings. Removes only the saved sign-in.')
+@command(syno_app,'logout','co syno --nas home logout','Sign out of a saved NAS. Removes its saved password and session from this computer and keeps the profile settings. '
+         'The local sign-in is cleared even when the NAS cannot be reached to end the session.')
 def logout():
     commands.execute('logout',lambda o:commands._syno(o).logout())
 
@@ -153,8 +177,9 @@ def nas_list():
     commands.execute('nas list',run)
 
 
-@command(nas_app,'use','co syno nas use office','Select a saved default. Changes local settings only. Adding a second profile never switches automatically.')
-def nas_use(name:str=typer.Argument(...)):
+@command(nas_app,'use','co syno nas use office','Make a saved NAS the default for later co syno commands. Changes local settings only. '
+         'Saving another NAS with co syno login never changes the default by itself.')
+def nas_use(name:str=typer.Argument(...,help='Name of a saved NAS, as shown by co syno nas list.')):
     def run(o):
         from ...useful_tools.synology_profiles import ProfileStore
         ProfileStore().use(name)
@@ -163,9 +188,12 @@ def nas_use(name:str=typer.Argument(...)):
 
 
 @command(syno_app,'status','co syno status --operation OPERATION_ID --wait',
-         'Inspect live connectivity and configured monitoring sources. Read-only. Partial coverage exits 1. Operation checks never resubmit writes.')
-def status(refresh:bool=typer.Option(False,'--refresh'),operation:Optional[str]=typer.Option(None,'--operation'),
-           wait:bool=typer.Option(False,'--wait')):
+         'Check that the NAS is reachable and summarise its device, network, storage, disks and services. Read-only. '
+         'Exits 1 when some of those checks could not run. With --operation, shows the progress of an earlier copy or move '
+         'and never starts it again.')
+def status(refresh:bool=typer.Option(False,'--refresh',help=REFRESH_HELP+' Cannot be combined with --operation.'),
+           operation:Optional[str]=typer.Option(None,'--operation',help='operation_id printed by an earlier copy or move; shows its progress.'),
+           wait:bool=typer.Option(False,'--wait',help='With --operation, keep checking until it finishes or --timeout runs out.')):
     def run(o):
         if (wait and not operation) or (operation and refresh):
             commands._error('invalid_input','--wait requires --operation; --operation cannot be combined with --refresh.')
@@ -174,30 +202,36 @@ def status(refresh:bool=typer.Option(False,'--refresh'),operation:Optional[str]=
     commands.execute('status',run)
 
 
-@command(network_app,'status','co syno network status --refresh','Read NAS IF-MIB/IPv4 data and verified client endpoint timing. Read-only. All inspections are fresh.')
-def network_status(refresh:bool=typer.Option(False,'--refresh')):
+@command(network_app,'status','co syno network status --refresh','Show each NAS network interface (up or down, speed, IPv4 addresses) and how long this computer takes to reach the NAS. '
+         'Read-only. Reads the NAS over SNMP, so it needs co syno login --monitoring. Always checks live.')
+def network_status(refresh:bool=typer.Option(False,'--refresh',help=REFRESH_HELP)):
     commands.execute('network status',lambda o:commands._syno(o).network_status())
 
 
-@command(storage_app,'status','co syno storage status --json','Read RAID capacity counters and status. Read-only. Provider rows are not inferred topology.')
-def storage_status(refresh:bool=typer.Option(False,'--refresh')):
+@command(storage_app,'status','co syno storage status --json','Show each storage volume with its health, free and total space, exactly as the NAS reports them. Read-only. '
+         'Does not show which disks make up a volume; see co syno storage disks. Needs co syno login --monitoring.')
+def storage_status(refresh:bool=typer.Option(False,'--refresh',help=REFRESH_HELP)):
     commands.execute('storage status',lambda o:commands._syno(o).storage_status())
 
 
-@command(storage_app,'disks','co syno storage disks --refresh','Read disk identity, deployment state and available health/temperature indicators; missing is unavailable. Read-only.')
-def storage_disks(refresh:bool=typer.Option(False,'--refresh')):
+@command(storage_app,'disks','co syno storage disks --refresh','Show each disk with its model, status, and the health and temperature readings the NAS reports; a missing reading means the NAS did not provide it. Read-only. Needs co syno login --monitoring.')
+def storage_disks(refresh:bool=typer.Option(False,'--refresh',help=REFRESH_HELP)):
     commands.execute('storage disks',lambda o:commands._syno(o).storage_disks())
 
 
-@command(service_app,'list','co syno service list --running','Enumerate actual synoservice state through the explicit SSH key and known-host source. Read-only.')
-def service_list(running:bool=typer.Option(False,'--running'),refresh:bool=typer.Option(False,'--refresh')):
+@command(service_app,'list','co syno service list --running','List NAS system services and whether each is running; --running shows only running ones. Read-only. '
+         'Connects over SSH with the key and known-hosts file set in co syno login --monitoring.')
+def service_list(running:bool=typer.Option(False,'--running',help='Show only services that are running.'),
+                 refresh:bool=typer.Option(False,'--refresh',help=REFRESH_HELP)):
     commands.execute('service list',lambda o:commands._syno(o).service_list(running=running))
 
 
 @command(syno_app,'ls','co syno ls /home/docs --limit 20 --sort name --order asc',
-         'List accessible shares or a full directory path. Read-only. Default order is name ascending. Live pages can change.')
-def ls(path:str=typer.Argument('/'),limit:int=typer.Option(20,'--limit','--last','-n',min=1,max=1000),
-       cursor:Optional[str]=typer.Option(None,'--cursor'),sort:str=typer.Option('name','--sort'),order:str=typer.Option('asc','--order')):
+         'List your shared folders, or the contents of a full NAS folder path. Read-only. Sorted by name, A to Z, unless --sort/--order. '
+         'Results can shift between pages if files are added or deleted meanwhile.')
+def ls(path:str=typer.Argument('/',help='Full NAS folder path, such as /home/docs; / lists your shared folders.'),limit:int=typer.Option(20,'--limit','--last','-n',min=1,max=1000,help=LIMIT_HELP),
+       cursor:Optional[str]=typer.Option(None,'--cursor',help=CURSOR_HELP),sort:str=typer.Option('name','--sort',help='Sort by name, modified or size.'),
+       order:str=typer.Option('asc','--order',help='asc (A to Z, oldest or smallest first) or desc.')):
     def run(o):
         value=commands._syno(o).list_page(path,limit=limit,cursor=cursor,sort=sort,order=order)
         value['_page_command']=['ls',path,'--limit',str(limit),'--sort',sort,'--order',order]
@@ -206,15 +240,19 @@ def ls(path:str=typer.Argument('/'),limit:int=typer.Option(20,'--limit','--last'
 
 
 @command(syno_app,'info','co syno info /home/docs/report.pdf','Inspect a complete NAS file or directory path. Read-only.')
-def info(path:str=typer.Argument(...)):
+def info(path:str=typer.Argument(...,help='Full NAS path, such as /home/docs/report.pdf.')):
     commands.execute('info',lambda o:commands._syno(o).info(path))
 
 
 @command(syno_app,'search','co syno search invoice --in /home/docs --type file',
-         'Search names in an explicit shared-directory scope. Read-only on your files. Wait for completion and clean the task before paging its snapshot.')
-def search(query:str=typer.Argument(...),path:str=typer.Option(...,'--in'),glob:bool=typer.Option(False,'--glob'),
-           kind:str=typer.Option('all','--type'),limit:int=typer.Option(20,'--limit','--last','-n',min=1,max=1000),
-           cursor:Optional[str]=typer.Option(None,'--cursor')):
+         'Find files and folders by name under a NAS folder (--in), including subfolders. Read-only on your files. '
+         'Waits for the NAS to finish searching, removes the temporary search there, then shows results a page at a time '
+         '(next page with --cursor). Use --glob for patterns such as *.pdf.')
+def search(query:str=typer.Argument(...,help='Part of the name to find; a pattern such as *.pdf with --glob.'),
+           path:str=typer.Option(...,'--in',help='NAS folder to search, including its subfolders, such as /home/docs.'),
+           glob:bool=typer.Option(False,'--glob',help='Treat QUERY as a whole-name pattern (* ? []) instead of part of the name.'),
+           kind:str=typer.Option('all','--type',help='file, directory or all.'),limit:int=typer.Option(20,'--limit','--last','-n',min=1,max=1000,help=LIMIT_HELP),
+           cursor:Optional[str]=typer.Option(None,'--cursor',help=CURSOR_HELP)):
     def run(o):
         value=commands._syno(o).search_page(query,path,glob=glob,kind=kind,limit=limit,cursor=cursor)
         value['_page_command']=['search',query,'--in',path,'--type',kind,'--limit',str(limit)]+(['--glob'] if glob else [])
@@ -235,53 +273,80 @@ def transfer(direction,path,dest,recursive,overwrite,skip_existing,dry_run,listi
 
 
 @command(syno_app,'download','co syno download /home/docs/report.pdf --to ./Downloads/',
-         'Download without overwrite by default. Writes local files under --to. Directories require --recursive; local parents must exist. Numeric migration rows require --listing.')
-def download(path:str=typer.Argument(...),dest:str=typer.Option('.','--to'),recursive:bool=typer.Option(False,'--recursive'),
-             overwrite:bool=typer.Option(False,'--overwrite'),skip_existing:bool=typer.Option(False,'--skip-existing'),
-             dry_run:bool=typer.Option(False,'--dry-run'),listing:Optional[str]=typer.Option(None,'--listing')):
+         'Download a file or folder from the NAS to this computer. Writes local files under --to, which must already exist. '
+         'Existing files are kept unless --overwrite; folders need --recursive. To download by row number from ls or search '
+         'output, also pass that output\'s listing_id with --listing.')
+def download(path:str=typer.Argument(...,help='Full NAS path, or a row number from ls or search output with --listing.'),
+             dest:str=typer.Option('.','--to',help='Existing local folder to save into, or a new local file name.'),
+             recursive:bool=typer.Option(False,'--recursive',help=RECURSIVE_HELP),
+             overwrite:bool=typer.Option(False,'--overwrite',help='Replace local files that already exist; existing folders are merged.'),
+             skip_existing:bool=typer.Option(False,'--skip-existing',help='Keep local files that already exist and download only the rest.'),
+             dry_run:bool=typer.Option(False,'--dry-run',help=TRANSFER_DRY_RUN_HELP),
+             listing:Optional[str]=typer.Option(None,'--listing',help=LISTING_HELP)):
     transfer('download',path,dest,recursive,overwrite,skip_existing,dry_run,listing)
 
 
 @command(syno_app,'upload','co syno upload ./report.pdf /home/docs/',
          'Upload into an existing NAS directory. Uploads files to the NAS. Directories require --recursive and preserve their base name and empty directories.')
-def upload(local:str=typer.Argument(...),directory:str=typer.Argument(...),recursive:bool=typer.Option(False,'--recursive'),
-           overwrite:bool=typer.Option(False,'--overwrite'),skip_existing:bool=typer.Option(False,'--skip-existing'),dry_run:bool=typer.Option(False,'--dry-run')):
+def upload(local:str=typer.Argument(...,help='File or folder on this computer.'),
+           directory:str=typer.Argument(...,help='Existing NAS folder to upload into, such as /home/docs.'),
+           recursive:bool=typer.Option(False,'--recursive',help=RECURSIVE_HELP),
+           overwrite:bool=typer.Option(False,'--overwrite',help='Replace NAS files that already exist; existing folders are merged.'),
+           skip_existing:bool=typer.Option(False,'--skip-existing',help='Keep NAS files that already exist and upload only the rest.'),
+           dry_run:bool=typer.Option(False,'--dry-run',help=TRANSFER_DRY_RUN_HELP)):
     transfer('upload',local,directory,recursive,overwrite,skip_existing,dry_run)
 
 
-@command(syno_app,'mkdir','co syno mkdir /home/docs/archive --parents --dry-run','Create ordinary directories; never create DSM shared roots. Creates them on the NAS.')
-def mkdir(path:str=typer.Argument(...),parents:bool=typer.Option(False,'--parents'),dry_run:bool=typer.Option(False,'--dry-run')):
+@command(syno_app,'mkdir','co syno mkdir /home/docs/archive --parents --dry-run','Create a folder inside an existing shared folder on the NAS. Creates it on the NAS; --parents also creates missing folders '
+         'along the path. Cannot create a new top-level shared folder; do that in the Synology web interface (DSM).')
+def mkdir(path:str=typer.Argument(...,help='Full NAS path of the new folder, such as /home/docs/archive.'),
+          parents:bool=typer.Option(False,'--parents',help='Also create missing folders along the path; fine if it already exists.'),
+          dry_run:bool=typer.Option(False,'--dry-run',help='Show which folders would be created; create nothing.')):
     commands.execute('mkdir',lambda o:commands._syno(o,dry_run=dry_run).mkdir(path,parents=parents,dry_run=dry_run))
 
 
 @command(syno_app,'copy','co syno copy /home/docs/report.pdf /home/archive/final.pdf',
-         'Copy within one NAS without directory-tree merging. Creates the copy on the NAS. Pending task IDs survive restart; repeat this command only when continuation is requested.')
-def copy(source:str=typer.Argument(...),destination:str=typer.Argument(...),recursive:bool=typer.Option(False,'--recursive'),
-         overwrite:bool=typer.Option(False,'--overwrite'),dry_run:bool=typer.Option(False,'--dry-run')):
+         'Copy a file or folder to another path on the same NAS. Creates the copy on the NAS; folders need --recursive and are never '
+         'merged into an existing folder. A copy that does not finish in time keeps its progress: re-run the same command '
+         'only when the output tells you to continue.')
+def copy(source:str=typer.Argument(...,help='NAS path to copy, such as /home/docs/report.pdf.'),
+         destination:str=typer.Argument(...,help=DESTINATION_HELP),
+         recursive:bool=typer.Option(False,'--recursive',help='Required to copy a folder and everything in it.'),
+         overwrite:bool=typer.Option(False,'--overwrite',help=OPERATION_OVERWRITE_HELP),
+         dry_run:bool=typer.Option(False,'--dry-run',help=OPERATION_DRY_RUN_HELP)):
     commands.execute('copy',lambda o:commands._syno(o,dry_run=dry_run).copy(source,destination,recursive=recursive,overwrite=overwrite,dry_run=dry_run))
 
 
 @command(syno_app,'move','co syno move /home/docs/report.pdf /home/archive/final.pdf',
-         'Move or rename within one NAS. Changes paths on the NAS. No self-descendant moves or existing-directory-tree merging.')
-def move(source:str=typer.Argument(...),destination:str=typer.Argument(...),overwrite:bool=typer.Option(False,'--overwrite'),
-         dry_run:bool=typer.Option(False,'--dry-run')):
+         'Move or rename a file or folder on the same NAS. Changes paths on the NAS. Cannot move a folder into itself or merge it '
+         'into an existing folder. A move that does not finish in time keeps its progress: re-run the same command only when '
+         'the output tells you to continue.')
+def move(source:str=typer.Argument(...,help='NAS path to move or rename, such as /home/docs/report.pdf.'),
+         destination:str=typer.Argument(...,help=DESTINATION_HELP),
+         overwrite:bool=typer.Option(False,'--overwrite',help=OPERATION_OVERWRITE_HELP),
+         dry_run:bool=typer.Option(False,'--dry-run',help=OPERATION_DRY_RUN_HELP)):
     commands.execute('move',lambda o:commands._syno(o,dry_run=dry_run).move(source,destination,overwrite=overwrite,dry_run=dry_run))
 
 
 @command(share_app,'create','co syno share create /home/docs/report.pdf --expires 2026-09-30 --yes',
          'Create a link with explicit NAS-local expiry or no-expiry. Creates a link anyone holding it can open, unless --password. Unattended writes require --yes; passwords are limited to 16 characters.')
-def share_create(path:str=typer.Argument(...),expires:Optional[str]=typer.Option(None,'--expires'),
-                 no_expiry:bool=typer.Option(False,'--no-expiry'),password:bool=typer.Option(False,'--password'),
-                 password_stdin:bool=typer.Option(False,'--password-stdin'),yes:bool=typer.Option(False,'--yes'),
-                 dry_run:bool=typer.Option(False,'--dry-run'),listing:Optional[str]=typer.Option(None,'--listing')):
+def share_create(path:str=typer.Argument(...,help='Full NAS path to share, or a row number from ls or search output with --listing.'),
+                 expires:Optional[str]=typer.Option(None,'--expires',help='Expiry date as YYYY-MM-DD, in the NAS\'s local time.'),
+                 no_expiry:bool=typer.Option(False,'--no-expiry',help='Make a link that never expires.'),
+                 password:bool=typer.Option(False,'--password',help='Ask for a password (1-16 characters) the link will require.'),
+                 password_stdin:bool=typer.Option(False,'--password-stdin',help='Read the link password from the first line of standard input.'),
+                 yes:bool=typer.Option(False,'--yes',help='Create the link without asking for confirmation.'),
+                 dry_run:bool=typer.Option(False,'--dry-run',help='Check the path and show the link settings; create nothing.'),
+                 listing:Optional[str]=typer.Option(None,'--listing',help=LISTING_HELP)):
     commands.execute('share create',lambda o:commands.handle_share_create(o,path,expires=expires,no_expiry=no_expiry,
         password=password,password_stdin=password_stdin,yes=yes,dry_run=dry_run,listing=listing))
 
 
 @command(share_app,'list','co syno share list --limit 20',
-         'List IDs, paths, expiry, protection and provider status. Read-only. Bearer URLs appear only with --show-url.')
-def share_list(limit:int=typer.Option(20,'--limit','--last','-n',min=1,max=1000),cursor:Optional[str]=typer.Option(None,'--cursor'),
-               show_url:bool=typer.Option(False,'--show-url')):
+         'List your sharing links with their ID, file path, expiry, password protection and status on the NAS. Read-only. '
+         'The link URLs are hidden unless --show-url, since anyone holding one can open it (a password-protected link also needs its password).')
+def share_list(limit:int=typer.Option(20,'--limit','--last','-n',min=1,max=1000,help=LIMIT_HELP),cursor:Optional[str]=typer.Option(None,'--cursor',help=CURSOR_HELP),
+               show_url:bool=typer.Option(False,'--show-url',help='Include each link URL; anyone holding one can open the file.')):
     def run(o):
         result=commands._syno(o).share_list(limit=limit,cursor=cursor,show_url=show_url)
         result['_page_command']=['share','list','--limit',str(limit)]+(['--show-url'] if show_url else [])
@@ -289,8 +354,10 @@ def share_list(limit:int=typer.Option(20,'--limit','--last','-n',min=1,max=1000)
     commands.execute('share list',run)
 
 
-@command(share_app,'revoke','co syno share revoke LINK_ID --yes','Revoke this selected NAS/account link; never delete its source file. Removes only the link.')
-def share_revoke(identifier:str=typer.Argument(...),yes:bool=typer.Option(False,'--yes'),dry_run:bool=typer.Option(False,'--dry-run')):
+@command(share_app,'revoke','co syno share revoke LINK_ID --yes','Turn off a sharing link by its ID (from co syno share list) so it stops working. Removes only the link; the shared file stays.')
+def share_revoke(identifier:str=typer.Argument(...,help='Link ID from co syno share list.'),
+                 yes:bool=typer.Option(False,'--yes',help='Revoke without asking for confirmation.'),
+                 dry_run:bool=typer.Option(False,'--dry-run',help='Look up the link and show it; revoke nothing.')):
     def run(o):
         commands._confirm(o,'Revoke this sharing link?',yes,dry_run)
         return commands._syno(o,dry_run=dry_run).share_revoke(identifier,dry_run=dry_run)
@@ -300,8 +367,9 @@ def share_revoke(identifier:str=typer.Argument(...),yes:bool=typer.Option(False,
 # Aliases use the exact canonical callback and parser options, including the
 # required frozen listing context. Main help and emitted tips stay canonical.
 command(syno_app,'get','co syno get 1 --listing LISTING_ID --to ./Downloads/',
-        'Migration alias for download. Writes local files. Numeric rows always require their frozen --listing ID.')(download)
+        'Download from the NAS to this computer; older name for co syno download. Writes local files. A row number from ls '
+        'or search output needs that output\'s listing_id with --listing.')(download)
 command(syno_app,'put','co syno put ./report.pdf /home/docs/',
-        'Migration alias for upload; all transfer safeguards and options apply. Uploads files to the NAS.')(upload)
+        'Uploads files to the NAS; older name for co syno upload, with the same options and safeguards.')(upload)
 command(syno_app,'shares','co syno shares --show-url',
-        'Migration alias for share list; URLs are hidden unless explicitly requested. Read-only.')(share_list)
+        'List your sharing links; older name for co syno share list. Read-only. Link URLs are hidden unless --show-url.')(share_list)

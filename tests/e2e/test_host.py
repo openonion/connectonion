@@ -39,7 +39,8 @@ def run_async(coro):
 
 # === Simple ASGI Test Client ===
 
-def create_signed_request(prompt: str, timestamp: float = None, signing_key=None) -> dict:
+def create_signed_request(prompt: str, timestamp: float = None, signing_key=None,
+                          to: str = None) -> dict:
     """Create a properly signed request for testing.
 
     `signing_key` lets a caller keep one identity across requests. Since #683
@@ -53,6 +54,9 @@ def create_signed_request(prompt: str, timestamp: float = None, signing_key=None
     public_key = f"0x{signing_key.verify_key.encode().hex()}"
 
     payload = {"prompt": prompt, "timestamp": timestamp or time.time()}
+    if to:
+        # POST /input names its recipient, as CONNECT does (#1752).
+        payload["to"] = to
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     signature = f"0x{signing_key.sign(canonical.encode()).signature.hex()}"
 
@@ -87,14 +91,21 @@ class ASGITestClient:
     def get(self, path: str) -> "Response":
         return self._run(self._request("GET", path))
 
+    @property
+    def agent_address(self) -> str:
+        """The address signed requests must name, as a real client learns it."""
+        return self.get("/info").json()["address"]
+
     def get_signed(self, path: str) -> "Response":
-        """GET with the headers #683 requires, as this client's identity."""
-        from connectonion.network.host.auth import sign_request
+        """GET with the headers #683 requires, as this client's identity,
+        naming this agent and carrying a one-use request id (#1752)."""
+        from connectonion.network.host.auth import sign_http_request
 
         keys = {"address": f"0x{self.signing_key.verify_key.encode().hex()}",
                 "signing_key": self.signing_key}
-        return self._run(self._request("GET", path,
-                                       headers=sign_request(keys, "GET", path)))
+        headers = sign_http_request(keys, "GET", path,
+                                    recipient_address=self.agent_address)
+        return self._run(self._request("GET", path, headers=headers))
 
     def post(self, path: str, json_data: dict = None) -> "Response":
         return self._run(self._request("POST", path, json_data))
@@ -105,7 +116,8 @@ class ASGITestClient:
         One identity for the life of the client, so a session this creates can
         be read back by get_signed -- see create_signed_request.
         """
-        signed_data = create_signed_request(prompt, signing_key=self.signing_key)
+        signed_data = create_signed_request(prompt, signing_key=self.signing_key,
+                                            to=self.agent_address)
         return self._run(self._request("POST", path, signed_data))
 
     async def _request(self, method: str, path: str, body: dict = None,

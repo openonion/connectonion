@@ -3,7 +3,7 @@ Purpose: Google Drive integration tool for listing, searching, downloading, and 
 LLM-Note:
   Dependencies: imports from [io, mimetypes, os, pathlib, googleapiclient.discovery, googleapiclient.http, google.oauth2.credentials] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth google' | tested by [tests/unit/test_gdrive.py]
   Data flow: Agent calls GDrive methods → _get_service() validates the ambient OpenOnion account and refreshes the access token via oo-api once per instance → Drive v3 API → returns file dicts or confirmations | list_files()/search_files() page through files().list() with 'trashed = false' | download() picks get_media() for binary files and export_media() for Google-native docs | upload() sends a MediaFileUpload
-  State/Effects: reads GOOGLE_* env vars for OAuth tokens | makes HTTP calls to the Drive API | creates/overwrites local files on download and remote files on upload | token refresh atomically saves the selected credential record
+  State/Effects: reads GOOGLE_* env vars for OAuth tokens | makes HTTP calls to the Drive API | creates new local files on download (never overwrites: a taken name gets a -N suffix; agents stay inside the project unless allow_external_downloads) and remote files on upload | token refresh atomically saves the selected credential record
   Integration: exposes GDrive class with list_files(), search_files(), download(), upload(), delete() | private metadata/byte helpers let the Gmail CLI stage a Drive file without writing it locally | used as agent tool via Agent(tools=[GDrive()])
   Performance: network I/O per API call | listings page at 100/request | downloads stream in chunks
   Errors: raises ValueError if OAuth not configured, if the Drive scope is missing, on unknown file ids, and on Google-native types with no export format | HttpError from the Drive API propagates
@@ -46,6 +46,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 from ..backend import backend_url
+from ..project import project_root
 from ..credentials import require_ambient_api_key
 from ..provider_credentials import resolve_provider_credentials, refresh_credentials, token_expiry
 
@@ -80,11 +81,16 @@ class GDrive:
     def _credentials(self, value):
         self._credential_record = value
 
-    def __init__(self):
+    def __init__(self, allow_external_downloads: bool = False):
         """Initialize the Drive tool.
 
         Validates that Google OAuth is configured with the Drive scope.
         Raises ValueError if it is missing.
+
+        Args:
+            allow_external_downloads: Let download() write outside the project.
+                Off for agents, whose destination comes from a model; the CLI
+                turns it on because there the user typed the path (#1753).
         """
         from .google_scopes import granted_scopes
         self._credentials = resolve_provider_credentials("google")
@@ -100,6 +106,8 @@ class GDrive:
             )
 
         self._service = None
+        self._download_root = project_root().resolve()
+        self._allow_external_downloads = allow_external_downloads
 
     def _get_service(self):
         """Get the Drive API service, refreshing the access token once per instance.
@@ -343,20 +351,49 @@ class GDrive:
 
         Args:
             file_id: Drive file id
-            dest: Destination directory, or a full file path (default: cwd)
+            dest: Destination directory, or a full file path (default: cwd).
+                An existing file is never replaced; the new one gets a -N suffix.
 
         Returns:
             Confirmation with the path written
         """
         item = self._read_file(file_id)
-        name = item["name"]
 
         path = Path(dest).expanduser()
         if path.is_dir():
-            path = path / name
+            # The name is chosen by whoever shared the file, and Drive allows
+            # '/' in names: keep the last segment only, so "../../.zshrc"
+            # cannot climb out of the folder the user picked (#1753).
+            name = os.path.basename(str(item["name"]).replace("\\", "/"))
+            # Control characters can forge CLI output (including ANSI escapes).
+            name = "".join("_" if ord(c) < 32 or ord(c) == 127 else c for c in name)
+            path = path / (name if name not in {"", ".", ".."} else "download")
 
-        path.write_bytes(item["data"])
-        return f"Downloaded to {path}"
+        directory = path.parent.resolve()
+        if not self._allow_external_downloads:
+            try:
+                directory.relative_to(self._download_root)
+            except ValueError:
+                raise PermissionError(f"Download directory is outside the project: {dest}") from None
+
+        # Never replace what is already there — a same-named file, or a symlink
+        # planted at the name, gets a "-N" suffix instead of being written through.
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        attempt = 0
+        while True:
+            candidate = path if attempt == 0 else directory / f"{path.stem}-{attempt}{path.suffix}"
+            try:
+                descriptor = os.open(candidate, flags, 0o600)
+                break
+            except FileExistsError:
+                attempt += 1
+        try:
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(item["data"])
+        except Exception:
+            candidate.unlink(missing_ok=True)
+            raise
+        return f"Downloaded to {candidate}"
 
     def upload(self, path: str, name: str = None) -> dict:
         """Upload a local file to Drive.

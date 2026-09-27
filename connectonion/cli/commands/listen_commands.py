@@ -2,7 +2,7 @@
 Purpose: The verbs of an inbox provider — `co feishu listen | receive | send | reply | done | check | ls | log | consume`
 LLM-Note:
   Dependencies: imports from [json, os, subprocess, sys, threading, time, typing, rich.console, inbox/] | imported by [cli/main.py via _inbox_group()] | tested by [tests/unit/test_listen_commands.py]
-  Data flow: handle_listen → provider.run(inbox) until Ctrl-C | handle_receive → inbox.receive() → one JSON line on stdout | handle_send/handle_reply → stdin or argument → provider.send() → sent.jsonl → the new message id on stdout | handle_consume → Inbox.serve(handler) → subprocess(stdin=message) → reply(stdout)
+  Data flow: handle_listen → provider.run(inbox) until Ctrl-C | handle_receive → inbox.receive() → one JSON line on stdout | handle_send/handle_reply → stdin or argument → provider.send() → sent.jsonl → the new message id on stdout | handle_consume → serve_with_listener(handler), which restarts a dead listener and stops on exit 3 → subprocess(stdin=message) → reply(stdout)
   State/Effects: everything durable lives in the inbox directory | listen holds listen.lock and returns stale cur/ files every minute | receive and serve start a background listener when none runs
   Integration: one set of handlers for every provider name in inbox.PROVIDERS; main.py registers the same nine commands under each group | exit codes: 0 ok, 1 failure, 2 usage (Typer), 3 configuration missing, 124 receive timed out (as timeout(1))
   Errors: a missing credential prints the item and the next action and exits 3 | a provider refusal prints its own words and exits 1 | nothing is printed on the success path of listen (Rule of Silence); the log has it
@@ -22,6 +22,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from ...inbox import ANSWERING, Inbox, ListenerStopped, provider, reactions_enabled
+from ...inbox.consumer import serve_with_listener
 from .command_tips import print_tip
 
 console = Console()
@@ -63,13 +64,19 @@ def _configured(name: str, *, sends: bool = False):
     """
     p = provider(name)
     problems = p.missing()
+    start = False
     if not problems and sends and getattr(p, "via_listener", False) \
             and Inbox(name).listener_pid() is None:
         problems = getattr(p, "listen_requirements", list)()
+        start = not problems
     if problems:
         for problem in problems:
             errors.print(problem, style="red")
         sys.exit(EXIT_CONFIG)
+    if start:
+        # Start one, as `receive` does (#1860). Waiting 30s for a listener
+        # nobody had started was 5 of one owner's 7 failed sends.
+        _listener_or_exit(Inbox(name))
     return p
 
 
@@ -161,25 +168,11 @@ def _listener_died(inbox: Inbox, code, when: str = "at once") -> None:
     # The reason is the child's last few lines; an agent that reads
     # stderr should not have to go and open the log to learn "pip
     # install lark-oapi".
-    for line in _reason_lines(inbox):
+    for line in inbox.why_listener_stopped():
         # Unwrapped: a pip command split across two lines cannot be copied.
         errors.print(f"  {line}", style="red", soft_wrap=True, highlight=False)
     errors.print(f"full log: {inbox.logfile}", style="dim")
     sys.exit(EXIT_CONFIG if code == EXIT_CONFIG else 1)
-
-
-# What a listener writes about its own start and stop, as opposed to why it
-# stopped. The last three log lines of a refused Telegram token were
-# "listener stopped", "exited at once with 3" and the tail of a path, with the
-# sentence that says to copy the token from @BotFather just above them.
-_BOOKKEEPING = re.compile(r"(listener stopped|listener exited at once with \d+.*|"
-                          r"listening · .*|details: .*)$")
-
-
-def _reason_lines(inbox: Inbox, count: int = 3) -> List[str]:
-    """The last few log lines that say why, not that, the listener stopped."""
-    lines = [line for line in inbox.last_log_lines(12) if not _BOOKKEEPING.search(line)]
-    return lines[-count:]
 
 
 def handle_done(name: str, message_id: str) -> None:
@@ -198,10 +191,96 @@ def handle_done(name: str, message_id: str) -> None:
     inbox.done(message_id, by="done")
 
 
-def handle_listen(name: str, raw: bool = False) -> None:
+def running_version() -> str:
+    """The version of the code this process loaded."""
+    from ... import __version__
+    return __version__
+
+
+def installed_version() -> Optional[str]:
+    """The version pip has installed now, read from disk; None when unreadable."""
+    from importlib import metadata
+    try:
+        return metadata.version("connectonion")
+    except metadata.PackageNotFoundError:
+        return None
+
+
+def restart_if_upgraded(inbox: Inbox, *, running: str, installed: Optional[str], execv=os.execv) -> None:
+    """Replace this listener with the installed code after an upgrade (#1859).
+
+    In place, so the pid, the lock holder and the session stay one device and
+    nothing re-pairs. Not while a send is in flight: a `.taken` request is one
+    the listener has claimed and not answered, and restarting then would leave
+    its sender waiting for an answer that never comes.
+    """
+    if not installed or installed == running:
+        return
+    if any((inbox.root / "outbox").glob("*.taken")):
+        return
+    # Once per installed version (#1878). A mismatch that survives a restart
+    # is something the restart cannot fix; retrying it every minute would
+    # only drop the connection every minute.
+    marker = inbox.root / "restart.json"
+    try:
+        tried = json.loads(marker.read_text(encoding="utf-8")).get("for")
+    except (OSError, ValueError, AttributeError):
+        tried = None
+    if tried == installed:
+        if not getattr(inbox, "_restart_reported", False):
+            inbox.log(f"still running {running} after restarting for {installed}; not restarting again. "
+                      "Next: co <provider> listen --restart")
+            inbox._restart_reported = True
+        return
+    marker.write_text(json.dumps({"for": installed, "from": running}), encoding="utf-8")
+    inbox.log(f"installed {installed}, running {running}: restarting")
+    args = [a for a in sys.argv[1:] if a != "--restart"]
+    # From the inbox directory, so `-m` finds the installed package, not a
+    # checkout in whatever directory the listener was started from (#1878).
+    os.chdir(inbox.root)
+    execv(sys.executable, [sys.executable, "-m", "connectonion.cli.main", *args])
+
+
+def version_line(name: str, inbox: Inbox, pid, *, installed: Optional[str]) -> str:
+    """What `check` says about the listener's code, or '' when it is current."""
+    version = inbox.listener_version(pid)
+    if version is None:
+        return (f"listener {pid} started before version tracking, so it may be running code from an "
+                f"older release. Replace it: co {name} listen --restart")
+    if installed and version != installed:
+        return (f"listener {pid} runs {version}; {installed} is installed. It restarts itself within a "
+                f"minute; to do it now: co {name} listen --restart")
+    return ""
+
+
+def _restart_listener(name: str, inbox: Inbox) -> None:
+    """`listen --restart`: stop the running listener, start one in the background."""
+    import signal
+    pid = inbox.listener_pid()
+    if pid and pid > 0:
+        os.kill(pid, signal.SIGTERM)
+        for _ in range(100):  # up to 10s for it to let go of the lock
+            if inbox.listener_pid() is None:
+                break
+            time.sleep(0.1)
+        else:
+            errors.print(f"listener {pid} did not stop within 10s; nothing was started. "
+                         f"Next: co {name} log", style="red")
+            sys.exit(1)
+    new = inbox.ensure_listener(settle=SETTLE_SECONDS)
+    if new is None:
+        _listener_died(inbox, inbox.listener_exit_code)
+    print(f"listener restarted in the background · pid {new}")
+    print_tip(f"Next: co {name} check")
+
+
+def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
     """Hold the connection and write every message to the inbox."""
     p = _configured(name)
     inbox = Inbox(name)
+    if restart:
+        _restart_listener(name, inbox)
+        return
     # The SDK is needed by listen alone; asking here, before the lock, means
     # the answer is exit 3 with the pip command on stderr, the same shape as
     # a missing credential, and not "the listener exited at once".
@@ -213,11 +292,14 @@ def handle_listen(name: str, raw: bool = False) -> None:
     if not inbox.hold_lock():
         errors.print(f"already listening (pid {inbox.listener_pid()}); one listener per directory", style="yellow")
         sys.exit(1)
+    started_with = running_version()
+    inbox.record_listener(started_with)
 
     stop = threading.Event()
 
     def sweep():
         while not stop.wait(60):
+            restart_if_upgraded(inbox, running=started_with, installed=installed_version())
             try:
                 released = inbox.release_stale()
             except OSError as exc:  # the sweep must outlive one bad file
@@ -331,17 +413,17 @@ def handle_receive(name: str, timeout: Optional[float] = None, start: bool = Tru
 
 
 def handle_send(name: str, chat: str, text: Optional[str] = None, reply_to: Optional[str] = None,
-                plain: bool = False) -> None:
-    """Send text to a chat. Prints the new message id."""
+                plain: bool = False, image: Optional[str] = None, file: Optional[str] = None) -> None:
+    """Send text, or a picture or file with an optional caption. Prints the new message id."""
     p = _configured(name, sends=True)
     inbox = Inbox(name)
-    body = _wire(p, _text_from(text), plain)
+    body, media, extra = _body_and_media(p, name, "send", text, plain, image, file)
     try:
-        sent = p.send(chat, body, reply_to=reply_to, plain=True)
+        sent = p.send(chat, body, reply_to=reply_to, plain=True, **extra)
     except Exception as exc:
-        inbox.record_sent(chat=chat, text=body, reply_to=reply_to, error=str(exc), by="send")
+        inbox.record_sent(chat=chat, text=body, reply_to=reply_to, error=str(exc), by="send", media=media)
         _refused(name, exc)
-    inbox.record_sent(chat=chat, text=body, reply_to=reply_to, provider_id=sent, by="send")
+    inbox.record_sent(chat=chat, text=body, reply_to=reply_to, provider_id=sent, by="send", media=media)
     print(sent)
 
 
@@ -368,8 +450,31 @@ def _mark_answering(p, inbox, message) -> None:
     inbox.log(f"{ANSWERING} on {message.id} sent as {sent or 'no id'}")
 
 
+def _body_and_media(p, name: str, verb: str, text: Optional[str], plain: bool,
+                    image: Optional[str], file: Optional[str]) -> tuple:
+    """The caption as it goes on the wire, what `sent.jsonl` records of the
+    attachment, and the keywords that carry it to `p.send` (#1856).
+
+    Checked here, before anything is marked or queued, so a bad path costs the
+    caller one sentence and the chat nothing.
+    """
+    if not (image or file):
+        return _wire(p, _text_from(text), plain), None, {}
+    if not getattr(p, "sends_media", False):
+        _refused(name, ValueError(f"co {name} {verb} cannot attach a picture or file yet "
+                                  "(--image, --file); nothing was sent. Send the text alone"))
+    try:
+        attached = p.attachment(image=image, file=file)
+    except ValueError as exc:
+        _refused(name, exc)
+    # With an attachment the caption is optional, and an omitted one is none:
+    # reading stdin for it would hang a script that only sent a picture.
+    body = _wire(p, text, plain) if text else ""
+    return body, {key: attached[key] for key in ("kind", "path", "size")}, {"image": image, "file": file}
+
+
 def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: bool = False,
-                 plain: bool = False) -> None:
+                 plain: bool = False, image: Optional[str] = None, file: Optional[str] = None) -> None:
     """Reply to a received message where it was asked. Prints the new id."""
     p = _configured(name, sends=True)
     inbox = Inbox(name)
@@ -380,16 +485,16 @@ def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: 
     if inbox.already_replied(message_id) and not again:
         errors.print(f"already replied to {message_id}; pass --again to reply once more", style="yellow")
         sys.exit(1)
-    body = _wire(p, _text_from(text), plain)
+    body, media, extra = _body_and_media(p, name, "reply", text, plain, image, file)
     _mark_answering(p, inbox, original)
     try:
-        sent = p.send(original.chat, body, reply_to=message_id, fresh=again, plain=True)
+        sent = p.send(original.chat, body, reply_to=message_id, fresh=again, plain=True, **extra)
     except Exception as exc:
         inbox.record_sent(chat=original.chat, text=body, reply_to=message_id,
-                          error=str(exc), by="reply")
+                          error=str(exc), by="reply", media=media)
         _refused(name, exc)
     inbox.record_sent(chat=original.chat, text=body, reply_to=message_id, provider_id=sent,
-                      by="reply")
+                      by="reply", media=media)
     inbox.done(message_id, by="reply")
     print(sent)
 
@@ -570,6 +675,9 @@ def handle_check(name: str) -> None:
     listener = f"listener pid {pid}" if pid else "no listener running (receive starts one)"
     console.print(f"[green]✓[/green] {name} configured · {listener} · "
                   f"{len(inbox.unread())} unread · {inbox.root}")
+    stale = version_line(name, inbox, pid, installed=installed_version()) if pid else ""
+    if stale:
+        errors.print(stale, style="yellow")
     _report_connection(name, inbox, pid)
 
 
@@ -770,6 +878,12 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
         # time, and some of them are not safe to run twice at once. The lanes
         # still give it ordering, lease renewal and the give-up rule; anyone
         # who wants the parallelism asks for it with --workers.
-        inbox.serve(answer, workers=workers, once=once, by=consumer)
+        # Watched, not just started: the docs promise consume restarts a
+        # listener that died, and it had only checked once, at the start.
+        code = serve_with_listener(
+            inbox, answer, workers=workers, once=once, by=consumer,
+            say=lambda line: errors.print(line, style="red", soft_wrap=True, highlight=False))
     except KeyboardInterrupt:
         return
+    if code is not None:
+        sys.exit(EXIT_CONFIG if code == EXIT_CONFIG else 1)

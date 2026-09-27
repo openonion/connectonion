@@ -40,6 +40,10 @@ from connectonion import Agent
 from connectonion.network.host import get_agent_address
 from tests.utils.mock_helpers import MockLLM, LLMResponseBuilder
 
+# Agents and hosts built here write .co/ under the working directory; each
+# test gets its own, not the repository's shared one (tests/conftest.py).
+pytestmark = pytest.mark.usefixtures("own_project")
+
 
 class _HostedAgentIdentity:
     name = "ws-agent"

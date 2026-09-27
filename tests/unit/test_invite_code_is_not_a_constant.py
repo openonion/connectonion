@@ -44,6 +44,9 @@ class TestTheShippedPolicies:
             assert "invite_code: [OpenOnion" not in text, str(path)
 
 
+# Admitting a stranger records them in .co/contacts.txt under the working
+# directory; the rest of this file reads docs/ relative to the repo root.
+@pytest.mark.usefixtures("own_project")
 class TestReadingTheCodeFromTheEnvironment:
     def test_a_placeholder_resolves_from_the_environment(self, monkeypatch):
         monkeypatch.setenv("CO_INVITE_CODE", "REAL-CODE-123")

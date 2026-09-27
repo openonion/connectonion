@@ -184,7 +184,7 @@ co browser go_to example.com     # navigates → Chrome launched OK. Then: co br
 >   `%LOCALAPPDATA%`, Linux snap/flatpak) isn't auto-detected — use `patchright install chromium`.
 > - `co doctor` Browser line **missing** → patchright library gone: `PY -m pip install patchright`.
 > - `co doctor` Browser line **broken** (stealth driver) → `PY -m pip install --force-reinstall --no-cache-dir patchright`.
-> - `co browser do "…"` says *"requires authentication"* → the natural-language mode uses a
+> - `co browser "…"` says *"requires authentication"* → the natural-language mode uses a
 >   managed model; run `co auth` (Step 3 covers this). Direct verbs like `go_to` don't need it.
 
 ## Step 6: Optional integrations (Gmail / Outlook / Calendar)
@@ -244,7 +244,7 @@ The payoff. Run `co status`, then translate it — **don't paste the raw panel**
     • co status                      — check your balance any time
     • co email                       — read your agent's inbox
     • co email send <to> <sub> <msg> — send mail from your agent
-    • co browser do "…"              — drive a web browser  (if set up)
+    • co browser "…"              — drive a web browser  (if set up)
     • python agent.py                — run your agent
 
   If the balance ever runs low, add more at https://o.openonion.ai/purchase —

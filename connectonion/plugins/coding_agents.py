@@ -427,6 +427,10 @@ def _provider_permission_for_event(
 ) -> dict[str, Any] | None:
     if provider not in {"codex", "claude_code"} or not isinstance(workroom_id, str):
         return None
+    if provider == "claude_code" and workroom_id.startswith("claude_code:station:"):
+        # Station pins the native mode to default for owner approval. Its
+        # selectable profile catalog would claim that Auto can take effect.
+        return None
     session = getattr(agent, "current_session", None)
     if not isinstance(session, dict):
         return None

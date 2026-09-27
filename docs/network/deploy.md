@@ -311,6 +311,7 @@ protected, while project-authored configuration and skills still travel:
 | `.co/session_results.jsonl` | **kept** — every turn the deployed agent served; a laptop's copy never replaces it |
 | `.co/schedule-state.json` | **kept** — what the scheduler ran, and what is paused on the server |
 | `.co/contacts.txt`, `.co/admins.txt`, `.co/address.json` | **kept** — who onboarded and who is in charge, as the server knows it |
+| `.co/whitelist.txt`, `.co/blocklist.txt` | **kept** — a block or grant made on the server stays; a local copy only fills in a list the server does not have yet ([below](#trust-lists)) |
 | `.co/replay.sqlite3`, `.co/uploads/`, `.co/remote-browser-*` | **kept** — used signatures, files callers sent, browser leases |
 | `.co/skills/` | **synced** — skills are what the agent *is*, not state it accumulated |
 | everything else in the project | synced, with `--delete`, so a deleted file goes away |
@@ -318,8 +319,32 @@ protected, while project-authored configuration and skills still travel:
 "Kept" means both halves: a deploy neither deletes the server's copy nor sends a
 local one over it. Anyone who has run the agent on their laptop has local copies of
 most of these, so protecting them from deletion alone is not enough.
-`.co/whitelist.txt` and `.co/blocklist.txt` are not in this list: they are files you
-write, and they deploy like the rest of `.co/`.
+
+<a id="trust-lists"></a>
+#### Trust lists: the server's copy wins
+
+You write `.co/whitelist.txt` and `.co/blocklist.txt`, but so does the running
+agent. When an admin blocks a caller through the admin endpoint or `co trust`,
+the block is written to the server's copy. Before 1.8.9, a deploy sent your
+laptop's copy over it, and the blocked caller was let back in without any
+message (#1757). So a deploy now:
+
+- **keeps** the server's lists when it has them,
+- **fills in** a list the server does not have yet from your local copy, so a
+  first deploy still carries your blocklist,
+- **says so** when you have local lists it did not send:
+  `kept the server's .co/blocklist.txt — … --push-trust-lists replaces them`.
+
+To ship a change you made on purpose, including removing an address, replace
+the server's lists with yours:
+
+```bash
+co deploy --to prod --push-trust-lists
+```
+
+That overwrites any block or grant made on the server since your last copy, so
+first check the server's list for entries you don't have locally:
+`co server ssh prod 'cat /srv/<agent>/.co/blocklist.txt'`.
 
 The project's root `.gitignore` is the boundary for its own generated state too.
 An ignored path is neither uploaded nor deleted on the server. For example, an agent

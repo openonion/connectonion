@@ -33,6 +33,7 @@ Options (before the command):
   --json        Machine-readable output: {"ok", "data", "next"}.
 
 First time:   co wiki init
+Example:      co wiki search "term sheet" --in people
 Every page:   co wiki <command> --help
 Advanced:     co wiki advanced --help   (scan, map-skills, stub, reflect, reflections,
               propose, review, abstract, capture)
@@ -45,9 +46,10 @@ Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, 
 ```
 Build the notebook's frame: a page for each person you write to, each organization,
 each coding project and each installed Skill, plus your own page, already titled
-with your name and filled with who you write to most and where you work. Reads mail headers
-and session metadata only. Does not read message bodies, does not run a model, does
-not turn on the schedule.
+with your name and filled with who you write to most and where you work. Reads mail headers,
+the preview line your provider lists with each message (to name people by your
+greeting), saved contacts, and session metadata. Does not open message bodies, does
+not run a model, does not turn on the schedule.
 
 Usage:    co wiki init [--days N] [--mine ADDRESS]... [--name NAME] [--mail gmail|outlook]...
 Example:  co wiki init --days 90 --name "Aaron Xie" --mine aaron@mail.openonion.ai
@@ -60,7 +62,7 @@ Output:   Pages under ~/.co/wiki (or --root). A summary of what was read, what w
 Effects:  Writes pages. Reads mail headers. No model, no cost, no schedule.
 Takes:    About 10 minutes for 90 days of two mailboxes.
 
-Next:     co wiki investigate me         (fill your own page first)
+Next:     co wiki investigate me --quick (bounded, partial first pass; retain --days N)
 Back:     co wiki --help
 ```
 
@@ -79,14 +81,19 @@ Usage:
   co wiki investigate CATEGORY [--limit N]     Investigate the unfinished pages in one category,
                                                most useful first. Default --limit 5.
   co wiki investigate me                       Investigate your own page from your recent work.
+  co wiki investigate me --quick               Bounded first pass; says what it did not cover.
+  co wiki investigate all --budget 10          The first pass after init: the whole queue, highest
+                                               first, until 10 points of your Codex week are spent.
 
-  CATEGORY is one of: people, projects, orgs, skills
+  CATEGORY is one of: people, projects, orgs, skills, all (people, projects and orgs
+  in one queue, by weight)
 
 Examples:
   co wiki investigate
   co wiki investigate people/ody-zhou-c6a901ffd8.md
   co wiki investigate people --limit 3
   co wiki investigate projects --list          (show the order, run nothing)
+  co wiki investigate all --list               (the first pass's order, run nothing)
 
 What each kind reads:
   people    Every message to or from their addresses, searched on the server, with
@@ -98,13 +105,23 @@ What each kind reads:
 
 Options:
   --days N       How far back to read (default 150; 30 for me)
+  --quick        With me: sample recent evidence for one model turn; explicitly partial
   --limit N      With CATEGORY: at most N pages this run (default 5; 0 for all)
   --list         With CATEGORY: print the order and stop; no model
+  --budget N     With CATEGORY: stop starting pages once this run has used N points of
+                 the Codex week (1-100). With --budget, --limit defaults to 0 (all).
   --handle TEXT  PAGE only: another address or name for the subject (repeatable)
   --eval-dir DIR skills only: where the run records are
 
 Order within a category: pages still marked Unknown first, then those with the
 most mail or sessions. A page investigated in the last 7 days is skipped.
+
+Budget: with the Codex runner every investigation records your Codex week before
+and after, and counts toward investigation's weekly budget (limits.
+investigation_quota_points, default 10). A CATEGORY run stops starting pages when
+that budget is spent, when --budget is spent, or once the week is at
+limits.quota_floor_percent (default 70%), and says which. The page in flight
+finishes. Without a meter (another runner, Codex signed out) --limit is the bound.
 
 Effects:  Reads message bodies and files. Calls the model configured in co wiki config:
           one call for most pages. A subject with hundreds of messages is summarised
@@ -120,13 +137,19 @@ Back:     co wiki --help
 ## co wiki open
 
 ```
-Open the notebook in your browser, as a private page on your own agent.
-Read-only.
+Open the notebook in your web browser to read it. Read-only: pages do not change.
 
-Usage:    co wiki open [--local] [--no-launch]
+Usage:    co wiki open [--live] [--no-launch]
 Example:  co wiki open
-          --local opens a static snapshot file instead of the live page.
-Effects:  None to pages.
+          Renders a fresh snapshot of the notebook to a temporary file and opens
+          it. Works offline; run it again to see newer pages.
+          co wiki open --live
+          Opens the live view in O Chat, read from your co ai Host. Checks the
+          Host first; if it is not online, says so (start it with co ai) and
+          opens the snapshot instead. Only for the default notebook.
+          --no-launch prints the page without opening a browser.
+Effects:  Reads pages and changes none. The snapshot is written outside the
+          notebook, to a temporary file.
 Next:     co wiki show PAGE   (to read one page in the terminal)
 Back:     co wiki --help
 ```
@@ -202,6 +225,7 @@ Turn daily upkeep off by removing the schedule. Pages, source approvals and manu
 co wiki sync all stay.
 
 Usage:    co wiki stop
+Example:  co wiki stop
 Next:     co wiki status
 Back:     co wiki --help
 ```
@@ -213,6 +237,7 @@ Show whether the schedule is on, when it runs next, what ran today, and what it 
 Read-only.
 
 Usage:    co wiki status
+Example:  co wiki status
 Next:     co wiki logs   (details of each run)
 Back:     co wiki --help
 ```
@@ -304,6 +329,7 @@ logins, session folders, spreadsheet support and the schedule. Read-only; it nev
 logs in or repairs.
 
 Usage:    co wiki doctor
+Example:  co wiki doctor
 Output:   One line per check, with the command that fixes each failure.
 Back:     co wiki --help
 ```

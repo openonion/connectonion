@@ -34,6 +34,8 @@ STATE_FILE = "schedule-state.json"
 # process costs anyway. It is also the resolution this is for: "every 15
 # minutes", "weekday mornings". Nothing here wants a second hand.
 TICK_SECONDS = 60
+# How long an `exec:` command may run before its whole process group is killed.
+EXEC_TIMEOUT_SECONDS = 600
 
 _UNITS = {"s": "seconds", "m": "minutes", "h": "hours", "d": "days"}
 _DURATION = re.compile(r"^(\d+)([smhd])$")
@@ -427,7 +429,10 @@ def record_run(co_dir: Path, name: str, *, when: datetime, status: str,
     Home page shows as "running" instead of a stale last completion (#537, #539).
 
     `paused` is the user's setting, not the run's outcome, so it survives every
-    write; a pending `run_requested` is consumed by the run it asked for.
+    write. So does a pending `run_requested`, except on the claim
+    (`status="running"`), which is the run it asked for. A request that lands
+    while the entry is already running belongs to the next run, and erasing it
+    on completion meant `co schedule run` promised a run that never came (#1756).
 
     `reason` is the exception from a run that raised, and is the exception to
     that rule — a run that dies before producing a session leaves no session to
@@ -436,7 +441,9 @@ def record_run(co_dir: Path, name: str, *, when: datetime, status: str,
     ssh session (#541).
     """
     def change(state):
-        paused = (state.get(name) or {}).get("paused")
+        previous = state.get(name) or {}
+        paused = previous.get("paused")
+        requested = previous.get("run_requested") and status != "running"
         # Rebuilt rather than updated, so a later success drops the reason a
         # previous failure left behind. A stale cause on a healthy entry is a
         # worse lie than no cause at all.
@@ -447,6 +454,8 @@ def record_run(co_dir: Path, name: str, *, when: datetime, status: str,
         }
         if paused:
             state[name]["paused"] = True
+        if requested:
+            state[name]["run_requested"] = True
         if reason:
             state[name]["reason"] = reason
 
@@ -534,15 +543,30 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
         stderr is kept on failure: a non-zero exit with nothing to read is a
         mystery at 3am, and the schedule state is where someone will look.
         """
+        import signal
         import subprocess
 
-        result = subprocess.run(entry.exec, shell=True, cwd=co_dir.parent,
-                                capture_output=True, text=True, timeout=600)
-        if result.returncode == 0:
+        # Its own process group, so a timeout can stop everything it started.
+        # subprocess.run(timeout=) kills only the `sh` that shell=True spawns;
+        # the script under it kept running while the state said `failed`, and
+        # the next tick started a second copy beside it (#1756).
+        proc = subprocess.Popen(entry.exec, shell=True, cwd=co_dir.parent,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, start_new_session=True)
+        try:
+            stdout, stderr = proc.communicate(timeout=EXEC_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            if hasattr(os, "killpg"):
+                os.killpg(proc.pid, signal.SIGKILL)
+            else:  # Windows has no process groups to kill; the shell is what it can reach
+                proc.kill()
+            proc.wait()
+            return "failed", f"timed out after {EXEC_TIMEOUT_SECONDS}s; the command was killed"
+        if proc.returncode == 0:
             return "done", None
-        detail = (result.stderr or result.stdout or "").strip()
-        return "failed", f"exit {result.returncode}: {detail[-400:]}" if detail else \
-            f"exit {result.returncode}"
+        detail = (stderr or stdout or "").strip()
+        return "failed", f"exit {proc.returncode}: {detail[-400:]}" if detail else \
+            f"exit {proc.returncode}"
 
     def _run_entry(entry: Entry, session_id: str) -> tuple:
         """One turn, through the same path as POST /input.
@@ -577,14 +601,23 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
             # under --workers 4 it is the normal case three times over, every
             # minute, and it would bury what the running worker says.
             return
+        runs = []
         try:
             claimed = _claim_due(entries, now)
+            # Started before anything else can raise. Each is already marked
+            # `running`, and a mark whose run never starts is skipped as busy on
+            # every later tick until a restart — which is what one failing
+            # Control Center turn or compaction used to do (#1756).
+            runs = [asyncio.create_task(_run(entry, now, session_id))
+                    for entry, session_id in claimed]
             if extra_tick is not None:
                 await extra_tick(now)
             _compact_sessions()
         finally:
             _release_tick_lock(holder)
-        await asyncio.gather(*(_run(entry, now, session_id) for entry, session_id in claimed))
+            # Awaited even when the housekeeping raised; _run records its own
+            # failures, so this never replaces that exception with another.
+            await asyncio.gather(*runs)
 
     def _claim_due(entries, now: datetime) -> list:
         """Mark each due entry `running` in the state file before it starts.

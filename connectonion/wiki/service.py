@@ -292,7 +292,10 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
     return "Stopped — background maintenance is off; `co wiki sync` works by hand, `co wiki start` resumes", None
 
 
-def status(root: Path) -> dict:
+def status(root: Path, *, live_quota: bool = False) -> dict:
+    """`live_quota` reads the Codex meter now (#1843). Only `co wiki status` asks:
+    the round and sync call this inside the lock, where a Codex process per
+    call would only slow them."""
     config = read_config(root)
     saved_zone = config.get("schedule", {}).get("timezone", "")
     zone = ZoneInfo(saved_zone) if saved_zone else timezone.utc
@@ -316,7 +319,28 @@ def status(root: Path) -> dict:
             "worker": worker_state(root),
             "batches_today": len(recent), "runner_attempts_today": sum(record.get("runner_attempts", 0) for record in attempted),
             "usage_today": usage, "usage_coverage": coverage,
-            "last_run": logs[0] if logs else None}
+            "last_run": logs[0] if logs else None,
+            **(_quota_status(config, logs) if live_quota else {})}
+
+
+def _quota_status(config: dict, logs: list[dict]) -> dict:
+    from . import quota
+    meter = quota.read(config)
+    spent = quota.points_spent(logs, meter)
+    limits = config["limits"]
+    if "unknown" in meter:
+        week = f"unknown ({meter['unknown']}); the daily call cap is the only bound"
+    else:
+        zone = ZoneInfo(config["schedule"]["timezone"]) if config["schedule"]["timezone"] else timezone.utc
+        resets = datetime.fromtimestamp(meter["resets_at"], zone).strftime("%a %d %b %H:%M")
+        week = f"{meter['used_percent']}% used on {meter['plan']}; resets {resets}"
+    # Sentences first for people; the same numbers stay structured for --json.
+    return {"codex_week": week,
+            "investigation_this_week": (f"{spent} of {limits['investigation_quota_points']} points; "
+                                        f"nothing starts once the week is at {limits['quota_floor_percent']}%"),
+            "quota": meter, "investigation_quota": {
+        "spent_points": spent, "budget_points": limits["investigation_quota_points"],
+        "floor_percent": limits["quota_floor_percent"]}}
 
 
 # Whose account the model is called through, per runner. The line said "your
@@ -437,6 +461,40 @@ def _selected_sources(root: Path, selector: str) -> dict:
             if source.get("enabled") and source.get("kind") in READABLE}
 
 
+PAGES_PER_BATCH = 5
+
+
+def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, leads: list[str]) -> dict:
+    """Update each page the material concerns in its own turn, and keep going when one fails.
+
+    One turn over the whole notebook edited eight pages at once, spent twenty
+    minutes deciding and rewriting, and timed out with nothing saved -- twice,
+    on the same real batch. A page per turn is small enough to finish, and a
+    refusal costs that page, not the batch.
+    """
+    from .runner import RunFailed, run_stage
+    notebook = Notebook(root)
+    usage, changed, refusals, reviews = {}, [], [], []
+    for record in leads:
+        page_items = [{"role": "page", "record": record, "source": "investigation:page", "one_page": True,
+                       "timestamp": now().isoformat(),
+                       "text": f"The page as it stands, at {record}. Add what the material says about its "
+                               f"subject; keep what is right:\n\n{notebook.read(record)}"}, *items]
+        try:
+            result = run_stage(notebook, page_items, config, kind=kind, stage="maintain", maintenance_lock_held=True)
+            changed += result.get("changed", [])
+            reviews += result.get("review_candidates", [])
+            part = result.get("usage")
+        except RunFailed as error:
+            refusals.append({"record": record, "errors": [str(error)[:400]]})
+            part = getattr(error, "usage", None)
+        for key, value in (part or {}).items():
+            usage[key] = usage.get(key, 0) + value
+    return {"usage": usage or None, "changed": sorted(set(changed)), "refused": len(refusals),
+            "refusals": refusals, "report": f"{len(leads)} pages worked one at a time",
+            "review_candidates": reviews[:2]}
+
+
 def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bool = False,
              scheduled: bool = False, all_pending: bool = False, runner=None, extractor=None,
              _uncapped: bool = False) -> dict | None:
@@ -487,7 +545,15 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         served = worker.get("last_scheduled_slot")
         if slot is None or (served and datetime.fromisoformat(served) >= slot):
             return None
-        record = run_sync(root, source=source, with_person=with_person, runner=runner, extractor=extractor)
+        try:
+            record = run_sync(root, source=source, with_person=with_person, runner=runner, extractor=extractor)
+        except WikiError as error:
+            if "Daily runner-attempt limit" not in str(error):
+                raise
+            # The day's calls are spent: the slot is served, not owed. Leaving it
+            # owed retried it on every five-minute tick until midnight and wrote
+            # the same error into launchd.log each time (seen on a real notebook).
+            record = {"outcome": "budget_exhausted", "reason": "the day's runner calls are spent"}
         # Any recorded outcome serves the slot; a refusal to start (busy) raised
         # above this line and leaves it owed for the next tick.
         write_json(state_path(root, "worker.json"), {**worker_state(root), "last_scheduled_slot": slot.isoformat()})
@@ -619,14 +685,26 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
         return record
     from .extract import finished_digest, forget_digest, remember_digest
     digested = finished_digest(root, items, kind) if record["extracted"] else None
-    attempts = 2 if record["extracted"] and digested is None else 1
-    if not uncapped and status(root)["runner_attempts_today"] + attempts > limits["runner_calls_per_day"]:
+    extract_calls = 1 if record["extracted"] and digested is None else 0
+    # One call per page the material concerns (#1656): the script finds them,
+    # the model updates one at a time. A fake runner in tests keeps the single
+    # whole-notebook call.
+    leads = []
+    if runner is None or runner is run_stage:
+        from .leads import page_leads
+        leads = page_leads(Notebook(root), items)[:PAGES_PER_BATCH]
+    room = 10**6 if uncapped else limits["runner_calls_per_day"] - status(root)["runner_attempts_today"] - extract_calls
+    if room < 1:
         raise WikiError("Daily runner-attempt limit reached; source progress was not advanced")
+    leads = leads[:room]
+    attempts = extract_calls + (len(leads) or 1)
     runner = runner or run_stage
     # A runner may carry a preflight (the CLI adapter checks that co is installed). It raises before an attempt is reserved: a configuration error is
     # not a failed batch and must not spend one of the day's attempts.
     getattr(runner, "preflight", lambda: None)()
-    record.update(outcome="running", runner_attempts=attempts)
+    from . import quota
+    # What this run cost in points of the owner's Codex week (#1843), measured.
+    record.update(outcome="running", runner_attempts=attempts, quota={"before": quota.read(config)})
     write_json(path, record)  # Reserve the attempts before starting a COAI process.
     usage = {}
     stage = "extract" if record["extracted"] and digested is None else "maintain"
@@ -655,8 +733,11 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
             items = [] if notes == NOTHING else [extraction_item(notes, items)]
         if items:
             stage = "maintain"
-            options = {"maintenance_lock_held": True} if runner is run_stage else {}
-            result = runner(Notebook(root), items, config, kind=kind, **options)
+            if leads:
+                result = _maintain_pages(root, items, config, kind, leads)
+            else:
+                options = {"maintenance_lock_held": True} if runner is run_stage else {}
+                result = runner(Notebook(root), items, config, kind=kind, **options)
             record["usage_by_stage"]["maintain"] = result.get("usage")
             for key, value in (result.get("usage") or {}).items():
                 usage[key] = usage.get(key, 0) + value
@@ -700,6 +781,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
             forget_digest(root)
     finally:
         record["finished_at"] = now().isoformat()
+        record["quota"]["after"] = quota.read(config)
         record["seconds"] = round((datetime.fromisoformat(record["finished_at"])
                                    - datetime.fromisoformat(record["started_at"])).total_seconds(), 1)
         write_json(path, record)

@@ -14,6 +14,11 @@ from pathlib import Path
 
 import connectonion.core.events as events
 import importlib
+import pytest
+
+# Agents and hosts built here write .co/ under the working directory; each
+# test gets its own, not the repository's shared one (tests/conftest.py).
+pytestmark = pytest.mark.usefixtures("own_project")
 
 host_server = importlib.import_module("connectonion.network.host.server")
 from connectonion.network.io.base import IO

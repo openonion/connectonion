@@ -110,8 +110,25 @@ def stop(server, thread) -> None:
 def raw_send(sock: str, line: str, tab=None) -> socket.socket:
     """A client that sends one command and then waits, as a stuck `co browser` does."""
     frame, _ = _oip_command(line, caller="tester", account="", tab=tab, engine="auto")
-    conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    conn.connect(sock)
+    # The daemon listens with a backlog of MAX_IN_FLIGHT (32). macOS refuses an
+    # AF_UNIX connect outright once that backlog is full, instead of blocking
+    # as Linux does, so forty connects fired in a tight loop at a daemon whose
+    # loop is starved of CPU (a loaded `-n auto` run) got ECONNREFUSED on the
+    # 33rd. The real client (`_connect_posix`) retries refusals for about two
+    # seconds for exactly this reason; this stand-in for a stuck client does
+    # the same, with a wider window because it is the test harness, not what
+    # is under test.
+    deadline = time.monotonic() + 10
+    while True:
+        conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            conn.connect(sock)
+            break
+        except ConnectionRefusedError:
+            conn.close()
+            if time.monotonic() > deadline:
+                raise
+            time.sleep(0.02)
     conn.sendall(encode_frame(frame))
     return conn
 
@@ -194,6 +211,18 @@ def test_forty_stuck_requests_leave_status_and_close_working(short_dir, quick, m
     server, thread = serve(sock, monkeypatch)
     stuck = []
     try:
+        # The forty arrive while the daemon's loop is busy and accepting
+        # nothing, which is what a loaded machine did to this test now and
+        # then. Making it happen every run means the listen backlog overflows
+        # every run, so the retry in raw_send is exercised rather than lucky.
+        stalled = threading.Event()
+
+        def stall_the_loop():
+            stalled.set()
+            time.sleep(0.5)
+
+        server._loop.call_soon_threadsafe(stall_the_loop)
+        assert stalled.wait(5)
         for _ in range(40):
             stuck.append(raw_send(sock, "cookies --all"))
         assert wait_until(
