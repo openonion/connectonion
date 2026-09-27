@@ -176,6 +176,7 @@ at once and print the pip command, as `check` does.
 co whatsapp send 447700900123@s.whatsapp.net --image ./shortlist.png "Tonight's three options"
 co whatsapp send 447700900123@s.whatsapp.net --file ./itinerary.pdf
 co whatsapp send 120363…@g.us --image ./map.png --reply-to 3EB0C127D8F1A2B4E5F6
+co whatsapp reply 3EB0C127D8F1A2B4E5F6 --image ./map.png "Here it is"
 ```
 
 A rating card, a map screenshot or a rendered itinerary used to be flattened
@@ -189,6 +190,8 @@ chat (#1856).
 - The text is the caption. It is optional, and it is read as Markdown like any
   send unless `--plain`. With `--image` or `--file` an omitted caption means no
   caption: stdin is not read, so a script cannot hang waiting for one.
+- `reply MESSAGE_ID --image PATH` / `--file PATH` answers a received message with
+  an attachment, in its chat and quoting it, the way an agent answers text.
 - `--reply-to` quotes a message, as with text. `react` and `delete` work on the
   id it prints. `edit` changes text only, so it does not apply.
 - It goes through the same `outbox/` as text, so it needs the listener running.

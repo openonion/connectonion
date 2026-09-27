@@ -194,3 +194,22 @@ def test_the_sdk_methods_used_exist_where_neonize_is_installed():
              "assert hasattr(C, 'send_image') and hasattr(C, 'send_document')")
     result = subprocess.run([sys.executable, "-c", check], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
+
+
+def test_reply_answers_a_received_message_with_an_image_in_its_chat(tmp_path, monkeypatch, capsys):
+    """`reply` is how an agent answers; it needs the attachment as much as `send` does."""
+    from connectonion.inbox.store import Message
+    p = CliProvider()
+    monkeypatch.setattr(listen_commands, "provider", lambda name: p)
+    monkeypatch.setattr(listen_commands, "_mark_answering", lambda *a: None)
+    inbox = Inbox("whatsapp")
+    inbox.deliver(Message(id="3EBASK", chat="120363@g.us", sender="61411111111@s.whatsapp.net",
+                          text="can you send the map?", at="2026-09-27T09:00:00Z"))
+    card = _file(tmp_path, "map.png", PNG)
+    listen_commands.handle_reply("whatsapp", "3EBASK", "Here it is", image=str(card))
+    assert capsys.readouterr().out.strip() == "3EBCLI"
+    [(chat, text, kw)] = p.sent
+    assert chat == "120363@g.us" and text == "Here it is"
+    assert kw["reply_to"] == "3EBASK" and kw["image"] == str(card)
+    record = json.loads((inbox.root / "sent.jsonl").read_text().splitlines()[-1])
+    assert record["by"] == "reply" and record["media"]["kind"] == "image"
