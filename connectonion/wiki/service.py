@@ -292,7 +292,10 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
     return "Stopped — background maintenance is off; `co wiki sync` works by hand, `co wiki start` resumes", None
 
 
-def status(root: Path) -> dict:
+def status(root: Path, *, live_quota: bool = False) -> dict:
+    """`live_quota` reads the Codex meter now (#1843). Only `co wiki status` asks:
+    the round and sync call this inside the lock, where a Codex process per
+    call would only slow them."""
     config = read_config(root)
     saved_zone = config.get("schedule", {}).get("timezone", "")
     zone = ZoneInfo(saved_zone) if saved_zone else timezone.utc
@@ -316,7 +319,28 @@ def status(root: Path) -> dict:
             "worker": worker_state(root),
             "batches_today": len(recent), "runner_attempts_today": sum(record.get("runner_attempts", 0) for record in attempted),
             "usage_today": usage, "usage_coverage": coverage,
-            "last_run": logs[0] if logs else None}
+            "last_run": logs[0] if logs else None,
+            **(_quota_status(config, logs) if live_quota else {})}
+
+
+def _quota_status(config: dict, logs: list[dict]) -> dict:
+    from . import quota
+    meter = quota.read(config)
+    spent = quota.points_spent(logs, meter)
+    limits = config["limits"]
+    if "unknown" in meter:
+        week = f"unknown ({meter['unknown']}); the daily call cap is the only bound"
+    else:
+        zone = ZoneInfo(config["schedule"]["timezone"]) if config["schedule"]["timezone"] else timezone.utc
+        resets = datetime.fromtimestamp(meter["resets_at"], zone).strftime("%a %d %b %H:%M")
+        week = f"{meter['used_percent']}% used on {meter['plan']}; resets {resets}"
+    # Sentences first for people; the same numbers stay structured for --json.
+    return {"codex_week": week,
+            "investigation_this_week": (f"{spent} of {limits['investigation_quota_points']} points; "
+                                        f"nothing starts once the week is at {limits['quota_floor_percent']}%"),
+            "quota": meter, "investigation_quota": {
+        "spent_points": spent, "budget_points": limits["investigation_quota_points"],
+        "floor_percent": limits["quota_floor_percent"]}}
 
 
 # Whose account the model is called through, per runner. The line said "your
@@ -678,7 +702,9 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
     # A runner may carry a preflight (the CLI adapter checks that co is installed). It raises before an attempt is reserved: a configuration error is
     # not a failed batch and must not spend one of the day's attempts.
     getattr(runner, "preflight", lambda: None)()
-    record.update(outcome="running", runner_attempts=attempts)
+    from . import quota
+    # What this run cost in points of the owner's Codex week (#1843), measured.
+    record.update(outcome="running", runner_attempts=attempts, quota={"before": quota.read(config)})
     write_json(path, record)  # Reserve the attempts before starting a COAI process.
     usage = {}
     stage = "extract" if record["extracted"] and digested is None else "maintain"
@@ -755,6 +781,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
             forget_digest(root)
     finally:
         record["finished_at"] = now().isoformat()
+        record["quota"]["after"] = quota.read(config)
         record["seconds"] = round((datetime.fromisoformat(record["finished_at"])
                                    - datetime.fromisoformat(record["started_at"])).total_seconds(), 1)
         write_json(path, record)

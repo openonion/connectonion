@@ -9,6 +9,7 @@ from .config import read_config
 from .files import Notebook, WikiError, maintenance_lock, state_path, write_json
 from .service import now, run_logs, run_sync, status, subscriptions, mail_client
 from .investigate import investigate
+from . import quota
 
 
 # At most this many calls for the one page a round investigates. It was
@@ -44,12 +45,20 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
         remaining = config['limits']['runner_calls_per_day'] - state['runner_attempts_today']
         if remaining < required:
             return {'outcome': 'budget_exhausted', 'maintenance': maintenance, 'investigation': None}
+        # The Codex week (#1843): investigation's own budget, and a floor that
+        # leaves the rest of the week to the owner's coding.
+        meter = quota.read(config)
+        stop = quota.blocks(meter, quota.points_spent(run_logs(root), meter), config['limits'])
+        if stop:
+            return {'outcome': 'completed', 'maintenance': maintenance, 'investigation': None,
+                    'reason': stop, 'quota': meter}
         # Keep up to two calls for later maintenance slots. Reserve before starting
         # so an interrupted investigation cannot restart beyond the daily cap.
         allocation = min(remaining, max(required, min(remaining - 2, INVESTIGATION_CALLS)))
         record = {'id': 'run_' + uuid.uuid4().hex, 'started_at': now().isoformat(),
                   'outcome': 'running', 'runner_attempts': allocation, 'usage': None,
-                  'sources': [], 'items': 0, 'changed': [], 'phase': 'daily-investigation'}
+                  'sources': [], 'items': 0, 'changed': [], 'phase': 'daily-investigation',
+                  'quota': {'before': meter}}
         path = state_path(root, f"runs/{record['id']}.json")
         write_json(path, record)
     sources = subscriptions(root)
@@ -91,6 +100,7 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
         result = False
     finally:
         record['finished_at'] = now().isoformat()
+        record['quota']['after'] = quota.read(config)
         write_json(path, record)
     return {'outcome': 'partial' if result is False else 'completed',
             'maintenance': maintenance, 'investigation': result or None, 'run': record}

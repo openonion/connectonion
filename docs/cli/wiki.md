@@ -331,10 +331,37 @@ a later maintenance failure. Reported tokens are not account quota or dollars.
 The input-character limit bounds gathered/digested material, not every tool
 read a delegated agent may perform.
 
-**Not implemented:** hard 2% initialization / 1% daily subscription spending
-limits, or a $1 stop budget. They need an actual provider meter in the shared
-execution layer. The init Skill now stops after the owner and ranked map by
-default and explicitly reports that percentage enforcement is unavailable.
+### Codex quota (#1843)
+
+With the Codex runner, the notebook reads your Codex plan's own meter: the
+weekly window's `used_percent`, its length and when it resets, as
+`codex app-server` reports them (`account/rateLimits/read`). Reading it starts
+no model turn and costs nothing. Codex reports whole percents, so every figure
+below is good to about one point.
+
+- **Every run records the meter before and after** (`quota` in the run log,
+  shown by `co wiki logs`). The difference is what that run cost in points of
+  your week, measured rather than estimated from tokens.
+- **Investigation has a weekly budget**, `limits.investigation_quota_points`,
+  default **10** points of the weekly window (owner, 2026-09-27). The
+  scheduled round adds up the points its investigation runs used since the
+  window last reset, and starts no new page once that reaches the budget.
+- **A floor protects your own coding.** No investigation page starts once the
+  week is at `limits.quota_floor_percent` or more, default **70%**, however much
+  of the wiki's budget is left. The wiki shares this quota with your real work.
+- `co wiki status` reads the meter now and says it in two lines, for example
+  `Codex week: 5% used on pro; resets Sun 04 Oct 09:49` and
+  `Investigation this week: 0 of 10 points; nothing starts once the week is at 70%`.
+  `--json` gives the same numbers under `quota` and `investigation_quota`.
+- When the meter cannot be read (another runner, Codex not signed in, an older
+  Codex), the run says `quota: unknown (<why>)` and the daily call cap
+  (`limits.runner_calls_per_day`) is the only bound, as before.
+
+Maintenance is not quota-gated: it is the incremental daily pass and stays
+bounded by the call cap. Its cost now shows in points, so a cap can follow
+from real numbers. This supersedes the earlier unimplemented 2% initialization
+/ 1% daily targets, which needed exactly this meter.
+
 The scheduled daily round maintains first, then attempts at most one unfinished
 page per local day. It reserves a bounded number of investigation calls within
 the same daily attempt cap and leaves room for later maintenance slots when
