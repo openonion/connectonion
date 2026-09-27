@@ -375,7 +375,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b13
+## Current Version: 1.8.9b14
+
+1.8.9b14 is an opt-in preview after 1.8.9b13. Wiki upkeep works one page per
+turn, archives pages an older map made that it would not make now, and a day
+holds 30 runner calls so a notebook can catch up (#1840, tracking #1722).
+Stable is 1.8.8.
+
+- 1.8.9b14 (Wiki maintenance one page per turn from script-found leads; inline maintain/extract prompts; stale map pages archived to .state/archived/; a spent day serves its slot; runner-owned lines restored; carried-over and page-as-it-stood citations accepted; 30 calls a day, at most 8 for the round's investigation.)
+
+Earlier in this line:
+
 
 1.8.9b13 is an opt-in preview that adds `co browser import` (#1477): the logins
 already in Google Chrome carried into the co browser profile, a login the
