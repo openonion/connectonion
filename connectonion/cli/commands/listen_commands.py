@@ -318,17 +318,17 @@ def handle_receive(name: str, timeout: Optional[float] = None, start: bool = Tru
 
 
 def handle_send(name: str, chat: str, text: Optional[str] = None, reply_to: Optional[str] = None,
-                plain: bool = False) -> None:
-    """Send text to a chat. Prints the new message id."""
+                plain: bool = False, image: Optional[str] = None, file: Optional[str] = None) -> None:
+    """Send text, or a picture or file with an optional caption. Prints the new message id."""
     p = _configured(name, sends=True)
     inbox = Inbox(name)
-    body = _wire(p, _text_from(text), plain)
+    body, media, extra = _body_and_media(p, name, "send", text, plain, image, file)
     try:
-        sent = p.send(chat, body, reply_to=reply_to, plain=True)
+        sent = p.send(chat, body, reply_to=reply_to, plain=True, **extra)
     except Exception as exc:
-        inbox.record_sent(chat=chat, text=body, reply_to=reply_to, error=str(exc), by="send")
+        inbox.record_sent(chat=chat, text=body, reply_to=reply_to, error=str(exc), by="send", media=media)
         _refused(name, exc)
-    inbox.record_sent(chat=chat, text=body, reply_to=reply_to, provider_id=sent, by="send")
+    inbox.record_sent(chat=chat, text=body, reply_to=reply_to, provider_id=sent, by="send", media=media)
     print(sent)
 
 
@@ -355,8 +355,31 @@ def _mark_answering(p, inbox, message) -> None:
     inbox.log(f"{ANSWERING} on {message.id} sent as {sent or 'no id'}")
 
 
+def _body_and_media(p, name: str, verb: str, text: Optional[str], plain: bool,
+                    image: Optional[str], file: Optional[str]) -> tuple:
+    """The caption as it goes on the wire, what `sent.jsonl` records of the
+    attachment, and the keywords that carry it to `p.send` (#1856).
+
+    Checked here, before anything is marked or queued, so a bad path costs the
+    caller one sentence and the chat nothing.
+    """
+    if not (image or file):
+        return _wire(p, _text_from(text), plain), None, {}
+    if not getattr(p, "sends_media", False):
+        _refused(name, ValueError(f"co {name} {verb} cannot attach a picture or file yet "
+                                  "(--image, --file); nothing was sent. Send the text alone"))
+    try:
+        attached = p.attachment(image=image, file=file)
+    except ValueError as exc:
+        _refused(name, exc)
+    # With an attachment the caption is optional, and an omitted one is none:
+    # reading stdin for it would hang a script that only sent a picture.
+    body = _wire(p, text, plain) if text else ""
+    return body, {key: attached[key] for key in ("kind", "path", "size")}, {"image": image, "file": file}
+
+
 def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: bool = False,
-                 plain: bool = False) -> None:
+                 plain: bool = False, image: Optional[str] = None, file: Optional[str] = None) -> None:
     """Reply to a received message where it was asked. Prints the new id."""
     p = _configured(name, sends=True)
     inbox = Inbox(name)
@@ -367,16 +390,16 @@ def handle_reply(name: str, message_id: str, text: Optional[str] = None, again: 
     if inbox.already_replied(message_id) and not again:
         errors.print(f"already replied to {message_id}; pass --again to reply once more", style="yellow")
         sys.exit(1)
-    body = _wire(p, _text_from(text), plain)
+    body, media, extra = _body_and_media(p, name, "reply", text, plain, image, file)
     _mark_answering(p, inbox, original)
     try:
-        sent = p.send(original.chat, body, reply_to=message_id, fresh=again, plain=True)
+        sent = p.send(original.chat, body, reply_to=message_id, fresh=again, plain=True, **extra)
     except Exception as exc:
         inbox.record_sent(chat=original.chat, text=body, reply_to=message_id,
-                          error=str(exc), by="reply")
+                          error=str(exc), by="reply", media=media)
         _refused(name, exc)
     inbox.record_sent(chat=original.chat, text=body, reply_to=message_id, provider_id=sent,
-                      by="reply")
+                      by="reply", media=media)
     inbox.done(message_id, by="reply")
     print(sent)
 

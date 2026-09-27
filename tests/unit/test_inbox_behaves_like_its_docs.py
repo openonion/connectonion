@@ -250,7 +250,7 @@ def test_real_options_still_work_beside_a_negative_id_and_typos_still_fail(cli, 
     ok = CliRunner().invoke(cli, ["telegram", "reply", "-100123.55", "--again", "--plain", "twice"])
     assert ok.exit_code == 0, plain(ok.output)
     assert seen["args"] == ("telegram", "-100123.55", "twice")
-    assert seen["kwargs"] == {"again": True, "plain": True}
+    assert seen["kwargs"] == {"again": True, "plain": True, "image": None, "file": None}
 
     seen.clear()
     typo = CliRunner().invoke(cli, ["telegram", "reply", "-100123.55", "--plian", "x"])

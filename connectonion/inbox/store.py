@@ -443,6 +443,7 @@ class Inbox:
         provider_id: Optional[str] = None,
         error: Optional[str] = None,
         by: Optional[str] = None,
+        media: Optional[dict] = None,
     ) -> None:
         """One line in sent.jsonl. `by` names the consumer that sent it; it is
         a descriptive label only and is omitted when None so older records
@@ -458,6 +459,8 @@ class Inbox:
         }
         if by is not None:
             record["by"] = by
+        if media is not None:
+            record["media"] = media  # {kind, path, size}: what went with the caption (#1856)
         self._append(self.sent, json.dumps(record, ensure_ascii=False, separators=(",", ":")))
 
     def record_own(self, message: Message) -> None:
