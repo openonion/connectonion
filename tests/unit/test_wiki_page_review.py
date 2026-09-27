@@ -18,13 +18,13 @@ def test_legacy_project_gets_missing_sections_without_losing_content():
     assert normalize('projects/atlas.md', new) == new
 
 
-def test_material_readable_reconstructs_long_single_line(tmp_path):
+def test_long_material_is_readable_and_the_exact_copy_is_kept(tmp_path):
     item = {'text': 'x\\"\n中' * 3000, 'source': 'fixture:1'}
     prompt = task_prompt(tmp_path, [item], 'investigate')
-    readable = (tmp_path / 'material-readable.json').read_text()
-    assert max(map(len, readable.splitlines())) < 500
-    assert ''.join(json.loads(readable)[0]['text']['continued_text']) == item['text']
-    assert 'material-readable.json' in prompt
+    readable = (tmp_path / 'material.md').read_text()
+    assert max(map(len, readable.splitlines())) <= 400
+    assert json.loads((tmp_path / 'material.json').read_text())[0]['text'] == item['text']
+    assert 'material.md' in prompt or '<material>' in prompt
 
 
 def test_numbered_source_list_is_normalized_without_changing_claims():

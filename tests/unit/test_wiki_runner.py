@@ -86,7 +86,7 @@ def test_quick_investigation_reads_complete_bounded_material_once(tmp_path):
     assert 'once' in prompt
     assert 'continued_text' not in prompt
     assert json.loads((tmp_path / 'material.json').read_text()) == items
-    assert (tmp_path / 'material-readable.json').exists()
+    assert (tmp_path / 'material.md').exists()
 
 
 def test_project_page_keeps_zero_session_window_separate_from_old_files():
@@ -274,12 +274,11 @@ def test_offline_maintenance_benchmark(notebook, monkeypatch, scenario, accepted
         assert 'no shell' not in prompt
         assert 'local file reads and writes' in prompt
         assert 'do not run commands, browse or search' not in prompt
-        material_path = task / 'material-readable.json'
+        material_path = task / 'material.md'
         if scenario == 'missing_material':
             material_path.unlink()
         else:
-            material = json.loads(material_path.read_text())
-            assert material[0]['source'] == source
+            assert f'### {source}' in material_path.read_text()
         if scenario == 'local_page_update':
             page = task / 'notebook/notes/old.md'
             page.write_text(page.read_text() + '\n\nA durable update.\n')
@@ -368,4 +367,59 @@ def test_a_small_maintenance_prompt_carries_its_instructions_and_material(tmp_pa
     assert (tmp_path / "material.json").is_file() and (tmp_path / "instructions.md").is_file()   # still audited
     big = [{"role": "user", "source": "codex:abc:2", "text": "x" * INLINE_LIMIT, "timestamp": "2026-09-24"}]
     assert "Read all source material" in task_prompt(tmp_path, big, "maintain", "codex")        # too big: files
-    assert "<material>" not in task_prompt(tmp_path, items, "investigate", "codex")            # investigate: files
+    assert "<material>" in task_prompt(tmp_path, items, "investigate", "codex")                # investigate too
+
+
+def test_what_fits_is_counted_in_bytes_the_way_argv_is_capped(tmp_path):
+    """Linux caps one argument at 128 KiB; a Chinese character is three bytes,
+    so 60k characters of Chinese mail is 180 KB and could not be sent."""
+    from connectonion.wiki.runner import task_prompt
+    chinese = [{"role": "user", "source": "gmail:a:1", "text": "中" * 60_000}]
+    assert "<material>" not in task_prompt(tmp_path, chinese, "extract", "gmail")
+    english = [{"role": "user", "source": "gmail:a:1", "text": "x" * 60_000}]
+    assert "<material>" in task_prompt(tmp_path, english, "extract", "gmail")
+
+
+def test_an_investigation_that_fits_is_given_its_material(tmp_path):
+    from connectonion.wiki.runner import task_prompt
+    items = [{"role": "page", "record": "people/mia.md", "source": "investigation:page", "text": "# Mia\n"},
+             {"role": "digest", "source": "gmail:m:1", "text": "Mia leads the data platform team."}]
+    prompt = task_prompt(tmp_path, items, "investigate")
+    assert "<material>" in prompt and "Mia leads the data platform team." in prompt
+
+
+def test_material_too_big_to_give_is_plain_text_to_read(tmp_path):
+    """The fallback cut every string into 64-character pieces; a real extraction
+    then spent 22 turns and 1.2M tokens writing Python to glue them back and
+    printing 8,000 characters a turn."""
+    from connectonion.wiki.runner import task_prompt
+    body = "Hi Alex,\n" + "The pilot covers three suppliers and runs six weeks. " * 3000
+    items = [{"role": "user", "source": "gmail:m:1", "date": "2026-09-01", "from": "Mia <m@h.example>", "text": body}]
+    prompt = task_prompt(tmp_path, items, "extract", "gmail")
+    readable = (tmp_path / "material.md").read_text()
+    assert "continued_text" not in readable and "continued_text" not in prompt
+    assert "### gmail:m:1" in readable and "from: Mia <m@h.example>" in readable
+    assert "The pilot covers three suppliers" in readable
+    assert max(map(len, readable.splitlines())) <= 400
+    assert str(tmp_path / "material.md") in prompt
+    assert json.loads((tmp_path / "material.json").read_text()) == items          # exact text kept
+
+
+def test_investigation_digests_in_pieces_that_travel_in_the_prompt(tmp_path):
+    """15 pieces of 150k characters never fit the prompt, so each was read from
+    files: about 1M input tokens a piece on the owner's notebook."""
+    from connectonion.wiki.config import default_config
+    from connectonion.wiki.investigate import digest_in_chunks
+    from connectonion.wiki.runner import task_prompt
+    seen = []
+
+    def extractor(chunk, settings, kind):
+        seen.append("<material>" in task_prompt(tmp_path, chunk, "extract", kind))
+        return {"notes": "kept", "usage": None}
+
+    config = default_config()
+    config["limits"]["extract_chars_per_batch"] = 150_000
+    items = [{"role": "user", "source": f"gmail:m:{n}", "timestamp": "2026-09-01T00:00:00Z", "text": "word " * 8000}
+             for n in range(12)]
+    digest_in_chunks(items, config, extractor)
+    assert seen and all(seen)
