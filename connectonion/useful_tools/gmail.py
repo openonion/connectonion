@@ -1215,6 +1215,32 @@ class Gmail(GmailMailbox):
                 addresses.add(alias['sendAsEmail'].lower())
         return {address for address in addresses if address}
 
+    def contact_names(self) -> dict:
+        """Saved and "other" contacts as {address: name}.
+
+        Other contacts are the people Gmail remembers because the owner wrote to
+        them; they need contacts.other.readonly, and a login without it raises,
+        which the wiki treats as "no contacts" rather than a failed map.
+        """
+        from googleapiclient.discovery import build
+        people = build('people', 'v1', credentials=self._get_service()._http.credentials, cache_discovery=False)
+        names = {}
+        for listing, key, params in ((people.people().connections(), 'connections',
+                                      {'resourceName': 'people/me', 'personFields': 'names,emailAddresses'}),
+                                     (people.otherContacts(), 'otherContacts', {'readMask': 'names,emailAddresses'})):
+            token = None
+            while True:
+                page = listing.list(pageSize=1000, pageToken=token, **params).execute()
+                for person in page.get(key, []):
+                    name = ((person.get('names') or [{}])[0].get('displayName') or '').strip()
+                    for email in person.get('emailAddresses', []):
+                        if name and '@' not in name and email.get('value'):
+                            names.setdefault(email['value'].lower(), name)
+                token = page.get('nextPageToken')
+                if not token:
+                    break
+        return names
+
     def my_name(self) -> str:
         """The primary send-as display name, or '' when none is set."""
         aliases = self._get_service().users().settings().sendAs().list(userId='me').execute().get('sendAs', [])

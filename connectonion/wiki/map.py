@@ -289,7 +289,7 @@ def _archive_stale(notebook: Notebook, report: dict) -> list[str]:
     from .investigate import project_paths
     from .scan import project_exclusion
     moved = []
-    used = {row.get('record') for row in report['people'] + report['projects'] if row.get('record')}
+    used = {row.get('record') for row in report['people'] + report['projects'] + report['orgs'] if row.get('record')}
     used.add((report.get('owner') or {}).get('record'))
     covered = {path for row in report['projects'] for path in row.get('paths', [])}
     emails = {email.casefold() for person in notebook.people() if person['path'] in used for email in person['emails']}
@@ -310,6 +310,10 @@ def _archive_stale(notebook: Notebook, report: dict) -> list[str]:
         paths = project_paths(page)
         if paths and all(path in covered or project_exclusion(Path(path)) for path in paths):
             moved.append(record)
+    # An organisation this map would not make: a subdomain now merged into its
+    # company, or a domain only notice senders use.
+    moved += [record for record in notebook.list('orgs')
+              if record not in used and _mapped_only(notebook.read(record))]
     for record in moved:
         target = notebook.root / '.state' / 'archived' / record
         target.parent.mkdir(parents=True, exist_ok=True)
