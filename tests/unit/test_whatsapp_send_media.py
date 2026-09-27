@@ -179,8 +179,10 @@ def test_a_provider_that_cannot_send_media_refuses_and_sends_nothing(tmp_path, m
 def test_send_help_offers_image_and_file():
     from typer.testing import CliRunner
     from connectonion.cli.main import app
+    import re
     result = CliRunner().invoke(app, ["whatsapp", "send", "--help"], env={"COLUMNS": "200", "NO_COLOR": "1"})
-    assert "--image" in result.output and "--file" in result.output
+    text = re.sub(r"\x1b\[[0-9;]*m", "", result.output)  # Rich forces colour on GitHub Actions
+    assert "--image" in text and "--file" in text
 
 
 def test_the_sdk_methods_used_exist_where_neonize_is_installed():
