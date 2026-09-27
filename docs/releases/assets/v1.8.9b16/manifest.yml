@@ -1,2 +1,9 @@
 version: v1.8.9b16
-no_visual_change: "no layout or template change: the Wiki map changes which names and organisations pages carry, and co whatsapp send/reply gain --image and --file flags documented in their help pages"
+images:
+  - file: whatsapp-send-media.png
+    alt: "Terminal help for co whatsapp send and reply showing --image PATH and --file PATH with their size limits, and co whatsapp listen showing --restart"
+    caption: "The new WhatsApp options as the CLI states them: a picture up to 16 MB or any file up to 100 MB as a document, on send and reply, and listen --restart to replace a listener started before this release. Help text only; nothing was sent."
+    scenario: "scripts/capture_189b16_release_cli.py runs the three --help pages from main at c3d35354 and keeps the usage line and the new option rows"
+    viewport: "96-column dark terminal capture"
+    commit: c3d35354
+    source_run: "scripts/capture_189b16_release_cli.py"
