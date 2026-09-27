@@ -26,9 +26,8 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     if maintenance['outcome'] not in ('completed', 'no_change'):
         return {'outcome': 'partial', 'maintenance': maintenance, 'investigation': None}
     notebook = Notebook(root)
-    from .queue import order
-    pages = [p for category in ('people', 'projects', 'orgs') for p in order(root, category) if not p['recent']]
-    pages.sort(key=lambda p: -p['weight'])
+    from .queue import order_all
+    pages = [p for p in order_all(root) if not p['recent']]
     if not pages:
         return {'outcome': 'completed', 'maintenance': maintenance, 'investigation': None}
     config = read_config(root)
