@@ -596,3 +596,25 @@ def test_an_older_maps_organisation_page_for_a_subdomain_is_archived(tmp_path, m
     result = build_map(tmp_path, {}, {}, skill_directories=[skills])
     assert 'orgs/accounts-google-com.md' in result['archived']
     assert notebook.path('orgs/kept.md').is_file()                            # investigated: never moved
+
+
+def test_a_page_an_older_map_titled_with_an_address_takes_the_name_found_now(tmp_path, monkeypatch):
+    """1.8.9b16 learned names, but only a new page used them: re-running init
+    kept 176 of the owner's pages titled `larryleework7@gmail.com`. A page nobody
+    investigated is still map output, so the map may retitle it; an investigated
+    one is someone's work and keeps its title."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    notebook = Notebook(tmp_path)
+    notebook.stub_person('people/larry.md', 'larry@q.com', ['larry@q.com'], email='larry@q.com')
+    notebook.stub_person('people/kept.md', 'kept@q.com', ['kept@q.com'], email='kept@q.com')
+    notebook.write('people/kept.md', notebook.read('people/kept.md').replace(
+        'not investigated yet', 'investigated 2026-09-20 (codex)'))
+    people = [{'name': 'Larry', 'address': 'larry@q.com', 'mails': 14, 'sent': 14, 'received': 0},
+              {'name': 'Kept Person', 'address': 'kept@q.com', 'mails': 3, 'sent': 2, 'received': 1}]
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: (people, set()))
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
+    build_map(tmp_path, {}, {}, skill_directories=[skills])
+    assert notebook.read('people/larry.md').startswith('# Larry\n')
+    assert notebook.read('people/kept.md').startswith('# kept@q.com\n')

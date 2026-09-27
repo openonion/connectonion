@@ -1839,3 +1839,42 @@ class TestReplyGoesWhereTheSenderAsked:
 
         message, _ = sent()
         assert message["To"] == "client@example.com"
+
+
+def test_list_between_fetches_each_message_once_with_its_recipients_and_retries():
+    """The wiki's map lists every message in the window with its recipients. It
+    fetched each message twice (From, then To/Cc): 2,600 calls on a 90-day map,
+    ten minutes, and one rate-limited call failed the whole Gmail scan."""
+    from connectonion.useful_tools.gmail import Gmail
+
+    gets, retries = [], []
+
+    class Call:
+        def __init__(self, result): self.result = result
+        def execute(self, num_retries=0):
+            retries.append(num_retries)
+            return self.result
+
+    class Messages:
+        def list(self, **kw): return Call({"messages": [{"id": "a"}, {"id": "b"}]})
+        def get(self, **kw):
+            gets.append(kw)
+            return Call({"id": kw["id"], "snippet": "Hi Larry,", "labelIds": [], "payload": {"headers": [
+                {"name": "From", "value": "me@x.y"}, {"name": "To", "value": "Larry <l@q.com>"},
+                {"name": "Cc", "value": "c@q.com"}, {"name": "Subject", "value": "s"},
+                {"name": "Date", "value": "Thu, 10 Sep 2026 10:00:00 +0000"}]}})
+
+    class Users:
+        def messages(self): return Messages()
+
+    class Service:
+        def users(self): return Users()
+
+    gmail = Gmail.__new__(Gmail)
+    gmail._get_service = lambda: Service()
+    rows = gmail.list_between("2026-09-01T00:00:00+00:00", "2026-09-20T00:00:00+00:00")
+    assert len(gets) == 2
+    assert {"To", "Cc", "From"} <= set(gets[0]["metadataHeaders"])
+    assert rows[0]["to"] == ["Larry <l@q.com>"] and rows[0]["cc"] == ["c@q.com"]
+    assert rows[0]["snippet"] == "Hi Larry,"
+    assert all(n >= 3 for n in retries)     # a 429 or 5xx is retried with backoff, not fatal
