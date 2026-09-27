@@ -1,8 +1,11 @@
 """Read-only CLI acceptance, written before the Wiki command group."""
 
+import importlib
 import json
+import re
 import subprocess
 import sys
+import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -132,16 +135,96 @@ def test_open_renders_a_local_page_without_touching_the_notebook(tmp_path, monke
     assert len(opened) == 1 and opened[0].startswith("file://")
 
 
-def test_open_uses_owner_wiki_url_when_no_root_is_selected(tmp_path, monkeypatch):
-    opened = []
+OWNER = "0x" + "a" * 64
+
+
+def _owner_notebook(tmp_path, monkeypatch, *, host):
+    """The default ~/.co/wiki under a tmp home, an identity, and a Host that is
+    online (resolves to an endpoint) or not. Faked at resolve_endpoint, the seam
+    the client already uses to find a Host, so the real presence check runs."""
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
-    prepare(tmp_path / ".co/wiki")
-    monkeypatch.setattr("connectonion.address.load",
-                        lambda directory: {"address": "0x" + "a" * 64})
-    monkeypatch.setattr("webbrowser.open", lambda url: opened.append(url) or True)
-    result = runner.invoke(app, ["wiki", "open"])
+    root = tmp_path / ".co/wiki"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice\nWorks on Project Aurora.")
+    monkeypatch.setattr("connectonion.address.load", lambda directory: {"address": OWNER})
+    asked = []
+
+    async def resolve(address, relay_url, timeout=3.0):
+        asked.append(address)
+        return "ws://127.0.0.1:8000/ws" if host else None
+    # By module object: connectonion.network re-exports a `connect` function
+    # that shadows the module in a dotted-string lookup.
+    monkeypatch.setattr(importlib.import_module("connectonion.network.connect"), "resolve_endpoint", resolve)
+    opened = []
+    monkeypatch.setattr("webbrowser.open", lambda url, *a, **k: opened.append(url) or True)
+    return root, asked, opened
+
+
+def _plain(text):
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
+def test_default_open_is_a_snapshot_that_exists_and_renders_the_pages(tmp_path, monkeypatch):
+    """#1828: the default opened chat.openonion.ai/<address>/wiki, a route O Chat
+    does not serve, for a Host nobody had started. The default is the snapshot,
+    which loads offline, and it asks no Host anything."""
+    _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=False)
+    result = runner.invoke(app, ["wiki", "open", "--no-launch"])
     assert result.exit_code == 0, result.output
-    assert opened == [f"https://chat.openonion.ai/0x{'a' * 64}/wiki"]
+    output = _plain(result.output)
+    link = re.search(r"^Link: (file://\S+)$", output, re.M).group(1)
+    snapshot = Path(urllib.parse.unquote(urllib.parse.urlparse(link).path))
+    assert snapshot.is_file() and "Works on Project Aurora" in snapshot.read_text(encoding="utf-8")
+    assert "co wiki open --live" in output
+    assert opened == [] and asked == []
+    # Rendered on every run, so the page opened is never older than the notebook.
+    Notebook(tmp_path / ".co/wiki").write("people/bob.md", "# Bob\nJoined yesterday.")
+    assert runner.invoke(app, ["wiki", "open", "--no-launch"]).exit_code == 0
+    assert "Joined yesterday" in snapshot.read_text(encoding="utf-8")
+
+
+def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch):
+    """Until O Chat serves the Wiki route (openonion/oo-chat#246) and the flag in
+    connectonion/wiki/reader.py flips, the default must not send anyone to a page
+    that cannot load (#1828). Even with the Host online."""
+    from connectonion.wiki import reader
+    assert reader.LIVE_WIKI_SERVED is False, "flipped: replace this test with one for the live default"
+    _, _, opened = _owner_notebook(tmp_path, monkeypatch, host=True)
+    result = runner.invoke(app, ["wiki", "--json", "open"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert "chat.openonion.ai" not in data["link"] and data["link"].startswith("file://")
+    assert opened == [data["link"]]
+
+
+def test_live_with_the_host_offline_falls_back_to_the_snapshot_and_names_co_ai(tmp_path, monkeypatch):
+    _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=False)
+    result = runner.invoke(app, ["wiki", "open", "--live"])
+    assert result.exit_code == 0, result.output
+    output = _plain(result.output)
+    assert asked == [OWNER]
+    assert "not online" in output and "co ai" in output
+    assert len(opened) == 1 and opened[0].startswith("file://")
+    assert "chat.openonion.ai" not in opened[0]
+
+
+def test_live_with_the_host_online_opens_the_live_url(tmp_path, monkeypatch):
+    _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=True)
+    result = runner.invoke(app, ["wiki", "open", "--live", "--no-launch"])
+    assert result.exit_code == 0, result.output
+    assert asked == [OWNER] and opened == []
+    assert f"https://chat.openonion.ai/{OWNER}/wiki" in _plain(result.output)
+
+
+def test_live_on_a_custom_root_says_why_and_opens_the_snapshot(tmp_path, monkeypatch):
+    """The live view reads the default notebook through the co ai identity (#1637);
+    a custom --root is not assumed to belong to it."""
+    _, asked, _ = _owner_notebook(tmp_path, monkeypatch, host=True)
+    root = tmp_path / "other"
+    prepare(root)
+    result = invoke(root, "open", "--live", "--no-launch")
+    assert result.exit_code == 0, result.output
+    assert asked == [] and "file://" in _plain(result.output)
 
 
 def test_open_before_start_creates_nothing(tmp_path, monkeypatch):

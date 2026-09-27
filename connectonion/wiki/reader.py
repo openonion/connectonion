@@ -91,3 +91,62 @@ def open_reader(root: Path, *, launch: bool = True) -> Path:
     if launch:
         webbrowser.open(path.as_uri())
     return path
+
+
+# The live view: O Chat reads the default notebook from the owner's `co ai` Host
+# over OIP (`WIKI_READ`, #1637). The route and whether it exists live here only.
+LIVE_WIKI_URL = "https://chat.openonion.ai/{address}/wiki"
+
+# Does O Chat serve LIVE_WIKI_URL? Not yet: its Wiki route is openonion/oo-chat#246,
+# unmerged, so /<address>/wiki is read as a chat session named "wiki". The CLI
+# defaulted to it anyway and `co wiki open` opened a page that never loads
+# (#1828). Set True once that route is deployed and the default becomes the live
+# view again -- still behind the Host check in live_or_snapshot.
+LIVE_WIKI_SERVED = False
+
+LIVE_HINT = "co wiki open --live   (the live view in O Chat; needs your co ai Host online)"
+
+
+def host_online(address: str, timeout: float = 3.0) -> bool:
+    """Is the Host for this address answering right now? No model, no login.
+
+    The same resolution a client does before connecting: ask the relay which
+    endpoints the address announces, and require one to answer /info as that
+    address. A Host reachable only through the relay (behind NAT, on another
+    machine) reads as offline here; that costs a snapshot, never a dead page.
+    """
+    import asyncio
+    import importlib
+    from ..backend import backend_ws_url
+    # By import_module: connectonion.network re-exports a connect() that shadows the module.
+    connect = importlib.import_module("connectonion.network.connect")
+
+    return asyncio.run(connect.resolve_endpoint(address, backend_ws_url(), timeout)) is not None
+
+
+def open_snapshot(root: Path, *, launch: bool, **notes) -> dict:
+    path = open_reader(root, launch=launch)
+    return {"page": str(path), "link": path.as_uri(), "launched": launch,
+            "note": "local snapshot; run again after the next maintenance pass", **notes}
+
+
+def live_or_snapshot(root: Path, address, *, live: bool, launch: bool) -> dict:
+    """What `co wiki open` shows: the live view only when it is wanted, belongs to
+    this notebook, and its Host answers; otherwise the snapshot, saying why."""
+    if not live:
+        return open_snapshot(root, launch=launch, **({"live_view": LIVE_HINT} if address else {}))
+    if not address:
+        return open_snapshot(root, launch=launch, live=(
+            "only the default notebook (~/.co/wiki) with a co ai identity has a live view"))
+    if not host_online(address):
+        return open_snapshot(root, launch=launch, live=(
+            f"your Host {address[:10]}... is not online, so the live view would not load. "
+            "Start it with `co ai`, then run `co wiki open --live` again"))
+    url = LIVE_WIKI_URL.format(address=address)
+    if launch:
+        webbrowser.open(url)
+    result = {"page": url, "link": url, "launched": launch}
+    if not LIVE_WIKI_SERVED:
+        result["warning"] = ("O Chat does not serve this route yet (openonion/oo-chat#246); "
+                             "until it is deployed the page opens as an empty chat")
+    return result
