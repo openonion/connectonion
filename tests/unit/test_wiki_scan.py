@@ -336,3 +336,11 @@ def test_contacts_that_cannot_be_read_leave_the_map_to_the_mail():
             raise PermissionError("no contacts scope")
     people = scan_people({"gmail": Broken("me@x.y", [_sent(["p@q.com"], "Hi Larry,")])}, 30, set())
     assert people[0]["name"] == "Larry"
+
+
+def test_a_greeting_to_an_agents_address_does_not_name_the_agent_after_its_owner():
+    """ "Hi Ody," to 0x3c3ae74550@mail.openonion.ai titled Ody's agent "Ody", a
+    second page with the person's name."""
+    people = scan_people({"gmail": Box("me@x.y", [_sent(["0x3c3ae74550@mail.openonion.ai"], "Hi Ody, confirmed")])},
+                         30, set())
+    assert people[0]["name"] == ""

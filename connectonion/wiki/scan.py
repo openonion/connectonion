@@ -79,7 +79,9 @@ def _greeting_name(row: dict, address: str, mine: set) -> str:
         return ""
     recipients = [a for _, a in getaddresses([str(h) for h in list(row.get("to") or []) + list(row.get("cc") or [])])
                   if a and a.lower() not in mine]
-    if [a.lower() for a in recipients] != [address]:
+    # An agent's address (0x…@) is greeted by its owner's name; that name is the
+    # person's, not the agent's.
+    if [a.lower() for a in recipients] != [address] or re.match(r"0x[0-9a-f]{6,}@", address):
         return ""
     match = _GREETING.match(html.unescape(str(row.get("snippet") or "")))
     name = (match.group(1) or match.group(2)) if match else ""
