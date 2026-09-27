@@ -12,20 +12,41 @@ Judgement -- whether "Dora" here is that Dora -- stays with the model.
 import re
 from pathlib import Path
 
-from .files import Notebook
+from .files import Notebook, read_json, state_path
 from .investigate import project_paths
 
 MAX_LEADS = 15
-# A name shorter than this is too likely to be part of another word ("Al" in
-# "always"); a Chinese name is usually two characters, so it gets its own floor.
 
 
 def _under(path: str, roots: list[str]) -> bool:
     return any(path == root or path.startswith(root.rstrip("/") + "/") for root in roots)
 
 
+def _named(name: str, text: str) -> int:
+    """How often a title or alias appears as a word. Short Latin names must match
+    case exactly ("One" the project, not "one" the word); Chinese names are
+    usually two characters, so they get their own floor."""
+    if "@" in name or len(name) < (3 if name.isascii() else 2):
+        return 0
+    flags = re.I if len(name) >= 4 or not name.isascii() else 0
+    return len(re.findall(rf"(?<![\w@./-]){re.escape(name)}(?![\w@-])", text, flags))
+
+
+def _not_leads(notebook: Notebook) -> set:
+    """The owner's page and pages that may be the owner's: every session is the
+    owner's own, so their name is in all of it and says nothing about where a
+    batch belongs. Automated senders are not people."""
+    state = read_json(state_path(notebook.root, "map.json"), {})
+    skip = {(state.get("owner") or {}).get("record")}
+    skip |= {row.get("record") for row in state.get("possible_own_addresses", [])}
+    skip |= {row.get("record") for row in state.get("people", [])
+             if row.get("classification") == "automated candidate"}
+    return skip
+
+
 def page_leads(notebook: Notebook, items: list[dict]) -> list[str]:
     text = "\n".join(str(item.get("text", "")) for item in items)
+    skip = _not_leads(notebook)
     directories = {str(item["project"]) for item in items if item.get("project")}
     leads = []
     if directories:
@@ -39,10 +60,15 @@ def page_leads(notebook: Notebook, items: list[dict]) -> list[str]:
                 deepest = max(depth.values())
                 leads += [(10_000, record) for record, size in depth.items() if size == deepest]
     for person in notebook.people():
-        names = {person.get("title", ""), *person.get("aliases", [])}
-        hits = sum(len(re.findall(rf"(?<![\w@.]){re.escape(name)}(?![\w@])", text, re.I))
-                   for name in names if "@" not in name and len(name) >= (3 if name.isascii() else 2))
+        if person["path"] in skip:
+            continue
+        hits = sum(_named(name, text) for name in {person.get("title", ""), *person.get("aliases", [])})
         if hits:
             leads.append((hits, person["path"]))
+    for record in notebook.list("projects"):
+        title = next((line[2:].strip() for line in notebook.read(record).splitlines() if line.startswith("# ")), "")
+        hits = _named(title, text)
+        if hits and all(record != lead for _, lead in leads):
+            leads.append((hits, record))
     leads.sort(key=lambda lead: (-lead[0], lead[1]))
     return [record for _, record in leads[:MAX_LEADS]]

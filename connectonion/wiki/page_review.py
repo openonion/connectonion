@@ -112,6 +112,15 @@ def _project_overview_errors(candidate: str) -> list[str]:
     return ['Project Overview requires a closed fenced ASCII flow, or an explicit Unknown statement']
 
 
+SOURCE_ID = re.compile(r'\b(?:codex|claude-code|gmail|outlook|whatsapp|email|reflection|review)'
+                       r'(?:-summary)?:[\w.:+-]+')
+
+
+def _carried_over(value: str, old_sources: str) -> bool:
+    ids = [match.rstrip('.,;') for match in SOURCE_ID.findall(value)]
+    return bool(ids) and all(source in old_sources for source in ids)
+
+
 def restore_runner_fields(record: str, candidate: str, original: str) -> str:
     """Put back the lines the runner owns, instead of refusing the page for them.
 
@@ -244,6 +253,11 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
                 # The map's own record, when the page already cited it: a real
                 # pass reworded "Enumeration metadata ... .state/map.json".
                 or ('.state/map.json' in value and '.state/map.json' in original)
+                # "The page as it stood said so", named by the page item's own id.
+                or 'investigation:page' in value
+                # A citation carried over from the page before this run: every
+                # source id it names is already in that page's Sources, reworded.
+                or _carried_over(value, old_sources)
                 # Another page of this notebook, named as context -- never as
                 # corroboration: "Existing mapped page `people/…md`, inspected".
                 or (re.search(r'\b(existing|mapped|prior)\b', value, re.I)

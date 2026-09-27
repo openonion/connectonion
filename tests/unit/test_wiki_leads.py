@@ -22,3 +22,20 @@ def test_the_deepest_project_and_the_people_named_are_the_leads(tmp_path):
     assert "projects/home.md" not in leads and "projects/other.md" not in leads
     assert {"people/dora.md", "people/ody.md"} <= set(leads)       # by title word and by alias
     assert "people/al.md" not in leads                              # "Al" inside "always" is not Al
+
+
+def test_the_owner_is_not_a_lead_and_projects_are_found_by_name(tmp_path):
+    """Every session is the owner's own, so the owner's name is in all of it; a
+    real batch about One and ConnectOnion was pointed at the owner's other address."""
+    from connectonion.wiki.files import state_path, write_json
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/me.md", "Aaron Xie", ["Aaron"], email="me@example.org")
+    notebook.stub_person("people/me-too.md", "Aaron", [], email="me@other.example")
+    notebook.stub_project("projects/one.md", "One", ["/w/one"])
+    notebook.stub_project("projects/connectonion.md", "ConnectOnion", ["/w/co"])
+    write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/me.md"},
+                                                  "possible_own_addresses": [{"record": "people/me-too.md"}]})
+    items = [{"role": "extract", "text": "Aaron wants the One bot in Lark; ConnectOnion needs a release. one more."}]
+    leads = page_leads(notebook, items)
+    assert set(leads) == {"projects/one.md", "projects/connectonion.md"}
