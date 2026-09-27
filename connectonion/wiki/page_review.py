@@ -107,7 +107,9 @@ def _project_overview_errors(candidate: str) -> list[str]:
         return []
     blocks = re.finditer(r'(?m)^[ \t]*(`{3,}|~{3,})(?:text|ascii)?[ \t]*\n'
                          r'([\s\S]*?)\n[ \t]*\1[ \t]*(?:\n|$)', section)
-    if any(re.search(r'->|--|\||^[ \t]*v[ \t]*$', block[2], re.M) for block in blocks):
+    # ASCII or box-drawing: a real candidate drew its flow with │ and ▼ and the
+    # whole page was refused for it.
+    if any(re.search(r'->|--|\||^[ \t]*v[ \t]*$|[│┃▼↓→⟶➜─]', block[2], re.M) for block in blocks):
         return []
     return ['Project Overview requires a closed fenced ASCII flow, or an explicit Unknown statement']
 
@@ -170,12 +172,16 @@ def normalize_numbered_sources(text: str) -> str:
     """Accept Markdown's numbered-list spelling for an otherwise valid citation.
 
     The model sometimes cites [1] in prose but writes `1. source-id` under
-    Sources. Convert only the label, inside that section; source content and
+    Sources, or cites two at once as [1, 2]. Convert only the label, inside that section; source content and
     citation validation remain unchanged.
     """
     head, marker, tail = text.partition('\n## Sources\n')
     if not marker:
         return text
+    # "[1, 2]" is two citations; read as neither, both were reported unused
+    # and the page was refused. A link's [text](url) is left alone.
+    head = re.sub(r'\[(\d+(?:[ \t]*,[ \t]*\d+)+)\](?!\()',
+                  lambda m: ''.join(f'[{n.strip()}]' for n in m.group(1).split(',')), head)
     after = re.search(r'^(?:## |Investigation:)', tail, re.M)
     sources, rest = (tail[:after.start()], tail[after.start():]) if after else (tail, '')
     sources = re.sub(r'(?m)^([ \t]*)(\d+)\.[ \t]+', r'\1- [\2] ', sources)

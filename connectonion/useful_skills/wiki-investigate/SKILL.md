@@ -13,6 +13,13 @@ You are not writing from scratch. The page already exists, with every section
 in place and the ones nobody has investigated marked `Unknown`. The structure
 is settled; you are filling it and keeping it current.
 
+**Read what you were given, all of it, before looking anywhere else.** The
+page and the gathered material are the input; the other skills and example
+pages are not. On evaluation runs the turns went on searching the workspace
+for a page to copy, and the page was never written. Reach for another source
+(the mail tools, the web) only for a gap you can name, after the material is
+read.
+
 **Read the current page first.** It tells you three different things, and they
 need three different treatments:
 

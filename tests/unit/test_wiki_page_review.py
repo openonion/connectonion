@@ -40,6 +40,15 @@ def test_numbered_source_list_is_normalized_without_changing_claims():
         '# Page\n\n## Sources\n1.\nnext line\n')
 
 
+def test_grouped_citations_are_split_so_each_counts():
+    """"[1, 2]" cites two sources; read as nothing, it left both reported
+    unused and the page refused."""
+    text = '# P\n\nCounts words [1, 2] and [3,4]; see [docs](https://x.y) [5].\n\n## Sources\n1. a\n'
+    normalized = normalize_numbered_sources(text)
+    assert 'Counts words [1][2] and [3][4]; see [docs](https://x.y) [5].' in normalized
+    assert normalize_numbered_sources(normalized) == normalized
+
+
 def test_candidate_checks_duplicate_headings_and_missing_citations(tmp_path):
     prepare(tmp_path)
     nb = Notebook(tmp_path)
@@ -161,6 +170,9 @@ def test_prior_page_citation_is_identifiable_only_as_supplied_context():
     ('```text\n```\nEmpty illustration. [1]', True),
     ('Unknown — supplied evidence does not establish a user flow. [1]', False),
     ('```text\ndraft -> count.py -> stdout\n', True),
+    # Box-drawing arrows are a flow too: a real candidate drew one and the page was refused.
+    ('```text\n[Markdown file]\n      │\n      ▼\n[Word counts]\n```\nObserved flow. [1]', False),
+    ('```text\nmemo → transcript → note\n```\nObserved flow. [1]', False),
 ])
 def test_populated_project_overview_requires_closed_flow(tmp_path, overview, rejected):
     nb = Notebook(tmp_path)
