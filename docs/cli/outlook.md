@@ -151,6 +151,7 @@ scope and shows up in `co outlook scheduled` like any other scheduled send.
 
 **Options**
 - `--listing` — listing ID printed with the table; required with a `#`
+- `--all` — reply to everyone on the email (original To and Cc), not only the sender
 - `--cc` — CC recipients (comma-separated); the reply stays in its thread
 - `--bcc` — BCC recipients (comma-separated)
 - `--attach, -a FILE` — attach a local file; repeat for multiple
@@ -166,6 +167,21 @@ history-less thread (#1247):
 ```bash
 co outlook reply 3 "Looping in Sam so he has the context." --listing <listing-id> --cc sam@example.com
 ```
+
+**Answering a group thread** — a plain reply reaches only the sender. `--all`
+posts to Graph's `replyAll` (or drafts with `createReplyAll` when `--at` is
+used), so everyone on the original To and Cc gets the answer in the same
+thread. Before 1.8.9b19 the only way to reach them all was a fresh
+`co outlook send` with "Re:" in the subject, a new thread on every
+recipient's side (#1834):
+
+```bash
+co outlook reply 3 "Thanks both, Thursday works." --listing <listing-id> --all
+```
+
+`--all` combines with `--cc`, `--bcc`, `--attach` and `--at`. With `--cc` the
+named people are added to the original Cc rather than replacing it, and you
+are left off your own Cc.
 
 **Attachments** — same files, limit, and flag as `send`, still a real reply:
 
