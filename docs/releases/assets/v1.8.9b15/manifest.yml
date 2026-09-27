@@ -1,0 +1,9 @@
+version: v1.8.9b15
+images:
+  - file: wiki-mapped-page.png
+    alt: "The wiki reader showing a mapped person page: title, contact, then one line listing the sections not investigated yet with the command that fills them"
+    caption: "A page the map just made now opens on what is known. The empty sections are named once, with the command that fills them, instead of ten lines of Unknown."
+    scenario: "python scripts/capture_189b15_release_reader.py: a synthetic notebook written by the real mapper code, rendered by co wiki open --no-launch, photographed in headless Chrome"
+    viewport: "1280x800, light"
+    commit: c6bebe59
+    source_run: "scripts/capture_189b15_release_reader.py"

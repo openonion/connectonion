@@ -130,6 +130,17 @@ file — a zero-byte document is worse than an error, because a consumer reads
 it as an empty document. Anything over 64 MB is refused the same way rather
 than filling the disk the inbox lives on.
 
+**What `kind` means.** It names what a person sent: `text`, `image`, `audio`
+and so on. WhatsApp also attaches delivery metadata to messages
+(`messageContextInfo` on nearly every group message, and a
+`senderKeyDistributionMessage` the first time someone posts to a group). That
+metadata never names the kind. Until #1858 it did, and 46% of one owner's
+group messages arrived as `kind: "messagecontextinfo"`, so a consumer that
+answered only `text` skipped them. A frame that carries nothing but that
+metadata is not a message and is not recorded. Before #1837 it was recorded,
+and because the sender's real first message shares its id, the real message
+was then dropped as a duplicate.
+
 ## Groups: when the bot answers
 
 In a group, `mentioned` is true when the message @-mentions the linked number,
@@ -193,6 +204,43 @@ well (#1859). This applies to every provider's `listen`, not only WhatsApp.
 ```bash
 co whatsapp listen --restart     # stop the running listener, start a background one
 ```
+
+## Sending photos and files
+
+```bash
+co whatsapp send 447700900123@s.whatsapp.net --image ./shortlist.png "Tonight's three options"
+co whatsapp send 447700900123@s.whatsapp.net --file ./itinerary.pdf
+co whatsapp send 120363…@g.us --image ./map.png --reply-to 3EB0C127D8F1A2B4E5F6
+co whatsapp reply 3EB0C127D8F1A2B4E5F6 --image ./map.png "Here it is"
+```
+
+A rating card, a map screenshot or a rendered itinerary used to be flattened
+into a wall of text, and data-heavy text is exactly what people skip in a group
+chat (#1856).
+
+- `--image PATH` sends a photo: JPEG, PNG or WebP, up to 16 MB, shown inline in
+  the chat. Any other type, or a bigger picture, goes as `--file`.
+- `--file PATH` sends any file up to 100 MB as a document, with its file name
+  and type, so the phone offers to open it.
+- The text is the caption. It is optional, and it is read as Markdown like any
+  send unless `--plain`. With `--image` or `--file` an omitted caption means no
+  caption: stdin is not read, so a script cannot hang waiting for one.
+- `reply MESSAGE_ID --image PATH` / `--file PATH` answers a received message with
+  an attachment, in its chat and quoting it, the way an agent answers text.
+- `--reply-to` quotes a message, as with text. `react` and `delete` work on the
+  id it prints. `edit` changes text only, so it does not apply.
+- It goes through the same `outbox/` as text, and like text starts a listener
+  when none is running.
+  The request carries the file's absolute path and the listener reads the file
+  from there; the file only has to stay put until the id is printed.
+- Checked before anything is queued: a missing or empty file, both options at
+  once, a picture WhatsApp will not show inline, or a file over the limit exits
+  1 with a sentence naming the fix. Nothing is sent.
+- `sent.jsonl` records the caption as `text` and the attachment as
+  `media: {kind, path, size}`, so `log` shows what went out.
+
+`co feishu send`, `co lark send` and `co discord send` accept the same two
+options and refuse them, sending nothing; only WhatsApp implements them so far.
 
 ## The protocol snapshot
 
