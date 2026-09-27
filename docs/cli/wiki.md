@@ -192,11 +192,14 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co wiki open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Checks first that the Host is online; if it is not, says so (start it with `co ai`) and opens the snapshot instead. Default notebook only. |
 | `co wiki open --no-launch` | Print the page without opening the browser. |
 
-Until 1.8.9 the default opened `https://chat.openonion.ai/<address>/wiki`. O Chat
-does not serve that route yet (openonion/oo-chat#246), so the page never loaded
-(#1828). The snapshot is the default until it does; the route and the switch
-back live together in `connectonion/wiki/reader.py` (`LIVE_WIKI_URL`,
-`LIVE_WIKI_SERVED`). `--local` is still accepted and always means the snapshot.
+Until 1.8.9 the default opened `https://chat.openonion.ai/<address>/wiki` before
+O Chat served that route, so the page never loaded (#1828). O Chat serves it
+since openonion/oo-chat#246; opening locally stays the default because it works
+offline and needs no Host, and the live view is asked for with `--live`. The
+route and both switches live in `connectonion/wiki/reader.py` (`LIVE_WIKI_URL`,
+`LIVE_WIKI_SERVED`, `LIVE_IS_DEFAULT`). `--local` is still accepted and always
+means the snapshot. If the live view says the Wiki is not yours, add the
+browser's address as an admin of the Host: `co trust admin add <address>`.
 
 `init` is the foreground Skill workflow. `start` remains the explicit
 background lifecycle command; initialization does not install a schedule.

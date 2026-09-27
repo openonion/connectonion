@@ -465,8 +465,8 @@ def make_wiki_app(factory):
             # (#1637); a custom --root is never assumed to belong to it.
             identity = (address.load(selected_identity_dir())
                         if ctx.obj["default_root"] and root.is_dir() else None)
-            # The snapshot is the default until O Chat serves the route (#1828).
-            wanted = not local and (live or reader.LIVE_WIKI_SERVED)
+            # The snapshot is the default (#1828); the live view is asked for.
+            wanted = not local and (live or reader.LIVE_IS_DEFAULT)
             result = reader.live_or_snapshot(root, identity and identity["address"],
                                              live=wanted, launch=launch)
             return result, ["status"]

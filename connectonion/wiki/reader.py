@@ -97,12 +97,15 @@ def open_reader(root: Path, *, launch: bool = True) -> Path:
 # over OIP (`WIKI_READ`, #1637). The route and whether it exists live here only.
 LIVE_WIKI_URL = "https://chat.openonion.ai/{address}/wiki"
 
-# Does O Chat serve LIVE_WIKI_URL? Not yet: its Wiki route is openonion/oo-chat#246,
-# unmerged, so /<address>/wiki is read as a chat session named "wiki". The CLI
-# defaulted to it anyway and `co wiki open` opened a page that never loads
-# (#1828). Set True once that route is deployed and the default becomes the live
-# view again -- still behind the Host check in live_or_snapshot.
-LIVE_WIKI_SERVED = False
+# Does O Chat serve LIVE_WIKI_URL? Yes since openonion/oo-chat#246 was deployed
+# (2026-09-27); before that /<address>/wiki was read as a chat session named
+# "wiki", which is how `co wiki open` came to open a page that never loads (#1828).
+LIVE_WIKI_SERVED = True
+
+# Is the live view what a bare `co wiki open` opens? No, by the owner's decision
+# (2026-09-27, #1828): opening locally is the default and works offline; the
+# live view through the Host is a feature asked for with --live.
+LIVE_IS_DEFAULT = False
 
 LIVE_HINT = "co wiki open --live   (the live view in O Chat; needs your co ai Host online)"
 
