@@ -170,6 +170,39 @@ So `send` and `reply` work without the extra installed while a listener is
 running. With no listener and no extra, nothing could ever send, so they exit 3
 at once and print the pip command, as `check` does.
 
+## Sending photos and files
+
+```bash
+co whatsapp send 447700900123@s.whatsapp.net --image ./shortlist.png "Tonight's three options"
+co whatsapp send 447700900123@s.whatsapp.net --file ./itinerary.pdf
+co whatsapp send 120363…@g.us --image ./map.png --reply-to 3EB0C127D8F1A2B4E5F6
+```
+
+A rating card, a map screenshot or a rendered itinerary used to be flattened
+into a wall of text, and data-heavy text is exactly what people skip in a group
+chat (#1856).
+
+- `--image PATH` sends a photo: JPEG, PNG or WebP, up to 16 MB, shown inline in
+  the chat. Any other type, or a bigger picture, goes as `--file`.
+- `--file PATH` sends any file up to 100 MB as a document, with its file name
+  and type, so the phone offers to open it.
+- The text is the caption. It is optional, and it is read as Markdown like any
+  send unless `--plain`. With `--image` or `--file` an omitted caption means no
+  caption: stdin is not read, so a script cannot hang waiting for one.
+- `--reply-to` quotes a message, as with text. `react` and `delete` work on the
+  id it prints. `edit` changes text only, so it does not apply.
+- It goes through the same `outbox/` as text, so it needs the listener running.
+  The request carries the file's absolute path and the listener reads the file
+  from there; the file only has to stay put until the id is printed.
+- Checked before anything is queued: a missing or empty file, both options at
+  once, a picture WhatsApp will not show inline, or a file over the limit exits
+  1 with a sentence naming the fix. Nothing is sent.
+- `sent.jsonl` records the caption as `text` and the attachment as
+  `media: {kind, path, size}`, so `log` shows what went out.
+
+`co feishu send`, `co lark send` and `co discord send` accept the same two
+options and refuse them, sending nothing; only WhatsApp implements them so far.
+
 ## The protocol snapshot
 
 The extra pins `neonize` exactly rather than with `>=`. The wheel carries a
