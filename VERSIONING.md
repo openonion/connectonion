@@ -380,7 +380,9 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 1.8.9b17 is an opt-in preview that makes `co/gemini-3.8-flash` the default model
 again, by the owner's decision (#1869): 1.8.9b10 through b16 defaulted to the
 free `co/llama` (Llama 3.1 8B). The free models stay selectable, and at a zero
-balance `co status` names `co/gemma` and `ollama/<model>`. Stable remains 1.8.8.
+balance `co status` names `co/gemma` and `ollama/<model>`. A background
+listener now loads the installed package and restarts at most once per
+upgrade (#1878). Stable remains 1.8.8.
 See [1.8.9b17 notes](docs/releases/1.8.9b17.md).
 
 - 1.8.9b17 (Gemini 3.8 default again; free models are the zero-balance tip.)
