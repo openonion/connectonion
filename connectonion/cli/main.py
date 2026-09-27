@@ -1657,10 +1657,13 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
                                     "names the API endpoint that would do it, and sends nothing. Read-only.")
 
     @group.command("listen", epilog=f"Example:  {co} listen  |  {co} listen --raw")
-    def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl")):
+    def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl"),
+                restart: bool = typer.Option(False, "--restart",
+                                             help="Stop the running listener and start a new one in the background, "
+                                                  "on the installed code")):
         """Hold the connection; write every message to the inbox. Ctrl-C stops. Runs in the foreground and writes to ~/.co/inbox/."""
         from .commands.listen_commands import handle_listen
-        handle_listen(name, raw=raw)
+        handle_listen(name, raw=raw, restart=restart)
 
     @group.command("receive", epilog=f"Example:  {co} receive -t 60  |  {co} receive -t 0 --no-start  |  {co} receive --context 5")
     def _receive(

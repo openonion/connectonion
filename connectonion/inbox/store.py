@@ -626,6 +626,26 @@ class Inbox:
     # else's process blocked every `receive` forever.
 
     @property
+    def listener_file(self) -> Path:
+        """Which version the running listener started with (#1859)."""
+        return self.root / "listener.json"
+
+    def record_listener(self, version: str) -> None:
+        payload = {"pid": os.getpid(), "version": version, "started_at": _now_iso()}
+        staged = self.listener_file.with_suffix(".json.partial")
+        staged.write_text(json.dumps(payload), encoding="utf-8")
+        staged.replace(self.listener_file)
+
+    def listener_version(self, pid) -> Optional[str]:
+        """The version `pid` recorded when it started, or None: a listener from
+        before version tracking, or a record left by a process now gone."""
+        try:
+            record = json.loads(self.listener_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return record.get("version") if isinstance(record, dict) and record.get("pid") == pid else None
+
+    @property
     def connection(self) -> Path:
         """Where the listener records whether its socket is actually up."""
         return self.root / "connection.json"

@@ -64,13 +64,19 @@ def _configured(name: str, *, sends: bool = False):
     """
     p = provider(name)
     problems = p.missing()
+    start = False
     if not problems and sends and getattr(p, "via_listener", False) \
             and Inbox(name).listener_pid() is None:
         problems = getattr(p, "listen_requirements", list)()
+        start = not problems
     if problems:
         for problem in problems:
             errors.print(problem, style="red")
         sys.exit(EXIT_CONFIG)
+    if start:
+        # Start one, as `receive` does (#1860). Waiting 30s for a listener
+        # nobody had started was 5 of one owner's 7 failed sends.
+        _listener_or_exit(Inbox(name))
     return p
 
 
@@ -185,10 +191,78 @@ def handle_done(name: str, message_id: str) -> None:
     inbox.done(message_id, by="done")
 
 
-def handle_listen(name: str, raw: bool = False) -> None:
+def running_version() -> str:
+    """The version of the code this process loaded."""
+    from ... import __version__
+    return __version__
+
+
+def installed_version() -> Optional[str]:
+    """The version pip has installed now, read from disk; None when unreadable."""
+    from importlib import metadata
+    try:
+        return metadata.version("connectonion")
+    except metadata.PackageNotFoundError:
+        return None
+
+
+def restart_if_upgraded(inbox: Inbox, *, running: str, installed: Optional[str], execv=os.execv) -> None:
+    """Replace this listener with the installed code after an upgrade (#1859).
+
+    In place, so the pid, the lock holder and the session stay one device and
+    nothing re-pairs. Not while a send is in flight: a `.taken` request is one
+    the listener has claimed and not answered, and restarting then would leave
+    its sender waiting for an answer that never comes.
+    """
+    if not installed or installed == running:
+        return
+    if any((inbox.root / "outbox").glob("*.taken")):
+        return
+    inbox.log(f"installed {installed}, running {running}: restarting")
+    args = [a for a in sys.argv[1:] if a != "--restart"]
+    execv(sys.executable, [sys.executable, "-m", "connectonion.cli.main", *args])
+
+
+def version_line(name: str, inbox: Inbox, pid, *, installed: Optional[str]) -> str:
+    """What `check` says about the listener's code, or '' when it is current."""
+    version = inbox.listener_version(pid)
+    if version is None:
+        return (f"listener {pid} started before version tracking, so it may be running code from an "
+                f"older release. Replace it: co {name} listen --restart")
+    if installed and version != installed:
+        return (f"listener {pid} runs {version}; {installed} is installed. It restarts itself within a "
+                f"minute; to do it now: co {name} listen --restart")
+    return ""
+
+
+def _restart_listener(name: str, inbox: Inbox) -> None:
+    """`listen --restart`: stop the running listener, start one in the background."""
+    import signal
+    pid = inbox.listener_pid()
+    if pid and pid > 0:
+        os.kill(pid, signal.SIGTERM)
+        for _ in range(100):  # up to 10s for it to let go of the lock
+            if inbox.listener_pid() is None:
+                break
+            time.sleep(0.1)
+        else:
+            errors.print(f"listener {pid} did not stop within 10s; nothing was started. "
+                         f"Next: co {name} log", style="red")
+            sys.exit(1)
+    new = inbox.ensure_listener(settle=SETTLE_SECONDS)
+    if new is None:
+        _listener_died(inbox, inbox.listener_exit_code)
+    print(f"listener restarted in the background · pid {new}")
+    print_tip(f"Next: co {name} check")
+
+
+def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
     """Hold the connection and write every message to the inbox."""
     p = _configured(name)
     inbox = Inbox(name)
+    if restart:
+        _restart_listener(name, inbox)
+        return
     # The SDK is needed by listen alone; asking here, before the lock, means
     # the answer is exit 3 with the pip command on stderr, the same shape as
     # a missing credential, and not "the listener exited at once".
@@ -200,11 +274,14 @@ def handle_listen(name: str, raw: bool = False) -> None:
     if not inbox.hold_lock():
         errors.print(f"already listening (pid {inbox.listener_pid()}); one listener per directory", style="yellow")
         sys.exit(1)
+    started_with = running_version()
+    inbox.record_listener(started_with)
 
     stop = threading.Event()
 
     def sweep():
         while not stop.wait(60):
+            restart_if_upgraded(inbox, running=started_with, installed=installed_version())
             try:
                 released = inbox.release_stale()
             except OSError as exc:  # the sweep must outlive one bad file
@@ -580,6 +657,9 @@ def handle_check(name: str) -> None:
     listener = f"listener pid {pid}" if pid else "no listener running (receive starts one)"
     console.print(f"[green]✓[/green] {name} configured · {listener} · "
                   f"{len(inbox.unread())} unread · {inbox.root}")
+    stale = version_line(name, inbox, pid, installed=installed_version()) if pid else ""
+    if stale:
+        errors.print(stale, style="yellow")
     _report_connection(name, inbox, pid)
 
 
