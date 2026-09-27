@@ -5,6 +5,17 @@ description: What a person's page in the notebook is made of — the fixed secti
 
 # A person's page
 
+**How to do it.** You are given the page as it stands and the material about
+this person. Those two are the whole input: read both in full, then write the
+page. The shape is below, so do not go looking for example pages, earlier
+outputs, logs, other skills or the repository to copy a format from. Measured
+on real runs, that search, not the writing, used up the turns, and the page was
+never written. Look beyond the material only for a gap you can name (a phone
+number, an employer), and put what you checked in `Uncertainties`.
+Write the whole page in one go, check it once against the rules below, fix
+what is wrong in one edit, and stop. Polishing it line by line spends the
+turns the page needed.
+
 This is the page the user will open most, and the one most likely to come out
 thin. It is the memory of a relationship, and it grows with every interaction;
 never shrink it back to a summary.
@@ -99,6 +110,17 @@ Rules that make this page work, and that a thin page always breaks:
 - **Mark inference as inference.** A judgment drawn from how someone writes is
   worth keeping, and worth labelling, so a later pass does not harden it into
   a fact.
+- **A section the material says nothing about stays `Unknown`.** Writing
+  "no prior history", "relationship not yet established" or "communication
+  style cannot be assessed" into it is not a finding, only the gap in other
+  words, and it hides the gap the `Unknown` shows. Say once, in
+  `Uncertainties`, what the material was (one calendar invitation, one
+  receipt).
+- **Keep what the map already knew.** `Email`, `Handles` and `Also known as`
+  arrive filled from the addresses this page was mapped from. Keep them.
+  Material about somebody else (another person with the same first name) is
+  left out of the page and named in `Uncertainties`; it never empties the
+  fields this person already had.
 - **`Uncertainties` is where a thin page becomes honest** instead of short.
   What is unknown, what is inferred but unconfirmed, what was referenced but
   not read.
