@@ -1,0 +1,9 @@
+version: v1.8.9b17
+images:
+  - file: status-zero-balance.png
+    alt: "Terminal co status output at a zero balance: no credits left, add credits at the purchase page, or keep going for free with model co/gemma or ollama/<model>"
+    caption: "At a zero balance co status now names the free ways to keep going beside the purchase page. The account answer is a stand-in with a zero balance; the text is the command's own output."
+    scenario: "scripts/capture_189b17_release_cli.py runs handle_status against a stand-in account answer (balance 0) in a disposable HOME and keeps the tip block"
+    viewport: "100-column dark terminal capture"
+    commit: 1ebc282f
+    source_run: "scripts/capture_189b17_release_cli.py"

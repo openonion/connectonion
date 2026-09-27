@@ -375,7 +375,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b16
+## Current Version: 1.8.9b17
+
+1.8.9b17 is an opt-in preview that makes `co/gemini-3.8-flash` the default model
+again, by the owner's decision (#1869): 1.8.9b10 through b16 defaulted to the
+free `co/llama` (Llama 3.1 8B). The free models stay selectable, and at a zero
+balance `co status` names `co/gemma` and `ollama/<model>`. Stable remains 1.8.8.
+See [1.8.9b17 notes](docs/releases/1.8.9b17.md).
+
+- 1.8.9b17 (Gemini 3.8 default again; free models are the zero-balance tip.)
+
+Earlier in this line:
+
+## Previous preview: 1.8.9b16
 
 1.8.9b16 is an opt-in preview after 1.8.9b15. The Wiki map names people from
 the name they write under, a saved contact, or the owner's greeting, and folds
@@ -1073,7 +1085,13 @@ When releasing a new version:
       the current preview), the patch commits that apply there, and the PR that
       carries each one. Version-only metadata is not a product fix and must not
       be copied into a newer line.
-- [ ] Update the matching stable or preview channel in the docs site's `lib/version.ts`
+- [ ] After PyPI has the release, sync the docs site from its tag:
+      `python scripts/sync-from-release.py --framework <this checkout> vX.Y.Z`
+      in the docs-site repo. It copies the CLI pages, the co wiki help, the new
+      release notes and their assets, `releases.md`, and the channel in
+      `lib/version.ts`; review what it prints and merge it as one PR. Updating
+      `lib/version.ts` alone is how the site came to describe b12 while b15
+      shipped (#1868).
 - [ ] Draft or substantially update a Design Journal post for a feature-train
       launch, first beta, first RC, stable release, or material architecture or
       workflow decision. Maintenance-only patches need release notes unless
