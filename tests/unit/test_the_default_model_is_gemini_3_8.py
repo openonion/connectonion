@@ -1,7 +1,8 @@
-"""The managed text default is Llama; audio and direct Gemini remain Gemini.
+"""The 1.8.2 product default is Gemini 3.8 everywhere it can be omitted.
 
-The managed gateway, Agent, llm_do, and `co ai` must agree. Transcription needs
-an audio-capable model, and direct Gemini needs a Google model.
+The managed gateway, direct-Gemini client, Agent, llm_do, transcription, and
+`co ai` must agree. Explicit OpenAI and Gemini 3.7 selections stay untouched:
+3.7 is a selectable rollback model, never an implicit fallback.
 """
 
 import inspect
@@ -25,7 +26,7 @@ import pytest
 pytestmark = pytest.mark.usefixtures("own_project")
 
 
-MANAGED_DEFAULT = "co/llama"
+MANAGED_DEFAULT = "co/gemini-3.8-flash"
 DIRECT_DEFAULT = "gemini-3.8-flash"
 ROLLBACK = "co/gemini-3.7-flash"
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,7 +36,7 @@ def _model_default(fn):
     return inspect.signature(fn).parameters["model"].default
 
 
-class TestOmittedModelSelectsLlama:
+class TestOmittedModelSelectsGemini38:
 
     def test_the_shared_constants(self):
         assert DEFAULT_MODEL == MANAGED_DEFAULT
@@ -51,7 +52,7 @@ class TestOmittedModelSelectsLlama:
         assert _model_default(create_agent) == MANAGED_DEFAULT
 
     def test_transcribe(self):
-        assert _model_default(transcribe) == f"co/{DIRECT_DEFAULT}"
+        assert _model_default(transcribe) == MANAGED_DEFAULT
 
     def test_direct_gemini(self):
         assert _model_default(GeminiLLM.__init__) == DIRECT_DEFAULT
@@ -61,6 +62,8 @@ class TestOmittedModelSelectsLlama:
             _model_default(Agent.__init__),
             _model_default(llm_do),
             _model_default(create_agent),
+            _model_default(transcribe),
+            f"co/{_model_default(GeminiLLM.__init__)}",
         } == {MANAGED_DEFAULT}
 
     def test_model_picker_puts_the_default_first(self):
@@ -125,3 +128,24 @@ class TestNoGemini37DefaultRemains:
                 ):
                     descriptions.append(f"{relative}:{number}: {line.strip()}")
         assert descriptions == []
+
+
+class TestFreeModelsAreATipNotTheDefault:
+    """#1869: 1.8.9b10 made co/llama (8B) the default without the owner's decision.
+    Free models are what `co status` suggests when the balance is 0."""
+
+    def test_the_free_models_stay_selectable(self):
+        assert {"co/llama", "co/gemma"} <= set(FREE_MANAGED_MODELS)
+
+    def test_active_docs_do_not_call_llama_the_default(self):
+        found = []
+        for path in [ROOT / "README.md", *(ROOT / "docs").rglob("*.md")]:
+            relative = path.relative_to(ROOT)
+            if relative.parts[:2] in {("docs", "blog"), ("docs", "releases"), ("docs", "design-decisions")}:
+                continue
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                # "co/llama (default…" or "default is/: co/llama", not a list
+                # where Gemini is the default and Llama sits beside it as free.
+                if re.search(r"co/llama`?\s*\(default|default(?: model)?(?: is|:)\s*`?co/llama", line, re.I):
+                    found.append(f"{relative}:{number}: {line.strip()}")
+        assert found == []

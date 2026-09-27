@@ -263,3 +263,84 @@ def test_the_row_carries_how_many_of_them_wrote_back():
              "automated_hint": False, "one_way": False}]
     org = scan_orgs(rows)[0]
     assert org["people"] == 2 and org["two_way"] == 1
+
+
+# Names (#1844). On the owner's map 195 people were only an address, and 190 of
+# them were people the owner had written to and never heard from: the To line
+# the owner typed carried no name, so there was nothing to read. What was there
+# was the owner's own greeting -- "Hi Larry,", "Larry 你好，", "子明，" -- and,
+# for a few, a saved contact.
+
+def _sent(to, snippet, cc=()):
+    return {"id": snippet[:6], "from": "me@x.y", "to": list(to), "cc": list(cc),
+            "date": "2026-09-10", "subject": "s", "snippet": snippet}
+
+
+def test_a_name_in_a_list_of_recipients_is_that_recipients_name():
+    """Stripping every <...> out of a two-recipient header once handed both
+    people the name 'Ody Zhou", "Dora'."""
+    row = {"from": "me@x.y", "to": ['"Ody Zhou" <ody@g.com>, "Dora" <dora@g.com>'], "cc": []}
+    assert _display_name(row, "dora@g.com") == "Dora"
+    assert _display_name(row, "ody@g.com") == "Ody Zhou"
+    assert _display_name({"from": "me@x.y", "to": ['"a@b.co" <a@b.co>'], "cc": []}, "a@b.co") == ""
+    # A sender whose display name is an address has no name (a real map listed
+    # "no-reply@anz.greenhouse.io" as a person's name).
+    assert _display_name({"from": "n@g.io", "from_name": "no-reply@g.io", "to": ["me@x.y"]}, "n@g.io") == ""
+
+
+@pytest.mark.parametrize("snippet,name", [
+    ("Hi Larry, the new batch is ready", "Larry"),
+    ("Larry 你好， 新一批悉尼租房线索已经整理完成", "Larry"),
+    ("子明， 附件是我们整理的第一批", "子明"),
+    ("Dear Dannielle, Thanks for the call", "Dannielle"),
+    ("Hi Andrew, Here&#39;s the attachment", "Andrew"),
+    ("Hi shen, You joined one of our meetups", "Shen"),
+    ("Hi everyone, Thank you for Thursday", ""),
+    ("您好， 请以本邮件中的版本为准", ""),
+    ("Hi, Attached is the report", ""),
+    ("check worker", ""),
+])
+def test_the_owners_greeting_names_the_person_they_wrote_to(snippet, name):
+    people = scan_people({"gmail": Box("me@x.y", [_sent(["p@q.com"], snippet)])}, days=30, own_addresses=set())
+    assert people[0]["name"] == name
+
+
+def test_a_greeting_to_several_people_names_none_of_them():
+    rows = [_sent(["a@q.com", "b@q.com"], "Hi Larry, both of you"),
+            _sent(["c@q.com"], "Hi Larry, you too", cc=["d@q.com"])]
+    people = {p["address"]: p["name"] for p in scan_people({"gmail": Box("me@x.y", rows)}, 30, set())}
+    assert people == {"a@q.com": "", "c@q.com": ""}   # a mail is filed under its first recipient
+
+
+def test_the_name_they_write_under_beats_the_owners_greeting():
+    rows = [_sent(["ody@g.com"], "Hi Od, quick one"),
+            {"id": "r", "from": "Ody Zhou <ody@g.com>", "to": ["me@x.y"], "cc": [], "date": "2026-09-11", "subject": "s"}]
+    assert scan_people({"gmail": Box("me@x.y", rows)}, 30, set())[0]["name"] == "Ody Zhou"
+
+
+class Contacts(Box):
+    def contact_names(self):
+        return {"larry@q.com": "Larry Lee", "ody@g.com": "Ody (saved)"}
+
+
+def test_a_saved_contact_names_someone_the_mail_does_not():
+    rows = [_sent(["larry@q.com"], "Hi Larry, the batch"),
+            {"id": "r", "from": "Ody Zhou <ody@g.com>", "to": ["me@x.y"], "cc": [], "date": "2026-09-11", "subject": "s"}]
+    people = {p["address"]: p["name"] for p in scan_people({"gmail": Contacts("me@x.y", rows)}, 30, set())}
+    assert people == {"larry@q.com": "Larry Lee", "ody@g.com": "Ody Zhou"}
+
+
+def test_contacts_that_cannot_be_read_leave_the_map_to_the_mail():
+    class Broken(Box):
+        def contact_names(self):
+            raise PermissionError("no contacts scope")
+    people = scan_people({"gmail": Broken("me@x.y", [_sent(["p@q.com"], "Hi Larry,")])}, 30, set())
+    assert people[0]["name"] == "Larry"
+
+
+def test_a_greeting_to_an_agents_address_does_not_name_the_agent_after_its_owner():
+    """ "Hi Ody," to 0x3c3ae74550@mail.openonion.ai titled Ody's agent "Ody", a
+    second page with the person's name."""
+    people = scan_people({"gmail": Box("me@x.y", [_sent(["0x3c3ae74550@mail.openonion.ai"], "Hi Ody, confirmed")])},
+                         30, set())
+    assert people[0]["name"] == ""

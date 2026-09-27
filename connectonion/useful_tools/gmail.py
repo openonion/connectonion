@@ -168,18 +168,25 @@ class Gmail(GmailMailbox):
         return refresh_credentials(self._credentials, backend=backend_url(),
                                    api_key=api_key)
 
-    def _email_dicts(self, messages, max_results=10):
-        """Fetch metadata for message stubs and return plain email dicts."""
+    def _email_dicts(self, messages, max_results=10, recipients=False):
+        """Fetch metadata for message stubs and return plain email dicts.
+
+        `recipients=True` adds 'to' and 'cc' from the same fetch, so a listing
+        that needs them costs one call per message, not two. Each call retries
+        a rate limit or server error with backoff: one refused call used to end
+        a whole 90-day scan.
+        """
         service = self._get_service()
         emails = []
+        wanted = ['From', 'Subject', 'Date'] + (['To', 'Cc'] if recipients else [])
 
         for msg in messages[:max_results]:
             message = service.users().messages().get(
                 userId='me',
                 id=msg['id'],
                 format='metadata',
-                metadataHeaders=['From', 'Subject', 'Date']
-            ).execute()
+                metadataHeaders=wanted
+            ).execute(num_retries=3)
 
             headers = message['payload']['headers']
             subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
@@ -194,6 +201,9 @@ class Gmail(GmailMailbox):
                 'snippet': message.get('snippet', ''),
                 'unread': 'UNREAD' in message.get('labelIds', [])
             })
+            if recipients:
+                emails[-1]['to'] = [h['value'] for h in headers if h['name'] == 'To']
+                emails[-1]['cc'] = [h['value'] for h in headers if h['name'] == 'Cc']
 
         return emails
 
@@ -1191,19 +1201,17 @@ class Gmail(GmailMailbox):
         from email.utils import parsedate_to_datetime
         first = int(datetime.fromisoformat(start).timestamp())
         last = int(datetime.fromisoformat(end).timestamp())
-        rows = self.list_search(f"after:{first} before:{last}", max_results=max_results)
-        service = self._get_service()
+        # The wiki files the user's own mail under the person it went to, so the
+        # listing carries To/Cc, fetched with From in one call per message.
+        page = self._get_service().users().messages().list(
+            userId='me', q=f"after:{first} before:{last}", maxResults=max_results).execute(num_retries=3)
+        self._last_message_page = page
+        rows = self._email_dicts(page.get('messages', []), max_results, recipients=True)
         for row in rows:
             try:
                 row['date'] = parsedate_to_datetime(row['date']).isoformat()
             except (TypeError, ValueError):
                 row['date'] = start
-            # The wiki files the user's own mail under the person it went to; the
-            # listing's metadata call asks for From only, so To/Cc are fetched here.
-            headers = service.users().messages().get(userId='me', id=row['id'], format='metadata',
-                                                     metadataHeaders=['To', 'Cc']).execute()['payload']['headers']
-            row['to'] = [h['value'] for h in headers if h['name'] == 'To']
-            row['cc'] = [h['value'] for h in headers if h['name'] == 'Cc']
         return sorted(rows, key=lambda row: (row['date'], row['id']))
 
     def my_addresses(self) -> set:
@@ -1214,6 +1222,32 @@ class Gmail(GmailMailbox):
             if alias.get('sendAsEmail'):
                 addresses.add(alias['sendAsEmail'].lower())
         return {address for address in addresses if address}
+
+    def contact_names(self) -> dict:
+        """Saved and "other" contacts as {address: name}.
+
+        Other contacts are the people Gmail remembers because the owner wrote to
+        them; they need contacts.other.readonly, and a login without it raises,
+        which the wiki treats as "no contacts" rather than a failed map.
+        """
+        from googleapiclient.discovery import build
+        people = build('people', 'v1', credentials=self._get_service()._http.credentials, cache_discovery=False)
+        names = {}
+        for listing, key, params in ((people.people().connections(), 'connections',
+                                      {'resourceName': 'people/me', 'personFields': 'names,emailAddresses'}),
+                                     (people.otherContacts(), 'otherContacts', {'readMask': 'names,emailAddresses'})):
+            token = None
+            while True:
+                page = listing.list(pageSize=1000, pageToken=token, **params).execute()
+                for person in page.get(key, []):
+                    name = ((person.get('names') or [{}])[0].get('displayName') or '').strip()
+                    for email in person.get('emailAddresses', []):
+                        if name and '@' not in name and email.get('value'):
+                            names.setdefault(email['value'].lower(), name)
+                token = page.get('nextPageToken')
+                if not token:
+                    break
+        return names
 
     def my_name(self) -> str:
         """The primary send-as display name, or '' when none is set."""

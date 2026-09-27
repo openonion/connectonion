@@ -87,8 +87,9 @@ def test_init_maps_domain_candidates_without_claiming_employment(tmp_path, monke
     monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
     result = build_map(tmp_path, {}, {}, skill_directories=[skills])
     orgs = {row['domain']: row for row in result['orgs']}
-    assert set(orgs) == {'example.org', 'school.edu.au', 'notices.example.org'}
-    assert len(orgs['example.org']['people']) == 2
+    # notices.example.org is example.org's sending subdomain, not a second organisation (#1844)
+    assert set(orgs) == {'example.org', 'school.edu.au'}
+    assert len(orgs['example.org']['people']) == 3
     nb = Notebook(tmp_path)
     for row in orgs.values():
         page = nb.read(row['record'])
@@ -184,6 +185,9 @@ def test_project_scan_excludes_a_multi_repository_workspace_root(tmp_path):
     for name in ('first', 'second'):
         (root / name / '.git').mkdir(parents=True)
     assert project_exclusion(root) == 'multi-repository workspace container'
+    (root / 'AGENTS.md').unlink()
+    (root / 'CLAUDE.md').write_text('A workspace of six repositories.\n')   # Claude Code's instructions file
+    assert project_exclusion(root) == 'multi-repository workspace container'
 
 
 def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_path, monkeypatch):
@@ -226,7 +230,8 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
     assert {'changelog@neon.tech', 'drive-shares-dm-noreply@google.com', 'usr-xyz@user.luma-mail.com',
             'speedrun@substack.com', 'post-training@mail.aitinkerers.org',
             '0xa633fd2e63@mail.openonion.ai'} <= listed
-    assert 'neon.tech' in {row['domain'] for row in result['orgs']}   # the domain is still mapped
+    # listed with the notice senders, but no organisation page: nobody writes from it (#1844)
+    assert 'neon.tech' not in {row['domain'] for row in result['orgs']}
 
 
 def test_addresses_the_owner_writes_to_and_never_hears_from_are_asked_about_not_merged(tmp_path, monkeypatch):
@@ -467,3 +472,149 @@ def test_an_upgraded_notebook_turns_the_owners_old_correspondent_page_into_the_o
     assert 'Observed mail count: 1' not in page and 'Most mail with: Ody Zhou (30)' in page
     assert 'Correspondent classification unassessed' not in page
     assert '- Email: aaron@mail.example' in page
+
+
+def test_pages_an_older_map_made_are_archived_when_this_map_would_not_make_them(tmp_path, monkeypatch):
+    """A real notebook kept ten project pages for the Wiki's own task folders, six
+    for one project's dated scratch folders, and two pages for one person, all from
+    an older map. Maintenance kept trying to merge them by deleting, and was refused."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    notebook = Notebook(tmp_path)
+    task = '/Users/x/wiki-copy/.state/tasks/maintain-abc/notebook'
+    notebook.stub_project('projects/notebook-1.md', 'notebook', [task])
+    notebook.stub_project('projects/notebook-2.md', 'notebook', [task + '2'])
+    investigated = notebook.read('projects/notebook-2.md').replace(
+        'not investigated yet', 'investigated 2026-09-20 (codex)')
+    notebook.write('projects/notebook-2.md', investigated)                     # someone's work: kept
+    notebook.stub_project('projects/rvc-a.md', 'realtime-voice-chat',
+                          ['/Users/x/Documents/Codex/2026-08-17/realtime-voice-chat'])
+    notebook.stub_project('projects/rvc-b.md', 'realtime-voice-chat-2',
+                          ['/Users/x/Documents/Codex/2026-08-22/realtime-voice-chat-2'])
+    notebook.stub_person('people/dora-by-address.md', 'dora@example.org', ['dora@example.org'],
+                         email='dora@example.org')
+    people = [{'name': 'Dora Chen', 'address': 'dora@example.org', 'mails': 40, 'sent': 20, 'received': 20,
+               'one_way': False, 'boxes': ['gmail']}]
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: (people, set()))
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [
+        {'origin': '', 'repo': '', 'path': '/Users/x/Documents/Codex/2026-08-17/realtime-voice-chat',
+         'sessions': 2, 'first': '2026-08-17', 'last': '2026-08-17'},
+        {'origin': '', 'repo': '', 'path': '/Users/x/Documents/Codex/2026-08-22/realtime-voice-chat-2',
+         'sessions': 2, 'first': '2026-08-22', 'last': '2026-08-22'}])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    assert len(result['projects']) == 1                                       # one scratch project, not two
+    kept = result['projects'][0]['record']
+    assert set(result['archived']) == {'projects/notebook-1.md', *({'projects/rvc-a.md', 'projects/rvc-b.md'} - {kept})}
+    assert notebook.path('projects/notebook-2.md').is_file()                  # investigated: never moved
+    assert (tmp_path / '.state/archived/projects/notebook-1.md').is_file()    # moved, not deleted
+    dora = [row['record'] for row in result['people'] if row.get('name') == 'Dora Chen'][0]
+    assert dora == 'people/dora-by-address.md' or 'people/dora-by-address.md' in result['archived']
+
+
+def test_an_older_maps_person_page_for_a_notice_sender_is_archived(tmp_path, monkeypatch):
+    """An older map made a "person" called Google; maintenance matched the word
+    Google in session notes and went looking at it."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    notebook = Notebook(tmp_path)
+    notebook.stub_person('people/google.md', 'Google', ['no-reply@accounts.google.com'],
+                         email='no-reply@accounts.google.com')
+    people = [{'name': 'Google', 'address': 'no-reply@accounts.google.com', 'mails': 54, 'sent': 0,
+               'received': 54, 'one_way': True, 'boxes': ['gmail']}]
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: (people, set()))
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    assert 'people/google.md' in result['archived']
+    assert not notebook.path('people/google.md').exists()
+
+
+def test_the_map_waits_for_no_one_and_no_one_writes_under_it(tmp_path):
+    """A scheduled batch ran during init, lost a lead page to init's archiving, and
+    because pages had changed under it, skipped its forty messages as written."""
+    import pytest
+    from connectonion.wiki.files import WikiError, maintenance_lock
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    with maintenance_lock(tmp_path):                      # an upkeep batch is running
+        with pytest.raises(WikiError, match="busy"):
+            build_map(tmp_path, {}, {}, skill_directories=[skills])
+    assert not (tmp_path / '.state' / 'map.json').exists()      # nothing written under someone else's lock
+    assert build_map(tmp_path, {}, {}, skill_directories=[skills])['phase'] in ('mapped', 'partial')
+
+
+def test_a_companys_subdomains_are_one_organisation(tmp_path, monkeypatch):
+    """On the owner's map accounts.google.com, accountprotection.microsoft.com and
+    ad.unsw.edu.au were each an organisation of their own (#1844)."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    people = [{'name': 'Ann Lee', 'address': 'ann@unsw.edu.au', 'mails': 4, 'sent': 2, 'received': 2},
+              {'name': 'Bo Chen', 'address': 'bo@ad.unsw.edu.au', 'mails': 3, 'sent': 1, 'received': 2},
+              {'name': 'Cy Wu', 'address': 'cy@corp.example.co.uk', 'mails': 2, 'sent': 1, 'received': 1}]
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: (people, set()))
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    orgs = {row['domain']: row for row in result['orgs']}
+    assert set(orgs) == {'unsw.edu.au', 'example.co.uk'}
+    assert len(orgs['unsw.edu.au']['people']) == 2
+    page = Notebook(tmp_path).read(orgs['unsw.edu.au']['record'])
+    assert '- unsw.edu.au' in page and '- ad.unsw.edu.au' in page
+
+
+def test_a_domain_that_only_sends_notices_gets_no_organisation_page(tmp_path, monkeypatch):
+    """35 of 272 organisations on the owner's map were login and mailer domains
+    that no person wrote from; each would have cost an investigation (#1844)."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    people = [{'name': 'Google', 'address': 'no-reply@accounts.google.com', 'mails': 54, 'sent': 0,
+               'received': 54, 'one_way': True},
+              {'name': 'Ann Lee', 'address': 'ann@partner.com.au', 'mails': 4, 'sent': 2, 'received': 2}]
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: (people, set()))
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    assert [row['domain'] for row in result['orgs']] == ['partner.com.au']
+    assert Notebook(tmp_path).list('orgs') == [result['orgs'][0]['record']]
+
+
+def test_an_older_maps_organisation_page_for_a_subdomain_is_archived(tmp_path, monkeypatch):
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    notebook = Notebook(tmp_path)
+    notebook.stub_org('orgs/accounts-google-com.md', 'accounts.google.com', ['accounts.google.com'])
+    notebook.stub_org('orgs/kept.md', 'kept.example', ['kept.example'])
+    notebook.write('orgs/kept.md', notebook.read('orgs/kept.md').replace(
+        'not investigated yet', 'investigated 2026-09-20 (codex)'))
+    people = [{'name': 'Google', 'address': 'no-reply@accounts.google.com', 'mails': 54, 'sent': 0,
+               'received': 54, 'one_way': True}]
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: (people, set()))
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    assert 'orgs/accounts-google-com.md' in result['archived']
+    assert notebook.path('orgs/kept.md').is_file()                            # investigated: never moved
+
+
+def test_a_page_an_older_map_titled_with_an_address_takes_the_name_found_now(tmp_path, monkeypatch):
+    """1.8.9b16 learned names, but only a new page used them: re-running init
+    kept 176 of the owner's pages titled `larryleework7@gmail.com`. A page nobody
+    investigated is still map output, so the map may retitle it; an investigated
+    one is someone's work and keeps its title."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    notebook = Notebook(tmp_path)
+    notebook.stub_person('people/larry.md', 'larry@q.com', ['larry@q.com'], email='larry@q.com')
+    notebook.stub_person('people/kept.md', 'kept@q.com', ['kept@q.com'], email='kept@q.com')
+    notebook.write('people/kept.md', notebook.read('people/kept.md').replace(
+        'not investigated yet', 'investigated 2026-09-20 (codex)'))
+    people = [{'name': 'Larry', 'address': 'larry@q.com', 'mails': 14, 'sent': 14, 'received': 0},
+              {'name': 'Kept Person', 'address': 'kept@q.com', 'mails': 3, 'sent': 2, 'received': 1}]
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: (people, set()))
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
+    build_map(tmp_path, {}, {}, skill_directories=[skills])
+    assert notebook.read('people/larry.md').startswith('# Larry\n')
+    assert notebook.read('people/kept.md').startswith('# kept@q.com\n')

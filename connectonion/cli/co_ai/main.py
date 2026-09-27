@@ -117,7 +117,7 @@ def start_server(
         max_iterations: Tool iteration limit for the hosted coding agent
         full_access: Whether bounded Full access is configured
         full_access_turns: User-driven turns before Full access expires
-        agent_factory: Reserved configured factory for hosted sessions
+        agent_factory: Builds a fresh Agent per hosted request; preferred over `agent`
         invite_code: Optional in-memory invite for this server invocation
 
     The server will be accessible at:
@@ -144,12 +144,24 @@ def start_server(
     config = load_host_config(co_dir)
     addr_data = address.load(co_dir)
 
-    if full_access:
-        from ...useful_plugins.full_access import offer_full_access
+    def configured(new_agent):
+        if full_access:
+            from ...useful_plugins.full_access import offer_full_access
 
-        # Web sessions still begin in Auto. This configures only the Host-owned
-        # ceiling that makes Full access selectable after CONNECT.
-        offer_full_access(agent, full_access_turns)
+            # Web sessions still begin in Auto. This configures only the Host-owned
+            # ceiling that makes Full access selectable after CONNECT.
+            offer_full_access(new_agent, full_access_turns)
+        return new_agent
+
+    # Each request gets an Agent built from scratch, so two sessions never
+    # share one object's conversation state. The instance form is kept for
+    # callers that pass no factory.
+    if agent_factory is not None:
+        def create():
+            return configured(agent_factory(model, max_iterations, False, full_access_turns))
+    else:
+        agent = configured(agent)
+        create = agent
 
     # Open chat URL after agent successfully starts (2 second delay)
     if addr_data:
@@ -167,7 +179,7 @@ def start_server(
 
         trust = TrustAgent("careful", invite_code=invite_code, co_dir=co_dir)
     if agent_factory is None:
-        host(agent, port=port, trust=trust, co_dir=co_dir, wiki_root=Path.home() / ".co/wiki")
+        host(create, port=port, trust=trust, co_dir=co_dir, wiki_root=Path.home() / ".co/wiki")
         return
 
     from ...network.host.session import SessionStorage
@@ -180,11 +192,11 @@ def start_server(
     storage.reconcile_interrupted()
 
     def session_agent():
-        created = agent_factory(model, max_iterations, False, full_access_turns)
+        # Every hosted conversation still gets its own Agent (#1874); the
+        # watch store is the one thing they share, so a watch registered in
+        # one turn is visible to the runtime that calls the session back.
+        created = create()
         created._watch_store = store
-        if full_access:
-            from ...useful_plugins.full_access import offer_full_access
-            offer_full_access(created, full_access_turns)
         return created
 
     def run_watch_turn(event):
@@ -209,6 +221,7 @@ def start_server(
             raise
 
     runtime = SessionWatchRuntime(store, storage, run_watch_turn)
+
     async def start_watches():
         runtime.start()
 

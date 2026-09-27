@@ -375,7 +375,71 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b12
+## Current Version: 1.8.9b18
+
+1.8.9b18 is an opt-in preview after 1.8.9b17. The Wiki's person and project
+page skills were evolved against `co benchmark` suites, the page validator
+stops refusing box-drawing flows and grouped citations, and investigation
+evidence travels in the prompt in pieces that fit, with plain-text material
+instead of 64-character pieces (#1883, #1884; tracking #1722). Stable is 1.8.8.
+See [1.8.9b18 notes](docs/releases/1.8.9b18.md).
+
+- 1.8.9b18 (page skills: read the input then write, write once and stop, Unknown instead of filler, keep mapped handles, last-activity date; validator accepts │▼→ flows and [1, 2]; inline check in bytes; investigation pieces sized to the prompt; final investigate turn inlined when it fits; material.md plain text replaces material-readable.json; examples/wiki-skill-evals.)
+
+1.8.9b17 is an opt-in preview that makes `co/gemini-3.8-flash` the default model
+again, by the owner's decision (#1869): 1.8.9b10 through b16 defaulted to the
+free `co/llama` (Llama 3.1 8B). The free models stay selectable, and at a zero
+balance `co status` names `co/gemma` and `ollama/<model>`. A background
+listener now loads the installed package and restarts at most once per
+upgrade (#1878), and a Wiki re-map retitles the address-titled pages an
+older map made (#1880). Stable remains 1.8.8.
+See [1.8.9b17 notes](docs/releases/1.8.9b17.md).
+
+- 1.8.9b17 (Gemini 3.8 default again; free models are the zero-balance tip.)
+
+Earlier in this line:
+
+## Previous preview: 1.8.9b16
+
+1.8.9b16 is an opt-in preview after 1.8.9b15. The Wiki map names people from
+the name they write under, a saved contact, or the owner's greeting, and folds
+an organisation's subdomains into it; WhatsApp sends pictures and documents, no
+longer drops a sender's first group message, and listeners restart into the
+installed code after an upgrade (#1870, #1863, #1864, #1866; tracking #1722). Stable is 1.8.8. See [1.8.9b16 notes](docs/releases/1.8.9b16.md).
+
+- 1.8.9b16 (People named by header, saved contact, then the owner's greeting to one recipient; Outlook listing keeps recipient names; organisations are registrable domains and notice-only domains get no page; CLAUDE.md marks a workspace; co whatsapp send/reply --image/--file; group text kind and first-message fixes; listeners record their version and restart after upgrade, listen --restart, send/reply start a listener.)
+
+1.8.9b15 is an opt-in preview after 1.8.9b14. The Wiki reads the Codex weekly
+meter and budgets investigation on it, `investigate all --budget N` works one
+queue until N points are spent, mapped pages open on what is known, the map
+and the nightly update share one lock, and hosted sessions keep the agent's
+system prompt (#1843, #1842, #1836, #1855, #1766; tracking #1722).
+Stable is 1.8.8. See [1.8.9b15 notes](docs/releases/1.8.9b15.md).
+
+- 1.8.9b15 (Codex weekly meter in status and budgets; investigate all --budget N and --list; manual investigations count toward the weekly budget; reader leads with known facts; build_map holds the maintenance lock; hosted sessions carry the system prompt.)
+
+1.8.9b14 is an opt-in preview after 1.8.9b13. Wiki upkeep works one page per
+turn, archives pages an older map made that it would not make now, and a day
+holds 30 runner calls so a notebook can catch up (#1840, tracking #1722).
+Stable is 1.8.8.
+
+- 1.8.9b14 (Wiki maintenance one page per turn from script-found leads; inline maintain/extract prompts; stale map pages archived to .state/archived/; a spent day serves its slot; runner-owned lines restored; carried-over and page-as-it-stood citations accepted; 30 calls a day, at most 8 for the round's investigation.)
+
+Earlier in this line:
+
+
+1.8.9b13 is an opt-in preview that adds `co browser import` (#1477): the logins
+already in Google Chrome carried into the co browser profile, a login the
+target already holds left alone, cookie values never printed. It also returns
+`co wiki open` to the local snapshot by default, with the live view behind
+`--live` (#1828), and passes benchmark context to the evaluated Agent (#1816).
+Stable remains 1.8.8. See [1.8.9b13 notes](docs/releases/1.8.9b13.md).
+
+- 1.8.9b13 (Chrome login import; `co wiki open` local by default.)
+
+Earlier in this line:
+
+## Previous preview: 1.8.9b12
 
 1.8.9b12 is an opt-in preview for subscribed skills and browser task syntax
 (#1785, #1786). Subscriptions reconcile withdrawn skills, preserve the
@@ -1033,7 +1097,13 @@ When releasing a new version:
       the current preview), the patch commits that apply there, and the PR that
       carries each one. Version-only metadata is not a product fix and must not
       be copied into a newer line.
-- [ ] Update the matching stable or preview channel in the docs site's `lib/version.ts`
+- [ ] After PyPI has the release, sync the docs site from its tag:
+      `python scripts/sync-from-release.py --framework <this checkout> vX.Y.Z`
+      in the docs-site repo. It copies the CLI pages, the co wiki help, the new
+      release notes and their assets, `releases.md`, and the channel in
+      `lib/version.ts`; review what it prints and merge it as one PR. Updating
+      `lib/version.ts` alone is how the site came to describe b12 while b15
+      shipped (#1868).
 - [ ] Draft or substantially update a Design Journal post for a feature-train
       launch, first beta, first RC, stable release, or material architecture or
       workflow decision. Maintenance-only patches need release notes unless

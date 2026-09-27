@@ -18,13 +18,13 @@ def test_legacy_project_gets_missing_sections_without_losing_content():
     assert normalize('projects/atlas.md', new) == new
 
 
-def test_material_readable_reconstructs_long_single_line(tmp_path):
+def test_long_material_is_readable_and_the_exact_copy_is_kept(tmp_path):
     item = {'text': 'x\\"\n中' * 3000, 'source': 'fixture:1'}
     prompt = task_prompt(tmp_path, [item], 'investigate')
-    readable = (tmp_path / 'material-readable.json').read_text()
-    assert max(map(len, readable.splitlines())) < 500
-    assert ''.join(json.loads(readable)[0]['text']['continued_text']) == item['text']
-    assert 'material-readable.json' in prompt
+    readable = (tmp_path / 'material.md').read_text()
+    assert max(map(len, readable.splitlines())) <= 400
+    assert json.loads((tmp_path / 'material.json').read_text())[0]['text'] == item['text']
+    assert 'material.md' in prompt or '<material>' in prompt
 
 
 def test_numbered_source_list_is_normalized_without_changing_claims():
@@ -38,6 +38,15 @@ def test_numbered_source_list_is_normalized_without_changing_claims():
     assert normalize_numbered_sources(normalized) == normalized
     assert normalize_numbered_sources('# Page\n\n## Sources\n1.\nnext line\n') == (
         '# Page\n\n## Sources\n1.\nnext line\n')
+
+
+def test_grouped_citations_are_split_so_each_counts():
+    """"[1, 2]" cites two sources; read as nothing, it left both reported
+    unused and the page refused."""
+    text = '# P\n\nCounts words [1, 2] and [3,4]; see [docs](https://x.y) [5].\n\n## Sources\n1. a\n'
+    normalized = normalize_numbered_sources(text)
+    assert 'Counts words [1][2] and [3][4]; see [docs](https://x.y) [5].' in normalized
+    assert normalize_numbered_sources(normalized) == normalized
 
 
 def test_candidate_checks_duplicate_headings_and_missing_citations(tmp_path):
@@ -161,6 +170,9 @@ def test_prior_page_citation_is_identifiable_only_as_supplied_context():
     ('```text\n```\nEmpty illustration. [1]', True),
     ('Unknown — supplied evidence does not establish a user flow. [1]', False),
     ('```text\ndraft -> count.py -> stdout\n', True),
+    # Box-drawing arrows are a flow too: a real candidate drew one and the page was refused.
+    ('```text\n[Markdown file]\n      │\n      ▼\n[Word counts]\n```\nObserved flow. [1]', False),
+    ('```text\nmemo → transcript → note\n```\nObserved flow. [1]', False),
 ])
 def test_populated_project_overview_requires_closed_flow(tmp_path, overview, rejected):
     nb = Notebook(tmp_path)
@@ -237,20 +249,19 @@ def test_malformed_maintenance_keeps_page_and_pending_correction(tmp_path, monke
     approve_sources(tmp_path)
     correction = reflections.add(tmp_path, 'projects/atlas.md', 'Mira owns Atlas', author='user', basis='Synthetic correction')
     def execute(directory, prompt, config, stage):
-        assert directory != nb.root
-        working = next(directory.glob('maintain-*/notebook'))
-        Notebook(working).write('projects/atlas.md', '# Atlas\n\n## Ownership\nMira\n')
-        Notebook(working).write('notes/new.md', '# New note\n')
+        # The correction names Atlas, so Atlas is worked on its own (#1656); the
+        # model writes a malformed candidate for it.
+        assert directory != nb.root and 'candidate.md' in prompt
+        candidate = next(directory.glob('maintain-*/')) / 'candidate.md'
+        candidate.write_text('# Atlas\n\n## Ownership\nMira\n')
         return {'usage': {'input_tokens': 9}}
     monkeypatch.setattr('connectonion.wiki.runner.run_task', execute)
     result = run_sync(tmp_path)
-    # One malformed page no longer refuses the batch (#1670): it is kept as it
-    # was, the sound page is written, and the correction to the refused page
-    # stays pending for the next pass.
+    # A malformed page no longer refuses the batch (#1670): it is kept as it
+    # was, and the correction to it stays pending for the next pass.
     assert result['outcome'] == 'completed' and result['refused'] == 1
     assert result['refusals'][0]['record'] == 'projects/atlas.md'
     assert result['usage']['input_tokens'] == 9
-    assert nb.path('notes/new.md').exists()
     assert nb.read('projects/atlas.md') == old
     progress = json.loads((tmp_path / '.state/progress.json').read_text()) if (tmp_path / '.state/progress.json').exists() else {}
     assert 'reflection:' + correction['id'] not in progress.get('wiki_local_material', [])
@@ -299,3 +310,37 @@ def test_a_malformed_review_proposal_is_dropped_not_the_batch(tmp_path):
     assert [row['question'] for row in listing(tmp_path)] == ['Still at OpenOnion?']
     dropped = read_json(state_path(tmp_path, 'reviews-dropped.json'), [])
     assert dropped[0]['reason'] == 'Invalid number of review subjects'
+
+
+def test_the_lines_the_runner_owns_are_put_back_not_refused():
+    """A real pass rewrote a project's mapped Sessions and the status line, and the
+    whole page was refused though the rest of it was sound."""
+    from connectonion.wiki.page_review import restore_runner_fields
+    original = "# A\n\n## Paths\n- /w/a\n- Sessions: 12\n- First seen: 2026-08-01\n- Last seen: 2026-09-20\n\n" \
+               "Investigation: mapped 2026-09-24 · not investigated yet\n"
+    edited = "# A\n\n## Paths\n- /w/a\n- Sessions: many\n- First seen: 2026-08-01\n- Last seen: today\n\n" \
+             "Investigation: investigated today (codex)\n"
+    fixed = restore_runner_fields("projects/a.md", edited, original)
+    assert "- Sessions: 12" in fixed and "- Last seen: 2026-09-20" in fixed
+    assert fixed.rstrip().endswith("Investigation: mapped 2026-09-24 · not investigated yet")
+    dropped = restore_runner_fields("projects/a.md", edited.replace("Investigation: investigated today (codex)\n", ""),
+                                    original)
+    assert dropped.rstrip().endswith("not investigated yet")                   # a removed status line comes back
+
+
+def test_a_page_turn_may_cite_the_page_as_it_stood_and_carry_over_its_sources():
+    """A real one-page maintenance turn cited `investigation:page` and re-cited the
+    page's own codex ids in new words; both were refused and the update was lost."""
+    from connectonion.wiki.page_review import validate
+    original = ("# Dora\n\n## Contact\n- Email: d@example.org [2]\n\n## Sources\n"
+                "- [2] User says Dora is internal. codex:0a:157160, codex:0a:438485\n\n"
+                "Investigation: mapped 2026-09-20 · not investigated yet\n")
+    candidate = ("# Dora\n\n## Contact\n- Email: d@example.org [1]\n- Role: internal [2]\n\n## Sources\n"
+                 "- [1] investigation:page — the page as it stood listed this address.\n"
+                 "- [2] codex:0a:157160, codex:0a:438485 — user describes Dora as internal.\n\n"
+                 "Investigation: mapped 2026-09-20 · not investigated yet\n")
+    errors = [e for e in validate("people/dora.md", candidate, original, [])
+              if "identifiable source" in e]
+    assert errors == []
+    invented = candidate.replace("codex:0a:438485", "codex:0a:999999")
+    assert any("identifiable source" in e for e in validate("people/dora.md", invented, original, []))

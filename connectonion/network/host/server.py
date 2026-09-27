@@ -29,6 +29,7 @@ import asyncio
 import json
 import os
 import random
+import threading
 from functools import partial
 from pathlib import Path
 from typing import Callable, Optional, Union
@@ -1115,6 +1116,9 @@ def host(
     # available when per-request isolation is worth its construction cost.
     if not callable(create_agent):
         _agent_instance = create_agent
+        # One object serves every request, so it runs one turn at a time
+        # (input_handler); pass a factory for conversations in parallel.
+        _agent_instance._host_turn_lock = threading.Lock()
         create_agent = lambda: _agent_instance
 
     # Resolve co_dir: explicit > the project's .co, found by walking up.

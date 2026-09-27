@@ -443,6 +443,7 @@ class Inbox:
         provider_id: Optional[str] = None,
         error: Optional[str] = None,
         by: Optional[str] = None,
+        media: Optional[dict] = None,
     ) -> None:
         """One line in sent.jsonl. `by` names the consumer that sent it; it is
         a descriptive label only and is omitted when None so older records
@@ -458,6 +459,8 @@ class Inbox:
         }
         if by is not None:
             record["by"] = by
+        if media is not None:
+            record["media"] = media  # {kind, path, size}: what went with the caption (#1856)
         self._append(self.sent, json.dumps(record, ensure_ascii=False, separators=(",", ":")))
 
     def record_own(self, message: Message) -> None:
@@ -623,6 +626,26 @@ class Inbox:
     # else's process blocked every `receive` forever.
 
     @property
+    def listener_file(self) -> Path:
+        """Which version the running listener started with (#1859)."""
+        return self.root / "listener.json"
+
+    def record_listener(self, version: str) -> None:
+        payload = {"pid": os.getpid(), "version": version, "started_at": _now_iso()}
+        staged = self.listener_file.with_suffix(".json.partial")
+        staged.write_text(json.dumps(payload), encoding="utf-8")
+        staged.replace(self.listener_file)
+
+    def listener_version(self, pid) -> Optional[str]:
+        """The version `pid` recorded when it started, or None: a listener from
+        before version tracking, or a record left by a process now gone."""
+        try:
+            record = json.loads(self.listener_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return record.get("version") if isinstance(record, dict) and record.get("pid") == pid else None
+
+    @property
     def connection(self) -> Path:
         """Where the listener records whether its socket is actually up."""
         return self.root / "connection.json"
@@ -714,7 +737,11 @@ class Inbox:
             argv += ["--env-file", str(env_file)]
         argv += [self.provider, "listen"]
         env = dict(os.environ, CO_INBOX_HOME=str(self.root.parent))
-        kwargs = {"stdin": subprocess.DEVNULL, "stderr": subprocess.STDOUT, "env": env}
+        # In the inbox directory: `-m` puts the working directory first on
+        # sys.path, and started from inside a connectonion checkout the
+        # listener ran the checkout instead of the installed package (#1878).
+        kwargs = {"stdin": subprocess.DEVNULL, "stderr": subprocess.STDOUT, "env": env,
+                  "cwd": str(self.root)}
         if os.name == "posix":
             kwargs["start_new_session"] = True
         else:  # pragma: no cover - Windows only

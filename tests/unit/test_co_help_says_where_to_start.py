@@ -67,3 +67,13 @@ def test_bare_co_and_help_give_the_same_start_and_nothing_wraps():
             assert line in narrow, line
             assert line in helped, line
     assert "Quick Start" not in narrow
+
+
+def test_bare_co_and_help_name_the_product_not_a_framework():
+    # Both screens said "A simple Python framework for creating AI agents"
+    # after the product had become the CLI harness (landing, README, PyPI).
+    for text in (_output([]), _output(["--help"])):
+        assert "agent CLI harness" in text
+        assert "framework" not in text.split("Commands")[0].lower()
+    helped = _output(["--help"])
+    assert "co commands" in helped[helped.index("Start here"):helped.index("Build or improve a skill")]

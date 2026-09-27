@@ -1011,12 +1011,25 @@ class Outlook:
         rows = self._email_dicts(result.get('value', []))
         # The wiki files the user's own mail under the person it went to, which the
         # from-address cannot say; recipients are only on this listing.
+        # Each recipient keeps its name ("Ody Zhou <ody@g.com>"): dropping it mapped
+        # every person the owner wrote to from Outlook as a bare address (#1844).
         for row, msg in zip(rows, result.get('value', [])):
-            row['to'] = [r.get('emailAddress', {}).get('address', '') for r in msg.get('toRecipients', [])]
-            row['cc'] = [r.get('emailAddress', {}).get('address', '') for r in msg.get('ccRecipients', [])]
+            row['to'] = [self._recipient(r) for r in msg.get('toRecipients', [])]
+            row['cc'] = [self._recipient(r) for r in msg.get('ccRecipients', [])]
         # Ascending either way: the flag chose which messages, not their order,
         # and every caller including the wiki importer reads them oldest first.
         return sorted(rows, key=lambda row: str(row.get('date', '')))
+
+    @staticmethod
+    def _recipient(recipient: dict) -> str:
+        """'Name <address>' when Graph knows a name, else the bare address."""
+        entry = recipient.get('emailAddress', {})
+        address, name = entry.get('address', ''), (entry.get('name') or '').strip()
+        return f"{name} <{address}>" if name and '@' not in name and address else address
+
+    def contact_names(self) -> dict:
+        """Saved contacts as {address: name}; what the owner calls each person."""
+        return {c['email'].lower(): c['name'] for c in self._iter_contacts() if c.get('email') and c.get('name')}
 
     def my_addresses(self) -> set:
         """The addresses that count as the user's own, lower-cased."""

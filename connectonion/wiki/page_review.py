@@ -107,9 +107,44 @@ def _project_overview_errors(candidate: str) -> list[str]:
         return []
     blocks = re.finditer(r'(?m)^[ \t]*(`{3,}|~{3,})(?:text|ascii)?[ \t]*\n'
                          r'([\s\S]*?)\n[ \t]*\1[ \t]*(?:\n|$)', section)
-    if any(re.search(r'->|--|\||^[ \t]*v[ \t]*$', block[2], re.M) for block in blocks):
+    # ASCII or box-drawing: a real candidate drew its flow with │ and ▼ and the
+    # whole page was refused for it.
+    if any(re.search(r'->|--|\||^[ \t]*v[ \t]*$|[│┃▼↓→⟶➜─]', block[2], re.M) for block in blocks):
         return []
     return ['Project Overview requires a closed fenced ASCII flow, or an explicit Unknown statement']
+
+
+SOURCE_ID = re.compile(r'\b(?:codex|claude-code|gmail|outlook|whatsapp|email|reflection|review)'
+                       r'(?:-summary)?:[\w.:+-]+')
+
+
+def _carried_over(value: str, old_sources: str) -> bool:
+    ids = [match.rstrip('.,;') for match in SOURCE_ID.findall(value)]
+    return bool(ids) and all(source in old_sources for source in ids)
+
+
+def restore_runner_fields(record: str, candidate: str, original: str) -> str:
+    """Put back the lines the runner owns, instead of refusing the page for them.
+
+    The Investigation status line and a project's mapped Sessions / First seen /
+    Last seen are written by code that knows their true values. A real
+    maintenance pass rewrote them and the whole page was refused; the rest of
+    the page was sound. Restoring them is exact, so nothing is guessed.
+    """
+    if not original:
+        return candidate
+    status = re.search(r'^Investigation:.*$', original, re.M)
+    if status:
+        candidate = (re.sub(r'^Investigation:.*$', lambda _: status.group(0), candidate, count=1, flags=re.M)
+                     if re.search(r'^Investigation:.*$', candidate, re.M)
+                     else candidate.rstrip('\n') + '\n\n' + status.group(0) + '\n')
+    if record.startswith('projects/'):
+        for label in ('Sessions', 'First seen', 'Last seen'):
+            kept = re.search(r'^- ' + re.escape(label) + r': [0-9-]+$', original, re.M)
+            if kept:
+                candidate = re.sub(r'^- ' + re.escape(label) + r': .*$', lambda _: kept.group(0), candidate,
+                                   count=1, flags=re.M)
+    return candidate
 
 
 def drop_uncited_sources(text: str) -> str:
@@ -137,12 +172,16 @@ def normalize_numbered_sources(text: str) -> str:
     """Accept Markdown's numbered-list spelling for an otherwise valid citation.
 
     The model sometimes cites [1] in prose but writes `1. source-id` under
-    Sources. Convert only the label, inside that section; source content and
+    Sources, or cites two at once as [1, 2]. Convert only the label, inside that section; source content and
     citation validation remain unchanged.
     """
     head, marker, tail = text.partition('\n## Sources\n')
     if not marker:
         return text
+    # "[1, 2]" is two citations; read as neither, both were reported unused
+    # and the page was refused. A link's [text](url) is left alone.
+    head = re.sub(r'\[(\d+(?:[ \t]*,[ \t]*\d+)+)\](?!\()',
+                  lambda m: ''.join(f'[{n.strip()}]' for n in m.group(1).split(',')), head)
     after = re.search(r'^(?:## |Investigation:)', tail, re.M)
     sources, rest = (tail[:after.start()], tail[after.start():]) if after else (tail, '')
     sources = re.sub(r'(?m)^([ \t]*)(\d+)\.[ \t]+', r'\1- [\2] ', sources)
@@ -220,6 +259,11 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
                 # The map's own record, when the page already cited it: a real
                 # pass reworded "Enumeration metadata ... .state/map.json".
                 or ('.state/map.json' in value and '.state/map.json' in original)
+                # "The page as it stood said so", named by the page item's own id.
+                or 'investigation:page' in value
+                # A citation carried over from the page before this run: every
+                # source id it names is already in that page's Sources, reworded.
+                or _carried_over(value, old_sources)
                 # Another page of this notebook, named as context -- never as
                 # corroboration: "Existing mapped page `people/…md`, inspected".
                 or (re.search(r'\b(existing|mapped|prior)\b', value, re.I)

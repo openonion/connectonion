@@ -80,8 +80,12 @@ def prepare_provider_workroom_turn(
     def run(io) -> None:
         started = time.time()
         agent = None
+        turn_lock = None
         try:
             agent = create_agent()
+            turn_lock = getattr(agent, "_host_turn_lock", None)
+            if turn_lock is not None:
+                turn_lock.acquire()
             agent.io = io
             agent.storage = storage
             if hasattr(agent, "_full_access_turns"):
@@ -126,6 +130,8 @@ def prepare_provider_workroom_turn(
                 getattr(agent, "current_session", None),
                 int((time.time() - started) * 1000),
             )
+            if turn_lock is not None:
+                turn_lock.release()
 
     return {"run": run, "stateRevision": source_revision}
 

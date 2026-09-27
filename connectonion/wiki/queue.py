@@ -54,3 +54,19 @@ def order(root, category: str, today: date | None = None) -> list[dict]:
                      "recent": bool(last and (today - last).days < RECENT_DAYS)})
     rows.sort(key=lambda row: (row["recent"], -row["weight"], -row["unknown"], row["path"]))
     return rows
+
+
+# The kinds `all` spans. Skills are left out: their investigation reads eval
+# records, not the owner's mail and sessions, and is not what fills the map.
+ALL = ("people", "projects", "orgs")
+
+
+def order_all(root) -> list[dict]:
+    """People, projects and organisations in one queue, by weight (#1842).
+
+    The first pass after init and the scheduled round both take the busiest
+    page next, whatever its kind; one order keeps them from disagreeing.
+    """
+    rows = [row for category in ALL for row in order(root, category)]
+    rows.sort(key=lambda row: (row["recent"], -row["weight"], -row.get("unknown", 0), row["path"]))
+    return rows

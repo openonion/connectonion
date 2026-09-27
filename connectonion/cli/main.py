@@ -96,6 +96,7 @@ START_HERE = (
         "co init                  Set up your identity and keys (~/.co/keys.env)",
         "co create my-agent       New project; then: cd my-agent && python agent.py",
         "co auth                  Log in to OpenOnion for managed models and credits",
+        "co commands              Every command and subcommand; add --help to any",
     )),
     ("Build or improve a skill:", (
         "1. Define the standard first: co benchmark --help",
@@ -106,10 +107,16 @@ START_HERE = (
 )
 
 
+# The first thing a person or an agent reads. It said "A simple Python
+# framework for creating AI agents", which is what the package was before the
+# CLI became the product; docs/PRODUCT.md §0 has the current sentence.
+TAGLINE = "CLI is all you need. ConnectOnion is the agent CLI harness."
+
+
 def _start_here_help() -> str:
     """START_HERE as Click help: \\b keeps each block from being re-wrapped."""
     blocks = ["\b\n" + title + "\n" + "\n".join("  " + line for line in lines) for title, lines in START_HERE]
-    return "ConnectOnion - A simple Python framework for creating AI agents.\n\n" + "\n\n".join(blocks)
+    return TAGLINE + "\n\n" + "\n\n".join(blocks)
 
 
 @app.callback(invoke_without_command=True, help=_start_here_help())
@@ -141,7 +148,7 @@ def _show_help():
     console.print()
     console.print(f"[bold cyan]co[/bold cyan] - ConnectOnion v{__version__}")
     console.print()
-    console.print("A simple Python framework for creating AI agents.")
+    console.print(TAGLINE, markup=False, highlight=False)
     console.print()
     # The workflow, not just the commands: an agent handed "improve this skill"
     # must find that the test cases come first without being told a command
@@ -466,7 +473,38 @@ def _closes_only(args: List[str]) -> bool:
     return bool(verb) and (verb[0] == "close" or verb[:2] == ["tab", "close"])
 
 
-@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+def _browser_verb(args: List[str]) -> Optional[str]:
+    """The first word after `co browser` that is not one of its own options."""
+    skip_next = False
+    for token in args:
+        if skip_next:
+            skip_next = False
+        elif token == "--engine":
+            skip_next = True
+        elif not token.startswith("-"):
+            return token
+    return None
+
+
+class _BrowserCommand(typer.core.TyperCommand):
+    """`co browser import --help` shows the import page, not the browser's.
+
+    `co browser` is one command whose verbs are free-form arguments, so Click
+    answers every `--help` with the browser page before the handler runs. A
+    command whose job is to read a Keychain and write logins deserves its own
+    page, reachable the way every other page is.
+    """
+
+    def parse_args(self, ctx, args):
+        if _browser_verb(args) == "import" and any(t in ("--help", "-h") for t in args):
+            from .commands.browser_import import IMPORT_HELP
+            print(IMPORT_HELP)
+            ctx.exit(0)
+        return super().parse_args(ctx, args)
+
+
+@app.command(cls=_BrowserCommand,
+             context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
              epilog='Example:  co browser go_to example.com  |  co browser "find the pricing page"')
 def browser(
     headless: Optional[bool] = typer.Option(
@@ -488,7 +526,7 @@ def browser(
     give a quoted task to the AI agent (co browser "..."), or `co browser help` to list functions.
 
     Also: -t TAB to target your own tab · tab open|ls|close · status · network ·
-    cookies · close. `co browser help` shows how to use each one."""
+    cookies · close · import (Chrome logins into this browser). `co browser help` shows how to use each one."""
     # `config` is a setting, not a browser verb: it must not reach the daemon
     # or start anything, so it is answered before the engine is resolved.
     if args and args[0] == "config":
@@ -515,6 +553,11 @@ def browser(
         print("Give it a virtual one:  xvfb-run -a co browser --no-headless <command>")
         print("Or accept headless:     co browser <command>")
         raise typer.Exit(2)
+    if args and args[0] == "import":
+        # Resolved by the import itself: with no --engine it means the paid
+        # engine, where `effective_mode` would mean free Chrome.
+        from .commands.browser_import import handle_browser_import
+        raise typer.Exit(handle_browser_import(args[1:], engine=engine, headless=bool(headless)))
     try:
         mode = effective_mode(engine)
     except ValueError as error:
@@ -1614,10 +1657,13 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
                                     "names the API endpoint that would do it, and sends nothing. Read-only.")
 
     @group.command("listen", epilog=f"Example:  {co} listen  |  {co} listen --raw")
-    def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl")):
+    def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl"),
+                restart: bool = typer.Option(False, "--restart",
+                                             help="Stop the running listener and start a new one in the background, "
+                                                  "on the installed code")):
         """Hold the connection; write every message to the inbox. Ctrl-C stops. Runs in the foreground and writes to ~/.co/inbox/."""
         from .commands.listen_commands import handle_listen
-        handle_listen(name, raw=raw)
+        handle_listen(name, raw=raw, restart=restart)
 
     @group.command("receive", epilog=f"Example:  {co} receive -t 60  |  {co} receive -t 0 --no-start  |  {co} receive --context 5")
     def _receive(
@@ -1635,10 +1681,14 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
         reply_to: Optional[str] = typer.Option(None, "--reply-to", help="Message id to reply to"),
         plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
+        image: Optional[str] = typer.Option(None, "--image", metavar="PATH",
+                                            help="Send a picture (JPEG, PNG, WebP, up to 16 MB); the text becomes its optional caption"),
+        file: Optional[str] = typer.Option(None, "--file", metavar="PATH",
+                                           help="Send any file as a document (up to 100 MB); the text becomes its optional caption"),
     ):
-        """Send text to a chat. Prints the new message id. Sends a message to the chat."""
+        """Send text, or a picture or file, to a chat. Prints the new message id. Sends a message to the chat."""
         from .commands.listen_commands import handle_send
-        handle_send(name, chat, text, reply_to=reply_to, plain=plain)
+        handle_send(name, chat, text, reply_to=reply_to, plain=plain, image=image, file=file)
 
     if with_send:
         group.command("send", cls=NegativeIds,
@@ -1654,10 +1704,14 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
         again: bool = typer.Option(False, "--again", help="Reply even if this message was already answered"),
         plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
+        image: Optional[str] = typer.Option(None, "--image", metavar="PATH",
+                                            help="Answer with a picture (JPEG, PNG, WebP, up to 16 MB); the text becomes its optional caption"),
+        file: Optional[str] = typer.Option(None, "--file", metavar="PATH",
+                                           help="Answer with any file as a document (up to 100 MB); the text becomes its optional caption"),
     ):
         """Reply to a received message, in the chat it came from. Prints the new message id. Sends a message to that chat."""
         from .commands.listen_commands import handle_reply
-        handle_reply(name, message_id, text, again=again, plain=plain)
+        handle_reply(name, message_id, text, again=again, plain=plain, image=image, file=file)
 
     @group.command("edit", cls=NegativeIds, help=refuses("Edit a message this account sent."),
                    epilog=f'Example:  {co} edit {msg} "Fixed typo"  |  echo "Fixed typo" | {co} edit {msg}')

@@ -58,7 +58,14 @@ def summarise_run(trace: list, format_tool_call) -> dict:
 
 
 def get_agent_from_file(file_path: str, cwd: str):
-    """Import agent instance from file."""
+    """The Agent an agent.py defines, imported without letting it start serving.
+
+    Either a module-level `agent`, or whatever the file hands to host(): the
+    `co create` template passes a factory, `host(lambda: create_agent(...))`,
+    so each hosted conversation gets a fresh Agent. host() never returns, so it
+    is swapped for one that only records its argument while the file runs.
+    """
+    import connectonion
     from connectonion import Agent
 
     if not os.path.isabs(file_path):
@@ -67,17 +74,25 @@ def get_agent_from_file(file_path: str, cwd: str):
     if cwd not in sys.path:
         sys.path.insert(0, cwd)
 
+    hosted = []
+    original = connectonion.host
+    connectonion.host = lambda target, *args, **kwargs: hosted.append(target)
     spec = importlib.util.spec_from_file_location("agent_module", file_path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        connectonion.host = original
 
-    if hasattr(module, 'agent') and isinstance(module.agent, Agent):
-        agent = module.agent
+    agent = getattr(module, 'agent', None)
+    if not isinstance(agent, Agent) and hosted:
+        agent = hosted[0] if isinstance(hosted[0], Agent) else hosted[0]()
+    if isinstance(agent, Agent):
         agent.logger.enable_sessions = False  # Prevent duplicate eval files
         return agent
 
     raise ValueError(
-        f"No 'agent' instance found in {file_path}.\n\n"
+        f"No Agent found in {file_path}: no module-level 'agent', and nothing passed to host().\n\n"
         f"Structure your file like this:\n\n"
         f"    agent = Agent(...)\n\n"
         f"    if __name__ == '__main__':\n"

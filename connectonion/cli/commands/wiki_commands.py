@@ -98,6 +98,9 @@ def _moved(ctx, old: str, new: list):
     typer.echo(f"`co wiki {old}` is now `{_next(ctx, new)}`; the old name works until 1.9.", err=True)
 
 
+UNITS = {"people": "mails", "projects": "sessions", "orgs": "people"}
+
+
 def _logged(root, record, phase, call):
     """Run one investigation and keep a run record of it, whatever happens.
 
@@ -111,9 +114,13 @@ def _logged(root, record, phase, call):
     from ...wiki.files import state_path, write_json
     from ...wiki.runner import RunFailed
     from ...wiki.service import now
+    from ...wiki import quota
+    config = read_config(root)
+    # Manual investigation counts toward the weekly budget like the round (#1842).
     run = {"id": "run_" + uuid.uuid4().hex, "started_at": now().isoformat(), "phase": phase,
-           "record": record, "model": read_config(root)["model"], "outcome": "running",
-           "runner_attempts": 0, "usage": None, "changed": [], "sources": [], "items": 0}
+           "record": record, "model": config["model"], "outcome": "running",
+           "runner_attempts": 0, "usage": None, "changed": [], "sources": [], "items": 0,
+           "quota": {"before": quota.read(config)}}
     path = state_path(root, f"runs/{run['id']}.json")
     write_json(path, run)
 
@@ -156,6 +163,7 @@ def _logged(root, record, phase, call):
         raise failure from error
     finally:
         run["finished_at"] = now().isoformat()
+        run["quota"]["after"] = quota.read(config)
         from datetime import datetime
         run["seconds"] = round((datetime.fromisoformat(run["finished_at"])
                                 - datetime.fromisoformat(run["started_at"])).total_seconds(), 1)
@@ -304,12 +312,17 @@ def make_wiki_app(factory):
                          handle: List[str] = typer.Option([], "--handle"),
                          days: Optional[int] = typer.Option(None, "--days", min=1),
                          quick: bool = typer.Option(False, "--quick", help="Bounded first pass for your own page"),
-                         limit: int = typer.Option(5, "--limit", min=0),
+                         limit: Optional[int] = typer.Option(None, "--limit", min=0),
+                         budget: Optional[int] = typer.Option(None, "--budget", min=1, max=100),
                          list_only: bool = typer.Option(False, "--list"),
                          eval_dir: List[Path] = typer.Option([], "--eval-dir")):
         from ...wiki.files import Notebook, WikiError, read_json, state_path
         from ...wiki.investigate import investigate
+        from ...wiki import queue as wiki_queue
         from ...wiki.queue import CATEGORIES, order
+        # With a budget the budget is the bound; otherwise five pages, as before.
+        pages_limit = limit if limit is not None else (0 if budget else 5)
+        runnable = (*CATEGORIES, "all")
         from ...wiki.runner import RunFailed
         from ...wiki.service import mail_available, mail_client, subscriptions
 
@@ -377,20 +390,27 @@ def make_wiki_app(factory):
                           else ["investigate", first] if first else ["list"])
 
         def by_category(root, category):
-            queue = [row for row in order(root, category) if not row["recent"]]
-            chosen = queue if limit == 0 else queue[:limit]
+            ranked = (lambda: wiki_queue.order_all(root)) if category == "all" else (lambda: order(root, category))
+            queue = [row for row in ranked() if not row["recent"]]
+            chosen = queue if pages_limit == 0 else queue[:pages_limit]
             if list_only:
-                rows = order(root, category)
+                rows = ranked()
                 if not ctx.obj["json"]:
                     unit = {"people": "mails", "projects": "sessions", "orgs": "people"}.get(category)
                     rows = [f"{row['path']}  ("
-                            + (f"{row['weight']} {unit}, " if unit else "")
+                            + (f"{row['weight']} {unit or UNITS.get(row['path'].split('/')[0], '')}, "
+                               if unit or category == "all" else "")
                             + (f"investigated {row['last_investigated']}" if row["last_investigated"]
                                else "not investigated") + (", skipped: this week" if row["recent"] else "") + ")"
                             for row in rows]
                 return {"category": category, "order": rows}, ["investigate", category]
-            notebook, done = Notebook(root), []
+            notebook, done, stopped = Notebook(root), [], ""
+            gate = budget_gate(root)
             for number, row in enumerate(chosen, 1):
+                stopped = gate()
+                if stopped:
+                    typer.echo(f"Stopped: {stopped}", err=True)
+                    break
                 typer.echo(f"[{number}/{len(chosen)}] {row['path']}", err=True)
                 try:
                     one(root, notebook, row["path"])
@@ -399,12 +419,30 @@ def make_wiki_app(factory):
                     done.append({"page": row["path"], "outcome": "refused", "why": str(error)})
                 except WikiError as error:
                     done.append({"page": row["path"], "outcome": "failed", "why": str(error)})
-            skipped = [row["path"] for row in order(root, category) if row["recent"]]
+            skipped = [row["path"] for row in ranked() if row["recent"]]
             accepted = [row["page"] for row in done if row["outcome"] == "accepted"]
             return ({"category": category, "pages": done, "skipped_recent": skipped,
-                     "left": max(len(queue) - len(chosen), 0)},
+                     "left": max(len(queue) - len(done), 0), **({"stopped": stopped} if stopped else {})},
                     ["show", accepted[0]] if accepted else ["logs"],
                     any(row["outcome"] != "accepted" for row in done))
+
+        def budget_gate(root):
+            """Before each page: why not to start it, or ''. Reads the Codex week
+            (#1843): the weekly budget, this run's --budget, and the floor."""
+            from ...wiki import quota
+            from ...wiki.config import read_config
+            from ...wiki.service import run_logs
+            config = read_config(root)
+            start = quota.read(config)
+
+            def gate():
+                meter = quota.read(config)
+                stop = quota.blocks(meter, quota.points_spent(run_logs(root), meter), config["limits"])
+                if stop or not budget or "unknown" in meter or "unknown" in start:
+                    return stop
+                used = meter["used_percent"] - start["used_percent"]
+                return f"this run has used {used} of its {budget}-point budget" if used >= budget else ""
+            return gate
 
         def me(root):
             state = read_json(state_path(root, "map.json"), {})
@@ -430,14 +468,16 @@ def make_wiki_app(factory):
         def run(root):
             if quick and target != "me":
                 raise WikiError("--quick is for `co wiki investigate me` only")
-            if list_only and target not in CATEGORIES:
+            if budget and target not in runnable:
+                raise WikiError("--budget goes with a category: co wiki investigate all --budget 10")
+            if list_only and target not in runnable:
                 raise WikiError("--list goes with a category: co wiki investigate people --list "
                                 "(or projects, orgs, skills)")
             if not target:
                 return overview(root)
             if target == "me":
                 return me(root)
-            if target in CATEGORIES:
+            if target in runnable:
                 return by_category(root, target)
             notebook = Notebook(root)
             record = _resolve_page(notebook, target)
@@ -453,25 +493,23 @@ def make_wiki_app(factory):
     @wiki.command("open", cls=V("co wiki open"))
     def open_page(ctx: typer.Context,
                   launch: bool = typer.Option(True, "--launch/--no-launch"),
+                  live: bool = typer.Option(False, "--live"),
                   local: bool = typer.Option(False, "--local")):
-        from ...wiki.reader import open_reader
+        from ...wiki import reader
 
         def operation(root):
             from connectonion.project import selected_identity_dir
             from connectonion import address
 
+            # The live view reads the default notebook through the co ai identity
+            # (#1637); a custom --root is never assumed to belong to it.
             identity = (address.load(selected_identity_dir())
-                        if not local and ctx.obj["default_root"] and root.is_dir() else None)
-            if identity:
-                import webbrowser
-
-                url = f"https://chat.openonion.ai/{identity['address']}/wiki"
-                if launch:
-                    webbrowser.open(url)
-                return {"page": url, "launched": launch}, ["status"]
-            opened = open_reader(root, launch=launch)
-            return {"page": str(opened), "launched": launch,
-                    "note": "local snapshot; run again after the next maintenance pass"}, ["status"]
+                        if ctx.obj["default_root"] and root.is_dir() else None)
+            # The snapshot is the default (#1828); the live view is asked for.
+            wanted = not local and (live or reader.LIVE_IS_DEFAULT)
+            result = reader.live_or_snapshot(root, identity and identity["address"],
+                                             live=wanted, launch=launch)
+            return result, ["status"]
         _handle(ctx, operation, ["doctor"])
 
     @wiki.command("list", cls=V("co wiki list"))
@@ -584,7 +622,7 @@ def make_wiki_app(factory):
     @wiki.command("status", cls=V("co wiki status"))
     def inspect_status(ctx: typer.Context):
         from ...wiki.service import status
-        _handle(ctx, lambda root: (status(root), ["logs"]), ["config"])
+        _handle(ctx, lambda root: (status(root, live_quota=True), ["logs"]), ["config"])
 
     def _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days):
         from ...wiki.files import WikiError

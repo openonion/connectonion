@@ -522,5 +522,22 @@ class TestIntegration:
         assert any(e["type"] == "agent" for e in agent.ui)
 
 
+def test_relay_holds_reads_the_record_production_sends():
+    """`co wiki open --live` counts a Host reachable only through the relay as
+    online (#1828): the relay holds its announce socket and heard it recently."""
+    from datetime import datetime, timedelta, timezone
+    from connectonion.network.connect import relay_holds
+
+    now = datetime(2026, 9, 27, 5, 22, tzinfo=timezone.utc)
+    fresh = (now - timedelta(seconds=30)).replace(tzinfo=None).isoformat()
+    stale = (now - timedelta(minutes=10)).replace(tzinfo=None).isoformat()
+    held = {"endpoints": [], "relay": "wss://oo.openonion.ai", "last_seen": fresh}
+    assert relay_holds(held, now)
+    assert not relay_holds({**held, "last_seen": stale}, now)
+    assert not relay_holds({"endpoints": [], "relay": None, "last_seen": None}, now)
+    assert not relay_holds({**held, "online": False}, now)
+    assert relay_holds({"online": True}, now)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

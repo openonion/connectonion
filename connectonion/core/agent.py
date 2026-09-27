@@ -402,7 +402,14 @@ class Agent:
             # stored. Here we only restore what we were handed.
             self.current_session = _normalized_runtime_mode_session(session)
             self.current_session['session_id'] = session.get('session_id')
-            self.current_session['messages'] = list(session.get('messages', []))
+            # A Host session starts as {"session_id": ...} with no messages, and
+            # one saved while that went unseeded has turns but no system
+            # message. Either way the model would work without the agent's
+            # instructions for the whole session (#1766).
+            messages = list(session.get('messages', []))
+            if not messages or messages[0].get('role') != 'system':
+                messages.insert(0, {"role": "system", "content": self.system_prompt})
+            self.current_session['messages'] = messages
             self.current_session['trace'] = list(session.get('trace', []))
             self.current_session['turn'] = session.get('turn', 0)
             start_logger_session = True

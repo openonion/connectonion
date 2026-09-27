@@ -17,8 +17,28 @@ def _domain(address: str) -> str:
     return domain if domain not in PERSONAL_MAILBOX else ''
 
 
+# Second-level labels under a country code: unsw.edu.au and example.co.uk are the
+# organisation, not edu.au or co.uk. No suffix list ships with the package; these
+# cover the mail a real notebook carries, and a miss only leaves a subdomain its
+# own page, as before.
+SECOND_LEVEL = frozenset({'com', 'net', 'org', 'edu', 'gov', 'co', 'ac', 'id', 'asn', 'or', 'ne', 'go', 'gen'})
+
+
+def organisation(domain: str) -> str:
+    """The registrable domain a mail domain belongs to: accounts.google.com -> google.com."""
+    labels = domain.split('.')
+    keep = 3 if len(labels) >= 3 and len(labels[-1]) == 2 and labels[-2] in SECOND_LEVEL else 2
+    return '.'.join(labels[-keep:])
+
+
 def map_orgs(notebook, people: list[dict], started: str, days: int, record_for) -> tuple[list[dict], list[str]]:
-    """Include single contacts and notice-only domains; shortlist ranking is separate."""
+    """One candidate per organisation someone with a page writes from; no model.
+
+    A company's sending and login subdomains are the company (#1844): on the
+    owner's map accounts.google.com and ad.unsw.edu.au were organisations of
+    their own. A domain only notice senders use gets no page -- 35 of 272 real
+    organisations were login and mailer domains that nobody wrote from.
+    """
     existing = {}
     for record in notebook.list('orgs'):
         section = notebook.read(record).partition('## Domains\n')[2].split('\n## ', 1)[0]
@@ -28,15 +48,19 @@ def map_orgs(notebook, people: list[dict], started: str, days: int, record_for) 
     for person in people:
         domain = _domain(str(person.get('address', '')))
         if domain:
-            contacts = groups.setdefault(domain, set())
+            group = groups.setdefault(organisation(domain), {'domains': set(), 'contacts': set()})
+            group['domains'].add(domain)
             if person.get('record'):   # a notice sender has no page to link to
-                contacts.add(person['record'])
+                group['contacts'].add(person['record'])
+    groups = {key: group for key, group in groups.items() if group['contacts']}
     rows, created = [], []
-    for domain, contacts in sorted(groups.items()):
-        record = existing.get(domain) or record_for('orgs', domain, domain)
-        rows.append({'domain': domain, 'record': record, 'people': sorted(contacts),
+    for domain, group in sorted(groups.items()):
+        contacts, domains = group['contacts'], sorted(group['domains'] | {domain})
+        record = next((existing[d] for d in [domain, *domains] if d in existing), None) \
+            or record_for('orgs', domain, domain)
+        rows.append({'domain': domain, 'record': record, 'people': sorted(contacts), 'domains': domains,
                      'classification': 'domain candidate; organization identity unverified'})
-        if not notebook.stub_org(record, domain, [domain], sorted(contacts)):
+        if not notebook.stub_org(record, domain, domains, sorted(contacts)):
             continue
         page = notebook.read(record)
         page = page.replace('## Who they are\n- Unknown — not investigated yet',
@@ -45,8 +69,8 @@ def map_orgs(notebook, people: list[dict], started: str, days: int, record_for) 
                             '- Observed correspondents using this domain; not evidence of employment. [1]\n')
         page = page.replace('## Uncertainties\n- Unknown — not investigated yet',
                             '## Uncertainties\n- Organization name, ownership and contact roles are unverified. '
-                            'A domain can represent a service or personal site. Subdomains and other domains '
-                            'are not automatically merged.\n- Unknown — not investigated yet')
+                            'A domain can represent a service or personal site. Subdomains are merged into '
+                            'their registrable domain; other domains are not.\n- Unknown — not investigated yet')
         page = page.replace('- (none yet)', f'- [1] Enumeration metadata in .state/map.json; observed {started}; '
                             f'{days}-day window; email-domain association only, not verified organization membership.')
         notebook.write(record, page)

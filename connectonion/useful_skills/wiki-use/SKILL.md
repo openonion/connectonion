@@ -21,7 +21,7 @@ confuse installing this Skill with starting collection or approving source acces
 | Read a result | `co wiki show people/alice.md` |
 | Inspect an earlier run | `co wiki logs` |
 | Where the tokens went (by stage, model, source; per item and per 1k chars) | `co wiki logs --usage` / `co wiki logs --usage --days 7` |
-| Show the user the whole notebook in their browser | `co wiki open` (remote when the default Wiki has a Host identity; `--local` opens a snapshot) |
+| Show the user the whole notebook in their browser | `co wiki open` (a fresh local snapshot that works offline; `--live` opens O Chat's view when the `co ai` Host is online, else falls back) |
 | Understand source choices | `co wiki sources` |
 | Inspect the selected configuration | `co wiki config` |
 | Diagnose local prerequisites without starting a provider | `co wiki doctor` |

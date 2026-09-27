@@ -34,6 +34,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 import httpx
@@ -241,6 +242,43 @@ async def resolve_endpoint(
                 continue
 
     return None
+
+
+# relay.serve_loop re-sends ANNOUNCE every 60 s and the relay stamps last_seen
+# with it; three missed heartbeats is gone, not a slow one.
+RELAY_PRESENCE_WINDOW = 3 * 60
+
+
+def relay_holds(info: dict, now: Optional[datetime] = None) -> bool:
+    """Does this /api/agents/{address} record say the relay can reach the agent?
+
+    That is what a relay-routed connect() depends on: the agent's announce
+    socket held open on the relay. The record shows it as `relay` (null for an
+    address with no live socket) and `last_seen`, the last ANNOUNCE; measured
+    against production, a connected agent reads
+    `"relay": "<the relay wss URL>", "last_seen": "<within the minute>"` and an
+    unknown one reads both as null. An explicit `online`, which the documented
+    shape has and production does not send, wins as in resolve_endpoint.
+    """
+    if "online" in info:
+        return bool(info["online"])
+    if not info.get("relay") or not info.get("last_seen"):
+        return False
+    seen = datetime.fromisoformat(str(info["last_seen"]).replace("Z", "+00:00"))
+    if seen.tzinfo is None:
+        seen = seen.replace(tzinfo=timezone.utc)  # the relay writes naive UTC
+    return (now or datetime.now(timezone.utc)) - seen <= timedelta(seconds=RELAY_PRESENCE_WINDOW)
+
+
+async def relay_presence(agent_address: str, relay_url: str, timeout: float = 3.0) -> bool:
+    """Is the agent reachable through the relay right now? One GET, no signing."""
+    https_relay = relay_url.replace("wss://", "https://").replace("ws://", "http://").rstrip("/")
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        try:
+            response = await client.get(f"{https_relay}/api/agents/{agent_address}")
+        except httpx.HTTPError:
+            return False
+    return response.status_code == 200 and relay_holds(response.json())
 
 
 async def probe_endpoints(agent_address: str, relay_url: str, timeout: float = 3.0) -> dict:

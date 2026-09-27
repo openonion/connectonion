@@ -48,6 +48,10 @@ def default_config() -> dict:
             # digested by the wiki-extract pass and the maintainer reads that.
             # 40, not 150: one turn digesting 79 mails came back as 18 bullets, and a
             # person's page is only as full as the notes handed to the maintainer.
+            # runner_calls_per_day was 6 when one maintenance call read the whole
+            # notebook (0.7-1.4M input tokens a call). A page per call costs about
+            # 120k, so 6 left one batch a night against a backlog of hundreds of
+            # sessions; 30 is less total spend than the old three batches.
             # timeout_seconds is one model turn. Codex reads a large material file
             # piece by piece; at 600 two real turns timed out on 2026-09-23/24
             # (a 300k digest chunk, then a project's material).
@@ -55,9 +59,13 @@ def default_config() -> dict:
             # chunk is read through the same 600-second turn, and at 300k a Codex
             # turn reading it piece by piece timed out on 2026-09-23 (Dora, 39
             # mails with attachments) while every 200k investigate turn finished.
-            "limits": {"runner_calls_per_day": 6, "items_per_batch": 20,
+            "limits": {"runner_calls_per_day": 30, "items_per_batch": 20,
                        "input_chars_per_batch": 200000, "timeout_seconds": 1200,
-                       "extract_items_per_batch": 40, "extract_chars_per_batch": 150000}}
+                       "extract_items_per_batch": 40, "extract_chars_per_batch": 150000,
+                       # Points of the Codex weekly window (#1843): investigation's
+                       # budget, and the level past which it starts nothing so the
+                       # owner's own coding keeps the rest of the week.
+                       "investigation_quota_points": 10, "quota_floor_percent": 70}}
 
 
 def validate(config: dict) -> dict:
@@ -81,6 +89,8 @@ def validate(config: dict) -> dict:
         raise WikiError("Invalid limit keys")
     if any(type(value) is not int or value < 1 for value in limits.values()):
         raise WikiError("Limits must be positive integers")
+    if limits["quota_floor_percent"] > 100 or limits["investigation_quota_points"] > 100:
+        raise WikiError("quota_floor_percent and investigation_quota_points are percents: 1 to 100")
     return config
 
 

@@ -1,0 +1,2 @@
+version: v1.8.9b14
+no_visual_change: "backend-only: Wiki upkeep runs one page per turn, prompts carry their input, stale map pages are archived and the daily call cap changes; no command output layout or page template changed"

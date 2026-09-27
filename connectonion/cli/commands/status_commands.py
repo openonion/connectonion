@@ -570,7 +570,12 @@ def handle_status(reveal: bool = False):
     _show_deployments(_fetch_deployments(api_key))
 
     if user.get('balance_usd', 0) <= 0:
-        console.print("\n[yellow]⚠️  Low balance! Add credits at https://o.openonion.ai/purchase[/yellow]")
+        # The default stays Gemini 3.8 (#1869); at zero the free ways to keep
+        # going are named, not only the purchase page.
+        console.print("\n[yellow]⚠️  No credits left. Add credits at https://o.openonion.ai/purchase[/yellow]\n"
+                      "   Or keep going for free:\n"
+                      "   • model=\"co/gemma\"            Google's free Gemma on ConnectOnion's GPU (no credits needed)\n"
+                      "   • model=\"ollama/<model>\"      a model on your own machine, e.g. ollama/llama3.2")
 
     # One tip per run, and it names a command. The old block was three bullets,
     # two of them URLs — a reader with only this output could not act on it in
