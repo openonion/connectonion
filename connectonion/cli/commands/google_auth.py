@@ -14,7 +14,8 @@ from ...backend import backend_url
 from .project_cmd_lib import load_api_key
 
 ALLOWED_SCOPES = {"gmail.send", "gmail.readonly", "gmail.modify", "calendar", "calendar.readonly",
-                  "drive", "drive.readonly", "youtube", "youtube.readonly", "youtube.upload"}
+                  "drive", "drive.readonly", "youtube", "youtube.readonly", "youtube.upload",
+                  "contacts", "contacts.readonly", "contacts.other.readonly"}
 
 
 def handle_google_auth(scopes: str | None = None):

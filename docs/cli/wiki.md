@@ -448,8 +448,18 @@ co wiki init --days 5       # small first-run trial
 co wiki open
 ```
 
-This reads correspondent metadata for the initialization window, not mail bodies,
-and does not install a schedule or enable ongoing mail collection. With `--mail`, only explicitly selected
+This reads correspondent metadata for the initialization window, plus the short
+preview the mail provider lists with each message; it does not open mail bodies,
+and does not install a schedule or enable ongoing mail collection.
+
+A person is named, in this order, by the name they write under, the name in the
+owner's saved contacts (Google contacts and "other contacts", Outlook contacts;
+skipped when the login cannot read them), and the owner's own greeting in a mail
+to that one person ("Hi Larry,", "Larry 你好，", "子明，"). A greeting to several
+people names none of them. On the owner's notebook this named 176 of 195 people
+the map had titled with a bare address. An organisation is the registrable
+domain (accounts.google.com and google.com are one), and a domain only notice
+senders write from gets no page. With `--mail`, only explicitly selected
 mailboxes are read. Missing or failed sources appear in the mapping coverage;
 without a selected mailbox the command explains why People is empty.
 The terminal shows mapping stages and a short count of People, Organizations,

@@ -46,9 +46,10 @@ Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, 
 ```
 Build the notebook's frame: a page for each person you write to, each organization,
 each coding project and each installed Skill, plus your own page, already titled
-with your name and filled with who you write to most and where you work. Reads mail headers
-and session metadata only. Does not read message bodies, does not run a model, does
-not turn on the schedule.
+with your name and filled with who you write to most and where you work. Reads mail headers,
+the preview line your provider lists with each message (to name people by your
+greeting), saved contacts, and session metadata. Does not open message bodies, does
+not run a model, does not turn on the schedule.
 
 Usage:    co wiki init [--days N] [--mine ADDRESS]... [--name NAME] [--mail gmail|outlook]...
 Example:  co wiki init --days 90 --name "Aaron Xie" --mine aaron@mail.openonion.ai
