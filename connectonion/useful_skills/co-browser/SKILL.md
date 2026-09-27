@@ -159,6 +159,11 @@ co browser -t mytab network har stop              # prints ~/.co/browser/har/myt
 co browser -t mytab cookies                       # this site's cookies
 ```
 
+**Signed in in Chrome, signed out here?** `co browser import --profile "<name>" --domain <site> --dry-run`
+lists what would come across; without `--dry-run` it asks the user once (the Keychain may
+show a dialog) and writes the cookies through the browser's own API. It never overwrites a
+site the target is already signed in to unless `--replace`. Cookies only, macOS Chrome only.
+
 Header and cookie **values are shaped** (`x-sign: <32 hex>`, `<22 chars>`), never
 printed, unless you pass `--raw`. Keep it that way: the shape is what you need to
 understand an endpoint, and the value is someone's login — it must not go into a

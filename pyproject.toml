@@ -80,6 +80,9 @@ dependencies = [
     "python-pptx>=1.0.0",
     "python-docx>=1.1.0",
     "packaging>=23.0",
+    # `co browser import` decrypts Chrome's cookies (AES-128-CBC, PBKDF2) and
+    # address.py already used it; it arrived only transitively until then.
+    "cryptography>=42.0.0",
     # uv.lock protects this repository, but it is not installed with the library.
     # Publish the audited transitive floors too, so an existing user environment
     # cannot satisfy ConnectOnion with versions that retain known vulnerabilities.
