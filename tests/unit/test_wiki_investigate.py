@@ -245,9 +245,10 @@ def test_oversized_attachment_is_split_without_losing_text_or_sources():
     assert usage["input_tokens"] == len(digests) * 10
 
 
-def test_chunk_limit_includes_json_framing():
+def test_chunk_limit_counts_the_text_the_model_is_given():
+    from connectonion.wiki.runner import readable_material
     item = {"text": "x", "source": "gmail:1", "timestamp": "2026-09-01T00:00:00Z"}
-    limit = len(json.dumps([item, item], ensure_ascii=False)) - 1
+    limit = len(readable_material([item, item]).encode("utf-8")) - 1
     config = {"limits": {"extract_items_per_batch": 40, "extract_chars_per_batch": limit}}
     batches = []
     stages = []
@@ -261,7 +262,7 @@ def test_chunk_limit_includes_json_framing():
     assert len(batches) == 2
     assert stages == [("extracting long evidence", 1, 2, {}),
                       ("extracting long evidence", 2, 2, {})]
-    assert all(len(json.dumps(c, ensure_ascii=False)) <= limit for c in batches)
+    assert all(len(readable_material(c).encode("utf-8")) <= limit for c in batches)
 
 
 def test_completed_extraction_chunks_are_reused_after_interruption(tmp_path):

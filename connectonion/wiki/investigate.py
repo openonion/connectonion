@@ -288,12 +288,16 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     return items, coverage
 
 
-def _split_item(item: dict, limit_chars: int):
-    """Split a long document without losing its text, source or date."""
-    if len(json.dumps([item], ensure_ascii=False)) <= limit_chars:
+def _split_item(item: dict, limit_chars: int, measure=None):
+    """Split a long document without losing its text, source or date.
+
+    `measure` is how big a list of parts is; by default its JSON length.
+    """
+    measure = measure or (lambda parts: len(json.dumps(parts, ensure_ascii=False)))
+    if measure([item]) <= limit_chars:
         yield item
         return
-    if len(json.dumps([{**item, "text": ""}], ensure_ascii=False)) >= limit_chars:
+    if measure([{**item, "text": ""}]) >= limit_chars:
         raise WikiError("Extraction character limit is too small for source metadata; "
                         "increase limits.extract_chars_per_batch")
     remaining = item["text"]
@@ -301,8 +305,7 @@ def _split_item(item: dict, limit_chars: int):
         low, high = 0, min(len(remaining), limit_chars)
         while low < high:
             middle = (low + high + 1) // 2
-            part = {**item, "text": remaining[:middle]}
-            if len(json.dumps([part], ensure_ascii=False)) <= limit_chars:
+            if measure([{**item, "text": remaining[:middle]}]) <= limit_chars:
                 low = middle
             else:
                 high = middle - 1
@@ -323,15 +326,21 @@ def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: P
         if root is None:
             raise WikiError("Wiki root is required for model extraction")
         extractor = lambda chunk, settings, kind: run_extract(chunk, settings, kind, root=root)
-    chunks, current, size = [], [], 2  # The serialized list's brackets count too.
+    from .runner import INLINE_LIMIT, readable_material
+    # Each piece travels in the prompt, beside the extraction Skill. 150k
+    # characters never did, so every piece was read from files instead: about
+    # 1M input tokens a piece on the owner's notebook, 15 pieces for one person.
+    kinds = {str(item.get("source", "")).split(":")[0] for item in items}
+    widest = max(len(extraction_instructions(kind).encode("utf-8")) for kind in kinds | {""})
+    room = min(limits["extract_chars_per_batch"], INLINE_LIMIT - widest - 2000)
+    measure = lambda parts: len(readable_material(parts).encode("utf-8"))
+    chunks, current = [], []
     for item in items:
-        for part in _split_item(item, limits["extract_chars_per_batch"]):
-            n = len(json.dumps(part, ensure_ascii=False))
+        for part in _split_item(item, room, measure):
             if current and (len(current) >= limits["extract_items_per_batch"]
-                            or size + 2 + n > limits["extract_chars_per_batch"]):
+                            or measure(current + [part]) > room):
                 chunks.append(current)
-                current, size = [], 2
-            size += n + (2 if current else 0)
+                current = []
             current.append(part)
     if current:
         chunks.append(current)
