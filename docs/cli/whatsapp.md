@@ -150,8 +150,10 @@ and take the connection away from the listener.
 
 So `co whatsapp send` and `co whatsapp reply` do not connect. They write the
 text to `outbox/`, the listener picks it up and sends it, and the answer comes
-back the same way. With no listener running, `send` waits 30 seconds and then
-says so:
+back the same way. With no listener running they start one in the background
+first, the way `receive` does (#1860). Before that, 5 of one owner's 7 failed
+sends were a 30-second wait for a listener nobody had started. If the listener
+cannot start, or starts and never answers, `send` says so:
 
 ```
 No listener answered in 30s, so nothing was sent. WhatsApp allows one connection
@@ -169,6 +171,28 @@ is thrown away by the next listener with a line in `log`, never sent late.
 So `send` and `reply` work without the extra installed while a listener is
 running. With no listener and no extra, nothing could ever send, so they exit 3
 at once and print the pip command, as `check` does.
+
+## Upgrades reach the listener
+
+A listener is a long-running process, and upgrading `co` does not change the
+code a running process has loaded. One owner's listener ran from 21 September
+through six releases. The media download added on the 22nd never ran for it,
+so every photo anyone sent arrived with no file, while `check` said all was
+well (#1859). This applies to every provider's `listen`, not only WhatsApp.
+
+- The listener records the version it started with in `listener.json`.
+- Once a minute it compares that with the installed version. After an upgrade
+  it restarts itself in place (same pid, same session file, no re-pairing),
+  waiting until no send is in flight. The log says `installed 1.8.9b15,
+  running 1.8.9b13: restarting`. WhatsApp holds messages for an offline device
+  and delivers them on reconnect, so nothing is lost in the gap.
+- `check` names both versions while they differ.
+- A listener started before this existed cannot restart itself. `check` says
+  `listener started before version tracking`, and one command replaces it:
+
+```bash
+co whatsapp listen --restart     # stop the running listener, start a background one
+```
 
 ## The protocol snapshot
 
