@@ -355,6 +355,15 @@ below is good to about one point.
   default **10** points of the weekly window (owner, 2026-09-27). The
   scheduled round adds up the points its investigation runs used since the
   window last reset, and starts no new page once that reaches the budget.
+- **Manual investigation counts too** (#1842). `co wiki investigate PAGE`,
+  `me` and CATEGORY runs record the meter like the round does, and their
+  points count toward the same weekly budget. A CATEGORY run stops starting
+  pages when the weekly budget is spent, when its own `--budget N` is spent, or
+  at the floor, and says which; the page in flight finishes.
+- **The first pass after init** is `co wiki investigate all --budget 10`: one
+  queue over people, projects and organisations by weight (the same order the
+  round uses), until 10 points of the week are spent. `--list` shows that
+  order without running a model.
 - **A floor protects your own coding.** No investigation page starts once the
   week is at `limits.quota_floor_percent` or more, default **70%**, however much
   of the wiki's budget is left. The wiki shares this quota with your real work.
