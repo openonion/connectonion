@@ -375,7 +375,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b14
+## Current Version: 1.8.9b15
+
+1.8.9b15 is an opt-in preview after 1.8.9b14. The Wiki reads the Codex weekly
+meter and budgets investigation on it, `investigate all --budget N` works one
+queue until N points are spent, mapped pages open on what is known, the map
+and the nightly update share one lock, and hosted sessions keep the agent's
+system prompt (#1843, #1842, #1836, #1855, #1766; tracking #1722).
+Stable is 1.8.8. See [1.8.9b15 notes](docs/releases/1.8.9b15.md).
+
+- 1.8.9b15 (Codex weekly meter in status and budgets; investigate all --budget N and --list; manual investigations count toward the weekly budget; reader leads with known facts; build_map holds the maintenance lock; hosted sessions carry the system prompt.)
 
 1.8.9b14 is an opt-in preview after 1.8.9b13. Wiki upkeep works one page per
 turn, archives pages an older map made that it would not make now, and a day
