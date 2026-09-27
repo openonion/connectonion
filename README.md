@@ -1,7 +1,6 @@
 # 🧅 ConnectOnion — CLI is all you need
 
-**The agent CLI harness. Connect your AI agent to your mail, chat apps, a real
-browser, your files and your coding agents. Each connection is one `co` command.**
+**The agent CLI harness.**
 
 You don't create an OAuth app, add DNS records or write a Playwright script.
 Gmail and Outlook credentials stay on your machine. Works with Claude Code,
