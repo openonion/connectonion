@@ -299,3 +299,19 @@ def test_a_malformed_review_proposal_is_dropped_not_the_batch(tmp_path):
     assert [row['question'] for row in listing(tmp_path)] == ['Still at OpenOnion?']
     dropped = read_json(state_path(tmp_path, 'reviews-dropped.json'), [])
     assert dropped[0]['reason'] == 'Invalid number of review subjects'
+
+
+def test_the_lines_the_runner_owns_are_put_back_not_refused():
+    """A real pass rewrote a project's mapped Sessions and the status line, and the
+    whole page was refused though the rest of it was sound."""
+    from connectonion.wiki.page_review import restore_runner_fields
+    original = "# A\n\n## Paths\n- /w/a\n- Sessions: 12\n- First seen: 2026-08-01\n- Last seen: 2026-09-20\n\n" \
+               "Investigation: mapped 2026-09-24 · not investigated yet\n"
+    edited = "# A\n\n## Paths\n- /w/a\n- Sessions: many\n- First seen: 2026-08-01\n- Last seen: today\n\n" \
+             "Investigation: investigated today (codex)\n"
+    fixed = restore_runner_fields("projects/a.md", edited, original)
+    assert "- Sessions: 12" in fixed and "- Last seen: 2026-09-20" in fixed
+    assert fixed.rstrip().endswith("Investigation: mapped 2026-09-24 · not investigated yet")
+    dropped = restore_runner_fields("projects/a.md", edited.replace("Investigation: investigated today (codex)\n", ""),
+                                    original)
+    assert dropped.rstrip().endswith("not investigated yet")                   # a removed status line comes back

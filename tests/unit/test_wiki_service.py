@@ -781,3 +781,26 @@ def test_the_consent_summary_names_the_login_the_runner_actually_uses(tmp_path, 
     assert f"your own {login} login" in receives
     other = "Claude Code" if login == "Codex" else "Codex"
     assert other not in receives
+
+
+def test_a_spent_day_serves_the_slot_instead_of_retrying_it_every_tick(tmp_path, monkeypatch):
+    """On a real notebook the day's calls ran out by 03:00, and every five-minute
+    tick from then to midnight retried the owed slot and logged the same error."""
+    from datetime import datetime, timezone
+
+    from connectonion.wiki.service import start
+    root, sessions = tmp_path / "wiki", tmp_path / "sessions"
+    monkeypatch.setattr("connectonion.wiki.service.codex_sessions_root", lambda: sessions)
+    clock = {"now": datetime(2026, 9, 7, 6, 30, tzinfo=timezone.utc)}
+    monkeypatch.setattr("connectonion.wiki.service.now", lambda: clock["now"])
+    set_config(root, ["schedule.timezone", "Australia/Sydney", "schedule.times", "17:00",
+                      "limits.runner_calls_per_day", "1"])
+    calls = []
+    start(root, confirm=lambda s: True, scheduler=FakeScheduler(), runner=_runner_recording(calls))
+    rollout(sessions / "rollout-a.jsonl", [("user", "hello")])
+    assert run_sync(root, runner=_runner_recording(calls))["outcome"] == "completed"   # the day's one call
+    rollout(sessions / "rollout-a.jsonl", [("user", "hello"), ("user", "again")])
+    clock["now"] = datetime(2026, 9, 7, 7, 2, tzinfo=timezone.utc)      # 17:02 Sydney: due, but the day is spent
+    first = run_sync(root, scheduled=True, runner=_runner_recording(calls))
+    assert first["outcome"] == "budget_exhausted"
+    assert run_sync(root, scheduled=True, runner=_runner_recording(calls)) is None   # served, not retried

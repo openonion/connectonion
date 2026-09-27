@@ -112,6 +112,30 @@ def _project_overview_errors(candidate: str) -> list[str]:
     return ['Project Overview requires a closed fenced ASCII flow, or an explicit Unknown statement']
 
 
+def restore_runner_fields(record: str, candidate: str, original: str) -> str:
+    """Put back the lines the runner owns, instead of refusing the page for them.
+
+    The Investigation status line and a project's mapped Sessions / First seen /
+    Last seen are written by code that knows their true values. A real
+    maintenance pass rewrote them and the whole page was refused; the rest of
+    the page was sound. Restoring them is exact, so nothing is guessed.
+    """
+    if not original:
+        return candidate
+    status = re.search(r'^Investigation:.*$', original, re.M)
+    if status:
+        candidate = (re.sub(r'^Investigation:.*$', lambda _: status.group(0), candidate, count=1, flags=re.M)
+                     if re.search(r'^Investigation:.*$', candidate, re.M)
+                     else candidate.rstrip('\n') + '\n\n' + status.group(0) + '\n')
+    if record.startswith('projects/'):
+        for label in ('Sessions', 'First seen', 'Last seen'):
+            kept = re.search(r'^- ' + re.escape(label) + r': [0-9-]+$', original, re.M)
+            if kept:
+                candidate = re.sub(r'^- ' + re.escape(label) + r': .*$', lambda _: kept.group(0), candidate,
+                                   count=1, flags=re.M)
+    return candidate
+
+
 def drop_uncited_sources(text: str) -> str:
     """Remove one-line Sources entries that no sentence cites.
 

@@ -355,3 +355,17 @@ def test_one_bad_page_does_not_hold_back_the_rest_of_a_maintenance_batch(tmp_pat
     assert notebook.read("people/bad.md") == before["people/bad.md"]     # kept as it was
     assert [r["record"] for r in refusals] == ["people/bad.md"]
     assert (directory / "refused" / "people/bad.md").read_text() == bad  # the model's work is kept
+
+
+def test_a_small_maintenance_prompt_carries_its_instructions_and_material(tmp_path):
+    """Reading them from files cost ten of nineteen turns on a real pass, each
+    re-sending the whole context. Small enough, they travel in the prompt."""
+    from connectonion.wiki.runner import INLINE_LIMIT, task_prompt
+    items = [{"role": "user", "source": "codex:abc:1", "text": "shipped the reader", "timestamp": "2026-09-24"}]
+    prompt = task_prompt(tmp_path, items, "maintain", "codex")
+    assert "<material>" in prompt and "shipped the reader" in prompt and "<instructions>" in prompt
+    assert "Read all source material" not in prompt
+    assert (tmp_path / "material.json").is_file() and (tmp_path / "instructions.md").is_file()   # still audited
+    big = [{"role": "user", "source": "codex:abc:2", "text": "x" * INLINE_LIMIT, "timestamp": "2026-09-24"}]
+    assert "Read all source material" in task_prompt(tmp_path, big, "maintain", "codex")        # too big: files
+    assert "<material>" not in task_prompt(tmp_path, items, "investigate", "codex")            # investigate: files

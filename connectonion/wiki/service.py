@@ -487,7 +487,15 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         served = worker.get("last_scheduled_slot")
         if slot is None or (served and datetime.fromisoformat(served) >= slot):
             return None
-        record = run_sync(root, source=source, with_person=with_person, runner=runner, extractor=extractor)
+        try:
+            record = run_sync(root, source=source, with_person=with_person, runner=runner, extractor=extractor)
+        except WikiError as error:
+            if "Daily runner-attempt limit" not in str(error):
+                raise
+            # The day's calls are spent: the slot is served, not owed. Leaving it
+            # owed retried it on every five-minute tick until midnight and wrote
+            # the same error into launchd.log each time (seen on a real notebook).
+            record = {"outcome": "budget_exhausted", "reason": "the day's runner calls are spent"}
         # Any recorded outcome serves the slot; a refusal to start (busy) raised
         # above this line and leaves it owed for the next tick.
         write_json(state_path(root, "worker.json"), {**worker_state(root), "last_scheduled_slot": slot.isoformat()})

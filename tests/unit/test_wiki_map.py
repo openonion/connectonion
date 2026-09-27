@@ -467,3 +467,41 @@ def test_an_upgraded_notebook_turns_the_owners_old_correspondent_page_into_the_o
     assert 'Observed mail count: 1' not in page and 'Most mail with: Ody Zhou (30)' in page
     assert 'Correspondent classification unassessed' not in page
     assert '- Email: aaron@mail.example' in page
+
+
+def test_pages_an_older_map_made_are_archived_when_this_map_would_not_make_them(tmp_path, monkeypatch):
+    """A real notebook kept ten project pages for the Wiki's own task folders, six
+    for one project's dated scratch folders, and two pages for one person, all from
+    an older map. Maintenance kept trying to merge them by deleting, and was refused."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    notebook = Notebook(tmp_path)
+    task = '/Users/x/wiki-copy/.state/tasks/maintain-abc/notebook'
+    notebook.stub_project('projects/notebook-1.md', 'notebook', [task])
+    notebook.stub_project('projects/notebook-2.md', 'notebook', [task + '2'])
+    investigated = notebook.read('projects/notebook-2.md').replace(
+        'not investigated yet', 'investigated 2026-09-20 (codex)')
+    notebook.write('projects/notebook-2.md', investigated)                     # someone's work: kept
+    notebook.stub_project('projects/rvc-a.md', 'realtime-voice-chat',
+                          ['/Users/x/Documents/Codex/2026-08-17/realtime-voice-chat'])
+    notebook.stub_project('projects/rvc-b.md', 'realtime-voice-chat-2',
+                          ['/Users/x/Documents/Codex/2026-08-22/realtime-voice-chat-2'])
+    notebook.stub_person('people/dora-by-address.md', 'dora@example.org', ['dora@example.org'],
+                         email='dora@example.org')
+    people = [{'name': 'Dora Chen', 'address': 'dora@example.org', 'mails': 40, 'sent': 20, 'received': 20,
+               'one_way': False, 'boxes': ['gmail']}]
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: (people, set()))
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [
+        {'origin': '', 'repo': '', 'path': '/Users/x/Documents/Codex/2026-08-17/realtime-voice-chat',
+         'sessions': 2, 'first': '2026-08-17', 'last': '2026-08-17'},
+        {'origin': '', 'repo': '', 'path': '/Users/x/Documents/Codex/2026-08-22/realtime-voice-chat-2',
+         'sessions': 2, 'first': '2026-08-22', 'last': '2026-08-22'}])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    assert len(result['projects']) == 1                                       # one scratch project, not two
+    kept = result['projects'][0]['record']
+    assert set(result['archived']) == {'projects/notebook-1.md', *({'projects/rvc-a.md', 'projects/rvc-b.md'} - {kept})}
+    assert notebook.path('projects/notebook-2.md').is_file()                  # investigated: never moved
+    assert (tmp_path / '.state/archived/projects/notebook-1.md').is_file()    # moved, not deleted
+    dora = [row['record'] for row in result['people'] if row.get('name') == 'Dora Chen'][0]
+    assert dora == 'people/dora-by-address.md' or 'people/dora-by-address.md' in result['archived']
