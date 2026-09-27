@@ -42,7 +42,7 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.goto(page_path.as_uri())
             page.get_by_role("heading", name="What your assistant knows").wait_for()
             page.screenshot(path=str(shots / "wiki-desktop.png"), full_page=True)
-            page.locator("#main").get_by_role("link", name="Aurora", exact=True).click()
+            page.locator("#main").get_by_role("link", name="Aurora", exact=True).first.click()
             page.locator("#main").get_by_role("link", name="Storage", exact=True).click()
             page.get_by_role("heading", name="Storage", exact=True).wait_for()
             assert "inspectability" in page.locator("#main").inner_text()
@@ -77,7 +77,7 @@ def test_reader_runs_inside_opaque_wiki_iframe(tmp_path, monkeypatch):
                                          html.replace("<head>", "<head>" + csp))
         frame = page.frame_locator("iframe")
         frame.get_by_role("heading", name="What your assistant knows").wait_for()
-        assert frame.get_by_role("link", name="Example").is_visible()
+        assert frame.get_by_role("link", name="Example").first.is_visible()
         assert frame.locator("body").evaluate("body => getComputedStyle(body).fontFamily")
         browser.close()
 
@@ -256,7 +256,7 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
     with sync_playwright() as api:
         browser=api.chromium.launch(channel='chrome',headless=True)
         page=browser.new_page();page.goto(path.as_uri())
-        assert 'Some are mapped skeletons' in page.locator('#main').inner_text()
+        assert '1 page.' in page.locator('#main').inner_text()
         page.locator('#q').fill('Demo');page.wait_for_function("document.querySelectorAll('.hits > li').length === 1")
         assert page.locator('.hits > li').count()==1
         page.locator('#q').fill('Unique alternative');page.wait_for_timeout(300)

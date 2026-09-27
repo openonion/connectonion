@@ -201,6 +201,15 @@ route and both switches live in `connectonion/wiki/reader.py` (`LIVE_WIKI_URL`,
 means the snapshot. If the live view says the Wiki is not yours, add the
 browser's address as an admin of the Host: `co trust admin add <address>`.
 
+The page reads each record for what it knows (#1836). A page carries one of
+three tags: **Mapped** (an outline from your sources; its status line still says
+"not investigated yet"), **Some findings** (written content, no investigation
+pass yet) and **Investigated**. "Unknown" lines and placeholders are not shown;
+the headings still empty are named once at the foot of the page with the
+`co wiki investigate '<page>'` command that fills them. Lists put pages with
+findings first, then newest last contact. The Markdown file is unchanged, and
+**Copy Markdown** at the foot copies it as written, unknowns included.
+
 `init` is the foreground Skill workflow. `start` remains the explicit
 background lifecycle command; initialization does not install a schedule.
 Map is a stage inside wiki-init, not a separate model runner.
