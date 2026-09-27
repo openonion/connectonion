@@ -737,7 +737,11 @@ class Inbox:
             argv += ["--env-file", str(env_file)]
         argv += [self.provider, "listen"]
         env = dict(os.environ, CO_INBOX_HOME=str(self.root.parent))
-        kwargs = {"stdin": subprocess.DEVNULL, "stderr": subprocess.STDOUT, "env": env}
+        # In the inbox directory: `-m` puts the working directory first on
+        # sys.path, and started from inside a connectonion checkout the
+        # listener ran the checkout instead of the installed package (#1878).
+        kwargs = {"stdin": subprocess.DEVNULL, "stderr": subprocess.STDOUT, "env": env,
+                  "cwd": str(self.root)}
         if os.name == "posix":
             kwargs["start_new_session"] = True
         else:  # pragma: no cover - Windows only
