@@ -375,7 +375,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b17
+## Current Version: 1.8.9b18
+
+1.8.9b18 is an opt-in preview after 1.8.9b17. The Wiki's person and project
+page skills were evolved against `co benchmark` suites, the page validator
+stops refusing box-drawing flows and grouped citations, and investigation
+evidence travels in the prompt in pieces that fit, with plain-text material
+instead of 64-character pieces (#1883, #1884; tracking #1722). Stable is 1.8.8.
+See [1.8.9b18 notes](docs/releases/1.8.9b18.md).
+
+- 1.8.9b18 (page skills: read the input then write, write once and stop, Unknown instead of filler, keep mapped handles, last-activity date; validator accepts │▼→ flows and [1, 2]; inline check in bytes; investigation pieces sized to the prompt; final investigate turn inlined when it fits; material.md plain text replaces material-readable.json; examples/wiki-skill-evals.)
 
 1.8.9b17 is an opt-in preview that makes `co/gemini-3.8-flash` the default model
 again, by the owner's decision (#1869): 1.8.9b10 through b16 defaulted to the
