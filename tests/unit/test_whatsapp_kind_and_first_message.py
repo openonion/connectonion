@@ -69,3 +69,24 @@ def test_a_senders_first_group_message_survives_its_sender_key_frame(sdk):
             inbox.deliver(found)
     [kept] = inbox.list_messages()
     assert (kept.id, kept.kind, kept.text) == ("AC8956", "text", "hi all, I'm Mia")
+
+
+def test_the_real_protobuf_shapes_where_neonize_is_installed():
+    """The fakes hid #1858; this runs _kind on neonize's own Message type.
+    In a subprocess: importing neonize starts its runtime thread."""
+    import importlib.util
+    import subprocess
+    import sys
+    if importlib.util.find_spec("neonize") is None:
+        pytest.skip("the WhatsApp extra (neonize) is not installed")
+    check = """
+from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import Message
+from connectonion.inbox.whatsapp import PROTOCOL_ONLY, _kind
+text = Message(conversation="dinner at 7?"); text.messageContextInfo.messageSecret = b"x" * 32
+frame = Message(); frame.senderKeyDistributionMessage.groupID = "1@g.us"
+frame.messageContextInfo.messageSecret = b"y" * 32
+image = Message(); image.senderKeyDistributionMessage.groupID = "1@g.us"; image.imageMessage.mimetype = "image/jpeg"
+assert (_kind(text), _kind(frame), _kind(image)) == ("text", PROTOCOL_ONLY, "image"), (_kind(text), _kind(frame), _kind(image))
+"""
+    result = subprocess.run([sys.executable, "-c", check], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr[-2000:]

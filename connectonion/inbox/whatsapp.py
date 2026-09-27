@@ -217,6 +217,17 @@ KINDS = {
 }
 
 
+# Delivery metadata WhatsApp attaches to a message, not something a person
+# sent. `messageContextInfo` rides on nearly every group message and
+# `senderKeyDistributionMessage` on a sender's first post to a group. Naming
+# the kind after them turned 46% of one owner's group text into
+# "messagecontextinfo" (#1858).
+CARRIERS = {"messageContextInfo", "senderKeyDistributionMessage"}
+# The kind of a frame that carries nothing but CARRIERS. Not a message: see
+# to_message, and #1837.
+PROTOCOL_ONLY = "protocol-only"
+
+
 def _kind(message) -> str:
     """Which of WhatsApp's 107 message variants this is.
 
@@ -229,7 +240,13 @@ def _kind(message) -> str:
         fields = message.ListFields()
     except AttributeError:
         return "text"
+    carried = False
     for descriptor, _ in fields:
+        name = getattr(descriptor, "name", "") or ""
+        # Plain text is a string field, so the message-typed walk below never
+        # sees it; checked first, by name.
+        if name == "conversation":
+            return "text"
         repeated = getattr(descriptor, "is_repeated", None)
         if repeated is None:
             repeated = descriptor.label == descriptor.LABEL_REPEATED
@@ -239,7 +256,9 @@ def _kind(message) -> str:
         # protobuf release had removed is precisely how every message stopped
         # being delivered in 1.8.6a1. A kind we cannot read is worth nothing
         # and must cost nothing.
-        name = getattr(descriptor, "name", "") or ""
+        if name in CARRIERS:
+            carried = True
+            continue
         if name in KINDS:
             return KINDS[name]
         if name:
@@ -247,7 +266,7 @@ def _kind(message) -> str:
             # `pollCreationMessageV3`, `documentWithCaptionMessage` — so it is
             # removed wherever it is rather than stripped as a suffix.
             return name.replace("Message", "").lower() or "text"
-    return "text"
+    return PROTOCOL_ONLY if carried else "text"
 
 
 def _mime_of(message, kind: str) -> str:
@@ -794,6 +813,11 @@ class WhatsApp:
         text = extract_text(event.Message) or ""
         context = _context_info(event.Message)
         kind = _kind(event.Message)
+        if kind == PROTOCOL_ONLY and not text:
+            # Delivery metadata alone. A sender's first group message comes as
+            # this frame and then the text under the same id; recording the
+            # frame made the text a "duplicate", and it was lost (#1837).
+            return None
         # An edit arrives as a whole message with a flag on the envelope rather
         # than as its own event. A consumer that treats it as new text answers
         # the correction as though it were a fresh question; one that can see it
