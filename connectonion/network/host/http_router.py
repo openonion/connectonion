@@ -82,9 +82,16 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
     session = record.session
 
     start = time.time()
+    # host(agent) shares one object between requests; it runs one turn at a
+    # time so two conversations cannot overwrite each other's state. A
+    # factory gives each request its own Agent and no lock.
+    turn_lock = None
     try:
         if agent is None:
             agent = create_agent()
+        turn_lock = getattr(agent, "_host_turn_lock", None)
+        if turn_lock is not None:
+            turn_lock.acquire()
         agent.io = connection
         agent.storage = storage
         if mode_policy is not None:
@@ -114,6 +121,7 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
         record.duration_ms = duration_ms
         record.session = agent.current_session
         storage.save(record)
+        final_session = agent.current_session
     except Exception:
         # The claim is already durable. Always terminate it so a factory/model
         # exception cannot leave this session busy until Host restarts.
@@ -133,15 +141,18 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
                 "Unable to persist failed Host prompt %s", session_id
             )
         raise
+    finally:
+        if turn_lock is not None:
+            turn_lock.release()
 
-    chat_items = session_to_chat_items(agent.current_session)
+    chat_items = session_to_chat_items(final_session)
 
     return {
         "session_id": session_id,
         "status": "done",
         "result": result,
         "duration_ms": duration_ms,
-        "session": agent.current_session,
+        "session": final_session,
         "chat_items": chat_items,
         "server_newer": server_newer,
     }
