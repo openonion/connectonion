@@ -22,12 +22,13 @@ python -m pip install --upgrade 'connectonion==1.8.8'
 
 ## Current preview
 
-Beta **1.8.9b12** fixes subscribed skill reconciliation, preserves signed
-companion files, and removes the `do` verb from natural-language browser tasks.
-See [1.8.9b12 release notes](releases/1.8.9b12.md) for the scope and limits.
+Beta **1.8.9b13** adds `co browser import`, which carries your Chrome logins into
+the co browser profile, and makes `co wiki open` open the local snapshot again,
+with the live view behind `--live`. See
+[1.8.9b13 release notes](releases/1.8.9b13.md) for the scope and limits.
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.9b12'
+python -m pip install --upgrade 'connectonion==1.8.9b13'
 co --version
 ```
 

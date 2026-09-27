@@ -375,7 +375,20 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b12
+## Current Version: 1.8.9b13
+
+1.8.9b13 is an opt-in preview that adds `co browser import` (#1477): the logins
+already in Google Chrome carried into the co browser profile, a login the
+target already holds left alone, cookie values never printed. It also returns
+`co wiki open` to the local snapshot by default, with the live view behind
+`--live` (#1828), and passes benchmark context to the evaluated Agent (#1816).
+Stable remains 1.8.8. See [1.8.9b13 notes](docs/releases/1.8.9b13.md).
+
+- 1.8.9b13 (Chrome login import; `co wiki open` local by default.)
+
+Earlier in this line:
+
+## Previous preview: 1.8.9b12
 
 1.8.9b12 is an opt-in preview for subscribed skills and browser task syntax
 (#1785, #1786). Subscriptions reconcile withdrawn skills, preserve the
