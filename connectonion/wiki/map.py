@@ -397,6 +397,13 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 15
         name = next((row['name'] for row in group if row.get('name')), '') or first['address']
         record = existing or _record('people', name, first['address'])
         made = notebook.stub_person(record, name, addresses, email=', '.join(addresses))
+        if not made and '@' not in name:
+            # A page an older map titled with an address, now that a name is
+            # known. Only map output is retitled; an investigated page keeps its title.
+            page = notebook.read(record)
+            title = page.split('\n', 1)[0]
+            if title.startswith('# ') and '@' in title and _mapped_only(page):
+                notebook.write(record, f'# {name}\n' + page.split('\n', 1)[1])
         mails = sum(row.get('mails', 0) for row in group)
         report['people'].append({**first, 'mails': mails, 'addresses': addresses, 'record': record,
                                  'sent': sum(row.get('sent', 0) for row in group),
