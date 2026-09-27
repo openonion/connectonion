@@ -27,6 +27,7 @@ def test_the_background_listener_starts_in_the_inbox_directory(monkeypatch):
 
     class Exited:
         pid = 4242
+        returncode = 1
 
         def poll(self):
             return 1

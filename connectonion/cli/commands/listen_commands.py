@@ -218,8 +218,26 @@ def restart_if_upgraded(inbox: Inbox, *, running: str, installed: Optional[str],
         return
     if any((inbox.root / "outbox").glob("*.taken")):
         return
+    # Once per installed version (#1878). A mismatch that survives a restart
+    # is something the restart cannot fix; retrying it every minute would
+    # only drop the connection every minute.
+    marker = inbox.root / "restart.json"
+    try:
+        tried = json.loads(marker.read_text(encoding="utf-8")).get("for")
+    except (OSError, ValueError, AttributeError):
+        tried = None
+    if tried == installed:
+        if not getattr(inbox, "_restart_reported", False):
+            inbox.log(f"still running {running} after restarting for {installed}; not restarting again. "
+                      "Next: co <provider> listen --restart")
+            inbox._restart_reported = True
+        return
+    marker.write_text(json.dumps({"for": installed, "from": running}), encoding="utf-8")
     inbox.log(f"installed {installed}, running {running}: restarting")
     args = [a for a in sys.argv[1:] if a != "--restart"]
+    # From the inbox directory, so `-m` finds the installed package, not a
+    # checkout in whatever directory the listener was started from (#1878).
+    os.chdir(inbox.root)
     execv(sys.executable, [sys.executable, "-m", "connectonion.cli.main", *args])
 
 
