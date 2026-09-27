@@ -781,3 +781,56 @@ def test_the_consent_summary_names_the_login_the_runner_actually_uses(tmp_path, 
     assert f"your own {login} login" in receives
     other = "Claude Code" if login == "Codex" else "Codex"
     assert other not in receives
+
+
+def test_a_spent_day_serves_the_slot_instead_of_retrying_it_every_tick(tmp_path, monkeypatch):
+    """On a real notebook the day's calls ran out by 03:00, and every five-minute
+    tick from then to midnight retried the owed slot and logged the same error."""
+    from datetime import datetime, timezone
+
+    from connectonion.wiki.service import start
+    root, sessions = tmp_path / "wiki", tmp_path / "sessions"
+    monkeypatch.setattr("connectonion.wiki.service.codex_sessions_root", lambda: sessions)
+    clock = {"now": datetime(2026, 9, 7, 6, 30, tzinfo=timezone.utc)}
+    monkeypatch.setattr("connectonion.wiki.service.now", lambda: clock["now"])
+    set_config(root, ["schedule.timezone", "Australia/Sydney", "schedule.times", "17:00",
+                      "limits.runner_calls_per_day", "1"])
+    calls = []
+    start(root, confirm=lambda s: True, scheduler=FakeScheduler(), runner=_runner_recording(calls))
+    rollout(sessions / "rollout-a.jsonl", [("user", "hello")])
+    assert run_sync(root, runner=_runner_recording(calls))["outcome"] == "completed"   # the day's one call
+    rollout(sessions / "rollout-a.jsonl", [("user", "hello"), ("user", "again")])
+    clock["now"] = datetime(2026, 9, 7, 7, 2, tzinfo=timezone.utc)      # 17:02 Sydney: due, but the day is spent
+    first = run_sync(root, scheduled=True, runner=_runner_recording(calls))
+    assert first["outcome"] == "budget_exhausted"
+    assert run_sync(root, scheduled=True, runner=_runner_recording(calls)) is None   # served, not retried
+
+
+def test_maintenance_works_one_page_per_turn_and_a_failure_costs_only_that_page(tmp_path, monkeypatch):
+    """One turn over the whole notebook edited eight pages, took twenty minutes and
+    timed out with nothing saved, twice on the same real batch (2026-09-27)."""
+    from connectonion.wiki.runner import RunFailed
+    from connectonion.wiki.service import _maintain_pages
+    root = tmp_path / "wiki"
+    prepare(root)
+    notebook = Notebook(root)
+    for name in ("a", "b", "c"):
+        notebook.stub_person(f"people/{name}.md", name.upper(), [])
+    seen = []
+
+    def one_turn(book, items, config, kind="", stage="maintain", maintenance_lock_held=False):
+        page = next(item for item in items if item.get("role") == "page")
+        assert page["one_page"] and maintenance_lock_held and stage == "maintain"
+        seen.append(page["record"])
+        if page["record"] == "people/b.md":
+            raise RunFailed("Candidate rejected: Citation has no identifiable source: 1", {"input_tokens": 5})
+        return {"changed": [page["record"]], "usage": {"input_tokens": 10}, "review_candidates": []}
+
+    monkeypatch.setattr("connectonion.wiki.runner.run_stage", one_turn)
+    material = [{"role": "extract", "text": "notes", "source": "codex:x +1", "timestamp": "2026-09-27"}]
+    result = _maintain_pages(root, material, {}, "codex", ["people/a.md", "people/b.md", "people/c.md"])
+    assert seen == ["people/a.md", "people/b.md", "people/c.md"]
+    assert result["changed"] == ["people/a.md", "people/c.md"]
+    assert result["refusals"] == [{"record": "people/b.md",
+                                   "errors": ["Candidate rejected: Citation has no identifiable source: 1"]}]
+    assert result["usage"] == {"input_tokens": 25}

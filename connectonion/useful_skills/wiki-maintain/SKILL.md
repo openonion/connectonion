@@ -35,6 +35,25 @@ deserve a page of their own. An attributed correction must be checked against it
 assistant proposal or a quoted request is not the user's decision or commitment.
 When evidence does not settle a conflict, retain the uncertainty.
 
+## When you are given one page
+
+Most batches now arrive one page at a time: the runner has already found the
+pages the material concerns (the project whose folder the sessions ran in, the
+people the material names) and hands you one of them, as the `page` item, with
+the whole batch as material.
+
+- Update **that page only**, with what the material adds about its subject.
+  Material about other subjects is for their own passes; leave it.
+- Keep everything already on the page that is still right. Add, correct and
+  date; do not rewrite sections the material says nothing about.
+- If the material says nothing new about this subject, write the page back
+  unchanged.
+- Write the complete page to the candidate file named in the task, and stop.
+
+This replaced one pass over the whole notebook. That pass edited eight pages
+in one turn, spent twenty minutes deciding and rewriting, and timed out with
+nothing saved (2026-09-27).
+
 ## Work a batch in this order
 
 1. **Find before you write.** In a staged run, inspect the supplied notebook
