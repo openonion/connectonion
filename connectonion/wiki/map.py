@@ -292,10 +292,16 @@ def _archive_stale(notebook: Notebook, report: dict) -> list[str]:
     used = {row.get('record') for row in report['people'] + report['projects'] if row.get('record')}
     used.add((report.get('owner') or {}).get('record'))
     covered = {path for row in report['projects'] for path in row.get('paths', [])}
-    emails = {email for person in notebook.people() if person['path'] in used for email in person['emails']}
+    emails = {email.casefold() for person in notebook.people() if person['path'] in used for email in person['emails']}
+    notices = {row['address'].casefold() for row in report.get('automated_correspondents', [])}
     for person in notebook.people():
         record = person['path']
-        if record not in used and set(person['emails']) & emails and _mapped_only(notebook.read(record)):
+        if record in used or not _mapped_only(notebook.read(record)):
+            continue
+        addresses = {email.casefold() for email in person['emails']}
+        # Another page keeps this address, or every address is now a notice
+        # sender (an older map made a "person" called Google).
+        if addresses & emails or (addresses and addresses <= notices):
             moved.append(record)
     for record in notebook.list('projects'):
         page = notebook.read(record)

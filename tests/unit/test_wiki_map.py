@@ -505,3 +505,21 @@ def test_pages_an_older_map_made_are_archived_when_this_map_would_not_make_them(
     assert (tmp_path / '.state/archived/projects/notebook-1.md').is_file()    # moved, not deleted
     dora = [row['record'] for row in result['people'] if row.get('name') == 'Dora Chen'][0]
     assert dora == 'people/dora-by-address.md' or 'people/dora-by-address.md' in result['archived']
+
+
+def test_an_older_maps_person_page_for_a_notice_sender_is_archived(tmp_path, monkeypatch):
+    """An older map made a "person" called Google; maintenance matched the word
+    Google in session notes and went looking at it."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    notebook = Notebook(tmp_path)
+    notebook.stub_person('people/google.md', 'Google', ['no-reply@accounts.google.com'],
+                         email='no-reply@accounts.google.com')
+    people = [{'name': 'Google', 'address': 'no-reply@accounts.google.com', 'mails': 54, 'sent': 0,
+               'received': 54, 'one_way': True, 'boxes': ['gmail']}]
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: (people, set()))
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    assert 'people/google.md' in result['archived']
+    assert not notebook.path('people/google.md').exists()
