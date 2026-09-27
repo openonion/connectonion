@@ -11,6 +11,12 @@ from .service import now, run_logs, run_sync, status, subscriptions, mail_client
 from .investigate import investigate
 
 
+# At most this many calls for the one page a round investigates. It was
+# "everything but two", which at the old cap of 6 meant 4; at 30 it would let
+# one large page spend a night's calls.
+INVESTIGATION_CALLS = 8
+
+
 def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
               maintain=None, investigate_one=None) -> dict | None:
     maintenance = (maintain or run_sync)(root, scheduled=True) if scheduled else (maintain or run_sync)(root)
@@ -40,7 +46,7 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
             return {'outcome': 'budget_exhausted', 'maintenance': maintenance, 'investigation': None}
         # Keep up to two calls for later maintenance slots. Reserve before starting
         # so an interrupted investigation cannot restart beyond the daily cap.
-        allocation = min(remaining, max(required, remaining - 2))
+        allocation = min(remaining, max(required, min(remaining - 2, INVESTIGATION_CALLS)))
         record = {'id': 'run_' + uuid.uuid4().hex, 'started_at': now().isoformat(),
                   'outcome': 'running', 'runner_attempts': allocation, 'usage': None,
                   'sources': [], 'items': 0, 'changed': [], 'phase': 'daily-investigation'}
