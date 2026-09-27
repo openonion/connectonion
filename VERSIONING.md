@@ -375,7 +375,15 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b15
+## Current Version: 1.8.9b16
+
+1.8.9b16 is an opt-in preview after 1.8.9b15. The Wiki map names people from
+the name they write under, a saved contact, or the owner's greeting, and folds
+an organisation's subdomains into it; WhatsApp sends pictures and documents, no
+longer drops a sender's first group message, and listeners restart into the
+installed code after an upgrade (#1870, #1863, #1864, #1866; tracking #1722). Stable is 1.8.8. See [1.8.9b16 notes](docs/releases/1.8.9b16.md).
+
+- 1.8.9b16 (People named by header, saved contact, then the owner's greeting to one recipient; Outlook listing keeps recipient names; organisations are registrable domains and notice-only domains get no page; CLAUDE.md marks a workspace; co whatsapp send/reply --image/--file; group text kind and first-message fixes; listeners record their version and restart after upgrade, listen --restart, send/reply start a listener.)
 
 1.8.9b15 is an opt-in preview after 1.8.9b14. The Wiki reads the Codex weekly
 meter and budgets investigation on it, `investigate all --budget N` works one
