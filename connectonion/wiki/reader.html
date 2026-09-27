@@ -143,6 +143,14 @@
   table.runs td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; color: var(--ink-2); }
   table.runs td:first-child { color: var(--ink); }
   .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--moss-soft); color: var(--moss-ink); font-weight: 500; }
+  .status { font-size: 11.5px; letter-spacing: 0.02em; text-transform: none; }
+  .status.mapped { background: var(--paper); border: 1px dashed var(--line); color: var(--ink-3); font-weight: 400; }
+  .missing { max-width: 66ch; margin-top: 30px; padding: 14px 16px; border: 1px dashed var(--line); border-radius: 8px; color: var(--ink-3); font-size: 14px; line-height: 1.6; }
+  .missing .cmd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+  .missing code { font: 12.5px var(--mono); color: var(--ink-2); background: var(--paper-2); border: 1px solid var(--line); border-radius: 5px; padding: 2px 7px; overflow-wrap: anywhere; }
+  .page-foot { max-width: 66ch; margin-top: 30px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .hits .t { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .hits .t .when, .toc .when { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .pill.quiet { background: var(--paper); border: 1px solid var(--line); color: var(--ink-2); }
 
   /* record */
@@ -504,6 +512,62 @@ function sourceChips(text) {
   return chips;
 }
 
+// ---------- what a page knows (#1836) ----------
+// A mapped page is a template: every heading is there and most answers are
+// "Unknown — not investigated yet". Shown as written, every page led with what
+// the assistant does not know. Views read pages through known(): unknown lines
+// are dropped, a heading left empty is named once at the end with the command
+// that fills it, and lists rank by last contact instead of by the first
+// character of an email address.
+const UNKNOWN_LINE = /^\s*[-*]\s*(?:[^:\n]{1,40}:\s*)?(?:unknown|not known)(?:\s*[—(-].*)?\s*$/i;
+// Sections every mapped page fills from metadata alone: they are not findings.
+const MECHANICAL = new Set(["contact", "history", "uncertainties", "sources", "people here", "domains"]);
+// What mapping writes where an answer will go (files.py): a placeholder, not a finding.
+const PLACEHOLDER = /identity unverified|classification unassessed|^\s*[-*]\s*\(none yet\)\s*$/i;
+const STAMP = /^Investigation:[^\n]*$/m;
+const KNOWN = new Map();
+function known(r) {
+  if (KNOWN.has(r.path)) return KNOWN.get(r.path);
+  const stamp = (STAMP.exec(r.text) || [""])[0];
+  const body = splitTrailers(r.text).body.replace(/^#[^\n]*\n?/, "").replace(STAMP, "");
+  const title = r.title.trim().toLowerCase();
+  const repeatsTitle = line => (/^\s*[-*]\s*[^:\n]{1,40}:\s*(.+)$/.exec(line) || [])[1]?.trim().toLowerCase() === title;
+  const kept = [], missing = [];
+  let intro = "";
+  for (const part of body.split(/^(?=## )/m)) {
+    const head = /^## ([^\n]*)\n?/.exec(part);
+    if (!head) { intro = part.trim(); continue; }
+    const text = part.slice(head[0].length).split("\n").filter(l => !UNKNOWN_LINE.test(l) && !PLACEHOLDER.test(l) && !repeatsTitle(l)).join("\n").trim();
+    if (text) kept.push({ title: head[1].trim(), text });
+    else if (!MECHANICAL.has(head[1].trim().toLowerCase())) missing.push(head[1].trim());
+  }
+  const learned = !!intro || kept.some(k => !MECHANICAL.has(k.title.toLowerCase()));
+  // The page's own status line (files.py note_pass) says whether an
+  // investigation pass ran; a page can still hold findings from before one.
+  const investigated = /\binvestigated\b/.test(stamp.replace(/not investigated yet/, "")) || (!stamp && !missing.length);
+  const status = investigated ? "Investigated" : learned ? "Some findings" : "Mapped";
+  const last = (/\blast:\s*(\d{4}-\d{2}-\d{2})/.exec(r.text) || [])[1] || String(r.updated || "").slice(0, 10);
+  const summary = (intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || kept.find(k => k.title.toLowerCase() === "history") || { text: "" }).text
+    .split("\n").map(l => l.replace(/^\s*[-*]\s*/, "").replace(/[#*`>]/g, "").trim()).find(Boolean) || "";
+  const k = { intro, kept, missing, status, last, summary, stamp: stamp.replace(/^Investigation:\s*/, "") };
+  KNOWN.set(r.path, k);
+  return k;
+}
+function byActivity(a, b) {
+  const auto = r => /\(automated candidate\)$/.test(r.title) ? 1 : 0;
+  // Pages with findings before outlines: a mapped page's date is when the
+  // mapper wrote it, which would otherwise outrank a real last contact.
+  const rank = r => ({ "Investigated": 0, "Some findings": 1 })[known(r).status] ?? 2;
+  return auto(a) - auto(b) || rank(a) - rank(b) || known(b).last.localeCompare(known(a).last) || a.title.localeCompare(b.title);
+}
+function statusPill(r) {
+  const st = known(r).status;
+  return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), text: st, title: known(r).stamp || st });
+}
+function shortDate(day) {
+  return day ? new Date(day + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "";
+}
+
 // ---------- views ----------
 function route() {
   const params = new URLSearchParams(location.hash.replace(/^#/, ""));
@@ -553,10 +617,19 @@ function overview() {
   main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "Contents" }), el("span", { class: "sep", text: "·" }), el("span", { class: "when", text: fmtDate(WIKI.as_of) })]));
   main.appendChild(el("h1", { text: "What your assistant knows" }));
   const n = listedRecords().length;
+  const mapped = listedRecords().filter(r => known(r).status === "Mapped").length;
   main.appendChild(el("p", { class: "lede", text: n === 0 ? "Nothing written yet. The first maintenance pass fills this in." :
-    n + (n === 1 ? " page" : " pages") + " in this snapshot. Some are mapped skeletons; check each page for investigation status and sources." }));
+    n + (n === 1 ? " page" : " pages") + (mapped ? ": " + (n - mapped) + " with findings, " + mapped + " mapped from your sources and not investigated yet." : ".") }));
+  const recent = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category) && known(r).status !== "Mapped" && !/\(automated candidate\)$/.test(r.title))
+    .sort(byActivity).slice(0, 12);
+  if (recent.length) {
+    main.appendChild(el("h2", { class: "section" }, [el("span", { text: "Recently active" }), el("span", { class: "n", text: "last contact or change first" })]));
+    main.appendChild(el("ul", { class: "toc" }, recent.map(r => el("li", {}, [
+      el("a", { href: "#r=" + encodeURIComponent(r.path), text: r.title }),
+      el("span", { class: "when", text: label(r.category).replace(/s$/, "") + " · " + shortDate(known(r).last) })]))));
+  }
   for (const c of WIKI.categories) {
-    const items = inCategory(c);
+    const items = inCategory(c).sort(byActivity);
     if (!items.length) continue;
     main.appendChild(el("h2", { class: "section" }, [el("span", { text: label(c) }), el("span", { class: "n", text: CATEGORY_ASK[c] || "" })]));
     const ul = el("ul", { class: "toc" });
@@ -642,25 +715,21 @@ function category(c) {
   const items = inCategory(c);
   if (!items.length) { main.appendChild(el("div", { class: "empty", text: c === "people" ? "No people mapped yet. Run " + initCommand() + " (or select gmail) to read correspondent metadata. No background schedule is started." : "Nothing here yet. The notebook fills what the sources support." })); return; }
   const ul = el("ul", { class: "hits" });
-  for (const r of items) {
+  for (const r of items.sort(byActivity)) {
     const text = splitTrailers(r.text).body.replace(/^#[^\n]*\n?/, "");
-    const rawLead = text.replace(/[#*`>]/g, "").trim().split(/\n\s*\n/)[0] || "";
-    const isSkeleton = /Unknown\s*—\s*(?:not investigated|not verified)/i.test(rawLead);
-    const lead = isSkeleton ? "" : (rawLead.length > 220 ? rawLead.slice(0, 217) + "…" : rawLead);
-    
-    const hitContent = isSkeleton
-      ? el("div", { class: "hit", html: '<span class="pill quiet" style="font-size:11px">Skeleton · not investigated yet</span>' })
-      : el("div", { class: "hit", text: lead });
-
+    const k = known(r);
+    const lead = k.summary.length > 220 ? k.summary.slice(0, 217) + "…" : k.summary;
     const li = el("li", {}, [
-      el("div", { class: "t" }, [el("a", { href: "#r=" + encodeURIComponent(r.path), text: r.title })]),
-      hitContent
+      el("div", { class: "t" }, [
+        el("span", {}, [el("a", { href: "#r=" + encodeURIComponent(r.path), text: r.title }), " ", statusPill(r)]),
+        el("span", { class: "when", text: shortDate(k.last) })]),
+      ...(lead ? [el("div", { class: "hit", text: lead })] : [])
     ]);
     const open = /\n##\s*(?:Open|Where we left off|待办|未决)[^\n]*\n+([^\n#]+)/i.exec(text);
     if (open) {
       const openText = open[1].trim();
       if (!/Unknown\s*—\s*(?:not investigated|not verified)/i.test(openText)) {
-        li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: "Open · " }), openText]));
+        li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: "Open · " }), openText.replace(/^[-*]\s*/, "")]));
       }
     }
     if (r.installations && r.installations.length > 1) li.appendChild(el("div", { class: "hit", text: r.installations.length + " installed copies — open to compare sources" }));
@@ -684,9 +753,7 @@ function record(path, heading) {
   eyebrow.appendChild(el("a", { href: "#c=" + r.category, text: label(r.category) }));
   eyebrow.appendChild(el("span", { class: "sep", text: "·" }));
   eyebrow.appendChild(el("span", { class: "when", text: "updated " + fmtDate(r.updated) }));
-  const pathBtn = el("button", { class: "eyebrow-path", type: "button", text: r.path, title: "Click to copy file path" });
-  pathBtn.onclick = () => copyToClipboard(r.path, pathBtn, "Path copied");
-  eyebrow.appendChild(pathBtn);
+  eyebrow.appendChild(statusPill(r));
   main.appendChild(eyebrow);
 
   const headerBar = el("div", { class: "record-header-bar" });
@@ -694,11 +761,6 @@ function record(path, heading) {
   titleArea.appendChild(el("h1", { text: r.title }));
   headerBar.appendChild(titleArea);
 
-  const actions = el("div", { class: "record-actions" });
-  const copyMdBtn = el("button", { class: "btn-action", type: "button", text: "Copy Markdown", title: "Copy full markdown text" });
-  copyMdBtn.onclick = () => copyToClipboard(r.text, copyMdBtn, "Markdown copied");
-  actions.appendChild(copyMdBtn);
-  headerBar.appendChild(actions);
   main.appendChild(headerBar);
 
   const catalog = r.catalog_parent ? byPath(r.catalog_parent) : r;
@@ -707,7 +769,8 @@ function record(path, heading) {
     for (const copy of catalog.installations) copies.appendChild(el("p", {}, [el("a", { href: "#r=" + encodeURIComponent(copy.path), text: copy.source })]));
     main.appendChild(copies);
   }
-  let body = parts.body.replace(/^#[^\n]*\n?/, "");
+  const k = known(r);
+  let body = [k.intro, ...k.kept.map(section => "## " + section.title + "\n\n" + section.text)].filter(Boolean).join("\n\n");
   const contacts = r.category === "people" ? [...new Set((r.text.match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) || []))] : [];
   if (r.category === "people") {
     const m = /^\s*([^\n]+(?:\n(?!\s*\n|#)[^\n]+)*)/.exec(body);
@@ -787,6 +850,23 @@ function record(path, heading) {
     }
     main.appendChild(aside);
   }
+
+  if (k.missing.length) {
+    const command = "co wiki investigate '" + r.path.replace(/'/g, "'\\''") + "'";
+    const copyCmd = el("button", { class: "btn-action", type: "button", text: "Copy" });
+    copyCmd.onclick = () => copyToClipboard(command, copyCmd, "Copied");
+    main.appendChild(el("div", { class: "missing" }, [
+      el("div", { text: "Not investigated yet: " + k.missing.join(", ") + "." }),
+      el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]));
+  }
+
+  const foot = el("div", { class: "page-foot" });
+  const pathBtn = el("button", { class: "eyebrow-path", type: "button", text: r.path, title: "Copy the file path" });
+  pathBtn.onclick = () => copyToClipboard(r.path, pathBtn, "Path copied");
+  const copyMdBtn = el("button", { class: "btn-action", type: "button", text: "Copy Markdown", title: "Copy the page as written, unknowns included" });
+  copyMdBtn.onclick = () => copyToClipboard(r.text, copyMdBtn, "Markdown copied");
+  foot.append(pathBtn, copyMdBtn);
+  main.appendChild(foot);
 
   if (heading) {
     const target = headings.find(h => h.id === heading.toLowerCase());
