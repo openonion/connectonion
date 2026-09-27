@@ -198,6 +198,14 @@ well (#1859). This applies to every provider's `listen`, not only WhatsApp.
   running 1.8.9b13: restarting`. WhatsApp holds messages for an offline device
   and delivers them on reconnect, so nothing is lost in the gap.
 - `check` names both versions while they differ.
+- A restarted or auto-started listener keeps the flags the last one was
+  started with (`--raw`), recorded in `listener.json` (#1882). Before, a
+  replacement came back bare, and the raw archive and real names quietly
+  stopped.
+- Every listener exit leaves a line in `log`: `stopped by SIGTERM`,
+  `stopped by listen --restart (pid N)`, or the exception. `--restart` stops a
+  listener running in the foreground (a tmux pane, say) and starts the new one
+  in the background; it says so.
 - The background listener starts in the inbox directory, so a connectonion
   checkout in whatever directory you ran the command from is never what it
   loads (#1878). A restart is tried once per installed version: if the
