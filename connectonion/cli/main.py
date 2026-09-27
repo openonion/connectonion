@@ -2430,6 +2430,7 @@ def outlook_download(
 @outlook_app.command("reply", rich_help_panel="Send", epilog="Examples:  co outlook reply 3 \"Sounds good\" --listing <listing-id>  |  "
                                      "cat notes.txt | co outlook reply <message-id> -  |  "
                                      "co outlook reply 3 \"Looping in Sam\" --listing <listing-id> --cc sam@example.com  |  "
+                                     "co outlook reply <message-id> \"Thanks both\" --all  |  "
                                      "co outlook reply <message-id> \"Signed copy attached\" --attach signed.pdf")
 def outlook_reply(
     email_id: str = typer.Argument(..., help="Full message ID, or row # together with --listing ID"),
@@ -2439,10 +2440,12 @@ def outlook_reply(
     attach: Optional[List[str]] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for multiple)"),
     at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z); cancel before it goes out with co outlook cancel <#>"),
     listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
+    reply_all: bool = typer.Option(False, "--all", help="Reply to everyone on the email (original To and Cc), not only the sender"),
 ):
     """Reply to an email (threaded), now or scheduled with --at. Sends from your Outlook account."""
     from .commands.outlook_commands import handle_outlook_reply
-    handle_outlook_reply(email_id, message, attachments=attach, at=at, cc=cc, bcc=bcc, listing=listing)
+    handle_outlook_reply(email_id, message, attachments=attach, at=at, cc=cc, bcc=bcc, listing=listing,
+                         reply_all=reply_all)
 
 
 @outlook_app.command("scheduled", rich_help_panel="Scheduled sends", epilog="Example:  co outlook scheduled")

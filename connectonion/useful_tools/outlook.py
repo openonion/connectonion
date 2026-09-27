@@ -751,7 +751,8 @@ class Outlook:
                 for addr in value.split(",") if addr.strip()]
 
     def reply(self, email_id: str, body: str, send_at: str = None, *,
-              attachments: list = None, cc: str = None, bcc: str = None) -> str:
+              attachments: list = None, cc: str = None, bcc: str = None,
+              reply_all: bool = False) -> str:
         """Reply to an email, immediately or at a scheduled time.
 
         send_at stays third positional — callers written before attachments
@@ -771,6 +772,9 @@ class Outlook:
                 a third person meant a fresh `send` with "RE:" in the subject —
                 a new thread on the receiving end (#1247).
             bcc: Optional BCC recipients (comma-separated)
+            reply_all: Keep every original To and Cc recipient. A plain reply
+                reaches only the sender, so on a group thread the others were
+                dropped, or answered through a fresh `send` in a new thread (#1834).
 
         Returns:
             Confirmation message
@@ -785,16 +789,19 @@ class Outlook:
         encoded = self._encoded_attachments(attachments) if attachments else []
         suffix = self._attachment_suffix(attachments)
 
-        # `reply` (not replyAll) starts with empty CC/BCC, so setting the
-        # collections adds the named people rather than replacing anyone.
+        # `reply` starts with empty CC/BCC, so setting the collections adds the
+        # named people. `replyAll` starts with the original Cc, and setting the
+        # collection replaces it, so the original Cc is read and kept first.
+        action = "replyAll" if reply_all else "reply"
         extra = {}
         if cc:
-            extra["ccRecipients"] = self._recipients(cc)
+            kept = self._original_cc_without_me(email_id) if reply_all else []
+            extra["ccRecipients"] = kept + self._recipients(cc)
         if bcc:
             extra["bccRecipients"] = self._recipients(bcc)
 
         if send_at:
-            self._scheduled_reply(email_id, body, encoded, send_at, extra)
+            self._scheduled_reply(email_id, body, encoded, send_at, extra, action=action)
             return f"Reply scheduled for {send_at}{suffix}"
 
         # The reply action takes writable message properties beside the
@@ -806,11 +813,23 @@ class Outlook:
             extra["attachments"] = encoded
         if extra:
             data["message"] = extra
-        self._request("POST", f"/me/messages/{email_id}/reply", json=data)
+        self._request("POST", f"/me/messages/{email_id}/{action}", json=data)
         return f"Reply sent successfully{suffix}"
 
+    def _original_cc_without_me(self, email_id: str) -> list:
+        """The original Cc, minus the owner's own address.
+
+        replyAll drops the owner from its computed Cc, but once ccRecipients
+        is set explicitly that computed list is gone; copying the original
+        back as-is would Cc the owner on their own reply whenever they were
+        on the original Cc, the usual place to be on a group thread.
+        """
+        cc = self._request("GET", f"/me/messages/{email_id}?$select=ccRecipients").get("ccRecipients") or []
+        mine = self.my_addresses()
+        return [r for r in cc if (r.get("emailAddress", {}).get("address") or "").lower() not in mine]
+
     def _scheduled_reply(self, email_id: str, body: str, encoded: list, send_at: str,
-                         recipients: dict | None = None) -> str:
+                         recipients: dict | None = None, action: str = "reply") -> str:
         """Create a reply draft, set the deferred-send properties, submit it.
 
         The reply action is create-and-send in one step, like sendMail was
@@ -822,7 +841,8 @@ class Outlook:
         draft.  Returns the draft id.
         """
         self._require_scope("Mail.ReadWrite")
-        draft = self._request("POST", f"/me/messages/{email_id}/createReply", json={"comment": body})
+        create = "createReplyAll" if action == "replyAll" else "createReply"
+        draft = self._request("POST", f"/me/messages/{email_id}/{create}", json={"comment": body})
         draft_id = draft.get("id")
         if not draft_id:
             raise ValueError("Microsoft Graph createReply response did not include an id")
