@@ -184,5 +184,13 @@ def test_send_help_offers_image_and_file():
 
 
 def test_the_sdk_methods_used_exist_where_neonize_is_installed():
-    client = pytest.importorskip("neonize.client")
-    assert hasattr(client.NewClient, "send_image") and hasattr(client.NewClient, "send_document")
+    # In a subprocess: importing neonize starts its runtime thread.
+    import importlib.util
+    import subprocess
+    import sys
+    if importlib.util.find_spec("neonize") is None:
+        pytest.skip("the WhatsApp extra (neonize) is not installed")
+    check = ("from neonize.client import NewClient as C; "
+             "assert hasattr(C, 'send_image') and hasattr(C, 'send_document')")
+    result = subprocess.run([sys.executable, "-c", check], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr

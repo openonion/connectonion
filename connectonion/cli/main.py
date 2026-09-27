@@ -1678,10 +1678,14 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
         reply_to: Optional[str] = typer.Option(None, "--reply-to", help="Message id to reply to"),
         plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
+        image: Optional[str] = typer.Option(None, "--image", metavar="PATH",
+                                            help="Send a picture (JPEG, PNG, WebP, up to 16 MB); the text becomes its optional caption"),
+        file: Optional[str] = typer.Option(None, "--file", metavar="PATH",
+                                           help="Send any file as a document (up to 100 MB); the text becomes its optional caption"),
     ):
-        """Send text to a chat. Prints the new message id. Sends a message to the chat."""
+        """Send text, or a picture or file, to a chat. Prints the new message id. Sends a message to the chat."""
         from .commands.listen_commands import handle_send
-        handle_send(name, chat, text, reply_to=reply_to, plain=plain)
+        handle_send(name, chat, text, reply_to=reply_to, plain=plain, image=image, file=file)
 
     if with_send:
         group.command("send", cls=NegativeIds,

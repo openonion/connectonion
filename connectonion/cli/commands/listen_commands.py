@@ -318,17 +318,31 @@ def handle_receive(name: str, timeout: Optional[float] = None, start: bool = Tru
 
 
 def handle_send(name: str, chat: str, text: Optional[str] = None, reply_to: Optional[str] = None,
-                plain: bool = False) -> None:
-    """Send text to a chat. Prints the new message id."""
+                plain: bool = False, image: Optional[str] = None, file: Optional[str] = None) -> None:
+    """Send text, or a picture or file with an optional caption. Prints the new message id."""
     p = _configured(name, sends=True)
     inbox = Inbox(name)
-    body = _wire(p, _text_from(text), plain)
+    if not (image or file):
+        body, media = _wire(p, _text_from(text), plain), None
+    else:
+        if not getattr(p, "sends_media", False):
+            _refused(name, ValueError(f"co {name} send cannot attach a picture or file yet "
+                                      "(--image, --file); nothing was sent. Send the text alone"))
+        try:
+            attached = p.attachment(image=image, file=file)
+        except ValueError as exc:
+            _refused(name, exc)
+        media = {key: attached[key] for key in ("kind", "path", "size")}
+        # With an attachment the caption is optional, and an omitted one is
+        # none: reading stdin for it would hang a script that sent a picture.
+        body = _wire(p, text, plain) if text else ""
     try:
-        sent = p.send(chat, body, reply_to=reply_to, plain=True)
+        sent = p.send(chat, body, reply_to=reply_to, plain=True,
+                      **({"image": image, "file": file} if media else {}))
     except Exception as exc:
-        inbox.record_sent(chat=chat, text=body, reply_to=reply_to, error=str(exc), by="send")
+        inbox.record_sent(chat=chat, text=body, reply_to=reply_to, error=str(exc), by="send", media=media)
         _refused(name, exc)
-    inbox.record_sent(chat=chat, text=body, reply_to=reply_to, provider_id=sent, by="send")
+    inbox.record_sent(chat=chat, text=body, reply_to=reply_to, provider_id=sent, by="send", media=media)
     print(sent)
 
 
