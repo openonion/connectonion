@@ -144,7 +144,8 @@ class TestFreeModelsAreATipNotTheDefault:
             if relative.parts[:2] in {("docs", "blog"), ("docs", "releases"), ("docs", "design-decisions")}:
                 continue
             for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-                lower = line.lower()
-                if "co/llama" in lower and "default" in lower and "not the default" not in lower:
+                # "co/llama (default…" or "default is/: co/llama", not a list
+                # where Gemini is the default and Llama sits beside it as free.
+                if re.search(r"co/llama`?\s*\(default|default(?: model)?(?: is|:)\s*`?co/llama", line, re.I):
                     found.append(f"{relative}:{number}: {line.strip()}")
         assert found == []
