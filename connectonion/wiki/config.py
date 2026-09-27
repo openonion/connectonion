@@ -61,7 +61,11 @@ def default_config() -> dict:
             # mails with attachments) while every 200k investigate turn finished.
             "limits": {"runner_calls_per_day": 30, "items_per_batch": 20,
                        "input_chars_per_batch": 200000, "timeout_seconds": 1200,
-                       "extract_items_per_batch": 40, "extract_chars_per_batch": 150000}}
+                       "extract_items_per_batch": 40, "extract_chars_per_batch": 150000,
+                       # Points of the Codex weekly window (#1843): investigation's
+                       # budget, and the level past which it starts nothing so the
+                       # owner's own coding keeps the rest of the week.
+                       "investigation_quota_points": 10, "quota_floor_percent": 70}}
 
 
 def validate(config: dict) -> dict:
@@ -85,6 +89,8 @@ def validate(config: dict) -> dict:
         raise WikiError("Invalid limit keys")
     if any(type(value) is not int or value < 1 for value in limits.values()):
         raise WikiError("Limits must be positive integers")
+    if limits["quota_floor_percent"] > 100 or limits["investigation_quota_points"] > 100:
+        raise WikiError("quota_floor_percent and investigation_quota_points are percents: 1 to 100")
     return config
 
 

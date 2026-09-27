@@ -349,8 +349,10 @@ below is good to about one point.
 - **A floor protects your own coding.** No investigation page starts once the
   week is at `limits.quota_floor_percent` or more, default **70%**, however much
   of the wiki's budget is left. The wiki shares this quota with your real work.
-- `co wiki status` shows the last reading, the investigation points used this
-  window, and the reset time.
+- `co wiki status` reads the meter now and says it in two lines, for example
+  `Codex week: 5% used on pro; resets Sun 04 Oct 09:49` and
+  `Investigation this week: 0 of 10 points; nothing starts once the week is at 70%`.
+  `--json` gives the same numbers under `quota` and `investigation_quota`.
 - When the meter cannot be read (another runner, Codex not signed in, an older
   Codex), the run says `quota: unknown (<why>)` and the daily call cap
   (`limits.runner_calls_per_day`) is the only bound, as before.

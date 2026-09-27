@@ -582,7 +582,7 @@ def make_wiki_app(factory):
     @wiki.command("status", cls=V("co wiki status"))
     def inspect_status(ctx: typer.Context):
         from ...wiki.service import status
-        _handle(ctx, lambda root: (status(root), ["logs"]), ["config"])
+        _handle(ctx, lambda root: (status(root, live_quota=True), ["logs"]), ["config"])
 
     def _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days):
         from ...wiki.files import WikiError
