@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .files import Notebook, atomic_write
+from .files import Notebook, atomic_write, maintenance_lock
 from .scan import scan_people, scan_projects, canonical_origin, AUTOMATED_HINT
 from .skill_map import map_skills
 from .org_map import map_orgs
@@ -317,9 +317,23 @@ def _archive_stale(notebook: Notebook, report: dict) -> list[str]:
     return sorted(moved)
 
 
-def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150,
-              skill_directories=None, mine=(), source_errors=None, absent=None, name: str = '',
-              progress=None) -> dict:
+def build_map(root: Path, subscriptions: dict, clients: dict, *args, **options) -> dict:
+    """Map under the lock every other writer holds.
+
+    The map moves pages now (stale ones go to .state/archived/). On a real
+    notebook a scheduled maintenance batch started while init was running,
+    chose a page as a lead, and failed when init archived it; and because pages
+    had changed during the batch -- init's, not its own -- the batch was taken
+    as written and its forty messages were skipped. One writer at a time: a
+    tick during init finds the Wiki busy and retries five minutes later.
+    """
+    with maintenance_lock(root):
+        return _build_map(root, subscriptions, clients, *args, **options)
+
+
+def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150,
+               skill_directories=None, mine=(), source_errors=None, absent=None, name: str = '',
+               progress=None) -> dict:
     """Map observed identities; correspondent classification remains unassessed."""
     notebook = Notebook(root)
     report = {'phase': 'mapping', 'started': datetime.now(timezone.utc).isoformat(),
@@ -337,7 +351,7 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 150
     save()
     if progress:
         progress("mapping installed skills")
-    report['skills'] = map_skills(notebook, skill_directories)
+    report['skills'] = map_skills(notebook, skill_directories, lock_held=True)
     save()
     people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress)
     roster = notebook.people()

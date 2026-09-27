@@ -1,6 +1,7 @@
 """Inventory installed skill metadata and seed inert Wiki pages, without a model."""
 
 import hashlib
+from contextlib import nullcontext
 import os
 import re
 from pathlib import Path
@@ -104,13 +105,13 @@ def _with_source_block(page: str, block: str) -> str:
     return page.rstrip() + '\n\n' + block + '\n'
 
 
-def map_skills(notebook: Notebook, directories: list[Path] | None = None) -> dict:
+def map_skills(notebook: Notebook, directories: list[Path] | None = None, *, lock_held: bool = False) -> dict:
     """Create missing catalog pages and refresh the generated index; retain prose."""
     from .config import prepare
 
     inventory = scan_skills(directories, include_content=True)
     created, preserved = [], []
-    with maintenance_lock(notebook.root):
+    with nullcontext() if lock_held else maintenance_lock(notebook.root):
         prepare(notebook.root)
         links = []
         for row in inventory["skills"]:

@@ -523,3 +523,18 @@ def test_an_older_maps_person_page_for_a_notice_sender_is_archived(tmp_path, mon
     result = build_map(tmp_path, {}, {}, skill_directories=[skills])
     assert 'people/google.md' in result['archived']
     assert not notebook.path('people/google.md').exists()
+
+
+def test_the_map_waits_for_no_one_and_no_one_writes_under_it(tmp_path):
+    """A scheduled batch ran during init, lost a lead page to init's archiving, and
+    because pages had changed under it, skipped its forty messages as written."""
+    import pytest
+    from connectonion.wiki.files import WikiError, maintenance_lock
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    with maintenance_lock(tmp_path):                      # an upkeep batch is running
+        with pytest.raises(WikiError, match="busy"):
+            build_map(tmp_path, {}, {}, skill_directories=[skills])
+    assert not (tmp_path / '.state' / 'map.json').exists()      # nothing written under someone else's lock
+    assert build_map(tmp_path, {}, {}, skill_directories=[skills])['phase'] in ('mapped', 'partial')
