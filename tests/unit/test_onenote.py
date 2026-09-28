@@ -175,3 +175,40 @@ def test_onenote_is_a_co_command():
     result = CliRunner().invoke(app, ["onenote", "--help"], env={"COLUMNS": "200"})
     text = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
     assert all(verb in text for verb in ("ls", "pages", "read", "create"))
+
+
+class TestARealNotebook:
+    """Found on the owner's own notebook on 1.8.9b19, right after OneNote worked.
+
+    Listing the pages of "Quick Notes" took Graph 6-8 seconds, httpx's default
+    timeout is 5, and the ReadTimeout reached the terminal as a traceback. A
+    page with code clipped from the web read back with U+FFFC where its line
+    breaks were.
+    """
+
+    def test_graph_calls_wait_long_enough_for_a_slow_section(self):
+        seen = []
+
+        def request(method, url, headers=None, **kwargs):
+            seen.append(kwargs.get("timeout"))
+            response = MagicMock(status_code=200, headers={}, text="x")
+            response.json = MagicMock(return_value={"value": []} if "pages" in url else NOTEBOOKS)
+            return response
+        with patch("connectonion.useful_tools.outlook.httpx.request", request):
+            OneNote().list_pages("s1")
+        assert seen and all(t is not None and t >= 30 for t in seen)
+
+    def test_a_timeout_is_a_sentence_not_a_traceback(self):
+        import httpx
+
+        def request(method, url, headers=None, **kwargs):
+            raise httpx.ReadTimeout("The read operation timed out")
+        with patch("connectonion.useful_tools.outlook.httpx.request", request):
+            with pytest.raises(ValueError) as refused:
+                OneNote().list_notebooks()
+        assert "did not answer" in str(refused.value) and "co onenote" in str(refused.value)
+
+    def test_object_replacement_characters_become_line_breaks(self):
+        from connectonion.useful_tools.onenote import _page_text
+        text = _page_text("<html><body><p>&lt;div&gt;￼  &lt;div&gt;01&lt;/div&gt;￼&lt;/div&gt;</p></body></html>")
+        assert "￼" not in text and "<div>01</div>" in text.splitlines()
