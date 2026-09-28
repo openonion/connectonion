@@ -295,3 +295,21 @@ def test_interrupted_turn_does_not_acknowledge_unseen_observation(tmp_path):
 
     store.reconcile(storage)
     assert _events(store)[0]["status"] == "pending"
+
+
+def test_factory_failure_still_frees_the_session_with_its_own_error(tmp_path):
+    # With a Host policy the Agent is built after the claim. If building it
+    # raises, the watch-expiry bookkeeping must not replace that error with
+    # a TypeError from inspecting an Agent that never existed.
+    storage = SessionStorage(tmp_path / "sessions.jsonl")
+    _session(storage)
+
+    def broken_factory():
+        raise RuntimeError("model config missing")
+
+    with pytest.raises(RuntimeError, match="model config missing"):
+        input_handler(broken_factory, storage, "hello", 3600,
+                      session=storage.get("s1").session, requester=OWNER,
+                      mode_policy=HostPermissionPolicy(full_access_turns=3),
+                      is_admin=True)
+    assert storage.get("s1").status == "failed"
