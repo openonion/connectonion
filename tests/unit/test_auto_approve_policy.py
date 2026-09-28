@@ -1035,13 +1035,15 @@ def test_an_unattended_refusal_names_the_line_to_write(tmp_path, monkeypatch):
     reminder = policy["reminder"]
     assert "Bash(co email send *)" in reminder
     assert ".co/host.yaml" in reminder
-    assert "SKILL.md frontmatter" in reminder
+    # The model reads this too: pointing it at a skill's frontmatter is how a
+    # chat turn came to widen its own permissions (#1873).
+    assert "SKILL.md" not in reminder
 
     # And the model reads it, because it is in the error it gets back.
     with pytest.raises(ValueError) as refusal:
         check_approval(instance)
     assert "Bash(co email send *)" in str(refusal.value)
-    assert "tools:" in str(refusal.value)
+    assert "SKILL.md" not in str(refusal.value)
 
 
 def test_a_granted_call_carries_no_remedy(tmp_path, monkeypatch):
