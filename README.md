@@ -7,7 +7,7 @@ Gmail and Outlook credentials stay on your machine. Works with Claude Code,
 Codex, Cursor, or your own agent.
 
 <p align="center">
-  <a href="https://www.connectonion.com"><img src="https://www.connectonion.com/connections.svg" width="100%" alt="What co connects an agent to: its own 0x address, mailbox and memory; Gmail, Outlook, Google Calendar, Meet and Teams; WhatsApp, Telegram, Discord, Feishu, Lark and SMS; a real Chrome, a remote browser, Google Drive, YouTube and a Synology NAS; Claude Code, Codex, Cursor and Kiro; OpenAI, Anthropic, Gemini, Mistral, Groq, Grok, OpenRouter and Ollama models; remote agents, your servers over SSH, and schedules."></a>
+  <a href="https://www.connectonion.com"><img src="https://www.connectonion.com/connections.svg" width="100%" alt="What co connects an agent to: its own 0x address, mailbox and memory; Gmail, Outlook, Google Calendar, Meet, OneNote and Teams; WhatsApp, Telegram, Discord, Feishu, Lark and SMS; a real Chrome, a remote browser, Google Drive, YouTube, a Synology NAS and web search; Claude Code, Codex, Cursor and Kiro; OpenAI, Anthropic, Gemini, Mistral, Groq, Grok, OpenRouter and Ollama models; remote agents, your servers over SSH, and schedules."></a>
 </p>
 
 <div align="center">
