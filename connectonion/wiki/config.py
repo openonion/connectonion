@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
-from .files import CATEGORIES, WikiError, atomic_write, maintenance_lock, safe_path, state_path
+from .files import CATEGORIES, WikiError, atomic_write, maintenance_lock, read_json, safe_path, state_path, write_json
 
 
 def local_timezone() -> str:
@@ -94,6 +94,29 @@ def validate(config: dict) -> dict:
     return config
 
 
+# Defaults this package once shipped and has since replaced. `init` wrote every
+# default into config.yaml and a saved value always wins, so a notebook kept
+# the defaults of the day it was made: one from 2026-09-20 ran the refused
+# gpt-5.3-codex-spark for four nights (#1714). A saved value equal to one of
+# these is read as unset, unless the owner chose it with `config set`.
+SUPERSEDED = {"model": {"gpt-5.3-codex-spark"},
+              "limits.timeout_seconds": {600},
+              "limits.extract_chars_per_batch": {300000},
+              "limits.runner_calls_per_day": {6}}
+EXPLICIT = "config-explicit.json"
+
+
+def _drop_superseded(root: Path, config: dict) -> None:
+    explicit = set(read_json(state_path(root, EXPLICIT), []))
+    defaults = default_config()
+    for key, old in SUPERSEDED.items():
+        section, _, name = key.rpartition(".")
+        saved = config.get(section) if section else config
+        current = defaults[section] if section else defaults
+        if key not in explicit and isinstance(saved, dict) and saved.get(name) in old:
+            saved[name] = current[name]
+
+
 def read_config(root: Path, *, validated: bool = True) -> dict:
     path = safe_path(root, "config.yaml")
     if not path.exists():
@@ -108,6 +131,7 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     # not rewritten until the user changes something.
     if isinstance(config.get("limits"), dict):
         config["limits"] = {**default_config()["limits"], **config["limits"]}
+    _drop_superseded(root, config)
     # Older coai notebooks retained the Codex default even though it was never
     # forwarded. Preserve their effective behavior when all stages start using COAI.
     if config.get("runner") == "coai" and config.get("model") == default_config()["model"]:
@@ -157,4 +181,6 @@ def set_config(root: Path, pairs: list[str]) -> dict:
             config["model"] = "default"
         validate(config)
         atomic_write(safe_path(root, "config.yaml"), yaml.safe_dump(config, sort_keys=False))
+        explicit = set(read_json(state_path(root, EXPLICIT), [])) | set(pairs[::2])
+        write_json(state_path(root, EXPLICIT), sorted(explicit))
         return config
