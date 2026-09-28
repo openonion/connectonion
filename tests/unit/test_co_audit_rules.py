@@ -143,3 +143,27 @@ def test_review_flags_a_list_item_that_requires_a_long_reference(monkeypatch):
     assert finding is not None
     assert finding.check == "review"
     assert "short_reference" in finding.detail
+
+
+def test_rendered_help_describes_short_references_with_sequential_examples():
+    from typer.testing import CliRunner
+
+    from connectonion.cli.main import app
+
+    runner = CliRunner()
+    audit_help = runner.invoke(app, ["audit", "--help"], env={"COLUMNS": "200"})
+    one_note_help = {
+        name: runner.invoke(app, ["onenote", name, "--help"], env={"COLUMNS": "200"})
+        for name in ("ls", "pages", "read", "create")
+    }
+    assert audit_help.exit_code == 0
+    assert all(result.exit_code == 0 for result in one_note_help.values())
+    assert "short reference" in audit_help.output
+    assert "listed item" in audit_help.output
+    assert "Example:  co onenote ls" in one_note_help["ls"].output
+    assert "Example:  co onenote pages" in one_note_help["pages"].output
+    assert "Example:  co onenote read 1" in one_note_help["read"].output
+    assert "Use pages first" in one_note_help["read"].output
+    assert "Example:  co onenote create 2" in one_note_help["create"].output
+    assert "numbered by ls" in one_note_help["create"].output
+    assert all(" | " not in result.output for result in one_note_help.values())

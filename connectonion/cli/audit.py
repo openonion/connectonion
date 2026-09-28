@@ -17,7 +17,8 @@ program, hard rules first and judgement last:
   command, every flag an example uses is documented, examples hold no private
   data, and every listed subcommand has its own page.
 - review(): for pages that pass, a model judges what a rule cannot: clear,
-  says what it reads or changes, a realistic example, simple.
+  says what it reads or changes, a realistic example, simple, and whether a
+  listed item has a short reference when the command acts on one.
 
 `co`'s own house style (its fixed "what it changes" words, a Back line, and
 every command in `co commands` reachable) is asserted by its CI test over the
