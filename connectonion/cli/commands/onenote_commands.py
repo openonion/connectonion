@@ -74,18 +74,20 @@ def _line(value: str) -> str:
 
 
 def _listing_note(token: str) -> str:
-    return f"Listing: {token} (15 minutes; --listing {token} keeps these row numbers)"
+    return f"Listing: {token} (15 min; optional --listing ID pins these rows)"
 
 
-def _listed_notebooks(note) -> tuple[str, str]:
+def _listed_notebooks(note, show_ids: bool = False) -> tuple[str, str]:
     notebooks = note.notebook_items()
     ids, lines = [], []
     for notebook in notebooks:
         lines.append(_line(notebook.get("displayName") or "(untitled notebook)"))
         for section in notebook.get("sections") or []:
             ids.append(section["id"])
-            lines.append(f"  {len(ids)}. {_line(section.get('displayName') or '(untitled section)')}"
-                         f"  (section {section['id']})")
+            line = f"  {len(ids)}. {_line(section.get('displayName') or '(untitled section)')}"
+            if show_ids:
+                line += f"  (section {section['id']})"
+            lines.append(line)
     token = _store_rows(note, "sections", ids)
     lines.append(_listing_note(token))
     if not notebooks:
@@ -94,14 +96,20 @@ def _listed_notebooks(note) -> tuple[str, str]:
 
 
 def _listed_pages(note, section: str | None, limit: int,
-                  listing: str | None) -> tuple[str, str]:
+                  listing: str | None, show_ids: bool = False) -> tuple[str, str]:
     selected = _resolve_row(note, section, "sections", listing) if section else None
     pages = note.page_items(selected, max_results=limit)
     ids = [page["id"] for page in pages]
     token = _store_rows(note, "pages", ids)
-    lines = [f"{i}. {_line(page.get('title') or '(untitled)')}  "
-             f"({(page.get('lastModifiedDateTime') or '')[:10]}, page {page['id']})"
-             for i, page in enumerate(pages, 1)]
+    lines = []
+    for i, page in enumerate(pages, 1):
+        date = (page.get("lastModifiedDateTime") or "")[:10]
+        line = f"{i}. {_line(page.get('title') or '(untitled)')}"
+        if date:
+            line += f"  ({date})"
+        if show_ids:
+            line += f"  (page {page['id']})"
+        lines.append(line)
     lines.append(_listing_note(token))
     if not pages:
         return "No OneNote pages found.\n" + _listing_note(token), "Next: co onenote ls"
@@ -148,16 +156,16 @@ def _run(call, next_command: str, retry_command: str, *, write: bool = False,
     print_tip(next_command)
 
 
-def handle_onenote_ls() -> None:
-    _run(_listed_notebooks, "Next: co onenote pages", "co onenote ls")
+def handle_onenote_ls(*, show_ids: bool = False) -> None:
+    _run(lambda n: _listed_notebooks(n, show_ids), "Next: co onenote pages", "co onenote ls")
 
 
 def handle_onenote_pages(section: Optional[str] = None, limit: int = 20,
-                         *, listing: str | None = None) -> None:
+                         *, listing: str | None = None, show_ids: bool = False) -> None:
     retry = "co onenote pages" + (f" {shlex.quote(section)}" if section else "")
     if listing:
         retry += f" --listing {shlex.quote(listing)}"
-    _run(lambda n: _listed_pages(n, section, limit, listing),
+    _run(lambda n: _listed_pages(n, section, limit, listing, show_ids),
          "Next: co onenote read 1", retry)
 
 
