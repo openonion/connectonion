@@ -171,6 +171,37 @@ agent.input("Delete all files")
 # → deletion denied by the built-in policy
 ```
 
+## When nobody is there to ask (#1881, #1873)
+
+A turn driven by a chat channel (`listen: feishu` and the other inbox
+providers) or run unattended has no approval dialog. Such a turn is not the
+operator, and anyone who can address the bot can start one. Four rules hold:
+
+- **Fail closed, in every mode.** A call that no permission and no policy
+  allowed is refused when there is no one to ask. Read-only used to let every
+  such call through, which made it less safe than Auto.
+- **A chat turn gets no default-allow.** In Auto, a command the policy does
+  not recognise normally runs ("ordinary command, allowed by default"). In a
+  turn with `via` set (a chat channel), it needs an explicit grant in
+  `.co/host.yaml` or a skill, because a third-party CLI with destructive
+  subcommands would otherwise be one chat message away.
+- **`allowed: false` denies.** A matching entry refuses the call, and a deny
+  beats any allow, from any source. Before, the entry was silently skipped.
+- **Skill frontmatter is a permission file.** A skill's `SKILL.md` can grant
+  tools in its `tools:` frontmatter, so writing one is never an automatic
+  workspace edit. With a person present it is always a real approval prompt;
+  in a chat or unattended turn it is refused. The refusal a model sees names
+  `.co/host.yaml` as the operator's to change, and no longer suggests editing
+  a skill's frontmatter.
+
+```yaml
+permissions:
+  "Bash(lark-cli base *)":
+    allowed: false          # refused, whatever else grants lark-cli
+    source: config
+    reason: this agent never edits Base tables
+```
+
 ## Unified Permission Format
 
 All permission sources (config, skills, user, safe) use the same runtime structure:
