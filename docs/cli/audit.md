@@ -22,6 +22,11 @@ empty HOME and working directory with no input. Then it judges each page from
 what it printed. Exit 0 means fit; exit 1 lists each problem and its fix, and
 a table scores every rule:
 
+For a Python CLI installed with `pip --user`, it preserves the original Python
+user-package path while isolating HOME. Otherwise the entrypoint could fail to
+import its package before printing help, and the audit would mistake that for
+an unreachable command.
+
 ```
 gh: 228 pages
   prints         227/228
