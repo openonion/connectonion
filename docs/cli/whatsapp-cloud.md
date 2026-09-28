@@ -105,6 +105,8 @@ conversations, and `mentioned` is always true. Non-text messages arrive with
 they are plain HTTPS to Meta. Text is read as Markdown and translated to
 WhatsApp's marks exactly as `co whatsapp` does; `--plain` sends it as typed.
 `reply` quotes the original; `react` puts an emoji on a message.
+`--image` and `--file` are not wired up for the Cloud API yet: they refuse,
+exit 1 and send nothing, so send the text alone.
 
 Outside the 24-hour customer-service window Meta refuses free text (error
 131047). The CLI says so and **exits 3**, not 1: resending will not help until
