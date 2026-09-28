@@ -1862,9 +1862,9 @@ _whatsapp_cloud_app = _inbox_group(
     writes=("react",), lacks=("edit", "delete"))
 
 
-@_whatsapp_cloud_app.command("bind")
+@_whatsapp_cloud_app.command("bind", epilog="Example:  co whatsapp-cloud bind  |  co env set WHATSAPP_CLOUD_BINDING_ID <binding-id>")
 def _whatsapp_cloud_bind():
-    """Register Meta's webhook with O API from WHATSAPP_CLOUD_* variables. Prints the binding id."""
+    """Register Meta's webhook with O API from WHATSAPP_CLOUD_* variables. Prints the binding id. Creates or replaces this number's binding on O API; sends nothing to WhatsApp."""
     from .commands.listen_commands import handle_bind
     handle_bind("whatsapp-cloud")
 
