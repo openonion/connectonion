@@ -76,7 +76,7 @@ optional shortcut, not a prerequisite.
 
 Once the relevant accounts and permissions are configured, you can ask your
 coding agent to: “Read the context from my Telegram bot, check the official
-documentation, ask a teammate's agent to verify the answer, then email me a
+documentation, ask a teammate's agent to run an allowed check, then email me a
 summary.” The commands behind that request are visible:
 
 1. `co telegram receive` gets a message delivered to **your configured bot**.

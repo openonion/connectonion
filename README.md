@@ -78,12 +78,12 @@ for Google, browser and other examples.
 ## The aha moment: one task, several environments
 
 Imagine asking your coding agent: “Read the context from my Telegram bot,
-check the official docs, ask a teammate's agent to verify the answer, then
+check the official docs, ask a teammate's agent to run an allowed check, then
 email me a summary.” The work stays legible: `co telegram receive` brings in
 messages delivered to a bot you control, `co search` and `co fetch` find the
 source, `co call` runs an allowed command on a reachable remote agent, and
 `co email send` sends only to the recipient you specify. A remote agent can
-delegate to Codex through `co ai` only when Codex is installed, authenticated
+delegate to Codex separately through `co ai` only when Codex is installed, authenticated
 and permitted on that machine.
 
 ![Read-only co search preview finding and fetching the official Microsoft Graph sendMail documentation](https://www.connectonion.com/aha-search.gif)
