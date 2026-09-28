@@ -375,7 +375,22 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b18
+## Current Version: 1.8.9b19
+
+1.8.9b19 is the feature-complete preview of the 1.8.9 line: everything that
+was already in a pull request is in it, and from here 1.8.9 takes fixes only
+(tracking #1722). Chat and unattended turns fail closed and `allowed: false`
+denies (#1881, #1873); `co auth microsoft` asks once for everything a user can
+grant, with OneNote for agents and `co onenote` (#1887); session watches
+(#1809); `co search` / `co fetch` (#1725); `co outlook reply --all` (#1834);
+a restarted listener keeps `--raw` (#1882); the Wiki keeps a 90-day map and
+private mail (#1775), honest Investigation lines (#1814), waits for the
+notebook lock (#1885) and reads superseded defaults as today's (#1714); the
+paid browser is Chromium 154 with its real screen (#1889); Chinese is typed
+once into an empty rich editor (#1877). WhatsApp through the Cloud API waits
+until after 2.0. Stable is 1.8.8. See [1.8.9b19 notes](docs/releases/1.8.9b19.md).
+
+- 1.8.9b19 (fail closed with nobody to ask; allowed: false denies, deny beats allow; SKILL.md edits are grants; Microsoft full consent with core fallback and --core; OneNote tool and co onenote; session-owned task and recurring watches; web_search/web_fetch and co search/co fetch; outlook reply --all without self-Cc; listener keeps --raw and logs every exit; wiki init 90-day map and private mail materials; Investigation line names searched sources only; finished investigation waits for the notebook lock; superseded defaults read as current; Chromium 154 and native screen; CJK paste judged by any change; whatsapp-cloud reverted to after 2.0.)
 
 1.8.9b18 is an opt-in preview after 1.8.9b17. The Wiki's person and project
 page skills were evolved against `co benchmark` suites, the page validator
