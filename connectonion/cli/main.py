@@ -1678,10 +1678,11 @@ _INBOX_IDS = {
     "whatsapp": ("61412345678@s.whatsapp.net", "3EB0C127D8F1A2B4E5F6"),
     "telegram": ("-1001234567890", "-1001234567890.42"),  # "<chat>.<message_id>"
     "discord": ("1180123456789012345", "1180123987654321098"),
+    "slack": ("C0123456789", "C0123456789:1727500000.123456"),  # "<channel>:<ts>"
 }
 
 
-# Inbox providers: feishu, lark, whatsapp, telegram. One directory per provider under
+# Inbox providers: feishu, lark, whatsapp, telegram, discord, slack. One directory per provider under
 # ~/.co/inbox/, the same nine verbs on each. The tool knows nothing about
 # agents; anything that can read a file consumes it (DD-063).
 def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = None,
@@ -1851,6 +1852,10 @@ app.add_typer(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen
 # Experimental: ported in #1674 and tested against fakes only, never a live Gateway.
 app.add_typer(_inbox_group("discord", "Experimental: Discord bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="discord",
               short_help="Experimental: Discord bot as an inbox: listen, receive, send, reply.")
+# Slack over Socket Mode: the same outbound-WebSocket shape as Discord, the same
+# dependency. Experimental for 1.8.9: tested against fakes, never a live workspace.
+app.add_typer(_inbox_group("slack", "Experimental: Slack bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="slack",
+              short_help="Experimental: Slack bot as an inbox: listen, receive, send, reply.")
 _whatsapp_app = _inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply. Sends as your linked account.",
                              writes=True)
 _whatsapp_groups = _typer_app(

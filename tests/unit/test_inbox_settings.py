@@ -48,10 +48,10 @@ class TestReadingTheFile:
         assert configured_channels(tmp_path / ".co") == []
 
     def test_an_unknown_channel_names_the_ones_that_exist(self, tmp_path):
-        co = host_yaml(tmp_path, "listen:\n  slack: {}\n")
+        co = host_yaml(tmp_path, "listen:\n  irc: {}\n")
         with pytest.raises(ValueError) as raised:
             configured_channels(co)
-        assert "slack" in str(raised.value) and "feishu" in str(raised.value)
+        assert "irc" in str(raised.value) and "feishu" in str(raised.value)
 
     def test_a_broken_file_says_so_rather_than_listening_to_nothing(self, tmp_path):
         # Silently starting with no channels is the failure that looks like

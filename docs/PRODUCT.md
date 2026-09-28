@@ -377,6 +377,9 @@ Worth saying out loud on any page that sells to a business:
 - `co discord listen / receive / send / reply / consume` (`inbox/discord.py`) is
   wired and unit-tested against a fake Gateway only; no live bot has connected
   (#341). A preview, not a claim.
+- `co slack listen / receive / send / reply / consume` (`inbox/slack.py`) is
+  wired and unit-tested against a fake Socket Mode connection only; no live
+  workspace has connected. Experimental in 1.8.9, a preview, not a claim.
 - `co feishu listen / receive / send / reply` (`cli/commands/listen_commands.py`,
   `inbox/`), and the consumers that answer with an agent (`co ai --listen`, the
   Host's inbox lifespan), are wired and unit-tested but have not passed the live

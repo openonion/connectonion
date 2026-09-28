@@ -27,7 +27,7 @@ def listing():
 
 def test_wiki_and_claude_are_marked_experimental_in_the_command_list():
     commands = listing()
-    for name in ("wiki", "claude", "discord", "tiktok"):
+    for name in ("wiki", "claude", "discord", "slack", "tiktok"):
         assert "Experimental:" in commands[name], commands.get(name)
 
 
@@ -42,7 +42,7 @@ def test_co_commands_and_each_group_help_say_it_too():
     # and from `co discord --help` (found testing 1.8.8b7).
     register = CliRunner().invoke(cli_main.app, ["commands"]).output
     lines = {line.split("  ")[0].strip(): line for line in register.splitlines() if line.startswith("co ")}
-    for name in ("claude", "discord", "tiktok"):
+    for name in ("claude", "discord", "slack", "tiktok"):
         assert "Experimental" in lines[f"co {name}"], lines.get(f"co {name}")
         page = CliRunner().invoke(cli_main.app, [name, "--help"], env={"COLUMNS": "200"}).output
         assert "Experimental" in re.sub(r"\x1b\[[0-9;]*m", "", page)

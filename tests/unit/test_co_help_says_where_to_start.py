@@ -43,7 +43,7 @@ def _bare_rows():
 
 def test_bare_co_labels_the_same_commands_experimental():
     rows = _bare_rows()
-    for name in ("wiki", "claude", "discord", "tiktok"):
+    for name in ("wiki", "claude", "discord", "slack", "tiktok"):
         assert "Experimental:" in rows[name], rows[name]
     assert "plus experimental listen" in rows["telegram"], rows["telegram"]
 

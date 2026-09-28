@@ -251,7 +251,7 @@ chat (#1856).
 - `sent.jsonl` records the caption as `text` and the attachment as
   `media: {kind, path, size}`, so `log` shows what went out.
 
-`co feishu send`, `co lark send` and `co discord send` accept the same two
+`co feishu send`, `co lark send`, `co discord send` and `co slack send` accept the same two
 options and refuse them, sending nothing; only WhatsApp implements them so far.
 
 ## The protocol snapshot

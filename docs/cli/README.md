@@ -367,6 +367,20 @@ OpenOnion credential. Your own bot's token lives in `~/.co/keys.env` as
 `DISCORD_BOT_TOKEN`, and the Message Content intent must be on. See
 [discord.md](discord.md).
 
+#### `co slack` - A Slack App as a Directory of Files (Experimental)
+
+```bash
+co slack listen                        # Socket Mode connection; every message → ~/.co/inbox/slack/
+co slack receive                       # next message as one JSON line
+echo "on it" | co slack reply C0123456789:1727500000.123456
+co slack consume -- claude -p
+```
+
+Experimental, like `co discord`: the same verbs, over Slack's Socket Mode, an
+outbound WebSocket, so no public URL and no port. Your own app's two tokens live
+in `~/.co/keys.env` as `SLACK_APP_TOKEN` (`xapp-`) and `SLACK_BOT_TOKEN`
+(`xoxb-`). See [slack.md](slack.md).
+
 ---
 
 #### `co gmail` - Send & Read Gmail
