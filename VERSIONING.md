@@ -375,7 +375,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b19
+## Current Version: 1.8.9b20
+
+1.8.9b20 is an opt-in preview after 1.8.9b19. OneNote works on a personal
+Microsoft account: the consent also asks for `Notes.ReadWrite`, the only
+OneNote scope outlook.com accepts, and a refusal says why instead of
+"authorization expired" (#1910, oo-api v0.1.26). `co slack` joins the
+experimental inbox providers beside `co discord` and `co telegram` (#1909), and
+a Google library's Python 3.10 notice no longer prints above every command.
+Stable is 1.8.8. See [1.8.9b20 notes](docs/releases/1.8.9b20.md).
+
+- 1.8.9b20 (OneNote accepts Notes.ReadWrite or Notes.ReadWrite.All; a 401 without Notes.ReadWrite names the personal-account cause; OneNote waits 60 s, a network failure is a sentence not a traceback, U+FFFC becomes a line break; experimental co slack over Socket Mode; google.api_core FutureWarning filtered in the CLI.)
+
 
 1.8.9b19 is the feature-complete preview of the 1.8.9 line: everything that
 was already in a pull request is in it, and from here 1.8.9 takes fixes only

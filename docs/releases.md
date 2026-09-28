@@ -22,21 +22,24 @@ python -m pip install --upgrade 'connectonion==1.8.8'
 
 ## Current preview
 
-Beta **1.8.9b19** is the feature-complete preview of 1.8.9: from here the
-line takes fixes only. Chat and unattended turns fail closed and
-`allowed: false` denies; `co auth microsoft` asks once for everything a user
-can grant, with `co onenote`; `co ai` gets session watches and web search
-(`co search`, `co fetch`); `co outlook reply --all` stays in the thread; the
-Wiki keeps a 90-day map and private mail; the paid browser is Chromium 154;
-Chinese is typed once into an empty rich editor. Earlier previews in this line
-made the Wiki's pages finish (b18), made Gemini 3.8 the default model again
-(b17; at a zero balance `co status` names the free `co/gemma` and a local
-`ollama/<model>`), added WhatsApp pictures and files (b16), budgeted the Wiki
-on the Codex week (b15), `co browser import` and a local `co wiki open` (b13).
-See [1.8.9b19 release notes](releases/1.8.9b19.md).
+Beta **1.8.9b20** makes OneNote work on a personal Microsoft account (the
+consent now asks for `Notes.ReadWrite`; sign in again if you did on b19) and
+adds `co slack` as an experimental inbox beside `co discord` and
+`co telegram`. It follows **1.8.9b19**, the feature-complete preview of 1.8.9:
+chat and unattended turns fail closed and `allowed: false` denies;
+`co auth microsoft` asks once for everything a user can grant, with
+`co onenote`; `co ai` gets session watches and web search (`co search`,
+`co fetch`); `co outlook reply --all` stays in the thread; the Wiki keeps a
+90-day map and private mail; the paid browser is Chromium 154; Chinese is typed
+once into an empty rich editor. Earlier previews in this line made the Wiki's
+pages finish (b18), made Gemini 3.8 the default model again (b17; at a zero
+balance `co status` names the free `co/gemma` and a local `ollama/<model>`),
+added WhatsApp pictures and files (b16), budgeted the Wiki on the Codex week
+(b15), `co browser import` and a local `co wiki open` (b13). See
+[1.8.9b20 release notes](releases/1.8.9b20.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.9b19'
+python -m pip install --upgrade 'connectonion==1.8.9b20'
 co --version
 ```
 

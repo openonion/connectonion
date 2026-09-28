@@ -29,6 +29,13 @@ NOTES_SCOPES = ("Notes.ReadWrite", "Notes.ReadWrite.All")
 
 # With .All alone an outlook.com token reads mail while OneNote answers 401
 # 40001. Saying "expired" sent the person round the same sign-in forever.
+# The OneNote API is slow: listing 20 pages of a real "Quick Notes" section
+# took 6-8 s, past httpx's 5 s default, and the ReadTimeout reached the
+# terminal as a traceback.
+TIMEOUT = 60
+NO_ANSWER = ("OneNote did not answer within {seconds} s (the OneNote API is slow on large sections). "
+             "Try again: co onenote ls")
+
 PERSONAL_ACCOUNT_REFUSAL = (
     "OneNote refused this sign-in (HTTP 401). A personal Microsoft account (outlook.com) needs "
     "Notes.ReadWrite, which this sign-in did not ask for; co auth microsoft asks for it since 1.8.9b20.\n"
@@ -63,10 +70,19 @@ class OneNote:
     def _json(self, endpoint: str) -> dict:
         from ..provider_credentials import ProviderCredentialError
         try:
-            return self._graph._request("GET", endpoint)
+            return self._graph._request("GET", endpoint, timeout=TIMEOUT)
+        except httpx.TransportError as error:
+            raise ValueError(NO_ANSWER.format(seconds=TIMEOUT)) from error
         except ProviderCredentialError as error:
             self._refuse_personal_account(getattr(error, "code", None) == "reauth_required")
             raise
+
+    @staticmethod
+    def _send(method: str, url: str, headers: dict, content: bytes | None) -> httpx.Response:
+        try:
+            return httpx.request(method, url, headers=headers, content=content, timeout=TIMEOUT)
+        except httpx.TransportError as error:
+            raise ValueError(NO_ANSWER.format(seconds=TIMEOUT)) from error
 
     def _refuse_personal_account(self, unauthorized: bool) -> None:
         if unauthorized and self._personal_scope_missing:
@@ -79,16 +95,16 @@ class OneNote:
         headers = {"Authorization": f"Bearer {self._graph._get_access_token()}"}
         if content_type:
             headers["Content-Type"] = content_type
-        response = httpx.request(method, url, headers=headers, content=content)
+        response = self._send(method, url, headers, content)
         if response.status_code == 401 and self._graph._credentials.get("REFRESH_TOKEN") is not None:
             self._graph._access_token = self._graph._refresh_via_backend(
                 self._graph._credentials.get("REFRESH_TOKEN"))
             headers["Authorization"] = f"Bearer {self._graph._access_token}"
-            response = httpx.request(method, url, headers=headers, content=content)
+            response = self._send(method, url, headers, content)
         if response.status_code == 401 and self._graph._credentials.get("REFRESH_TOKEN") is None:
             self._graph._access_token = self._graph._refresh_via_backend(None)
             headers["Authorization"] = f"Bearer {self._graph._access_token}"
-            response = httpx.request(method, url, headers=headers, content=content)
+            response = self._send(method, url, headers, content)
         self._refuse_personal_account(response.status_code == 401)
         if response.status_code not in (200, 201):
             from ..provider_credentials import ProviderCredentialError
@@ -179,7 +195,8 @@ def _page_text(page_html: str) -> str:
     text = re.sub(r"(?is)<img\b[^>]*>", "\n[image]\n", text)
     text = re.sub(r"(?is)<object\b[^>]*\bdata-attachment=['\"]([^'\"]*)['\"][^>]*>", r"\n[attachment: \1]\n", text)
     text = re.sub(r"(?is)</?(p|div|h[1-6]|li|br|tr)\b[^>]*>", "\n", text)
-    text = html.unescape(re.sub(r"(?s)<[^>]+>", "", text)).replace("\xa0", " ")
+    # U+FFFC is where OneNote keeps the line breaks of code clipped from the web.
+    text = html.unescape(re.sub(r"(?s)<[^>]+>", "", text)).replace("\xa0", " ").replace("\ufffc", "\n")
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if title and title.group(1).strip() and (not lines or lines[0] != title.group(1).strip()):
         lines.insert(0, html.unescape(title.group(1).strip()))

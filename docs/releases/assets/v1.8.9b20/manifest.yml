@@ -1,0 +1,9 @@
+version: v1.8.9b20
+images:
+  - file: slack-help.png
+    alt: "Terminal co slack --help: experimental Slack bot inbox with listen, receive, send, reply, done, check, ls, chats, log and consume"
+    caption: "co slack, new and experimental in b20, from its own help."
+    scenario: "scripts/capture_189b20_release_cli.py runs co slack --help from this checkout in a disposable HOME"
+    viewport: "96-column dark terminal capture"
+    commit: 5b26d96a
+    source_run: "scripts/capture_189b20_release_cli.py"

@@ -21,6 +21,22 @@ if sys.platform == "win32":
         if hasattr(_stream, "reconfigure"):
             _stream.reconfigure(encoding="utf-8", errors="replace")
 
+import warnings
+
+
+def _quiet_dependency_notices() -> None:
+    """Hide notices meant for a dependency's maintainers, not for a co user.
+
+    google.api_core warns at import that it drops Python 3.10 on 2026-10-04;
+    on 1.8.9b19 that FutureWarning and its source line printed above the
+    output of every command that loaded a Google tool. Only that module is
+    silenced: every other warning, ours included, still shows.
+    """
+    warnings.filterwarnings("ignore", category=FutureWarning, module=r"google\.api_core\..*")
+
+
+_quiet_dependency_notices()
+
 import re
 from pathlib import Path
 from typing import List, Optional
