@@ -72,7 +72,7 @@ administrator (Microsoft's permissions reference, delegated
 | Mail | `Mail.ReadWrite`, `Mail.Send`, `Mail.Read.Shared` | Read, search, mark read, archive, send; read shared mailboxes |
 | Calendar | `Calendars.Read`, `Calendars.ReadWrite`, `Calendars.Read.Shared` | Read availability, create and update events; read shared calendars |
 | Contacts, people | `Contacts.ReadWrite`, `People.Read`, `User.ReadBasic.All` | Add and search contacts; the people you work with most; names in your organisation's directory |
-| **OneNote** | `Notes.ReadWrite.All` | List, read and create pages in your notebooks and ones shared with you, including Class Notebooks |
+| **OneNote** | `Notes.ReadWrite`, `Notes.ReadWrite.All` | List, read and create pages in your notebooks; on a work or school account also ones shared with you, including Class Notebooks. A personal account accepts only `Notes.ReadWrite` |
 | **OneDrive, SharePoint** | `Files.Read.All`, `Sites.Read.All` | Read your files, files shared with you, and documents on SharePoint sites you can open |
 | **Teams** | `Chat.Read`, `Team.ReadBasic.All`, `Channel.ReadBasic.All`, `OnlineMeetings.Read` | Read your 1:1 and group chats, team and channel names, meeting details |
 | **To Do**, settings | `Tasks.ReadWrite`, `MailboxSettings.Read` | Your task lists; your time zone and working hours |
@@ -96,8 +96,8 @@ co auth microsoft          # everything above; offers --core if refused
 co auth microsoft --core   # mail, calendar, contacts and people only
 ```
 
-Each tool checks its own scope. `OneNote()` or `co onenote` without
-`Notes.ReadWrite.All` says so and names `co auth microsoft`, never a bare
+Each tool checks its own scope. `OneNote()` or `co onenote` without a
+OneNote scope says so and names `co auth microsoft`, never a bare
 Graph 403. At a university, "blocked by your organisation" usually means IT
 has to approve the OpenOnion app once.
 

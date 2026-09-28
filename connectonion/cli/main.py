@@ -2357,7 +2357,7 @@ app.add_typer(syno_app, name="syno")
 
 # OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.
 onenote_app = _typer_app(
-    help="Your OneNote notebooks: list, read and create pages. Needs Notes.ReadWrite.All from co auth microsoft. ls, pages and read are Read-only.",
+    help="Your OneNote notebooks: list, read and create pages. Needs OneNote access from co auth microsoft. ls, pages and read are Read-only.",
     epilog='Example:  co onenote ls  |  co onenote pages "Lab notes"  |  co onenote read <page id>',
     no_args_is_help=True,
 )

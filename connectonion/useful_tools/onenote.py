@@ -1,11 +1,11 @@
 """
 Purpose: OneNote notebooks for agents and the CLI via Microsoft Graph (#1887)
 LLM-Note:
-  Dependencies: imports from [html, re, httpx, useful_tools/outlook.Outlook] | imported by [useful_tools/__init__.py, cli/commands/onenote_commands.py] | requires Notes.ReadWrite.All from 'co auth microsoft' | tested by [tests/unit/test_onenote.py]
+  Dependencies: imports from [html, re, httpx, useful_tools/outlook.Outlook] | imported by [useful_tools/__init__.py, cli/commands/onenote_commands.py] | requires Notes.ReadWrite (or, work/school, Notes.ReadWrite.All) from 'co auth microsoft' | tested by [tests/unit/test_onenote.py]
   Data flow: OneNote methods → JSON Graph calls go through Outlook's authenticated _request (token refresh, 429/503/504 retries) → page content (HTML in, HTML out) goes through _raw(), which uses the same token and refreshes once on 401 → read_page() turns the page's HTML into text; create_page() escapes the text into paragraphs
   State/Effects: reads MICROSOFT_* credentials | create_page() adds a page to a section; nothing here edits or deletes an existing page
   Integration: exposes OneNote with list_notebooks(), list_sections(notebook), list_pages(section), read_page(page_id), create_page(section, title, text) | a section is found by id or exact name; a name in several notebooks is refused with every match
-  Errors: ValueError naming `co auth microsoft` when Notes.ReadWrite.All is missing, or naming `co onenote ls` for an unknown or ambiguous section | Graph errors surface as ProviderCredentialError like Outlook's
+  Errors: ValueError naming `co auth microsoft` when no OneNote scope was granted, or when OneNote answers 401 to a sign-in without Notes.ReadWrite (a personal account, #1910), or naming `co onenote ls` for an unknown or ambiguous section | Graph errors surface as ProviderCredentialError like Outlook's
 
 OneNote tool: list, read and create pages in the notebooks you can open.
 
@@ -21,7 +21,19 @@ import httpx
 
 from .outlook import Outlook
 
-NOTES_SCOPE = "Notes.ReadWrite.All"
+# Notes.ReadWrite is the only OneNote scope a personal Microsoft account
+# (outlook.com) accepts; Notes.ReadWrite.All is work or school only, and adds
+# notebooks shared with the user and Class Notebooks. Either one is enough (#1910).
+NOTES_SCOPE = "Notes.ReadWrite"
+NOTES_SCOPES = ("Notes.ReadWrite", "Notes.ReadWrite.All")
+
+# With .All alone an outlook.com token reads mail while OneNote answers 401
+# 40001. Saying "expired" sent the person round the same sign-in forever.
+PERSONAL_ACCOUNT_REFUSAL = (
+    "OneNote refused this sign-in (HTTP 401). A personal Microsoft account (outlook.com) needs "
+    "Notes.ReadWrite, which this sign-in did not ask for; co auth microsoft asks for it since 1.8.9b20.\n"
+    "Sign in again:\n  co auth microsoft"
+)
 
 
 class OneNote:
@@ -36,18 +48,29 @@ class OneNote:
         scopes = credentials.get("SCOPES") or ""
         if not scopes:
             credentials.require_configured()
-        if NOTES_SCOPE not in set(scopes.replace(",", " ").split()):
+        granted = set(scopes.replace(",", " ").split())
+        if not granted & set(NOTES_SCOPES):
             raise ValueError(
                 f"Missing Microsoft {NOTES_SCOPE} scope: this sign-in did not ask for OneNote.\n"
                 "Sign in again; since 1.8.9 it asks for OneNote too:\n"
                 "  co auth microsoft"
             )
+        self._personal_scope_missing = NOTES_SCOPE not in granted
         self._graph._access_token = None
 
     # ---- Graph ------------------------------------------------------------
 
     def _json(self, endpoint: str) -> dict:
-        return self._graph._request("GET", endpoint)
+        from ..provider_credentials import ProviderCredentialError
+        try:
+            return self._graph._request("GET", endpoint)
+        except ProviderCredentialError as error:
+            self._refuse_personal_account(getattr(error, "code", None) == "reauth_required")
+            raise
+
+    def _refuse_personal_account(self, unauthorized: bool) -> None:
+        if unauthorized and self._personal_scope_missing:
+            raise ValueError(PERSONAL_ACCOUNT_REFUSAL)
 
     def _raw(self, method: str, endpoint: str, *, content: bytes | None = None,
              content_type: str | None = None) -> httpx.Response:
@@ -66,6 +89,7 @@ class OneNote:
             self._graph._access_token = self._graph._refresh_via_backend(None)
             headers["Authorization"] = f"Bearer {self._graph._access_token}"
             response = httpx.request(method, url, headers=headers, content=content)
+        self._refuse_personal_account(response.status_code == 401)
         if response.status_code not in (200, 201):
             from ..provider_credentials import ProviderCredentialError
             raise ProviderCredentialError(
