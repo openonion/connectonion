@@ -108,7 +108,6 @@ def test_user_site_command_remains_reachable_with_isolated_home(tmp_path, monkey
     monkeypatch.setattr(audit.site, "getuserbase", lambda: str(userbase))
     script = tmp_path / "co"
     script.write_text(
-        f"#!{sys.executable}\n"
         "import os, sys\n"
         f"assert os.environ.get('PYTHONUSERBASE') == {str(userbase)!r}\n"
         "assert os.environ.get('HOME') != os.environ['PYTHONUSERBASE']\n"
@@ -118,8 +117,7 @@ def test_user_site_command_remains_reachable_with_isolated_home(tmp_path, monkey
         "    print('Usage: co [OPTIONS] COMMAND')\n"
         "    print('\\nCommands:\\n  onenote   List pages')\n"
     )
-    script.chmod(0o755)
-    monkeypatch.setattr(audit, "program", lambda _: [str(script)])
+    monkeypatch.setattr(audit, "program", lambda _: [sys.executable, str(script)])
 
     _, checked = audit.audit(["co", "onenote"])
     assert list(checked) == ["co onenote"]
