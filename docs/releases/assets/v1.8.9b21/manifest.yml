@@ -1,0 +1,16 @@
+version: v1.8.9b21
+images:
+  - file: onenote-before-help.png
+    alt: "Previous co onenote help showing section names and full page IDs in the example path"
+    caption: "Before b21, the help path required a quoted section name and a page ID."
+    scenario: "The reviewed b19 co onenote help capture, reused unchanged for before/after context"
+    viewport: "96-column dark terminal capture"
+    commit: 03344ebe
+    source_run: "scripts/capture_189b19_release_cli.py"
+  - file: onenote-numbered-journey.png
+    alt: "Terminal OneNote fixture journey listing numbered sections, listing numbered pages and reading page 1"
+    caption: "In b21, the default path uses numbers; full Graph IDs are hidden unless --ids is requested."
+    scenario: "scripts/capture_189b21_release_cli.py invokes the CLI with non-private fixture notebooks and pages"
+    viewport: "96-column dark terminal capture"
+    commit: 73b36834
+    source_run: "scripts/capture_189b21_release_cli.py"

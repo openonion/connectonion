@@ -375,7 +375,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b20
+## Current Version: 1.8.9b21
+
+1.8.9b21 makes OneNote usable without copying a section or page ID: `co
+onenote ls` numbers sections, `co onenote pages 2` numbers that section's
+pages, and `co onenote read 1` opens a page. Numbers are short-lived and bound
+to the Microsoft account and listing kind; a numbered create confirms its
+target (#1915). Stable remains 1.8.8. See
+[1.8.9b21 notes](docs/releases/1.8.9b21.md).
+
+- 1.8.9b21 (OneNote numbered notebook-to-page navigation, recent pages on the
+  bare command, pinned row lists, guarded numbered create and terminal audit.)
+
+## Previous preview: 1.8.9b20
 
 1.8.9b20 is an opt-in preview after 1.8.9b19. OneNote works on a personal
 Microsoft account: the consent also asks for `Notes.ReadWrite`, the only
