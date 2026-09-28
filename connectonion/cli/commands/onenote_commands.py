@@ -146,7 +146,7 @@ def _run(call, next_command: str, retry_command: str, *, write: bool = False,
                          style="red", markup=False)
         sys.exit(1)
     except OSError:
-        errors.print(f"Could not save or read the OneNote row list. Check ~/.co permissions. Next: {lookup_command}",
+        errors.print(f"Could not save or read the OneNote row list. Check write access to ~/.co. Next: {lookup_command}",
                      style="red", markup=False)
         sys.exit(1)
     except (ValueError, ProviderCredentialError) as exc:
