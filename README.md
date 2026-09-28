@@ -2,9 +2,11 @@
 
 **The agent CLI harness.**
 
-You don't create an OAuth app, add DNS records or write a Playwright script.
-Gmail and Outlook credentials stay on your machine. Works with Claude Code,
-Codex, Cursor, or your own agent.
+Give your agent one CLI for the environment it works in. `co env` shows which
+settings it will use; `co auth microsoft` connects your account; `co outlook`
+reads your inbox. The same pattern reaches Gmail, your browser, files and chat
+apps. Credentials stay on your machine. Works with Claude Code, Codex, Cursor,
+or your own agent.
 
 <p align="center">
   <a href="https://www.connectonion.com/#connections"><img src="https://www.connectonion.com/connections.svg" width="100%" alt="Vector logo wall of co connections: identity and memory; mail and calendar; chat apps; browser and files; Claude Code, Codex, your skills with co skills, shared skills with co sub, Cursor and Kiro; models; agents and servers."></a>
@@ -55,23 +57,48 @@ command-line tool the agent runs in its shell:
   computer; shell, file writes and email stop for approval when a chat UI is
   attached.
 
-## Thirty seconds
+## Start with your environment
 
 ```bash
 pip install connectonion
 
-co init                     # your agent's identity; signs in with $5 of model credit
-co auth google              # Gmail, Drive, Calendar — no Cloud project, no review queue
-co gmail                    # the inbox
-co browser go_to https://example.com   # a real browser that stays logged in
-co email send you@example.com "Hi" "Sent from my agent's own address"
+co init                     # create your global identity and ~/.co/keys.env
+co env                      # inspect the active settings; values stay hidden
+co auth microsoft           # connect your Outlook account once
+co outlook                  # read your inbox
+co commands                 # discover Gmail, browser, files, chat and more
 ```
+
+`co init` does not change the current project. To initialize one, pass its path:
+`co init ./`. Commands still use global settings by default; select a project
+file explicitly with `co --env-file ./.env env` or
+`co --env-file ./.env outlook`. See the [CLI Quick Start](docs/quickstart.md)
+for Google, browser and other examples.
+
+## The aha moment: one task, several environments
+
+Imagine asking your coding agent: “Read the context from my Telegram bot,
+check the official docs, ask a teammate's agent to verify the answer, then
+email me a summary.” The work stays legible: `co telegram receive` brings in
+messages delivered to a bot you control, `co search` and `co fetch` find the
+source, `co call` runs an allowed command on a reachable remote agent, and
+`co email send` sends only to the recipient you specify. A remote agent can
+delegate to Codex through `co ai` only when Codex is installed, authenticated
+and permitted on that machine.
+
+![Read-only co search preview finding and fetching the official Microsoft Graph sendMail documentation](https://www.connectonion.com/aha-search.gif)
+
+The GIF is a **verified read-only** search-and-fetch run, not a recording of
+the whole workflow. `co search` is in the **1.8.9 preview**; Telegram
+`receive` is experimental and needs a configured bot. No remote agent was
+called and no email was sent in this demo. Start with the stable environment
+and Outlook steps above, then see the [CLI Quick Start](docs/quickstart.md).
 
 ## What's in the harness
 
 | | Commands |
 |---|---|
-| **Identity** | `co init` · `co auth` · `co keys` · `co status` · `co trust` |
+| **Identity & environment** | `co init` · `co env` · `co auth` · `co keys` · `co status` · `co trust` |
 | **Browser** | `co browser` — one persistent browser; log in by hand once, 2FA included · `co remote-browser` · `co proxy` |
 | **Mail & calendar** | `co email` (the agent's own address, no DNS) · `co gmail` · `co outlook` · `co gcalendar` |
 | **Chat inboxes** | `co sms` · `co telegram` · `co whatsapp` · `co feishu` · `co lark` |
@@ -301,7 +328,10 @@ Get help, share agents, and discuss with 1000+ builders in our active community.
 
 ---
 
-## 🚀 Quick Start
+## Build your own agent with the Python SDK
+
+The CLI environment and service commands above work without a project. Use
+this path only when you want to write or host an agent of your own.
 
 ### Installation
 
@@ -309,7 +339,7 @@ Get help, share agents, and discuss with 1000+ builders in our active community.
 pip install connectonion
 ```
 
-### Quickest Start - Use the CLI
+### Create a project
 
 ```bash
 # Create a new agent project with one command
@@ -320,7 +350,8 @@ cd my-agent
 python agent.py
 ```
 
-*The CLI guides you through API key setup automatically. No manual `.env` editing needed!*
+For a command-only start, use `co init`, `co env` and a service command as shown
+above; `co create` is for building an agent project.
 
 ### Manual Usage
 
