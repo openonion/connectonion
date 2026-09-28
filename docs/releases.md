@@ -22,7 +22,10 @@ python -m pip install --upgrade 'connectonion==1.8.8'
 
 ## Current preview
 
-Beta **1.8.9b22** fixes `co audit` when the CLI was installed with `pip --user`:
+Beta **1.8.9b23** makes the optional `co audit --review` check whether a
+command can select listed items by a short number or reference instead of
+requiring a full name or provider ID. Commands without listed items are not
+penalized. **1.8.9b22** fixes `co audit` when installed with `pip --user`:
 the auditor now finds OneNote's help pages while still isolating command
 configuration. **1.8.9b21** lets you move through OneNote by row number:
 `co onenote ls`, `co onenote pages 2`, then `co onenote read 1`. The rows
@@ -41,10 +44,10 @@ pages finish (b18), made Gemini 3.8 the default model again (b17; at a zero
 balance `co status` names the free `co/gemma` and a local `ollama/<model>`),
 added WhatsApp pictures and files (b16), budgeted the Wiki on the Codex week
 (b15), `co browser import` and a local `co wiki open` (b13). See
-[1.8.9b22 release notes](releases/1.8.9b22.md).
+[1.8.9b23 release notes](releases/1.8.9b23.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.9b22'
+python -m pip install --upgrade 'connectonion==1.8.9b23'
 co --version
 ```
 

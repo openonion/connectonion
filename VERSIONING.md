@@ -375,7 +375,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b22
+## Current Version: 1.8.9b23
+
+1.8.9b23 adds a conditional short-reference question to `co audit --review`:
+when a command acts on a listed item, its help should show how to select that
+item without copying a long opaque ID or full name (#1927). Commands without
+listed items are not penalized. The OneNote number journey from b21 and the
+installed-CLI audit repair from b22 are included. Stable remains 1.8.8. See
+[1.8.9b23 notes](docs/releases/1.8.9b23.md).
+
+- 1.8.9b23 (terminal audit model review checks whether listed items have a
+  short selector; no change to OneNote's existing numbered navigation.)
+
+## Previous preview: 1.8.9b22
 
 1.8.9b22 repairs `co audit` for commands installed with `pip --user`: the
 auditor still isolates HOME and cwd, but preserves the Python user-package
