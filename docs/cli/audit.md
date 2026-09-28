@@ -10,6 +10,7 @@ Name the command as you would type it:
 ```bash
 co audit co                  # all of co (about 30 s)
 co audit co gmail            # one co group
+co audit co onenote          # OneNote help, including numbered pages and read
 co audit yt-dlp              # any program on PATH
 co audit gh pr --review      # then a model judges each page that passed
 co audit co --json
@@ -69,3 +70,8 @@ without blocking, because a model's verdict varies between runs.
 
 `co wiki` keeps its own reviewed pages (#1656), which are being rewritten
 (#1667); `co audit co` reports their missing examples.
+
+OneNote also has a behavioral terminal journey in `tests/unit/test_onenote.py`:
+`co onenote ls` → `co onenote pages 2` → `co onenote read 1`. The test checks
+that both numbers resolve to the IDs that were displayed, even when two pages
+share a title. The help audit alone cannot verify that mapping.

@@ -2373,42 +2373,54 @@ app.add_typer(syno_app, name="syno")
 
 # OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.
 onenote_app = _typer_app(
-    help="Your OneNote notebooks: list, read and create pages. Needs OneNote access from co auth microsoft. ls, pages and read are Read-only.",
-    epilog='Example:  co onenote ls  |  co onenote pages "Lab notes"  |  co onenote read <page id>',
-    no_args_is_help=True,
+    help="Your OneNote pages. Bare co onenote shows recent pages; ls shows notebooks. Reading is Read-only.",
+    epilog='Example:  co onenote ls  |  co onenote pages 2  |  co onenote read 1',
+    invoke_without_command=True,
 )
 app.add_typer(onenote_app, name="onenote")
 
 
-@onenote_app.command("ls", epilog="Example:  co onenote ls")
-def _onenote_ls():
-    """List your notebooks and their sections, with ids. Read-only."""
+@onenote_app.callback(invoke_without_command=True)
+def _onenote_default(ctx: typer.Context):
+    """Show recent pages when no OneNote subcommand is given."""
+    if ctx.invoked_subcommand is None:
+        from .commands.onenote_commands import handle_onenote_pages
+        handle_onenote_pages()
+
+
+@onenote_app.command("ls", epilog="Example:  co onenote ls  |  co onenote pages 2")
+def _onenote_ls(show_ids: bool = typer.Option(False, "--ids", help="Also show full section IDs for scripts")):
+    """List notebooks with numbered sections for pages/create. Read-only."""
     from .commands.onenote_commands import handle_onenote_ls
-    handle_onenote_ls()
+    handle_onenote_ls(show_ids=show_ids)
 
 
-@onenote_app.command("pages", epilog='Example:  co onenote pages "Lab notes"  |  co onenote pages 0-8ab1… --limit 5')
-def _onenote_pages(section: str = typer.Argument(..., help="Section name (exact) or id, from co onenote ls"),
-                   limit: int = typer.Option(20, "--limit", min=1, max=100, help="At most this many pages")):
-    """List pages in a section, most recently changed first. Read-only."""
+@onenote_app.command("pages", epilog='Example:  co onenote pages  |  co onenote ls; co onenote pages 2')
+def _onenote_pages(section: Optional[str] = typer.Argument(None, help="Section number from co onenote ls, name or id; omit for recent pages"),
+                   limit: int = typer.Option(20, "--limit", min=1, max=100, help="At most this many pages"),
+                   listing: Optional[str] = typer.Option(None, "--listing", help="Optional listing ID to pin a section number"),
+                   show_ids: bool = typer.Option(False, "--ids", help="Also show full page IDs for scripts")):
+    """List recent pages with numbers, across notebooks or in one section. Read-only."""
     from .commands.onenote_commands import handle_onenote_pages
-    handle_onenote_pages(section, limit)
+    handle_onenote_pages(section, limit, listing=listing, show_ids=show_ids)
 
 
-@onenote_app.command("read", epilog="Example:  co onenote read 0-8ab1c2…")
-def _onenote_read(page_id: str = typer.Argument(..., help="Page id, from co onenote pages")):
-    """Print one page as plain text; images and attachments are named. Read-only."""
+@onenote_app.command("read", epilog='Example:  co onenote pages  |  co onenote read 1')
+def _onenote_read(page: Optional[str] = typer.Argument(None, help="Page number from co onenote pages, exact title or id"),
+                  listing: Optional[str] = typer.Option(None, "--listing", help="Optional listing ID to pin a page number")):
+    """Read a numbered page as plain text; omit it to browse first. Read-only."""
     from .commands.onenote_commands import handle_onenote_read
-    handle_onenote_read(page_id)
+    handle_onenote_read(page, listing=listing)
 
 
-@onenote_app.command("create", epilog='Example:  co onenote create "Lab notes" "Week 5" "Results went here."  |  echo text | co onenote create "Lab notes" "Week 6"')
-def _onenote_create(section: str = typer.Argument(..., help="Section name (exact) or id"),
+@onenote_app.command("create", epilog='Example:  co onenote ls  |  co onenote create 2 "Week 5" "Results went here."')
+def _onenote_create(section: str = typer.Argument(..., help="Section number from co onenote ls, exact name or id"),
                     title: str = typer.Argument(..., help="Page title"),
-                    text: Optional[str] = typer.Argument(None, help="Page text; omitted means stdin")):
+                    text: Optional[str] = typer.Argument(None, help="Page text; omitted means stdin"),
+                    listing: Optional[str] = typer.Option(None, "--listing", help="Optional listing ID to pin a section number")):
     """Create a new page in a section; never changes an existing one. Prints its id and link. Writes to OneNote."""
     from .commands.onenote_commands import handle_onenote_create
-    handle_onenote_create(section, title, text)
+    handle_onenote_create(section, title, text, listing=listing)
 
 
 # Outlook command group. `co outlook` (no args) shows the Outlook inbox.

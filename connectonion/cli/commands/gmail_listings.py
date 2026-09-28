@@ -34,7 +34,11 @@ def _modified(path: Path) -> float:
 
 def save_listing(directory: Path, account: str, family: str, ids: list[str], *, now: float | None = None, provider: str = 'gmail') -> str:
     """Persist IDs only; never cache message bodies, subjects, recipients or tokens."""
-    if (provider, family) not in {('gmail','messages'), ('gmail','drafts'), ('gdrive','files'), ('outlook','messages')} or len(ids) > 500 or any(not isinstance(i, str) or not i or len(i) > 256 for i in ids):
+    allowed = {('gmail', 'messages'), ('gmail', 'drafts'), ('gdrive', 'files'),
+               ('outlook', 'messages'), ('onenote', 'sections'), ('onenote', 'pages')}
+    if (provider, family) not in allowed or len(ids) > 500 or any(
+        not isinstance(item, str) or not item or len(item) > 256 for item in ids
+    ):
         raise ListingError('Invalid provider listing. List again.')
     created = time.time() if now is None else now
     token = uuid4().hex
