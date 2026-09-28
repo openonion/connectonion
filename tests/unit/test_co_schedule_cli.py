@@ -42,7 +42,8 @@ async def tick(co_dir, monkeypatch, now):
 
 @pytest.mark.asyncio
 async def test_a_paused_entry_does_not_fire_and_a_resumed_one_does(project, monkeypatch):
-    now = datetime.now(timezone.utc)
+    # Keep the unrelated Monday 09:00 weekly entry out of this pause/resume test.
+    now = datetime(2026, 9, 24, 12, 0, tzinfo=timezone.utc)
     assert co("pause", "sync").exit_code == 0
     assert await tick(project, monkeypatch, now) == []
     assert co("resume", "sync").exit_code == 0
