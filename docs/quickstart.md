@@ -90,7 +90,7 @@ summary.” The commands behind that request are visible:
    authorize that external action.
 
 The [search GIF](https://www.connectonion.com/aha-search.gif) shows a verified,
-read-only search and fetch of Microsoft Graph documentation. The four-step
+read-only search and fetch of the ConnectOnion GitHub repository. The four-step
 scenario is illustrative; the GIF does not show Telegram, a remote agent or an
 email being used.
 

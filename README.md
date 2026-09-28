@@ -86,7 +86,7 @@ source, `co call` runs an allowed command on a reachable remote agent, and
 delegate to Codex separately through `co ai` only when Codex is installed, authenticated
 and permitted on that machine.
 
-![Read-only co search preview finding and fetching the official Microsoft Graph sendMail documentation](https://www.connectonion.com/aha-search.gif)
+![Read-only co search preview finding and fetching the ConnectOnion GitHub repository](https://www.connectonion.com/aha-search.gif)
 
 The GIF is a **verified read-only** search-and-fetch run, not a recording of
 the whole workflow. `co search` is in the **1.8.9 preview**; Telegram
