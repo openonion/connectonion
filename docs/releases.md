@@ -22,15 +22,18 @@ python -m pip install --upgrade 'connectonion==1.8.8'
 
 ## Current preview
 
-Beta **1.8.9b17** makes Gemini 3.8 the default model again; the free `co/gemma`
-and `co/llama` stay selectable and are what `co status` names at a zero
-balance. Earlier previews in this line added WhatsApp pictures and files
-(b16), named people in the Wiki map (b16), budgeted the Wiki on the Codex week
-(b15), `co browser import` and a local `co wiki open` (b13). See
-[1.8.9b17 release notes](releases/1.8.9b17.md).
+Beta **1.8.9b18** makes the Wiki's person and project pages finish: their
+skills read the page and the material, write once and stop, the page validator
+accepts box-drawing flows and grouped citations, and investigation evidence
+travels in the prompt in pieces that fit. Earlier previews in this line made
+Gemini 3.8 the default model again (b17; at a zero balance `co status` names
+the free `co/gemma` and a local `ollama/<model>`), added WhatsApp pictures and
+files (b16), named people in the Wiki map (b16), budgeted the Wiki on the Codex
+week (b15), `co browser import` and a local `co wiki open` (b13). See
+[1.8.9b18 release notes](releases/1.8.9b18.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.9b17'
+python -m pip install --upgrade 'connectonion==1.8.9b18'
 co --version
 ```
 

@@ -92,5 +92,19 @@ Some closes no reconnect can fix, and those end `listen` with exit 3 and the
 thing to do: 4004 (the token was rejected), 4014 (Message Content intent is
 off), and the sharding and intent errors 4010–4013.
 
+## Upgrades reach the listener
+
+A running listener keeps the code it started with, so after an upgrade it
+restarts itself in place once no send is in flight, and `check` names both
+versions while they differ. A listener started before version tracking cannot
+do that; replace it with one command:
+
+```bash
+co discord listen --restart     # stop the running listener, start a background one on the installed code
+```
+
+The details are the same for every provider; see
+[WhatsApp: Upgrades reach the listener](whatsapp.md#upgrades-reach-the-listener).
+
 To have your own agent answer, list the channel in `~/.co/host.yaml` under
 `listen:` as `discord` and run `co ai`, exactly as for Feishu.

@@ -20,7 +20,7 @@ ConnectOnion 1.8 resolves the engine once when the browser daemon starts:
 ```bash
 co browser go_to example.com                  # default: Patchright + system Chrome, $0
 co browser --engine system go_to example.com  # the same thing, said explicitly
-co browser --engine onion go_to example.com   # paid WTF Browser, and only when asked
+co browser --engine wtf go_to example.com     # paid WTF Browser, and only when asked
 ```
 
 Paying is opt-in. An ordinary command never starts a billable session, even on
@@ -44,7 +44,7 @@ artifact endpoint, not the public PyPI placeholder.
 |---|---|
 | `auto` | The default, and what every command that names no engine sends. Resolves to system Chrome without importing Onionwright, reading paid credentials, calling oo-api, or downloading an artifact. Cost: $0. |
 | `system` | The same resolution, requested explicitly. |
-| `onion` | Require the compatible Onion artifact and enough balance. Any preflight failure is returned as a typed error; there is no silent system fallback. |
+| `wtf` | Require the compatible Onion artifact and enough balance. Any preflight failure is returned as a typed error; there is no silent system fallback. `onion`, the older spelling, is still accepted and means the same. |
 
 A daemon is pinned to the engine it started with. When you select an engine
 explicitly, keep that flag on subsequent commands, including `close`. Starting
@@ -61,9 +61,9 @@ The daemon is pinned to its chosen engine. Close it before changing modes:
 
 ```bash
 co browser close
-co browser --engine onion go_to example.com
-co browser --engine onion get_text
-co browser --engine onion close
+co browser --engine wtf go_to example.com
+co browser --engine wtf get_text
+co browser --engine wtf close
 co browser go_to example.com  # a fresh default session is free again
 ```
 

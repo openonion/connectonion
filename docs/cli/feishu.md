@@ -426,6 +426,20 @@ On Linux the equivalent is a `systemd --user` unit with `Restart=always`.
 Either way the process reads `~/.co/keys.env` itself, so the unit carries no
 secrets. The listener writes nothing to stdout; its life is in `log`.
 
+## Upgrades reach the listener
+
+A running listener keeps the code it started with, so after an upgrade it
+restarts itself in place once no send is in flight, and `check` names both
+versions while they differ. A listener started before version tracking cannot
+do that; replace it with one command:
+
+```bash
+co feishu listen --restart     # stop the running listener, start a background one on the installed code
+```
+
+The details are the same for every provider; see
+[WhatsApp: Upgrades reach the listener](whatsapp.md#upgrades-reach-the-listener).
+
 ## What it does not do
 
 It does not decide who may command an agent. Feishu's `group_at_msg` scope
