@@ -200,6 +200,18 @@ element is not editable. For an intentional page-level shortcut, pass
 `allow_non_editable=True`. After `keyboard_type()`, call `take_screenshot()` to
 verify the text landed in the expected field.
 
+Chinese, Japanese, and Korean text is entered by pasting it, the way people
+usually enter it, and only if the field refuses the paste is it composed through
+the IME instead. The paste counts as landed when the field's text changed at all,
+waiting briefly for editors that insert it a moment later. It is not measured by
+how many characters the field grew: an empty rich-text editor (Feishu, Slate,
+Lark) holds a zero-width placeholder that the paste replaces, so the field grows
+by one less than the text, and before 1.8.9b19 that looked like a refusal and the
+same words were typed a second time (#1877). A paste that lands partly (a
+`maxlength` cut, an editor that drops a character) is not retyped either;
+duplicated text under someone's name is worse than a short one, and the
+screenshot after `keyboard_type()` is still the check.
+
 Inspection covers the top-level document and open shadow roots. Focus inside an
 iframe is reported as the iframe and fails the editable check; closed shadow
 roots are likewise opaque. Target the field directly in those cases, and only

@@ -180,6 +180,43 @@ def test_humanized_cjk_typing_uses_trusted_paste_or_ime(stealth_browser):
     assert "paste=true" in d.get("tr", "") or "cs=true" in d.get("tr", "")
 
 
+# A Slate/Feishu-style rich editor: an empty block holds a zero-width placeholder,
+# and the editor handles paste itself, replacing the placeholder with the text.
+RICH_EDITOR_PAGE = (
+    "<!doctype html><meta charset=utf-8>"
+    "<div id=ed contenteditable=true style='position:absolute;left:60px;top:80px;"
+    "width:400px;height:32px;border:1px solid'></div>"
+    "<script>"
+    "const ed=document.getElementById('ed');"
+    "ed.addEventListener('paste',e=>{e.preventDefault();"
+    "const t=e.clipboardData.getData('text/plain');"
+    "const zw=ed.querySelector('[data-zw]'); if(zw) zw.remove();"
+    "const p=ed.querySelector('p'); p.append(t);"
+    "const r=document.createRange(); r.selectNodeContents(p); r.collapse(false);"
+    "const s=getSelection(); s.removeAllRanges(); s.addRange(r);});"
+    "</script>"
+)
+
+
+@pytest.mark.parametrize("prefix", ["", "Q: "], ids=["empty-editor", "non-empty-editor"])
+@pytest.mark.parametrize("text", ["你好，世界", "hello, world"], ids=["chinese", "ascii"])
+def test_keyboard_type_enters_text_once_in_a_rich_editor(stealth_browser, prefix, text):
+    """#1877: in an EMPTY rich editor the paste replaced the zero-width placeholder, so
+    the field grew by one less than the text, the paste was judged refused, and the same
+    Chinese was typed again through the IME."""
+    b = stealth_browser
+    b.go_to("data:text/html," + urllib.parse.quote(RICH_EDITOR_PAGE), purpose="rich editor", who="e2e")
+    _eval(b, "() => { document.getElementById('ed').innerHTML ="
+             " '<p><span data-zw>\\ufeff</span></p>'; }")
+    b.mouse_click(260, 96)
+    if prefix:
+        b.keyboard_type(prefix)
+    b.keyboard_type(text)
+
+    typed = _eval(b, "() => document.getElementById('ed').textContent").replace("﻿", "")
+    assert typed == prefix + text
+
+
 FOCUS_PAGE = """
 <!doctype html><meta charset=utf-8>
 <input id=password type=password value="not-for-output">

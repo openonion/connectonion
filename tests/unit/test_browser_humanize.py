@@ -207,3 +207,87 @@ def test_cursor_position_is_remembered_between_actions():
     humanize.move(page, 410, 410)
     first_step = next(e for e in page.log if e[0] == "move")
     assert abs(first_step[1] - 400) < 30 and abs(first_step[2] - 400) < 30
+
+
+# ---------------------------------------------------------------------------
+# #1877: an empty rich-text editor must not get CJK text twice.
+# ---------------------------------------------------------------------------
+
+ZERO_WIDTH = "﻿"
+
+
+class EditorPage:
+    """A focused rich-text editor with a working OS clipboard.
+
+    An empty Slate/Feishu/Lark editor is not empty text: its block holds a
+    zero-width placeholder that the first insert replaces. That is what made a
+    landed paste grow the field by one less than the text, read as a refusal,
+    and retyped the same words through the IME (#1877).
+    """
+
+    def __init__(self, content, clipboard, accepts_paste=True):
+        self.content = content
+        self.clipboard = clipboard
+        self.accepts_paste = accepts_paste
+        self.log = []
+        self.keyboard = self
+        self.context = self
+
+    def _insert(self, text):
+        self.content = self.content.replace(ZERO_WIDTH, "") + text
+
+    def type(self, ch):
+        self.log.append(("type", ch))
+        self._insert(ch)
+
+    def press(self, key):
+        self.log.append(("press", key))
+        if key in ("Meta+v", "Control+v") and self.accepts_paste:
+            self._insert(self.clipboard["value"])
+
+    def new_cdp_session(self, _page):
+        return self
+
+    def send(self, method, payload):
+        self.log.append(("cdp", method, payload))
+        if method == "Input.insertText":
+            self._insert(payload["text"])
+
+    def evaluate(self, script):
+        # Answer whichever question the paste check asks of the focused field.
+        return len(self.content) if ".length" in script else self.content
+
+
+@pytest.fixture
+def os_clipboard(monkeypatch):
+    clipboard = {"value": "saved"}
+    monkeypatch.setattr(humanize, "_clipboard_set_argv", lambda _text: ["pbcopy"])
+    monkeypatch.setattr(humanize, "_clipboard_get", lambda: clipboard["value"])
+    monkeypatch.setattr(humanize, "_clipboard_set",
+                        lambda text: clipboard.__setitem__("value", text) or True)
+    monkeypatch.setattr(humanize.platform, "system", lambda: "Darwin")
+    humanize._cdp.clear()
+    return clipboard
+
+
+@pytest.mark.parametrize("before", [ZERO_WIDTH, "Q: "], ids=["empty-editor", "non-empty-editor"])
+@pytest.mark.parametrize("text", ["你好，世界", "hello, world", "数据管线测试岗评分最高的3个人是谁？"],
+                         ids=["chinese", "ascii", "issue-1877"])
+def test_keyboard_type_enters_text_once_in_a_rich_editor(os_clipboard, before, text):
+    page = EditorPage(before, os_clipboard)
+
+    humanize.type_text(page, text)
+
+    assert page.content == before.replace(ZERO_WIDTH, "") + text
+    assert os_clipboard["value"] == "saved"  # the user's clipboard comes back
+
+
+def test_a_refused_paste_still_falls_back_to_the_ime(os_clipboard):
+    # A paste-blocked field (password, paste-disabled form) leaves its text unchanged;
+    # that, and only that, sends the run through the IME composition path.
+    page = EditorPage("", os_clipboard, accepts_paste=False)
+
+    humanize.type_text(page, "你好")
+
+    assert page.content == "你好"
+    assert [e[1] for e in page.log if e[0] == "cdp"].count("Input.insertText") == 2
