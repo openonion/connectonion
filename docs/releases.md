@@ -22,24 +22,27 @@ python -m pip install --upgrade 'connectonion==1.8.8'
 
 ## Current preview
 
-Beta **1.8.9b18** makes the Wiki's person and project pages finish: their
-skills read the page and the material, write once and stop, the page validator
-accepts box-drawing flows and grouped citations, and investigation evidence
-travels in the prompt in pieces that fit. Earlier previews in this line made
-Gemini 3.8 the default model again (b17; at a zero balance `co status` names
-the free `co/gemma` and a local `ollama/<model>`), added WhatsApp pictures and
-files (b16), named people in the Wiki map (b16), budgeted the Wiki on the Codex
-week (b15), `co browser import` and a local `co wiki open` (b13). See
-[1.8.9b18 release notes](releases/1.8.9b18.md).
+Beta **1.8.9b19** is the feature-complete preview of 1.8.9: from here the
+line takes fixes only. Chat and unattended turns fail closed and
+`allowed: false` denies; `co auth microsoft` asks once for everything a user
+can grant, with `co onenote`; `co ai` gets session watches and web search
+(`co search`, `co fetch`); `co outlook reply --all` stays in the thread; the
+Wiki keeps a 90-day map and private mail; the paid browser is Chromium 154;
+Chinese is typed once into an empty rich editor. Earlier previews in this line
+made the Wiki's pages finish (b18), made Gemini 3.8 the default model again
+(b17; at a zero balance `co status` names the free `co/gemma` and a local
+`ollama/<model>`), added WhatsApp pictures and files (b16), budgeted the Wiki
+on the Codex week (b15), `co browser import` and a local `co wiki open` (b13).
+See [1.8.9b19 release notes](releases/1.8.9b19.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.9b18'
+python -m pip install --upgrade 'connectonion==1.8.9b19'
 co --version
 ```
 
-The Host watcher shipped in b9 and remains in b11. It is removed from b12;
-Agent-owned watches belong to the session runtime
-tracked in [#1788](https://github.com/openonion/connectonion/issues/1788).
+The Host watcher shipped in b9 and was removed in b12. Watches now belong to
+the session: b19 ships session-owned task and recurring watches (#1809); the
+rest of [#1788](https://github.com/openonion/connectonion/issues/1788) is 1.9.
 
 <details>
 <summary>The preview line that became 1.8.5</summary>

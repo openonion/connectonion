@@ -1,0 +1,23 @@
+version: v1.8.9b19
+images:
+  - file: onenote-help.png
+    alt: "Terminal co onenote --help: ls, pages and read are read-only, create makes a new page and never changes an existing one"
+    caption: "co onenote, new in b19, from its own help."
+    scenario: "scripts/capture_189b19_release_cli.py runs co onenote --help from this checkout in a disposable HOME"
+    viewport: "96-column dark terminal capture"
+    commit: 03344ebe
+    source_run: "scripts/capture_189b19_release_cli.py"
+  - file: search-help.png
+    alt: "Terminal co search --help"
+    caption: "co search, new in b19, from its own help."
+    scenario: "scripts/capture_189b19_release_cli.py runs co search --help from this checkout in a disposable HOME"
+    viewport: "96-column dark terminal capture"
+    commit: 03344ebe
+    source_run: "scripts/capture_189b19_release_cli.py"
+  - file: outlook-reply-help.png
+    alt: "Terminal co outlook reply --help including the --all option"
+    caption: "co outlook reply gains --all, answering a group thread in the same thread."
+    scenario: "scripts/capture_189b19_release_cli.py runs co outlook reply --help from this checkout in a disposable HOME"
+    viewport: "96-column dark terminal capture"
+    commit: 03344ebe
+    source_run: "scripts/capture_189b19_release_cli.py"
