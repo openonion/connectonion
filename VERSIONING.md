@@ -43,7 +43,32 @@ The published stable line is 1.8.x. Maintenance fixes for `release/1.7`
 must still be forward-ported to `main`. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
-## Stable release: 1.8.8
+## Stable release: 1.8.9
+
+Checked on real accounts, released by the owner's decision. Twenty-three
+previews (1.8.9b1–b23) fed it. Unlike 1.8.8 there was no round of strangers
+on empty profiles: the owner chose to ship once the feature-complete preview
+(b19) and its follow-ups had been used on the owner's own accounts, and to fix
+what turns up in 1.9. What was checked live: WhatsApp pictures and files and a
+listener restarting itself across upgrades with its flags kept; `co auth
+microsoft` and OneNote on a personal outlook.com account (which found #1910 and
+three more OneNote bugs, fixed in b20); `co search` and `co fetch`; Chinese
+typed into an empty Feishu editor; every commit through CI on Python 3.10–3.13,
+Windows and macOS.
+
+New and stable: chat and unattended turns fail closed, `allowed: false`
+denies and a skill's frontmatter is a permission file (#1881, #1873);
+`co auth microsoft` asks once for everything a user can grant, with a core
+fallback, and `co onenote` / `OneNote()` with numbered navigation; `co search`
+/ `co fetch`; session watches in `co ai`; `co outlook reply --all`; WhatsApp pictures and files; `co
+audit` for any CLI's help; Gemini 3.8 as the default model with free
+`co/gemma` / `co/llama`; the paid browser on Chromium 154. Shipped and
+labelled Experimental: the Personal Wiki (long-term supported in 1.9.0),
+`co discord`, `co slack`, the Telegram inbox verbs,
+`co claude` and `co tiktok`. WhatsApp through the Cloud API waits until after
+2.0. See [1.8.9 notes](docs/releases/1.8.9.md).
+
+### Superseded: 1.8.8 (stable, published)
 
 Tested by strangers. Twelve previews (1.8.8b1–b12) fed it, and the stable
 claim rests on how they were checked: five testers installed each candidate
@@ -375,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b23
+## Current Version: 1.8.9
+
+1.8.9 is the stable release of the 1.8.9 line: 1.8.9b23 unchanged, released as
+stable. The Personal Wiki and the other experimental commands ship labelled
+as such; the Wiki's long-term support target remains 1.9.0. See
+[1.8.9 notes](docs/releases/1.8.9.md).
+
+- 1.8.9 (stable: b23's code; Development Status Production/Stable.)
+
+Earlier in this line:
 
 1.8.9b23 adds a conditional short-reference question to `co audit --review`:
 when a command acts on a listed item, its help should show how to select that

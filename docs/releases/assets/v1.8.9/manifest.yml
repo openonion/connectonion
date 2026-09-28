@@ -1,0 +1,16 @@
+version: v1.8.9
+images:
+  - file: onenote-help.png
+    alt: "Terminal co onenote --help: list, read and create pages in OneNote notebooks"
+    caption: "co onenote, new and stable in 1.8.9, from its own help."
+    scenario: "scripts/capture_189_release_cli.py runs co onenote --help from this checkout in a disposable HOME"
+    viewport: "96-column dark terminal capture"
+    commit: b865e165
+    source_run: "scripts/capture_189_release_cli.py"
+  - file: slack-help.png
+    alt: "Terminal co slack --help: experimental Slack bot inbox"
+    caption: "co slack ships in 1.8.9 labelled Experimental."
+    scenario: "scripts/capture_189_release_cli.py runs co slack --help from this checkout in a disposable HOME"
+    viewport: "96-column dark terminal capture"
+    commit: b865e165
+    source_run: "scripts/capture_189_release_cli.py"
