@@ -28,13 +28,19 @@
 └── useful_plugins/        # Claude Code plugins and extensions
 ```
 
-**Start here:** `quickstart.md` for a 60-second intro, then use this README for comprehensive reference.
+**Start here:** [`quickstart.md`](quickstart.md) to inspect the selected
+environment and use a service such as Outlook. The Python SDK reference below
+is for building an agent of your own; it is not required to use `co` commands.
 
 ---
 
 ## Context for AI Assistants
 
-You are helping a developer who wants to use ConnectOnion, a Python framework for creating AI agents with behavior tracking. This document contains everything you need to help them write effective ConnectOnion code.
+You are helping someone use the ConnectOnion CLI or build an agent with its
+Python SDK. Begin by asking what the agent needs to reach. Use `co env` to
+inspect configuration sources, `co auth microsoft` followed by `co outlook`
+for Outlook, or the corresponding `co auth google` and `co gmail` commands for
+Gmail. This document also contains the SDK reference for custom agents.
 
 **Key Principles:**
 - Keep simple things simple, make hard things possible
@@ -47,7 +53,10 @@ You are helping a developer who wants to use ConnectOnion, a Python framework fo
 
 ## What is ConnectOnion?
 
-ConnectOnion is a simple Python framework for creating AI agents that can use tools and track their behavior. Think of it as a way to build ChatGPT-like agents with custom tools.
+ConnectOnion is an agent CLI harness with a Python SDK. An agent with shell
+access can use `co` to interact with its environment — mail, browser, files,
+chat and other services — without a custom Python tool. The SDK is there when
+you want to build and host an agent of your own.
 
 **Core Features:**
 - Turn regular Python functions into agent tools automatically
@@ -65,11 +74,18 @@ ConnectOnion is a simple Python framework for creating AI agents that can use to
 pip install connectonion
 ```
 
-**Environment Setup:**
+**Environment Setup (CLI):**
 ```bash
-export OPENAI_API_KEY="your-api-key-here"
-# Or use .env file
+co init                     # global identity and ~/.co/keys.env
+co env                      # inspect settings without revealing values
+co auth microsoft           # connect the Outlook account once
+co outlook                  # use that account's inbox
 ```
+
+`co init ./` adds project files when explicitly requested. A project `.env`
+does not become the CLI default: select it with
+`co --env-file ./.env env` and the same prefix for service commands. The
+selected file replaces global settings rather than filling in from them.
 
 ---
 
