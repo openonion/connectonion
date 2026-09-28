@@ -1223,8 +1223,8 @@ class TestOutlookReplyPositionalCompatibility:
         from connectonion.useful_tools.outlook import Outlook
 
         params = inspect.signature(Outlook.reply).parameters
-        assert list(params) == ["self", "email_id", "body", "send_at", "attachments", "cc", "bcc"]
-        for name in ("attachments", "cc", "bcc"):
+        assert list(params) == ["self", "email_id", "body", "send_at", "attachments", "cc", "bcc", "reply_all"]
+        for name in ("attachments", "cc", "bcc", "reply_all"):
             assert params[name].kind is inspect.Parameter.KEYWORD_ONLY
 
 
@@ -1718,3 +1718,96 @@ def test_list_between_keeps_the_recipients_names(monkeypatch):
     row = outlook.list_between("2026-09-01T00:00:00+00:00", "2026-09-20T00:00:00+00:00")[0]
     assert row["to"] == ["Ody Zhou <ody@g.com>", "bare@g.com"]
     assert row["cc"] == ["dora@g.com"]
+
+
+class TestReplyAll:
+    """reply_all keeps every original recipient; a plain reply reaches only the sender (#1834)."""
+
+    @pytest.fixture(autouse=True)
+    def _env(self, monkeypatch):
+        monkeypatch.setenv("MICROSOFT_ACCESS_TOKEN", "test-token")
+        monkeypatch.setenv("MICROSOFT_ACCESS_TOKEN_EXPIRES_AT", "2099-01-01T00:00:00Z")
+        monkeypatch.setenv("MICROSOFT_SCOPES", "Mail.Read,Mail.Send,Mail.ReadWrite")
+        monkeypatch.setenv("MICROSOFT_REFRESH_TOKEN", "test-refresh")
+        monkeypatch.setenv("MICROSOFT_EMAIL", "me@example.com")
+
+    def _outlook(self):
+        from connectonion.useful_tools.outlook import Outlook
+        return Outlook()
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_reply_all_posts_to_reply_all(self, mock_httpx):
+        mock_httpx.request.return_value = MagicMock(status_code=202, text="")
+
+        self._outlook().reply("msg-1", "Thanks both", reply_all=True)
+
+        method, url = mock_httpx.request.call_args.args[:2]
+        assert method == "POST" and url.endswith("/me/messages/msg-1/replyAll")
+        assert "message" not in mock_httpx.request.call_args.kwargs["json"]
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_reply_all_with_cc_adds_to_the_original_cc(self, mock_httpx):
+        """Setting ccRecipients on replyAll replaces the list, so the original cc is kept explicitly."""
+        original = {"ccRecipients": [{"emailAddress": {"address": "ody@example.com"}}]}
+        mock_httpx.request.side_effect = [
+            MagicMock(status_code=200, text="x", json=MagicMock(return_value=original)),
+            MagicMock(status_code=202, text=""),
+        ]
+
+        self._outlook().reply("msg-1", "Looping in Sam", reply_all=True, cc="sam@example.com")
+
+        calls = mock_httpx.request.call_args_list
+        assert calls[0].args[0] == "GET" and "/me/messages/msg-1" in calls[0].args[1]
+        assert calls[1].args[1].endswith("/me/messages/msg-1/replyAll")
+        cc = [r["emailAddress"]["address"] for r in calls[1].kwargs["json"]["message"]["ccRecipients"]]
+        assert cc == ["ody@example.com", "sam@example.com"]
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_reply_all_with_cc_leaves_the_owner_off_their_own_reply(self, mock_httpx):
+        """replyAll drops the owner from its computed Cc; the explicit list must too."""
+        original = {"ccRecipients": [{"emailAddress": {"address": "Me@Example.com"}},
+                                     {"emailAddress": {"address": "ody@example.com"}}]}
+        mock_httpx.request.side_effect = [
+            MagicMock(status_code=200, text="x", json=MagicMock(return_value=original)),
+            MagicMock(status_code=202, text=""),
+        ]
+
+        self._outlook().reply("msg-1", "Looping in Sam", reply_all=True, cc="sam@example.com")
+
+        body = mock_httpx.request.call_args_list[1].kwargs["json"]
+        cc = [r["emailAddress"]["address"] for r in body["message"]["ccRecipients"]]
+        assert cc == ["ody@example.com", "sam@example.com"]
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_scheduled_reply_all_with_cc_patches_the_merged_cc_onto_the_draft(self, mock_httpx):
+        original = {"ccRecipients": [{"emailAddress": {"address": "ody@example.com"}}]}
+        mock_httpx.request.side_effect = [
+            MagicMock(status_code=200, text="x", json=MagicMock(return_value=original)),
+            MagicMock(status_code=201, text="x", json=MagicMock(return_value={"id": "draft-1"})),
+            MagicMock(status_code=200, text=""),
+            MagicMock(status_code=202, text=""),
+        ]
+
+        self._outlook().reply("msg-1", "Tomorrow", send_at="2026-07-06T15:30:00Z",
+                              reply_all=True, cc="sam@example.com")
+
+        calls = mock_httpx.request.call_args_list
+        assert calls[1].args[1].endswith("/me/messages/msg-1/createReplyAll")
+        assert calls[2].args[0] == "PATCH"
+        cc = [r["emailAddress"]["address"] for r in calls[2].kwargs["json"]["ccRecipients"]]
+        assert cc == ["ody@example.com", "sam@example.com"]
+        assert calls[3].args[1].endswith("/me/messages/draft-1/send")
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_scheduled_reply_all_drafts_with_create_reply_all(self, mock_httpx):
+        mock_httpx.request.side_effect = [
+            MagicMock(status_code=201, text="x", json=MagicMock(return_value={"id": "draft-1"})),
+            MagicMock(status_code=200, text=""),
+            MagicMock(status_code=202, text=""),
+        ]
+
+        self._outlook().reply("msg-1", "Tomorrow", send_at="2026-07-06T15:30:00Z", reply_all=True)
+
+        urls = [c.args[1] for c in mock_httpx.request.call_args_list]
+        assert urls[0].endswith("/me/messages/msg-1/createReplyAll")
+        assert urls[2].endswith("/me/messages/draft-1/send")
