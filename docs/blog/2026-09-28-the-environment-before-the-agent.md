@@ -27,3 +27,11 @@ remain in the Agent and Tools guides, linked as an optional next step. We
 would revisit the ordering if the product's default first task becomes
 writing a custom agent rather than operating an existing environment. For
 now, the first command should help a person see where the agent is standing.
+
+The demonstration needed the same care. A wide terminal GIF was readable on
+the landing page but shrank to tiny type in GitHub's narrow mobile README.
+Repeating a screenshot would preserve the text only by losing the sequence.
+The README now uses a `<picture>` with a portrait GIF for narrow screens and
+static posters for readers who prefer reduced motion. The run itself is a
+read-only `co search ConnectOnion` result, shortened for the frame; Telegram,
+remote agent and email steps remain an explicitly illustrative workflow.

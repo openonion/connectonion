@@ -86,7 +86,12 @@ source, `co call` runs an allowed command on a reachable remote agent, and
 delegate to Codex separately through `co ai` only when Codex is installed, authenticated
 and permitted on that machine.
 
-![Read-only co search preview answering what ConnectOnion is with GitHub and website sources](https://www.connectonion.com/aha-search.gif)
+<picture>
+  <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/aha-search-mobile-poster.png">
+  <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/aha-search-poster.png">
+  <source media="(max-width: 600px)" srcset="https://www.connectonion.com/aha-search-mobile.gif">
+  <img alt="Read-only co search preview answering what ConnectOnion is with GitHub and website sources" src="https://www.connectonion.com/aha-search.gif">
+</picture>
 
 The GIF is a **verified read-only** `co search ConnectOnion` run with a
 source-backed answer, not a recording of the whole workflow. The configured
