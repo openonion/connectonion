@@ -1,0 +1,2 @@
+version: v1.8.9b22
+no_visual_change: "Maintenance-only fix to the audit subprocess environment: CLI layout and OneNote output are unchanged; the installed-package error and successful five-page audit are documented in the release note."

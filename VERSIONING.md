@@ -375,7 +375,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9b21
+## Current Version: 1.8.9b22
+
+1.8.9b22 repairs `co audit` for commands installed with `pip --user`: the
+auditor still isolates HOME and cwd, but preserves the Python user-package
+location so the CLI can print its help (#1920). This restores
+`co audit co onenote` on the owner's installed b21-style environment. Stable
+remains 1.8.8. See [1.8.9b22 notes](docs/releases/1.8.9b22.md).
+
+- 1.8.9b22 (user-site installed command help remains importable during an
+  isolated terminal audit.)
+
+## Previous preview: 1.8.9b21
 
 1.8.9b21 makes OneNote usable without copying a section or page ID: `co
 onenote ls` numbers sections, `co onenote pages 2` numbers that section's
@@ -387,7 +398,7 @@ target (#1915). Stable remains 1.8.8. See
 - 1.8.9b21 (OneNote numbered notebook-to-page navigation, recent pages on the
   bare command, pinned row lists, guarded numbered create and terminal audit.)
 
-## Previous preview: 1.8.9b20
+### Earlier preview: 1.8.9b20
 
 1.8.9b20 is an opt-in preview after 1.8.9b19. OneNote works on a personal
 Microsoft account: the consent also asks for `Notes.ReadWrite`, the only
