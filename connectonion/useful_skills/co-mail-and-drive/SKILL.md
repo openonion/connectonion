@@ -158,6 +158,13 @@ subject, which the recipient saw as a new conversation:
 co outlook reply 3 "Looping in Sam" --listing <listing-id> --cc sam@example.com
 ```
 
+A plain reply reaches only the sender. On a thread with several people, answer
+them all with `--all` — never a fresh `send` with "Re:", which starts a new thread:
+
+```bash
+co outlook reply 3 "Thanks both" --listing <listing-id> --all
+```
+
 Outlook additionally schedules. A scheduled send or reply ends with the cancel
 path; run it as printed rather than looking for a separate command:
 

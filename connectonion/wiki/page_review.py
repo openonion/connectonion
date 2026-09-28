@@ -142,7 +142,10 @@ def restore_runner_fields(record: str, candidate: str, original: str) -> str:
         for label in ('Sessions', 'First seen', 'Last seen'):
             kept = re.search(r'^- ' + re.escape(label) + r': [0-9-]+$', original, re.M)
             if kept:
-                candidate = re.sub(r'^- ' + re.escape(label) + r': .*$', lambda _: kept.group(0), candidate,
+                # A real project candidate kept these values but nested them under
+                # a bullet ("  - Sessions: 2"); the top-level check then refused an
+                # otherwise sound page. Indentation is layout, not a claim.
+                candidate = re.sub(r'^[ \t]*- ' + re.escape(label) + r': .*$', lambda _: kept.group(0), candidate,
                                    count=1, flags=re.M)
     return candidate
 

@@ -34,6 +34,7 @@ from .google_calendar import GoogleCalendar
 from .memory import Memory
 from .microsoft_calendar import MicrosoftCalendar
 from .outlook import Outlook
+from .onenote import OneNote
 from .send_email import send_email
 from .sms import (
     acknowledge_sms,
@@ -85,6 +86,7 @@ __all__ = [
     "GoogleCalendar",
     "Outlook",
     "MicrosoftCalendar",
+    "OneNote",
     "WebFetch",
     "web_search",
     "web_fetch",

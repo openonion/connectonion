@@ -400,3 +400,30 @@ def test_the_paid_engine_still_refuses_its_own_locked_profile(monkeypatch, tmp_p
     with pytest.raises(RuntimeError, match="already in use"):
         browser.open_browser()
     browser.close()
+
+
+def test_the_paid_browser_keeps_its_native_screen(monkeypatch):
+    # set_viewport_size is a device-metrics override: it also rewrites
+    # screen.* and devicePixelRatio, which made the paid browser report a
+    # 1920x1200 1x screen with no menu bar on a Retina Mac (#1889).
+    paid = FakePaidRun()
+    viewports = []
+
+    async def record(viewport):
+        viewports.append(viewport)
+
+    paid.page.set_viewport_size = record
+    playwright = FakePlaywright()
+    monkeypatch.setattr(async_mod, "ASYNC_BROWSER_AVAILABLE", True)
+    monkeypatch.setattr(async_mod, "async_playwright", lambda: FakeManager(playwright))
+
+    async def launch(resolution, owner, key, **kwargs):
+        return paid
+
+    monkeypatch.setattr(async_mod.browser_engine, "launch_async", launch)
+    browser = mod.BrowserAutomation(engine_resolver=lambda mode: onion_resolution())
+
+    browser.open_browser()
+    browser.close()
+
+    assert viewports == []

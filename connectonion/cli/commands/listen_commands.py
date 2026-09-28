@@ -258,6 +258,7 @@ def _restart_listener(name: str, inbox: Inbox) -> None:
     import signal
     pid = inbox.listener_pid()
     if pid and pid > 0:
+        inbox.log(f"stopped by listen --restart (pid {pid})")
         os.kill(pid, signal.SIGTERM)
         for _ in range(100):  # up to 10s for it to let go of the lock
             if inbox.listener_pid() is None:
@@ -270,7 +271,10 @@ def _restart_listener(name: str, inbox: Inbox) -> None:
     new = inbox.ensure_listener(settle=SETTLE_SECONDS)
     if new is None:
         _listener_died(inbox, inbox.listener_exit_code)
-    print(f"listener restarted in the background · pid {new}")
+    flags = " ".join(inbox.listener_flags())
+    # A listener in a tmux pane was replaced by one in the background, which
+    # its operator could not see (#1882); say where the new one runs.
+    print(f"listener restarted in the background · pid {new}" + (f" · {flags}" if flags else ""))
     print_tip(f"Next: co {name} check")
 
 
@@ -293,7 +297,7 @@ def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
         errors.print(f"already listening (pid {inbox.listener_pid()}); one listener per directory", style="yellow")
         sys.exit(1)
     started_with = running_version()
-    inbox.record_listener(started_with)
+    inbox.record_listener(started_with, ["--raw"] if raw else [])
 
     stop = threading.Event()
 
@@ -310,6 +314,16 @@ def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
 
     threading.Thread(target=sweep, daemon=True).start()
     errors.print(f"listening · {inbox.root}", style="dim")
+
+    def terminated(signum, frame):
+        # SIGTERM used to end the process with no line at all: the log showed
+        # only the next listener starting (#1882).
+        inbox.log(f"stopped by {signal.Signals(signum).name}")
+        raise SystemExit(128 + signum)
+    import signal
+    # signal.signal works only in the main thread; the CLI is, an embedder may not be.
+    main = threading.current_thread() is threading.main_thread()
+    previous = signal.signal(signal.SIGTERM, terminated) if main else None
     try:
         p.run(inbox, raw=raw)
     except KeyboardInterrupt:
@@ -332,6 +346,8 @@ def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
         errors.print(f"details: {inbox.logfile}", style="dim")
         sys.exit(1)
     finally:
+        if main:
+            signal.signal(signal.SIGTERM, previous)
         stop.set()
         inbox.log("listener stopped")
         inbox.release_lock()

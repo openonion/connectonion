@@ -235,6 +235,26 @@ def test_start_server_hosts_provided_agent(monkeypatch):
     assert "acp_agent_factory" not in called
 
 
+def test_start_server_binds_session_watch_runtime_outside_host(monkeypatch, tmp_path):
+    called = {}
+    monkeypatch.setattr("connectonion.project.selected_identity_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_mod, "_prepare_owner_onboarding", lambda _: False)
+    monkeypatch.setattr(main_mod.address, "load", lambda _: None)
+    monkeypatch.setattr(main_mod, "host",
+                        lambda value, **kwargs: called.update({"agent": value, **kwargs}))
+
+    main_mod.start_server(
+        SimpleNamespace(name="unused"), model="fake", max_iterations=3,
+        agent_factory=lambda model, iterations, access, turns: SimpleNamespace(
+            name="session-agent"),
+    )
+
+    assert callable(called["agent"])
+    assert called["agent"]()._watch_store.path == tmp_path / "session-watches.sqlite3"
+    assert callable(called["on_agent_startup"])
+    assert callable(called["on_agent_shutdown"])
+
+
 def test_start_server_offers_full_access_without_activating_it(monkeypatch):
     agent = SimpleNamespace(name="agent")
     hosted = {}
