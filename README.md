@@ -119,8 +119,9 @@ host boundary.
 
 The default is `co/gemini-3.8-flash`, routed through the managed gateway
 without exposing Google's key to the client. Out of credits? `co status` says how
-to keep going for free: `co/gemma` or `co/llama` on ConnectOnion's GPU (4,096-token
-context, one shared inference slot), or a local model as `ollama/<model>`. Select `gemini-3.8-flash` to use
+to keep going for free: `co/gemma`, Google's Gemma on ConnectOnion's GPU (4,096-token
+context, one shared inference slot), or a local model as `ollama/<model>`. The free
+`co/llama` works the same way. Select `gemini-3.8-flash` to use
 your own `GEMINI_API_KEY`, or explicitly choose an OpenAI, Anthropic, or older
 Gemini model. Provider failures do not silently move a request to another model.
 

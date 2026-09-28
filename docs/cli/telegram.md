@@ -115,5 +115,19 @@ reader, so two listeners would each see a random half of the conversation.
 `co telegram edit`, `delete` and `react` exist so the verbs match every other
 provider, and say plainly that they are not wired up for Telegram yet.
 
+## Upgrades reach the listener
+
+A running listener keeps the code it started with, so after an upgrade it
+restarts itself in place once no send is in flight, and `check` names both
+versions while they differ. A listener started before version tracking cannot
+do that; replace it with one command:
+
+```bash
+co telegram listen --restart     # stop the running listener, start a background one on the installed code
+```
+
+The details are the same for every provider; see
+[WhatsApp: Upgrades reach the listener](whatsapp.md#upgrades-reach-the-listener).
+
 To have your own agent answer, list the channel in `~/.co/host.yaml` under
 `listen:` as `telegram` and run `co ai`, exactly as for Feishu.

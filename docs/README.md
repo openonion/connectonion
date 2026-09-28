@@ -1710,7 +1710,7 @@ Reflect in 1-2 sentences on what we learned:"""
 
         reflection_text = llm_do(
             prompt,
-            model="co/gpt-4o",
+            model="co/gpt-5",
             temperature=0.3,
             system_prompt="You reflect on tool execution results to generate insights."
         )

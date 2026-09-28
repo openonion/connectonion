@@ -116,7 +116,6 @@ result = llm_do(
 ```python
 # OpenAI models (via managed keys)
 llm_do("Hello", model="co/gpt-5")
-llm_do("Hello", model="co/gpt-4o-mini")
 llm_do("Hello", model="co/o4-mini")
 
 # Google Gemini models (via managed keys)
@@ -124,8 +123,7 @@ llm_do("Hello", model="co/gemini-3.8-flash")
 llm_do("Hello", model="co/gemini-3.7-flash")  # Explicit rollback
 
 # Anthropic Claude models (via managed keys)
-llm_do("Hello", model="co/claude-sonnet-4-5")
-llm_do("Hello", model="co/claude-haiku-4-5")
+llm_do("Hello", model="co/claude-sonnet-4")
 ```
 
 ### Structured Output Model Compatibility
@@ -145,9 +143,9 @@ class Answer(BaseModel):
     result: int
 
 # Works with all providers
-llm_do("What is 2+2?", output=Answer, model="co/gpt-4o-mini")      # ✅
+llm_do("What is 2+2?", output=Answer, model="co/o4-mini")      # ✅
 llm_do("What is 2+2?", output=Answer, model="co/gemini-3.8-flash") # ✅
-llm_do("What is 2+2?", output=Answer, model="co/claude-sonnet-4-5") # ✅
+llm_do("What is 2+2?", output=Answer, model="claude-sonnet-4-5") # ✅ your own key
 
 # Legacy Claude models do NOT support structured output
 # llm_do("What is 2+2?", output=Answer, model="co/claude-sonnet-4") # ❌

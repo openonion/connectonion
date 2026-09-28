@@ -28,7 +28,7 @@ Agent(
   - `None`: Uses default prompt
 - **api_key** (`Optional[str]`): OpenAI API key (if not using custom LLM)
 - **model** (`str`): Model to use (default: "co/gemini-3.8-flash")
-  - Managed keys: `co/gemini-3.8-flash`, `co/gpt-4o-mini`, `co/claude-sonnet-4-5`
+  - Managed keys: `co/gemini-3.8-flash`, `co/o4-mini`, `co/claude-sonnet-4`
   - Your own key: `gpt-4o-mini`, `claude-sonnet-4-5`, `gemini-3.8-flash`
 
 ### System Prompt Options
@@ -242,7 +242,7 @@ llm = create_llm("claude-sonnet-4-5") # → AnthropicLLM
 llm = create_llm("gemini-3.8-flash")  # → GeminiLLM
 
 # ConnectOnion managed keys (co/ prefix)
-llm = create_llm("co/gpt-4o-mini")    # → OpenOnionLLM
+llm = create_llm("co/o4-mini")    # → OpenOnionLLM
 llm = create_llm("co/gemini-3.8-flash") # → OpenOnionLLM
 ```
 
@@ -264,9 +264,8 @@ agent = Agent(name="bot", model="co/gemini-3.8-flash")
 4. Response returned in OpenAI-compatible format
 
 **Available co/ models:**
-- `co/gpt-4o-mini`, `co/gpt-4o`, `co/gpt-5`, `co/gpt-5-mini`, `co/gpt-5-nano`, `co/o4-mini`
-- `co/gemini-3.8-flash` (default), `co/gemini-3.7-flash` (rollback), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
-- `co/claude-opus-4-5`, `co/claude-sonnet-4-5`, `co/claude-haiku-4-5`
+- Paid (`PAID_MANAGED_MODELS`, once the account has credits): `co/gpt-5`, `co/o4-mini`, `co/claude-sonnet-4`
+- Free (`FREE_MANAGED_MODELS`): `co/gemini-3.8-flash` (default), `co/llama`, `co/gemma`, `co/gemini-3.7-flash` (rollback), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
 
 **Environment variable:** `OPENONION_API_KEY` (auto-loaded from `.env`)
 

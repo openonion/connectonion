@@ -470,8 +470,8 @@ agent = Agent("bot", model="gemini-3.8-flash")
 
 ```python
 # Use managed keys instead of your own
-agent = Agent("bot", model="co/gpt-4o-mini")
-agent = Agent("bot", model="co/claude-sonnet-4-5")
+agent = Agent("bot", model="co/o4-mini")
+agent = Agent("bot", model="co/claude-sonnet-4")
 ```
 
 ### API Keys
