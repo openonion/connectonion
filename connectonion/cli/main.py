@@ -2374,7 +2374,7 @@ app.add_typer(syno_app, name="syno")
 # OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.
 onenote_app = _typer_app(
     help="Your OneNote pages. Bare co onenote shows recent pages; ls shows notebooks. Reading is Read-only.",
-    epilog='Example:  co onenote ls  |  co onenote pages 2  |  co onenote read 1',
+    epilog='Example:  co onenote ls && co onenote pages 2 && co onenote read 1',
     invoke_without_command=True,
 )
 app.add_typer(onenote_app, name="onenote")
@@ -2388,14 +2388,14 @@ def _onenote_default(ctx: typer.Context):
         handle_onenote_pages()
 
 
-@onenote_app.command("ls", epilog="Example:  co onenote ls  |  co onenote pages 2")
+@onenote_app.command("ls", epilog="Example:  co onenote ls")
 def _onenote_ls(show_ids: bool = typer.Option(False, "--ids", help="Also show full section IDs for scripts")):
     """List notebooks with numbered sections for pages/create. Read-only."""
     from .commands.onenote_commands import handle_onenote_ls
     handle_onenote_ls(show_ids=show_ids)
 
 
-@onenote_app.command("pages", epilog='Example:  co onenote pages  |  co onenote ls; co onenote pages 2')
+@onenote_app.command("pages", epilog='Example:  co onenote pages')
 def _onenote_pages(section: Optional[str] = typer.Argument(None, help="Section number from co onenote ls, name or id; omit for recent pages"),
                    limit: int = typer.Option(20, "--limit", min=1, max=100, help="At most this many pages"),
                    listing: Optional[str] = typer.Option(None, "--listing", help="Optional listing ID to pin a section number"),
@@ -2405,20 +2405,20 @@ def _onenote_pages(section: Optional[str] = typer.Argument(None, help="Section n
     handle_onenote_pages(section, limit, listing=listing, show_ids=show_ids)
 
 
-@onenote_app.command("read", epilog='Example:  co onenote pages  |  co onenote read 1')
+@onenote_app.command("read", epilog='Example:  co onenote read 1')
 def _onenote_read(page: Optional[str] = typer.Argument(None, help="Page number from co onenote pages, exact title or id"),
                   listing: Optional[str] = typer.Option(None, "--listing", help="Optional listing ID to pin a page number")):
-    """Read a numbered page as plain text; omit it to browse first. Read-only."""
+    """Read a numbered page as plain text. Use pages first to get a number, or omit it to browse. Read-only."""
     from .commands.onenote_commands import handle_onenote_read
     handle_onenote_read(page, listing=listing)
 
 
-@onenote_app.command("create", epilog='Example:  co onenote ls  |  co onenote create 2 "Week 5" "Results went here."')
+@onenote_app.command("create", epilog='Example:  co onenote create 2 "Week 5" "Results went here."')
 def _onenote_create(section: str = typer.Argument(..., help="Section number from co onenote ls, exact name or id"),
                     title: str = typer.Argument(..., help="Page title"),
                     text: Optional[str] = typer.Argument(None, help="Page text; omitted means stdin"),
                     listing: Optional[str] = typer.Option(None, "--listing", help="Optional listing ID to pin a section number")):
-    """Create a new page in a section; never changes an existing one. Prints its id and link. Writes to OneNote."""
+    """Create a page in a section numbered by ls; never changes an existing one. Prints its id and link. Writes to OneNote."""
     from .commands.onenote_commands import handle_onenote_create
     handle_onenote_create(section, title, text, listing=listing)
 
@@ -2668,7 +2668,7 @@ def sub_remove(target: str = typer.Argument(..., help="Alias or 0x address to un
                     "co audit co --inventory > base.json  |  co audit co --since base.json --review")
 def audit(
     command: List[str] = typer.Argument(..., help="The command to audit, as you would type it: co, co gmail, yt-dlp, gh pr"),
-    review: bool = typer.Option(False, "--review", help="After the hard rules pass, have a model judge each page: clear, accurate, realistic example, simple. Calls a model"),
+    review: bool = typer.Option(False, "--review", help="After the hard rules pass, have a model judge clarity, effects, example, simplicity, and a short reference when selecting a listed item. Calls a model"),
     since: Optional[Path] = typer.Option(None, "--since", help="Only commands added or changed since an inventory from co audit --inventory"),
     inventory: bool = typer.Option(False, "--inventory", help="Print each command's help fingerprint as JSON, for --since"),
     json_output: bool = typer.Option(False, "--json", help="Findings as JSON"),
