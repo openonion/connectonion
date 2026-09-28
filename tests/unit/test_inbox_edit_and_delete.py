@@ -199,6 +199,32 @@ class TestAProviderWithoutThem:
         err = capsys.readouterr().err
         assert "not implemented" in err and "WhatsApp" in err
 
+    @pytest.mark.parametrize("verb,call", [
+        ("edit", lambda name: listen_commands.handle_edit(name, "om_1", "x")),
+        ("delete", lambda name: listen_commands.handle_delete(name, "om_1")),
+        ("react", lambda name: listen_commands.handle_react(name, "om_1", "👍")),
+    ])
+    @pytest.mark.parametrize("name", ["discord", "telegram", "feishu", "lark"])
+    def test_unsupported_verbs_refuse_without_credentials_before_asking_for_them(
+            self, monkeypatch, capsys, verb, call, name):
+        for env_var in [
+            "DISCORD_BOT_TOKEN",
+            "TELEGRAM_BOT_TOKEN",
+            "FEISHU_APP_ID",
+            "FEISHU_APP_SECRET",
+            "LARK_APP_ID",
+            "LARK_APP_SECRET",
+        ]:
+            monkeypatch.delenv(env_var, raising=False)
+
+        with pytest.raises(SystemExit) as exit_:
+            call(name)
+
+        assert exit_.value.code == 1
+        err = capsys.readouterr().err
+        assert f"co {name} {verb} is not implemented" in err
+        assert "WhatsApp is the only provider with it so far" in err
+
 
 class TestReact:
     """#1633: acknowledge anyone's message, not only the ones addressed to us."""
