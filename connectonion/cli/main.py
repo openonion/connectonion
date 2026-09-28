@@ -1638,28 +1638,38 @@ _INBOX_IDS = {
     "whatsapp": ("61412345678@s.whatsapp.net", "3EB0C127D8F1A2B4E5F6"),
     "telegram": ("-1001234567890", "-1001234567890.42"),  # "<chat>.<message_id>"
     "discord": ("1180123456789012345", "1180123987654321098"),
+    "whatsapp-cloud": ("61412345678", "wamid.HBgLNjE0MTIzNDU2NzgVAgASGBQzQTdGNDk2"),
 }
 
 
-# Inbox providers: feishu, lark, whatsapp, telegram. One directory per provider under
+# Inbox providers: feishu, lark, whatsapp, telegram, discord, whatsapp-cloud. One directory per provider under
 # ~/.co/inbox/, the same nine verbs on each. The tool knows nothing about
 # agents; anything that can read a file consumes it (DD-063).
 def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = None,
-                 with_send: bool = True, writes: bool = False) -> typer.Typer:
+                 with_send: bool = True, writes=False, lacks: tuple = ()) -> typer.Typer:
     """The inbox verbs on a fresh group, or on an existing one that already has
     its own `send`: `co telegram send` shipped first, and its output is part of
     its contract, so Telegram gains the other verbs beside it.
 
     `writes`: the provider implements edit, delete and react. Only WhatsApp
     does; elsewhere the verbs stay (one set of verbs everywhere) but their help
-    says they refuse, instead of promising an id they never print."""
+    says they refuse, instead of promising an id they never print. A tuple
+    names the ones it does implement (`co whatsapp-cloud` reacts and nothing
+    else).
+
+    `lacks`: verbs the platform itself has no operation for, so their help
+    must not promise an endpoint someone could wire up."""
     co, chat, msg = f"co {name}", *_INBOX_IDS[name]
     group = group if group is not None else _typer_app(
         help=help_text,
         epilog=f'Example:  {co} check  |  {co} receive -t 60  |  {co} reply {msg} "On it"')
-    def refuses(what: str) -> Optional[str]:
-        return None if writes else (f"{what} Not implemented for {name.capitalize()} yet: it refuses, "
-                                    "names the API endpoint that would do it, and sends nothing. Read-only.")
+    def refuses(what: str, verb: str) -> Optional[str]:
+        if verb in lacks:
+            return f"{what} The platform has no way to do this: it refuses and sends nothing. Read-only."
+        if writes is True or verb in (writes or ()):
+            return None
+        return (f"{what} Not implemented for {name.capitalize()} yet: it refuses, "
+                "names the API endpoint that would do it, and sends nothing. Read-only.")
 
     @group.command("listen", epilog=f"Example:  {co} listen  |  {co} listen --raw")
     def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl"),
@@ -1718,7 +1728,7 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         from .commands.listen_commands import handle_reply
         handle_reply(name, message_id, text, again=again, plain=plain, image=image, file=file)
 
-    @group.command("edit", cls=NegativeIds, help=refuses("Edit a message this account sent."),
+    @group.command("edit", cls=NegativeIds, help=refuses("Edit a message this account sent.", "edit"),
                    epilog=f'Example:  {co} edit {msg} "Fixed typo"  |  echo "Fixed typo" | {co} edit {msg}')
     def _edit(
         message_id: str = typer.Argument(..., help="Id of a message this account sent"),
@@ -1729,13 +1739,13 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         from .commands.listen_commands import handle_edit
         handle_edit(name, message_id, text, plain=plain)
 
-    @group.command("delete", cls=NegativeIds, help=refuses("Delete a message for everyone."), epilog=f"Example:  {co} delete {msg}")
+    @group.command("delete", cls=NegativeIds, help=refuses("Delete a message for everyone.", "delete"), epilog=f"Example:  {co} delete {msg}")
     def _delete(message_id: str = typer.Argument(..., help="Id of a message to delete for everyone")):
         """Delete a message for everyone. Prints the deletion's id. Deletes it from the chat."""
         from .commands.listen_commands import handle_delete
         handle_delete(name, message_id)
 
-    @group.command("react", cls=NegativeIds, help=refuses("React to a message with an emoji."),
+    @group.command("react", cls=NegativeIds, help=refuses("React to a message with an emoji.", "react"),
                    epilog=f'Example:  {co} react {msg} "👍"  |  {co} react {msg} ""')
     def _react(
         message_id: str = typer.Argument(..., help="Id of any message, received or sent"),
@@ -1845,6 +1855,26 @@ app.add_typer(_whatsapp_app, name="whatsapp")
 # Telegram keeps the `send` it shipped with and gains every other inbox verb on
 # the same group, with the same TELEGRAM_BOT_TOKEN.
 _inbox_group("telegram", "", group=telegram_app, with_send=False)
+
+# The WhatsApp Business Cloud API, a separate provider from `co whatsapp` on
+# purpose: that one is a linked device that can sit in groups a person made;
+# this one is Meta's official API for a business number, with its own
+# credentials, its own inbox directory, and one extra verb to register the
+# webhook routing with O API.
+_whatsapp_cloud_app = _inbox_group(
+    "whatsapp-cloud",
+    "Preview: WhatsApp Business Cloud API as an inbox: bind, listen, receive, send, reply. Sends as your business number.",
+    writes=("react",), lacks=("edit", "delete"))
+
+
+@_whatsapp_cloud_app.command("bind", epilog="Example:  co whatsapp-cloud bind  |  co env set WHATSAPP_CLOUD_BINDING_ID <binding-id>")
+def _whatsapp_cloud_bind():
+    """Register Meta's webhook with O API from WHATSAPP_CLOUD_* variables. Prints the binding id. Creates or replaces this number's binding on O API; sends nothing to WhatsApp."""
+    from .commands.listen_commands import handle_bind
+    handle_bind("whatsapp-cloud")
+
+
+app.add_typer(_whatsapp_cloud_app, name="whatsapp-cloud")
 
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.

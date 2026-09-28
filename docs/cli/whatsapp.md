@@ -44,7 +44,10 @@ sits in the customer group we already made and answers when we @ it", the Cloud
 API has no path to it. This does.
 
 Use the Cloud API instead whenever you can: one-to-one customer messaging,
-notifications, anything you would ship to your own users.
+notifications, anything you would ship to your own users. It is
+`co whatsapp-cloud` (preview), a separate provider with its own credentials and
+its own inbox directory; [whatsapp-cloud.md](whatsapp-cloud.md) has the
+side-by-side comparison.
 
 ## Setup
 

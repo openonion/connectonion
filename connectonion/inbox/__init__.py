@@ -42,6 +42,17 @@ class ListenerStopped(RuntimeError):
     """
 
 
+class ProviderPolicyError(RuntimeError):
+    """The platform's rules forbid this send, and retrying will not change it.
+
+    Different from a failed send because the fix is a person's, not time's:
+    WhatsApp's Cloud API refuses free text once the customer has been silent
+    for 24 hours, and only a pre-approved template or a new message from them
+    reopens it. The command layer exits 3 on it, the "a person has to act"
+    code, so a supervisor that retries on 1 does not retry this.
+    """
+
+
 def reactions_enabled() -> bool:
     """Whether to mark messages at all.
 
@@ -63,6 +74,10 @@ PROVIDERS = {
     "lark": ("connectonion.inbox.feishu", "Feishu", {"domain": "lark"}),
     "whatsapp": ("connectonion.inbox.whatsapp", "WhatsApp", {}),
     "telegram": ("connectonion.inbox.telegram", "Telegram", {}),
+    # Not a second WhatsApp implementation: a different account type. `whatsapp`
+    # is a linked device on a phone number; `whatsapp-cloud` is Meta's Business
+    # Cloud API, with its own credentials and its own inbox directory.
+    "whatsapp-cloud": ("connectonion.inbox.whatsapp_cloud", "WhatsAppCloud", {}),
 }
 
 
@@ -79,4 +94,5 @@ def provider(name: str):
 
 
 __all__ = ["Inbox", "Message", "provider", "PROVIDERS",
-           "SEEN", "ANSWERING", "reactions_enabled", "ListenerStopped"]
+           "SEEN", "ANSWERING", "reactions_enabled", "ListenerStopped",
+           "ProviderPolicyError"]
