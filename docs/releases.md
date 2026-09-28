@@ -13,44 +13,20 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current release
 
-Stable **1.8.8** is the default production channel. See
-[1.8.8 release notes](releases/1.8.8.md).
+Stable **1.8.9** is the default production channel: chat turns fail closed,
+one Microsoft consent with OneNote, web search, watches in `co ai`, WhatsApp
+pictures and files, `co audit`, and Gemini 3.8 as the default model; the
+Personal Wiki, `co slack`, `co discord` and the Telegram inbox verbs ship
+labelled Experimental. See [1.8.9 release notes](releases/1.8.9.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.8'
+python -m pip install --upgrade 'connectonion==1.8.9'
 ```
 
 ## Current preview
 
-Beta **1.8.9b22** fixes `co audit` when the CLI was installed with `pip --user`:
-the auditor now finds OneNote's help pages while still isolating command
-configuration. **1.8.9b21** lets you move through OneNote by row number:
-`co onenote ls`, `co onenote pages 2`, then `co onenote read 1`. The rows
-expire after 15 minutes and stay bound to the selected Microsoft account;
-numbered creation confirms the destination. It follows **1.8.9b20**, which
-made OneNote work on personal
-Microsoft accounts and added experimental `co slack`, and **1.8.9b19**, the
-feature-complete preview of 1.8.9:
-chat and unattended turns fail closed and `allowed: false` denies;
-`co auth microsoft` asks once for everything a user can grant, with
-`co onenote`; `co ai` gets session watches and web search (`co search`,
-`co fetch`); `co outlook reply --all` stays in the thread; the Wiki keeps a
-90-day map and private mail; the paid browser is Chromium 154; Chinese is typed
-once into an empty rich editor. Earlier previews in this line made the Wiki's
-pages finish (b18), made Gemini 3.8 the default model again (b17; at a zero
-balance `co status` names the free `co/gemma` and a local `ollama/<model>`),
-added WhatsApp pictures and files (b16), budgeted the Wiki on the Codex week
-(b15), `co browser import` and a local `co wiki open` (b13). See
-[1.8.9b22 release notes](releases/1.8.9b22.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.8.9b22'
-co --version
-```
-
-The Host watcher shipped in b9 and was removed in b12. Watches now belong to
-the session: b19 ships session-owned task and recurring watches (#1809); the
-rest of [#1788](https://github.com/openonion/connectonion/issues/1788) is 1.9.
+None right now. Stable 1.8.9 supersedes every 1.8.9 preview (b1 through b22);
+the next previews will be 1.9.0, the personal Wiki's long-term release.
 
 <details>
 <summary>The preview line that became 1.8.5</summary>
