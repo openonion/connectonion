@@ -13,7 +13,7 @@ co auth microsoft
 What happens:
 1. Starts a temporary `127.0.0.1` callback with an ephemeral encryption key
 2. Opens Microsoft OAuth in your browser
-3. You authorize Mail + Contacts + Calendar permissions
+3. You authorize Mail, Calendar, Contacts, OneNote, OneDrive, Teams chats and To Do in one consent
 4. Microsoft returns an encrypted result directly to the CLI callback
 5. Only after that succeeds, the CLI saves credentials to local `.env` and global `~/.co/keys.env`
 6. Ready to use Outlook and Microsoft Calendar tools immediately
@@ -62,23 +62,44 @@ MICROSOFT_EMAIL=your.email@outlook.com
 
 ## Permissions Requested
 
-When you run `co auth microsoft`, we request these Microsoft Graph API scopes:
+`co auth microsoft` asks once for everything an agent or the Wiki can use
+(#1887). Every scope below is one you can grant yourself: none needs an
+administrator (Microsoft's permissions reference, delegated
+`AdminConsentRequired: No`).
 
-| Scope | Purpose | What agents can do |
-|-------|---------|-------------------|
-| `Mail.ReadWrite` | Read and manage user emails | Read inbox, search, mark read, archive |
-| `Mail.Send` | Send emails on your behalf | Send emails via Outlook |
-| `Contacts.ReadWrite` | Manage personal Outlook contacts | Add, list, and search contacts |
-| `Calendars.Read` | Read calendar events | Read your calendar to check availability |
-| `Calendars.ReadWrite` | Create/modify calendar events | Create and update events |
-| `User.Read` | Get your profile | Identify which Microsoft account is connected |
-| `offline_access` | Refresh tokens | Keep credentials working without re-auth |
+| Source | Scopes | What agents can do |
+|--------|--------|--------------------|
+| Mail | `Mail.ReadWrite`, `Mail.Send`, `Mail.Read.Shared` | Read, search, mark read, archive, send; read shared mailboxes |
+| Calendar | `Calendars.Read`, `Calendars.ReadWrite`, `Calendars.Read.Shared` | Read availability, create and update events; read shared calendars |
+| Contacts, people | `Contacts.ReadWrite`, `People.Read`, `User.ReadBasic.All` | Add and search contacts; the people you work with most; names in your organisation's directory |
+| **OneNote** | `Notes.ReadWrite.All` | List, read and create pages in your notebooks and ones shared with you, including Class Notebooks |
+| **OneDrive, SharePoint** | `Files.Read.All`, `Sites.Read.All` | Read your files, files shared with you, and documents on SharePoint sites you can open |
+| **Teams** | `Chat.Read`, `Team.ReadBasic.All`, `Channel.ReadBasic.All`, `OnlineMeetings.Read` | Read your 1:1 and group chats, team and channel names, meeting details |
+| **To Do**, settings | `Tasks.ReadWrite`, `MailboxSettings.Read` | Your task lists; your time zone and working hours |
+| Account | `User.Read`, `offline_access` | Which account is connected; stay signed in |
 
-**Privacy**: We only request the permissions needed. The CLI does not expose
-email deletion and cannot access OneDrive or other unrelated services.
+**Left out on purpose:** Teams channel posts (`ChannelMessage.Read.All`) and
+meeting transcripts and recordings. Each needs an administrator's consent, and
+one such scope makes the whole sign-in fail for most school and company
+accounts.
 
-The contact CLI currently exposes only add, list, and search. Microsoft grants
-`Contacts.ReadWrite` because Graph requires that scope to create a contact.
+### When the full sign-in is refused
+
+Microsoft's consent screen is all or nothing: Accept or Cancel. Some
+organisations also block users from granting this much. When that happens,
+`co auth microsoft` says which it was and offers the core set (mail,
+calendar, contacts, the people you work with), which is what it asked for
+before 1.8.9:
+
+```bash
+co auth microsoft          # everything above; offers --core if refused
+co auth microsoft --core   # mail, calendar, contacts and people only
+```
+
+Each tool checks its own scope. `OneNote()` or `co onenote` without
+`Notes.ReadWrite.All` says so and names `co auth microsoft`, never a bare
+Graph 403. At a university, "blocked by your organisation" usually means IT
+has to approve the OpenOnion app once.
 
 ---
 

@@ -285,6 +285,10 @@ def _microsoft_callback_server(provider: str = "Microsoft"):
             ciphertext = params.get("ciphertext", [None])[0]
             if error:
                 result["error"] = error
+                # oo-api's codes for why (#1887): "access_denied AADSTS65004".
+                reason = params.get("reason", [None])[0]
+                if reason:
+                    result["reason"] = reason[:120]
                 status = 400
                 message = f"{provider} authorization was cancelled. You may close this tab.".encode()
             elif ciphertext:
@@ -312,8 +316,23 @@ def _microsoft_callback_server(provider: str = "Microsoft"):
     return server, callback_url, expected_state, result
 
 
-def handle_microsoft_auth():
-    """Authenticate with Microsoft OAuth for Outlook/Calendar access."""
+class _Refused(Exception):
+    """Microsoft sent the browser back without consent; the argument says why."""
+
+
+# What each Microsoft sign-in asks for (#1887). The scope lists live in oo-api;
+# the names here are for the sentences the user reads.
+_MICROSOFT_FULL = "mail, calendar, contacts, OneNote, OneDrive, SharePoint, Teams chats and To Do"
+_MICROSOFT_CORE = "mail, calendar, contacts and the people you work with"
+
+
+def _interactive() -> bool:
+    import sys
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def handle_microsoft_auth(core: bool = False):
+    """Connect Microsoft: everything a user can grant alone, or --core for mail and calendar only."""
 
     # Check if user is authenticated with OpenOnion first
     api_key = load_api_key()
@@ -323,6 +342,47 @@ def handle_microsoft_auth():
         console.print("  [bold]co auth[/bold]     Get your OpenOnion API key\n")
         raise typer.Exit(1)
 
+    profile = "core" if core else "full"
+    while True:
+        try:
+            credentials = _authorize_microsoft(api_key, profile)
+            break
+        except _Refused as refused:
+            if profile == "core":
+                console.print(f"\n❌ Microsoft authorization was cancelled ({refused}).", style="red")
+                raise typer.Exit(1)
+            # Microsoft's consent is all or nothing, and some organisations block
+            # this much; the core set is what worked before 1.8.9 (#1887).
+            console.print(f"\n❌ Microsoft did not grant {_MICROSOFT_FULL} ({refused}).", style="red")
+            console.print("   Cancelled, or your organisation blocks apps from asking for this much;"
+                          " at a university, IT may need to approve OpenOnion once.", style="dim")
+            if _interactive() and typer.confirm(f"Sign in with {_MICROSOFT_CORE} only?", default=True):
+                profile = "core"
+                continue
+            console.print(f"Next: co auth microsoft --core   ({_MICROSOFT_CORE} only)", markup=False)
+            raise typer.Exit(1)
+
+    # Save credentials
+    console.print("\n💾 Saving credentials...", style="cyan")
+
+    from ...environment import selected_env_file
+    env_file = selected_env_file()
+    _save_microsoft_to_env(env_file, credentials)
+    console.print(f"   ✓ Saved to {env_file}", style="green")
+
+    # Success message
+    console.print("\n✅ [bold green]Microsoft account connected![/bold green]")
+    console.print(f"   Email: {credentials['microsoft_email']}", style="green")
+    console.print("\n📧 You can now use Microsoft tools in your agents:")
+    console.print("   [dim]from connectonion import Outlook, MicrosoftCalendar[/dim]")
+    console.print("   [dim]agent = Agent('assistant', tools=[Outlook()])[/dim]\n")
+
+    from ...environment import selected_command
+    console.print(f"Next: {selected_command('co outlook inbox')}", markup=False)
+
+
+def _authorize_microsoft(api_key: str, profile: str) -> dict:
+    """One Microsoft sign-in for `profile` (core or full). Raises _Refused when not granted."""
     api_url = f"{backend_url()}/api/v1/oauth"
     headers = {"Authorization": f"Bearer {api_key}"}
 
@@ -340,6 +400,7 @@ def handle_microsoft_auth():
             params={
                 "handoff_public_key": bytes(handoff_private_key.public_key).hex(),
                 "handoff_url": callback_url,
+                "profile": profile,
             },
             timeout=OAUTH_REQUEST_TIMEOUT_SECONDS,
         )
@@ -368,8 +429,7 @@ def handle_microsoft_auth():
             callback_server.timeout = min(1, max(0, deadline - monotonic()))
             callback_server.handle_request()
         if callback_result.get("error"):
-            console.print("\n❌ Microsoft authorization was cancelled", style="red")
-            raise typer.Exit(1)
+            raise _Refused(callback_result.get("reason") or callback_result["error"])
         if "ciphertext" not in callback_result:
             console.print("\n❌ Authorization timed out", style="red")
             console.print("Please try again with: [bold]co auth microsoft[/bold]\n")
@@ -388,21 +448,4 @@ def handle_microsoft_auth():
         raise typer.Exit(1) from None
     finally:
         callback_server.server_close()
-
-    # Save credentials
-    console.print("\n💾 Saving credentials...", style="cyan")
-
-    from ...environment import selected_env_file
-    env_file = selected_env_file()
-    _save_microsoft_to_env(env_file, credentials)
-    console.print(f"   ✓ Saved to {env_file}", style="green")
-
-    # Success message
-    console.print("\n✅ [bold green]Microsoft account connected![/bold green]")
-    console.print(f"   Email: {credentials['microsoft_email']}", style="green")
-    console.print("\n📧 You can now use Microsoft tools in your agents:")
-    console.print("   [dim]from connectonion import Outlook, MicrosoftCalendar[/dim]")
-    console.print("   [dim]agent = Agent('assistant', tools=[Outlook()])[/dim]\n")
-
-    from ...environment import selected_command
-    console.print(f"Next: {selected_command('co outlook inbox')}", markup=False)
+    return credentials
