@@ -41,6 +41,8 @@ CREDENTIAL_ENV_VARS = (
     ("MISTRAL_API_KEY", "Mistral"),
     ("TELEGRAM_BOT_TOKEN", "Telegram"),
     ("DISCORD_BOT_TOKEN", "Discord"),
+    ("SLACK_APP_TOKEN", "Slack"),
+    ("SLACK_BOT_TOKEN", "Slack"),
 )
 
 OAUTH_CONNECTIONS = (

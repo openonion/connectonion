@@ -228,6 +228,11 @@ def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
             discord_token if reveal else _mask(discord_token, secret=True),
         )
 
+    for variable, label in (("SLACK_APP_TOKEN", "Slack App"), ("SLACK_BOT_TOKEN", "Slack Bot")):
+        slack_token = env_vars.get(variable)
+        if slack_token:
+            sec_table.add_row(label, slack_token if reveal else _mask(slack_token, secret=True))
+
     console.print(Panel(sec_table, title="[bold]Secrets[/bold]", border_style="yellow"))
 
     # --- OAuth Connections ---

@@ -219,7 +219,7 @@ _CO_SUBCOMMAND_EFFECTS = {
 # `react` are visible to a whole chat, `update` notifies everyone invited, and
 # `youtube put` uploads a video; elsewhere `put` is a file into one's own
 # storage and `update` is local. Matched as a prefix of the non-flag words.
-_CO_MESSAGING = ("feishu", "lark", "discord", "whatsapp", "telegram")
+_CO_MESSAGING = ("feishu", "lark", "discord", "slack", "whatsapp", "telegram")
 _CO_PATH_EFFECTS = {
     **{(group, verb): ("external_effect", "ask", "changing a message other people see requires human approval")
        for group in _CO_MESSAGING for verb in ("edit", "react")},

@@ -63,6 +63,8 @@ PROVIDERS = {
     "lark": ("connectonion.inbox.feishu", "Feishu", {"domain": "lark"}),
     "whatsapp": ("connectonion.inbox.whatsapp", "WhatsApp", {}),
     "telegram": ("connectonion.inbox.telegram", "Telegram", {}),
+    # Socket Mode is a WebSocket too; experimental, tested against fakes only.
+    "slack": ("connectonion.inbox.slack", "Slack", {}),
 }
 
 
