@@ -630,11 +630,25 @@ class Inbox:
         """Which version the running listener started with (#1859)."""
         return self.root / "listener.json"
 
-    def record_listener(self, version: str) -> None:
-        payload = {"pid": os.getpid(), "version": version, "started_at": _now_iso()}
+    # The listen flags a replacement listener carries over (#1882). Only these:
+    # the record is a file, and nothing else in it may become argv.
+    LISTEN_FLAGS = ("--raw",)
+
+    def record_listener(self, version: str, flags=()) -> None:
+        payload = {"pid": os.getpid(), "version": version, "started_at": _now_iso(),
+                   "flags": [f for f in flags if f in self.LISTEN_FLAGS]}
         staged = self.listener_file.with_suffix(".json.partial")
         staged.write_text(json.dumps(payload), encoding="utf-8")
         staged.replace(self.listener_file)
+
+    def listener_flags(self) -> list:
+        """The flags the last listener was started with, whatever became of it."""
+        try:
+            record = json.loads(self.listener_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+        flags = record.get("flags") if isinstance(record, dict) else None
+        return [f for f in flags if f in self.LISTEN_FLAGS] if isinstance(flags, list) else []
 
     def listener_version(self, pid) -> Optional[str]:
         """The version `pid` recorded when it started, or None: a listener from
@@ -735,7 +749,9 @@ class Inbox:
         env_file = explicit_env_file()
         if env_file is not None:
             argv += ["--env-file", str(env_file)]
-        argv += [self.provider, "listen"]
+        # With the flags the operator last started it with: a replacement that
+        # came back without --raw stopped the raw archive silently (#1882).
+        argv += [self.provider, "listen", *self.listener_flags()]
         env = dict(os.environ, CO_INBOX_HOME=str(self.root.parent))
         # In the inbox directory: `-m` puts the working directory first on
         # sys.path, and started from inside a connectonion checkout the
