@@ -535,6 +535,21 @@ class AsyncBrowserCore:
     def page(self) -> Optional[Page]:
         return self._pages.get(self._bound_session_key())
 
+    def _reports_native_screen(self) -> bool:
+        """Whether pages keep the browser's own screen instead of an emulated one.
+
+        Playwright implements set_viewport_size with a device-metrics override,
+        which also replaces screen.* and devicePixelRatio: every tab of the paid
+        browser reported a 1920x1200 screen at 1x with availHeight equal to the
+        height -- a Mac with no menu bar and no Retina -- regardless of the real
+        display, and in headless mode it hid the MacBook screen the WTF Browser
+        itself reports (openonion/browser#139). The paid engine exists to be
+        indistinguishable, so it keeps the browser's native metrics; the free
+        engine keeps its fixed layout (tracked separately).
+        """
+        resolution = self._engine_resolution
+        return resolution is not None and resolution.resolved == browser_engine.ONION
+
     def _tab_lock(self, key: Optional[str]) -> asyncio.Lock:
         lock = self._tab_locks.get(key)
         if lock is None:
@@ -605,7 +620,8 @@ class AsyncBrowserCore:
                 if page is None:
                     page = await self.browser.new_page()
                 page.set_default_navigation_timeout(60000)
-                await page.set_viewport_size({"width": 1920, "height": 1200})
+                if not self._reports_native_screen():
+                    await page.set_viewport_size({"width": 1920, "height": 1200})
                 # Attach before the restore navigation below, so a tab that
                 # comes back to life records the request that revived it.
                 self._network.attach(page, key)
