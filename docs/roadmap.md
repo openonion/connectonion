@@ -23,8 +23,8 @@ Merged for the last preview, 1.8.9b19:
   part of [#1788](https://github.com/openonion/connectonion/issues/1788)).
 - OneNote for agents: the SDK, `co onenote`, and one consent for
   `co auth microsoft` ([#1890](https://github.com/openonion/connectonion/pull/1890)).
-- `co whatsapp-cloud`, the WhatsApp Cloud API as its own inbox provider
-  ([#1673](https://github.com/openonion/connectonion/pull/1673)).
+- `co search` and `co fetch`, with the `web_search` and `web_fetch` tools
+  for `co ai` ([#1725](https://github.com/openonion/connectonion/pull/1725)).
 - `co outlook reply --all` ([#1838](https://github.com/openonion/connectonion/pull/1838)),
   a 90-day mail map in `co wiki init` ([#1775](https://github.com/openonion/connectonion/pull/1775)),
   the paid browser on Chromium 154 ([#1812](https://github.com/openonion/connectonion/pull/1812)),
@@ -47,6 +47,12 @@ Merged for the last preview, 1.8.9b19:
   @mentions in group sends
   ([#1862](https://github.com/openonion/connectonion/issues/1862)).
 - The other issues labelled `[1.9]` on GitHub.
+
+## After 2.0
+
+- `co whatsapp-cloud`, the WhatsApp Cloud API as its own inbox provider
+  (oo-api#227). It was merged in #1673 and is being reverted in
+  [#1896](https://github.com/openonion/connectonion/pull/1896) until then.
 
 ## Longer-term work
 
