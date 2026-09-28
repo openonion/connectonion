@@ -278,3 +278,93 @@ async def test_async_scroll_emits_bounded_ticks_with_exact_net_distance(monkeypa
     assert len(deltas) >= 6
     assert all(abs(delta) <= 170 for delta in deltas)
     assert sum(deltas) == 1000
+
+
+# ---------------------------------------------------------------------------
+# #1877: an empty rich-text editor must not get CJK text twice. This is the
+# core `co browser keyboard_type` runs.
+# ---------------------------------------------------------------------------
+
+ZERO_WIDTH = "\ufeff"
+
+
+class EditorPage:
+    """A focused rich-text editor with a working OS clipboard.
+
+    An empty Slate/Feishu/Lark editor holds a zero-width placeholder that the
+    first insert replaces, so a landed paste grows the field by one less than
+    the text. Read as a refusal, that retyped the same words (#1877).
+    """
+
+    def __init__(self, content, clipboard, accepts_paste=True):
+        self.content = content
+        self.clipboard = clipboard
+        self.accepts_paste = accepts_paste
+        self.log = []
+        self.keyboard = self
+        self.context = self
+
+    def _insert(self, text):
+        self.content = self.content.replace(ZERO_WIDTH, "") + text
+
+    async def type(self, character):
+        self.log.append(("type", character))
+        self._insert(character)
+
+    async def press(self, key):
+        self.log.append(("press", key))
+        if key in ("Meta+v", "Control+v") and self.accepts_paste:
+            self._insert(self.clipboard["value"])
+
+    async def new_cdp_session(self, _page):
+        return self
+
+    async def send(self, method, payload):
+        self.log.append(("cdp", method, payload))
+        if method == "Input.insertText":
+            self._insert(payload["text"])
+
+    async def evaluate(self, script):
+        # Answer whichever question the paste check asks of the focused field.
+        return len(self.content) if ".length" in script else self.content
+
+
+@pytest.fixture
+def os_clipboard(monkeypatch):
+    clipboard = {"value": "saved"}
+    monkeypatch.setattr(humanize.rules, "_clipboard_set_argv", lambda _text: ["pbcopy"])
+    monkeypatch.setattr(humanize.rules, "_clipboard_get", lambda: clipboard["value"])
+    monkeypatch.setattr(
+        humanize.rules,
+        "_clipboard_set",
+        lambda text: clipboard.__setitem__("value", text) or True,
+    )
+    monkeypatch.setattr(humanize.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(humanize.asyncio, "sleep", _no_sleep)
+    return clipboard
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("before", [ZERO_WIDTH, "Q: "], ids=["empty-editor", "non-empty-editor"])
+@pytest.mark.parametrize(
+    "text",
+    ["你好，世界", "hello, world", "数据管线测试岗评分最高的3个人是谁？"],
+    ids=["chinese", "ascii", "issue-1877"],
+)
+async def test_async_keyboard_type_enters_text_once_in_a_rich_editor(os_clipboard, before, text):
+    page = EditorPage(before, os_clipboard)
+
+    await humanize.type_text(page, text, asyncio.Lock())
+
+    assert page.content == before.replace(ZERO_WIDTH, "") + text
+    assert os_clipboard["value"] == "saved"
+
+
+@pytest.mark.asyncio
+async def test_async_refused_paste_still_falls_back_to_the_ime(os_clipboard):
+    page = EditorPage("", os_clipboard, accepts_paste=False)
+
+    await humanize.type_text(page, "你好", asyncio.Lock())
+
+    assert page.content == "你好"
+    assert [event[1] for event in page.log if event[0] == "cdp"].count("Input.insertText") == 2

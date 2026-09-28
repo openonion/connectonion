@@ -152,6 +152,8 @@ co browser close                           # close browser, stop daemon
 
 Arguments are plain strings; flags like `--full-page` and `--index=2` map to the function's parameters, and `--index 2` or `--full-page true` mean the same as the `=` forms. For `fill_text_by_selector`, `type_text_by_selector`, and `keyboard_type`, a final `--stdin` reads the text from redirected standard input so passwords and one-run codes do not appear in process arguments. Prefer `fill_text_by_selector` when replacing a controlled framework input; use `type_text_by_selector` when appending human-shaped keystrokes is required.
 
+`keyboard_type` pastes Chinese, Japanese, and Korean runs and falls back to IME composition only when the field's text did not change at all. An empty rich-text editor (Feishu, Lark, Slate) replaces a zero-width placeholder on the first paste, so "grew by the full length" is the wrong test; since 1.8.9b19 the text is typed once, not twice (#1877). A paste that lands partly is not retyped, so still screenshot before pressing Enter.
+
 Before replacing focused text with a keyboard shortcut, inspect the target:
 
 ```bash
