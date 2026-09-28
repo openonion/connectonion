@@ -1,0 +1,159 @@
+name: Recover Published Release
+
+# Use only when the tag-driven release has already passed tests, built artifacts,
+# and published to PyPI, but finalization failed after publication. This is a
+# second finalizer, never a second registry writer.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Already-published version (for example 1.8.9b22)"
+        required: true
+        type: string
+      release_run_id:
+        description: "Failed tag-driven Release workflow run ID"
+        required: true
+        type: string
+
+concurrency:
+  group: recover-published-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    env:
+      VERSION: ${{ inputs.version }}
+      ORIGINAL_RUN_ID: ${{ inputs.release_run_id }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout recovery procedure and release tags
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Require the exact reviewed tag and successful publishing run
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+
+          version = os.environ["VERSION"]
+          run_id = os.environ["ORIGINAL_RUN_ID"]
+          repository = os.environ["GITHUB_REPOSITORY"]
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:a[0-9]+|b[0-9]+|rc[0-9]+)?", version):
+              raise SystemExit("Invalid release version")
+          if not re.fullmatch(r"[0-9]+", run_id):
+              raise SystemExit("Invalid release run ID")
+
+          tag = f"v{version}"
+          tagged_commit = subprocess.check_output(
+              ["git", "rev-list", "-n", "1", tag], text=True
+          ).strip()
+          if not tagged_commit:
+              raise SystemExit(f"Missing release tag {tag}")
+          run = json.loads(subprocess.check_output(
+              ["gh", "run", "view", run_id, "--repo", repository,
+               "--json", "headSha,event,workflowName,jobs"], text=True
+          ))
+          if (run["headSha"] != tagged_commit or run["event"] != "push"
+                  or run["workflowName"] != "Release"):
+              raise SystemExit("Release run does not belong to the exact tagged commit")
+
+          jobs = {job["name"]: job["conclusion"] for job in run["jobs"]}
+          tests = [state for name, state in jobs.items() if name.startswith("tests /")]
+          if not tests or any(state != "success" for state in tests):
+              raise SystemExit("The tag-driven test matrix did not pass")
+          if jobs.get("build") != "success" or jobs.get("publish") != "success":
+              raise SystemExit("The reviewed artifacts were not built and published")
+          if jobs.get("finalize") != "failure":
+              raise SystemExit("This run does not need failed-finalizer recovery")
+          print(f"Recovering {tag} from reviewed run {run_id} at {tagged_commit}")
+          PY
+
+      - name: Recover the original release run's reviewed artifacts
+        run: |
+          gh run download "$ORIGINAL_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "connectonion-$VERSION" \
+            --dir dist
+
+      - name: Verify both exact public PyPI distributions
+        run: |
+          python .github/scripts/verify_published_artifacts.py \
+            --version "$VERSION" \
+            --local-dir dist \
+            --output-dir published
+
+      - name: Install the public wheel by its PyPI SHA-256 URL
+        run: |
+          python -m venv "$RUNNER_TEMP/public-wheel-check"
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+          import subprocess
+          import tempfile
+          import urllib.parse
+          import urllib.request
+
+          version = os.environ["VERSION"]
+          with urllib.request.urlopen(
+              f"https://pypi.org/pypi/connectonion/{version}/json", timeout=30
+          ) as response:
+              metadata = json.load(response)
+          filename = f"connectonion-{version}-py3-none-any.whl"
+          wheel = next(item for item in metadata["urls"] if item["filename"] == filename)
+          url = wheel["url"]
+          if urllib.parse.urlparse(url).hostname != "files.pythonhosted.org":
+              raise SystemExit("The wheel URL is not on PyPI's file host")
+          sha256 = wheel["digests"]["sha256"]
+          if len(sha256) != 64 or any(ch not in "0123456789abcdef" for ch in sha256):
+              raise SystemExit("Invalid published wheel digest")
+          python = pathlib.Path(os.environ["RUNNER_TEMP"]) / "public-wheel-check/bin/python"
+          with tempfile.TemporaryDirectory() as directory:
+              subprocess.run(
+                  [str(python), "-m", "pip", "install", "--no-cache-dir",
+                   f"{url}#sha256={sha256}"], cwd=directory, check=True
+              )
+              subprocess.run(
+                  [str(python), "-c",
+                   f"import connectonion; assert connectonion.__version__ == {version!r}"],
+                  cwd=directory, check=True
+              )
+          PY
+
+      - name: Create or repair the GitHub release from the public bytes
+        run: |
+          tag="v$VERSION"
+          wheel="published/connectonion-${VERSION}-py3-none-any.whl"
+          sdist="published/connectonion-${VERSION}.tar.gz"
+          tagged_commit="$(git rev-list -n 1 "$tag")"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "$wheel" "$sdist" \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            release_flags=()
+            if [[ "$VERSION" =~ [a-zA-Z] ]]; then
+              release_flags+=(--prerelease --latest=false)
+            fi
+            gh release create "$tag" "$wheel" "$sdist" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$tagged_commit" \
+              --generate-notes \
+              --title "$tag" \
+              "${release_flags[@]}"
+          fi
