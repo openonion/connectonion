@@ -184,22 +184,6 @@ NEXT = {
     "co discord chats": HANDLER,
     "co discord log": "co discord ls",
     "co discord consume": "co discord ls",
-    "co whatsapp-cloud bind": HANDLER,  # names the binding id to save
-    "co whatsapp-cloud listen": "co whatsapp-cloud receive --timeout 0",
-    "co whatsapp-cloud receive": "co whatsapp-cloud reply <message-id>",
-    "co whatsapp-cloud send": "co whatsapp-cloud receive --timeout 0",
-    "co whatsapp-cloud reply": "co whatsapp-cloud receive --timeout 0",
-    "co whatsapp-cloud done": "co whatsapp-cloud receive --timeout 0",
-    # edit and delete always refuse (Meta has neither) and exit 1 with their
-    # own Next:, so these are never printed; the table still needs a row.
-    "co whatsapp-cloud edit": "co whatsapp-cloud log",
-    "co whatsapp-cloud delete": "co whatsapp-cloud log",
-    "co whatsapp-cloud react": "co whatsapp-cloud log",
-    "co whatsapp-cloud check": HANDLER,  # every branch of _report_connection names its own
-    "co whatsapp-cloud ls": "co whatsapp-cloud receive --timeout 0",
-    "co whatsapp-cloud chats": HANDLER,
-    "co whatsapp-cloud log": "co whatsapp-cloud ls",
-    "co whatsapp-cloud consume": "co whatsapp-cloud ls",
     "co email send": HANDLER,
     "co email inbox": HANDLER,
     "co email read": 'Reply from this address:  co email send <sender> "<subject>" "<body>"',

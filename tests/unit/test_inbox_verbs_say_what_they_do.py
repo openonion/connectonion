@@ -4,8 +4,7 @@ Every inbox group has the same verbs, and their help used to be the same too:
 "Prints the edit's id" on Discord, Telegram, Feishu and Lark, where the command
 only prints that it is not implemented (found testing 1.8.8b7). The CLI's
 `writes=` flag is checked here against what each provider class really has,
-so the two cannot drift. A verb the platform itself has no operation for
-(`co whatsapp-cloud edit`: Meta has none) refuses in those terms instead.
+so the two cannot drift.
 """
 
 import importlib
@@ -35,5 +34,4 @@ def test_the_help_matches_what_the_provider_can_do(group, verb):
     module, cls, _ = PROVIDERS[group]
     can = callable(getattr(getattr(importlib.import_module(module), cls), VERB_METHOD[verb], None))
     line = help_line(group, verb)
-    refuses = "Not implemented" in line or "no way to do this" in line
-    assert refuses is (not can), line
+    assert ("Not implemented" in line) is (not can), line

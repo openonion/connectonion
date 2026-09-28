@@ -1,5 +1,5 @@
 """
-Purpose: The verbs of an inbox provider — `co feishu listen | receive | send | reply | done | check | ls | log | consume`, and `co whatsapp-cloud bind`
+Purpose: The verbs of an inbox provider — `co feishu listen | receive | send | reply | done | check | ls | log | consume`
 LLM-Note:
   Dependencies: imports from [json, os, subprocess, sys, threading, time, typing, rich.console, inbox/] | imported by [cli/main.py via _inbox_group()] | tested by [tests/unit/test_listen_commands.py]
   Data flow: handle_listen → provider.run(inbox) until Ctrl-C | handle_receive → inbox.receive() → one JSON line on stdout | handle_send/handle_reply → stdin or argument → provider.send() → sent.jsonl → the new message id on stdout | handle_consume → serve_with_listener(handler), which restarts a dead listener and stops on exit 3 → subprocess(stdin=message) → reply(stdout)
@@ -21,7 +21,7 @@ from typing import List, Optional
 from rich.console import Console
 from rich.markup import escape
 
-from ...inbox import ANSWERING, Inbox, ListenerStopped, ProviderPolicyError, provider, reactions_enabled
+from ...inbox import ANSWERING, Inbox, ListenerStopped, provider, reactions_enabled
 from ...inbox.consumer import serve_with_listener
 from .command_tips import print_tip
 
@@ -88,14 +88,13 @@ _CREDENTIAL_WORDS = re.compile(r"credential|unauthori[sz]ed|\b401\b|\b403\b|toke
 
 
 def _refused(name: str, exc: Exception) -> None:
-    """Print a platform's refusal with the command to run next, and exit 1,
-    or 3 when the platform's rules refused it (`_send_failure_code`)."""
+    """Print a platform's refusal with the command to run next, and exit 1."""
     text = str(exc)
     if "Next:" not in text:
         verb = "check" if _CREDENTIAL_WORDS.search(text) else "log"
         text = f"{text.rstrip('. ')}. Next: co {name} {verb}"
     errors.print(text, style="red")
-    sys.exit(_send_failure_code(exc))
+    sys.exit(1)
 
 
 def _text_from(argument: Optional[str]) -> str:
@@ -444,17 +443,6 @@ def handle_send(name: str, chat: str, text: Optional[str] = None, reply_to: Opti
     print(sent)
 
 
-def _send_failure_code(exc: Exception) -> int:
-    """3 when the platform's rules refused the send, 1 for anything else.
-
-    A closed WhatsApp 24-hour window is not a failed request: the same text
-    will be refused every time until the customer writes again. Exit 3 is the
-    code this CLI already uses for "a person has to do something first", so a
-    supervisor that retries on 1 leaves it alone without being told why.
-    """
-    return EXIT_CONFIG if isinstance(exc, ProviderPolicyError) else 1
-
-
 def _mark_answering(p, inbox, message) -> None:
     """Change the queued message's mark from "seen" to "being answered".
 
@@ -536,15 +524,7 @@ def _unsupported(p, name: str, verb: str,
     failure is that the message id was wrong. A provider names its own
     endpoint in `unwired`; Feishu and Lark share the default, because a
     Telegram user told to look at /im/v1/messages is sent to the wrong docs.
-
-    A provider whose platform has no such operation at all says so through
-    its `cannot` table, because "nobody has wired it up" would send someone
-    looking for an endpoint that does not exist.
     """
-    reason = (getattr(p, "cannot", None) or {}).get(verb)
-    if reason:
-        errors.print(f"co {name} {verb}: {reason}. Next: co {name} send", style="red")
-        sys.exit(1)
     where = (getattr(p, "unwired", None) or {}).get(verb) or \
         f"Feishu and Lark have the endpoint for it ({endpoint})"
     errors.print(
@@ -665,35 +645,6 @@ def handle_react(name: str, message_id: str, emoji: str) -> None:
     what = f"reacted {emoji}" if emoji else "removed our reaction"
     inbox.log(f"{what} on {message_id} in {chat} as {sent or 'no id'}")
     print(sent)
-
-
-def handle_bind(name: str) -> None:
-    """Register the provider's webhook routing. Prints the binding id.
-
-    Every secret it needs is read from the environment, never from argv: an
-    app secret typed on a command line is in shell history and visible in
-    `ps` to every user on the machine.
-    """
-    p = provider(name)
-    problems = p.bind_missing()
-    if problems:
-        for problem in problems:
-            errors.print(problem, style="red")
-        sys.exit(EXIT_CONFIG)
-    try:
-        result = p.bind()
-    except Exception as exc:
-        errors.print(str(exc), style="red")
-        sys.exit(1)
-    binding_id = result["id"]
-    from ...backend import backend_url
-
-    print(binding_id)
-    errors.print("In the Meta app, set the WhatsApp webhook callback URL to "
-                 f"{backend_url()}/api/v1/messaging/webhooks/whatsapp/{binding_id}, "
-                 "the verify token to the same value, and subscribe the `messages` field.",
-                 style="dim", soft_wrap=True)
-    print_tip(f"Next: co env set WHATSAPP_CLOUD_BINDING_ID {binding_id}")
 
 
 def handle_check(name: str) -> None:

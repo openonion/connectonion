@@ -65,9 +65,6 @@ def _load_env_vars(
         "MICROSOFT_REFRESH_TOKEN",
         "TELEGRAM_BOT_TOKEN",
         "DISCORD_BOT_TOKEN",
-        "WHATSAPP_CLOUD_ACCESS_TOKEN",
-        "WHATSAPP_CLOUD_APP_SECRET",
-        "WHATSAPP_CLOUD_VERIFY_TOKEN",
     )
     return _selected_credential_values(
         names,
@@ -230,17 +227,6 @@ def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
             "Discord Bot",
             discord_token if reveal else _mask(discord_token, secret=True),
         )
-    # `co whatsapp-cloud`: shown only when set, and masked entirely like every
-    # other secret here. The phone number id, WABA id and binding id are
-    # identifiers, not secrets, and are not listed.
-    for name, label in (
-        ("WHATSAPP_CLOUD_ACCESS_TOKEN", "WhatsApp Cloud"),
-        ("WHATSAPP_CLOUD_APP_SECRET", "WhatsApp App"),
-        ("WHATSAPP_CLOUD_VERIFY_TOKEN", "WhatsApp Verify"),
-    ):
-        value = env_vars.get(name)
-        if value:
-            sec_table.add_row(label, value if reveal else _mask(value, secret=True))
 
     console.print(Panel(sec_table, title="[bold]Secrets[/bold]", border_style="yellow"))
 

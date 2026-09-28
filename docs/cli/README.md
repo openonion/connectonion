@@ -369,20 +369,6 @@ OpenOnion credential. Your own bot's token lives in `~/.co/keys.env` as
 `DISCORD_BOT_TOKEN`, and the Message Content intent must be on. See
 [discord.md](discord.md).
 
-#### `co whatsapp-cloud` - A WhatsApp Business Number on the Cloud API (preview)
-
-```bash
-co whatsapp-cloud bind                 # once: route Meta's webhook through O API
-co whatsapp-cloud receive              # next message as one JSON line
-echo "on it" | co whatsapp-cloud reply wamid.HBgLMTE
-```
-
-Meta's official API rather than a linked device: sanctioned, one-to-one only
-(it cannot join a group), and free text only within 24 hours of the customer's
-last message. Messages are ACKed to O API only after they are on your disk;
-replies go straight to Meta with a token that never leaves your machine. Needs
-openonion/oo-api#227 deployed. See [whatsapp-cloud.md](whatsapp-cloud.md).
-
 ---
 
 #### `co gmail` - Send & Read Gmail
