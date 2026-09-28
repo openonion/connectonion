@@ -25,6 +25,7 @@ from connectonion.cli.co_ai.tools.background import (
 from connectonion.cli.co_ai.tools.claude_code import claude_code
 from connectonion.cli.co_ai.tools.load_guide import load_guide
 from connectonion.cli.co_ai.tools.task import task
+from connectonion.cli.co_ai.tools.watch import watch_task, watch_every, list_watches, cancel_watch
 from connectonion.useful_tools import TodoList, ask_user
 from connectonion.useful_tools.file_tools import FileTools
 
@@ -36,6 +37,10 @@ __all__ = [
     "run_background",
     "task_output",
     "kill_task",
+    "watch_task",
+    "watch_every",
+    "list_watches",
+    "cancel_watch",
     # Interaction tools
     "ask_user",
     "claude_code",

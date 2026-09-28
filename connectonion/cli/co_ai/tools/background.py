@@ -23,12 +23,14 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, Optional
+from uuid import uuid4
 
 
 class TaskStatus(Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 @dataclass
@@ -42,6 +44,7 @@ class BackgroundTask:
     start_time: float = field(default_factory=time.time)
     end_time: Optional[float] = None
     reader: Optional[threading.Thread] = None
+    watch_store: object = None
 
 
 # Global task registry
@@ -106,10 +109,15 @@ def _read_output(task: BackgroundTask):
     finally:
         task.process.stdout.close()
         task.end_time = time.time()
-        task.status = TaskStatus.COMPLETED if task.process.returncode == 0 else TaskStatus.FAILED
+        if task.status == TaskStatus.RUNNING:
+            task.status = TaskStatus.COMPLETED if task.process.returncode == 0 else TaskStatus.FAILED
+        if task.watch_store is not None:
+            task.watch_store.finish_task(
+                task.id, task.status.value, "\n".join(task.output[-100:])
+            )
 
 
-def run_background(command: str, description: str = "") -> str:
+def run_background(command: str, description: str = "", agent=None) -> str:
     """
     Run a shell command in the background.
 
@@ -129,29 +137,45 @@ def run_background(command: str, description: str = "") -> str:
     """
     global _task_counter
 
+    session = (agent.current_session or {}) if agent is not None else {}
+    requester = session.get("requester") or {}
+    watch_store = (
+        getattr(agent, "_watch_store", None)
+        if agent is not None and session.get("session_id")
+        and requester.get("level") == "admin" and requester.get("address")
+        else None
+    )
     with _lock:
         _task_counter += 1
-        task_id = f"bg_{_task_counter}"
+        task_id = f"bg_{uuid4().hex}" if watch_store is not None else f"bg_{_task_counter}"
 
-    process = subprocess.Popen(
-        command,
-        shell=True,
-        start_new_session=os.name != "nt",
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",  # a stray non-UTF-8 byte must never kill the reader thread
-        bufsize=1,
-        # Force UTF-8 in child processes regardless of the Windows console codepage
-        # (Chinese GBK/cp936, etc.), so their output round-trips through the pipe above.
-        env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
-    )
+    if watch_store is not None:
+        watch_store.register_task(task_id, session["session_id"], requester["address"])
+    try:
+        process = subprocess.Popen(
+            command,
+            shell=True,
+            start_new_session=os.name != "nt",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",  # a stray non-UTF-8 byte must never kill the reader thread
+            bufsize=1,
+            # Force UTF-8 in child processes regardless of the Windows console codepage
+            # (Chinese GBK/cp936, etc.), so their output round-trips through the pipe above.
+            env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
+        )
+    except OSError as exc:
+        if watch_store is not None:
+            watch_store.finish_task(task_id, "failed", str(exc))
+        raise
 
     task = BackgroundTask(
         id=task_id,
         command=command,
         process=process,
+        watch_store=watch_store,
     )
 
     with _lock:
@@ -229,8 +253,8 @@ def kill_task(task_id: str) -> str:
     if task.status != TaskStatus.RUNNING:
         return f"Task '{task_id}' is not running (status: {task.status.value})"
 
+    task.status = TaskStatus.CANCELLED
     _stop_task(task)
-    task.status = TaskStatus.FAILED
     task.end_time = time.time()
 
     return f"Task '{task_id}' terminated."
@@ -255,7 +279,7 @@ def list_tasks() -> str:
         if t.end_time:
             elapsed = t.end_time - t.start_time
 
-        status_icon = {"running": "⏳", "completed": "✓", "failed": "✗"}[t.status.value]
+        status_icon = {"running": "⏳", "completed": "✓", "failed": "✗", "cancelled": "■"}[t.status.value]
         cmd_short = t.command[:40] + "..." if len(t.command) > 40 else t.command
         lines.append(f"  {status_icon} {t.id}: {cmd_short} ({elapsed:.1f}s)")
 
