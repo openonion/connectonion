@@ -86,10 +86,11 @@ source, `co call` runs an allowed command on a reachable remote agent, and
 delegate to Codex separately through `co ai` only when Codex is installed, authenticated
 and permitted on that machine.
 
-![Read-only co search preview finding and fetching the ConnectOnion GitHub repository](https://www.connectonion.com/aha-search.gif)
+![Read-only co search preview answering what ConnectOnion is with GitHub and website sources](https://www.connectonion.com/aha-search.gif)
 
-The GIF is a **verified read-only** search-and-fetch run, not a recording of
-the whole workflow. `co search` is in the **1.8.9 preview**; Telegram
+The GIF is a **verified read-only** `co search ConnectOnion` run with a
+source-backed answer, not a recording of the whole workflow. The configured
+search engine may use account credits. `co search` is in the **1.8.9 preview**; Telegram
 `receive` is experimental and needs a configured bot. No remote agent was
 called and no email was sent in this demo. Start with the stable environment
 and Outlook steps above, then see the [CLI Quick Start](docs/quickstart.md).

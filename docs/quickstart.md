@@ -90,7 +90,8 @@ summary.” The commands behind that request are visible:
    authorize that external action.
 
 The [search GIF](https://www.connectonion.com/aha-search.gif) shows a verified,
-read-only search and fetch of the ConnectOnion GitHub repository. The four-step
+read-only `co search ConnectOnion` answer with sources. The configured search
+engine may use account credits. The four-step
 scenario is illustrative; the GIF does not show Telegram, a remote agent or an
 email being used.
 
