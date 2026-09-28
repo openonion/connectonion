@@ -65,6 +65,8 @@ def _load_env_vars(
         "MICROSOFT_REFRESH_TOKEN",
         "TELEGRAM_BOT_TOKEN",
         "DISCORD_BOT_TOKEN",
+        "SLACK_APP_TOKEN",
+        "SLACK_BOT_TOKEN",
     )
     return _selected_credential_values(
         names,

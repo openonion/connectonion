@@ -42,6 +42,8 @@ CREDENTIAL_ACTIONS = {
     "MISTRAL_API_KEY": "co env set MISTRAL_API_KEY <key>",
     "TELEGRAM_BOT_TOKEN": "co env set TELEGRAM_BOT_TOKEN <token>",
     "DISCORD_BOT_TOKEN": "co env set DISCORD_BOT_TOKEN <token>",
+    "SLACK_APP_TOKEN": "co env set SLACK_APP_TOKEN <xapp-token>",
+    "SLACK_BOT_TOKEN": "co env set SLACK_BOT_TOKEN <xoxb-token>",
 }
 
 
