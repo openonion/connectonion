@@ -6,6 +6,8 @@ listing layouts of Typer, click/uv, gh and argparse. A rule that stops firing
 turns this red instead of turning a real audit silently green.
 """
 
+import sys
+
 from connectonion.cli import audit
 from connectonion.cli.audit import Page
 
@@ -96,3 +98,26 @@ def test_an_example_that_spells_the_command_by_an_alias_is_this_command():
     found = {"gh": Page(0, ""), "gh extension": Page(0, ""), here: Page(0, ""), "gh search": Page(0, "")}
     assert audit._runs(["gh", "ext", "search", "--limit", "3"], found, here) == here
     assert audit._runs(["co", "--nas", "home", "logout"], {"co": 0, "co logout": 0}, "co logout") == "co logout"
+
+
+def test_user_site_command_remains_reachable_with_isolated_home(tmp_path, monkeypatch):
+    """A pip --user CLI must remain importable when auditing its help in a fresh HOME."""
+    userbase = tmp_path / "user-site"
+    userbase.mkdir()
+    monkeypatch.delenv("PYTHONUSERBASE", raising=False)
+    monkeypatch.setattr(audit.site, "getuserbase", lambda: str(userbase))
+    script = tmp_path / "co"
+    script.write_text(
+        "import os, sys\n"
+        f"assert os.environ.get('PYTHONUSERBASE') == {str(userbase)!r}\n"
+        "assert os.environ.get('HOME') != os.environ['PYTHONUSERBASE']\n"
+        "if len(sys.argv) > 1 and sys.argv[1] == 'onenote':\n"
+        "    print('Usage: co onenote [OPTIONS]')\n"
+        "else:\n"
+        "    print('Usage: co [OPTIONS] COMMAND')\n"
+        "    print('\\nCommands:\\n  onenote   List pages')\n"
+    )
+    monkeypatch.setattr(audit, "program", lambda _: [sys.executable, str(script)])
+
+    _, checked = audit.audit(["co", "onenote"])
+    assert list(checked) == ["co onenote"]

@@ -29,6 +29,7 @@ import os
 import re
 import shlex
 import shutil
+import site
 import subprocess
 import sys
 import tempfile
@@ -107,6 +108,11 @@ def run(argv: list) -> Page:
     home, work = Path(tempfile.mkdtemp()), Path(tempfile.mkdtemp())
     env = {**os.environ, "HOME": str(home), "USERPROFILE": str(home), "NO_COLOR": "1",
            "COLUMNS": "200", "TERM": "dumb", "PAGER": "cat", "GIT_PAGER": "cat", "MANPAGER": "cat"}
+    # Python's user site is derived from HOME. Keep installed CLI code
+    # importable while isolating the command's data/configuration in a fresh
+    # HOME; otherwise a pip --user `co` script crashes before printing help.
+    env.setdefault("PYTHONUSERBASE", site.getuserbase())
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
     env.pop("FORCE_COLOR", None)
     env.pop("GITHUB_ACTIONS", None)
     try:
