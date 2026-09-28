@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [html, re, httpx, useful_tools/outlook.Outlook] | imported by [useful_tools/__init__.py, cli/commands/onenote_commands.py] | requires Notes.ReadWrite (or, work/school, Notes.ReadWrite.All) from 'co auth microsoft' | tested by [tests/unit/test_onenote.py]
   Data flow: OneNote methods → JSON Graph calls go through Outlook's authenticated _request (token refresh, 429/503/504 retries) → page content (HTML in, HTML out) goes through _raw(), which uses the same token and refreshes once on 401 → read_page() turns the page's HTML into text; create_page() escapes the text into paragraphs
   State/Effects: reads MICROSOFT_* credentials | create_page() adds a page to a section; nothing here edits or deletes an existing page
-  Integration: exposes OneNote with list_notebooks(), list_sections(notebook), list_pages(section), read_page(page_id), create_page(section, title, text) | a section is found by id or exact name; a name in several notebooks is refused with every match
+  Integration: exposes OneNote with list_notebooks(), list_sections(notebook), list_pages(section), list_recent_pages(), read_page(page_id), read_page_by_title(title), create_page(section, title, text) | the CLI uses structured notebook_items() and page_items() for numbered rows
   Errors: ValueError naming `co auth microsoft` when no OneNote scope was granted, or when OneNote answers 401 to a sign-in without Notes.ReadWrite (a personal account, #1910), or naming `co onenote ls` for an unknown or ambiguous section | Graph errors surface as ProviderCredentialError like Outlook's
 
 OneNote tool: list, read and create pages in the notebooks you can open.
@@ -67,10 +67,10 @@ class OneNote:
 
     # ---- Graph ------------------------------------------------------------
 
-    def _json(self, endpoint: str) -> dict:
+    def _json(self, endpoint: str, **kwargs) -> dict:
         from ..provider_credentials import ProviderCredentialError
         try:
-            return self._graph._request("GET", endpoint, timeout=TIMEOUT)
+            return self._graph._request("GET", endpoint, timeout=TIMEOUT, **kwargs)
         except httpx.TransportError as error:
             raise ValueError(NO_ANSWER.format(seconds=TIMEOUT)) from error
         except ProviderCredentialError as error:
@@ -82,6 +82,9 @@ class OneNote:
         try:
             return httpx.request(method, url, headers=headers, content=content, timeout=TIMEOUT)
         except httpx.TransportError as error:
+            if method == "POST":
+                raise ValueError("OneNote did not confirm whether it created the page. It may exist; "
+                                 "check the section before trying again.") from error
             raise ValueError(NO_ANSWER.format(seconds=TIMEOUT)) from error
 
     def _refuse_personal_account(self, unauthorized: bool) -> None:
@@ -139,7 +142,7 @@ class OneNote:
 
     def list_notebooks(self) -> str:
         """List your OneNote notebooks and their sections, with the ids other calls take."""
-        notebooks = self._notebooks()
+        notebooks = self.notebook_items()
         if not notebooks:
             return "No OneNote notebooks found."
         lines = []
@@ -148,6 +151,10 @@ class OneNote:
             for section in notebook.get("sections") or []:
                 lines.append(f"  {section.get('displayName', '')}  (section {section.get('id', '')})")
         return "\n".join(lines)
+
+    def notebook_items(self) -> list[dict]:
+        """Notebook and section metadata for a terminal listing."""
+        return self._notebooks()
 
     def list_sections(self, notebook: str) -> str:
         """List the sections of one notebook, by its name or id."""
@@ -160,14 +167,43 @@ class OneNote:
 
     def list_pages(self, section: str, max_results: int = 20) -> str:
         """List pages in a section (name or id), most recently changed first."""
-        found = self._section(section)
-        pages = self._json(f"/me/onenote/sections/{found['id']}/pages?$top={int(max_results)}"
-                           "&$select=id,title,lastModifiedDateTime&$orderby=lastModifiedDateTime desc"
-                           ).get("value", [])
+        pages = self.page_items(section, max_results=max_results)
         if not pages:
-            return f"No pages in {found.get('displayName')}."
+            return f"No pages in {section}."
+        return self._format_pages(pages)
+
+    def list_recent_pages(self, max_results: int = 20) -> str:
+        """List recent pages across sections, so browsing needs no section id."""
+        pages = self.page_items(max_results=max_results)
+        return self._format_pages(pages) if pages else "No OneNote pages found. Run: co onenote ls"
+
+    def page_items(self, section: str | None = None, max_results: int = 20) -> list[dict]:
+        """Page metadata, newest first, across notebooks or in one section."""
+        base = ("/me/onenote/pages" if section is None else
+                f"/me/onenote/sections/{self._section(section)['id']}/pages")
+        return self._json(f"{base}?$top={int(max_results)}"
+                          "&$select=id,title,lastModifiedDateTime"
+                          "&$orderby=lastModifiedDateTime desc").get("value", [])
+
+    @staticmethod
+    def _format_pages(pages: list[dict]) -> str:
         return "\n".join(f"{p.get('title') or '(untitled)'}  ({(p.get('lastModifiedDateTime') or '')[:10]}, "
                          f"page {p.get('id', '')})" for p in pages)
+
+    def read_page_by_title(self, title: str) -> str:
+        """Read a uniquely titled page without copying its long Graph id."""
+        escaped = title.replace("'", "''")
+        result = self._json("/me/onenote/pages", params={
+            "$filter": f"title eq '{escaped}'", "$top": 100,
+            "$select": "id,title,lastModifiedDateTime",
+        })
+        matches = [page for page in result.get("value", []) if page.get("title") == title]
+        if not matches:
+            raise ValueError(f"No page titled {title!r}. Run: co onenote pages")
+        if len(matches) != 1 or result.get("@odata.nextLink"):
+            ids = ", ".join(page.get("id", "") for page in matches)
+            raise ValueError(f"Several pages are titled {title!r}: {ids}. Use the page id from co onenote pages.")
+        return self.read_page(matches[0]["id"])
 
     def read_page(self, page_id: str) -> str:
         """Read one page as plain text. Images and attachments are named, not downloaded."""
