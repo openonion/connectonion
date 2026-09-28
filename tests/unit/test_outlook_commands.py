@@ -360,7 +360,7 @@ class TestHandleOutlookReply:
         self._reply(outlook, monkeypatch, email_id="3", message="Sounds good")
 
         outlook.reply.assert_called_once_with(
-            "msg-cached-3", "Sounds good", attachments=None, send_at=None, cc=None, bcc=None,
+            "msg-cached-3", "Sounds good", attachments=None, send_at=None, cc=None, bcc=None, reply_all=False,
         )
         output = capsys.readouterr().out
         assert "Replied" in output
@@ -378,7 +378,7 @@ class TestHandleOutlookReply:
 
         outlook.reply.assert_called_once_with(
             "msg-cached-3", "Both attached",
-            attachments=[str(report), str(chart)], send_at=None, cc=None, bcc=None,
+            attachments=[str(report), str(chart)], send_at=None, cc=None, bcc=None, reply_all=False,
         )
         output = capsys.readouterr().out
         assert "Replied" in output
@@ -395,7 +395,7 @@ class TestHandleOutlookReply:
 
         outlook.reply.assert_called_once_with(
             "msg-cached-3", "Body from stdin\nline two\n",
-            attachments=[str(report)], send_at=None, cc=None, bcc=None,
+            attachments=[str(report)], send_at=None, cc=None, bcc=None, reply_all=False,
         )
 
     def test_scheduled_reply_keeps_its_attachment(self, tmp_path, monkeypatch, capsys):
@@ -408,7 +408,7 @@ class TestHandleOutlookReply:
 
         outlook.reply.assert_called_once_with(
             "msg-cached-3", "Tomorrow",
-            attachments=[str(report)], send_at="2026-07-06T15:30:00Z", cc=None, bcc=None,
+            attachments=[str(report)], send_at="2026-07-06T15:30:00Z", cc=None, bcc=None, reply_all=False,
         )
         output = re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out)
         assert "Reply scheduled" in output
@@ -469,7 +469,7 @@ class TestHandleOutlookReplyPositionalCompatibility:
 
         outlook.reply.assert_called_once_with(
             "msg-cached-3", "See you then",
-            attachments=None, send_at="2026-07-06T15:30:00Z", cc=None, bcc=None,
+            attachments=None, send_at="2026-07-06T15:30:00Z", cc=None, bcc=None, reply_all=False,
         )
         output = re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out)
         assert "Reply scheduled" in output
@@ -491,8 +491,8 @@ class TestHandleOutlookReplyPositionalCompatibility:
         import inspect
 
         params = inspect.signature(handle_outlook_reply).parameters
-        assert list(params) == ["email_id", "message", "at", "attachments", "cc", "bcc", "listing"]
-        for name in ("attachments", "cc", "bcc", "listing"):
+        assert list(params) == ["email_id", "message", "at", "attachments", "cc", "bcc", "listing", "reply_all"]
+        for name in ("attachments", "cc", "bcc", "listing", "reply_all"):
             assert params[name].kind is inspect.Parameter.KEYWORD_ONLY
 
 

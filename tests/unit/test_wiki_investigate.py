@@ -225,6 +225,24 @@ def test_the_status_line_names_the_sources_searched_and_does_not_claim_the_web(t
         assert "outlook" in status and "web" not in status, (runner, status)
 
 
+def test_investigation_status_excludes_sources_not_searched(tmp_path, monkeypatch):
+    root = _notebook(tmp_path, "codex")
+    monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: ([], [
+        "outlook: project mail not requested; not searched",
+        "gmail: project mail not requested; not searched",
+        "codex: 10 messages in window, 0 related to subject, 0 read",
+        "claude-code: 3 messages in window, 0 related to subject, 0 read",
+    ]))
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=5,
+                    clients={}, subscriptions={}, runner=lambda *args, **kwargs: {"changed": []})
+    from connectonion.wiki.files import Notebook
+    status = next(line for line in Notebook(root).read("people/vern.md").splitlines()
+                  if line.startswith("Investigation:"))
+    assert "codex, claude-code" in status
+    assert "outlook" not in status and "gmail" not in status
+    assert "Requested investigation window" not in status
+
+
 def test_oversized_attachment_is_split_without_losing_text_or_sources():
     config = {"limits": {"extract_items_per_batch": 40, "extract_chars_per_batch": 500}}
     items = [{"text": '合同条款\\\"\n' * 600, "source": "gmail:contract.pdf",

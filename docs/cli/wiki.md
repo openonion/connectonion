@@ -80,7 +80,7 @@ Its coverage lines keep the four source states apart, because each one needs a
 different next command:
 
 ```text
-gmail: metadata only, 150 days, at most 200 messages per seven-day window; 42 correspondents
+gmail: metadata only, 90 days; a seven-day window at the 200-message listing cap is split until every message in it is listed; 42 correspondents
 outlook: not connected; not searched. Connect it with co auth microsoft
 codex: /home/you/.codex/sessions — scanned; no sessions in this window
 claude-code: /home/you/.claude/projects — disabled; not scanned
@@ -448,9 +448,34 @@ co wiki init --days 5       # small first-run trial
 co wiki open
 ```
 
-This reads correspondent metadata for the initialization window, plus the short
-preview the mail provider lists with each message; it does not open mail bodies,
-and does not install a schedule or enable ongoing mail collection.
+This lists 90 days of mail by default: correspondent metadata plus the short
+preview the provider lists with each message. A seven-day window that fills the
+provider's 200-message listing cap is split until every message in it is
+listed, so a busy week is no longer cut off at 200 without a word. Init does not
+install a schedule or enable ongoing mail collection.
+
+#### Private mail materials
+
+After the map, init saves each listed message body once, so investigating a
+person later reads the saved window from disk and only asks the mailbox about
+mail outside it. Everything lives under the notebook's `.state/`, which is
+owner-only (`0700` directories, `0600` files) and never shown to a model as a
+page or sent anywhere:
+
+| File | Holds |
+|---|---|
+| `.state/source-inventory.md` / `.jsonl` | What was listed, window by window: ids, dates, senders, recipients, subjects, session paths. No bodies, no previews |
+| `.state/mail/messages/<provider>/<hash>.json` | One provider-rendered text body per message. Attachments are not downloaded |
+| `.state/mail/people/<hash>.jsonl` | Each person page's messages, by reference; a mail to three people is stored once and indexed three times |
+| `.state/mail/projects/<hash>.jsonl` | Each project page's local session files, by reference |
+| `.state/mail/archive.json`, `summary.md` | Range, counts saved / reused / failed, and status |
+
+Pages never contain a raw body. A body that could not be fetched marks init
+`partial` with a nonzero exit; rerunning reuses every saved body and fetches
+only the rest. If a later init cannot list a mailbox, the earlier archive is kept
+rather than replaced. `--no-mail-archive` skips the body download and keeps the
+metadata-only map. Investigating a person reads the archive only when its last
+run completed; otherwise it asks the mailbox as before.
 
 A person is named, in this order, by the name they write under, the name in the
 owner's saved contacts (Google contacts and "other contacts", Outlook contacts;

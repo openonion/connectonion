@@ -1,6 +1,7 @@
 """Wiki sends tasks to the COAI CLI; harness internals belong to COAI."""
 
 import json
+import time
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -423,3 +424,56 @@ def test_investigation_digests_in_pieces_that_travel_in_the_prompt(tmp_path):
              for n in range(12)]
     digest_in_chunks(items, config, extractor)
     assert seen and all(seen)
+
+
+def _hold_lock(root, seconds):
+    """A scheduled sync holding the notebook for `seconds`, in another thread."""
+    import threading
+    from connectonion.wiki.files import maintenance_lock
+    held = threading.Event()
+
+    def hold():
+        with maintenance_lock(root):
+            held.set()
+            time.sleep(seconds)
+    thread = threading.Thread(target=hold)
+    thread.start()
+    held.wait()
+    return thread
+
+
+def test_a_finished_investigation_waits_for_a_sync_instead_of_losing_its_page(tmp_path, monkeypatch):
+    """05:00 on 2026-09-28: a project investigation had written its page when the
+    scheduled sync took the lock, and the page was dropped with 'Wiki is busy'."""
+    from connectonion.wiki import runner
+    monkeypatch.setattr(runner, "PROMOTE_WAIT_SECONDS", 5)
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/mia.md", "Mia", ["mia@h.example"], email="mia@h.example")
+    original = notebook.read("people/mia.md")
+    candidate = tmp_path / "candidate.md"
+    candidate.write_text(original.replace("## Who they are\n- Unknown — not investigated yet",
+                                          "## Who they are\n- Leads the data team. [1]")
+                         .replace("- (none yet)", "- [1] gmail:m:1"))
+    thread = _hold_lock(tmp_path, 1.0)
+    runner._promote_candidate(notebook, "people/mia.md", candidate, original,
+                              [{"source": "gmail:m:1"}], tmp_path, None)
+    thread.join()
+    assert "Leads the data team." in notebook.read("people/mia.md")
+
+
+def test_a_sync_that_outlasts_the_wait_leaves_the_page_where_it_can_be_found(tmp_path, monkeypatch):
+    from connectonion.wiki import runner
+    from connectonion.wiki.runner import RunFailed
+    monkeypatch.setattr(runner, "PROMOTE_WAIT_SECONDS", 0.5)
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/mia.md", "Mia", ["mia@h.example"], email="mia@h.example")
+    original = notebook.read("people/mia.md")
+    candidate = tmp_path / "candidate.md"
+    candidate.write_text(original)
+    thread = _hold_lock(tmp_path, 2.0)
+    with pytest.raises(RunFailed) as error:
+        runner._promote_candidate(notebook, "people/mia.md", candidate, original, [], tmp_path, None)
+    thread.join()
+    assert str(candidate) in str(error.value) and candidate.is_file()

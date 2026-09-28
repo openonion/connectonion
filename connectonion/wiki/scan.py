@@ -16,7 +16,7 @@ from email.utils import getaddresses
 from pathlib import Path
 
 from .files import WikiError
-from .mail import _address, correspondent
+from .mail import _address, _addresses, _list_all, correspondent
 from .source import KINDS, source_files
 
 # Rings a bell on its own; the Skill still decides. Matched anywhere before the
@@ -109,7 +109,8 @@ def _contact_names(clients: dict) -> dict:
     return names
 
 
-def scan_people(clients: dict, days: int, own_addresses: set, progress=None) -> list[dict]:
+def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
+                on_row=None, on_window=None) -> list[dict]:
     """Every correspondent across every mailbox, with the signals a Skill ranks by."""
     mine = {a.lower() for a in own_addresses}
     for client in clients.values():
@@ -124,29 +125,41 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None) -> 
         cursor = start
         while cursor < end:
             stop = min(cursor + timedelta(days=7), end)
-            for row in client.list_between(cursor.isoformat(), stop.isoformat(), 200) or []:
-                who = correspondent(row, mine)
-                if "@" not in who or who in mine:
-                    continue
-                entry = people[who]
-                entry["mails"] += 1
-                entry["boxes"].add(kind)
+            # Both providers cap a listing at 200, but at opposite ends of the
+            # window. Reuse the importer that bisects a full window until every
+            # message in this interval has been enumerated.
+            rows = _list_all(client, cursor, stop)
+            for row in rows:
+                if on_row:
+                    on_row(kind, row)
                 own = _address(row.get("from", "")) in mine or "@" not in _address(row.get("from", ""))
-                entry["sent" if own else "received"] += 1
-                name = _display_name(row, who)
-                if name:
-                    entry["names"][name] += 1
-                greeting = _greeting_name(row, who, mine)
-                if greeting:
-                    entry["greetings"][greeting] += 1
-                day = str(row.get("date", ""))[:10]
-                entry["first"] = min(entry["first"] or day, day)
-                entry["last"] = max(entry["last"] or day, day)
-                subject = re.sub(r"^(re|fw|fwd|回复|转发)\s*:\s*", "", str(row.get("subject", "")), flags=re.I)[:80]
-                if subject:
-                    entry["subjects"][subject] += 1
+                # One sent message can be relevant to several people. Map each
+                # recipient, while the body archive still stores it only once.
+                recipients = _addresses(row.get("to")) + _addresses(row.get("cc"))
+                whos = dict.fromkeys(recipients if own and recipients else [correspondent(row, mine)])
+                for who in whos:
+                    if "@" not in who or who in mine:
+                        continue
+                    entry = people[who]
+                    entry["mails"] += 1
+                    entry["boxes"].add(kind)
+                    entry["sent" if own else "received"] += 1
+                    name = _display_name(row, who)
+                    if name:
+                        entry["names"][name] += 1
+                    greeting = _greeting_name(row, who, mine)
+                    if greeting:
+                        entry["greetings"][greeting] += 1
+                    day = str(row.get("date", ""))[:10]
+                    entry["first"] = min(entry["first"] or day, day)
+                    entry["last"] = max(entry["last"] or day, day)
+                    subject = re.sub(r"^(re|fw|fwd|回复|转发)\s*:\s*", "", str(row.get("subject", "")), flags=re.I)[:80]
+                    if subject:
+                        entry["subjects"][subject] += 1
             if progress:
                 progress(kind, stop, len(people))
+            if on_window:
+                on_window(kind, cursor.isoformat(), stop.isoformat(), len(rows), 200, True)
             cursor = stop
     saved = _contact_names(clients)
     out = []
@@ -213,7 +226,8 @@ def project_exclusion(path: Path) -> str:
     return ""
 
 
-def scan_projects(subscriptions: dict, days: int, wiki_root: Path | None = None) -> list[dict]:
+def scan_projects(subscriptions: dict, days: int, wiki_root: Path | None = None,
+                  on_session=None) -> list[dict]:
     """Every `cwd` a coding session ran in, with how often and how recently."""
     since = datetime.now(timezone.utc) - timedelta(days=days)
     projects = collections.defaultdict(lambda: {"sessions": 0, "first": "", "last": "", "tools": set()})
@@ -238,6 +252,8 @@ def scan_projects(subscriptions: dict, days: int, wiki_root: Path | None = None)
                 continue
             if wiki_root and Path(cwd).resolve().is_relative_to(wiki_root.resolve()):
                 continue
+            if on_session:
+                on_session(name, path, stamp, cwd)
             entry = projects[cwd]
             entry["sessions"] += 1
             entry["tools"].add(kind)

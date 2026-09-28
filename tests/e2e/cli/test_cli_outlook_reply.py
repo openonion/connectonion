@@ -18,7 +18,7 @@ def test_outlook_reply_routes_without_attachments():
         ])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("3", "Sounds good", attachments=None, at=None, cc=None, bcc=None, listing=None)
+    handler.assert_called_once_with("3", "Sounds good", attachments=None, at=None, cc=None, bcc=None, listing=None, reply_all=False)
 
 
 def test_outlook_reply_collects_repeated_attach_flags():
@@ -34,7 +34,7 @@ def test_outlook_reply_collects_repeated_attach_flags():
     assert result.exit_code == 0
     handler.assert_called_once_with(
         "3", "Both attached",
-        attachments=["report.pdf", "chart.png"], at=None, cc=None, bcc=None, listing=None,
+        attachments=["report.pdf", "chart.png"], at=None, cc=None, bcc=None, listing=None, reply_all=False,
     )
 
 
@@ -49,7 +49,7 @@ def test_outlook_reply_routes_attachments_with_schedule():
 
     assert result.exit_code == 0
     handler.assert_called_once_with(
-        "3", "Tomorrow", attachments=["report.pdf"], at="+2h", cc=None, bcc=None, listing=None,
+        "3", "Tomorrow", attachments=["report.pdf"], at="+2h", cc=None, bcc=None, listing=None, reply_all=False,
     )
 
 
@@ -66,7 +66,7 @@ def test_outlook_reply_routes_cc_and_bcc():
     assert result.exit_code == 0
     handler.assert_called_once_with(
         "3", "Looping in Sam", attachments=None, at=None,
-        cc="sam@example.com", bcc="me@example.com", listing=None,
+        cc="sam@example.com", bcc="me@example.com", listing=None, reply_all=False,
     )
 
 
@@ -81,3 +81,19 @@ def test_outlook_reply_passes_the_listing_a_number_came_from():
 
     assert result.exit_code == 0
     assert handler.call_args.kwargs["listing"] == "a" * 32
+
+
+def test_outlook_reply_all_flag_reaches_the_handler():
+    """#1834: --all answers everyone on the thread, not only the sender."""
+    with patch(
+        "connectonion.cli.commands.outlook_commands.handle_outlook_reply"
+    ) as handler:
+        result = runner.invoke(app, [
+            "outlook", "reply", "3", "Thanks both", "--all", "--cc", "sam@example.com",
+        ])
+
+    assert result.exit_code == 0
+    handler.assert_called_once_with(
+        "3", "Thanks both", attachments=None, at=None,
+        cc="sam@example.com", bcc=None, listing=None, reply_all=True,
+    )

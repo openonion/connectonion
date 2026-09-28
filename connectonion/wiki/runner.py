@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from contextlib import nullcontext
+from contextlib import ExitStack, nullcontext
 from pathlib import Path
 
 from ..skills_catalog import useful_skills_dir
@@ -315,6 +315,10 @@ def _project_window_notice(text: str, items: list[dict]) -> str:
     return head.rstrip() + "\n" + notice + marker + tail
 
 
+# Longer than a scheduled sync batch holds the notebook (five one-page turns).
+PROMOTE_WAIT_SECONDS = 1800
+
+
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False):
     from .page_review import (drop_owner_addresses, drop_uncited_sources, normalize_numbered_sources,
                               restore_runner_fields, validate)
@@ -331,7 +335,14 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     errors = validate(record, text, original, items)
     # Sync owns this same lock. Compare and write together so a completed
     # concurrent update cannot be silently replaced by an older candidate.
-    with nullcontext() if lock_held else maintenance_lock(notebook.root):
+    # Wait for it: at 05:00 on 2026-09-28 a finished project page was dropped
+    # because the scheduled sync had just started (#1885).
+    with ExitStack() as held:
+        if not lock_held:
+            try:
+                held.enter_context(maintenance_lock(notebook.root, wait=PROMOTE_WAIT_SECONDS))
+            except WikiError as error:
+                raise RunFailed(f"{error}; the finished page is kept at {candidate}", usage) from error
         if not notebook.path(record).is_file() or notebook.read(record) != original:
             errors.append("Page changed during investigation; preserve current page and retry")
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,

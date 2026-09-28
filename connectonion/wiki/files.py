@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 
@@ -91,18 +92,28 @@ def write_json(path: Path, value) -> None:
 
 
 @contextmanager
-def maintenance_lock(root: Path):
-    """One OS-owned lock for every write path; process death releases it."""
+def maintenance_lock(root: Path, wait: float = 0):
+    """One OS-owned lock for every write path; process death releases it.
+
+    `wait` is how many seconds to keep trying. A scheduled tick gives up at
+    once and retries on the next one; a finished investigation has no next
+    tick, so it waits rather than lose a page it already paid for.
+    """
     import fcntl
 
     path = state_path(root, "maintenance.lock")
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    deadline = time.monotonic() + wait
     try:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as error:
-            raise WikiError("Wiki is busy; wait for the active maintenance run") from error
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as error:
+                if time.monotonic() >= deadline:
+                    raise WikiError("Wiki is busy; wait for the active maintenance run") from error
+                time.sleep(min(1.0, max(0.05, deadline - time.monotonic())))
         yield
     finally:
         os.close(fd)

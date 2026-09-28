@@ -359,7 +359,8 @@ def handle_outlook_download(email_id: str, out_dir: str = ".", include_inline: b
 
 @microsoft_errors("co outlook sent")
 def handle_outlook_reply(email_id: str, message: str, at: str = None, *, attachments: list = None,
-                         cc: str = None, bcc: str = None, listing: str | None = None):
+                         cc: str = None, bcc: str = None, listing: str | None = None,
+                         reply_all: bool = False):
     """Reply to an email from the last listing (threaded via Graph). A message of '-' reads stdin.
 
     `at` keeps its third-positional slot from before attachments existed;
@@ -378,11 +379,12 @@ def handle_outlook_reply(email_id: str, message: str, at: str = None, *, attachm
         print_tip(f"\n[yellow]No email #{email_id} in that listing — run co outlook, then co outlook reply <#> <message> --listing <listing-id>.[/yellow]\n")
         raise typer.Exit(1)
 
-    outlook.reply(resolved, message, attachments=attachments, send_at=send_at, cc=cc, bcc=bcc)
+    outlook.reply(resolved, message, attachments=attachments, send_at=send_at, cc=cc, bcc=bcc,
+                  reply_all=reply_all)
     if send_at:
         console.print(f"\n[green]✓ Reply scheduled[/green] for [bold]{send_at}[/bold] to email {email_id}")
     else:
-        console.print(f"\n[green]✓ Replied[/green] to email {email_id}")
+        console.print(f"\n[green]✓ Replied{' to all' if reply_all else ''}[/green] to email {email_id}")
     if cc:
         console.print(f"  Cc: {cc}")
     if bcc:

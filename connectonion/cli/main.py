@@ -279,7 +279,9 @@ def deploy(
 def auth(service: Optional[str] = typer.Argument(None, help="login, status, logout, or a service: google, microsoft, feishu, lark"),
          scopes: Optional[str] = typer.Option(None, "--scopes", help="Google: comma-separated limited scopes. Default: Gmail, Calendar, Drive and YouTube."),
          app_id: Optional[str] = typer.Option(None, "--app-id", metavar="cli_…",
-                                              help="Feishu/Lark: authorize an application you already have, keeping its groups and permissions")):
+                                              help="Feishu/Lark: authorize an application you already have, keeping its groups and permissions"),
+         core: bool = typer.Option(False, "--core",
+                                   help="Microsoft: mail, calendar, contacts and people only, not OneNote, OneDrive, Teams and To Do")):
     """Sign in to OpenOnion (login, status, logout) or connect a service. Writes tokens to the env file; feishu and lark also create a Feishu application you own. status is Read-only."""
     if scopes is not None and service != "google":
         print("--scopes is only supported for Google. Next: co auth google --help")
@@ -287,12 +289,15 @@ def auth(service: Optional[str] = typer.Argument(None, help="login, status, logo
     if app_id is not None and service not in ("feishu", "lark"):
         print("--app-id is only supported for Feishu and Lark. Next: co auth feishu --help")
         raise typer.Exit(2)
+    if core and service != "microsoft":
+        print("--core is only supported for Microsoft. Next: co auth microsoft --help")
+        raise typer.Exit(2)
     if service == "google":
         from .commands.auth_commands import handle_google_auth
         handle_google_auth(scopes=scopes)
     elif service == "microsoft":
         from .commands.auth_commands import handle_microsoft_auth
-        handle_microsoft_auth()
+        handle_microsoft_auth(core=core)
     elif service in ("feishu", "lark"):
         from .commands.feishu_auth import handle_feishu_auth
         handle_feishu_auth(brand=service, app_id=app_id)
@@ -1633,28 +1638,38 @@ _INBOX_IDS = {
     "whatsapp": ("61412345678@s.whatsapp.net", "3EB0C127D8F1A2B4E5F6"),
     "telegram": ("-1001234567890", "-1001234567890.42"),  # "<chat>.<message_id>"
     "discord": ("1180123456789012345", "1180123987654321098"),
+    "whatsapp-cloud": ("61412345678", "wamid.HBgLNjE0MTIzNDU2NzgVAgASGBQzQTdGNDk2"),
 }
 
 
-# Inbox providers: feishu, lark, whatsapp, telegram. One directory per provider under
+# Inbox providers: feishu, lark, whatsapp, telegram, discord, whatsapp-cloud. One directory per provider under
 # ~/.co/inbox/, the same nine verbs on each. The tool knows nothing about
 # agents; anything that can read a file consumes it (DD-063).
 def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = None,
-                 with_send: bool = True, writes: bool = False) -> typer.Typer:
+                 with_send: bool = True, writes=False, lacks: tuple = ()) -> typer.Typer:
     """The inbox verbs on a fresh group, or on an existing one that already has
     its own `send`: `co telegram send` shipped first, and its output is part of
     its contract, so Telegram gains the other verbs beside it.
 
     `writes`: the provider implements edit, delete and react. Only WhatsApp
     does; elsewhere the verbs stay (one set of verbs everywhere) but their help
-    says they refuse, instead of promising an id they never print."""
+    says they refuse, instead of promising an id they never print. A tuple
+    names the ones it does implement (`co whatsapp-cloud` reacts and nothing
+    else).
+
+    `lacks`: verbs the platform itself has no operation for, so their help
+    must not promise an endpoint someone could wire up."""
     co, chat, msg = f"co {name}", *_INBOX_IDS[name]
     group = group if group is not None else _typer_app(
         help=help_text,
         epilog=f'Example:  {co} check  |  {co} receive -t 60  |  {co} reply {msg} "On it"')
-    def refuses(what: str) -> Optional[str]:
-        return None if writes else (f"{what} Not implemented for {name.capitalize()} yet: it refuses, "
-                                    "names the API endpoint that would do it, and sends nothing. Read-only.")
+    def refuses(what: str, verb: str) -> Optional[str]:
+        if verb in lacks:
+            return f"{what} The platform has no way to do this: it refuses and sends nothing. Read-only."
+        if writes is True or verb in (writes or ()):
+            return None
+        return (f"{what} Not implemented for {name.capitalize()} yet: it refuses, "
+                "names the API endpoint that would do it, and sends nothing. Read-only.")
 
     @group.command("listen", epilog=f"Example:  {co} listen  |  {co} listen --raw")
     def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl"),
@@ -1713,7 +1728,7 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         from .commands.listen_commands import handle_reply
         handle_reply(name, message_id, text, again=again, plain=plain, image=image, file=file)
 
-    @group.command("edit", cls=NegativeIds, help=refuses("Edit a message this account sent."),
+    @group.command("edit", cls=NegativeIds, help=refuses("Edit a message this account sent.", "edit"),
                    epilog=f'Example:  {co} edit {msg} "Fixed typo"  |  echo "Fixed typo" | {co} edit {msg}')
     def _edit(
         message_id: str = typer.Argument(..., help="Id of a message this account sent"),
@@ -1724,13 +1739,13 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         from .commands.listen_commands import handle_edit
         handle_edit(name, message_id, text, plain=plain)
 
-    @group.command("delete", cls=NegativeIds, help=refuses("Delete a message for everyone."), epilog=f"Example:  {co} delete {msg}")
+    @group.command("delete", cls=NegativeIds, help=refuses("Delete a message for everyone.", "delete"), epilog=f"Example:  {co} delete {msg}")
     def _delete(message_id: str = typer.Argument(..., help="Id of a message to delete for everyone")):
         """Delete a message for everyone. Prints the deletion's id. Deletes it from the chat."""
         from .commands.listen_commands import handle_delete
         handle_delete(name, message_id)
 
-    @group.command("react", cls=NegativeIds, help=refuses("React to a message with an emoji."),
+    @group.command("react", cls=NegativeIds, help=refuses("React to a message with an emoji.", "react"),
                    epilog=f'Example:  {co} react {msg} "👍"  |  {co} react {msg} ""')
     def _react(
         message_id: str = typer.Argument(..., help="Id of any message, received or sent"),
@@ -1840,6 +1855,26 @@ app.add_typer(_whatsapp_app, name="whatsapp")
 # Telegram keeps the `send` it shipped with and gains every other inbox verb on
 # the same group, with the same TELEGRAM_BOT_TOKEN.
 _inbox_group("telegram", "", group=telegram_app, with_send=False)
+
+# The WhatsApp Business Cloud API, a separate provider from `co whatsapp` on
+# purpose: that one is a linked device that can sit in groups a person made;
+# this one is Meta's official API for a business number, with its own
+# credentials, its own inbox directory, and one extra verb to register the
+# webhook routing with O API.
+_whatsapp_cloud_app = _inbox_group(
+    "whatsapp-cloud",
+    "Preview: WhatsApp Business Cloud API as an inbox: bind, listen, receive, send, reply. Sends as your business number.",
+    writes=("react",), lacks=("edit", "delete"))
+
+
+@_whatsapp_cloud_app.command("bind", epilog="Example:  co whatsapp-cloud bind  |  co env set WHATSAPP_CLOUD_BINDING_ID <binding-id>")
+def _whatsapp_cloud_bind():
+    """Register Meta's webhook with O API from WHATSAPP_CLOUD_* variables. Prints the binding id. Creates or replaces this number's binding on O API; sends nothing to WhatsApp."""
+    from .commands.listen_commands import handle_bind
+    handle_bind("whatsapp-cloud")
+
+
+app.add_typer(_whatsapp_cloud_app, name="whatsapp-cloud")
 
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.
@@ -2305,6 +2340,46 @@ from .commands.synology_cli import syno_app
 app.add_typer(syno_app, name="syno")
 
 
+# OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.
+onenote_app = _typer_app(
+    help="Your OneNote notebooks: list, read and create pages. Needs Notes.ReadWrite.All from co auth microsoft. ls, pages and read are Read-only.",
+    epilog='Example:  co onenote ls  |  co onenote pages "Lab notes"  |  co onenote read <page id>',
+    no_args_is_help=True,
+)
+app.add_typer(onenote_app, name="onenote")
+
+
+@onenote_app.command("ls", epilog="Example:  co onenote ls")
+def _onenote_ls():
+    """List your notebooks and their sections, with ids. Read-only."""
+    from .commands.onenote_commands import handle_onenote_ls
+    handle_onenote_ls()
+
+
+@onenote_app.command("pages", epilog='Example:  co onenote pages "Lab notes"  |  co onenote pages 0-8ab1… --limit 5')
+def _onenote_pages(section: str = typer.Argument(..., help="Section name (exact) or id, from co onenote ls"),
+                   limit: int = typer.Option(20, "--limit", min=1, max=100, help="At most this many pages")):
+    """List pages in a section, most recently changed first. Read-only."""
+    from .commands.onenote_commands import handle_onenote_pages
+    handle_onenote_pages(section, limit)
+
+
+@onenote_app.command("read", epilog="Example:  co onenote read 0-8ab1c2…")
+def _onenote_read(page_id: str = typer.Argument(..., help="Page id, from co onenote pages")):
+    """Print one page as plain text; images and attachments are named. Read-only."""
+    from .commands.onenote_commands import handle_onenote_read
+    handle_onenote_read(page_id)
+
+
+@onenote_app.command("create", epilog='Example:  co onenote create "Lab notes" "Week 5" "Results went here."  |  echo text | co onenote create "Lab notes" "Week 6"')
+def _onenote_create(section: str = typer.Argument(..., help="Section name (exact) or id"),
+                    title: str = typer.Argument(..., help="Page title"),
+                    text: Optional[str] = typer.Argument(None, help="Page text; omitted means stdin")):
+    """Create a new page in a section; never changes an existing one. Prints its id and link. Writes to OneNote."""
+    from .commands.onenote_commands import handle_onenote_create
+    handle_onenote_create(section, title, text)
+
+
 # Outlook command group. `co outlook` (no args) shows the Outlook inbox.
 # Uses the MICROSOFT_* OAuth tokens saved to .env by `co auth microsoft`.
 outlook_app = _typer_app(
@@ -2430,6 +2505,7 @@ def outlook_download(
 @outlook_app.command("reply", rich_help_panel="Send", epilog="Examples:  co outlook reply 3 \"Sounds good\" --listing <listing-id>  |  "
                                      "cat notes.txt | co outlook reply <message-id> -  |  "
                                      "co outlook reply 3 \"Looping in Sam\" --listing <listing-id> --cc sam@example.com  |  "
+                                     "co outlook reply <message-id> \"Thanks both\" --all  |  "
                                      "co outlook reply <message-id> \"Signed copy attached\" --attach signed.pdf")
 def outlook_reply(
     email_id: str = typer.Argument(..., help="Full message ID, or row # together with --listing ID"),
@@ -2439,10 +2515,12 @@ def outlook_reply(
     attach: Optional[List[str]] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for multiple)"),
     at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z); cancel before it goes out with co outlook cancel <#>"),
     listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed beside row numbers; required when using a number"),
+    reply_all: bool = typer.Option(False, "--all", help="Reply to everyone on the email (original To and Cc), not only the sender"),
 ):
     """Reply to an email (threaded), now or scheduled with --at. Sends from your Outlook account."""
     from .commands.outlook_commands import handle_outlook_reply
-    handle_outlook_reply(email_id, message, attachments=attach, at=at, cc=cc, bcc=bcc, listing=listing)
+    handle_outlook_reply(email_id, message, attachments=attach, at=at, cc=cc, bcc=bcc, listing=listing,
+                         reply_all=reply_all)
 
 
 @outlook_app.command("scheduled", rich_help_panel="Scheduled sends", epilog="Example:  co outlook scheduled")

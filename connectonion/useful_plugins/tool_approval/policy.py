@@ -727,7 +727,7 @@ def _classify_single_command(command: str, root: Path | None = None) -> dict:
     # program we cannot read, writes outside the workspace, authorization
     # control files, and reads outside the workspace for the commands whose
     # file arguments can be seen.
-    return decision("command", "allow", "ordinary command, allowed by default", "workspace")
+    return decision("command", "allow", ORDINARY_DEFAULT_REASON, "workspace")
 
 
 def _redirect_targets(command: str) -> list[str]:
@@ -904,6 +904,10 @@ def _owned_by_workflow_class(agent: "Agent", tool_name) -> bool:
     return owner is not None and type(owner).__name__ in WORKFLOW_TOOL_CLASSES
 
 
+# The reason on the one decision a chat turn does not get (#1881).
+ORDINARY_DEFAULT_REASON = "ordinary command, allowed by default"
+
+
 def workspace_policy_for_pending(agent: "Agent", pending: dict) -> dict | None:
     """Return a deterministic decision for any ordinary Auto session."""
     if ensure_approval_mode(agent) != AUTO:
@@ -935,6 +939,13 @@ def workspace_policy_for_pending(agent: "Agent", pending: dict) -> dict | None:
             "call",
             requires_human=bool(agent.io),
         )
+    # A chat turn is started by whoever can address the bot, not the operator.
+    # The default allow (#1481) is for the operator's own unattended jobs; for
+    # a chat turn an unnamed command needs a grant written down (#1881).
+    if (agent.current_session.get("via") and result["decision"] == "allow"
+            and result.get("reason") == ORDINARY_DEFAULT_REASON):
+        result = decision(result["effect_class"], "ask",
+                          "a chat-channel turn runs only what is granted", "call", requires_human=True)
     if result["decision"] in ("ask", "deny"):
         granted = _explicitly_granted(agent, pending, result)
         if granted is not None:
@@ -1022,8 +1033,11 @@ def grant_remedy(tool_name: str, args: dict, effect_class: str | None = None) ->
     """How to allow this call next time, in the two places that work."""
     pattern = suggested_grant_pattern(tool_name, args, effect_class)
     return (
-        f"Nothing has granted this. To allow it — including unattended — write it down once:\n"
-        f"  • in .co/host.yaml:\n"
+        # For the operator, not the agent: this text also reaches the model, and
+        # a hint that pointed at a skill's frontmatter is how a chat turn came
+        # to edit its own permissions (#1873).
+        f"Nothing has granted this. The operator can allow it, including unattended, by writing it\n"
+        f"down once in .co/host.yaml (the operator's to change, not the agent's):\n"
         f"      permissions:\n"
         f'        "{pattern}":\n'
         f"          allowed: true\n"
@@ -1031,10 +1045,7 @@ def grant_remedy(tool_name: str, args: dict, effect_class: str | None = None) ->
         f"          reason: why you want this\n"
         f"          expires:\n"
         f"            type: never\n"
-        f"  • or in the skill that needs it, in its SKILL.md frontmatter:\n"
-        f"      tools:\n"
-        f'        - "{pattern}"\n'
-        f"A grant written in either place runs the call without asking again. "
+        f"The grant runs the call without asking again. "
         f"Narrow the pattern if it is broader than you meant."
     )
 

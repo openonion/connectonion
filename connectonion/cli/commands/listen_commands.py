@@ -1,5 +1,5 @@
 """
-Purpose: The verbs of an inbox provider — `co feishu listen | receive | send | reply | done | check | ls | log | consume`
+Purpose: The verbs of an inbox provider — `co feishu listen | receive | send | reply | done | check | ls | log | consume`, and `co whatsapp-cloud bind`
 LLM-Note:
   Dependencies: imports from [json, os, subprocess, sys, threading, time, typing, rich.console, inbox/] | imported by [cli/main.py via _inbox_group()] | tested by [tests/unit/test_listen_commands.py]
   Data flow: handle_listen → provider.run(inbox) until Ctrl-C | handle_receive → inbox.receive() → one JSON line on stdout | handle_send/handle_reply → stdin or argument → provider.send() → sent.jsonl → the new message id on stdout | handle_consume → serve_with_listener(handler), which restarts a dead listener and stops on exit 3 → subprocess(stdin=message) → reply(stdout)
@@ -21,7 +21,7 @@ from typing import List, Optional
 from rich.console import Console
 from rich.markup import escape
 
-from ...inbox import ANSWERING, Inbox, ListenerStopped, provider, reactions_enabled
+from ...inbox import ANSWERING, Inbox, ListenerStopped, ProviderPolicyError, provider, reactions_enabled
 from ...inbox.consumer import serve_with_listener
 from .command_tips import print_tip
 
@@ -88,13 +88,14 @@ _CREDENTIAL_WORDS = re.compile(r"credential|unauthori[sz]ed|\b401\b|\b403\b|toke
 
 
 def _refused(name: str, exc: Exception) -> None:
-    """Print a platform's refusal with the command to run next, and exit 1."""
+    """Print a platform's refusal with the command to run next, and exit 1,
+    or 3 when the platform's rules refused it (`_send_failure_code`)."""
     text = str(exc)
     if "Next:" not in text:
         verb = "check" if _CREDENTIAL_WORDS.search(text) else "log"
         text = f"{text.rstrip('. ')}. Next: co {name} {verb}"
     errors.print(text, style="red")
-    sys.exit(1)
+    sys.exit(_send_failure_code(exc))
 
 
 def _text_from(argument: Optional[str]) -> str:
@@ -258,6 +259,7 @@ def _restart_listener(name: str, inbox: Inbox) -> None:
     import signal
     pid = inbox.listener_pid()
     if pid and pid > 0:
+        inbox.log(f"stopped by listen --restart (pid {pid})")
         os.kill(pid, signal.SIGTERM)
         for _ in range(100):  # up to 10s for it to let go of the lock
             if inbox.listener_pid() is None:
@@ -270,7 +272,10 @@ def _restart_listener(name: str, inbox: Inbox) -> None:
     new = inbox.ensure_listener(settle=SETTLE_SECONDS)
     if new is None:
         _listener_died(inbox, inbox.listener_exit_code)
-    print(f"listener restarted in the background · pid {new}")
+    flags = " ".join(inbox.listener_flags())
+    # A listener in a tmux pane was replaced by one in the background, which
+    # its operator could not see (#1882); say where the new one runs.
+    print(f"listener restarted in the background · pid {new}" + (f" · {flags}" if flags else ""))
     print_tip(f"Next: co {name} check")
 
 
@@ -293,7 +298,7 @@ def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
         errors.print(f"already listening (pid {inbox.listener_pid()}); one listener per directory", style="yellow")
         sys.exit(1)
     started_with = running_version()
-    inbox.record_listener(started_with)
+    inbox.record_listener(started_with, ["--raw"] if raw else [])
 
     stop = threading.Event()
 
@@ -310,6 +315,16 @@ def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
 
     threading.Thread(target=sweep, daemon=True).start()
     errors.print(f"listening · {inbox.root}", style="dim")
+
+    def terminated(signum, frame):
+        # SIGTERM used to end the process with no line at all: the log showed
+        # only the next listener starting (#1882).
+        inbox.log(f"stopped by {signal.Signals(signum).name}")
+        raise SystemExit(128 + signum)
+    import signal
+    # signal.signal works only in the main thread; the CLI is, an embedder may not be.
+    main = threading.current_thread() is threading.main_thread()
+    previous = signal.signal(signal.SIGTERM, terminated) if main else None
     try:
         p.run(inbox, raw=raw)
     except KeyboardInterrupt:
@@ -332,6 +347,8 @@ def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
         errors.print(f"details: {inbox.logfile}", style="dim")
         sys.exit(1)
     finally:
+        if main:
+            signal.signal(signal.SIGTERM, previous)
         stop.set()
         inbox.log("listener stopped")
         inbox.release_lock()
@@ -427,6 +444,17 @@ def handle_send(name: str, chat: str, text: Optional[str] = None, reply_to: Opti
     print(sent)
 
 
+def _send_failure_code(exc: Exception) -> int:
+    """3 when the platform's rules refused the send, 1 for anything else.
+
+    A closed WhatsApp 24-hour window is not a failed request: the same text
+    will be refused every time until the customer writes again. Exit 3 is the
+    code this CLI already uses for "a person has to do something first", so a
+    supervisor that retries on 1 leaves it alone without being told why.
+    """
+    return EXIT_CONFIG if isinstance(exc, ProviderPolicyError) else 1
+
+
 def _mark_answering(p, inbox, message) -> None:
     """Change the queued message's mark from "seen" to "being answered".
 
@@ -508,7 +536,15 @@ def _unsupported(p, name: str, verb: str,
     failure is that the message id was wrong. A provider names its own
     endpoint in `unwired`; Feishu and Lark share the default, because a
     Telegram user told to look at /im/v1/messages is sent to the wrong docs.
+
+    A provider whose platform has no such operation at all says so through
+    its `cannot` table, because "nobody has wired it up" would send someone
+    looking for an endpoint that does not exist.
     """
+    reason = (getattr(p, "cannot", None) or {}).get(verb)
+    if reason:
+        errors.print(f"co {name} {verb}: {reason}. Next: co {name} send", style="red")
+        sys.exit(1)
     where = (getattr(p, "unwired", None) or {}).get(verb) or \
         f"Feishu and Lark have the endpoint for it ({endpoint})"
     errors.print(
@@ -629,6 +665,35 @@ def handle_react(name: str, message_id: str, emoji: str) -> None:
     what = f"reacted {emoji}" if emoji else "removed our reaction"
     inbox.log(f"{what} on {message_id} in {chat} as {sent or 'no id'}")
     print(sent)
+
+
+def handle_bind(name: str) -> None:
+    """Register the provider's webhook routing. Prints the binding id.
+
+    Every secret it needs is read from the environment, never from argv: an
+    app secret typed on a command line is in shell history and visible in
+    `ps` to every user on the machine.
+    """
+    p = provider(name)
+    problems = p.bind_missing()
+    if problems:
+        for problem in problems:
+            errors.print(problem, style="red")
+        sys.exit(EXIT_CONFIG)
+    try:
+        result = p.bind()
+    except Exception as exc:
+        errors.print(str(exc), style="red")
+        sys.exit(1)
+    binding_id = result["id"]
+    from ...backend import backend_url
+
+    print(binding_id)
+    errors.print("In the Meta app, set the WhatsApp webhook callback URL to "
+                 f"{backend_url()}/api/v1/messaging/webhooks/whatsapp/{binding_id}, "
+                 "the verify token to the same value, and subscribe the `messages` field.",
+                 style="dim", soft_wrap=True)
+    print_tip(f"Next: co env set WHATSAPP_CLOUD_BINDING_ID {binding_id}")
 
 
 def handle_check(name: str) -> None:
