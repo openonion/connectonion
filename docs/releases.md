@@ -25,7 +25,7 @@ python -m pip install --upgrade 'connectonion==1.8.9'
 
 ## Current preview
 
-None right now. Stable 1.8.9 supersedes every 1.8.9 preview (b1 through b22);
+None right now. Stable 1.8.9 supersedes every 1.8.9 preview (b1 through b23);
 the next previews will be 1.9.0, the personal Wiki's long-term release.
 
 <details>

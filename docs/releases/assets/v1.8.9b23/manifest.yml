@@ -1,0 +1,2 @@
+version: v1.8.9b23
+no_visual_change: "Only the optional audit model-review rubric and its findings change; OneNote navigation and CLI help layout are unchanged. The behavior is documented and covered by a focused review regression."

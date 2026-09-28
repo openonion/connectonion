@@ -45,8 +45,8 @@ marked as pre-releases on PyPI and GitHub.
 
 ## Stable release: 1.8.9
 
-Checked on real accounts, released by the owner's decision. Twenty-two
-previews (1.8.9b1–b22) fed it. Unlike 1.8.8 there was no round of strangers
+Checked on real accounts, released by the owner's decision. Twenty-three
+previews (1.8.9b1–b23) fed it. Unlike 1.8.8 there was no round of strangers
 on empty profiles: the owner chose to ship once the feature-complete preview
 (b19) and its follow-ups had been used on the owner's own accounts, and to fix
 what turns up in 1.9. What was checked live: WhatsApp pictures and files and a
@@ -402,17 +402,26 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 
 ## Current Version: 1.8.9
 
-1.8.9 is the stable release of the 1.8.9 line: 1.8.9b22 plus #1926 (a test's
-clock assumption) and #1928 (`co audit --review` asks whether a listed item can
-be picked by a short reference). It supersedes every 1.8.9 preview, including
-the 1.8.9b23 that was prepared for #1928. The Personal Wiki and the other
-experimental commands ship labelled as such; the Wiki's long-term support
-target remains 1.9.0. See [1.8.9 notes](docs/releases/1.8.9.md).
+1.8.9 is the stable release of the 1.8.9 line: 1.8.9b23 unchanged, released as
+stable. The Personal Wiki and the other experimental commands ship labelled
+as such; the Wiki's long-term support target remains 1.9.0. See
+[1.8.9 notes](docs/releases/1.8.9.md).
 
-- 1.8.9 (stable: b22 + #1926 + #1928; Development Status Production/Stable.)
+- 1.8.9 (stable: b23's code; Development Status Production/Stable.)
 
 Earlier in this line:
 
+1.8.9b23 adds a conditional short-reference question to `co audit --review`:
+when a command acts on a listed item, its help should show how to select that
+item without copying a long opaque ID or full name (#1927). Commands without
+listed items are not penalized. The OneNote number journey from b21 and the
+installed-CLI audit repair from b22 are included. Stable remains 1.8.8. See
+[1.8.9b23 notes](docs/releases/1.8.9b23.md).
+
+- 1.8.9b23 (terminal audit model review checks whether listed items have a
+  short selector; no change to OneNote's existing numbered navigation.)
+
+## Previous preview: 1.8.9b22
 
 1.8.9b22 repairs `co audit` for commands installed with `pip --user`: the
 auditor still isolates HOME and cwd, but preserves the Python user-package
