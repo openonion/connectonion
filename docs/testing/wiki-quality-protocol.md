@@ -5,6 +5,32 @@ explain the local word counter to a new reader; provide the real command and
 sample result; preserve the unimplemented hosting request; identify evidence,
 missing ownership and limits; use the canonical page shape.
 
+## Investigation benchmark cases and hard gates
+
+In addition to Atlas, keep fixed fictional cases for: a proposed change beside
+separately verified implementation; an old success claim with no recent test;
+session metadata with zero relevant turns in the selected window; a person with
+two addresses and a later correction; and a thin-evidence subject with tempting
+but unsupported ownership, URL, outcome and architecture. Set the required
+facts and planted counterexamples before modifying a prompt. Keep one case held
+out and run fixed cases twice before claiming a general improvement.
+
+Report separate gates rather than one average: execution and preservation on
+refusal; canonical structure and resolvable citations; atomic factual claims
+entailed by their cited source; required fact and counterexample coverage; and
+correct distinction between proposal, implementation, test result and later
+correction. Any material fabrication or contradiction blocks acceptance. A
+source ID that exists is a structure pass, not proof that it supports the claim.
+An LLM evaluator may suggest claims to inspect, but a human or explicit fixture
+oracle must check the saved evidence before factual support passes.
+
+Log elapsed time, model turns, source bytes, input/output/cached tokens and
+model/version for every run, separating cold and warm caches. A small source
+bundle taking over five minutes is a usability finding even if the page is
+accurate; the configured timeout remains the hard execution limit. Token
+counters are not a bill. Keep real mailbox and project samples only in private
+local workspaces; commit only anonymized benchmark design and synthetic cases.
+
 Keep the source material, external fixture-file contents, starting page, model,
 harness and input window fixed when measuring a prompt/code change. When comparing
 models, keep the other inputs fixed and record the changed model. Save both

@@ -328,6 +328,21 @@ def test_the_lines_the_runner_owns_are_put_back_not_refused():
     assert dropped.rstrip().endswith("not investigated yet")                   # a removed status line comes back
 
 
+def test_mapped_fields_nested_under_a_bullet_are_put_back_at_the_top_level():
+    """A real project candidate kept Sessions / First seen / Last seen but indented
+    them under a bullet, and the page was refused for losing the mapped facts."""
+    from connectonion.wiki.page_review import restore_runner_fields
+    original = ("# Atlas\n\n## Paths\n- /work/atlas\n- Sessions: 2\n"
+                "- First seen: 2026-09-20\n- Last seen: 2026-09-22\n")
+    nested = ("# Atlas\n\n## Paths\n- /work/atlas\n- Mapped facts:\n"
+              "  - Sessions: 2\n  - First seen: 2026-09-20\n  - Last seen: 2026-09-22\n")
+    fixed = restore_runner_fields("projects/atlas.md", nested, original)
+    for line in ("- Sessions: 2", "- First seen: 2026-09-20", "- Last seen: 2026-09-22"):
+        assert fixed.count("\n" + line + "\n") == 1
+    assert restore_runner_fields("projects/atlas.md", fixed, original) == fixed
+    assert "- Sessions: 2\n" in restore_runner_fields("projects/atlas.md", nested.replace("Sessions: 2", "Sessions: 3"),
+                                                       original)
+
 def test_a_page_turn_may_cite_the_page_as_it_stood_and_carry_over_its_sources():
     """A real one-page maintenance turn cited `investigation:page` and re-cited the
     page's own codex ids in new words; both were refused and the update was lost."""
