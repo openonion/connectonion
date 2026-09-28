@@ -121,3 +121,25 @@ def test_user_site_command_remains_reachable_with_isolated_home(tmp_path, monkey
 
     _, checked = audit.audit(["co", "onenote"])
     assert list(checked) == ["co onenote"]
+
+
+def test_review_flags_a_list_item_that_requires_a_long_reference(monkeypatch):
+    import connectonion
+
+    def verdict(prompt, *, output, model):
+        assert "refer to that item briefly" in prompt
+        assert output is audit.Review
+        return audit.Review(
+            clear=True,
+            effects_match=True,
+            example_realistic=True,
+            simple=True,
+            short_reference=False,
+            suggestion="Show how to use a numbered row after listing pages.",
+        )
+
+    monkeypatch.setattr(connectonion, "llm_do", verdict)
+    finding = audit.review("co notes read", "Usage: co notes read LONG_ID", "test-model")
+    assert finding is not None
+    assert finding.check == "review"
+    assert "short_reference" in finding.detail

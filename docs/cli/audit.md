@@ -59,10 +59,13 @@ is not counted as a command.
 
 ## Model review (`--review`)
 
-Only pages that pass every rule are reviewed. A text-only model judges four
+Only pages that pass every rule are reviewed. A text-only model judges five
 things a rule cannot: is the first line clear to a newcomer, does the page say
-what the command reads or changes, is the example realistic, is it simple. It
-returns one concrete rewrite. Pin `--model` when comparing runs.
+what the command reads or changes, is the example realistic, is it simple,
+and, when it acts on a listed item, can the user refer to that item briefly
+instead of copying a long provider ID or full title? Commands that do not
+select listed items pass the last question. It returns one concrete rewrite.
+Pin `--model` when comparing runs.
 
 ## In CI
 
@@ -79,4 +82,5 @@ without blocking, because a model's verdict varies between runs.
 OneNote also has a behavioral terminal journey in `tests/unit/test_onenote.py`:
 `co onenote ls` → `co onenote pages 2` → `co onenote read 1`. The test checks
 that both numbers resolve to the IDs that were displayed, even when two pages
-share a title. The help audit alone cannot verify that mapping.
+share a title. The help review can flag a missing short reference, but it
+cannot verify that a displayed number resolves to the right item.

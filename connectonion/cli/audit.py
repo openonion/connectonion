@@ -357,12 +357,17 @@ class Review(BaseModel):
     effects_match: bool = Field(description="the page says what the command reads, writes, sends or deletes, and it fits the command")
     example_realistic: bool = Field(description="the example is one a user would actually run")
     simple: bool = Field(description="short, plain words, no internal jargon needed to understand it")
+    short_reference: bool = Field(
+        description="if this command acts on an item from a list, its help offers a short row number or concise reference instead of requiring a long opaque ID or full name; true when this does not apply"
+    )
     suggestion: str = Field(description="one concrete rewrite of the weakest sentence, or empty if all pass")
 
 
 REVIEW_PROMPT = """You review one help page of a command-line tool that an AI agent may run
 inside an agent harness. Its readers are people and agents deciding whether
-and how to run the command. Judge only this page.
+and how to run the command. Judge only this page. If it acts on a listed item,
+check whether the user can refer to that item briefly after listing it. Do not
+penalize commands that do not select listed items.
 
 $ {path} --help
 {page}"""
@@ -377,7 +382,7 @@ def review(path: str, text: str, model: str):
     from connectonion import llm_do
 
     verdict = llm_do(REVIEW_PROMPT.format(path=path, page=text), output=Review, model=model)
-    failed = [name for name in ("clear", "effects_match", "example_realistic", "simple")
+    failed = [name for name in ("clear", "effects_match", "example_realistic", "simple", "short_reference")
               if not getattr(verdict, name)]
     if not failed:
         return None
