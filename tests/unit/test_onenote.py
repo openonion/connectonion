@@ -50,9 +50,40 @@ NOTEBOOKS = {"value": [{"id": "nb1", "displayName": "COMP3900",
 
 def test_without_the_notes_scope_it_names_the_command():
     with patch.dict(os.environ, {"MICROSOFT_SCOPES": "Mail.ReadWrite,Mail.Send"}):
-        with pytest.raises(ValueError, match="Notes.ReadWrite.All") as refused:
+        with pytest.raises(ValueError, match="Notes.ReadWrite") as refused:
             OneNote()
     assert "co auth microsoft" in str(refused.value)
+
+
+
+class TestPersonalMicrosoftAccounts:
+    """#1910: outlook.com accepts Notes.ReadWrite only; .All is work or school.
+
+    A personal account signed in with .All alone got a token that read mail,
+    while OneNote answered 401 40001 and the CLI said "authorization expired",
+    sending the person round the same sign-in forever.
+    """
+
+    def test_notes_readwrite_alone_is_enough(self):
+        request, _ = _graph({("GET", "/me/onenote/notebooks"): (200, NOTEBOOKS)})
+        with patch.dict(os.environ, {"MICROSOFT_SCOPES": "Mail.ReadWrite,Notes.ReadWrite"}), \
+                patch("connectonion.useful_tools.outlook.httpx.request", request):
+            assert "COMP3900" in OneNote().list_notebooks()
+
+    def test_a_401_with_only_the_work_scope_says_why_not_expired(self):
+        request, _ = _graph({("GET", "/me/onenote/notebooks"): (401, {"error": {"code": "40001"}})})
+        with patch("connectonion.useful_tools.outlook.httpx.request", request):
+            with pytest.raises(ValueError) as refused:
+                OneNote().list_notebooks()
+        message = str(refused.value)
+        assert "personal Microsoft account" in message and "Notes.ReadWrite" in message
+        assert "co auth microsoft" in message and "expired" not in message
+
+    def test_a_401_on_page_content_says_the_same(self):
+        request, _ = _graph({("GET", "/me/onenote/pages/p1/content"): (401, "")})
+        with patch("connectonion.useful_tools.onenote.httpx.request", request):
+            with pytest.raises(ValueError, match="personal Microsoft account"):
+                OneNote().read_page("p1")
 
 
 def test_notebooks_are_listed_with_their_sections_and_ids():

@@ -2,7 +2,7 @@
 Purpose: `co onenote` — list, read and create OneNote pages from the terminal (#1887)
 LLM-Note:
   Dependencies: imports from [sys, rich, useful_tools/onenote.OneNote, command_tips.print_tip] | imported by [cli/main.py] | tested by [tests/unit/test_onenote.py]
-  Data flow: each handler builds OneNote() (refuses without Notes.ReadWrite.All, naming co auth microsoft) → calls one tool method → prints its text → names the next command
+  Data flow: each handler builds OneNote() (refuses without a OneNote scope, naming co auth microsoft) → calls one tool method → prints its text → names the next command
   State/Effects: create writes one new page; the other verbs only read
   Errors: ValueError and credential errors print as one red line plus the command to run, exit 1
 """

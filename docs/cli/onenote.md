@@ -1,8 +1,11 @@
 # co onenote
 
 Your OneNote notebooks from the terminal, and the same access for agents through
-`OneNote()` (#1887). It needs `Notes.ReadWrite.All`, which `co auth microsoft`
-requests since 1.8.9.
+`OneNote()` (#1887). It needs `Notes.ReadWrite`, which `co auth microsoft`
+requests since 1.8.9b20, or on a work or school account `Notes.ReadWrite.All`.
+A personal Microsoft account (outlook.com) accepts only `Notes.ReadWrite`: a
+sign-in from 1.8.9b19 asked for `.All` alone, so its token reads mail while
+OneNote refuses it. Sign in again (#1910).
 
 ```bash
 co onenote ls                                  # notebooks and their sections, with ids
@@ -38,6 +41,7 @@ throttling retries as `Outlook()`.
 
 | Message | What to do |
 |---------|------------|
-| `Missing Microsoft Notes.ReadWrite.All scope` | `co auth microsoft` (sign in again; a sign-in from before 1.8.9 did not ask for OneNote) |
+| `Missing Microsoft Notes.ReadWrite scope` | `co auth microsoft` (sign in again; a sign-in from before 1.8.9 did not ask for OneNote) |
+| `OneNote refused this sign-in (HTTP 401). A personal Microsoft account …` | `co auth microsoft` (a 1.8.9b19 sign-in on outlook.com lacked `Notes.ReadWrite`) |
 | `No section named …` | `co onenote ls` for the exact names and ids |
 | `Several sections are named …` | pass the section id instead |
