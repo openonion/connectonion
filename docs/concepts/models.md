@@ -38,7 +38,12 @@ response = agent.input("Hello!")
 
 ## Available Models
 
-All models below work with both managed keys (`co/` prefix) and your own API keys.
+Every model below works with your own API key. Managed keys (`co/` prefix) route
+exactly the models in `connectonion/core/usage.py`: free on every account,
+`co/gemini-3.8-flash` (default), `co/llama`, `co/gemma`,
+`co/gemini-3.7-flash` (rollback), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`,
+`co/gemini-2.5-pro` and `co/gemini-2.5-flash`; paid, once the account has credits, `co/gpt-5`,
+`co/o4-mini` and `co/claude-sonnet-4`. Those are marked `# Managed` below.
 
 ### OpenAI Models
 
@@ -49,22 +54,18 @@ agent = Agent("assistant", model="co/gpt-5")        # Managed
 agent = Agent("assistant", model="gpt-5")           # Your key
 
 # Faster, cost-efficient version for well-defined tasks
-agent = Agent("assistant", model="co/gpt-5-mini")   # Managed
 agent = Agent("assistant", model="gpt-5-mini")      # Your key
 
 # Fastest, most cost-efficient version
-agent = Agent("assistant", model="co/gpt-5-nano")   # Managed
 agent = Agent("assistant", model="gpt-5-nano")      # Your key
 ```
 
 #### GPT-4o Series (Previous Generation)
 ```python
 # Multimodal model with vision capabilities
-agent = Agent("assistant", model="co/gpt-4o")       # Managed
 agent = Agent("assistant", model="gpt-4o")          # Your key
 
 # Affordable small model
-agent = Agent("assistant", model="co/gpt-4o-mini")  # Managed
 agent = Agent("assistant", model="gpt-4o-mini")     # Your key
 ```
 
@@ -84,7 +85,6 @@ agent = Agent("assistant", model="co/gemini-3.8-flash")  # Managed
 agent = Agent("assistant", model="gemini-3.8-flash")     # Your key
 
 # Image generation model with grounded generation
-agent = Agent("assistant", model="co/gemini-3-pro-image-preview")  # Managed
 agent = Agent("assistant", model="gemini-3-pro-image-preview")     # Your key
 ```
 
@@ -113,18 +113,15 @@ is the source for the context and capability values below.
 #### Gemini 2.5 (Previous generation)
 ```python
 # Ultra fast, cheapest Gemini option
-agent = Agent("assistant", model="co/gemini-2.5-flash-lite")  # Managed
 agent = Agent("assistant", model="gemini-2.5-flash-lite")     # Your key
 ```
 
 #### Gemini 2.0
 ```python
 # Previous gen workhorse
-agent = Agent("assistant", model="co/gemini-2.0-flash")  # Managed
 agent = Agent("assistant", model="gemini-2.0-flash")     # Your key
 
 # Previous gen lite version
-agent = Agent("assistant", model="co/gemini-2.0-flash-lite")  # Managed
 agent = Agent("assistant", model="gemini-2.0-flash-lite")     # Your key
 ```
 
@@ -133,22 +130,18 @@ agent = Agent("assistant", model="gemini-2.0-flash-lite")     # Your key
 #### Claude 4.5 Series (Latest)
 ```python
 # Claude Opus 4.5 - Most capable model
-agent = Agent("assistant", model="co/claude-opus-4-5")    # Managed
 agent = Agent("assistant", model="claude-opus-4-5")       # Your key
 
 # Claude Sonnet 4.5 - Best balance of intelligence and speed
-agent = Agent("assistant", model="co/claude-sonnet-4-5")  # Managed
 agent = Agent("assistant", model="claude-sonnet-4-5")     # Your key
 
 # Claude Haiku 4.5 - Fastest with near-frontier intelligence
-agent = Agent("assistant", model="co/claude-haiku-4-5")   # Managed
 agent = Agent("assistant", model="claude-haiku-4-5")      # Your key
 ```
 
 #### Claude 4 Series (Previous Generation)
 ```python
 # Claude Opus 4.1 - Specialized reasoning
-agent = Agent("assistant", model="co/claude-opus-4-1")    # Managed
 agent = Agent("assistant", model="claude-opus-4-1")       # Your key
 
 # Claude Sonnet 4 - Balanced performance
@@ -156,7 +149,6 @@ agent = Agent("assistant", model="co/claude-sonnet-4")    # Managed
 agent = Agent("assistant", model="claude-sonnet-4")       # Your key
 
 # Claude Opus 4 - Legacy version
-agent = Agent("assistant", model="co/claude-opus-4")      # Managed
 agent = Agent("assistant", model="claude-opus-4")         # Your key
 ```
 
@@ -300,12 +292,12 @@ class Result(BaseModel):
     explanation: str
 
 # Works with all OpenAI and Gemini models
-result = llm_do("What is 2+2?", output=Result, model="co/gpt-4o-mini")
+result = llm_do("What is 2+2?", output=Result, model="co/o4-mini")
 result = llm_do("What is 2+2?", output=Result, model="co/gemini-3.8-flash")
 
 # Works with Claude 4.5/4.1 models only
-result = llm_do("What is 2+2?", output=Result, model="co/claude-sonnet-4-5")  # ✅
-result = llm_do("What is 2+2?", output=Result, model="co/claude-haiku-4-5")   # ✅
+result = llm_do("What is 2+2?", output=Result, model="claude-sonnet-4-5")  # ✅ your own key
+result = llm_do("What is 2+2?", output=Result, model="claude-haiku-4-5")   # ✅ your own key
 # result = llm_do("What is 2+2?", output=Result, model="co/claude-sonnet-4") # ❌ Not supported
 ```
 
@@ -347,7 +339,7 @@ from connectonion import Agent
 # Use any model with co/ prefix
 agent = Agent("assistant", model="co/gpt-5")
 agent = Agent("assistant", model="co/gemini-3.8-flash")
-agent = Agent("assistant", model="co/claude-sonnet-4-5")
+agent = Agent("assistant", model="co/claude-sonnet-4")
 ```
 
 **Includes:**
@@ -498,7 +490,7 @@ from connectonion import Agent
 # With managed keys (easiest)
 agent_openai = Agent("assistant", model="co/gpt-5")
 agent_google = Agent("assistant", model="co/gemini-3.8-flash")
-agent_claude = Agent("assistant", model="co/claude-opus-4.1")
+agent_claude = Agent("assistant", model="co/claude-sonnet-4")
 
 # OR with your own API keys
 agent_openai = Agent("assistant", model="gpt-5")
@@ -515,7 +507,7 @@ response = agent_claude.input("Explain quantum computing")
 
 ```python
 # Compare responses from top models (using managed keys)
-models = ["co/gpt-5", "co/gemini-3.8-flash", "co/claude-sonnet-4-5"]
+models = ["co/gpt-5", "co/gemini-3.8-flash", "co/claude-sonnet-4"]
 prompt = "Write a Python implementation of binary search"
 
 for model in models:

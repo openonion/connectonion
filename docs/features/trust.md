@@ -825,7 +825,7 @@ TrustAgent inherits from Agent and provides trust-specific methods.
 class TrustAgent(Agent):
     """Agent specialized for trust decisions."""
 
-    def __init__(self, trust: str = "careful", *, api_key: str = None, model: str = "co/gpt-4o-mini"):
+    def __init__(self, trust: str = "careful", *, api_key: str = None, model: str = DEFAULT_MODEL, co_dir: Path = None):
         """Create from level ("open", "careful", "strict") or policy path."""
 
     # === Main Decision ===

@@ -82,7 +82,7 @@ chat.run()
 Shows real-time information:
 
 ```
-🤖 Assistant    ◐ Thinking (1/10)    co/gpt-4  1,234 tok  $0.0012
+🤖 Assistant    ◐ Thinking (1/10)    co/gpt-5  1,234 tok  $0.0012
 ```
 
 - **Left**: Agent name

@@ -49,13 +49,12 @@ What `co auth google` does:
 ```python
 from connectonion import llm_do
 
-response = llm_do("Hello", model="co/gpt-4o")
+response = llm_do("Hello", model="co/gpt-5")
 ```
 
 Works across providers:
-- `co/gpt-4o`, `co/gpt-4o-mini`
-- `co/claude-sonnet-4-5`, `co/claude-haiku-4-5`
-- `co/gemini-3.8-flash` (default), `co/gemma` (free), `co/llama` (free), `co/gemini-3.7-flash` (rollback), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
+- Paid, once the account has credits: `co/gpt-5`, `co/o4-mini`, `co/claude-sonnet-4`
+- `co/gemini-3.8-flash` (default), `co/llama` (free), `co/gemma` (free), `co/gemini-3.7-flash` (rollback), `co/gemini-3.6-flash`, `co/gemini-3.5-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
 
 ## Troubleshooting
 

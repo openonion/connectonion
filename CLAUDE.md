@@ -176,9 +176,13 @@ connectonion/
 │   │       ├── tools.py            # Verification tools
 │   │       ├── trust_agent.py      # TrustAgent class
 │   │       └── policies/           # Trust level policy markdown
-│   ├── listen/                     # Chat platforms as mailbox directories (co feishu listen/receive/send)
-│   │   ├── mailbox.py              # ~/.co/<provider>/: inbox.jsonl log, new/ queue, cur/, outbox.jsonl
-│   │   └── feishu.py               # Feishu/Lark long connection → files; REST reply
+│   ├── inbox/                      # Chat platforms as inbox directories (co <provider> listen/receive/send)
+│   │   ├── store.py                # ~/.co/inbox/<provider>/: received.jsonl, new/, cur/, sent.jsonl, done.jsonl
+│   │   ├── consumer.py             # One lane per conversation: ordered inside, parallel across
+│   │   ├── settings.py             # `listen:` channels in .co/host.yaml
+│   │   ├── recovery.py             # Reconcile known chats after a restart or gap
+│   │   ├── formatting.py           # Markdown → the platform's own formatting
+│   │   └── feishu.py, telegram.py, discord.py, whatsapp.py   # One provider each
 │   ├── tui/                        # Terminal UI components
 │   ├── logger.py                   # Unified logging facade (terminal + file + YAML sessions)
 │   ├── console.py                  # Low-level terminal output with Rich
@@ -195,7 +199,7 @@ connectonion/
 │   │       └── co-ai/
 │   ├── useful_tools/               # Built-in tools
 │   ├── useful_plugins/             # Built-in plugins (re_act, image_result_formatter, ...)
-│   ├── useful_skills/              # Built-in skills (co-browser, install-connectonion, ship-feature)
+│   ├── useful_skills/              # 30 built-in skills: co-browser, co-inbox, co-mail-and-drive, wiki-*, ship-feature, ...
 │   ├── useful_prompts/             # Reusable prompt snippets
 │   └── useful_events_handlers/     # Reusable event handlers
 ├── tests/
@@ -223,7 +227,7 @@ connectonion/
 - Session persists across turns for multi-turn conversations
 - `tools`: ToolRegistry with O(1) lookup via `.get()` or attribute access (`agent.tools.tool_name`)
 - Class instances accessible via `agent.tools.instance_name` (e.g., `agent.tools.gmail`)
-- Default model: `co/gemini-3.7-flash` (managed keys via OpenOnion proxy)
+- Default model: `co/gemini-3.8-flash` (`DEFAULT_MODEL` in `core/usage.py`, managed keys via OpenOnion proxy). Free managed models include `co/gemma` and `co/llama` (`FREE_MANAGED_MODELS`); at a zero balance `co status` names `co/gemma` and `ollama/<model>` as free ways to keep going
 
 ### LLM Provider Routing (`connectonion/core/llm.py:create_llm()`)
 - Model prefix determines provider:
@@ -405,7 +409,8 @@ behaviour and is always loaded; a role is appended on top.
 
 ## Version Numbering Strategy
 
-**Current candidate:** 1.7.0a2 (Preview). **Stable:** 1.6.4.
+**Stable:** 1.8.8. The 1.8.9 line is in previews; see `## Current Version` in
+`VERSIONING.md` (and `connectonion/_version.py`) for the current candidate.
 
 Use SemVer with PEP 440 preview suffixes. Patch numbers do not roll over, and a
 whole-number release is earned by completed end-to-end evidence rather than by
@@ -449,7 +454,7 @@ the matching docs-site channel, then publishes only from the reviewed exact tag.
 - Example:
   ```python
   try:
-      agent = Agent("my_agent", model="co/gemini-3.7-flash")
+      agent = Agent("my_agent", model="co/gemini-3.8-flash")
       response = agent.input("Hello")
   except InsufficientCreditsError as e:
       print(f"Need ${e.shortfall:.4f} more credits")
@@ -484,7 +489,7 @@ the matching docs-site channel, then publishes only from the reviewed exact tag.
 
 ### Code Organization Preferences
 - Avoid `utils.py` - keep helper functions with their features
-- Default model for agents: `co/gemini-3.7-flash` (managed keys)
+- Default model for agents: `co/gemini-3.8-flash` (managed keys; free `co/gemma` and `co/llama` also work)
 - No Co-Authored-By lines in commit messages (no Claude, Happy, or other brand attribution)
 - Function-based tools over class-based tools
 - Events/plugins over subclassing Agent

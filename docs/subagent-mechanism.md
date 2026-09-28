@@ -14,7 +14,7 @@
 │  ┌───────────────────────────────────────────────────────────────┐  │
 │  │ System Prompt: "You are a coding agent..."                    │  │
 │  │ Tools: [task, glob, grep, read_file, write, edit, bash]      │  │
-│  │ Model: co/claude-opus-4-5                                     │  │
+│  │ Model: co/claude-sonnet-4                                     │  │
 │  │ Plugins: [eval, tool_approval, auto_compact]                 │  │
 │  │ Session: {messages: [...], trace: [...], turn: 3}            │  │
 │  └───────────────────────────────────────────────────────────────┘  │
@@ -283,7 +283,7 @@ Legend:
 │                    Performance Profile                            │
 └──────────────────────────────────────────────────────────────────┘
 
-Main Agent (co/claude-opus-4-5)
+Main Agent (co/claude-sonnet-4)
 ├─ Input cost: $15 / 1M tokens
 ├─ Output cost: $75 / 1M tokens
 ├─ Speed: ~500 tokens/sec

@@ -62,7 +62,7 @@ cat > .co/agents/reviewer/AGENT.md << 'EOF'
 ---
 name: reviewer
 description: Code reviewer that checks for bugs and style issues
-model: co/claude-opus-4-5
+model: co/claude-sonnet-4
 max_iterations: 10
 tools:
   - glob

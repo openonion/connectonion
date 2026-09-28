@@ -116,7 +116,7 @@ tools:
 ---
 name: implement
 description: Implement features with code changes
-model: co/claude-opus-4-5
+model: co/claude-sonnet-4
 max_iterations: 30
 tools:
   - file_write     # ← Full file access (includes read)
