@@ -16,6 +16,11 @@ stderr while continuing.
 Message Content intent on). Its ids are Discord's message ids and its chat is
 the channel id. See docs/cli/discord.md.
 
+`co slack …` (experimental) takes the same verbs for a Slack app over Socket
+Mode (`SLACK_APP_TOKEN` xapp- and `SLACK_BOT_TOKEN` xoxb-). Its ids are
+`<channel>:<ts>`, its chat is the channel id, and `reply` answers in the
+message's thread. See docs/cli/slack.md.
+
 ## Which command
 
 | you want to | run |
