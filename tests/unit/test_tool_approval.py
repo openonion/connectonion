@@ -126,16 +126,19 @@ class TestToolClassification:
 class TestNoIO:
     """Test behavior when no IO (not web mode)."""
 
-    def test_no_io_skips_approval(self):
-        """No IO = not web mode, should skip approval."""
+    def test_no_io_refuses_what_nothing_granted(self):
+        """No IO cannot ask, so an ungranted call is refused, not run (#1881).
+
+        This test used to assert the opposite: `rm -rf /` ran, because no IO
+        meant "skip approval", and a chat-driven read-only turn ran any CLI."""
         agent = FakeAgent(io=None)
         agent.current_session['pending_tool'] = {
             'name': 'bash',
             'arguments': {'command': 'rm -rf /', 'description': 'Delete everything'}
         }
 
-        # Should not raise (skips approval)
-        check_approval(agent)
+        with pytest.raises(ValueError, match="no one to ask"):
+            check_approval(agent)
 
 
 class TestSafeTools:
@@ -709,15 +712,17 @@ class TestUnknownTools:
 
         assert io.sent == []
 
-    def test_unknown_tool_without_io_remains_noninteractive(self):
-        """Local library use has no approval channel and keeps existing behavior."""
+    def test_unknown_tool_without_io_is_refused_not_run(self):
+        """No approval channel: an ungranted tool is refused without a dialog (#1881).
+        Grant it in .co/host.yaml to run it unattended."""
         agent = FakeAgent(io=None)
         agent.current_session['pending_tool'] = {
             'name': 'my_custom_tool',
             'arguments': {},
         }
 
-        check_approval(agent)
+        with pytest.raises(ValueError, match="host.yaml"):
+            check_approval(agent)
 
     def test_unknown_tool_in_full_access_uses_explicit_bypass(self):
         """Full access remains an explicit authority decision made by another plugin."""

@@ -457,6 +457,22 @@ def check_approval(agent: 'Agent') -> None:
         if refusal:
             raise ValueError(refusal)
 
+        # An operator's `allowed: false` holds against every allow, from any
+        # source. The matching loops below skipped it, so a deny written in
+        # host.yaml was silently ignored (#1881).
+        denied = _denied_by(tool_name, tool_args, agent.current_session.get('permissions', {}))
+        if denied:
+            raise ValueError(_deny_message(*denied))
+
+        # A skill's frontmatter grants tools, so editing it is granting. A chat
+        # turn talked itself into exactly that (#1873): never from a turn nobody
+        # is watching or that a chat message started, and never silently.
+        must_ask = _edits_skill_grants(tool_name, tool_args)
+        if must_ask and (not agent.io or agent.current_session.get('via')):
+            raise ValueError(
+                "SKILL.md frontmatter grants tool permissions, so a chat-driven or unattended turn "
+                "does not get to edit it. The operator changes skills and .co/host.yaml.")
+
         # The deterministic policy plugin runs immediately before this human
         # approval hook. Its result is transient call state, not a second
         # approval store: session-scoped human grants still live only in the
@@ -478,7 +494,7 @@ def check_approval(agent: 'Agent') -> None:
                 if reminder:
                     message = f"{message}\n\n{reminder}"
                 raise ValueError(message)
-            if verdict == 'allow':
+            if verdict == 'allow' and not must_ask:
                 if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
                     _log_permission_granted(agent, 
                         tool_name, tool_args, 'policy', policy.get('reason', 'auto-approved')
@@ -497,7 +513,7 @@ def check_approval(agent: 'Agent') -> None:
                 if value.get('source') == 'user'
             }
 
-        if permissions:
+        if permissions and not must_ask:
             # matches_permission_pattern is from skills plugin - handles pattern matching
             # for both simple tools ("read") and bash patterns ("Bash(git status)")
             # Pattern matching moved here from skills plugin
@@ -564,11 +580,16 @@ def check_approval(agent: 'Agent') -> None:
     if 'stop_signal' in agent.current_session:
         raise ValueError("User rejected this batch of tools. They want to provide input for the correct direction.")
 
-    # No IO cannot open a dialog. The deterministic policy hook immediately
-    # before this one has already allowed safe calls or denied anything that
-    # would have needed a person, so there is nothing interactive left to do.
+    # No IO cannot open a dialog, so a call that reached here was granted by
+    # nothing: refuse it, in every mode. This returned instead, which in
+    # read-only (where the policy hook does not run) let every call through: a
+    # chat turn ran an ungranted CLI, and read-only was less safe than Auto (#1881).
     if not agent.io:
-        return
+        pending = agent.current_session.get('pending_tool') or {}
+        from .policy import grant_remedy
+        raise ValueError(
+            f"{pending.get('name', 'This tool')} was not granted, and this turn has no one to ask.\n\n"
+            + grant_remedy(pending.get('name', ''), pending.get('arguments') or {}))
 
     # Get pending tool info
     pending = agent.current_session.get('pending_tool')
@@ -581,7 +602,7 @@ def check_approval(agent: 'Agent') -> None:
     # MODE: auto - edits auto-approved, others need approval
     # =================================================================
     if mode == AUTO:
-        if tool_name in FILE_EDIT_TOOLS:
+        if tool_name in FILE_EDIT_TOOLS and not _edits_skill_grants(tool_name, tool_args):
             if getattr(getattr(agent, 'logger', None), 'console', None):
                 _log_permission_granted(agent, 
                     tool_name, tool_args, 'mode', AUTO
@@ -848,6 +869,56 @@ def _refuse_control_file(tool_name: str, tool_args: dict):
     return None
 
 
+def _edits_skill_grants(tool_name: str, tool_args: dict) -> bool:
+    """True if this call writes a skill's SKILL.md, whose `tools:` frontmatter grants permissions (#1873).
+
+    Not a control file: agents author skills on purpose. But a write here can
+    widen what later sessions may do, so it is never an automatic edit.
+    """
+    import os
+    if tool_name in FILE_EDIT_TOOLS:
+        targets = [tool_args.get(k) for k in ("file_path", "path", "target", "filename")]
+    elif tool_name == "bash" and "command" in tool_args:
+        targets = [w.strip("'\"") for w in str(tool_args["command"]).split()]
+    else:
+        return False
+    for target in targets:
+        if not target:
+            continue
+        parts = os.path.normpath(str(target)).replace(os.sep, "/").split("/")
+        if parts[-1] == "SKILL.md" and "skills" in parts:
+            return True
+    return False
+
+
+def _denied_by(tool_name: str, tool_args: dict, permissions: dict):
+    """The first `allowed: false` entry this call matches, or None. A deny beats any allow (#1881)."""
+    commands = [str(tool_args.get("command", ""))]
+    if tool_name == "bash" and "command" in tool_args:
+        from bashlex.errors import ParsingError
+        from .bash_parser import _extract_subcommands
+        # Each subcommand, so `a && <denied>` is caught. bashlex cannot parse a
+        # here-document (`cat << 'EOF' > f`), which the policy reads on its own
+        # terms; for those the whole command is what a deny pattern is matched on.
+        try:
+            commands += [full for _name, full in _extract_subcommands(str(tool_args["command"])) if full]
+        except ParsingError:
+            commands += [str(tool_args["command"]).splitlines()[0]]
+    for pattern, perm in (permissions or {}).items():
+        if not isinstance(perm, dict) or perm.get("allowed") is not False:
+            continue
+        for command in commands:
+            args = {**tool_args, "command": command} if tool_name == "bash" else tool_args
+            if matches_permission_pattern(tool_name, args, pattern):
+                return pattern, perm
+    return None
+
+
+def _deny_message(pattern: str, perm: dict) -> str:
+    return (f"'{pattern}' is set to allowed: false in {perm.get('source', 'config')}"
+            + (f" ({perm['reason']})" if perm.get("reason") else "") + " — this call is refused.")
+
+
 def is_tool_permitted(tool_name: str, tool_args: dict, permissions: dict) -> tuple[bool, str]:
     """Check one tool call against a permission whitelist. Returns (allowed, reason).
 
@@ -864,6 +935,9 @@ def is_tool_permitted(tool_name: str, tool_args: dict, permissions: dict) -> tup
     # Before the whitelist, not through it: these are refused however generously
     # the operator configured file writing, because they are what "how
     # generously" is stored in.
+    denied = _denied_by(tool_name, tool_args, permissions)
+    if denied:
+        return False, _deny_message(*denied)
     refusal = _refuse_control_file(tool_name, tool_args)
     if refusal:
         return False, refusal
