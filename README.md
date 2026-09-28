@@ -7,7 +7,7 @@ Gmail and Outlook credentials stay on your machine. Works with Claude Code,
 Codex, Cursor, or your own agent.
 
 <p align="center">
-  <a href="https://www.connectonion.com"><img src="https://www.connectonion.com/connections.svg" width="100%" alt="What co connects an agent to: its own 0x address, mailbox and memory; Gmail, Outlook, Google Calendar, Meet, OneNote and Teams; WhatsApp, Telegram, Discord, Feishu, Lark and SMS; a real Chrome, a remote browser, Google Drive, YouTube, a Synology NAS and web search; Claude Code, Codex, Cursor and Kiro; OpenAI, Anthropic, Gemini, Mistral, Groq, Grok, OpenRouter and Ollama models; remote agents, your servers over SSH, and schedules."></a>
+  <a href="https://www.connectonion.com/#connections"><img src="https://www.connectonion.com/connections.svg" width="100%" alt="Vector logo wall of co connections: identity and memory; mail and calendar; chat apps; browser and files; Claude Code, Codex, your skills with co skills, shared skills with co sub, Cursor and Kiro; models; agents and servers."></a>
 </p>
 
 <div align="center">
@@ -76,8 +76,9 @@ co email send you@example.com "Hi" "Sent from my agent's own address"
 | **Mail & calendar** | `co email` (the agent's own address, no DNS) · `co gmail` · `co outlook` · `co gcalendar` |
 | **Chat inboxes** | `co sms` · `co telegram` · `co whatsapp` · `co feishu` · `co lark` |
 | **Files** | `co gdrive` · `co syno` (Synology NAS) · `co youtube` |
+| **Skills** | `co skills` — discover, copy and link skill files · `co sub` — follow and refresh shared skills |
 | **Network & ship** | `co call` (run one command on a remote agent) · `co deploy` (our cloud, or `--to` a server you own) · `co server` |
-| **Build** | `co ai` · `co create` · `co skills` · `co eval` · `co doctor` |
+| **Build** | `co ai` · `co create` · `co eval` · `co doctor` |
 
 `co commands` lists every command and subcommand with its summary.
 

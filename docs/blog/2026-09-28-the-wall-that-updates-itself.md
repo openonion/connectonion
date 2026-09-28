@@ -49,3 +49,18 @@ see. The copies you cannot see are still yours to keep up to date: alt text,
 the page's meta description, the one-liner in `llms.txt`. When a connection
 lands, the list in `facts.ts` is the first edit. The alt text in this README
 is the second.
+
+The next omission was closer to home: `co skills` was already in the CLI and
+in the README's command table, but the wall showed only the tools it linked
+to (`Codex` and `Cursor`) and the separate `co sub` subscription command.
+Someone scanning logos could miss the skill library itself. We added one
+`Your skills · co skills` tile to the shared wall data and changed the README
+alt text and table with it. The SVG stays a vector image in GitHub's HTML
+`<img>`; React icons render the same wall on the landing page. GitHub will not
+run that React component inside a README.
+
+The documentation home has a different width problem. A full 1,080-pixel
+SVG shrunk into a phone-sized column makes its command text too small to use.
+There we built a shorter responsive icon wall with real links to command
+guides, including `co skills` and `co sub`, while leaving the full SVG to
+GitHub. Sharing the message did not require sharing the exact layout.
