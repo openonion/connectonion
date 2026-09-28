@@ -14,9 +14,12 @@ co onenote read 1                              # read page 1 from that list
 co onenote create 2 "Week 5" "Results went here."  # confirm the target section, then create
 co onenote                                     # recent pages across all notebooks
 co onenote pages                               # same, with --limit 20 by default
+co onenote ls --ids                            # also print section IDs for scripts
+co onenote pages 2 --ids                       # also print page IDs for scripts
 ```
 
-- `ls` numbers sections across notebooks; `pages` numbers pages. Numbers use the
+- `ls` numbers sections across notebooks; `pages` numbers pages. Long Graph IDs
+  are hidden by default and available with `--ids`. Numbers use the
   last list of the matching kind, saved for 15 minutes and bound to the selected
   Microsoft account. An empty list replaces the old numbers. Each list also
   prints a `Listing:` ID: use `--listing <id>` to pin those exact rows when

@@ -2389,19 +2389,20 @@ def _onenote_default(ctx: typer.Context):
 
 
 @onenote_app.command("ls", epilog="Example:  co onenote ls  |  co onenote pages 2")
-def _onenote_ls():
+def _onenote_ls(show_ids: bool = typer.Option(False, "--ids", help="Also show full section IDs for scripts")):
     """List notebooks with numbered sections for pages/create. Read-only."""
     from .commands.onenote_commands import handle_onenote_ls
-    handle_onenote_ls()
+    handle_onenote_ls(show_ids=show_ids)
 
 
 @onenote_app.command("pages", epilog='Example:  co onenote pages  |  co onenote ls; co onenote pages 2')
 def _onenote_pages(section: Optional[str] = typer.Argument(None, help="Section number from co onenote ls, name or id; omit for recent pages"),
                    limit: int = typer.Option(20, "--limit", min=1, max=100, help="At most this many pages"),
-                   listing: Optional[str] = typer.Option(None, "--listing", help="Optional listing ID to pin a section number")):
+                   listing: Optional[str] = typer.Option(None, "--listing", help="Optional listing ID to pin a section number"),
+                   show_ids: bool = typer.Option(False, "--ids", help="Also show full page IDs for scripts")):
     """List recent pages with numbers, across notebooks or in one section. Read-only."""
     from .commands.onenote_commands import handle_onenote_pages
-    handle_onenote_pages(section, limit, listing=listing)
+    handle_onenote_pages(section, limit, listing=listing, show_ids=show_ids)
 
 
 @onenote_app.command("read", epilog='Example:  co onenote pages  |  co onenote read 1')

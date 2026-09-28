@@ -23,6 +23,7 @@ for fifteen minutes under the selected Microsoft account. Section and page
 lists are separate. An empty refresh clears the old numbers, and `--listing`
 can pin a particular displayed list if another terminal refreshes the default.
 Exact names and IDs continue to work.
+The long IDs stay out of the default list and are available with `--ids`.
 
 The write path gets an extra pause: `co onenote create 2 ...` shows the
 notebook and section and asks for confirmation. A script must provide the

@@ -200,6 +200,7 @@ def test_the_cli_lists_notebooks_and_names_the_next_command(monkeypatch, capsys,
     onenote_commands.handle_onenote_ls()
     out = capsys.readouterr().out
     assert "COMP3900" in out and "2. Readings" in out
+    assert "section s2" not in out
     assert "Next: co onenote pages 1" in out
 
 
@@ -213,8 +214,21 @@ def test_bare_onenote_and_missing_page_argument_browse_recent_pages(monkeypatch,
     for args in (["onenote"], ["onenote", "pages"], ["onenote", "read"]):
         result = CliRunner().invoke(app, args)
         assert result.exit_code == 0, result.output
-        assert "1. Recent" in result.output and "page 0-A!42" in result.output
+        assert "1. Recent" in result.output and "page 0-A!42" not in result.output
         assert "Next: co onenote read 1" in result.output
+
+
+def test_ids_option_exposes_full_ids_only_when_requested(monkeypatch, cli_listings):
+    from typer.testing import CliRunner
+    from connectonion.cli.commands import onenote_commands
+    from connectonion.cli.main import app
+    note = SimpleNamespace(notebook_items=lambda: NOTEBOOKS["value"],
+                           page_items=lambda *args, **kwargs: [
+                               {"id": "0-A!42", "title": "Recent"}])
+    monkeypatch.setattr(onenote_commands, "_onenote", lambda: note)
+    runner = CliRunner()
+    assert "section s2" in runner.invoke(app, ["onenote", "ls", "--ids"]).output
+    assert "page 0-A!42" in runner.invoke(app, ["onenote", "pages", "--ids"]).output
 
 
 def test_cli_timeout_is_concise_and_create_is_not_blindly_retried(monkeypatch, capsys, cli_listings):
@@ -259,6 +273,7 @@ def test_numbered_terminal_journey_uses_section_and_page_ids(monkeypatch, cli_li
     selected = runner.invoke(app, ["onenote", "pages", "2"])
     assert selected.exit_code == 0, selected.output
     assert "1. Same title" in selected.output and "2. Same title" in selected.output
+    assert "page 0-A!42" not in selected.output
     opened = runner.invoke(app, ["onenote", "read", "2"])
     assert opened.exit_code == 0, opened.output
     assert "Page body" in opened.output
