@@ -76,7 +76,8 @@ covers what changes that.
 
 What the agent has on day one (`cli/co_ai/agent.py:76-118`): file read/edit/write,
 glob, grep, bash, plan mode, a todo list, background tasks, subagents, skills, and
-`ask_user`. Browsing is via bash calling `co browser`. Email is **not** a wired tool
+`ask_user`, plus `web_search` / `web_fetch` (managed Gemini-grounded Google Search on
+credits, DuckDuckGo when out). Interactive browsing is via bash calling `co browser`. Email is **not** a wired tool
 on this agent — it is a separate CLI path (§3).
 
 **Default model** for `co ai` is `co/gemini-3.8-flash`, sourced from the shared

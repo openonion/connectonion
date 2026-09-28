@@ -14,7 +14,8 @@ Pre-built tools for common agent tasks.
 | [BrowserAutomation](browser_tools.md) | Natural language browser automation | `from connectonion.useful_tools.browser_tools import BrowserAutomation` |
 | [DiffWriter](diff_writer.md) | Edit files with diffs | `from connectonion import DiffWriter` |
 | [TodoList](todo_list.md) | Track task progress | `from connectonion import TodoList` |
-| [WebFetch](web_fetch.md) | Fetch web content | `from connectonion import WebFetch` |
+| [web_search / web_fetch](web_search.md) | Search the web; read a page as Markdown (in `co ai` by default) | `from connectonion import web_search, web_fetch` |
+| [WebFetch](web_fetch.md) | Fetch raw HTML, company-page helpers | `from connectonion import WebFetch` |
 | [Gmail](gmail.md) | Gmail integration | `from connectonion import Gmail` |
 | [GDrive](gdrive.md) | Google Drive files | `from connectonion import GDrive` |
 | [YouTube](../cli/youtube.md) | YouTube Data API, preview-first writes | `from connectonion import YouTube` |
