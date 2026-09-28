@@ -130,7 +130,7 @@ POSIX systems additionally enforce `0700` directories and `0600` files.
 ```bash
 co ai --port 9000
 co ai --model co/gemini-3.8-flash
-co ai "Build an agent" --model co/gpt-4o --max-iterations 50
+co ai "Build an agent" --model co/gpt-5 --max-iterations 50
 co ai --full-access "Fix the failing suite" --full-access-turns 20
 co ai --eval "Check whether this agent really completed the task"
 co ai --invite-code-file /path/to/private-invite

@@ -24,7 +24,7 @@ $ co auth
 from connectonion import llm_do
 
 # No API keys needed!
-response = llm_do("Hello world!", model="co/gpt-4o")
+response = llm_do("Hello world!", model="co/gpt-5")
 print(response)  # Works immediately!
 ```
 
@@ -37,7 +37,7 @@ You now have access to all major LLM models without managing any API keys.
 | Aspect | Your Own Keys | Managed Keys (co/) |
 |--------|--------------|-------------------|
 | **Setup** | Get keys from each provider | One-time `co auth` |
-| **Usage** | `model="gpt-4o"` | `model="co/gpt-4o"` |
+| **Usage** | `model="gpt-5"` | `model="co/gpt-5"` |
 | **Config** | Set environment variables | None needed |
 | **Models** | Limited to your keys | All models instantly |
 | **Cost** | Direct provider billing | Usage-based pricing |
@@ -52,7 +52,7 @@ You now have access to all major LLM models without managing any API keys.
 llm_do("Hello", model="gpt-4o")  # Requires OPENAI_API_KEY
 
 # Using ConnectOnion managed keys (new way)
-llm_do("Hello", model="co/gpt-4o")  # Just works!
+llm_do("Hello", model="co/gpt-5")  # Just works!
 ```
 
 The `co/` prefix tells ConnectOnion to use managed keys from the platform instead of looking for environment variables.
@@ -120,21 +120,17 @@ These commands connect Gmail/Calendar or Microsoft integrations. They require Op
 
 ## Supported Models
 
-All models are available with the `co/` prefix:
+Managed keys route exactly these models. OpenAI and Anthropic are paid (`PAID_MANAGED_MODELS`), Google's are free (`FREE_MANAGED_MODELS`, with `co/gemma` and `co/llama`):
 
 ### OpenAI Models
 ```python
 llm_do("Hello", model="co/gpt-5")
-llm_do("Hello", model="co/gpt-5-mini")
-llm_do("Hello", model="co/gpt-4o")
 llm_do("Hello", model="co/o4-mini")
 ```
 
 ### Anthropic Models
 ```python
-llm_do("Hello", model="co/claude-opus-4-5")
-llm_do("Hello", model="co/claude-sonnet-4-5")
-llm_do("Hello", model="co/claude-haiku-4-5")
+llm_do("Hello", model="co/claude-sonnet-4")
 ```
 
 ### Google Models
@@ -150,7 +146,7 @@ llm_do("Hello", model="co/gemini-3.8-flash")
 from connectonion import llm_do, Agent
 
 # Simple completion
-response = llm_do("Explain quantum computing", model="co/gpt-4o")
+response = llm_do("Explain quantum computing", model="co/gpt-5")
 
 # With structured output
 from pydantic import BaseModel
@@ -162,7 +158,7 @@ class Summary(BaseModel):
 
 result = llm_do(
     "Summarize this article about AI...",
-    model="co/claude-sonnet-4-5",
+    model="co/claude-sonnet-4",
     output=Summary
 )
 print(result.key_points)
@@ -176,7 +172,7 @@ from connectonion import Agent
 # Agent with managed keys
 agent = Agent(
     name="assistant",
-    model="co/gpt-4o",  # No API key needed!
+    model="co/gpt-5",  # No API key needed!
     system_prompt="You are a helpful assistant"
 )
 
@@ -187,7 +183,7 @@ response = agent.input("Help me write a Python function")
 
 ```python
 # Compare responses from different models
-models = ["co/gpt-4o", "co/claude-sonnet-4-5", "co/gemini-3.8-flash"]
+models = ["co/gpt-5", "co/claude-sonnet-4", "co/gemini-3.8-flash"]
 
 for model in models:
     response = llm_do("What's the meaning of life?", model=model)
@@ -201,7 +197,7 @@ for model in models:
 dev_response = llm_do("Test prompt", model="gpt-4o-mini")
 
 # Use managed keys for production
-prod_response = llm_do("Production prompt", model="co/gpt-4o")
+prod_response = llm_do("Production prompt", model="co/gpt-5")
 ```
 
 ## Developer Workflows
@@ -217,7 +213,7 @@ def get_model():
     if os.getenv("OPENAI_API_KEY"):
         return "gpt-4o"  # Use own key if available
     else:
-        return "co/gpt-4o"  # Fall back to managed
+        return "co/gpt-5"  # Fall back to managed
 
 response = llm_do("Hello", model=get_model())
 ```
@@ -226,8 +222,8 @@ response = llm_do("Hello", model=get_model())
 
 ```python
 # Use cheaper models for development/testing
-DEV_MODEL = "co/gpt-4o-mini"  # Cheaper
-PROD_MODEL = "co/gpt-4o"       # Better
+DEV_MODEL = "co/o4-mini"  # Cheaper
+PROD_MODEL = "co/gpt-5"       # Better
 
 model = DEV_MODEL if debug else PROD_MODEL
 ```
@@ -238,8 +234,8 @@ model = DEV_MODEL if debug else PROD_MODEL
 def test_all_models(prompt):
     """Test prompt across all providers."""
     models = {
-        "OpenAI": "co/gpt-4o",
-        "Anthropic": "co/claude-sonnet-4-5",
+        "OpenAI": "co/gpt-5",
+        "Anthropic": "co/claude-sonnet-4",
         "Google": "co/gemini-3.8-flash"
     }
     
@@ -277,7 +273,7 @@ response = llm_do("Hello", model="gpt-4o")
 from connectonion import llm_do
 
 # Just add co/ prefix
-response = llm_do("Hello", model="co/gpt-4o")
+response = llm_do("Hello", model="co/gpt-5")
 ```
 
 ### Gradual Migration
@@ -300,7 +296,7 @@ def smart_llm_do(prompt, preferred_model="gpt-4o"):
 # $ co auth
 
 # Then everyone can use the same code:
-agent = Agent("shared_bot", model="co/gpt-4o")
+agent = Agent("shared_bot", model="co/gpt-5")
 
 # No more "it works on my machine" issues!
 ```
@@ -311,7 +307,7 @@ agent = Agent("shared_bot", model="co/gpt-4o")
 
 ```python
 try:
-    response = llm_do("Hello", model="co/gpt-4o")
+    response = llm_do("Hello", model="co/gpt-5")
 except Exception as e:
     if "Not authenticated" in str(e):
         print("Run 'co auth' to authenticate first")
@@ -392,7 +388,7 @@ co keys --reveal
 # Increase timeout
 response = llm_do(
     "Hello", 
-    model="co/gpt-4o",
+    model="co/gpt-5",
     timeout=60  # seconds
 )
 ```
@@ -418,7 +414,7 @@ When using `co/` prefix, requests are automatically formatted:
 
 ```python
 # Your code
-llm_do("Hello", model="co/gpt-4o")
+llm_do("Hello", model="co/gpt-5")
 
 # What gets sent
 {
@@ -442,7 +438,7 @@ llm_do("Hello", model="co/gpt-4o")
 A: Yes! Free tier includes 10,000 tokens/day. Paid plans available for higher usage.
 
 **Q: Can I use my own keys alongside managed keys?**
-A: Yes! Use `model="gpt-4o"` for your keys, `model="co/gpt-4o"` for managed keys.
+A: Yes! Use `model="gpt-5"` for your keys, `model="co/gpt-5"` for managed keys.
 
 **Q: What happens to my prompts?**
 A: Prompts are proxied through OpenOnion servers but not stored by default. You can enable logging for debugging.

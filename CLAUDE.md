@@ -182,7 +182,7 @@ connectonion/
 │   │   ├── settings.py             # `listen:` channels in .co/host.yaml
 │   │   ├── recovery.py             # Reconcile known chats after a restart or gap
 │   │   ├── formatting.py           # Markdown → the platform's own formatting
-│   │   └── feishu.py, telegram.py, discord.py, whatsapp.py   # One provider each
+│   │   └── feishu.py, telegram.py, discord.py, whatsapp.py, whatsapp_cloud.py   # One provider each
 │   ├── tui/                        # Terminal UI components
 │   ├── logger.py                   # Unified logging facade (terminal + file + YAML sessions)
 │   ├── console.py                  # Low-level terminal output with Rich

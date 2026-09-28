@@ -508,7 +508,7 @@ from pydantic import BaseModel
 class Data(BaseModel):
     value: str
 
-llm_do("Extract data", output=Data, model="co/claude-sonnet-4-5")  # ✅ Works
+llm_do("Extract data", output=Data, model="claude-sonnet-4-5")  # ✅ Works (your own ANTHROPIC_API_KEY)
 # llm_do("Extract data", output=Data, model="co/claude-sonnet-4")  # ❌ Fails - no structured output support
 ```
 
