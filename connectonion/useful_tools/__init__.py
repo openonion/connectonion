@@ -54,6 +54,8 @@ from .synology import Synology
 from .telegram import send_telegram
 from .terminal import autocomplete, yes_no
 from .todo_list import TodoList
+from .page_fetch import web_fetch
+from .search_engines import web_search
 from .web_fetch import WebFetch
 from .youcom_search import youcom_contents, youcom_research, youcom_search
 
@@ -86,6 +88,8 @@ __all__ = [
     "MicrosoftCalendar",
     "OneNote",
     "WebFetch",
+    "web_search",
+    "web_fetch",
     "youcom_search",
     "youcom_contents",
     "youcom_research",

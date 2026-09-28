@@ -111,11 +111,18 @@ async def _wheel(page, amount, sign, low, high):
             await _pause(page, 0.3, 0.5)
 
 
-async def _active_text_len(page) -> int:
-    return await page.evaluate(
-        "() => { const e = document.activeElement;"
-        " return e ? ((e.value != null ? e.value : e.textContent) || '').length : 0; }"
-    )
+async def _paste_landed(page, before) -> bool:
+    """Any change to the focused field's text means the paste went in.
+
+    See rules._paste_landed: an empty rich editor's zero-width placeholder
+    makes "grew by len(text)" call a landed paste refused, and the retype
+    doubled the text (#1877).
+    """
+    for _ in range(6):
+        if await page.evaluate(rules._ACTIVE_TEXT_SCRIPT) != before:
+            return True
+        await _pause(page, 0.1, 0.2)
+    return False
 
 
 async def _restore_clipboard(value):
@@ -148,11 +155,11 @@ async def _paste(page, text, clipboard_lock):
         try:
             if interrupted:
                 raise asyncio.CancelledError
-            before = await _active_text_len(page)
+            before = await page.evaluate(rules._ACTIVE_TEXT_SCRIPT)
             modifier = "Meta" if platform.system() == "Darwin" else "Control"
             await page.keyboard.press(f"{modifier}+v")
             await _pause(page, 0.12, 0.4)
-            return await _active_text_len(page) >= before + len(text)
+            return await _paste_landed(page, before)
         finally:
             await _restore_clipboard(saved)
 

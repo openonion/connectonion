@@ -287,30 +287,50 @@ def _clipboard_get() -> str:
     return out.decode("utf-8", errors="replace").rstrip("\r\n")
 
 
-def _active_text_len(page) -> int:
-    """Return the current focused editor length for paste acceptance checks."""
-    return page.evaluate(
-        "() => { const e = document.activeElement;"
-        " return e ? ((e.value != null ? e.value : e.textContent) || '').length : 0; }"
-    )
+_ACTIVE_TEXT_SCRIPT = (
+    "() => { const e = document.activeElement;"
+    " return e ? ((e.value != null ? e.value : e.textContent) || '') : ''; }"
+)
+
+
+def _active_text(page) -> str:
+    """The focused field's text, for telling whether a paste landed."""
+    return page.evaluate(_ACTIVE_TEXT_SCRIPT)
+
+
+def _paste_landed(page, before) -> bool:
+    """True once the focused field's text differs from `before`.
+
+    Not "grew by len(text)": an empty Slate/Feishu/Lark editor holds a
+    zero-width placeholder that the paste replaces, so a paste that landed
+    grows the field by one less than the text. Read as a refusal, the caller
+    then typed the same run again through the IME, and an empty editor got
+    every CJK run twice (#1877). Any change means the paste went in; only an
+    untouched field (a paste-blocked input) is a refusal. Editors that insert
+    on a later frame get a short grace period before that verdict.
+    """
+    for _ in range(6):
+        if _active_text(page) != before:
+            return True
+        _pause(page, 0.1, 0.2)
+    return False
 
 
 def _paste(page, text):
     """Put `text` on the OS clipboard and Ctrl/Cmd+V it into the focused field, then restore
-    the user's clipboard. Returns True only if the field actually took the paste — some
-    inputs (password fields, paste-blocked forms) reject it, and the caller then falls back
-    to the IME path."""
+    the user's clipboard. Returns True if the field took the paste — some inputs (password
+    fields, paste-blocked forms) reject it, and the caller then falls back to the IME path."""
     if _clipboard_set_argv(text) is None:
         return False
     saved = _clipboard_get()
     _clipboard_set(text)
-    before = _active_text_len(page)
+    before = _active_text(page)
     modifier = "Meta" if platform.system() == "Darwin" else "Control"
     page.keyboard.press(f"{modifier}+v")
     _pause(page, 0.12, 0.4)
-    grew = _active_text_len(page) >= before + len(text)
+    landed = _paste_landed(page, before)
     _clipboard_set(saved)  # restore the user's clipboard
-    return grew
+    return landed
 
 
 def _type_ime(page, run):
