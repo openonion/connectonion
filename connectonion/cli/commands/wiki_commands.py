@@ -145,7 +145,8 @@ def _logged(root, record, phase, call):
         result = call(update)
         run.update(outcome="completed", usage=result.get("usage"), usage_by_stage=result.get("usage_by_stage") or {},
                    changed=result.get("changed") or [], items=result.get("items", 0),
-                   chars_in=result.get("chars_gathered") or 0, coverage=result.get("coverage") or [])
+                   chars_in=result.get("chars_gathered") or 0, coverage=result.get("coverage") or [],
+                   instructions_chars=result.get("instructions_chars") or {})
         return result
     except BaseException as error:
         run.update(outcome=("refused" if isinstance(error, RunFailed) and "rejected" in str(error) else
@@ -736,7 +737,8 @@ def make_wiki_app(factory):
             if not category:
                 counts = {name: len(notebook.list(name)) for name in CATEGORIES if notebook.list(name)}
                 return (counts, ["list", next(iter(counts))]) if counts else ([], ["init"])
-            records = notebook.list(category)
+            from ...wiki.queue import by_weight
+            records = by_weight(root, notebook.list(category))
             if not records and category == "people" and not ctx.obj["json"]:
                 from ...wiki.files import state_path
                 from ...wiki.service import mail_available

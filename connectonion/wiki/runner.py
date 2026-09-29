@@ -270,10 +270,22 @@ def readable_material(items: list[dict]) -> str:
     return "\n\n".join(blocks) + "\n"
 
 
+# A record's top folder names its page shape. One map, read by the prompt a
+# turn is given and by the budget that sizes its material: this lived inline
+# without `orgs`, so an org page was given every page shape plus the CLI
+# reference (63.7k characters instead of ~31k), and investigate sized its
+# material against that worst case on every page kind.
+PAGE_KINDS = {"people": "person", "projects": "project", "orgs": "org", "skills": "skill"}
+
+
+def page_kind_of(record: str) -> str:
+    return PAGE_KINDS.get(record.split("/")[0], "")
+
+
 def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "") -> str:
     """Keep large input out of argv; supply the canonical stage/source/page Skills."""
     record = next((i.get("record", "") for i in items if i.get("role") == "page"), "")
-    page_kind = {"people": "person", "projects": "project", "skills": "skill"}.get(record.split("/")[0], "")
+    page_kind = page_kind_of(record)
     one_page = stage == "investigate" or (stage == "maintain" and any(item.get("one_page") for item in items))
     text = instructions(stage, kind, page_kind=page_kind if one_page and record else "")
     material = directory / "material.json"
@@ -568,6 +580,7 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
                "usage": result.get("usage"), "duration_seconds": time.monotonic() - started,
                "changed": changed(), "report": result.get("result")})
     return {"usage": result.get("usage"), "changed": changed(), "refused": len(refusals), "refusals": refusals,
+            "instructions_chars": metrics["instructions_chars"],
             "report": str(result.get("result") or "")[:1000],
             "review_candidates": read_json(directory / "review-candidates.json", [])}
 

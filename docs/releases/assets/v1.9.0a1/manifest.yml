@@ -1,0 +1,9 @@
+version: v1.9.0a1
+images:
+  - file: wiki-list-people.png
+    alt: "Terminal output of co wiki list people: mia-chen, sam-okafor, alex-rivera, then 0x3c3ae74550, followed by the next command"
+    caption: "co wiki list people puts the people the owner mails most first, the order investigate works through them; an agent's 0x… mailbox no longer sorts to the top by file name (#1670)."
+    scenario: "python scripts/capture_190a1_release_cli.py: a throwaway notebook with invented people and mail counts, this checkout's co in a disposable HOME, output unedited except the temporary path shown as <notebook>"
+    viewport: "terminal, 96 columns"
+    commit: 9d208159
+    source_run: "scripts/capture_190a1_release_cli.py"
