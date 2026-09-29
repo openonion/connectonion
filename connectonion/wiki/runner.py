@@ -511,7 +511,13 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
         metrics["render_usage"] = result.get("usage")
         result["usage"] = {key: inquiry_usage.get(key, 0) + (result.get("usage") or {}).get(key, 0)
                            for key in inquiry_usage.keys() | (result.get("usage") or {}).keys()} or None
-        if candidate:
+        if candidate and one_page and not candidate.is_file():
+            # The skill says to write the page back unchanged when the material adds
+            # nothing; a model sometimes writes nothing. Refusing it kept the material
+            # pending and the same page was worked again every night
+            # (projects/changxing, three nights). Leave the page as it was.
+            metrics["no_candidate"] = True
+        elif candidate:
             _promote_candidate(notebook, record, candidate, before[record], items, directory, result.get("usage"),
                                lock_held=maintenance_lock_held)
         elif stage in ("maintain", "abstract"):
@@ -530,7 +536,8 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
         write_json(directory / "result.json", {**metrics, "status": "failed", "error": str(error),
                    "usage": usage, "duration_seconds": time.monotonic() - started, "changed": changed()})
         raise RunFailed(str(error), usage, changed()) from error
-    write_json(directory / "result.json", {**metrics, "status": "candidate_accepted" if candidate else "execution_finished",
+    status = ("no_change" if metrics.get("no_candidate") else "candidate_accepted") if candidate else "execution_finished"
+    write_json(directory / "result.json", {**metrics, "status": status,
                "usage": result.get("usage"), "duration_seconds": time.monotonic() - started,
                "changed": changed(), "report": result.get("result")})
     return {"usage": result.get("usage"), "changed": changed(), "refused": len(refusals), "refusals": refusals,
