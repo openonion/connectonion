@@ -1,8 +1,10 @@
-"""`co wiki investigate people`: an agent searching each person's prepared evidence (#1943, #1850).
+"""`co wiki investigate people`: recent correspondents first, in portions, cost first (#1943 stage 3).
 
 Kept out of wiki_commands.py on purpose, like wiki_projects.py: the investigate
-command hands the `people` category here in one line, and everything it does
-lives here and in wiki/people_evidence.py and wiki/people_pages.py.
+command hands the `people` category here in one line. Each person is still
+investigated by `investigate.investigate` (#1942's evidence files); what this
+adds is who comes next, over which window, and saying what it costs and what
+is left.
 """
 
 import typer
@@ -13,31 +15,32 @@ def _day(stamp: str) -> str:
 
 
 def cost_line(estimate: dict, meter: dict) -> str:
-    week = (f"; the Codex week is at {meter['used_percent']}%" if "used_percent" in meter
-            else f"; {meter['unknown']}" if meter.get("unknown") else "")
-    folders = (f"; their evidence folders hold {estimate['evidence_items']:,} items "
-               f"({estimate['evidence_bytes'] / 1024:,.0f} KB) the agent searches and reads from"
-               if estimate.get("evidence_items") else "")
-    return (f"Cost: {estimate['model_calls']} model call(s), one per person, carrying about "
-            f"{estimate['chars']:,} characters (~{estimate['tokens_estimated_in']:,} tokens) of skills, pages "
-            f"and evidence indexes{folders}; the runner re-reads its context each turn, so billed input is "
-            f"several times that{week}.")
+    week = (f" The Codex week is at {meter['used_percent']}%." if "used_percent" in meter
+            else f" Quota: {meter['unknown']}." if meter.get("unknown") else "")
+    measured = estimate["measured"]
+    known = (f" On this machine one {measured['mails']}-mail person took {measured['input_tokens'] / 1e6:.2f}M "
+             f"input tokens and {measured['minutes']} minutes." if measured.get("input_tokens") else "")
+    return (f"Cost: {estimate['model_calls']} model call(s), one per person; {estimate['mails_mapped']:,} mails "
+            f"mapped for the full investigations, and {estimate['updates']} update(s) that read only mail since "
+            f"their last investigation.{known}{week}")
 
 
 def order_lines(rows: list[dict]) -> list[str]:
     return [f"  {row['record']}  (last mail {_day(row['last_activity'])}, "
-            + (f"{row['new_items']} new items, update" if row["mode"] == "update"
-               else f"{row['mails']} mails mapped, first write") + ")"
+            + (f"update: mail since {row['last_investigated']}, {row['days']} days" if row["mode"] == "update"
+               else f"{row['mails']} mails mapped, {row['days']} days") + ")"
             for row in rows]
 
 
-def run_people(ctx, root, *, limit: int, recent_days: int, days: int, list_only: bool, gate, clients_for,
+def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool, gate, clients_for,
                subscriptions, logged):
-    """The people category: order, cost, then one model call per person. Returns (result, next, failed)."""
+    """The people category: order, cost, then one person after another. Returns (result, next, failed)."""
     from ...wiki import quota
     from ...wiki.config import read_config
-    from ...wiki.people_pages import estimate, prepare_portion, queue, write_page, write_pages
+    from ...wiki.people_pages import estimate, investigate_person, queue, write_pages
     rows = queue(root, recent_days=recent_days)
+    if days:
+        rows = [{**row, "days": days} if row["mode"] == "full" else row for row in rows]
     chosen = rows if limit == 0 else rows[:limit]
     config = read_config(root)
     if list_only:
@@ -45,39 +48,29 @@ def run_people(ctx, root, *, limit: int, recent_days: int, days: int, list_only:
             return {"category": "people", "order": rows, "estimate": estimate(chosen)}, ["investigate", "people"], False
         text = "\n".join([f"{len(rows)} people to investigate; {sum(r['recent'] for r in rows)} written to in the "
                           f"last {recent_days} days come first:", *order_lines(rows), "",
-                          cost_line(estimate(chosen), quota.read(config)),
+                          f"The next {len(chosen)}: " + cost_line(estimate(chosen), quota.read(config)),
                           "Nothing was read or spent."])
         return text, ["investigate", "people"], False
     if not chosen:
-        return ("Every people page is written from all of its evidence. Nothing to investigate.",
-                ["list", "people"], False)
-    clients, sources = clients_for(root), subscriptions(root)
-
-    def on_person(number, total, row):
-        typer.echo(f"Preparing evidence [{number}/{total}] {row['record']} (no model)", err=True)
-
-    def progress(stage, count=None):
-        typer.echo(f"  {stage}" + (f" ({count})" if count is not None else ""), err=True)
-
-    prepared = prepare_portion(root, chosen, clients=clients, subscriptions=sources, days=days,
-                               on_person=on_person, progress=progress)
+        return "No people to investigate: every page is investigated and nothing new has arrived.", \
+            ["list", "people"], False
     typer.echo(f"Investigating {len(chosen)} of {len(rows)} people. "
-               + cost_line(estimate(chosen, prepared), quota.read(config)), err=True)
+               + cost_line(estimate(chosen), quota.read(config)), err=True)
+    clients, sources = clients_for(root), subscriptions(root)
 
     def on_page(number, total, row):
         typer.echo(f"[{number}/{total}] {row['record']} (last mail {_day(row['last_activity'])}, "
-                   f"{prepared[row['record']].get('pending', 0)} items)", err=True)
+                   f"{'update, ' if row['mode'] == 'update' else ''}{row['days']} days)", err=True)
 
-    def one(record):
-        return logged(root, record, "investigate", lambda update: write_page(
-            root, record, config=config, clients=clients, subscriptions=sources, days=days,
-            progress=update, prepared=prepared[record]))
+    def one(row):
+        return logged(root, row["record"], "investigate", lambda update: investigate_person(
+            root, row, clients=clients, subscriptions=sources, stage_progress=update))
 
-    result = write_pages(root, limit=0, write=one, gate=gate, on_page=on_page, rows=chosen)
-    result["left"] = len(rows) - sum(1 for row in result["pages"] if row["outcome"] in ("accepted", "skipped"))
+    result = write_pages(chosen, write=one, gate=gate, on_page=on_page)
+    result["left"] = len(rows) - sum(1 for row in result["pages"] if row["outcome"] == "accepted")
     if result.get("stopped"):
         typer.echo(f"Stopped: {result['stopped']}", err=True)
     typer.echo(f"{result['left']} people left to investigate.", err=True)
     accepted = [row["page"] for row in result["pages"] if row["outcome"] == "accepted"]
     return ({"category": "people", **result}, ["show", accepted[0]] if accepted else ["logs"],
-            any(row["outcome"] not in ("accepted", "skipped") for row in result["pages"]))
+            any(row["outcome"] != "accepted" for row in result["pages"]))

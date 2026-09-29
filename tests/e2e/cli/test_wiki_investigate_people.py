@@ -32,26 +32,26 @@ def root(tmp_path, monkeypatch):
 
 
 def test_list_shows_recent_first_and_the_cost_and_reads_nothing(root, monkeypatch):
-    monkeypatch.setattr("connectonion.wiki.people_pages.prepare_portion",
-                        lambda *a, **k: pytest.fail("--list read the mailbox"))
+    monkeypatch.setattr("connectonion.wiki.investigate.investigate",
+                        lambda *a, **k: pytest.fail("--list investigated"))
     result = invoke(root, "investigate", "people", "--list")
     assert result.exit_code == 0, result.output
     assert result.output.index("people/new.md") < result.output.index("people/old.md")
-    assert "Cost: 2 model call(s), one per person" in result.output
+    assert "Cost: 2 model call(s), one per person; 8 mails mapped" in result.output
     assert "Nothing was read or spent." in result.output
 
 
 def test_a_run_states_the_cost_before_the_first_call_and_says_what_is_left(root, monkeypatch):
     order = []
 
-    def write_page(root, record, **kw):
-        order.append(record)
+    def investigate(root, record, subject, handles, *, days, **kw):
+        order.append((record, days))
         return {"changed": [record], "usage": None}
-    monkeypatch.setattr("connectonion.wiki.people_pages.write_page", write_page)
+    monkeypatch.setattr("connectonion.wiki.investigate.investigate", investigate)
     result = invoke(root, "--json", "investigate", "people", "--limit", "1", "--recent-days", "7")
     assert result.exit_code == 0, result.output
-    assert order == ["people/new.md"]
-    assert result.stderr.index("Preparing evidence") < result.stderr.index("Cost:") < result.stderr.index("\n[1/1] people/new.md")
+    assert order == [("people/new.md", 150)]
+    assert result.stderr.index("Cost:") < result.stderr.index("\n[1/1] people/new.md")
     assert "1 people left to investigate." in result.stderr
     assert json.loads(result.stdout)["data"]["left"] == 1
 

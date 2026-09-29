@@ -98,9 +98,7 @@ def co_ai(monkeypatch):
         import re
         from pathlib import Path
         path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
-        # The older path copies the notebook; a people run (#1943 stage 3) writes page.md beside its evidence.
-        pages = [*Path(cwd).glob('investigate-*/notebook/people/vern.md'), *Path(cwd).glob('people-*/page.md')]
-        path.write_text(pages[0].read_text())
+        path.write_text(next(Path(cwd).glob('investigate-*/notebook/people/vern.md')).read_text())
         return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
                                      stderr="", returncode=0)
 
@@ -179,20 +177,6 @@ PINNED = {
 }
 
 
-def _saved_mail(root, record, address):
-    """One mail init saved for this person, so a people run has evidence to search."""
-    from connectonion.wiki.files import write_json
-    from connectonion.wiki.mail_archive import message_path, person_index_path
-    path = message_path(root, "outlook", "m1")
-    write_json(path, {"provider": "outlook", "id": "m1", "date": "2026-09-20T10:00:00+00:00",
-                      "from": f"Vern Chan <{address}>", "to": ["owner@example.org"], "cc": [],
-                      "subject": "Capstone", "body": "Hello"})
-    index = person_index_path(root, record)
-    index.parent.mkdir(parents=True, exist_ok=True)
-    index.write_text(json.dumps({"provider": "outlook", "id": "m1", "date": "2026-09-20T10:00:00+00:00",
-                                 "message": str(path.relative_to(root))}) + "\n")
-
-
 def _pinned_notebook(tmp_path, runner):
     root = _notebook(tmp_path, runner)
     set_config(root, ["model", "gpt-5.6-luna" if runner == "codex" else "sonnet"])
@@ -213,7 +197,6 @@ def test_the_scheduled_daily_investigation_runs_confined(tmp_path, co_ai, monkey
     from connectonion.wiki.daily import run_daily
     monkeypatch.setattr("connectonion.wiki.service.mail_available", lambda kind: False)
     root = _pinned_notebook(tmp_path, runner)
-    _saved_mail(root, "people/vern.md", "vern.chan@unsw.edu.au")
     result = run_daily(root, scheduled=True,
                        maintain=lambda root, scheduled: {"outcome": "no_change"})
     assert result["run"]["outcome"] == "completed", result

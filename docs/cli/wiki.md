@@ -204,7 +204,7 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co wiki list people --aliases` | Existing identity roster: page, title, aliases, addresses, relationship summary. |
 | `co wiki investigate people/alice.md` | Read the existing page, gather sources, digest oversized material, fill that same page through the Skill. |
 | `co wiki investigate` | What is left to investigate, by category, most useful first. No model. |
-| `co wiki investigate people --limit 3` | Investigate the next three people, the last 14 days' correspondents first (`--recent-days`): a script prepares each person's evidence, then one model call per person searches it ([details](wiki-people-pages.md)). `--list` prints the order and the cost and runs nothing. `projects`, `orgs`, `skills` take unfinished pages, most mail or sessions first. |
+| `co wiki investigate people --limit 3` | Investigate the next three people, the last 14 days' correspondents first (`--recent-days`): a person investigated before reads only the mail since then ([details](wiki-people-pages.md)). `--list` prints the order and the cost and runs nothing. `projects`, `orgs`, `skills` take unfinished pages, most mail or sessions first. |
 | `co wiki investigate me` | Fill your own page from what you sent and your coding sessions of the last 30 days. |
 | `co wiki abstract` | Run wiki-abstract over existing notebook evidence. |
 | `co wiki start` | Confirm source access, run first bounded sync, install macOS background schedule. Asks again whenever anything its summary shows (sources, runner, model, permissions, schedule, limits) changed since the last approval. A start after `stop` resumes the schedule without a batch; `co wiki sync` runs one. |
@@ -411,7 +411,7 @@ from real numbers. This supersedes the earlier unimplemented 2% initialization
 
 The scheduled daily round maintains first. The first run of the local day then
 investigates unfinished pages, most recent activity first, within a reserved
-share of the daily attempt cap (8 calls; a person is one call); every later run
+share of the daily attempt cap (8 calls; a person is one investigation); every later run
 updates only the people with new mail and the projects with new messages since
 the run before, at most 5 pages. Both stop at the weekly budget or the floor and
 record how many pages are left ([details](wiki-people-pages.md#the-daily-round-four-runs-two-jobs-1723)). Initialization currently builds the map without a model call; manual

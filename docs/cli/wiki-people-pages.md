@@ -1,192 +1,123 @@
-# People pages from a search of their evidence (#1943, stage 3)
+# People, recent correspondents first, and the four-run day (#1943, stage 3)
 
-A person's page used to be written by reading *all* of their mail through
-chunk digests before a word of the page was written. On the owner's notebook
-that cost 8.2M input tokens and 3 h 24 min for one 157-mail correspondent
-(#1850, #1884), and the daily round never reached the people who mattered,
-because their pages never fit a day's calls (#1723).
-
-This stage investigates a person the way a person would: a script puts
-everything the notebook holds about them into one folder with an index, and
-an agent searches that folder for what each section of the page needs, reads
-the few items that answer it, and writes the page. Recent correspondents come
-first.
-
-```text
-  mailboxes (Gmail, Outlook)   .state/mail archive   WhatsApp files   your coding messages
-                 │   1. script, no model: fetch what is missing, then file it
-                 ▼
-  .state/people/<page>/index.jsonl, state.json        (0700 / 0600, owner-only)
-                 │   2. copy this person's items into one task folder
-                 ▼
-  .state/tasks/people-…/evidence/index.md + mail/ attachments/ chats/ sessions/
-                 │   3. one model call: search with rg / sed / ls, read what matters
-                 ▼
-  people/<page>.md                                     (validated, then saved)
-```
+Since #1942, investigating a person no longer digests all of their mail: our
+code gathers it, writes it to evidence files with an index, and one turn
+searches those files for what the page needs (#1850). This stage decides
+**who** is investigated next, **over which window**, and **when** the daily
+round does it. Before it, the busiest person came first and was read over the
+full 150 days every time, so the round's top pages never fit a day's calls
+(#1723).
 
 ## Commands
 
 ```sh
-co wiki investigate people --list                   # the order and the cost; no model, no mail read
-co wiki investigate people                          # the next 5, last 14 days first
-co wiki investigate people --limit 1                # just the most recent correspondent
+co wiki investigate people --list                      # the order and the cost; nothing read or spent
+co wiki investigate people                             # the next 5, last 14 days first
+co wiki investigate people --limit 1                   # just the most recent correspondent
 co wiki investigate people --recent-days 7 --limit 0   # everyone written to this week
 ```
 
-`co wiki investigate people` is the command it always was; what it runs
-changed. It lists people pages that are unfinished (still carrying `Unknown`)
-or have mail they were not written from, orders them by the date of the last
-mail with them, the last `--recent-days` (default 14) first, and takes the
-next `--limit` (default 5). For each one it first prepares the evidence (the
-script, step 1 below), then states the cost of the portion — model calls,
-characters sent, and what the evidence folders hold — and only then starts the
-model, one person after another. It stops starting people when the weekly
-Codex budget, this run's `--budget`, or the floor kept for your own work is
-reached, and it ends by saying how many are left.
+`co wiki investigate people` is the command it always was; its order and
+windows changed. It states the cost first — one model call a person, the mail
+the map counted for the full investigations, how many are updates, and what
+one full investigation measured on this machine — then investigates one person
+after another. It stops starting people at the weekly Codex budget, at this
+run's `--budget`, or at the floor kept for your own work, and ends by saying
+how many people are left. `projects`, `orgs`, `skills` and `all` keep their
+order (most mail or sessions first). A single page and `me` are unchanged.
 
-A single page, `co wiki investigate people/<page>.md`, still takes the older
-path (#1850's evidence files once #1942 lands); `me` is unchanged.
-
-## Step 1: the evidence (a script, no model)
-
-Everything that needs the network happens here, in our own code, before the
-model starts. Per person, bounded and incremental:
-
-1. **Addresses.** The person's addresses from the map (`.state/map.json`) and
-   the `Email:` line of their page, minus every address that is the owner's.
-2. **Saved mail first.** Messages already saved by `co wiki init`
-   (`.state/mail/people/<hash>.jsonl` → `.state/mail/messages/...`) and rows of
-   the source inventory that name one of the addresses.
-3. **Then the server, for what is missing.** For each connected mailbox, one
-   search per address (`list_with`: Gmail's `from/to/cc`, Outlook's
-   `participants:`) over the window not yet searched: the last 90 days
-   (`--days`) the first time, and from the last search (less one hour) after
-   that. Every body not yet saved is fetched and saved in the same private
-   archive init uses, at most 300 a person a run; attachments of newly fetched
-   mail are saved and their text extracted, at most 40 mails a run.
-4. **Local sources, no network:** WhatsApp lines from the chats you chose
-   (`co wiki sources add whatsapp --chat`) whose sender or chat is this person,
-   and your own Codex / Claude Code messages (`.state/projects/`) that name the
-   person by full name or address. OneNote has no local export here yet; the
-   coverage says it was not read.
-
-The person's private record lives in `.state/people/<page>/`:
-
-| File | Holds |
-|---|---|
-| `index.jsonl` | One row per item: source id, kind, date, from, to, cc, subject, and where its text is. No mail bodies (those stay in `.state/mail/messages/`); a WhatsApp line or coding message, a few hundred characters, is kept inline |
-| `state.json` | Addresses, when each mailbox was last searched, last activity, and `written_through`: the newest item the page was written from |
-
-For the model run, this person's items are copied into the run's own task
-folder as plain text: `evidence/index.md` (one line per item: date · kind ·
-from → to · subject · source id · file · size) and one file per item, each
-opening with `### <source id> · <date> · <sender>`. A mail keeps its own reply
-in full (up to 20,000 characters) and at most 4,000 characters of the quoted
-thread below it, after a line that says so. After the run the copies are
-deleted; `evidence/index.md` stays with the task record.
-
-## Step 2: the page (one model call)
-
-One call per person, through the configured runner (`co ai --harness codex`
-by default), with the `wiki-person-search` skill (how to search the folder)
-and the `wiki-page-person` skill (the page's shape). The prompt carries the
-two skills, the page as it stands, the coverage note and the index; the
-evidence files stay on disk for the agent to search with `rg`, `grep`, `sed`
-and `ls`. The skill asks for about 30 tool calls and tells the agent to read in
-full only what a section needs.
-
-The page passes the same review as every investigated page: canonical
-sections and contact fields, every citation pointing at a source id in the
-index, the owner's addresses removed from someone else's page. One check is
-new: a candidate that copies 200 or more characters of any mail verbatim is
-refused, because a page is shareable and someone's mail is not; a phone
-number or a deadline is a fact to cite, a paragraph is not. An accepted
-page's status line gains `investigated <date> (evidence search: gmail,
-outlook, …)`, and `written_through` moves to the newest item. A refused page
-is kept beside its task with the reason, and nothing moves.
-
-- **First write:** every item in the index.
-- **Update:** only the items after `written_through`, with the page as it
-  stands. A person with nothing new is not investigated again.
-- **No material at all:** no model call; the page is skipped and says so in
-  the output.
-
-### Why the model does not call `co gmail` itself
-
-The owner's design says the investigating agent knows the command line
-(`co gmail`, `co outlook`, `co onenote`, `co whatsapp log`) and uses it. It
-cannot, unattended: every notebook run is confined (Codex
-`--sandbox workspace-write`, no network; Claude Code `acceptEdits`, no reads
-outside its task folder), because the material it reads is mail anyone can
-send the user, and an agent with a shell, the network and the user's logged-in
-mailbox is exactly what a hostile mail would want. So the split is:
-
-| Where | Does |
-|---|---|
-| Script, before the model (our code, network allowed) | Searches the mailboxes for the person, fetches missing bodies and attachments, reads the local WhatsApp files and coding messages, writes the evidence folder |
-| Model, inside the sandbox (no network) | Searches that folder with `rg` / `grep` / `sed` / `ls`, reads what matters, writes one candidate page |
-
-Giving the run network access would reopen the hole that confinement closed
-(`runner.harness_flags`); it is not done here.
-
-### Measured
-
-One real run on 2026-09-30, on this machine, against a temporary notebook
-holding one fresh page: the owner's busiest recent correspondent, the same
-person as #1850's baseline (157 mails in the 90-day map). Runner Codex,
-`gpt-6-luna`, `--days 150`.
-
-| | Before (#1850 / #1884, digest path) | This path |
-|---|---|---|
-| Material | 157 mails, 1.78M characters gathered and all digested | 265 items (mail and attachments over 150 days), 269 files, 573 KB on disk; the agent chose what to read |
-| Model calls | 31 (30 extract pieces + 1) | 1 |
-| Input tokens | 8.2M | 0.67M (0.57M of them cached) |
-| Output tokens | 503k | 27k |
-| Time | 3 h 24 min | 92 s script (search, 265 bodies, attachments of 40 mails), then 5 min 40 s model call |
-| Codex week | did not move off 8% | 24% → 25% |
-
-The prompt carried 74,408 characters: the two skills, the page and the
-265-line index. The accepted page has all 11 sections, 52 citations over 12
-sources, and 3 lines left `Unknown` (phone, company, signing entity). The
-role on the page appears in only 2 of the 265 mails and was found and cited.
-No labelled phone number appears in anything the person wrote in the window,
-so `Phone: Unknown` is the right answer, not a miss. After the run the task
-folder held no evidence copies, only `evidence-index.md`.
-
-One earlier attempt failed in under a second, before any model turn: the
-measurement shell set `PYTHONPATH=.`, and the runner starts `co ai` from the
-task folder, where `.` is not the checkout. Nothing in the product changed for
-it; the evidence the script had already saved was reused by the second attempt.
-
-## Order and portions
+## Order
 
 People are ordered by the date of the last mail with them — the newest of the
-map's `last` and the newest item in their evidence — with the last 14 days
-first, then everyone older, newest first. Left out, as before: the owner
-(`investigate me`), addresses that may be the owner's, automated senders, and
-a page investigated in the last 7 days that has nothing new.
+map's `last` and any later listing (below) — with the last `--recent-days`
+(default 14) first, then everyone older, newest first. Left out, as before: the
+owner (`investigate me`), addresses that may be the owner's, and automated
+senders.
 
-The same order is `connectonion.wiki.people_pages.queue()`, so the first run
-can take the people of the last two weeks before anyone older.
+## Windows: only what is new
+
+| The person | Mode | Window read |
+|---|---|---|
+| Never investigated, or investigated but still unfinished and not in the last 7 days, with nothing newer | full | 150 days (`--days`) |
+| Mail arrived after the page was last investigated | update | the days since that investigation |
+| Investigated since their last mail | — | not in the queue |
+
+"Last investigated" is the exact time this stage started that person's
+investigation (`.state/people/investigated.json`), or, for a page investigated
+another way, the date on its status line. So mail that arrives later the same
+day is still new.
+
+## What is new since the last run
+
+`correspondents_since()` lists each connected mailbox **once** since the
+previous run (metadata only: dates, senders, recipients) and matches the
+addresses to people pages, instead of searching the server once per person.
+The newest date per person goes to `.state/people/activity.json`, the cursor
+to `.state/people/refresh.json`; both are owner-only (`0700` directory, `0600`
+files) and hold no subject or body.
+
+## Where the network is used
+
+Nothing here gives the model the network. Every notebook run is confined
+(Codex `--sandbox workspace-write`, no network; Claude Code `acceptEdits`), so
+the model cannot call `co gmail` or `co outlook` itself. Everything that needs
+the network is our code, before the model: the listing above, and the
+investigation's gather — the private archive `co wiki init` saved first, then
+the server for mail it lacks, bodies and attachments — which #1942 writes into
+the files the one turn searches with `rg`, `sed` and `ls`. Giving the run the
+network would reopen what the confinement closed (`runner.harness_flags`); it
+is not proposed.
 
 ## The daily round: four runs, two jobs (#1723)
 
-The schedule's runs (`schedule.times`, six by default: 03, 04, 06, 17, 18
-and 19 o'clock) each maintain first, as before. Then:
+Each scheduled run maintains first, as before. Then:
 
-- **The first run of the local day finishes unfinished pages.** It walks the
-  unfinished people, projects and organisations, **most recent activity
-  first**, and investigates as many as fit its share of the day's calls (8 at
-  most). A person is one call. A project or organisation takes the older
-  path and ends the run's portion.
-- **Every later run follows what is new.** Only people and projects with new
-  material since the previous run: a person with new mail is updated from the
-  new mail only; a project with new messages you typed is updated from those
-  only (`co wiki projects write`'s path). At most 5 pages a run, one call
-  each, within the day's call cap. A run with nothing new calls no model.
+- **The first run of the local day finishes unfinished pages,** people,
+  projects and organisations together, **most recent activity first,** within
+  a reserved share of the day's calls (8). A person is one investigation over
+  their window. A project or organisation takes the rest of the share and
+  ends the portion, as before.
+- **Every later run follows what is new:** the people the listing found with
+  mail since the previous run (each read over only the days since their last
+  investigation), and the projects with new messages you typed
+  (`co wiki projects write`'s path, `write_pages(since=…)`: an update from the
+  new messages, or a first write only for a project active since the last
+  run). At most 5 pages, one call each, within the day's call cap. A run with
+  nothing new calls no model and says `nothing_new`.
 
-Both stop starting pages at the weekly Codex budget or the 70% floor, and both
-record, in `co wiki logs`, how many pages are left. Which run is which is
-decided by what already ran today, not by the clock, so a machine asleep at
-03:00 still gets its unfinished portion from whichever run comes first.
+Both stop starting pages at the weekly budget or the 70% floor, and both record
+in `co wiki logs` how many pages are left. Which run is which is decided by what
+already ran today, not by the clock, so a machine asleep at the first slot
+still gets its unfinished portion from whichever run comes first. The schedule
+has six times by default; the first is the unfinished portion and the other
+five follow new material, which costs nothing when nothing arrived.
+
+## Measured
+
+One real run on 2026-09-30, on this machine, against a temporary notebook
+holding one fresh page for the owner's busiest recent correspondent, the same
+person as #1850's baseline (157 mails in the 90-day map). Runner Codex,
+`gpt-6-luna`, `co wiki investigate people --limit 1` (a full investigation,
+150 days), after #1942.
+
+| | Before (#1850 / #1884, digest path) | This run (#1942's evidence files) |
+|---|---|---|
+| Material | 157 mails, 1.78M characters | 265 mails (129 Outlook, 136 Gmail) with 99 attachments, 2 coding messages; 1.85M characters in 366 files |
+| Model calls | 31 (30 digest pieces + 1) | 1 |
+| Input tokens | 8.2M | 1.93M (1.76M of them cached) |
+| Output tokens | 503k | 56k |
+| Time | 3 h 24 min | 15 min 3 s, gather included |
+| Codex week | did not move off 8% | 25% → 26% |
+
+The accepted page has all 11 sections, 88 citations over 17 sources, and 2
+lines left `Unknown` (phone, company). The role on the page appears in only 2
+of the 265 mails and was found and cited. No labelled phone number appears in
+anything the person wrote in the window, so `Phone: Unknown` is the right
+answer. An update for the same person reads only the days since this run.
+
+For comparison, a people-only prototype of this stage (an evidence folder per
+person with quoted threads capped at 4,000 characters, and a skill that told
+the agent to stop after about 30 tool calls) wrote the same person's page in
+0.67M input tokens and 5 min 40 s of model time, with 52 citations. It was
+dropped so that there is one investigation path, #1942's; the gap is mostly
+the quoted threads and attachments #1942 keeps whole.

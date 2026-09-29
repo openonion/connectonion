@@ -127,10 +127,9 @@ Examples:
   co wiki investigate all --list               (the whole queue's order, run nothing)
 
 What each kind reads:
-  people    A script first files every message to or from their addresses (saved mail,
-            then the server for what is missing), with readable attachments, WhatsApp
-            lines from chosen chats and coding messages naming them. Then one model
-            call per person searches that folder and writes the page.
+  people    Every message to or from their addresses, searched on the server, with
+            readable attachments; coding sessions that mention them. A person
+            investigated before reads only the mail since then.
   projects  The coding sessions run in the project's folders, and the project's own files.
   orgs      Mail from the organisation's domains, and the people pages under it.
   skills    Recorded runs of the Skill (co eval results; --eval-dir to choose where).
@@ -150,7 +149,7 @@ Options:
 Order within a category: pages still marked Unknown first, then those with the
 most mail or sessions. A page investigated in the last 7 days is skipped. People
 are ordered by their last mail instead, the last --recent-days first; a person
-already written from all of their mail waits for new mail, then gets only that.
+investigated since their last mail waits for new mail, then reads only that.
 
 Budget: with the Codex runner every investigation records your Codex week before
 and after, and counts toward investigation's weekly budget (limits.
@@ -283,7 +282,7 @@ Back:     co wiki --help
 ```
 Run one update now: read what arrived since the last run and update the pages it
 concerns. Then the day's first run investigates unfinished pages, most recent
-first (a person is one call); every later run updates only the people and
+first; every later run updates only the people and
 projects with new mail or messages since the run before. This is what the
 schedule runs.
 

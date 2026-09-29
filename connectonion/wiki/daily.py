@@ -3,9 +3,10 @@
 The schedule runs several times a day. Every run maintains first. Then:
 
 - the first run of the local day finishes unfinished pages, most recent
-  activity first: a person is one call (an agent searching their prepared
-  evidence), a project or organisation takes the older investigation and ends
-  the portion;
+  activity first: a person is one investigation (#1942: gathered by our code,
+  searched as files by one turn), over only the mail since their last
+  investigation when they had one; a project or organisation also takes the
+  rest of the portion's calls and ends it;
 - every later run follows what is new: people with mail since the previous
   run and projects with new messages the user typed, each updated from its new
   material only.
@@ -55,10 +56,9 @@ def unfinished_by_recency(root: Path, *, today: datetime | None = None) -> list[
 
     The busiest page first never fit a day's calls (#1723). The most recent
     one is what is useful now, and with a person costing one call it fits.
-    People whose evidence was all written already, or who have none this
-    week, are left to the later runs (people_pages.queue decides).
+    Which people, and over which window, is people_pages.queue's: a person
+    investigated before is read only from the mail since then.
     """
-    from .people_pages import last_activity
     from .people_pages import queue as people_queue
     from .project_material import page_state
     from .queue import order_all
@@ -67,15 +67,18 @@ def unfinished_by_recency(root: Path, *, today: datetime | None = None) -> list[
     people_last = {row.get("record"): row.get("last") for row in state.get("people", [])}
     project_last = {row.get("record"): row.get("last") for row in state.get("projects", [])}
     org_people = {row.get("record"): row.get("people") or [] for row in state.get("orgs", [])}
-    wanted_people = {row["record"] for row in people_queue(root)}
+    people = {row["record"]: row for row in people_queue(root)}
     rows = []
     for index, row in enumerate(order_all(root)):
         path = row["path"]
-        if row["recent"] or (path.startswith("people/") and path not in wanted_people):
-            continue
         if path.startswith("people/"):
-            last = last_activity(root, path)
-        elif path.startswith("projects/"):
+            if path not in people:
+                continue
+            rows.append({**row, **people[path], "last_activity": people[path]["last_activity"], "position": index})
+            continue
+        if row["recent"]:
+            continue
+        if path.startswith("projects/"):
             last = _last([project_last.get(path), page_state(root, path).get("last_activity")])
         else:
             last = _last([people_last.get(person) for person in org_people.get(path, [])])
@@ -180,16 +183,16 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
             if target.startswith('people/') and investigate_one is None:
                 tried.append(target)
                 try:
-                    result = (person_one or _person)(root, target, config=config, clients=clients,
-                                                     subscriptions=sources)
+                    result = (person_one or _person)(root, page, clients=clients, subscriptions=sources,
+                                                     max_calls=calls)
                 except WikiError as error:
                     # A refused page keeps its items pending; the portion goes on.
-                    calls -= 1
+                    calls -= required
                     done.append({'page': target, 'outcome': 'refused' if 'rejected' in str(error) else 'failed',
                                  'why': str(error)[:300]})
                     _add_usage(usage, getattr(error, 'usage', None))
                     continue
-                calls -= 0 if result.get('skipped') else 1
+                calls -= required
             else:
                 # The older investigation: it takes what is left of the portion and ends it.
                 # The busiest page is also the one least likely to fit: a refusal
@@ -210,16 +213,13 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
                         raise
                     continue
                 calls = 0
-            done.append({'page': target, 'outcome': 'skipped' if result.get('skipped') else 'accepted',
-                         **({'why': result['skipped']} if result.get('skipped') else {})})
+            done.append({'page': target, 'outcome': 'accepted'})
             _add_usage(usage, result.get('usage'))
             changed += result.get('changed', [])
         accepted = [row['page'] for row in done if row['outcome'] == 'accepted']
         left = len(unfinished_by_recency(root))
         record.update(outcome='completed', usage=usage or None, changed=changed, tried=tried, pages=done,
                       left=left, **({'record': accepted[-1]} if accepted else {'reason': 'no_page_fits_budget'}))
-        if not accepted and all(row['outcome'] == 'skipped' for row in done) and done:
-            record['reason'] = 'no_material'
     except Exception as error:
         record.update(outcome='failed', error=str(error) if isinstance(error, WikiError) else type(error).__name__,
                       usage=getattr(error, 'usage', None) or usage or None, tried=tried, pages=done)
@@ -239,9 +239,9 @@ def _stopped(root, config) -> str:
     return quota.blocks(meter, quota.points_spent(run_logs(root), meter), config['limits'])
 
 
-def _person(root, record, *, config, clients, subscriptions):
-    from .people_pages import write_page
-    return write_page(root, record, config=config, clients=clients, subscriptions=subscriptions)
+def _person(root, row, *, clients, subscriptions, max_calls=None):
+    from .people_pages import investigate_person
+    return investigate_person(root, row, clients=clients, subscriptions=subscriptions, max_calls=max_calls)
 
 
 def _project(root, record, *, config):
@@ -251,7 +251,7 @@ def _project(root, record, *, config):
 
 def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, person_one, project_one):
     """A later run: only people and projects with new material since the previous run."""
-    from .people_evidence import correspondents_since, prepare
+    from .people_pages import correspondents_since
     from .people_pages import queue as people_queue
     from .project_material import extract
     from .project_pages import queue as project_queue
@@ -259,12 +259,9 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
     sources = subscriptions(root)
     clients = _clients(sources)
     # Step 1, no model: who has new material. One mailbox listing since the
-    # last run; each person found is brought up to date; new session lines
-    # are filed under their project pages.
+    # last run says who wrote; new session lines are filed under their
+    # project pages. Each person's own mail is gathered by the investigation.
     found = correspondents_since(root, clients, since=datetime.fromisoformat(since))
-    for person in found['records']:
-        if Notebook(root).path(person).is_file():
-            prepare(root, person, clients=clients, subscriptions=sources)
     extract(root, sources)
     rows = [{**row, 'kind': 'person'} for row in people_queue(root, since=since)
             if row['mode'] == 'update' or row['record'] in found['records']]
@@ -289,12 +286,11 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
                 break
             try:
                 if row['kind'] == 'person':
-                    result = (person_one or _person)(root, row['record'], config=config, clients=clients,
-                                                     subscriptions=sources)
+                    result = (person_one or _person)(root, row, clients=clients, subscriptions=sources)
                 else:
                     result = (project_one or _project)(root, row['record'], config=config)
                 done.append({'page': row['record'], 'mode': row['mode'],
-                             'outcome': 'skipped' if result.get('skipped') else 'accepted'})
+                             'outcome': 'accepted'})
                 _add_usage(usage, result.get('usage'))
                 changed += result.get('changed', [])
             except WikiError as error:
@@ -303,7 +299,7 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
                              'outcome': 'refused' if 'rejected' in str(error) else 'failed',
                              'why': str(error)[:300]})
                 _add_usage(usage, getattr(error, 'usage', None))
-        left = len(rows) - sum(1 for row in done if row['outcome'] in ('accepted', 'skipped'))
+        left = len(rows) - sum(1 for row in done if row['outcome'] == 'accepted')
         record.update(outcome='completed', usage=usage or None, changed=changed, pages=done, left=left,
                       since=since, listed=found['listed'])
     except Exception as error:

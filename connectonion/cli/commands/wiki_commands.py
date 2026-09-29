@@ -682,7 +682,7 @@ def make_wiki_app(factory):
             if target == "people":
                 # An agent searching each person's prepared evidence (#1943, #1850).
                 from .wiki_people import run_people
-                return run_people(ctx, root, limit=pages_limit, recent_days=recent_days or 14, days=days or 90,
+                return run_people(ctx, root, limit=pages_limit, recent_days=recent_days or 14, days=days,
                                   list_only=list_only, gate=None if list_only else budget_gate(root),
                                   clients_for=clients_for, subscriptions=subscriptions, logged=_logged)
             if target == "me":

@@ -812,7 +812,7 @@ def test_category_run_reports_partial_failure_nonzero(tmp_path, monkeypatch):
         {'path': 'people/ada.md', 'recent': False, 'weight': 1, 'unknown': 1,
          'last_investigated': None}])
     from connectonion.wiki.runner import RunFailed
-    monkeypatch.setattr('connectonion.wiki.people_pages.write_page',
+    monkeypatch.setattr('connectonion.wiki.investigate.investigate',
                         lambda *a, **kw: (_ for _ in ()).throw(RunFailed('model rejected')))
     result = invoke(tmp_path, '--json', 'investigate', 'people', '--days', '5', '--limit', '1')
     assert result.exit_code == 1
