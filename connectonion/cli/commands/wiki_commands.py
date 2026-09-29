@@ -550,7 +550,8 @@ def make_wiki_app(factory):
             if not category:
                 counts = {name: len(notebook.list(name)) for name in CATEGORIES if notebook.list(name)}
                 return (counts, ["list", next(iter(counts))]) if counts else ([], ["init"])
-            records = notebook.list(category)
+            from ...wiki.queue import by_weight
+            records = by_weight(root, notebook.list(category))
             if not records and category == "people" and not ctx.obj["json"]:
                 from ...wiki.files import state_path
                 from ...wiki.service import mail_available
