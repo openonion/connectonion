@@ -297,8 +297,15 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             why = (mail_skipped or ("unsubscribed by the user" if subscriptions.get(kind, {}).get("unsubscribed")
                    else f"not connected (co auth {'google' if kind == 'gmail' else 'microsoft'})"))
             coverage.append(f"{kind}: {why}; not searched")
+    from .chat import CHAT_KINDS, collect_chat
     for name, sub in subscriptions.items():
-        if sub.get("kind") not in KINDS:
+        chat = sub.get("kind") in CHAT_KINDS
+        if sub.get("kind") not in KINDS and not chat:
+            continue
+        if chat and not sub.get("chats"):
+            # Chats are read only when the user named them (a linked device sees
+            # every group the number is in); none named is a choice, said so.
+            coverage.append(f"{name}: no chats chosen, not searched")
             continue
         if sub.get("enabled") is False:
             coverage.append(f"{name}: disabled, not searched")
@@ -309,17 +316,29 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         scoped = {**sub, "enabled": True, "consented": True, "since": start.isoformat()}
         cursor, scanned, picked = {}, 0, []
         is_owner = bool(own_addresses.intersection(handles))
+        read = collect_chat if chat else collect
+
+        def related(item):
+            # A chat line says who said it; mail's rule for the owner applies:
+            # what the owner wrote describes them, the whole chat does not.
+            # sent_only is the owner's page even when no mailbox is connected
+            # to tell us their addresses; a chat knows which lines are theirs.
+            if is_owner or (chat and sent_only):
+                return not chat or item["role"] == "user"
+            said = item["text"] + " " + item.get("project", "")
+            if chat:
+                said += " " + item.get("speaker", "") + " " + item.get("correspondent", "")
+            return any(h in said.lower() for h in handles)
         try:
             while True:
-                batch = collect(scoped, cursor, 40, 200_000)
+                batch = read(scoped, cursor, 40, 200_000)
                 scanned += len(batch.items)
-                picked.extend(i for i in batch.items if is_owner or any(
-                    h in (i["text"] + " " + i.get("project", "")).lower() for h in handles))
+                picked.extend(i for i in batch.items if related(i))
                 if batch.progress == cursor:
                     break
                 cursor = batch.progress
                 if stage_progress:
-                    stage_progress(f"gathering {name} sessions", scanned)
+                    stage_progress(f"gathering {name} {'chats' if chat else 'sessions'}", scanned)
         except WikiError as error:
             coverage.append(f"{name}: unreadable ({error})")
         related = len(picked)
@@ -328,7 +347,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         coverage.append(f"{name}: {scanned} messages in window, {related} related to subject, "
                         f"{len(picked)} read"
                         + (" (recent quick sample)" if quick else "")
-                        + (" (account owner's own messages)" if is_owner else " (handle or project match)"))
+                        + (" (account owner's own messages)" if is_owner or (chat and sent_only)
+                           else " (handle, sender or chat match)" if chat else " (handle or project match)"))
         items += picked
     items.sort(key=lambda i: i["timestamp"])
     for item in items:
