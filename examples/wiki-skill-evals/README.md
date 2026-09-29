@@ -10,11 +10,19 @@ cd examples/wiki-skill-evals
 co benchmark check wiki-person
 co eval run wiki-person  --agent agent.py --skill wiki-page-person  --invoke explicit --runs 2 --max-iterations 15
 co eval run wiki-project --agent agent.py --skill wiki-page-project --invoke explicit --runs 2 --max-iterations 15
+co eval run wiki-project-sessions --agent agent.py --skill wiki-project-sessions --invoke explicit --runs 2 --max-iterations 15
 python .co/benchmarks/check_pages.py        # the production validator on every page written
 ```
 
 `.co/skills/` links to the skills in `connectonion/useful_skills/`, so an edit
 there is what the next run tests.
+
+`wiki-project-sessions` (#1943) writes a project page from nothing but the
+messages the user typed to their coding agents. Its six cases: a project with a
+clear arc, a decision reversed, a folder that was only ever exploration, two
+unrelated topics in one folder, a password pasted in a message (in
+`forbidden.txt`, so `check_pages.py` fails the page if it appears anywhere), and
+an update that gets only the messages since the page was last written.
 
 ## What the two checks cover
 

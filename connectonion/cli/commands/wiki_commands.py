@@ -1097,6 +1097,10 @@ def make_wiki_app(factory):
         _handle(ctx, lambda root: (capture(root, transcript.expanduser().resolve(), source),
                                   ["sync", "--dry-run"]), ["status"])
 
+    # ------------------- Project pages from the user's own messages (#1943)
+    from .wiki_projects import add_projects_app
+    add_projects_app(wiki, factory, _handle, _logged)
+
     # ------------------------------------------------ Old names (until 1.9)
 
     @wiki.command("unfinished", help="Old name for `co wiki investigate`; works until 1.9.")
