@@ -615,6 +615,22 @@ def test_a_mailbox_left_out_on_purpose_says_why_not_that_it_is_disconnected():
     assert not any("co auth" in line for line in coverage)
 
 
+def test_the_status_line_never_names_the_evidence_layout_as_a_source():
+    """#1962: pages were stamped `(outlook, gmail, codex, claude-code, evidence)`;
+    evidence is how the material was laid out, not where it came from."""
+    coverage = [
+        "outlook (me@x.y): searched on the server for t@x.y over 150 days, 50 matched, 50 bodies read",
+        "gmail (me@g.com): searched on the server for t@x.y over 150 days, 0 matched, 0 bodies read",
+        "codex: 1,200 messages in window, 0 related to subject, 0 read (handle or project match)",
+        "claude-code: 900 messages in window, 3 related to subject, 3 read (handle or project match)",
+        "whatsapp: no chats chosen, not searched",
+        "evidence: 2,160,000 chars gathered, written to 303 files and searched, not summarised first",
+        "Requested investigation window: 150 days ending 2026-09-30",
+    ]
+
+    assert inv.searched_sources(coverage) == ["outlook", "gmail", "codex", "claude-code"]
+
+
 def test_only_whole_addresses_are_searched_on_the_mail_server():
     """#1954: a handle still carrying a citation or prose is not an address; Gmail
     matched 677 unrelated mails for one such handle."""

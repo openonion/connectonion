@@ -462,6 +462,20 @@ def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: P
     return digests, usage
 
 
+def searched_sources(coverage: list[str]) -> list[str]:
+    """The sources this code searched, for the page's status line.
+
+    Not every coverage line is a source: `evidence:` says how the material was
+    laid out, and the 1.9.0a1 run stamped `(…, evidence)` on real pages (#1962).
+    A source searched with nothing found stays: the daily round reads the line
+    to know which sources a page has already been checked against.
+    """
+    notes = ("budget", "digest", "evidence:", "Requested investigation window:", "Quick first pass:")
+    return list(dict.fromkeys(
+        line.split(" (")[0].split(":")[0] for line in coverage
+        if not line.startswith(notes) and "not searched" not in line and ": unreadable" not in line))
+
+
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
@@ -609,14 +623,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # The status line names the sources this code searched. Whether the web
     # was reached is the Skill's to report, on the page: a real run (2026-09-14)
     # had `co browser` fail inside the thread while this line still said "web".
-    searched = [c.split(" (")[0].split(":")[0] for c in coverage
-                if not c.startswith(("budget", "digest", "Requested investigation window:",
-                                     "Quick first pass:"))
-                and "not searched" not in c and ": unreadable" not in c]
+    searched = searched_sources(coverage)
     with maintenance_lock(root):
         from .reviews import ingest
         ingest(root, result.get("review_candidates", []))
-        notebook.note_investigation(record, ", ".join(dict.fromkeys(searched)))
+        notebook.note_investigation(record, ", ".join(searched))
     return {"record": record, "items": len(items), "items_available": available_items,
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
