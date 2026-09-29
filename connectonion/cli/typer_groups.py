@@ -258,7 +258,7 @@ _NEGATIVE_NUMBER = re.compile(r"^-\d[\d.]*$")
 
 # Groups whose help is a reviewed page printed word for word, with its own
 # `Back:` lines and its own contract test (#1656).
-_OWN_PAGES = {"wiki"}
+_OWN_PAGES = {"rem"}
 
 
 def name_the_way_back(app: typer.Typer, path: str = "co") -> None:

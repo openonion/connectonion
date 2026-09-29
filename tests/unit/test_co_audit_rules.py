@@ -77,13 +77,13 @@ def test_subcommands_are_read_from_every_common_layout():
     uv_page = "Usage: uv [OPTIONS] <COMMAND>\n\nCommands:\n  run      Run a command\n  init     Create a project\n\nOptions:\n  -q, --quiet   Quiet\n"
     gh_page = "USAGE\n  gh <command>\n\nCORE COMMANDS\n  auth:          Log in\n  pr:            Pull requests\n\nHELP TOPICS\n  environment:   Variables\n\nFLAGS\n  --version   Show version\n"
     argparse_page = "usage: tool [-h] {build,serve} ...\n\npositional arguments:\n  {build,serve}\n"
-    wiki_page = "co wiki — a notebook.\n\nRead\n  list          List pages.\n  show          Print one page.\n"
+    rem_page = "co rem — a notebook.\n\nRead\n  list          List pages.\n  show          Print one page.\n"
     table_page = "Show or change settings. Changing validates and never\nstarts a run.\n\nKeys:     model        gpt\n          runner       codex\n"
     assert audit.listed_commands(typer_page) == ["send"]
     assert audit.listed_commands(uv_page) == ["run", "init"]
     assert audit.listed_commands(gh_page) == ["auth", "pr"]
     assert audit.listed_commands(argparse_page) == ["build", "serve"]
-    assert audit.listed_commands(wiki_page) == ["list", "show"]
+    assert audit.listed_commands(rem_page) == ["list", "show"]
     assert audit.listed_commands(table_page) == []
 
 

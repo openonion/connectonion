@@ -29,7 +29,8 @@ _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def _real_commands():
-    return set(typer.main.get_command(cli_main.app).commands)
+    # `co wiki` is registered but hidden: it only tells old scripts to use co rem (#1932).
+    return {name for name, cmd in typer.main.get_command(cli_main.app).commands.items() if not cmd.hidden}
 
 
 def _bare_co() -> str:

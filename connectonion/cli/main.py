@@ -1175,7 +1175,7 @@ def server_destroy(
         raise typer.Exit(1)
 
 
-# Experimental: the Personal Wiki targets 1.9.0 and its acceptance gates are
+# Experimental: co rem targets 1.9.0 and its acceptance gates are
 # open, so the command list says so wherever `co --help` is read.
 schedule_app = _typer_app(
     help="This agent's own recurring work, from .co/schedule.yaml: see it, check it, run an entry now, "
@@ -1235,10 +1235,22 @@ def schedule_resume(name: str = typer.Argument(..., help="Entry name, as co sche
     handle_resume(name)
 
 
-from .commands.wiki_commands import make_wiki_app
+from .commands.rem_commands import make_rem_app
 
-app.add_typer(make_wiki_app(_typer_app), name="wiki",
-              short_help="Experimental: Personal Wiki — map first, investigate next. Targets 1.9.0.")
+app.add_typer(make_rem_app(_typer_app), name="rem",
+              short_help="Experimental: co rem — map first, investigate next. Targets 1.9.0.")
+
+
+@app.command("wiki", hidden=True, add_help_option=False,
+             context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def wiki_renamed(ctx: typer.Context):
+    """co wiki is now co rem. Runs nothing, so a script breaks with the fix in the message (#1932). Removed in 1.10."""
+    import shlex
+    from .commands.command_tips import mark_next_step_named
+    typer.echo("co wiki is now co rem.", err=True)
+    typer.echo("Next: " + shlex.join(["co", "rem", *ctx.args]), err=True)
+    mark_next_step_named()
+    raise typer.Exit(2)
 
 
 # Skills command group

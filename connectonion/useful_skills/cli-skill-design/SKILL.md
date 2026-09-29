@@ -31,9 +31,9 @@ execution and recovery. Record actual test results, not just design principles.
 
 `tests/unit/test_cli_help_contract.py` (#1657) runs `co audit`'s engine, which
 never reads the source: it runs `co --help`, opens every command a page lists,
-and judges each page from what it printed, the way an agent meets it. `co wiki`
+and judges each page from what it printed, the way an agent meets it. `co rem`
 is walked but held to its own verbatim pages by
-`tests/e2e/cli/test_wiki_help_contract.py`. There is no baseline and no
+`tests/e2e/cli/test_rem_help_contract.py`. There is no baseline and no
 waiver: a new command fails CI until its page passes. Printed by a real `co` in
 an empty HOME and cwd, `co <cmd> --help` must:
 

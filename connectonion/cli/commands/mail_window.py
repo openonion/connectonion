@@ -6,7 +6,7 @@ two dates". Asking for a count and discarding the surplus fetched 1851 messages
 to read a 150-day window on a real mailbox.
 
 Both providers already answer the right question -- `Outlook.list_between` and
-`Gmail.list_between` were written for the Wiki sources -- so this only wires
+`Gmail.list_between` were written for co rem sources -- so this only wires
 that up and prints it in a shape a caller can parse.
 """
 

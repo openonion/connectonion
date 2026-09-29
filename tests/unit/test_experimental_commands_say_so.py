@@ -1,6 +1,6 @@
 """Preview commands say they are experimental where people meet them: `co --help`.
 
-The 1.8.8 review found `co wiki` and `co claude` listed beside stable commands
+The 1.8.8 review found `co rem` and `co claude` listed beside stable commands
 with nothing to tell them apart, while every release note said both are
 previews aimed at 1.9.0. A label in brackets would not do: Rich reads
 `[experimental]` as markup and prints nothing.
@@ -25,9 +25,9 @@ def listing():
     return rows
 
 
-def test_wiki_and_claude_are_marked_experimental_in_the_command_list():
+def test_rem_and_claude_are_marked_experimental_in_the_command_list():
     commands = listing()
-    for name in ("wiki", "claude", "discord", "slack", "tiktok"):
+    for name in ("rem", "claude", "discord", "slack", "tiktok"):
         assert "Experimental:" in commands[name], commands.get(name)
 
 
@@ -55,9 +55,9 @@ def test_stable_commands_are_not():
         assert "Experimental" not in commands[name]
 
 
-def test_the_wiki_overview_and_claude_run_pages_say_it_too():
-    # `co --help` said Experimental, but `co wiki`, `co wiki --help` and
+def test_the_rem_overview_and_claude_run_pages_say_it_too():
+    # `co --help` said Experimental, but `co rem`, `co rem --help` and
     # `co claude run --help` -- the pages people actually read -- never did.
-    for args in (["wiki"], ["wiki", "--help"], ["claude", "run", "--help"]):
+    for args in (["rem"], ["rem", "--help"], ["claude", "run", "--help"]):
         page = CliRunner().invoke(cli_main.app, args, env={"COLUMNS": "200"}).output
         assert "Experimental" in re.sub(r"\x1b\[[0-9;]*m", "", page), args

@@ -1842,7 +1842,7 @@ class TestReplyGoesWhereTheSenderAsked:
 
 
 def test_list_between_fetches_each_message_once_with_its_recipients_and_retries():
-    """The wiki's map lists every message in the window with its recipients. It
+    """co rem's map lists every message in the window with its recipients. It
     fetched each message twice (From, then To/Cc): 2,600 calls on a 90-day map,
     ten minutes, and one rate-limited call failed the whole Gmail scan."""
     from connectonion.useful_tools.gmail import Gmail

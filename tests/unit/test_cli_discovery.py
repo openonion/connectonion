@@ -47,7 +47,9 @@ class TestTheTree:
         assert not by_path["co browser"].is_group
 
     def test_nothing_is_hidden(self):
-        """A hidden command is one an agent can only reach by guessing."""
+        """A hidden command is one an agent can only reach by guessing. The one
+        exception is `co wiki`, which runs nothing: it is reached only by the old
+        scripts it exists to tell about co rem (#1932), until 1.10."""
         root = typer.main.get_command(cli_main.app)
 
         def hidden(cmd, path):
@@ -56,7 +58,7 @@ class TestTheTree:
                     yield " ".join(path + [name])
                 yield from hidden(child, path + [name])
 
-        assert list(hidden(root, ["co"])) == []
+        assert list(hidden(root, ["co"])) == ["co wiki"]
 
     def test_summaries_are_one_sentence(self):
         for entry in TREE:

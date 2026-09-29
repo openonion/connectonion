@@ -4,7 +4,7 @@ Found on 1.8.8b7 by a first-run tester: the only guidance block in
 `co --help` was "Build or improve a skill: 1. co benchmark --help…", which is
 step five for someone who has not made an agent yet, while bare `co` opened
 with Quick Start. And bare `co` listed discord, telegram's inbox verbs and
-wiki with unlabelled summaries, where `co --help` said "Experimental:".
+co rem with unlabelled summaries, where `co --help` said "Experimental:".
 """
 
 import re
@@ -43,7 +43,7 @@ def _bare_rows():
 
 def test_bare_co_labels_the_same_commands_experimental():
     rows = _bare_rows()
-    for name in ("wiki", "claude", "discord", "slack", "tiktok"):
+    for name in ("rem", "claude", "discord", "slack", "tiktok"):
         assert "Experimental:" in rows[name], rows[name]
     assert "plus experimental listen" in rows["telegram"], rows["telegram"]
 

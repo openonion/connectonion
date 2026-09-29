@@ -12,7 +12,7 @@ harness the model name is the provider's own (`gpt-5.6-luna`), because the
 delegate is talking to its own account, not through ours.
 
 What each harness does NOT share is normalised here rather than at every call
-site, so a caller — the wiki runner, a script, CI — only ever speaks one
+site, so a caller — co rem runner, a script, CI — only ever speaks one
 protocol: `co ai --json --harness X /skill args` in, one envelope out.
 """
 

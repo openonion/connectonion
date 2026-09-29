@@ -62,7 +62,7 @@ MICROSOFT_EMAIL=your.email@outlook.com
 
 ## Permissions Requested
 
-`co auth microsoft` asks once for everything an agent or the Wiki can use
+`co auth microsoft` asks once for everything an agent or co rem can use
 (#1887). Every scope below is one you can grant yourself: none needs an
 administrator (Microsoft's permissions reference, delegated
 `AdminConsentRequired: No`).

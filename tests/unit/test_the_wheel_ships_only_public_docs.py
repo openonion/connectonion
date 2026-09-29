@@ -1,6 +1,6 @@
 """What goes into the wheel's docs, and from there into every project's .co/docs/.
 
-1.8.8b7 shipped docs/testing/ — 91 files of wiki test runs with ~245 absolute
+1.8.8b7 shipped docs/testing/ — 91 files of co rem test runs with ~245 absolute
 paths from the maintainer's machine (`/Users/<name>/projects/.worktree/...`,
 `/Users/<name>/.codex/sessions`) — and `co create` / `co init` copied it into
 every new project's .co/docs/. The wheel mapped docs/ with a hatch

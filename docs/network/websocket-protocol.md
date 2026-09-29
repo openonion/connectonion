@@ -984,12 +984,12 @@ scripting and network access blocked. Files over 2MB are not sent. See
 
 #### WIKI_READ / WIKI_RESULT
 
-An authenticated owner may request the current private Wiki reader on the same
+An authenticated owner may request the current private co rem reader on the same
 signed OIP session used by Chat. The Host renders the existing read-only HTML
-template from its configured Wiki root and returns it to that request only. A
+template from its configured co rem root and returns it to that request only. A
 non-owner receives an error without notebook content. `co ai` configures the
-default `~/.co/wiki` root; other Hosts have no Wiki unless configured with
-`wiki_root`. The HTML is capped at 16 MiB. This frame is never an Agent profile
+default `~/.co/rem` root; other Hosts have no co rem unless configured with
+`rem_root`. The HTML is capped at 16 MiB. This frame is never an Agent profile
 or public static artifact.
 
 ```json

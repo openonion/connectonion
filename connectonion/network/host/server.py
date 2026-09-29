@@ -1056,7 +1056,7 @@ def host(
     examples: list = None,
     http=None,
     provider_station=None,
-    wiki_root: Path = None,
+    rem_root: Path = None,
     on_agent_startup=None,
     on_agent_shutdown=None,
 ):
@@ -1278,7 +1278,7 @@ def host(
         project_dir=co_dir.parent,
         provider_station=provider_station,
     )
-    route_handlers["wiki_root"] = Path(wiki_root).expanduser().resolve() if wiki_root else None
+    route_handlers["rem_root"] = Path(rem_root).expanduser().resolve() if rem_root else None
     # The host signs its half of a sealed direct channel with this.
     route_handlers["identity"] = addr_data
 
