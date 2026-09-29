@@ -361,7 +361,20 @@ def _first_projects(ctx, root, config, plan, say) -> dict:
 
 def make_rem_app(factory):
     rem = factory(help="co rem", no_args_is_help=False)
-    rem.info.cls = verbatim("co rem", rem.info.cls)
+    base = verbatim("co rem", rem.info.cls)
+
+    class RemGroup(base):
+        def invoke(self, ctx):
+            # The callback below runs before Click prints a subcommand's help,
+            # and by then the subcommand's arguments are gone from ctx; here
+            # they are still visible. `co rem projects --help` moved the
+            # owner's real notebook and replaced their schedule: reading a help
+            # page writes nothing.
+            rest = [*getattr(ctx, "_protected_args", []), *ctx.args]
+            ctx.meta["rem_asks_help"] = "--help" in rest
+            return super().invoke(ctx)
+
+    rem.info.cls = RemGroup
 
     @rem.callback(invoke_without_command=True)
     def overview(ctx: typer.Context,
@@ -369,7 +382,8 @@ def make_rem_app(factory):
                  json_out: bool = typer.Option(False, "--json", help="Machine-readable output with next command")):
         ctx.obj = {"root": (root or Path.home() / ".co/rem").expanduser().resolve(),
                    "default_root": root is None, "json": json_out}
-        _carry_over(ctx)
+        if not ctx.resilient_parsing and not ctx.meta.get("rem_asks_help"):
+            _carry_over(ctx)
         if ctx.invoked_subcommand is None:
             if ctx.obj["json"]:
                 inspect_status(ctx)
