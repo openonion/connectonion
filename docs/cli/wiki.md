@@ -265,6 +265,34 @@ default. Old coai configs which retained the unused Codex default migrate to
 their previous effective behavior (COAI's default). No credential belongs in
 Wiki configuration.
 
+### The job's shape: agent or summary tier
+
+Not every model can drive tools, and model names change under us, so the
+shape of an investigation is measured rather than read off the name (#1847).
+Changing `model` or `runner` runs a capability check: one investigation of a
+built-in fixture page (two mails, in a throwaway notebook; none of your data)
+through the configured runner, graded by code — the page must state the
+fixture's fact and cite a fixture message. The result is recorded in
+`.state/tier.json` with the runner, model and time it was checked for.
+
+| Tier | Who gathers | Who writes the page |
+|---|---|---|
+| `agent` | Wiki's code gathers; the harness reads the material with its file tools | The model writes the page file itself, as the investigate Skill says |
+| `summary` | Wiki's code gathers everything, including a project's files, and hands it all over inline (digested first if it does not fit) | The model replies with the page, one page per call; the reply becomes the candidate |
+
+The agent tier is tried first; a model that fails it but fills the page by
+reply is the summary tier; a model that does neither is not recorded and the
+command fails with a `Next:` line. `co wiki config` shows the tier in force.
+A notebook never checked, or checked for another runner or model, runs as the
+agent tier (the behaviour before the check existed) and `co wiki config`
+says so and names the command that checks it. `--no-check` saves a new model
+without checking it.
+
+```bash
+co wiki config set model gpt-6-luna      # saves, checks, records the tier
+co wiki config                           # Tier: in force, checked, when
+```
+
 Equivalent direct CLI delegation, useful in a shell script:
 
 ```bash

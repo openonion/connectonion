@@ -101,11 +101,37 @@ def test_read_commands_do_not_invoke_a_provider(tmp_path, monkeypatch):
 def test_config_set_is_explicit_and_does_not_prepare_content(tmp_path):
     root = tmp_path / "wiki"
     result = invoke(root, "config", "set", "schedule.timezone", "Australia/Sydney",
-                    "model", "gpt-5.6-luna")
+                    "model", "gpt-5.6-luna", "--no-check")
     assert result.exit_code == 0, result.output
     assert (root / "config.yaml").is_file()
     assert not (root / "people").exists()
     assert "gpt-5.6-luna" in invoke(root, "config").output
+
+
+def test_config_set_model_checks_it_on_a_fixture_page_and_records_its_tier(tmp_path, monkeypatch):
+    """#1847: the tier comes from what the model did, not from its name."""
+    def plain_model(workspace, prompt, config, stage):   # can reply, cannot drive tools
+        page = re.search(r"^# Ada Fixture$.*?^Investigation:[^\n]*$", prompt, re.M | re.S).group(0)
+        source = re.search(r"gmail:[0-9a-f]{12}", prompt).group(0)
+        return {"outcome": "natural", "usage": None, "result": page.replace(
+            "## Who they are\n- Unknown — not investigated yet",
+            "## Who they are\n- Head of research at Lovelace Instruments. [1]").replace(
+            "- (none yet)", f"- [1] {source}")}
+
+    monkeypatch.setattr("connectonion.wiki.runner.run_task", plain_model)
+    root = tmp_path / "wiki"
+    result = invoke(root, "config", "set", "model", "gpt-7-nova")
+    assert result.exit_code == 0, result.output
+    assert "Tier: summary" in result.stdout
+    recorded = json.loads((root / ".state/tier.json").read_text())
+    assert (recorded["tier"], recorded["model"]) == ("summary", "gpt-7-nova")
+    assert not (root / "people").exists()
+    shown = invoke(root, "config").output
+    assert "In force: summary" in shown and shown.rstrip().endswith(f"Next: co wiki --root {root} status")
+    invoke(root, "config", "set", "model", "gpt-7-pico", "--no-check")
+    shown = invoke(root, "config").output
+    assert "last checked for codex gpt-7-nova" in shown
+    assert shown.rstrip().endswith(f"Next: co wiki --root {root} config set model gpt-7-pico")
 
 
 @pytest.mark.parametrize("schedule", [None, {}, {"times": ["17:00"], "timezone": "Not/AZone"}])

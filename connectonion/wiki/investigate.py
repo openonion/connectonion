@@ -104,6 +104,23 @@ def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
     return sorted(set(leads), key=priority)[:max_files]
 
 
+def project_file_texts(paths: list[str], *, max_files: int = 12, chars_per_file: int = 2000) -> list[dict]:
+    """The summary tier's project evidence: Python reads the files an agent would open.
+
+    A plain model cannot open the inventory's files itself, so their text is
+    handed over, within the agent's own bound of twelve files. Each file is
+    its own source, cited by its path.
+    """
+    items = []
+    for name in paths[:max_files]:
+        path = Path(name)
+        text = path.read_text(encoding="utf-8", errors="replace")
+        items.append({"role": "project-file", "source": name, "file": name,
+                      "timestamp": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
+                      "text": text[:chars_per_file] + ("\n[truncated]" if len(text) > chars_per_file else "")})
+    return items
+
+
 def _patient(call, *args, attempts: int = 4):
     """One transient timeout must not end a ten-minute gather.
 
@@ -445,6 +462,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         coverage.append(f"Quick first pass: reviewed {len(items)} of {available_items} gathered items; "
                         "individual texts capped at 2,500 characters. Other material was not evaluated; "
                         "do not claim comprehensive coverage or resolve unsupported conflicts.")
+    leads = []
     if record.startswith("projects/"):
         leads = project_file_inventory(notebook.read(record))
         if leads:
@@ -467,6 +485,13 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     from .runner import instructions, run_stage
     overhead = len(instructions("investigate")) + len(notebook.read(record)) + 4000
     room = config["limits"]["input_chars_per_batch"] - overhead
+    from .tier import current
+    if current(root, config) == "summary":
+        # A plain model reads nothing it is not handed: the page's whole
+        # material travels in the one prompt, so it must fit there (#1847).
+        from .runner import INLINE_LIMIT
+        room = min(room, INLINE_LIMIT - overhead)
+        items += project_file_texts(leads)
     if room <= 0:
         raise WikiError("Configured input limit cannot fit the current page and investigation Skill")
     gathered_chars = sum(len(json.dumps(i, ensure_ascii=False)) for i in items)

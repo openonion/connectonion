@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .files import read_json, state_path, write_json
 from .runner import RunFailed, instructions, run_task, task_prompt
+from .tier import current
 
 NOTHING = "Nothing worth keeping."
 
@@ -65,10 +66,15 @@ def run_extract(items: list[dict], config: dict, kind: str = "", *, root: Path) 
         directory = Path(temporary)
         prompt = task_prompt(directory, items, "extract", kind)
         output = directory / "notes.md"
-        prompt += (f"Write the complete extraction notes to {output}; this file is your output. "
-                   "If nothing is worth keeping, write exactly 'Nothing worth keeping.' "
+        # A summary-tier model has no tool to write a file with (#1847): its notes are its reply.
+        summary = current(root, config) == "summary"
+        prompt += ("Reply with ONLY the complete extraction notes; do not call tools or write files. "
+                   if summary else f"Write the complete extraction notes to {output}; this file is your output. ")
+        prompt += ("If nothing is worth keeping, write exactly 'Nothing worth keeping.' "
                    "Do not edit notebook pages, read other sources, or start nested Wiki jobs.")
         result = run_task(tasks, prompt, config, "extract")
+        if summary:
+            output.write_text(str(result.get("result") or ""), encoding="utf-8")
         notes = output.read_text(encoding="utf-8").strip() if output.is_file() else ""
         if not notes:
             raise RunFailed("co ai extraction returned no notes file", result.get("usage"))

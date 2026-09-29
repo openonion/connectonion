@@ -321,11 +321,11 @@ Back:     co wiki --help
 
 ```
 Show or change settings. Changing validates every value before saving and never
-starts a run.
+starts a run on your mail or sessions.
 
 Usage:    co wiki config
-          co wiki config set KEY VALUE [KEY VALUE]...
-Keys:     model                          gpt-6-luna (default: the newest generation's cheapest)
+          co wiki config set KEY VALUE [KEY VALUE]... [--no-check]
+Keys:     model                          gpt-6-luna (default); a new one is checked on a fixture page
           runner                         codex | claude-code | coai
           schedule.times                 "03:00,17:00"
           schedule.timezone              Australia/Sydney
@@ -335,6 +335,10 @@ Keys:     model                          gpt-6-luna (default: the newest generat
           route.<stage>                  a model for one stage of planned investigation:
                                          plan, extract, synthesize or render ("default" clears it)
 Example:  co wiki config set model gpt-6-luna schedule.times "06:00,18:00"
+Tier:     agent    the model drives tools: it reads the material and writes the page itself
+          summary  a plain model: the material is handed over and it replies with the page
+          Measured when model or runner changes, never read off the name. Unchecked runs
+          as agent, and co wiki config names the command that checks it.
 Subcommand: co wiki config set --help
 Next:     co wiki status
 Back:     co wiki --help
@@ -370,13 +374,17 @@ Back:     co wiki --help
 
 ```
 Change one or more settings. Every pair is checked before anything is saved: one
-bad value saves nothing. Never starts a run.
+bad value saves nothing. Never starts a run on your mail or sessions.
 
-Usage:    co wiki config set KEY VALUE [KEY VALUE]...
+Usage:    co wiki config set KEY VALUE [KEY VALUE]... [--no-check]
 Example:  co wiki config set model gpt-6-luna limits.runner_calls_per_day 4
 Keys:     the list on co wiki config --help
-Output:   The saved configuration, as co wiki config prints it.
+          --no-check  save a new model or runner without checking its tier
+Output:   The saved configuration, as co wiki config prints it, and the tier.
 Effects:  Writes config.yaml. A new schedule time takes effect at the next run.
+          A new model or runner runs the capability check: one investigation of a
+          built-in fixture page (two if tools fail), graded, then records the tier
+          (agent or summary) in .state/tier.json. Calls the model; reads none of your data.
 Next:     co wiki config
 Back:     co wiki config --help
 ```
