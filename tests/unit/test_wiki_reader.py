@@ -5,6 +5,7 @@ import re
 
 import pytest
 
+from connectonion.wiki import reader
 from connectonion.wiki.config import prepare
 from connectonion.wiki.files import Notebook
 from connectonion.wiki.reader import open_reader, reader_path, render, write_reader
@@ -48,7 +49,8 @@ def test_write_reader_lands_outside_the_notebook_and_leaves_notes_untouched(tmp_
     page = write_reader(tmp_path)
     assert page.is_file()
     assert tmp_path not in page.parents  # rendered output is not inside the collected tree
-    assert oct(page.stat().st_mode & 0o777) == "0o600"
+    if os.name != "nt":
+        assert oct(page.stat().st_mode & 0o777) == "0o600"
     after = sorted((p.relative_to(tmp_path).as_posix(), p.stat().st_mtime_ns)
                    for p in tmp_path.rglob("*") if p.is_file())
     assert before == after
@@ -56,12 +58,29 @@ def test_write_reader_lands_outside_the_notebook_and_leaves_notes_untouched(tmp_
     assert Notebook(tmp_path).list() == ["notes/idea.md"]  # the page is not a record
 
 
+def test_write_reader_supports_windows_without_posix_flags_or_modes(tmp_path, monkeypatch):
+    monkeypatch.setattr(reader.sys, "platform", "win32")
+    monkeypatch.delattr(reader.os, "O_NOFOLLOW", raising=False)
+    monkeypatch.setattr(reader.os, "chmod", lambda *args: pytest.fail("chmod called"))
+
+    page = write_reader(tmp_path)
+
+    assert page.is_file()
+
+
 def test_write_reader_refuses_to_follow_a_planted_symlink(tmp_path, monkeypatch):
     """The page name is predictable, so a symlink planted there must not become a write elsewhere."""
     monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path))
     victim = tmp_path / "victim.txt"
     victim.write_text("keep")
-    os.symlink(victim, reader_path(tmp_path / "wiki"))
+
+    try:
+        os.symlink(victim, reader_path(tmp_path / "wiki"))
+    except OSError as error:
+        if os.name == "nt" and getattr(error, "winerror", None) == 1314:
+            pytest.skip("symlinks require Windows Developer Mode or elevation")
+        raise
+
     with pytest.raises(OSError):
         write_reader(tmp_path / "wiki")
     assert victim.read_text() == "keep"

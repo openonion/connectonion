@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import sys
 import tempfile
 import webbrowser
 from datetime import datetime, timezone
@@ -79,10 +80,15 @@ def write_reader(root: Path) -> Path:
     page = render(root)
     path = reader_path(root)
     # The name is predictable; refuse to write through a link someone planted there.
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    no_follow = getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | no_follow
+    fd = os.open(path, flags, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as output:
         output.write(page)
-    os.chmod(path, 0o600)
+    # Windows does not offer POSIX file modes; on POSIX, a failed chmod must
+    # still be visible rather than silently weakening the private snapshot.
+    if sys.platform != "win32":
+        os.chmod(path, 0o600)
     return path
 
 
