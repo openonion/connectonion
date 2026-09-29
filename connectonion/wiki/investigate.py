@@ -509,7 +509,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     overhead = len(instructions("investigate", page_kind=page_kind_of(record))) + len(notebook.read(record)) + 4000
     room = config["limits"]["input_chars_per_batch"] - overhead
     from .tier import current
-    if current(root, config) == "summary":
+    summary = current(root, config) == "summary"
+    if summary:
         # A plain model reads nothing it is not handed: the page's whole
         # material travels in the one prompt, so it must fit there (#1847).
         from .runner import INLINE_LIMIT
@@ -524,7 +525,16 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         raise WikiError("Insufficient call budget for investigation; page preserved")
     now = datetime.now(timezone.utc).isoformat()
     evidence_dir = None
-    if gathered_chars > room:
+    if gathered_chars > room and summary:
+        # A summary-tier model cannot search files (#1847), so it is handed
+        # digests of the material in order, the shape investigation had before #1850.
+        from .inquiry import stage_config
+        items, usage_by_stage["extract"] = digest_in_chunks(
+            items, stage_config(root, config, "extract"), extractor, root=root,
+            max_calls=None if max_calls is None else max_calls - synthesis_calls, progress=stage_progress)
+        coverage.append(f"digest: {gathered_chars:,} chars gathered (~{gathered_chars // 4:,} tokens), over the "
+                        f"{room:,}-char room for one summary-tier turn; summarised in {len(items)} chunk(s) first")
+    elif gathered_chars > room:
         if stage_progress:
             stage_progress("writing evidence files")
         # Too much for one turn. Not "keep the newest and drop the rest": the

@@ -345,6 +345,36 @@ def test_over_input_limit_the_writer_searches_evidence_files_instead_of_digests(
     assert "investigated" in inv.Notebook(root).read("people/vern.md")
 
 
+def test_over_input_limit_a_summary_tier_model_is_handed_digests_not_files(tmp_path, monkeypatch):
+    """#1847: a model that can only reply cannot search evidence files, so over
+    the limit it gets the material digested in order, inline in its one turn."""
+    from connectonion.wiki.files import state_path, write_json
+    root = _notebook(tmp_path, "codex")
+    config = read_config(root)
+    write_json(state_path(root, "tier.json"), {"tier": "summary", "runner": config["runner"],
+                                               "model": config["model"]})
+    items = [{"text": f"message {i}: " + "x" * 30_000, "source": f"outlook:{i}", "role": "other",
+              "speaker": "vern@x.y", "subject": f"Contract {i}",
+              "timestamp": f"2026-09-{i + 1:02d}T00:00:00Z"} for i in range(12)]
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: (items, ["outlook: 12 matched"]))
+    digested = []
+
+    def extract(chunk, settings, kind):
+        digested.append(len(chunk))
+        return {"notes": f"- Vern signed contract [{chunk[0]['source']}]", "usage": {"input_tokens": 1}}
+
+    def write(notebook, material, config, **kw):
+        assert not any(i["role"] == "evidence-index" for i in material)
+        assert any("Vern signed contract" in i.get("text", "") for i in material)
+        return {"changed": [], "usage": {"input_tokens": 5}}
+
+    out = inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7, clients={}, subscriptions={},
+                          extractor=extract, runner=write)
+
+    assert digested and sum(digested) >= len(items)
+    assert any(line.startswith("digest: ") and "summary-tier" in line for line in out["coverage"])
+
+
 def test_a_page_citing_an_evidence_file_entry_passes_the_source_check(tmp_path):
     from connectonion.wiki.page_review import validate
 
