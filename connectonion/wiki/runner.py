@@ -546,6 +546,7 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
                "usage": result.get("usage"), "duration_seconds": time.monotonic() - started,
                "changed": changed(), "report": result.get("result")})
     return {"usage": result.get("usage"), "changed": changed(), "refused": len(refusals), "refusals": refusals,
+            "instructions_chars": metrics["instructions_chars"],
             "report": str(result.get("result") or "")[:1000],
             "review_candidates": read_json(directory / "review-candidates.json", [])}
 

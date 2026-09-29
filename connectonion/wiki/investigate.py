@@ -584,4 +584,5 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,
-            "usage_by_stage": usage_by_stage, "report": result.get("report", "")}
+            "usage_by_stage": usage_by_stage, "report": result.get("report", ""),
+            "instructions_chars": {"investigate": result.get("instructions_chars")}}
