@@ -426,6 +426,9 @@ dev = [
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
 ]
+rem = [
+    { name = "openpyxl" },
+]
 synology = [
     { name = "keyring" },
     { name = "paramiko" },
@@ -461,6 +464,7 @@ requires-dist = [
     { name = "onionwright", marker = "extra == 'wtf'", specifier = ">=0.0.14" },
     { name = "openai", specifier = ">=1.0.0" },
     { name = "openpyxl", marker = "extra == 'dev'", specifier = ">=3.1.0" },
+    { name = "openpyxl", marker = "extra == 'rem'", specifier = ">=3.1.0" },
     { name = "openpyxl", marker = "extra == 'wiki'", specifier = ">=3.1.0" },
     { name = "packaging", specifier = ">=23.0" },
     { name = "paramiko", marker = "extra == 'synology'", specifier = ">=4,<5" },
@@ -495,7 +499,7 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.20.0" },
     { name = "websockets", specifier = ">=11.0.0" },
 ]
-provides-extras = ["wtf", "synology", "whatsapp", "wiki", "dev"]
+provides-extras = ["wtf", "synology", "whatsapp", "rem", "wiki", "dev"]
 
 [[package]]
 name = "coverage"
