@@ -400,7 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9
+## Current Version: 1.9.0a1
+
+1.9.0a1 is the first preview of the 1.9.0 line, where the personal notebook
+(being renamed co rem, #1932) becomes long-term supported. Investigation
+searches evidence files instead of summarising all material first (#1850);
+every Wiki Skill keeps rules only, holding a one-page turn under 15k
+characters (#1851); `co wiki list people` is ordered by mail (#1670);
+investigation reads chosen WhatsApp chats (#1625). Stable is 1.8.9. See
+[1.9.0a1 notes](docs/releases/1.9.0a1.md).
+
+- 1.9.0a1 (evidence directory instead of digests; rules/rationale split with a 15k test and per-stage size in logs --usage; org page-kind fix; list order; WhatsApp in investigate.)
+
+## 1.8.9
 
 1.8.9 is the stable release of the 1.8.9 line: 1.8.9b23 unchanged, released as
 stable. The Personal Wiki and the other experimental commands ship labelled

@@ -125,3 +125,50 @@ def test_nothing_is_read_before_consent(tmp_path):
     write(tmp_path / "received.jsonl", [said(1, "2026-09-10T01:00:00Z")])
     with pytest.raises(WikiError, match="start"):
         collect_chat(subscription(tmp_path, consented=False), {}, 20, 100000)
+
+
+def _recent(hours):
+    from datetime import datetime, timedelta, timezone
+    return (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+
+
+def test_investigating_a_person_reads_their_lines_from_the_chosen_chats_only(tmp_path):
+    """#1625: init read WhatsApp, but a one-page investigation searched only
+    sessions and mail, so what a person said in the client group never reached
+    their page."""
+    from connectonion.wiki.investigate import gather
+
+    write(tmp_path / "received.jsonl", [
+        said(1, _recent(5), text="Venue is booked for the 14th", name="John"),
+        said(2, _recent(4), text="thanks all", name="Mia", sender="61400000002@s.whatsapp.net"),
+        said(3, _recent(3), chat=OTHER_GROUP, text="John, dinner Sunday?", name="Mum")])
+    write(tmp_path / "own.jsonl", [said(4, _recent(2), text="Great, John", name="me")])
+    subscriptions = {"whatsapp": subscription(tmp_path, since=_recent(24 * 60))}
+
+    items, coverage = gather("John", ["john"], days=30, clients={}, subscriptions=subscriptions)
+
+    assert [i["text"] for i in items] == ["Venue is booked for the 14th", "Great, John"]
+    assert any(line.startswith("whatsapp: ") and "2 related to subject" in line for line in coverage), coverage
+
+
+def test_the_owner_s_page_takes_only_what_the_owner_wrote_in_chats(tmp_path):
+    from connectonion.wiki.investigate import gather
+
+    write(tmp_path / "received.jsonl", [said(1, _recent(5), text="see you there")])
+    write(tmp_path / "own.jsonl", [said(2, _recent(4), text="I'll bring the contract", name="me")])
+    subscriptions = {"whatsapp": subscription(tmp_path, since=_recent(24 * 60))}
+
+    items, _ = gather("me", ["me@x.y"], days=30, clients={}, subscriptions=subscriptions, sent_only=True)
+
+    assert [i["text"] for i in items] == ["I'll bring the contract"]
+
+
+def test_a_whatsapp_source_with_no_chats_chosen_says_so_and_reads_nothing(tmp_path):
+    from connectonion.wiki.investigate import gather
+
+    write(tmp_path / "received.jsonl", [said(1, _recent(5), text="John here")])
+    subscriptions = {"whatsapp": subscription(tmp_path, chats=(), since=_recent(24 * 60))}
+
+    items, coverage = gather("John", ["john"], days=30, clients={}, subscriptions=subscriptions)
+
+    assert items == [] and "whatsapp: no chats chosen, not searched" in coverage

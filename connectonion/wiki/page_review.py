@@ -234,7 +234,7 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     defined = Counter(key for key, _ in definitions)
     errors += [f'Missing or duplicate citation: {key}' for key in refs if defined[key] != 1]
     known = {i['source'] for i in items if i.get('source') and i['source'] != 'investigation:page'}
-    derived = [source for i in items if i.get("role") in ("reflection-summary", "extract")
+    derived = [source for i in items if i.get("role") in ("reflection-summary", "extract", "evidence-index")
                for source in i.get("sources", [])]
     known.update(derived)
     # A coding session is one transcript file; citing the session rather than

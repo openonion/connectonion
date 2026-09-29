@@ -524,6 +524,28 @@ def test_usage_report_aggregates_raw_records_by_stage_source_and_model(tmp_path)
     assert report["by_model"]["gpt-5.6-luna"]["input_tokens_per_1k_chars"] == round(250000 / 120, 1)
 
 
+def test_usage_report_names_each_stage_s_instruction_size_against_the_15k_target(tmp_path):
+    """#1851: the composed Skill text is re-sent on every tool round, so its
+    size per stage is reported where a regression would show."""
+    from connectonion.wiki.service import usage_report
+    prepare(tmp_path)
+    runs = state_path(tmp_path, "runs")
+    runs.mkdir(parents=True, exist_ok=True)
+    base = {"outcome": "completed", "model": "m", "usage": {"input_tokens": 10}}
+    write_json(runs / "run_a.json", {**base, "id": "run_a", "started_at": "2026-09-30T01:00:00+00:00",
+                                     "instructions_chars": {"investigate": 14_000}})
+    write_json(runs / "run_b.json", {**base, "id": "run_b", "started_at": "2026-09-30T02:00:00+00:00",
+                                     "instructions_chars": {"investigate": 16_000, "maintain": 9_000}})
+    write_json(runs / "run_c.json", {**base, "id": "run_c", "started_at": "2026-09-30T03:00:00+00:00"})
+
+    stages = usage_report(tmp_path)["by_stage"]
+
+    assert stages["investigate"]["instructions_chars_mean"] == 15_000
+    assert stages["investigate"]["instructions_chars_max"] == 16_000
+    assert stages["investigate"]["over_instructions_target"] is True
+    assert stages["maintain"]["over_instructions_target"] is False
+
+
 def test_a_format_that_moved_is_reported_instead_of_looking_like_a_quiet_week(wiki):
     """Reading only the shape the user types fails closed, and closed is silent: the
     notebook would keep saying "nothing new" while the person talked all week. A pass
