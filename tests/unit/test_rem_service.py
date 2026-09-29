@@ -232,6 +232,25 @@ def test_declined_start_reads_nothing_and_installs_nothing(tmp_path, monkeypatch
     assert scheduler.installed == [] and calls == []
 
 
+def test_a_copied_notebook_does_not_claim_the_original_s_schedule(tmp_path):
+    """#1964: worker.json travels with a copy; status said "Running in background"
+    and doctor "ok schedule" for a launchd job whose --root was the original."""
+    from connectonion.rem.schedule import Launchd
+    root = tmp_path / "copy"
+    prepare(root)
+    write_json(state_path(root, "consent.json"), {})
+    write_json(state_path(root, "worker.json"), {"enabled": True, "scheduler": "launchd",
+                                                 "label": "ai.openonion.co-wiki"})
+
+    shown = status(root)
+    assert shown["state"].startswith("Not scheduled here") and shown["next_run"] is None
+
+    plist = Launchd().plist_path(root)
+    plist.parent.mkdir(parents=True, exist_ok=True)
+    plist.write_text("<plist/>")
+    assert status(root)["state"].startswith("Running in background")
+
+
 def test_first_start_consents_installs_and_runs_one_batch_then_repeat_start_does_not_rerun(tmp_path, monkeypatch):
     from connectonion.rem.service import start
     root, sessions = tmp_path / "rem", tmp_path / "sessions"

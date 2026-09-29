@@ -309,6 +309,14 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
     if not state_path(root, "consent.json").is_file():
         return "Not started — run `co rem start` to authorize sources and begin", None
     worker = worker_state(root)
+    if worker.get("enabled") and worker.get("scheduler") == "launchd":
+        # worker.json travels with a copied notebook; the job it describes runs
+        # the original's --root. A copy said "Running in background" and doctor
+        # said "ok schedule" for a schedule that never ran it (#1964).
+        from .schedule import Launchd
+        if not Launchd().installed(root):
+            return ("Not scheduled here — the saved schedule belongs to another notebook or was removed; "
+                    "`co rem start` schedules this one"), None
     if worker.get("enabled"):
         slot = next_slot(config, zone)
         return f"Running in background ({worker.get('scheduler', 'scheduler')}); next slot {slot or 'unknown'}", slot
