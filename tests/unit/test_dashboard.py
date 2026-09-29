@@ -106,9 +106,8 @@ def test_every_published_skill_is_reachable():
     111 skills the Home page silently pretended did not exist."""
     skills = [{"name": f"skill-{i:03d}", "description": "", "location": "project"} for i in range(115)]
     html = render_starter({"name": "Many", "skills": skills})
-    # The first three are repeated as Quick actions; every capability remains
-    # in the searchable disclosure for a predictable complete index.
-    assert html.count('data-ochat-skill="') == 118
+    # Every capability is in the searchable disclosure, once.
+    assert html.count('data-ochat-skill="') == 115
 
 
 def test_a_short_list_is_not_hidden_behind_a_disclosure():
@@ -193,7 +192,7 @@ def test_control_center_semantic_golden_layout_is_present():
     })
 
     for landmark in (
-        "Control Center", 'id="workspace-title"', "Quick actions", "Capabilities",
+        "Control Center", 'id="workspace-title"', "Capabilities",
         "Recent", "Diagnostics", "Host details",
     ):
         # Recent is allowed to be absent without history; all other day-zero
@@ -444,7 +443,7 @@ def test_starter_lists_published_skills_past_unpublished_ones():
     skills = [{"name": f"personal-{i}", "description": "", "location": "user"} for i in range(5)]
     skills += [{"name": f"shipped-{i}", "description": "", "location": "project"} for i in range(6)]
     html = render_starter({"name": "Many", "skills": skills})
-    assert html.count('data-ochat-skill="') == 9
+    assert html.count('data-ochat-skill="') == 6
     assert "personal-" not in html
 
 
@@ -657,12 +656,13 @@ def test_an_agent_with_no_address_gets_no_empty_line():
     assert 'class="addr"' not in html
 
 
-def test_the_subtitle_says_who_the_agent_will_talk_to():
+def test_diagnostics_say_who_the_agent_will_talk_to():
     """`trust` was also arriving and being dropped. It is the difference between
-    an agent strangers can reach and one they cannot."""
+    an agent strangers can reach and one they cannot. It lives under Diagnostics
+    now, with the model and the counts, not on the card."""
     html = render_starter({"name": "A", "trust": "careful", "skills": []})
 
-    assert "trust: careful" in html
+    assert "<dt>Trust</dt><dd class=\"\">careful</dd>" in html
 
 
 def test_a_hostile_address_is_escaped():
@@ -718,3 +718,19 @@ async def test_failed_delivery_can_retry_unchanged_dashboard(in_tmp):
     deliver = AsyncMock()
     await send_dashboard(deliver, 's', conn)
     deliver.assert_awaited_once()
+
+
+def test_the_page_opens_on_a_card_not_on_skills():
+    """Owner, 2026-09-29: "默认显示 skills 信息干嘛". The page opens on the
+    agent's name, address and one line; every skill is folded under
+    Capabilities and nothing about skills or tools sits in the header."""
+    import re
+    skills = [{"name": f"s-{i}", "description": "", "location": "project"} for i in range(5)]
+    html = render_starter({"name": "Ops", "address": ADDRESS, "tagline": "Answers guests.",
+                           "skills": skills, "tools": ["read"], "model": "co/gemini-3.8-flash"})
+    header = html.split('<header class="masthead">', 1)[1].split("</header>", 1)[0]
+    assert "Ops" in header and ADDRESS in header and "Answers guests." in header
+    assert "skill" not in header and "tool" not in header and "gemini" not in header
+    folded = html.split('<details class="card capabilities">', 1)[1].split("</details>", 1)[0]
+    assert html.count('data-ochat-skill="') == folded.count('data-ochat-skill="') == 5
+    assert 'id="quick-title"' not in re.sub(r"<!--FRAGMENTS.*", "", html, flags=re.S)

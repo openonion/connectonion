@@ -362,7 +362,6 @@ def _diagnostics(agent_metadata, skill_count):
         ("Trust", agent_metadata.get("trust"), ""),
         ("Tools", len(agent_metadata.get("tools") or []), ""),
         ("Skills", skill_count, ""),
-        ("Address", agent_metadata.get("address"), "addr"),
     ):
         if value in (None, "", 0):
             continue
@@ -413,8 +412,8 @@ def _address_line(agent_metadata):
 
 
 def render_starter(agent_metadata, viewer=EVERYONE):
-    """Build the day-zero dashboard HTML: who this agent is, and every skill it
-    publishes as a one-click action.
+    """Build the day-zero dashboard HTML: who this agent is (name, address, one
+    line), with every skill it publishes folded under Capabilities.
 
     Written once, then owned by the agent — so it has to be worth keeping, and it
     has to hold up at both ends of the range. The pane it renders into is ~440px
@@ -438,6 +437,9 @@ def render_starter(agent_metadata, viewer=EVERYONE):
         # still contain $address.
         address=_address_line(agent_metadata),
         activity=_activity_sections(viewer),
+        # Owner, 2026-09-29: the page opens on a card (name, address, one
+        # line), not on the agent's skills. Kept for operator overrides that
+        # still name $quick_actions; the bundled page no longer does.
         quick_actions=_quick_actions(skills),
         capability_count=(f"{len(skills)} skill{'s' if len(skills) != 1 else ''}"
                           if skills else "None published"),

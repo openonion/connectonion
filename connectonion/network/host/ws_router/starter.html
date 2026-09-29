@@ -174,6 +174,7 @@
   .diag dt { color: var(--cc-subtle); }
   .diag dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
   .addr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; user-select: all; }
+  .masthead .addr { margin: 6px 0 0; color: var(--cc-muted); overflow-wrap: anywhere; }
 
   @media (min-width: 640px) {
     .masthead { grid-template-columns: 1fr auto; align-items: end; }
@@ -207,8 +208,8 @@
       <div>
         <p class="eyebrow">Control Center</p>
         <div class="identity"><span class="mark" aria-hidden="true">$initial</span><h1>$name</h1></div>
+        $address
         <p class="tagline">$tagline</p>
-        <p class="sub">$subtitle</p>
       </div>
     </header>
 
@@ -217,7 +218,6 @@
         <h2 class="section-title" id="workspace-title">Workspace</h2>
         <div class="now"><div><strong>Use Chat for live status</strong><p>Current tasks, approvals, and results stay in the conversation.</p></div></div>
       </section>
-$quick_actions
     </div>
 
     <div class="grid stack">

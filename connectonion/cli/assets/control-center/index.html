@@ -190,6 +190,7 @@
     .diag dt { color: var(--cc-subtle); }
     .diag dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
     .addr, .revision { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; user-select: all; }
+    .masthead .addr { margin: 6px 0 0; color: var(--cc-muted); overflow-wrap: anywhere; }
 
     @media (min-width: 640px) {
       .masthead { grid-template-columns: 1fr auto; align-items: end; }
@@ -227,6 +228,7 @@
       <div>
         <p class="eyebrow">Control Center</p>
         <div class="identity"><span id="agent-initial" class="mark" aria-hidden="true">C</span><h1 id="agent-name">Connect AI</h1></div>
+        <p id="card-address" class="addr" hidden></p>
         <p class="tagline">Message this Agent or run one of its published skills.</p>
       </div>
       <p id="connection" class="sub"><span class="connection-dot" aria-hidden="true"></span><span id="connection-label">Open through O Chat to connect</span></p>
@@ -244,10 +246,6 @@
         </form>
       </section>
 
-      <section id="quick-card" class="card card-pad" aria-labelledby="quick-title" hidden>
-        <h2 class="section-title" id="quick-title">Quick actions</h2>
-        <div id="quick-actions" class="quick"></div>
-      </section>
     </div>
 
     <div class="grid stack">

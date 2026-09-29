@@ -83,7 +83,19 @@ examples:
   - "Translate 'hello' to Spanish"
   - "What language is '你好' in?"
   - "Translate this paragraph to French: The quick brown fox jumps over the lazy dog"
+
+# Whether the public directory (agent.openonion.ai) lists this agent
+# Default: unlisted
+directory: listed
 ```
+
+The directory is opt-in. An unlisted agent is still reachable by anyone who
+has its address; it just isn't shown to people browsing. A listed agent is
+shown as a card only: its name, its address and the first sentence of
+`summary`. Its skills and tools never appear in a listing. A client that
+connects reads them from the agent itself. Any value other than `listed` or
+`unlisted` stops the host at startup, so a typo can't publish an agent by
+accident.
 
 ### Trust & Security
 

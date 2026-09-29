@@ -68,3 +68,40 @@ def test_the_new_invite_opens_only_for_the_client_who_knows_it(tmp_path, monkeyp
 
     assert evaluate_request(policy, "0xowner-client", {"invite_code": os.environ["CO_INVITE_CODE"]}) == "allow"
     assert evaluate_request(policy, "0xunrelated", {"invite_code": "SOMEONE-ELSES-CODE2"}) == "deny"
+
+
+# Owner, 2026-09-29: on a fresh laptop `co ai` did not show the invite code, so
+# the person setting it up could not connect a client without knowing to run
+# `co keys --reveal`. The owner sees it in their own terminal; a log does not.
+
+class _Stream:
+    def __init__(self, tty):
+        self.tty, self.text = tty, ""
+    def isatty(self):
+        return self.tty
+    def write(self, text):
+        self.text += text
+    def flush(self):
+        pass
+
+
+def test_the_owner_sees_the_invite_code_in_their_terminal(monkeypatch):
+    from connectonion.cli.co_ai.main import show_owner_card
+    monkeypatch.setenv("CO_INVITE_CODE", "ABCDE-FGHJK-MNPQR")
+    out = _Stream(tty=True)
+    show_owner_card("0x" + "a" * 64, stream=out)
+    assert "ABCDE-FGHJK-MNPQR" in out.text
+    assert "0x" + "a" * 64 in out.text
+    assert "https://chat.openonion.ai/0x" + "a" * 64 in out.text
+    assert "skill" not in out.text.lower()
+
+
+def test_a_log_never_carries_the_invite_code(monkeypatch):
+    """Deployed, stdout is journalctl: readable by anyone on the box, kept for
+    as long as the logs. It says where the code is, not what it is."""
+    from connectonion.cli.co_ai.main import show_owner_card
+    monkeypatch.setenv("CO_INVITE_CODE", "ABCDE-FGHJK-MNPQR")
+    out = _Stream(tty=False)
+    show_owner_card("0x" + "a" * 64, stream=out)
+    assert "ABCDE-FGHJK-MNPQR" not in out.text
+    assert "co keys --reveal" in out.text

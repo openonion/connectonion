@@ -30,7 +30,7 @@ class TestControlCenterTemplate:
         contract = (app / "CONTROL_CENTER.md").read_text(encoding="utf-8")
         assert 'src="./control-center.js"' in html
         assert "interactive version of CO AI's canonical starter.html" in html
-        for landmark in ("Control Center", "Workspace", "Quick actions", "Capabilities"):
+        for landmark in ("Control Center", "Workspace", "Capabilities"):
             assert landmark in html
         assert "Connect AI" in html
         assert "Diagnostics" in html and 'id="agent-address"' in html

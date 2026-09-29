@@ -276,9 +276,10 @@ def test_start_server_offers_full_access_without_activating_it(monkeypatch):
     assert agent._full_access_needs_activation is False
 
 
-def test_start_server_prepares_owner_invite_without_printing_it(monkeypatch):
+def test_start_server_prepares_owner_invite_and_keeps_it_out_of_a_log(monkeypatch, capsys):
+    """The owner's terminal shows the code (test_co_ai_owner_invite.py); stdout
+    that is not a terminal -- a deployed host's system log -- never does."""
     agent = SimpleNamespace(name="agent")
-    printed = []
     prepared = []
     secret = "NEVER-PRINT-THIS2"
 
@@ -288,16 +289,15 @@ def test_start_server_prepares_owner_invite_without_printing_it(monkeypatch):
 
     monkeypatch.setattr(main_mod, "_prepare_owner_onboarding", prepare)
     monkeypatch.setattr(main_mod, "host", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(
-        "connectonion.cli.commands.project_cmd_lib.console.print",
-        lambda message: printed.append(message),
-    )
+    monkeypatch.setattr(main_mod.address, "load", lambda co_dir: {"address": "0x" + "c" * 64})
+    monkeypatch.setattr(main_mod.threading, "Thread",
+                        lambda *a, **k: SimpleNamespace(start=lambda: None))  # no browser tab
     monkeypatch.setenv("CO_INVITE_CODE", secret)
 
     main_mod.start_server(agent)
 
     assert prepared == [Path.home() / ".co"]
-    output = " ".join(printed)
+    output = capsys.readouterr().out
     assert "co keys --reveal" in output
     assert secret not in output
 
