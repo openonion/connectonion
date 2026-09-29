@@ -17,10 +17,9 @@ from pathlib import Path
 
 from .config import read_config
 from .files import Notebook, WikiError, maintenance_lock, write_json
-from .project_material import mark_written, page_state, stored, timestamp
+from .project_material import RECENT_DAYS, mark_written, page_state, stored, timestamp
 
-# Projects active this recently are written before any older one.
-RECENT_DAYS = 14
+# Projects active in the last RECENT_DAYS (14, from project_material) are written first.
 # Characters of messages one write carries. The owner's busiest folder held
 # 38.7 KB over 180 days, so it fits whole; with both skills and the page it
 # stays under the runner's 100,000-byte inline prompt.

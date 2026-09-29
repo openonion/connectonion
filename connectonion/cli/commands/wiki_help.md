@@ -595,14 +595,22 @@ and what it would cost; it does not call a model.
 It first files your new messages under their project pages (a script: only what
 you typed, never the assistant's replies or tool output), in the notebook's private
 .state/projects/, then lists the pages with messages they were not written from.
+A message typed in a workspace holding several repositories (like ~/projects) is
+filed under the repository its session worked in, judged from the paths its tool
+calls touched; a session that touched none stays out. A folder with your messages
+and no page gets a mapped page if it was active in the last N days; older ones
+are listed, not created.
 
 Usage:    co wiki projects [--recent-days N] [--full]
 Example:  co wiki projects --recent-days 7
-          --recent-days  projects active in the last N days come first (default 14)
+          --recent-days  projects active in the last N days come first, and folders
+                         active in them get a page (default 14)
           --full         re-read the last 180 days instead of only what is new
 
-Output:   One line per page: last activity, new messages, first write or update;
-          then the cost of writing them: model calls and characters to send.
+Effects:  Writes .state/projects/ and new mapped pages under projects/. No model.
+Output:   How many workspace messages were filed by repository, pages made, and
+          folders left without one; then one line per page: last activity, new
+          messages, first write or update; then the cost of writing them.
 Subcommand: co wiki projects write --help
 Next:     co wiki projects write
 Back:     co wiki advanced
