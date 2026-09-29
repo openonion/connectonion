@@ -1,37 +1,38 @@
 # What the notebook leaves alone
 
-After the map names were fixed, the owner's notebook still had 43 people pages
-whose title was an email address. Nobody had written to any of them. They were
-receipts, sign-in notices and newsletters, and the queue ranked them next to
-colleagues. They sat at the bottom, but a long enough first pass would have paid a
-model to research a mailing robot.
+After the map learned to find names, the owner's notebook still had 43 people
+pages titled with a bare email address. The day before, 176 others had been
+named from the name they write under, a saved contact or the owner's own
+greeting. These 43 were what no evidence could name, most of them automated
+or one-way senders: notices, receipts, mailers. They sat at the bottom of the
+investigation queue, below about six hundred real pages. A long enough first
+pass would still have reached them and paid a model to research a mailing
+robot.
 
-Deleting them would have been the quick fix, and the wrong one. Among 43
-nameless senders there can be a real person who has not introduced
-themselves yet. So the rule is narrower. A page titled with an address that
-the owner has never written to is **held for review**: it stays on disk and
-links still work, but it is left out of the investigation queue, `co wiki list`
-and the reader's contents. The page comes back on its own when a later map
-finds a name or a reply. `co wiki list people --review` shows what is held,
-and investigating one of those pages brings it back straight away. An address
-you have written to is a correspondent, and it is never held.
+The quick fix was to delete them. It was also the wrong one, because among 43
+nameless senders there can be a person who has simply not introduced
+themselves yet. A deleted page stays deleted. A page that should not be there
+only wastes attention.
 
-The same thought applied to maintenance. Each page turn re-sends the page
-together with its material, about 110k tokens, and in one measured batch two
-of the three turns changed nothing. Nights with no new material also left a
-run in `co wiki logs`. So a page that already cites every message pointing at
-it no longer gets a turn, a night with nothing new calls no model and leaves no
-run in the logs, and `logs --usage` now shows how many pages changed per 100k
-input tokens.
+What separates a mailer from a quiet person is not the address. It is what the
+owner has done with it. A correspondent is someone the owner has written to at
+least once, and a mailer almost never is. So the rule does not judge the
+sender. It looks at the owner's own side of the conversation. A page titled with an address the owner has never
+written to is **held for review**:
 
-The third change covers the model itself. The default model name stopped
-working overnight for ChatGPT logins, and five runs failed on it in one
-day. A rule like "the newest generation's cheapest model" would break the
-same way. Now `co wiki config set model` runs one investigation on a small
-built-in fixture page and records what the model actually did. A model that
-drives tools gets the agent tier. A model that can only reply gets the summary
-tier: Python hands it the evidence, and it answers with the page. The model's
-name doesn't enter into it.
+- it stays on disk and links to it still work;
+- it is left out of the investigation queue, `co wiki list` and the reader's
+  contents;
+- it comes back on its own when a later map finds a name or a reply, or as
+  soon as the owner investigates it.
 
-All three changes follow one idea: work out what is actually there before
-spending anything on it.
+`co wiki list people --review` shows what is held.
+
+Two things this rule never touches. An address the owner has written to,
+even without a name, is a correspondent and stays listed. The agent's own
+mailbox is one of those. A page that has already been investigated is someone's
+work, and it is left exactly as it is.
+
+The lesson is small and easy to forget. When a system cannot tell what
+something is, it should not delete it or spend money finding out. It should
+set it aside where the owner can see it.
