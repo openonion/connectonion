@@ -5,30 +5,23 @@ description: What a person's page in the notebook is made of — the fixed secti
 
 # A person's page
 
-**How to do it.** You are given the page as it stands and the material about
-this person. Those two are the whole input: read both in full, then write the
-page. The shape is below, so do not go looking for example pages, earlier
-outputs, logs, other skills or the repository to copy a format from. Measured
-on real runs, that search, not the writing, used up the turns, and the page was
-never written. Look beyond the material only for a gap you can name (a phone
-number, an employer), and put what you checked in `Uncertainties`.
-Write the whole page in one go, check it once against the rules below, fix
-what is wrong in one edit, and stop. Polishing it line by line spends the
-turns the page needed.
+Why these rules: docs/wiki-skills/wiki-page-person.md
 
-This is the page the user will open most, and the one most likely to come out
-thin. It is the memory of a relationship, and it grows with every interaction;
+**How to do it.** Your whole input is the page as it stands and the material
+about this person: read both in full, then write the page. Do not look for
+example pages, earlier outputs, logs, other skills or the repository to copy a
+format from; the shape is below. Look beyond the material only for a gap you can
+name (a phone number, an employer), and record what you checked in
+`Uncertainties`. Write the whole page in one go, check it once against the
+rules, fix what is wrong in one edit, and stop.
+
+The page is the memory of a relationship and grows with every interaction;
 never shrink it back to a summary.
 
 **Every section below is always present, in this order.** A section the
-evidence does not support says `Unknown`, or `None as of <date>` — it is never
-dropped. An empty slot is information: it tells the user what to go find out.
-A page that omits a section instead hides the gap, and the one-line person
-page is exactly what that produces.
-
-**Every factual sentence carries a claim number** `[n]` pointing into the
-`Sources` list at the foot. A sentence you cannot number is a sentence you
-cannot keep.
+evidence does not support says `Unknown`, or `None as of <date>`; never drop it.
+**Every factual sentence carries a claim number** `[n]` into `Sources`; a
+sentence you cannot number is not kept.
 
 The following is structure only. Placeholders are never evidence. Use only supplied or actually inspected sources.
 
@@ -76,74 +69,54 @@ The following is structure only. Placeholders are never evidence. Use only suppl
 - Unknown — not investigated yet
 ```
 
-Rules that make this page work, and that a thin page always breaks:
+Rules:
 
-- **`Contact` is fields, not prose.** A phone number inside a sentence cannot
-  be found, and `Unknown` is the only way the user learns that the mailbox
-  never carried one. Never write a contact detail into the summary instead.
-- **`Language` is observed, not declared.** The language the person writes to the
-  user in, from their own messages: `English`, `Mandarin; English for contracts`.
-  `Unknown` only when nothing they wrote is in the material. Nobody states
-  their working language in a signature; waiting for them to is how every
-  English-speaking colleague came out `Language: Unknown`.
-- **`Company` comes from the address domain and the signature block**, both of
-  which are already in the material — `@unsw.edu.au` is UNSW, and the four
-  lines under "Thank you," give the department, the office and the direct
-  line. A mailbox provider (gmail, outlook, qq) is not a company: that is
-  `Unknown`. Where an organisation page exists, `Company` links to it —
-  `- Company: [UNSW](../orgs/unsw.md)` — and the institutional facts live
-  there, not repeated here. What stays on this page is what is theirs: their
-  role inside it, how they write, what they owe the user.
-- **`Why they are here` is not `Who they are`.** Identity is what they do;
-  this is how they entered the user's world — who approached whom, and what
-  each side wants out of it. It is the section most often missing and the one
-  the user asks for most.
-- **`Our relationship` is a state, not a log.** Say what kind of relationship
-  it is, where it stands today, its concrete shape (numbers, terms, who owes
-  what), and how the person plays it. The dated log lives in `History` and is
-  evidence for this section, not a substitute for it.
-- **An open thread names who owes whom what, and since when.** "Discussion
-  status is not recorded" is not an open thread — it is a gap dressed up as a
-  finding. If the user owes a reply and has owed it for twelve days, say that.
-  If nothing is open, say `Nothing open as of <date>` and name the next
+- **`Contact` is fields, not prose.** Never put a contact detail in a sentence
+  or the summary instead of its field; a missing one stays `Unknown`.
+- **`Language` is observed**: the language the person writes to the user in,
+  from their own messages (`English`, `Mandarin; English for contracts`). Do not
+  wait for them to declare it. `Unknown` only when nothing they wrote is in the
+  material.
+- **`Company` comes from the address domain and the signature block**
+  (`@unsw.edu.au` is UNSW; the signature gives department, office, direct line).
+  A mailbox provider (gmail, outlook, qq) is not a company: `Unknown`. Where an
+  organisation page exists, link it — `- Company: [UNSW](../orgs/unsw.md)` — and
+  keep institutional facts there. This page keeps what is theirs: their role,
+  how they write, what they owe the user.
+- **`Why they are here` is not `Who they are`.** Identity is what they do; this
+  is how they entered the user's world: who approached whom, and what each side
+  wants.
+- **`Our relationship` is a state, not a log**: what kind of relationship, where
+  it stands today, its concrete shape (numbers, terms, who owes what), and how
+  the person plays it. The dated log goes in `History`.
+- **An open thread names who owes whom what, and since when** ("the user has
+  owed a reply for twelve days"). "Status is not recorded" is a gap, not a
+  thread. If nothing is open: `Nothing open as of <date>`, plus the next
   expected contact.
-- **Mark inference as inference.** A judgment drawn from how someone writes is
-  worth keeping, and worth labelling, so a later pass does not harden it into
-  a fact.
-- **A section the material says nothing about stays `Unknown`.** Writing
-  "no prior history", "relationship not yet established" or "communication
-  style cannot be assessed" into it is not a finding, only the gap in other
-  words, and it hides the gap the `Unknown` shows. Say once, in
-  `Uncertainties`, what the material was (one calendar invitation, one
-  receipt).
+- **Mark inference as inference.**
+- **A section the material says nothing about stays `Unknown`.** Never write
+  "no prior history", "relationship not yet established" or "cannot be
+  assessed". Say once, in `Uncertainties`, what the material was (one calendar
+  invitation, one receipt).
 - **Keep what the map already knew.** `Email`, `Handles` and `Also known as`
-  arrive filled from the addresses this page was mapped from. Keep them.
-  Material about somebody else (another person with the same first name) is
-  left out of the page and named in `Uncertainties`; it never empties the
-  fields this person already had.
-- **`Uncertainties` is where a thin page becomes honest** instead of short.
-  What is unknown, what is inferred but unconfirmed, what was referenced but
-  not read.
-- **Numbered claims.** Each entry: the claim, confidence (high / medium /
-  low), the date it was observed, and the source id. Reuse a number for a
-  claim you already listed; never list the same claim twice under two numbers.
-  Only list claims a sentence actually cites.
-- A person with one message and no identity does not get a page at all. A
-  person with a second message gets their page extended, not rewritten.
+  arrive filled from the mapped addresses; keep them. Material about somebody
+  else (same first name) is left out and named in `Uncertainties`; it never
+  empties this person's fields.
+- **`Uncertainties`** lists what is unknown, inferred but unconfirmed, or
+  referenced but not read.
+- **Numbered claims.** Each entry: the claim, confidence (high / medium / low),
+  date observed, source id. Reuse a number for a repeated claim; never list one
+  claim under two numbers. List only claims a sentence cites.
+- A person with one message and no identity gets no page. A person with a
+  second message gets their page extended, not rewritten.
 
 
 ## The headings are copied exactly
 
-Nothing else goes on a heading line. A stage handed this shape with notes
-beside the headings wrote `## Our relationship          state and shape, not a
-log` into a real page, and `co wiki list people --aliases` then found no `Our relationship` at
-all. The labels under `Contact` are read back the same way: `Email:`,
-`Phone:`, `Company:`, `Role:`, `Signing entity:`, `Handles:`, `Language:`,
-`Also known as:`. A renamed label is an invisible one, and the next batch meets
-the person as a stranger.
+Nothing else goes on a heading line. The labels under `Contact` are read back
+exactly: `Email:`, `Phone:`, `Company:`, `Role:`, `Signing entity:`, `Handles:`,
+`Language:`, `Also known as:`. Never rename or annotate one.
 
-The `Investigation:` line at the foot of the page is not yours. The runner
-writes it after every pass — `investigated 2026-09-14 (outlook, gmail, codex)`
-— and reads it to pick the next subject. Leave it exactly as you found it; a
-pass that rewrote it in its own words (2026-09-14) got a second, machine
-stamp appended and the line then said two different things.
+The `Investigation:` line at the foot of the page is not yours: the runner
+writes it (`investigated 2026-09-14 (outlook, gmail, codex)`) and reads it to
+pick the next subject. Leave it exactly as you found it.

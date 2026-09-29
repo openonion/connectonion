@@ -5,73 +5,46 @@ description: What an organisation's page in the notebook is made of — the fixe
 
 # An organisation's page
 
-A company is not a person with different headings. The difference is what the
-facts belong to: a programme, an agreement, a fee schedule, a legal entity and
-a decision about who the user will deal with there all belong to the
-organisation and outlive whichever person happened to send the mail.
+Why these rules: docs/wiki-skills/wiki-page-org.md
+
+Facts of the entity (programme, agreement, fees, legal entity, who the user
+deals with) go here, not on the sender's page.
 
 ## When an organisation earns a page
 
-Most do not. Measured over 180 real days of one mailbox: 182 correspondents,
-168 of them writing from a work domain, but **111 of those domains held
-exactly one person**. A page for each would be the one-line person page
-repeated at company scale — the notebook doubles in size and says nothing new.
+Create one only when **either** is true:
 
-Create one when **either** is true:
-
-- **Two or more people write from the same work domain.** That is the moment
-  the institutional facts start being copied: one real domain held 24
-  correspondents, and without a page the programme, the agreement and who
-  handles contracts would sit on 24 pages and drift 24 ways.
-- **Something is agreed with the entity rather than the person** — a signed
-  contract, recurring money, a programme or account that will outlive this
-  contact. A one-person client who signed a contract earns a page; a one-person
-  vendor who sent a quote does not.
+- **Two or more people write from the same work domain.**
+- **Something is agreed with the entity rather than the person**: a signed
+  contract, recurring money, a programme or account that outlives this contact.
+  A one-person client who signed earns a page; a one-person vendor who sent a
+  quote does not.
 
 Otherwise the company stays a `Company:` field on the person's page. A mailbox
-provider is never an organisation: `gmail.com` is where someone keeps their
-mail, not who they answer to.
+provider (`gmail.com`) is never an organisation.
 
-`co wiki scan orgs --days 180` lists the domains that pass the first test, with
-how many people and how much mail each holds. It proposes; you judge.
+`co wiki scan orgs --days 180` lists domains passing the first test, with
+`people`, `two_way`, `notices` and `mails` per row. It proposes; you judge.
+`two_way` (people there who both wrote to the user and were written back to)
+separates a counterparty from a vendor; read it against the names.
 
-Each row carries `people`, `two_way`, `notices` and `mails`. **`two_way` is
-the one that separates a counterparty from a vendor**: it counts the people at
-that domain who both wrote to the user and were written back to. Read it
-against the names, and the real list separates cleanly:
-
-```
-ppl 2way notice  domain                    who
- 26   11      1  unsw.edu.au               Tamara Berryman, Vern Chan, …   → a page
-  3    0      0  cubpbc.com                Tara Sassine, Gemma Ingles      → a page: people, named
-  2    0      0  corp.town.com             Jean-Denis Greze, Tony Vincent  → a page
- 22    0      0  user.luma-mail.com        one sender per event            → no: a platform
-  6    0      1  substack.com              FounderCoHo, a16z speedrun      → no: newsletters
-  3    0      0  email.apple.com           Apple Developer, Apple Support  → no: a vendor's
-  2    0     12  mail.anthropic.com        Anthropic, PBC ×2                  product mail
-```
-
-- **Brand names that only ever send are a vendor**, whatever the headcount.
-  `Apple Developer`, `MongoDB Cloud`, `Xero Support`, `Neon Changelog` are
-  mailboxes, not colleagues. Their mail belongs on the page of the thing it is
-  about — the project that uses the service — not on a page of their own.
-- **`two_way` of zero does not settle it.** A reply sent from the user's other
-  mailbox leaves it at zero, so a real client can read one-way. Human names
-  and a subject line about the user's own work outweigh it; a brand name does
-  not.
-- **The user's own domain is not a counterparty.** Their own company and their
-  own agent addresses are the owner's profile, not an organisation they deal
-  with. Pass every own address to the scan with `--mine` so it drops out.
-- **One domain can be two tenants.** A university's staff and its students, an
-  agency's shared address: that is two pages or one, and the mail says which.
-  Say which you chose in `Uncertainties`.
+- **Brand names that only ever send are a vendor**, whatever the headcount
+  (`Apple Developer`, `Xero Support`); so are event platforms and newsletters.
+  Their mail goes on the page of what it is about (the project using it).
+- **`two_way` of zero does not settle it**: a reply from the user's other
+  mailbox leaves it at zero. Human names and subjects about the user's own work
+  outweigh it; a brand name does not.
+- **The user's own domain is not a counterparty.** Pass every own address to the
+  scan with `--mine`.
+- **One domain can be two tenants** (staff and students, a shared agency
+  address). Choose one page or two from the mail and say which in
+  `Uncertainties`.
 
 ## The shape
 
-**Every section is always present, in this order**, and a section the evidence
-does not support says `Unknown` rather than disappearing — the same rule as a
-person's page, for the same reason: an empty slot is the next thing to find
-out. **Every factual sentence carries a claim number** `[n]` into `Sources`.
+**Every section is always present, in this order**; a section the evidence does
+not support says `Unknown`. **Every factual sentence carries a claim number**
+`[n]` into `Sources`.
 
 ```markdown
 # UNSW
@@ -126,22 +99,16 @@ Helena. [5][6]
 
 ## Rules
 
-- **`People here` is links, never copies.** The whole reason the page exists is
-  that a fact about the organisation should be written once. If a sentence is
-  true of the person and not of the employer, it belongs on their page.
-  A person named in the mail who has no page yet is a line here without a
-  link — that is a finding, not a failure.
-- **The person's `Company:` field links here once this page exists**, and the
-  institutional detail moves off their page. Their page keeps what is theirs:
-  their role in it, how they write, what they owe the user.
-- **`Our relationship` is the relationship with the entity**, which is often
-  not the sum of the individual ones. The user mentors for UNSW; that is not
-  Vern's relationship or Karen's, it is the university's.
-- **`Terms` is where numbers live** — rates, dates, notice periods, what was
-  signed and when. A term that changed keeps both values and the date it
-  changed.
-- **Two parts of one organisation that never touch may be two pages.** Say so
-  in `Uncertainties` rather than flattening them, and split only when the mail
-  shows they are really separate relationships.
-- **A company's own marketing is not knowledge about it.** What the notebook
-  keeps is what the user learned by dealing with them.
+- **`People here` is links, never copies.** A sentence true of the person and
+  not the employer belongs on their page. A named person with no page yet is an
+  unlinked line.
+- **Once this page exists, the person's `Company:` field links here** and the
+  institutional detail moves off their page; it keeps their role, how they
+  write, what they owe the user.
+- **`Our relationship` is with the entity**, not the sum of individual ones.
+- **`Terms` holds the numbers**: rates, dates, notice periods, what was signed
+  and when. A changed term keeps both values and the date it changed.
+- **Two parts of one organisation that never touch may be two pages.** Say so in
+  `Uncertainties`; split only when the mail shows separate relationships.
+- **A company's own marketing is not knowledge about it.** Keep what the user
+  learned by dealing with them.

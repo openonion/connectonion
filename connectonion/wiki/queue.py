@@ -30,15 +30,30 @@ def last_investigated(status_line: str) -> date | None:
     return max(date.fromisoformat(d) for d in days) if days else None
 
 
+def weights(state: dict) -> dict:
+    """How much of the owner's work each page stands for, from the last map:
+    mail for a person, sessions for a project, people for an org. The one
+    order the queue and `list` share; `list` sorted by file name put agent
+    addresses like 0x3c3ae74550@mail.openonion.ai above the owner's
+    colleagues (#1670)."""
+    weight = {row.get("record"): row.get("mails") or 0 for row in state.get("people", [])}
+    weight.update({row.get("record"): row.get("sessions") or 0 for row in state.get("projects", [])})
+    weight.update({row.get("record"): len(row.get("people") or []) for row in state.get("orgs", [])})
+    return weight
+
+
+def by_weight(root, records: list[str]) -> list[str]:
+    weight = weights(read_json(state_path(root, "map.json"), {}))
+    return sorted(records, key=lambda record: (-weight.get(record, 0), record))
+
+
 def order(root, category: str, today: date | None = None) -> list[dict]:
     if category not in CATEGORIES:
         raise ValueError(category)
     today = today or datetime.now(timezone.utc).date()
     prefix = CATEGORIES[category]
     state = read_json(state_path(root, "map.json"), {})
-    weight = {row.get("record"): row.get("mails") or 0 for row in state.get("people", [])}
-    weight.update({row.get("record"): row.get("sessions") or 0 for row in state.get("projects", [])})
-    weight.update({row.get("record"): len(row.get("people") or []) for row in state.get("orgs", [])})
+    weight = weights(state)
     excluded = {(state.get("owner") or {}).get("record")}
     excluded |= {row.get("record") for row in state.get("possible_own_addresses", [])}
     excluded |= {row.get("record") for row in state.get("people", [])
