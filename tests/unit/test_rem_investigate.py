@@ -613,3 +613,20 @@ def test_a_mailbox_left_out_on_purpose_says_why_not_that_it_is_disconnected():
                                  mail_skipped="not read for a project page; name its mail with --handle")
     assert "outlook: not read for a project page; name its mail with --handle; not searched" in coverage
     assert not any("co auth" in line for line in coverage)
+
+
+def test_only_whole_addresses_are_searched_on_the_mail_server():
+    """#1954: a handle still carrying a citation or prose is not an address; Gmail
+    matched 677 unrelated mails for one such handle."""
+    class Box(Quiet):
+        asked = []
+        def list_between(self, s, e, n): raise AssertionError("listed the whole mailbox")
+        def list_with(self, address, start, end):
+            self.asked.append(address)
+            return []
+
+    box = Box()
+    inv.gather("Tamara", ["tamara.berryman@unsw.edu.au", "tamara.berryman@unsw.edu.au [2]",
+                          "Tamara Berryman; t@x.y [2]", "Tamara"], days=7, clients={"gmail": box}, subscriptions={})
+
+    assert box.asked == ["tamara.berryman@unsw.edu.au"]

@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import read_config
-from .files import Notebook, RemError, maintenance_lock
+from .files import Notebook, RemError, is_address, maintenance_lock
 from .mail import _address, _list_all, correspondent, strip_noise, strip_quoted
 from .source import KINDS, collect, timestamp
 
@@ -211,7 +211,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             # Each mailbox knows only its own login. The owner's other addresses
             # are the owner too, not correspondents to search the server for: a
             # first `investigate me` searched for them and found 6 of ~150 mails.
-            mine |= {h for h in handles if "@" in h}
+            mine |= {h for h in handles if is_address(h)}
         own_addresses.update(mine)
         local = [item for item in cached_by_provider.get(kind, [])
                  if start <= timestamp(item["timestamp"]) < end
@@ -259,7 +259,9 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             continue
         for item in local:
             add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""))
-        emails = sorted({h for h in handles if "@" in h and h not in mine})
+        # Only a whole address goes to the server: a page line with prose or a
+        # citation in it made Gmail match 677 unrelated mails (#1954).
+        emails = sorted({h.strip() for h in handles if is_address(h) and h not in mine})
         for begin, finish in intervals:
             if emails and hasattr(client, "list_with"):
                 # A verified address is server-searchable; the local archive
