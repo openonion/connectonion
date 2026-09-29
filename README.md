@@ -112,6 +112,7 @@ and Outlook steps above, then see the [CLI Quick Start](docs/quickstart.md).
 | **Skills** | `co skills` — discover, copy and link skill files · `co sub` — follow and refresh shared skills |
 | **Network & ship** | `co call` (run one command on a remote agent) · `co deploy` (our cloud, or `--to` a server you own) · `co server` |
 | **Build** | `co ai` · `co create` · `co eval` · `co doctor` |
+| **Memory** | `co wiki` — pages on the people, projects and tools in your mail and sessions (Experimental; `co rem` in 1.9.0) |
 
 `co commands` lists every command and subcommand with its summary.
 
@@ -133,6 +134,38 @@ tools: [read_file, write_file, Bash(co *)]
 
 Skills in `.claude/skills/` load as they are, and `co skills discover` also finds
 Codex, Cursor and Kiro skills.
+
+## co rem — your agent's memory
+
+In REM sleep the brain replays the day and keeps what matters. **co rem** does
+the same for your work: it reads your mail (connected with `co auth google` or
+`co auth microsoft`) and your local Codex and Claude Code sessions, and keeps a
+Markdown page on each person, project and tool you work with. Your agent reads
+those pages, so it picks up where you left off instead of asking again.
+
+- **A folder on your machine.** The notebook lives in `~/.co/wiki`. Saved mail
+  bodies stay in its owner-only `.state/` and never go into a page; a model
+  reads them only through the login you choose.
+- **Your plan, not our credits.** By default it runs on your own Codex plan
+  and spends no OpenOnion credits. It starts no new page once your Codex week
+  is 70% used, so your own coding comes first.
+- **What it costs, measured.** A quick first pass of your own page took about
+  8–9 minutes in our runs. Investigating a very large subject can still cost
+  millions of tokens; searching instead of summarising is
+  [#1850](https://github.com/openonion/connectonion/issues/1850).
+
+Available today as `co wiki`, labelled Experimental in 1.8.9. It becomes
+`co rem` in 1.9.0, the release that supports it long-term.
+
+```bash
+co wiki init      # map 90 days of mail and sessions into pages; no model, no cost
+co wiki open      # read the notebook in your browser
+co wiki start     # approve what it reads, then turn on the daily update (macOS)
+```
+
+`co wiki investigate me --quick` fills your own page first. See
+[co rem](https://docs.connectonion.com/rem) and the
+[command reference](docs/cli/wiki.md).
 
 ## Build your own agent on the harness
 
