@@ -400,7 +400,21 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a1
+## Current Version: 1.9.0a2
+
+1.9.0a2 is the second preview of the 1.9.0 line. The personal notebook is now
+**co rem** everywhere (#1932): `co rem`, `connectonion.rem`, `~/.co/rem`. The
+first `co rem` moves a `~/.co/wiki` notebook and replaces a schedule still
+running `co wiki`; `co wiki` itself runs nothing, exits 2 and names the co rem
+command until 1.10. Also: nameless addresses the owner never wrote to are held
+for review (#1844); a night with nothing new calls no model and a page that has
+read its material gets no turn (#1846); `config set model` measures the model's
+tier instead of reading its name (#1847). Stable is 1.8.9. See
+[1.9.0a2 notes](docs/releases/1.9.0a2.md).
+
+- 1.9.0a2 (rename to co rem with folder, schedule and variable migration and a co wiki tombstone; held-for-review addresses; quiet nights; measured agent/summary tier.)
+
+## 1.9.0a1
 
 1.9.0a1 is the first preview of the 1.9.0 line, where the personal notebook
 (being renamed co rem, #1932) becomes long-term supported. Investigation

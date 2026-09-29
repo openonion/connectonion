@@ -1,0 +1,9 @@
+version: v1.9.0a2
+images:
+  - file: rem-moves-the-wiki-notebook.png
+    alt: "Terminal: co wiki status prints 'co wiki is now co rem.' and 'Next: co rem status'; then co rem list people prints 'Moved your notebook from ~/.co/wiki to ~/.co/rem' and lists two people"
+    caption: "A 1.8.9 notebook meets 1.9.0a2: co wiki runs nothing and names the co rem command, and the first co rem moves ~/.co/wiki to ~/.co/rem (#1932)."
+    scenario: "CO_CAPTURE_CHROMIUM=<chromium> python scripts/capture_190a2_release_cli.py: a throwaway notebook at ~/.co/wiki in a disposable HOME, this checkout's co, output unedited except the temporary HOME shown as ~"
+    viewport: "terminal, 96 columns"
+    commit: 1aaca214
+    source_run: "scripts/capture_190a2_release_cli.py"
