@@ -411,10 +411,12 @@ sessions started in a workspace folder, filed under the repository they worked
 in. People are investigated recent correspondents first, from new mail only:
 one person that took 31 calls, 8.2M input tokens and 3 h 24 min now takes one
 call, 1.93M and 15 minutes (#1850). The daily round's first run finishes
-unfinished pages; the others follow only what is new (#1723). Stable is
+unfinished pages; the others follow only what is new (#1723). Pages titled only with an address
+the owner never wrote to are held for review, quiet nights cost nothing, and a
+new model's tier is measured before use (#1949). Stable is
 1.8.9. See [1.9.0a2 notes](docs/releases/1.9.0a2.md).
 
-- 1.9.0a2 (one-command first run with runner preflight, quiet progress, owner page printed, --mine a,b,c, investigate me and recent projects by themselves; mail read by init stays subscribed; co wiki projects/projects write from own Codex/Claude Code messages; workspace sessions attributed by tool-call evidence, stubs for folders active in 14 days; investigate people recent-first with portions and budget; update from new mail only; daily split: first run unfinished, later runs new material only.)
+- 1.9.0a2 (one-command first run with runner preflight, quiet progress, owner page printed, --mine a,b,c, investigate me and recent projects by themselves; mail read by init stays subscribed; co wiki projects/projects write from own Codex/Claude Code messages; workspace sessions attributed by tool-call evidence, stubs for folders active in 14 days; investigate people recent-first with portions and budget; update from new mail only; daily split: first run unfinished, later runs new material only; addresses held for review, quiet nights free, model tier measured.)
 
 ## Previous preview: 1.9.0a1
 
