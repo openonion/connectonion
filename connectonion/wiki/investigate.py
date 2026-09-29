@@ -464,8 +464,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         original_material = state_path(root, f"evidence/{uuid.uuid4().hex}.json")
         write_json(original_material, items)
     # Room for the material after the page, the coverage and the Skill itself.
-    from .runner import instructions, run_stage
-    overhead = len(instructions("investigate")) + len(notebook.read(record)) + 4000
+    from .runner import instructions, page_kind_of, run_stage
+    # The instructions this page's turn is actually given (task_prompt), not
+    # the no-page-kind worst case, which carries every page shape and the CLI
+    # reference and left ~33k characters less room for material.
+    overhead = len(instructions("investigate", page_kind=page_kind_of(record))) + len(notebook.read(record)) + 4000
     room = config["limits"]["input_chars_per_batch"] - overhead
     if room <= 0:
         raise WikiError("Configured input limit cannot fit the current page and investigation Skill")
