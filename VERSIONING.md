@@ -400,7 +400,23 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a1
+## Current Version: 1.9.0a2
+
+1.9.0a2 makes the notebook's (co rem's) first run and daily upkeep follow the
+owner's design (#1943). `co wiki init` is one command: the map, your own page
+printed at once, then your page and the pages of projects active in the last
+14 days written by themselves, the cost stated first. Project pages are
+written from the messages you typed to Codex and Claude Code, including
+sessions started in a workspace folder, filed under the repository they worked
+in. People are investigated recent correspondents first, from new mail only:
+one person that took 31 calls, 8.2M input tokens and 3 h 24 min now takes one
+call, 1.93M and 15 minutes (#1850). The daily round's first run finishes
+unfinished pages; the others follow only what is new (#1723). Stable is
+1.8.9. See [1.9.0a2 notes](docs/releases/1.9.0a2.md).
+
+- 1.9.0a2 (one-command first run with runner preflight, quiet progress, owner page printed, --mine a,b,c, investigate me and recent projects by themselves; mail read by init stays subscribed; co wiki projects/projects write from own Codex/Claude Code messages; workspace sessions attributed by tool-call evidence, stubs for folders active in 14 days; investigate people recent-first with portions and budget; update from new mail only; daily split: first run unfinished, later runs new material only.)
+
+## Previous preview: 1.9.0a1
 
 1.9.0a1 is the first preview of the 1.9.0 line, where the personal notebook
 (being renamed co rem, #1932) becomes long-term supported. Investigation

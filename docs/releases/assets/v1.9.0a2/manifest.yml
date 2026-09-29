@@ -1,0 +1,16 @@
+version: v1.9.0a2
+images:
+  - file: wiki-init-help.png
+    alt: "Terminal co wiki init --help: build the notebook, then write your own page; one command, two parts"
+    caption: "co wiki init describes the new first run: a script with no model, then your page and recent projects by themselves, cost stated first."
+    scenario: "scripts/capture_190a2_release_cli.py runs co wiki init --help from this checkout in a disposable HOME"
+    viewport: "96-column dark terminal capture"
+    commit: 9b9dcd29
+    source_run: "scripts/capture_190a2_release_cli.py"
+  - file: wiki-projects-help.png
+    alt: "Terminal co wiki projects --help: project pages from the messages you typed to Codex and Claude Code"
+    caption: "co wiki projects shows the order and cost without spending; co wiki projects write writes the pages."
+    scenario: "scripts/capture_190a2_release_cli.py runs co wiki projects --help from this checkout in a disposable HOME"
+    viewport: "96-column dark terminal capture"
+    commit: 9b9dcd29
+    source_run: "scripts/capture_190a2_release_cli.py"
