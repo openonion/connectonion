@@ -40,8 +40,15 @@ def pending(root: Path, record: str) -> tuple[list[dict], str]:
     return messages, "first"
 
 
-def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = None) -> list[dict]:
-    """Pages with messages they were not written from: recent first, then older, newest first in each."""
+def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = None,
+          since: str = "") -> list[dict]:
+    """Pages with messages they were not written from: recent first, then older, newest first in each.
+
+    `since` is what the daily round's later runs follow (#1943 stage 3): a page
+    written before is updated from its new messages whenever it has some, but
+    a first write is only for a project active after `since`; the older
+    backlog is the first run's portion.
+    """
     now = now or datetime.now(timezone.utc)
     cutoff = (now - timedelta(days=recent_days)).isoformat()
     rows = []
@@ -51,6 +58,8 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
             continue
         sent, left_out = _fit(messages)
         last = page_state(root, record).get("last_activity") or messages[-1]["timestamp"]
+        if since and mode == "first" and not timestamp(last) > timestamp(since):
+            continue
         # What the call will carry: the messages as the model reads them, and the page.
         from .runner import readable_material
         chars = len(readable_material(_message_items(sent))) + len(Notebook(root).read(record))
@@ -195,14 +204,14 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
 
 
 def write_pages(root: Path, *, limit: int = 5, recent_days: int = RECENT_DAYS, write=None,
-                gate=None, on_page=None, now: datetime | None = None) -> dict:
+                gate=None, on_page=None, now: datetime | None = None, since: str = "") -> dict:
     """The next `limit` pages of the queue (0 for all), one after another.
 
     `gate()` returns why not to start the next page, or ''. A refused or failed
     page does not stop the others; its material stays pending for the next run.
     """
     write = write or (lambda record: write_page(root, record, now=now))
-    rows = queue(root, recent_days=recent_days, now=now)
+    rows = queue(root, recent_days=recent_days, now=now, since=since)
     chosen = rows if limit == 0 else rows[:limit]
     done, stopped = [], ""
     for number, row in enumerate(chosen, 1):

@@ -42,6 +42,9 @@ def _meter(monkeypatch, state):
             state["used"] += state.get("per_page", 0)
         return {"changed": [record], "usage": None}
     monkeypatch.setattr("connectonion.wiki.investigate.investigate", investigate)
+    # `investigate people` is one call per person through people_pages (#1943 stage 3).
+    monkeypatch.setattr("connectonion.wiki.people_pages.write_page",
+                        lambda root, record, **kw: investigate(root, record))
     return resets
 
 
