@@ -75,7 +75,7 @@ The person's private record lives in `.state/people/<page>/`:
 
 | File | Holds |
 |---|---|
-| `index.jsonl` | One row per item: source id, kind, date, from, to, cc, subject, and where its text is. No bodies |
+| `index.jsonl` | One row per item: source id, kind, date, from, to, cc, subject, and where its text is. No mail bodies (those stay in `.state/mail/messages/`); a WhatsApp line or coding message, a few hundred characters, is kept inline |
 | `state.json` | Addresses, when each mailbox was last searched, last activity, and `written_through`: the newest item the page was written from |
 
 For the model run, this person's items are copied into the run's own task
@@ -98,7 +98,10 @@ full only what a section needs.
 
 The page passes the same review as every investigated page: canonical
 sections and contact fields, every citation pointing at a source id in the
-index, the owner's addresses removed from someone else's page. An accepted
+index, the owner's addresses removed from someone else's page. One check is
+new: a candidate that copies 200 or more characters of any mail verbatim is
+refused, because a page is shareable and someone's mail is not; a phone
+number or a deadline is a fact to cite, a paragraph is not. An accepted
 page's status line gains `investigated <date> (evidence search: gmail,
 outlook, …)`, and `written_through` moves to the newest item. A refused page
 is kept beside its task with the reason, and nothing moves.
@@ -126,6 +129,35 @@ mailbox is exactly what a hostile mail would want. So the split is:
 
 Giving the run network access would reopen the hole that confinement closed
 (`runner.harness_flags`); it is not done here.
+
+### Measured
+
+One real run on 2026-09-30, on this machine, against a temporary notebook
+holding one fresh page: the owner's busiest recent correspondent, the same
+person as #1850's baseline (157 mails in the 90-day map). Runner Codex,
+`gpt-6-luna`, `--days 150`.
+
+| | Before (#1850 / #1884, digest path) | This path |
+|---|---|---|
+| Material | 157 mails, 1.78M characters gathered and all digested | 265 items (mail and attachments over 150 days), 269 files, 573 KB on disk; the agent chose what to read |
+| Model calls | 31 (30 extract pieces + 1) | 1 |
+| Input tokens | 8.2M | 0.67M (0.57M of them cached) |
+| Output tokens | 503k | 27k |
+| Time | 3 h 24 min | 92 s script (search, 265 bodies, attachments of 40 mails), then 5 min 40 s model call |
+| Codex week | did not move off 8% | 24% → 25% |
+
+The prompt carried 74,408 characters: the two skills, the page and the
+265-line index. The accepted page has all 11 sections, 52 citations over 12
+sources, and 3 lines left `Unknown` (phone, company, signing entity). The
+role on the page appears in only 2 of the 265 mails and was found and cited.
+No labelled phone number appears in anything the person wrote in the window,
+so `Phone: Unknown` is the right answer, not a miss. After the run the task
+folder held no evidence copies, only `evidence-index.md`.
+
+One earlier attempt failed in under a second, before any model turn: the
+measurement shell set `PYTHONPATH=.`, and the runner starts `co ai` from the
+task folder, where `.` is not the checkout. Nothing in the product changed for
+it; the evidence the script had already saved was reused by the second attempt.
 
 ## Order and portions
 

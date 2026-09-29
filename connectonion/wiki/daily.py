@@ -19,12 +19,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from . import quota
 from .config import read_config
 from .files import Notebook, WikiError, maintenance_lock, read_json, state_path, write_json
-from .service import now, run_logs, run_sync, status, subscriptions, mail_client
 from .investigate import investigate
-from . import quota
-
+from .service import mail_client, now, run_logs, run_sync, status, subscriptions
 
 # At most this many calls for the first run's portion. It was "everything but
 # two", which at the old cap of 6 meant 4; at 30 it would let one large page
@@ -59,7 +58,8 @@ def unfinished_by_recency(root: Path, *, today: datetime | None = None) -> list[
     People whose evidence was all written already, or who have none this
     week, are left to the later runs (people_pages.queue decides).
     """
-    from .people_pages import last_activity, queue as people_queue
+    from .people_pages import last_activity
+    from .people_pages import queue as people_queue
     from .project_material import page_state
     from .queue import order_all
     today = today or now()
@@ -179,8 +179,16 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
                 break
             if target.startswith('people/') and investigate_one is None:
                 tried.append(target)
-                result = (person_one or _person)(root, target, config=config, clients=clients,
-                                                 subscriptions=sources)
+                try:
+                    result = (person_one or _person)(root, target, config=config, clients=clients,
+                                                     subscriptions=sources)
+                except WikiError as error:
+                    # A refused page keeps its items pending; the portion goes on.
+                    calls -= 1
+                    done.append({'page': target, 'outcome': 'refused' if 'rejected' in str(error) else 'failed',
+                                 'why': str(error)[:300]})
+                    _add_usage(usage, getattr(error, 'usage', None))
+                    continue
                 calls -= 0 if result.get('skipped') else 1
             else:
                 # The older investigation: it takes what is left of the portion and ends it.

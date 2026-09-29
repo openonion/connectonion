@@ -24,6 +24,19 @@ unrelated topics in one folder, a password pasted in a message (in
 `forbidden.txt`, so `check_pages.py` fails the page if it appears anywhere), and
 an update that gets only the messages since the page was last written.
 
+`wiki-person-search` (#1943 stage 3) investigates a person by searching an
+evidence folder instead of reading one material file. Its fixtures were made
+by the production code (`people_evidence.materialize`): `page.md`,
+`coverage.md` and `evidence/` with `index.md` and one file per mail. Six
+cases: a phone number in one signature among thirteen mails (the needle), two
+people named Mia (the other one only in a coding message), a forwarded mail
+with a third party's claims, a mail carrying instructions to an AI, a single
+calendar invitation, and an update that gets only the new mail.
+
+```sh
+co eval run wiki-person-search --agent agent.py --skill wiki-person-search --invoke explicit --runs 2 --max-iterations 30
+```
+
 ## What the two checks cover
 
 - `co eval` judges what a reader would see: facts from the material, nothing

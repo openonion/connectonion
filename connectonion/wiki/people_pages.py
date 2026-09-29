@@ -19,8 +19,7 @@ from pathlib import Path
 
 from .config import read_config
 from .files import Notebook, WikiError, maintenance_lock, read_json, state_path, write_json
-from .people_evidence import (WINDOW_DAYS, map_row, mark_written, materialize, pending, person_state,
-                              prepare)
+from .people_evidence import WINDOW_DAYS, map_row, mark_written, materialize, pending, person_state, prepare
 from .source import timestamp
 
 # Correspondents of the last two weeks are investigated before anyone older (owner, 2026-09-30).
@@ -276,13 +275,14 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
 
 def prepare_portion(root: Path, rows: list[dict], *, clients: dict | None = None,
                     subscriptions: dict | None = None, days: int = WINDOW_DAYS, now: datetime | None = None,
-                    on_person=None) -> dict:
+                    on_person=None, progress=None) -> dict:
     """Step 1 for a whole portion before any model starts, so the cost can be stated first."""
     prepared = {}
     for number, row in enumerate(rows, 1):
         if on_person:
             on_person(number, len(rows), row)
-        report = prepare(root, row["record"], clients=clients, subscriptions=subscriptions, days=days, now=now)
+        report = prepare(root, row["record"], clients=clients, subscriptions=subscriptions, days=days, now=now,
+                         progress=progress)
         waiting, _ = pending(root, row["record"])
         report["pending"] = len(waiting)
         # What the prompt will carry of the index: one line per pending item.

@@ -257,7 +257,8 @@ def _mentions(root: Path, handles: dict, wanted: set[str]) -> list[dict]:
 
 
 def _download(root: Path, client, row: dict) -> list[str]:
-    from .investigate import _download as download, _saved_paths
+    from .investigate import _download as download
+    from .investigate import _saved_paths
     short = _key(row["id"])[:12]
     target = _private_dir(state_path(root, f"attachments/{row['provider']}/{short}"))
     return [str(Path(path).resolve().relative_to(root.resolve()))
@@ -430,7 +431,7 @@ def materialize(root: Path, record: str, directory: Path, rows: list[dict]) -> d
             if quoted:
                 body += "\n\n----- quoted earlier thread below: someone's earlier words, not this mail's -----\n"
                 body += _cap(quoted, QUOTED_CHARS, "quoted thread")
-            written = _write(evidence / name, "\n".join(header) + body + "\n")
+            written = _write(evidence / name, "\n".join(header) + "\n" + body + "\n")
             size, files = size + written, files + 1
             recipients = ", ".join(_addresses(row["to"]) + _addresses(row["cc"]))[:200]
             lines.append(f"- {day} · mail · {row['from'][:120]} → {recipients or '?'} · \"{row['subject'][:120]}\""

@@ -13,7 +13,7 @@ import pytest
 
 from connectonion.wiki import daily, people_evidence, people_pages
 from connectonion.wiki.config import prepare as prepare_notebook
-from connectonion.wiki.files import Notebook, WikiError, state_path, write_json
+from connectonion.wiki.files import Notebook, state_path, write_json
 from connectonion.wiki.mail_archive import message_path, person_index_path
 from connectonion.wiki.people_evidence import materialize, pending, person_state, prepare, stored
 from connectonion.wiki.people_pages import queue, write_page, write_pages
@@ -338,6 +338,20 @@ def test_the_first_run_of_the_day_investigates_unfinished_people_most_recent_fir
     assert result["investigation"]["left"] == 4   # the fakes wrote nothing, so all four are still unfinished
 
 
+def test_a_refused_person_does_not_end_the_first_portion(root, monkeypatch):
+    _round(root, monkeypatch)
+    order = []
+
+    def person(root, record, **kw):
+        order.append(record)
+        if record == "people/ada.md":
+            raise RunFailed("Candidate rejected, kept at x: bad", {"input_tokens": 5})
+        return {"changed": [record]}
+    result = daily.run_daily(root, maintain=lambda root: {"outcome": "no_change"}, person_one=person)
+    assert order[:2] == ["people/ada.md", "people/cy.md"] and result["outcome"] == "completed"
+    assert result["run"]["pages"][0]["outcome"] == "refused" and result["run"]["usage"] == {"input_tokens": 5}
+
+
 def test_the_first_portion_is_bounded_by_its_calls(root, monkeypatch):
     _round(root, monkeypatch)
     monkeypatch.setattr(daily, "INVESTIGATION_CALLS", 2)
@@ -350,7 +364,8 @@ def test_the_first_portion_is_bounded_by_its_calls(root, monkeypatch):
 def test_later_runs_follow_only_what_is_new(root, monkeypatch):
     client = ada_mail()
     _round(root, monkeypatch, clients={"gmail": client})
-    maintain = lambda root: {"outcome": "no_change"}
+    def maintain(root):
+        return {"outcome": "no_change"}
     first = daily.run_daily(root, maintain=maintain, person_one=lambda root, record, **kw: {"changed": []})
     assert first["run"]["phase"] == "daily-investigation"
     # Ada's page was written from everything; then she writes again.
@@ -388,7 +403,8 @@ def test_later_runs_stop_at_the_floor_and_say_what_is_left(root, monkeypatch):
 def test_project_pages_with_new_messages_are_followed_with_since(root, monkeypatch):
     from connectonion.wiki import project_pages
     _round(root, monkeypatch)
-    maintain = lambda root: {"outcome": "no_change"}
+    def maintain(root):
+        return {"outcome": "no_change"}
     daily.run_daily(root, maintain=maintain, person_one=lambda *a, **k: {"changed": []})
     calls = []
     monkeypatch.setattr(project_pages, "queue", lambda root, since="", **kw: calls.append(since) or [
@@ -402,6 +418,7 @@ def test_project_pages_with_new_messages_are_followed_with_since(root, monkeypat
 
 def test_the_skill_has_valid_frontmatter_and_names_the_search_budget():
     import yaml
+
     from connectonion.skills_catalog import useful_skills_dir
     text = (useful_skills_dir() / "wiki-person-search/SKILL.md").read_text()
     front = yaml.safe_load(text.split("---")[1])

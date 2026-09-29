@@ -56,8 +56,11 @@ def run_people(ctx, root, *, limit: int, recent_days: int, days: int, list_only:
     def on_person(number, total, row):
         typer.echo(f"Preparing evidence [{number}/{total}] {row['record']} (no model)", err=True)
 
+    def progress(stage, count=None):
+        typer.echo(f"  {stage}" + (f" ({count})" if count is not None else ""), err=True)
+
     prepared = prepare_portion(root, chosen, clients=clients, subscriptions=sources, days=days,
-                               on_person=on_person)
+                               on_person=on_person, progress=progress)
     typer.echo(f"Investigating {len(chosen)} of {len(rows)} people. "
                + cost_line(estimate(chosen, prepared), quota.read(config)), err=True)
 

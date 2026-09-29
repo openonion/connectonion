@@ -31,8 +31,14 @@ def problems(case: Path, page: str) -> list[str]:
     """
     fixture = FIXTURES / case.stem
     original = (fixture / "page.md").read_text()
-    record = ("people/" if case.stem.startswith("person-") else "projects/") + case.stem + ".md"
-    items = [{"source": source} for source in re.findall(r"^### (\S+:\S+:\d+) ", (fixture / "material.md").read_text(), re.M)]
+    record = ("people/" if case.stem.startswith(("person-", "people-")) else "projects/") + case.stem + ".md"
+    if (fixture / "evidence").is_dir():
+        # wiki-person-search (#1943): the ids are the first lines of the evidence files, as in production.
+        texts = [path.read_text() for path in (fixture / "evidence").rglob("*.md")]
+        items = [{"source": source} for text in texts for source in re.findall(r"^### (\S+:\S+) · ", text, re.M)]
+    else:
+        items = [{"source": source} for source in
+                 re.findall(r"^### (\S+:\S+:\d+) ", (fixture / "material.md").read_text(), re.M)]
     items += [{"source": "notebook:owner"}, {"source": "investigation:coverage"}]
     candidate = restore_runner_fields(record, normalize_numbered_sources(page), original)
     found = validate(record, candidate, original, items)
