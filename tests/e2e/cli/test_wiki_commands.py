@@ -548,7 +548,7 @@ def test_wiki_overview_explains_lifecycle_without_initializing(tmp_path):
     root = tmp_path / 'new wiki'
     result = invoke(root)
     assert result.exit_code == 0, result.output
-    for text in ("Build the notebook's frame", 'investigate', 'sync', '--json', '--help'):
+    for text in ('Build the notebook from', 'investigate', 'sync', '--json', '--help'):
         assert text in result.output
     assert result.output.rstrip().endswith(' init')
     assert not root.exists()

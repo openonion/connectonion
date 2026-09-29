@@ -202,6 +202,86 @@ def _resolve_page(notebook, selector):
     raise WikiError("No page matches that name, email or path. Run investigate without arguments to see available pages.")
 
 
+def _interactive() -> bool:
+    """Someone at a terminal, who can read what is about to be spent and press Ctrl-C."""
+    import sys
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _mail_clients(root):
+    """Investigating is an explicit request, so any mailbox this machine can
+    already read is read, whether or not background sync is subscribed to it --
+    `init` read the same mailboxes to build the map. Only a mailbox the user
+    explicitly unsubscribed is left alone."""
+    from ...wiki.service import mail_available, mail_client, subscriptions
+    sources = subscriptions(root)
+    return {kind: mail_client(kind, attachments=True) for kind in ("outlook", "gmail")
+            if mail_available(kind) and not sources.get(kind, {}).get("unsubscribed")}
+
+
+def _mail_progress(kind, stop, count):
+    typer.echo(f"  {kind}: to {stop:%Y-%m-%d}, {count} mails", err=True)
+
+
+def _investigate_me(root, *, days, quick, handle=()):
+    """The owner's page from what they sent: `investigate me`, and init's last step (#1943)."""
+    from ...wiki.files import Notebook, WikiError, read_json, state_path
+    from ...wiki.investigate import investigate
+    from ...wiki.service import subscriptions
+    owner = read_json(state_path(root, "map.json"), {}).get("owner") or {}
+    if not owner.get("record"):
+        raise WikiError("No page for you yet: init makes it from a connected mailbox or from your "
+                        "name. Run `co wiki init --name \"Your Name\"`")
+    record = owner["record"]
+    if not owner.get("addresses") and not handle:
+        # A page made from --name alone has no address to find your own
+        # mail by, and investigating it would run a model on nothing.
+        raise WikiError(f"Your page {record} has no mail address yet, and investigate me reads what "
+                        "you sent. Connect a mailbox with co auth google or co auth microsoft, then "
+                        "run `co wiki init`")
+    title = next((line[2:].strip() for line in Notebook(root).read(record).splitlines()
+                  if line.startswith("# ")),
+                 "Account owner")
+    result = _logged(root, record, "investigate me", lambda update: investigate(
+        root, record, title, [*owner.get("addresses", []), *handle], days=days or 30,
+        clients=_mail_clients(root), subscriptions=subscriptions(root), progress=_mail_progress,
+        sent_only=True, stage_progress=update, quick=quick))
+    return result, record
+
+
+def _first_page_skipped(ctx, root, result, *, want, problem, fix, retry, init) -> str:
+    """Why init does not go on to write the owner's page, in one line, or ''.
+
+    The owner decided (#1943) that investigating "me" starts by itself, so a
+    first run needs no second command to discover. It does not start when it
+    cannot succeed (no runner, no address of yours), when it would pay twice (the
+    page is already written), or when nobody is watching to read what it will
+    spend and stop it: a script or --json runs no model unless --investigate asks.
+    """
+    from ...wiki.files import Notebook
+    manual = _next(ctx, retry)
+    if want is False:
+        return f"Your page was not written (--no-investigate). Write it with {manual}."
+    if problem:
+        return f"Your page was not written: {problem}. Fix it with {fix}, then run {manual}."
+    owner = result.get("owner") or {}
+    if not owner.get("record") or not owner.get("addresses"):
+        return ("Your page was not written: no mailbox gave an address of yours, and it is written from "
+                "what you sent. Connect one with co auth google or co auth microsoft, then run "
+                + _next(ctx, init) + ".")
+    page = Notebook(root).path(owner["record"])
+    status = next((line for line in page.read_text(encoding="utf-8").splitlines()
+                   if line.startswith("Investigation:")), "") if page.is_file() else ""
+    if status and "not investigated" not in status:
+        return f"Your page was already written; nothing spent. Refresh it with {manual}."
+    if want is None and ctx.obj["json"]:
+        return f"Your page was not written: --json runs no model unless --investigate asks. Write it with {manual}."
+    if want is None and not _interactive():
+        return (f"Your page was not written: not a terminal, so nobody could stop it. Write it with {manual}, "
+                "or rerun init with --investigate.")
+    return ""
+
+
 def make_wiki_app(factory):
     wiki = factory(help="co wiki", no_args_is_help=False)
     wiki.info.cls = verbatim("co wiki", wiki.info.cls)
@@ -235,13 +315,23 @@ def make_wiki_app(factory):
                   mine: List[str] = typer.Option([], "--mine"),
                   mail: List[str] = typer.Option([], "--mail"),
                   name: str = typer.Option("", "--name"),
-                  archive_mail: bool = typer.Option(True, "--archive-mail/--no-mail-archive")):
-        from ...wiki.config import prepare
-        from ...wiki.map import build_map
-        from ...wiki.service import mail_available, mail_client, subscriptions
+                  archive_mail: bool = typer.Option(True, "--archive-mail/--no-mail-archive"),
+                  write_mine: Optional[bool] = typer.Option(None, "--investigate/--no-investigate")):
+        from ...wiki.config import prepare, read_config
+        from ...wiki.files import Notebook, state_path
+        from ...wiki.map import build_map, owner_summary
+        from ...wiki import runner as wiki_runner
+        from ...wiki.service import mail_available, mail_client, subscribe_read_mail, subscriptions
+        from .wiki_output import StageProgress
+        # One run confirms several addresses: `--mine a,b,c` as well as repeating it.
+        owned = [part.strip() for value in mine for part in value.split(",") if part.strip()]
 
         def run(root):
             prepare(root)
+            # Before the ten-minute map, not after it: a missing or signed-out
+            # runner used to surface only when the first model turn failed.
+            config = read_config(root)
+            problem, fix = wiki_runner.ready(config)
             window = [] if days == 90 else ["--days", str(days)]
             sources = subscriptions(root)
             from ...wiki.files import WikiError
@@ -263,37 +353,35 @@ def make_wiki_app(factory):
                 except Exception as error:
                     errors.append({"source": kind, "stage": "client", "error": type(error).__name__})
             failed = {row["source"]: row["error"] for row in errors}
-            def progress(stage, count=None):
-                if ctx.obj["json"]:
-                    return
-                suffix = f": {count}" if count is not None else "..."
-                typer.echo(f"Wiki init: {stage}{suffix}", err=True)
-
-            result = build_map(root, sources, clients, days=days,
-                               skill_directories=skills_dir or None, mine=mine, source_errors=errors,
-                               absent=_absent_mail(selected, available, failed, sources, bool(mail)), name=name,
-                               capture_sources=True,
-                               progress=progress if not ctx.obj["json"] else None)
-            if archive_mail and result.get("source_inventory"):
-                from ...wiki.files import read_json, state_path, write_json
-                from ...wiki.mail_archive import archive_init
-                previous = read_json(state_path(root, "mail/archive.json"), {})
-                incomplete_scan = any(row.get("source") in ("gmail", "outlook")
-                                      for row in result.get("errors", []))
-                if previous and (not clients or incomplete_scan):
-                    body_report = {"phase": "previous_preserved", "started": previous.get("started"),
-                                   "target": previous.get("target", 0),
-                                   "reason": "Current mail enumeration unavailable; previous private archive retained"}
-                else:
-                    body_report = archive_init(
-                        root, result, clients,
-                        progress=progress if not ctx.obj["json"] else None)
-                result["mail_archive"] = body_report
-                if body_report.get("failed"):
-                    result["errors"].append({"source": "mail-archive", "stage": "body",
-                                             "error": f"{body_report['failed']} messages unavailable"})
-                    result["phase"] = "partial"
-                write_json(state_path(root, "map.json"), result)
+            # One line per stage on the terminal; every step in the log (#1943).
+            progress = StageProgress(log=state_path(root, "init-progress.log"), quiet=ctx.obj["json"])
+            try:
+                result = build_map(root, sources, clients, days=days,
+                                   skill_directories=skills_dir or None, mine=owned, source_errors=errors,
+                                   absent=_absent_mail(selected, available, failed, sources, bool(mail)), name=name,
+                                   capture_sources=True, progress=progress)
+                if archive_mail and result.get("source_inventory"):
+                    from ...wiki.files import read_json, write_json
+                    from ...wiki.mail_archive import archive_init
+                    previous = read_json(state_path(root, "mail/archive.json"), {})
+                    incomplete_scan = any(row.get("source") in ("gmail", "outlook")
+                                          for row in result.get("errors", []))
+                    if previous and (not clients or incomplete_scan):
+                        body_report = {"phase": "previous_preserved", "started": previous.get("started"),
+                                       "target": previous.get("target", 0),
+                                       "reason": "Current mail enumeration unavailable; previous private archive retained"}
+                    else:
+                        body_report = archive_init(root, result, clients, progress=progress)
+                    result["mail_archive"] = body_report
+                    if body_report.get("failed"):
+                        result["errors"].append({"source": "mail-archive", "stage": "body",
+                                                 "error": f"{body_report['failed']} messages unavailable"})
+                        result["phase"] = "partial"
+                    write_json(state_path(root, "map.json"), result)
+            finally:
+                progress.close()
+            unread = {row.get("source") for row in result.get("errors") or []}
+            subscribe_read_mail(root, [kind for kind in clients if kind not in unread])
             tips = []
             for kind, provider in (("gmail", "google"), ("outlook", "microsoft")):
                 if kind not in available:
@@ -305,15 +393,20 @@ def make_wiki_app(factory):
             if candidates:
                 # The owner is the only one who can answer this, so the question
                 # arrives with the command that answers it, spelled for the root
-                # they actually used. Five at a time: the rest stay in the report.
+                # they actually used. Asked once, in one place: the owner's first
+                # run ended with twelve questions and a command for each (#1943).
+                shown = candidates[:6]
+                more = len(candidates) - len(shown)
                 result["confirm_own_addresses"] = [
-                    f"{row['address']}: {row['sent']} sent, none received. If it is yours, run "
-                    + _next(ctx, ["init", *window, "--mine", row["address"]])
-                    + "; if it is an assistant or a relative, leave it as a person."
-                    for row in candidates[:5]]
-                if len(candidates) > 5:
-                    result["confirm_own_addresses"].append(
-                        f"{len(candidates) - 5} more in .state/map.json; nothing is merged without --mine.")
+                    "Possibly yours too (you wrote, they never replied): "
+                    + ", ".join(f"{row['address']} ({row['sent']} sent, none received)" for row in shown)
+                    + (f", and {more} more in .state/map.json" if more else "")
+                    + ".\nConfirm the ones that are yours in one run: "
+                    + _next(ctx, ["init", *window, "--mine", ",".join(row["address"] for row in shown)])
+                    + " (leave out an assistant's or a relative's; nothing is merged without --mine)."]
+            summary = owner_summary(Notebook(root), result) if result.get("owner") else None
+            if summary:
+                result["owner_page"] = summary
             if not selected:
                 result["people_setup"] = "No connected mail source. Local maps are ready; connect mail to add People."
             if result.get("errors"):
@@ -324,9 +417,46 @@ def make_wiki_app(factory):
                                       "Completed maps and saved mail bodies are reused.")
                 _emit(ctx, result, retry, failed=True)
                 raise typer.Exit(1)
-            # A page made from --name alone has no address for investigate me to use.
-            return result, (["investigate", "me", *window, "--quick"] if (result.get("owner") or {}).get("addresses")
-                            else ["investigate", *window])
+            result["runner"] = {"runner": config["runner"], "model": config["model"], "ready": not problem,
+                                **({"problem": problem, "fix": fix} if problem else {})}
+            retry_me = ["investigate", "me", *window, "--quick"]
+            reason = _first_page_skipped(ctx, root, result, want=write_mine, problem=problem, fix=fix,
+                                         retry=retry_me, init=["init", *window])
+            if not ctx.obj["json"]:
+                # The map's summary and your page's facts first: value before any spending.
+                typer.echo(render(result, "init"))
+                typer.echo()
+            keep = ("Then keep it current: " + _next(ctx, ["start"])
+                    + " (it asks before anything is read in the background).")
+            if reason:
+                result["investigate_me"] = {"started": False, "reason": reason}
+                return (result if ctx.obj["json"] else reason + "\n" + keep), ["open"]
+            me_days = days if window else 30  # what `investigate me --quick` reads without --days
+            typer.echo(f"Writing your own page now from what you sent and your coding sessions of the last "
+                       f"{me_days} days: one model turn with {config['runner']} ({config['model']}), "
+                       f"{wiki_runner.PLAN.get(config['runner'], 'on the configured runner')}. Usually about "
+                       "10 minutes. Ctrl-C stops it; the map is kept. (--no-investigate skips this.)",
+                       err=ctx.obj["json"])
+            from ...wiki.files import WikiError
+            try:
+                _investigate_me(root, days=days if window else None, quick=True)
+            except KeyboardInterrupt:
+                result.update(investigation="interrupted",
+                              investigate_me={"started": True, "outcome": "interrupted"})
+                stopped = "Stopped. The map is kept; write your page later with " + _next(ctx, retry_me) + "."
+                _emit(ctx, result if ctx.obj["json"] else stopped, retry_me)
+                raise typer.Exit(130)
+            except (WikiError, wiki_runner.RunFailed) as error:
+                result.update(investigation="failed",
+                              investigate_me={"started": True, "outcome": "failed", "why": str(error)})
+                return (result if ctx.obj["json"] else
+                        f"Your page was not written: {error} The map is kept."), retry_me, True
+            record = summary["record"] if summary else result["owner"]["record"]
+            result.update(investigation="completed",
+                          investigate_me={"started": True, "outcome": "completed", "page": record})
+            written = ("Your page is written (a first pass; it says what it did not cover): "
+                       + str(Notebook(root).path(record)))
+            return (result if ctx.obj["json"] else written + "\n" + keep), ["open"]
         _handle(ctx, run, ["sources"])
 
     @wiki.command("investigate", cls=V("co wiki investigate"))
@@ -347,19 +477,8 @@ def make_wiki_app(factory):
         pages_limit = limit if limit is not None else (0 if budget else 5)
         runnable = (*CATEGORIES, "all")
         from ...wiki.runner import RunFailed
-        from ...wiki.service import mail_available, mail_client, subscriptions
-
-        def clients_for(root):
-            # Investigating is an explicit request, so any mailbox this machine can
-            # already read is read, whether or not background sync is subscribed to
-            # it -- `init` read the same mailboxes to build the map. Only a mailbox
-            # the user explicitly unsubscribed is left alone.
-            sources = subscriptions(root)
-            return {kind: mail_client(kind, attachments=True) for kind in ("outlook", "gmail")
-                    if mail_available(kind) and not sources.get(kind, {}).get("unsubscribed")}
-
-        def progress(kind, stop, count):
-            typer.echo(f"  {kind}: to {stop:%Y-%m-%d}, {count} mails", err=True)
+        from ...wiki.service import subscriptions
+        clients_for, progress = _mail_clients, _mail_progress
 
         def one(root, notebook, record):
             if record.startswith("skills/"):
@@ -468,24 +587,7 @@ def make_wiki_app(factory):
             return gate
 
         def me(root):
-            state = read_json(state_path(root, "map.json"), {})
-            owner = state.get("owner") or {}
-            if not owner.get("record"):
-                raise WikiError("No page for you yet: init makes it from a connected mailbox or from your "
-                                "name. Run `co wiki init --name \"Your Name\"`")
-            record = owner["record"]
-            if not owner.get("addresses") and not handle:
-                # A page made from --name alone has no address to find your own
-                # mail by, and investigating it would run a model on nothing.
-                raise WikiError(f"Your page {record} has no mail address yet, and investigate me reads what "
-                                "you sent. Connect a mailbox with co auth google or co auth microsoft, then "
-                                "run `co wiki init`")
-            title = next((l[2:].strip() for l in Notebook(root).read(record).splitlines() if l.startswith("# ")),
-                         "Account owner")
-            result = _logged(root, record, "investigate me", lambda update: investigate(
-                root, record, title, [*owner.get("addresses", []), *handle], days=days or 30,
-                clients=clients_for(root), subscriptions=subscriptions(root), progress=progress, sent_only=True,
-                stage_progress=update, quick=quick))
+            result, record = _investigate_me(root, days=days, quick=quick, handle=handle)
             return result, ["show", record]
 
         def run(root):
@@ -831,8 +933,10 @@ def make_wiki_app(factory):
             runner = (config or {}).get("runner", "codex")
             binary = {"codex": "codex", "claude-code": "claude"}.get(runner)
             if binary:
-                check(f"model runner ({runner})", bool(shutil.which(binary)), shutil.which(binary) or "not on PATH",
-                      "npm install -g @openai/codex" if binary == "codex" else "npm install -g @anthropic-ai/claude-code")
+                # The same check init makes before its first run (#1943): on PATH, and Codex signed in.
+                from ...wiki.runner import ready
+                problem, fix = ready({"runner": runner})
+                check(f"model runner ({runner})", not problem, problem or shutil.which(binary) or binary, fix)
             import importlib.util
             # Optional (the `wiki` extra): without it an XLSX attachment is named,
             # not read, and nothing said so until a page came back without it.
