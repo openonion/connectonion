@@ -28,8 +28,10 @@ co wiki projects write --limit 1      # just the most recent project
 co wiki projects write --recent-days 7 --limit 0   # every project active this week
 ```
 
-`co wiki projects` refreshes the material and prints, for each page with
-something new, when it was last active, how many of your messages are new, and
+`co wiki projects` refreshes the material — filing messages typed in a
+workspace by the repository they worked in, and making pages for folders active
+in the last 14 days that have none — and says how many of each. It then prints,
+for each page with something new, when it was last active, how many of your messages are new, and
 whether it is a first write or an update. It ends with the cost of writing them:
 one model call per page and the characters (about four to a token) each call
 will carry. Nothing is spent.
@@ -51,9 +53,70 @@ notebook's own model runs are skipped. A message is filed under the project
 page whose `Paths` contain the folder the session ran in (the deepest match
 wins, so a worktree listed on a page counts for that page). Folders
 `co wiki scan` would never map — temporary directories, the notebook's own task
-copies, multi-repository workspace containers — are skipped with the same rule
-(`project_exclusion`). A folder with your messages but no page is counted in
-the output, not given a page: pages are made by the map (`co wiki init`).
+copies — are skipped with the same rule (`project_exclusion`). A message typed
+in a multi-repository workspace container is not skipped: it is filed under the
+repository its session actually worked in (below). A folder with your messages
+but no page gets one if it was active in the last 14 days (below).
+
+### Sessions typed in a workspace
+
+A workspace container is a folder that holds several repositories and says so in
+its agent instructions (`CLAUDE.md` or `AGENTS.md`, no `.git` of its own, two or
+more child repositories) — the owner's `~/projects`. The map never makes it a
+page, because it is not one project, and `project_exclusion` still says so. But a
+session started there works in one of its repositories, and the session file
+says which: every tool call names the paths it touched. So a message typed in a
+workspace is filed by the evidence inside its own session, read by the same
+script, no model:
+
+| Evidence | Codex | Claude Code |
+|---|---|---|
+| A change of working folder | `turn_context.cwd` | the `cwd` on each tool call's row, which follows `cd` |
+| Files read, edited or written | paths in the tool call (`exec`, `apply_patch`, `shell`) | `file_path` / `path` / `notebook_path` of `Read`, `Edit`, `Write`, `Grep`, `Glob` |
+| Commands | absolute paths, `cd DIR`, `git -C DIR`, `workdir` | absolute paths, `cd DIR`, `git -C DIR` in `Bash` / `Monitor` |
+
+Only the calls the agent made are read, never their output, and never the text an
+edit wrote. A relative `cd` or `git -C` is resolved against the folder the call
+ran in. Each path is taken to the **deepest existing project folder** that holds
+it inside the workspace: a folder listed on a project page, or a folder with its
+own `.git` (a repository or a linked worktree), whichever is deeper. A path in
+the workspace itself (its `CLAUDE.md`), outside it, or in a folder
+`project_exclusion` skips is no evidence. One tool call counts once per project
+folder it touches, however often it names it.
+
+- **Per message, where the evidence is per turn.** A turn is what the agent did
+  between one typed message and the next. A message goes to the project folder
+  its own turn touched most, so a session that moved from one repository to
+  another is split message by message.
+- **Otherwise the session's.** A message whose turn touched no project (a
+  question answered without tools) goes to the folder the whole session touched
+  most.
+- **Otherwise it stays out.** A session that pointed at no repository at all is
+  counted as typed in a multi-repository workspace container, as before, and
+  reaches no page.
+
+A tie goes to the folder touched first. The message keeps where it was typed
+(`typed_in` in `messages.jsonl`), and its `cwd` becomes the project folder, so
+the page it lands on is chosen exactly as for any other message.
+`co wiki projects` says how many messages were filed this way, and `--json`
+carries it as `workspace.attributed`.
+
+### Folders with messages and no page
+
+A folder with your messages and no project page — a repository a workspace
+session worked in, or a folder the map has not seen since its last run — gets a
+page when its newest message is within the last 14 days (`--recent-days`). The
+page is made by the map's own code (`map.file_project`): the same stub, the same
+record name, and a worktree joins its repository's page by origin, exactly as
+`co wiki init` would have made it. It starts `mapped`, and is written from your
+messages like any other. An older folder is listed, not given a page:
+
+```text
+3 more folders with messages and no page; not created (older than 14 days)
+```
+
+A page made on a later, incremental run holds that run's messages; run
+`co wiki projects --full` to file its older ones too.
 
 Each project page gets a private folder:
 
@@ -62,7 +125,7 @@ Each project page gets a private folder:
 | `.state/projects/<page>/messages.jsonl` | Every kept message: time, tool, source id, text. The exact copy |
 | `.state/projects/<page>/messages.md` | The same, as plain text to read: one `###` heading per message |
 | `.state/projects/<page>/state.json` | Paths, message count, first and last activity, and `written_through`: the newest message the page was written from |
-| `.state/projects/index.json` | When the material was last extracted, and folders with messages but no page |
+| `.state/projects/index.json` | When the material was last extracted, the pages it made, how many workspace messages it attributed, and folders with messages but no page |
 
 Directories are `0700` and files `0600`, like the rest of `.state/`. Text in the
 shape of a key or token (`sk-…`, `AKIA…`, `ghp_…`, private key blocks, JWTs) is

@@ -82,7 +82,7 @@ def test_only_what_the_user_typed_is_kept_and_filed_under_its_page(world):
         ("user", "You are one finder angle in a review", 2, {"isSidechain": True}),
         ("assistant", [{"type": "text", "text": "Done."}], 2, {}),
     ])
-    codex(world.codex / "2026/09/21/rollout-w.jsonl", "/work/nowhere", [("user", "a folder with no page", 1)])
+    codex(world.codex / "2026/08/01/rollout-w.jsonl", "/work/nowhere", [("user", "an old folder with no page", 40)])
     codex(world.codex / "2026/09/21/rollout-t.jsonl", "/tmp/scratch", [("user", "scratch", 1)])
     codex(world.codex / "2026/09/21/rollout-o.jsonl", "/work/tide", [("user", "notebook run", 1)],
           originator="co_wiki")
