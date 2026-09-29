@@ -93,6 +93,28 @@ def test_an_org_page_turn_carries_only_the_org_shape(tmp_path):
     assert len(given) < len(instructions("investigate")) - 10_000
 
 
+@pytest.mark.parametrize("stage", ["investigate", "maintain"])
+@pytest.mark.parametrize("kind", ["person", "project", "org", "skill"])
+def test_a_one_page_turn_stays_within_15k_characters_of_instructions(stage, kind):
+    """#1851: the Skill text is re-sent on every tool round. It was 30.6k for an
+    investigation and 22.9k for maintenance; rationale now lives in
+    docs/wiki-skills/, and a rule that makes a turn heavier has to pay for it."""
+    assert len(instructions(stage, page_kind=kind)) <= 15_000
+
+
+def test_every_runtime_skill_names_where_its_rationale_lives():
+    from connectonion.skills_catalog import useful_skills_dir
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[2]
+    for name in ("wiki-investigate", "wiki-maintain", "wiki-extract", "wiki-abstract", "wiki-page-person",
+                 "wiki-page-org", "wiki-page-project", "wiki-page-skill", "wiki-source-codex",
+                 "wiki-source-whatsapp"):
+        text = (useful_skills_dir() / name / "SKILL.md").read_text(encoding="utf-8")
+        assert f"Why these rules: docs/wiki-skills/{name}.md" in text, name
+        assert (repo / "docs" / "wiki-skills" / f"{name}.md").is_file(), name
+
+
 def test_project_and_skill_templates_match_created_skeletons(tmp_path):
     """A model must receive the same exact headings that mapping created."""
     import re
