@@ -21,7 +21,8 @@ runner = CliRunner()
 WIKI = get_command(app).commands["wiki"]
 ROOT_COMMANDS = ["init", "investigate", "open", "list", "show", "search", "start", "stop", "status",
                  "sync", "sources", "config", "logs", "doctor"]
-ADVANCED = ["scan", "map-skills", "stub", "reflect", "reflections", "propose", "review", "abstract", "capture"]
+ADVANCED = ["scan", "map-skills", "stub", "reflect", "reflections", "propose", "review", "abstract", "capture",
+            "projects"]
 OLD_NAMES = {"unfinished": "investigate", "people": "list people --aliases", "daily": "sync",
              "subscriptions": "sources", "subscribe": "sources add", "unsubscribe": "sources remove",
              "route": "config set", "usage": "logs --usage"}
@@ -49,7 +50,7 @@ def test_every_command_and_subcommand_has_a_page():
     names = set(pages())
     for command in [*ROOT_COMMANDS, *ADVANCED, "advanced"]:
         assert f"co wiki {command}" in names, command
-    for group in ("sources", "config"):
+    for group in ("sources", "config", "projects"):
         for sub in WIKI.commands[group].commands:
             assert f"co wiki {group} {sub}" in names, (group, sub)
 

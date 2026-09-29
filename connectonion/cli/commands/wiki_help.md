@@ -409,6 +409,8 @@ Experimental: corrections and questions (#1611, #1609)
   abstract      Write decision and principle pages from the pages you already have.
 Experimental: session capture (#1520)
   capture       Queue the user's messages from one coding-session file. Run by a hook.
+Experimental: project pages from your own messages (#1943)
+  projects      Write project pages from what you typed to Codex and Claude Code.
 
 Back:     co wiki --help
 ```
@@ -559,4 +561,50 @@ Example:  co wiki capture ~/.claude/projects/-work-tide/3994b2ee.jsonl --source 
 Effects:  Appends to the notebook's capture queue. The next sync reads it.
 Next:     co wiki sync --dry-run
 Back:     co wiki advanced --help
+```
+
+## co wiki projects
+
+```
+Write each project's page from the messages you typed to Codex and Claude Code in
+its folders, most recently active projects first. This shows what would be written
+and what it would cost; it does not call a model.
+
+It first files your new messages under their project pages (a script: only what
+you typed, never the assistant's replies or tool output), in the notebook's private
+.state/projects/, then lists the pages with messages they were not written from.
+
+Usage:    co wiki projects [--recent-days N] [--full]
+Example:  co wiki projects --recent-days 7
+          --recent-days  projects active in the last N days come first (default 14)
+          --full         re-read the last 180 days instead of only what is new
+
+Output:   One line per page: last activity, new messages, first write or update;
+          then the cost of writing them: model calls and characters to send.
+Subcommand: co wiki projects write --help
+Next:     co wiki projects write
+Back:     co wiki advanced
+```
+
+## co wiki projects write
+
+```
+Write the next project pages from your own messages, using a model: the pages
+active in the last 14 days first, then older ones. A page written before gets only
+the messages since; a page with nothing new is not written.
+
+Usage:    co wiki projects write [--limit N] [--recent-days N] [--full]
+Example:  co wiki projects write --limit 1
+          --limit        at most N pages this run (default 5; 0 for all)
+          --recent-days  projects active in the last N days come first (default 14)
+          --full         re-read the last 180 days of sessions first
+
+Effects:  States the cost, then one model call per page, one after another, with the
+          runner in co wiki config. A page replaces the old one only if every citation
+          points at one of your messages; a refused page is kept with the reason and
+          tried again next run. Counts toward investigation's weekly Codex budget.
+Requires: co wiki init.
+Output:   One line per page: accepted, refused (and why) or failed; pages left.
+Next:     co wiki show PAGE
+Back:     co wiki projects --help
 ```

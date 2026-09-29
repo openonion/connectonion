@@ -33,7 +33,7 @@ def problems(case: Path, page: str) -> list[str]:
     original = (fixture / "page.md").read_text()
     record = ("people/" if case.stem.startswith("person-") else "projects/") + case.stem + ".md"
     items = [{"source": source} for source in re.findall(r"^### (\S+:\S+:\d+) ", (fixture / "material.md").read_text(), re.M)]
-    items += [{"source": "notebook:owner"}]
+    items += [{"source": "notebook:owner"}, {"source": "investigation:coverage"}]
     candidate = restore_runner_fields(record, normalize_numbered_sources(page), original)
     found = validate(record, candidate, original, items)
     kept = [line for line in original.splitlines() if line.startswith("- Email:") and line not in candidate]
