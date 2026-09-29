@@ -868,15 +868,36 @@ def make_rem_app(factory):
         from ...rem.files import RemError
         from ...rem.service import run_sync
 
+        finished = []
+
+        def progress(number, record):
+            # A backfill ran 37 minutes over five batches with no output at all
+            # (#1957). One line per batch, on stderr so --json stays one document.
+            finished.append(record)
+            typer.echo(f"Batch {number}: {record['items']} items, {len(record.get('changed') or [])} pages "
+                       f"changed, {record.get('runner_attempts', 0)} model calls, {record.get('seconds')}s "
+                       f"({record['outcome']})", err=True)
+
         def operation(root):
             if dry_run or source or with_person or all_pending:
-                record = run_sync(root, source=source, with_person=with_person, dry_run=dry_run,
-                                  scheduled=scheduled, all_pending=all_pending)
+                try:
+                    record = run_sync(root, source=source, with_person=with_person, dry_run=dry_run,
+                                      scheduled=scheduled, all_pending=all_pending, on_batch=progress)
+                except KeyboardInterrupt:
+                    # Ctrl-C exited 130 with nothing said; the finished batches are
+                    # kept, and the interrupted one reads again next time.
+                    pages = len({page for record in finished for page in record.get("changed") or []})
+                    typer.echo(f"Stopped: {len(finished)} batch{'es' if len(finished) != 1 else ''} finished "
+                               f"({sum(r['items'] for r in finished)} items, {pages} pages changed); the "
+                               f"interrupted batch reads again next time. See {_next(ctx, ['logs'])}.", err=True)
+                    raise typer.Exit(130)
                 if scheduled and record is None:
                     return {"due": False, "ran": False}, ["status"]
                 if all_pending:
                     if record["outcome"] not in ("caught_up",):
-                        raise RemError(f"Backfill stopped after {record['batches']} batches: {record['outcome']}")
+                        why = record.get("reason") or record["outcome"]
+                        raise RemError(f"Backfill stopped after {record['batches']} batches "
+                                       f"({record['items']} items): {why}")
                     return record, ["status"]
                 if dry_run:
                     return record, ["sync"]
