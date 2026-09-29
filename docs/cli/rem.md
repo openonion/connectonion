@@ -10,6 +10,21 @@ Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`
 See the [2026-09-17 progress review](rem-progress.md) for the feature inventory,
 current CI blockers and remaining work.
 
+## Coming from co wiki (1.8.8–1.8.9)
+
+1.9.0 renames the feature `co rem` (#1932). Nothing needs doing by hand:
+
+- The first `co rem` moves `~/.co/wiki` to `~/.co/rem` and says so in one line.
+  If both folders exist it refuses, names both, and merges nothing. An explicit
+  `--root` is used as given. A move that fails leaves the old folder whole.
+- A daily schedule that `co wiki start` installed is replaced by one that runs
+  `co rem sync`, the next time `co rem` runs for that notebook.
+- `co wiki …` runs nothing in 1.9.x: it exits 2 with `co wiki is now co rem.`
+  and one `Next: co rem …` line with the same arguments. It is removed in 1.10.
+- `CO_WIKI_PROGRAM` is still read when `CO_REM_PROGRAM` is not set, with a
+  one-line notice. `pip install 'connectonion[wiki]'` still installs the
+  spreadsheet extra, now called `rem`.
+
 ## Start here
 
 ```bash
