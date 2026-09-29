@@ -14,7 +14,7 @@ from pathlib import Path
 
 # Runs whose points count against the investigation budget. Maintenance is the
 # incremental daily pass and is bounded by the call cap instead.
-INVESTIGATION_PHASES = ("daily-investigation", "investigate", "investigate me", "projects write")
+INVESTIGATION_PHASES = ("daily-investigation", "daily-update", "investigate", "investigate me", "projects write")
 
 
 def _codex_auth() -> Path:

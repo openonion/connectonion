@@ -172,8 +172,9 @@ def test_daily_maintains_before_one_investigation(root, monkeypatch):
     assert result['outcome'] == 'completed'
     assert result['run']['runner_attempts'] == 8          # a bounded share, not the night's calls
     assert calls == ['maintain', 'investigate']
+    # The day's later runs follow new material instead (#1943 stage 3); here there is none.
     again = run_daily(root, maintain=maintain, investigate_one=investigate_one)
-    assert again['reason'] == 'already_attempted_today'
+    assert again['reason'] == 'nothing_new'
     assert calls == ['maintain', 'investigate', 'maintain']
 
 

@@ -544,6 +544,7 @@ def make_wiki_app(factory):
                          limit: Optional[int] = typer.Option(None, "--limit", min=0),
                          budget: Optional[int] = typer.Option(None, "--budget", min=1, max=100),
                          list_only: bool = typer.Option(False, "--list"),
+                         recent_days: Optional[int] = typer.Option(None, "--recent-days", min=1),
                          eval_dir: List[Path] = typer.Option([], "--eval-dir")):
         from ...wiki.files import Notebook, WikiError, read_json, state_path
         from ...wiki.investigate import investigate
@@ -674,8 +675,16 @@ def make_wiki_app(factory):
             if list_only and target not in runnable:
                 raise WikiError("--list goes with a category: co wiki investigate people --list "
                                 "(or projects, orgs, skills)")
+            if recent_days is not None and target != "people":
+                raise WikiError("--recent-days goes with people: co wiki investigate people --recent-days 14")
             if not target:
                 return overview(root)
+            if target == "people":
+                # An agent searching each person's prepared evidence (#1943, #1850).
+                from .wiki_people import run_people
+                return run_people(ctx, root, limit=pages_limit, recent_days=recent_days or 14, days=days,
+                                  list_only=list_only, gate=None if list_only else budget_gate(root),
+                                  clients_for=clients_for, subscriptions=subscriptions, logged=_logged)
             if target == "me":
                 return me(root)
             if target in runnable:

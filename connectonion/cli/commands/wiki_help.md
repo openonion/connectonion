@@ -122,12 +122,14 @@ Examples:
   co wiki investigate
   co wiki investigate people/ody-zhou-c6a901ffd8.md
   co wiki investigate people --limit 3
+  co wiki investigate people --recent-days 7 --list
   co wiki investigate projects --list          (show the order, run nothing)
   co wiki investigate all --list               (the whole queue's order, run nothing)
 
 What each kind reads:
   people    Every message to or from their addresses, searched on the server, with
-            readable attachments; coding sessions that mention them.
+            readable attachments; coding sessions that mention them. A person
+            investigated before reads only the mail since then.
   projects  The coding sessions run in the project's folders, and the project's own files.
   orgs      Mail from the organisation's domains, and the people pages under it.
   skills    Recorded runs of the Skill (co eval results; --eval-dir to choose where).
@@ -138,13 +140,16 @@ Options:
   --quick        With me: sample recent evidence for one model turn; explicitly partial
   --limit N      With CATEGORY: at most N pages this run (default 5; 0 for all)
   --list         With CATEGORY: print the order and stop; no model
+  --recent-days N  With people: people written to in the last N days first (default 14)
   --budget N     With CATEGORY: stop starting pages once this run has used N points of
                  the Codex week (1-100). With --budget, --limit defaults to 0 (all).
   --handle TEXT  PAGE only: another address or name for the subject (repeatable)
   --eval-dir DIR skills only: where the run records are
 
 Order within a category: pages still marked Unknown first, then those with the
-most mail or sessions. A page investigated in the last 7 days is skipped.
+most mail or sessions. A page investigated in the last 7 days is skipped. People
+are ordered by their last mail instead, the last --recent-days first; a person
+investigated since their last mail waits for new mail, then reads only that.
 
 Budget: with the Codex runner every investigation records your Codex week before
 and after, and counts toward investigation's weekly budget (limits.
@@ -275,9 +280,11 @@ Back:     co wiki --help
 ## co wiki sync
 
 ```
-Run one update now: read what arrived since the last run, update the pages it
-concerns, then investigate at most one unfinished page. This is what the schedule
-runs.
+Run one update now: read what arrived since the last run and update the pages it
+concerns. Then the day's first run investigates unfinished pages, most recent
+first; every later run updates only the people and
+projects with new mail or messages since the run before. This is what the
+schedule runs.
 
 Usage:    co wiki sync [--dry-run] [--source NAME] [--with ADDRESS] [--all]
 Example:  co wiki sync --dry-run
