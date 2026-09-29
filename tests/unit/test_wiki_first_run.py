@@ -308,3 +308,70 @@ def test_runner_preflight_checks_path_and_sign_in_without_a_model(tmp_path, monk
     (tmp_path / "codex").mkdir()
     (tmp_path / "codex/auth.json").write_text("{}")
     assert wiki_runner.ready(config) == ("", "")
+
+
+# ------------------------------------------- recent projects, after me
+
+
+@pytest.fixture
+def projects(first_run, monkeypatch):
+    """Two projects active this fortnight and one older, with a spy where the model would write."""
+    rows = [{"record": f"projects/{name}.md", "mode": "first", "last_activity": "2026-09-29T00:00:00Z",
+             "recent": recent, "new_messages": 4, "chars": 2000, "left_out": 0}
+            for name, recent in (("alpha", True), ("beta", True), ("old", False))]
+    written = []
+    monkeypatch.setattr("connectonion.wiki.project_material.extract", lambda root, subs, **kw: {})
+    monkeypatch.setattr("connectonion.wiki.project_pages.queue",
+                        lambda root, **kw: [row for row in rows if row["record"] not in written])
+
+    def write_page(root, record, **kw):
+        written.append(record)
+        return {"record": record, "changed": [record]}
+
+    monkeypatch.setattr("connectonion.wiki.project_pages.write_page", write_page)
+    monkeypatch.setattr("connectonion.wiki.quota.read", lambda config: {"unknown": "no meter in tests"})
+    return first_run, written
+
+
+def test_after_me_the_recent_projects_are_written_one_line_each(projects):
+    (root, init, calls), written = projects
+    result = init()
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 1  # me first
+    assert written == ["projects/alpha.md", "projects/beta.md"]  # the old one waits
+    text = Text.from_ansi(result.output).plain
+    assert "~180k billed input tokens" in text and "Cost:" in text and "Ctrl-C" in text
+    assert text.count(": written") == 2
+    assert "projects/old.md" not in text
+
+
+def test_projects_follow_the_same_skip_rules(projects, monkeypatch):
+    (root, init, calls), written = projects
+    assert init("--no-investigate").exit_code == 0
+    data = json.loads(init("--json").stdout)["data"]
+    assert "--json" in data["project_pages"]["reason"]
+    monkeypatch.setattr("connectonion.cli.commands.wiki_commands._interactive", lambda: False)
+    assert init().exit_code == 0
+    monkeypatch.setattr("connectonion.wiki.runner.ready", lambda config: ("Codex is not signed in", "codex login"))
+    missing = init("--investigate")
+    assert Text.from_ansi(missing.output).plain.count("Codex is not signed in") == 1
+    assert written == []
+
+
+def test_json_with_investigate_writes_projects_and_reports_them(projects):
+    (root, init, calls), written = projects
+    result = init("--json", "--investigate")
+    assert result.exit_code == 0, result.output
+    pages = json.loads(result.stdout)["data"]["project_pages"]
+    assert pages["started"] and [row["page"] for row in pages["pages"]] == written == [
+        "projects/alpha.md", "projects/beta.md"]
+
+
+def test_the_weekly_floor_stops_project_pages(projects, monkeypatch):
+    (root, init, calls), written = projects
+    monkeypatch.setattr("connectonion.wiki.quota.read", lambda config: {
+        "used_percent": 90, "window_minutes": 10080, "resets_at": 4102444800, "plan": "plus"})
+    result = init()
+    assert result.exit_code == 0, result.output
+    assert written == []
+    assert "70% floor" in Text.from_ansi(result.output).plain

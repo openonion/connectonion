@@ -260,10 +260,9 @@ def _first_page_skipped(ctx, root, result, *, want, problem, fix, retry, init) -
     """
     from ...wiki.files import Notebook
     manual = _next(ctx, retry)
-    if want is False:
-        return f"Your page was not written (--no-investigate). Write it with {manual}."
-    if problem:
-        return f"Your page was not written: {problem}. Fix it with {fix}, then run {manual}."
+    if want is False or problem:
+        return f"Your page was not written: {_spending_skipped(ctx, want=want, problem=problem, fix=fix)} " \
+               f"Write it with {manual}."
     owner = result.get("owner") or {}
     if not owner.get("record") or not owner.get("addresses"):
         return ("Your page was not written: no mailbox gave an address of yours, and it is written from "
@@ -274,12 +273,71 @@ def _first_page_skipped(ctx, root, result, *, want, problem, fix, retry, init) -
                    if line.startswith("Investigation:")), "") if page.is_file() else ""
     if status and "not investigated" not in status:
         return f"Your page was already written; nothing spent. Refresh it with {manual}."
+    shared = _spending_skipped(ctx, want=want, problem=problem, fix=fix)
+    return f"Your page was not written: {shared} Write it with {manual}." if shared else ""
+
+
+def _spending_skipped(ctx, *, want, problem, fix) -> str:
+    """Why init spends nothing on a model after the map, or ''.
+
+    The same rules for the owner's page and for recent project pages: asked
+    not to, a runner that cannot run, or nobody watching to read the cost and
+    press Ctrl-C (a script, or --json, runs no model unless --investigate asks).
+    """
+    if want is False:
+        return "--no-investigate was given."
+    if problem:
+        return f"{problem}; fix it with {fix}."
     if want is None and ctx.obj["json"]:
-        return f"Your page was not written: --json runs no model unless --investigate asks. Write it with {manual}."
+        return "--json runs no model unless --investigate asks."
     if want is None and not _interactive():
-        return (f"Your page was not written: not a terminal, so nobody could stop it. Write it with {manual}, "
-                "or rerun init with --investigate.")
+        return "not a terminal, so nobody could stop it; rerun init with --investigate to allow it."
     return ""
+
+
+def _first_projects(ctx, root, config, plan, say) -> dict:
+    """The project pages of projects active in the last 14 days, after your own page (#1943).
+
+    The owner decided the first run should also leave the projects you are
+    working on now written, from the messages you typed in their Codex and
+    Claude Code sessions (#1947's `co wiki projects write`). Stated before it is
+    spent, stopped by the weekly budget and floor like any investigation, and
+    one line per page -- older projects wait for `co wiki projects write`.
+    """
+    from ...wiki import quota
+    from ...wiki.files import WikiError
+    from ...wiki.project_material import extract
+    from ...wiki.project_pages import RECENT_DAYS, estimate, queue, write_page, write_pages
+    from ...wiki.service import run_logs, subscriptions
+    from .wiki_projects import _cost_line
+    extract(root, subscriptions(root))
+    recent = [row for row in queue(root) if row["recent"]]
+    if not recent:
+        return {"started": False, "reason": f"No project active in the last {RECENT_DAYS} days has messages "
+                                            "to write from."}
+    count = len(recent)
+    typer.echo(f"Writing the {count} project page{'s' if count > 1 else ''} active in the last {RECENT_DAYS} "
+               f"days from your own session messages, {plan}: about {count} minute{'s' if count > 1 else ''} "
+               f"and ~{90 * count}k billed input tokens (one call each, ~90k measured on a real run). "
+               + _cost_line(estimate(recent), quota.read(config)) + " Ctrl-C stops it; pages already written "
+               "are kept.", err=ctx.obj["json"])
+
+    def gate():
+        reading = quota.read(config)
+        return quota.blocks(reading, quota.points_spent(run_logs(root), reading), config["limits"])
+
+    def one(record):
+        try:
+            _logged(root, record, "projects write", lambda update: write_page(root, record, config=config))
+        except WikiError as error:
+            say(f"  {record}: not written ({str(error)[:120]})")
+            raise
+        say(f"  {record}: written")
+
+    done = write_pages(root, limit=count, write=one, gate=gate)
+    if done.get("stopped"):
+        say(f"Stopped before the rest: {done['stopped']}. Write them later with {_next(ctx, ['projects', 'write'])}.")
+    return {"started": True, **done}
 
 
 def make_wiki_app(factory):
@@ -428,35 +486,52 @@ def make_wiki_app(factory):
                 typer.echo()
             keep = ("Then keep it current: " + _next(ctx, ["start"])
                     + " (it asks before anything is read in the background).")
+            say = (lambda text: None) if ctx.obj["json"] else typer.echo
+            plan = wiki_runner.PLAN.get(config["runner"], "on the configured runner")
+            from ...wiki.files import WikiError
             if reason:
                 result["investigate_me"] = {"started": False, "reason": reason}
-                return (result if ctx.obj["json"] else reason + "\n" + keep), ["open"]
-            me_days = days if window else 30  # what `investigate me --quick` reads without --days
-            typer.echo(f"Writing your own page now from what you sent and your coding sessions of the last "
-                       f"{me_days} days: one model turn with {config['runner']} ({config['model']}), "
-                       f"{wiki_runner.PLAN.get(config['runner'], 'on the configured runner')}. Usually about "
-                       "10 minutes. Ctrl-C stops it; the map is kept. (--no-investigate skips this.)",
-                       err=ctx.obj["json"])
-            from ...wiki.files import WikiError
-            try:
-                _investigate_me(root, days=days if window else None, quick=True)
-            except KeyboardInterrupt:
-                result.update(investigation="interrupted",
-                              investigate_me={"started": True, "outcome": "interrupted"})
-                stopped = "Stopped. The map is kept; write your page later with " + _next(ctx, retry_me) + "."
-                _emit(ctx, result if ctx.obj["json"] else stopped, retry_me)
-                raise typer.Exit(130)
-            except (WikiError, wiki_runner.RunFailed) as error:
-                result.update(investigation="failed",
-                              investigate_me={"started": True, "outcome": "failed", "why": str(error)})
-                return (result if ctx.obj["json"] else
-                        f"Your page was not written: {error} The map is kept."), retry_me, True
-            record = summary["record"] if summary else result["owner"]["record"]
-            result.update(investigation="completed",
-                          investigate_me={"started": True, "outcome": "completed", "page": record})
-            written = ("Your page is written (a first pass; it says what it did not cover): "
-                       + str(Notebook(root).path(record)))
-            return (result if ctx.obj["json"] else written + "\n" + keep), ["open"]
+                say(reason)
+            else:
+                me_days = days if window else 30  # what `investigate me --quick` reads without --days
+                typer.echo(f"Writing your own page now from what you sent and your coding sessions of the last "
+                           f"{me_days} days: one model turn with {config['runner']} ({config['model']}), "
+                           f"{plan}. Usually about 10 minutes. Ctrl-C stops it; the map is kept. "
+                           "(--no-investigate skips this.)", err=ctx.obj["json"])
+                try:
+                    _investigate_me(root, days=days if window else None, quick=True)
+                except KeyboardInterrupt:
+                    result.update(investigation="interrupted",
+                                  investigate_me={"started": True, "outcome": "interrupted"})
+                    stopped = "Stopped. The map is kept; write your page later with " + _next(ctx, retry_me) + "."
+                    _emit(ctx, result if ctx.obj["json"] else stopped, retry_me)
+                    raise typer.Exit(130)
+                except (WikiError, wiki_runner.RunFailed) as error:
+                    result.update(investigation="failed",
+                                  investigate_me={"started": True, "outcome": "failed", "why": str(error)})
+                    return (result if ctx.obj["json"] else
+                            f"Your page was not written: {error} The map is kept."), retry_me, True
+                record = summary["record"] if summary else result["owner"]["record"]
+                result.update(investigation="completed",
+                              investigate_me={"started": True, "outcome": "completed", "page": record})
+                say("Your page is written (a first pass; it says what it did not cover): "
+                    + str(Notebook(root).path(record)))
+            # Then the projects you worked on in the last two weeks, by the same rules (#1943).
+            skipped = _spending_skipped(ctx, want=write_mine, problem=problem, fix=fix)
+            if skipped:
+                result["project_pages"] = {"started": False, "reason": "Project pages were not written: " + skipped}
+                if skipped not in (reason or ""):  # said once: the owner-page line may already say why
+                    say(result["project_pages"]["reason"])
+            else:
+                try:
+                    result["project_pages"] = _first_projects(ctx, root, config, plan, say)
+                except KeyboardInterrupt:
+                    result["project_pages"] = {"started": True, "outcome": "interrupted"}
+                    stopped = ("Stopped. The map and every page written so far are kept; write the rest with "
+                               + _next(ctx, ["projects", "write"]) + ".")
+                    _emit(ctx, result if ctx.obj["json"] else stopped, ["projects", "write"])
+                    raise typer.Exit(130)
+            return (result if ctx.obj["json"] else keep), ["open"]
         _handle(ctx, run, ["sources"])
 
     @wiki.command("investigate", cls=V("co wiki investigate"))

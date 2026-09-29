@@ -59,6 +59,10 @@ co wiki investigate me --quick, one model turn on your own plan, about 10 minute
 It names the runner and model before it starts; Ctrl-C stops it and the map is
 kept. It is skipped, with the reason, when the runner is missing or signed out,
 when no mailbox gave an address of yours, or when your page was already written.
+Then, by the same rules, it writes the pages of projects active in the last 14
+days from the messages you typed in their sessions: one call each, about a minute
+and ~90k billed input tokens, cost stated first, one line per page, stopping at
+the weekly budget or floor. Older projects: co wiki projects write.
 
 Usage:    co wiki init [--days N] [--mine ADDRESS[,ADDRESS...]] [--name NAME] [--mail gmail|outlook]...
                        [--no-mail-archive] [--investigate | --no-investigate]
@@ -81,9 +85,11 @@ Output:   Your page's facts and where it is; one progress line per stage on stde
 Effects:  Writes pages and private files (owner-only). Reads mail bodies unless
           --no-mail-archive. Mailboxes it read are subscribed for the daily round;
           nothing is read in the background until co wiki start is approved. The
-          map costs nothing; your page is one model turn. No schedule.
+          map costs nothing; your page is one model turn, each recent project one
+          more. No schedule.
 Takes:    About 10 minutes to map 90 days of two mailboxes; saving bodies takes
-          longer; your page about 10 more. An interrupted run resumes where it stopped.
+          longer; your page about 10 more, then about a minute per recent project.
+          An interrupted run resumes where it stopped.
 
 Next:     co wiki open   (read your page), then co wiki start (keep it current)
 Back:     co wiki --help

@@ -73,6 +73,9 @@ answer was nothing. The fix was mostly subtraction — fewer lines, fewer
 questions, one fewer command — plus showing a page we had already written.
 
 After a first run there is now one next step everywhere: `co wiki open` to read
-your page, then `co wiki start` to keep it current. The people pages still start
-empty; filling them a portion each day, most important first, is the next stage
-of #1943.
+your page, then `co wiki start` to keep it current. Right after your own page,
+the same run writes the pages of the projects you worked on in the last two
+weeks, from the messages you typed in their coding sessions: cost first, one
+line per page, and it stops at the weekly budget. The people pages still start
+empty; filling them a portion each day, most recent first, is the next stage of
+#1943.

@@ -31,6 +31,14 @@ without a model), when no mailbox gave an address of yours, when your page was
 already written, or when there is no terminal (scripts and `--json`) unless
 `--investigate` is given. `--no-investigate` builds the map only.
 
+After your page, by the same rules, init writes the project pages of projects
+active in the last 14 days, from the messages you typed in their Codex and Claude
+Code sessions (the `co wiki projects write` pass, #1947). It states the cost first
+— one call per project, about a minute and ~90k billed input tokens each, plus
+the Codex week's meter — prints one line per page, and stops starting pages at
+the weekly investigation budget or the floor kept for your own work. Older
+projects wait for `co wiki projects write`.
+
 Progress is one line per stage (updated in place in a terminal); every step is
 kept in `.state/init-progress.log`. Addresses that look like yours (you wrote,
 nobody replied) are listed on one line with one command that confirms the ones
