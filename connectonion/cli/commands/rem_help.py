@@ -8,7 +8,6 @@ explanation. So each command prints its page as written, and a test holds the
 page to the command's real options.
 """
 
-import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -27,7 +26,8 @@ def pages() -> dict[str, str]:
 def page(name: str) -> str:
     """One page, spelled for the program that invoked it (a wrapper names itself)."""
     text = pages()[name]
-    program = os.environ.get("CO_REM_PROGRAM") or "co rem"
+    from ...rem.migrate import program
+    program = program()
     return text if program == "co rem" else text.replace("co rem", program)
 
 

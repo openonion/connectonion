@@ -34,6 +34,7 @@ from pathlib import Path
 from .files import RemError
 
 LABEL = "ai.openonion.co-rem"
+OLD_LABEL = "ai.openonion.co-wiki"  # jobs installed by `co wiki start`, 1.8.8-1.8.9 (#1932)
 TICK_SECONDS = 300  # a slot is served within five minutes of its time; a no-op tick is cheap
 
 
@@ -84,6 +85,26 @@ class Launchd:
         self._launchctl("bootout", f"gui/{self.uid}/{LABEL}")
         path.unlink()
         return True
+
+    def remove_old(self, root: Path) -> bool:
+        """Stop and delete any job `co wiki start` installed for this notebook.
+
+        It runs `co wiki ... sync`, which only prints the new name from 1.9.0
+        on, so left alone the daily update would fail every night (#1932).
+        """
+        removed = False
+        for path in sorted(self.agents_dir.glob(f"{OLD_LABEL}*.plist")):
+            try:
+                job = plistlib.loads(path.read_bytes())
+            except (OSError, plistlib.InvalidFileException, ValueError):
+                continue
+            arguments = job.get("ProgramArguments") or []
+            roots = [arguments[i + 1] for i, a in enumerate(arguments[:-1]) if a == "--root"]
+            if roots and Path(roots[0]).resolve() == Path(root).resolve():
+                self._launchctl("bootout", f"gui/{self.uid}/{job.get('Label', path.stem)}")
+                path.unlink()
+                removed = True
+        return removed
 
     def render(self, root: Path, config: dict) -> str:
         from .runner import co_command

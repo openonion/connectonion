@@ -119,15 +119,19 @@ synology = [
 whatsapp = [
     "neonize==0.4.3.post0",
 ]
-# Spreadsheet attachments in the Personal Wiki. An extra because nothing else
+# Spreadsheet attachments in co rem. An extra because nothing else
 # reads XLSX, and every install was carrying it (with et-xmlfile) for the few
 # who investigate mail with spreadsheets attached. Without it an XLSX
 # attachment is named, not read, and the note says how to install this.
+rem = [
+    "openpyxl>=3.1.0",
+]
+# The extra's name before 1.9.0, kept so `connectonion[wiki]` still installs.
 wiki = [
     "openpyxl>=3.1.0",
 ]
 dev = [
-    # The wiki extra, so the spreadsheet tests run rather than skip.
+    # The rem extra, so the spreadsheet tests run rather than skip.
     "openpyxl>=3.1.0",
     "pytest>=9.0.3",
     "pytest-asyncio>=0.21.0",

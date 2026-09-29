@@ -112,7 +112,6 @@ site/
 
 # Wiki (separate Git repository)
 wiki/
-!connectonion/wiki/
 
 # Docs site (separate private Git repository)
 docs-site/

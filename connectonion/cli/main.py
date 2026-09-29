@@ -1241,6 +1241,18 @@ app.add_typer(make_rem_app(_typer_app), name="rem",
               short_help="Experimental: co rem — map first, investigate next. Targets 1.9.0.")
 
 
+@app.command("wiki", hidden=True, add_help_option=False,
+             context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def wiki_renamed(ctx: typer.Context):
+    """co wiki is now co rem. Runs nothing, so a script breaks with the fix in the message (#1932). Removed in 1.10."""
+    import shlex
+    from .commands.command_tips import mark_next_step_named
+    typer.echo("co wiki is now co rem.", err=True)
+    typer.echo("Next: " + shlex.join(["co", "rem", *ctx.args]), err=True)
+    mark_next_step_named()
+    raise typer.Exit(2)
+
+
 # Skills command group
 skills_app = _typer_app(help=(
     "Your own SKILL.md files: discover them in ~/.claude, ~/.codex, ~/.cursor and ~/.kiro, copy, list "

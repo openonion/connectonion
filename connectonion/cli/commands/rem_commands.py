@@ -21,12 +21,30 @@ def _next(ctx, arguments):
     Next line follows. The root is spelled out only when it is not the default,
     which is also what makes a tip short enough to copy.
     """
-    import os
-    program = shlex.split(os.environ.get("CO_REM_PROGRAM") or "co rem")
+    from ...rem.migrate import program
+    program = shlex.split(program())
     root = ctx.obj["root"]
     default = (Path.home() / ".co/rem").expanduser().resolve()
     location = [] if root == default else ["--root", str(root)]
     return shlex.join([*program, *location, *arguments])
+
+
+def _carry_over(ctx):
+    """Bring a co wiki notebook, its schedule and wrapper variable over to co rem (#1932)."""
+    from ...rem import migrate
+    from ...rem.files import RemError
+    root = ctx.obj["root"]
+    lines = [migrate.old_program_notice()]
+    try:
+        if ctx.obj["default_root"]:
+            lines.append(migrate.move_notebook(root))
+        old = migrate.old_root() if ctx.obj["default_root"] else root
+        if root.is_dir():
+            lines.append(migrate.replace_schedule(root, old))
+    except (RemError, OSError) as error:
+        _emit(ctx, str(error), ["status"], failed=True)
+    for line in filter(None, lines):
+        typer.echo(line, err=True)
 
 
 def _absent_mail(selected, available, failed, sources, chosen_by_hand) -> dict:
@@ -139,7 +157,7 @@ def _logged(root, record, phase, call):
             run["usage"] = usage
         write_json(path, run)
         detail = f" ({processed}/{total})" if processed is not None and total is not None else ""
-        typer.echo(f"co rem investigation: {stage}{detail}", err=True)
+        typer.echo(f"Investigation: {stage}{detail}", err=True)
 
     try:
         result = call(update)
@@ -351,6 +369,7 @@ def make_rem_app(factory):
                  json_out: bool = typer.Option(False, "--json", help="Machine-readable output with next command")):
         ctx.obj = {"root": (root or Path.home() / ".co/rem").expanduser().resolve(),
                    "default_root": root is None, "json": json_out}
+        _carry_over(ctx)
         if ctx.invoked_subcommand is None:
             if ctx.obj["json"]:
                 inspect_status(ctx)
