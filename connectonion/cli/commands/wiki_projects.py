@@ -33,18 +33,35 @@ def _order_lines(rows: list[dict]) -> list[str]:
             for row in rows]
 
 
-def _refresh(root, full: bool) -> dict:
+def _refresh(root, full: bool, recent_days: int) -> dict:
     """Step 1, no model: file the user's new messages under their project pages."""
     from ...wiki.project_material import extract
     from ...wiki.service import subscriptions
     typer.echo("Wiki projects: reading your own messages in Codex and Claude Code sessions", err=True)
-    report = extract(root, subscriptions(root), full=full)
+    report = extract(root, subscriptions(root), full=full, recent_days=recent_days)
     excluded = sum(report["excluded"].values())
+    workspace = report["workspace"]
     typer.echo(f"Wiki projects: {report['messages']} new messages from {report['files_read']} session files"
-               + (f"; {excluded} typed in folders that are never projects" if excluded else "")
-               + (f"; {len(report['unmapped'])} folders with messages have no project page"
-                  if report["unmapped"] else ""), err=True)
+               + (f"; {excluded} typed in folders that are never projects" if excluded else ""), err=True)
+    if workspace["attributed"] or workspace["stayed_out"]:
+        typer.echo(f"Wiki projects: {workspace['attributed']} typed in a workspace were filed under the "
+                   f"repository they worked in ({workspace['folders']} folders); {workspace['stayed_out']} "
+                   "stayed out, their sessions touched no repository", err=True)
+    if report["created"]:
+        typer.echo(f"Wiki projects: made {_count(len(report['created']), 'project page')} for folders active "
+                   f"in the last {recent_days} days: " + ", ".join(report["created"]), err=True)
     return report
+
+
+def _count(number: int, noun: str) -> str:
+    return f"{number} {noun}{'' if number == 1 else 's'}"
+
+
+def _left_line(report: dict, recent_days: int) -> list[str]:
+    """Folders with messages and no page that were not given one: all older than the window."""
+    left = len(report["unmapped"])
+    return [f"{left} more {'folder' if left == 1 else 'folders'} with messages and no page; not created "
+            f"(older than {recent_days} days)"] if left else []
 
 
 NOTHING = "Every project page is written from all of your messages. Nothing to write."
@@ -70,15 +87,18 @@ def add_projects_app(wiki, factory, handle, logged) -> None:
         def operation(root):
             if not Notebook(root).list("projects"):
                 return NO_PAGES, ["init"]
-            report = _refresh(root, full)
+            report = _refresh(root, full, recent_days)
             rows = queue(root, recent_days=recent_days)
-            if not rows:
-                return NOTHING, ["list", "projects"]
-            cost = estimate(rows)
             if ctx.obj["json"]:
-                return {"order": rows, "estimate": cost, "unmapped": report["unmapped"]}, ["projects", "write"]
+                return ({"order": rows, "estimate": estimate(rows), "workspace": report["workspace"],
+                         "created": report["created"], "unmapped": report["unmapped"]},
+                        ["projects", "write"] if rows else ["list", "projects"])
+            if not rows:
+                return "\n".join([NOTHING, *_left_line(report, recent_days)]), ["list", "projects"]
+            cost = estimate(rows)
             text = "\n".join([f"{cost['pages']} project pages to write; {cost['recent']} active in the last "
                               f"{recent_days} days come first:", *_order_lines(rows), "",
+                              *_left_line(report, recent_days),
                               _cost_line(cost, quota.read(read_config(root))), "Nothing was spent."])
             return text, ["projects", "write"]
         handle(ctx, operation, ["projects"])
@@ -97,7 +117,7 @@ def add_projects_app(wiki, factory, handle, logged) -> None:
         def operation(root):
             if not Notebook(root).list("projects"):
                 return NO_PAGES, ["init"]
-            _refresh(root, full)
+            _refresh(root, full, recent_days)
             rows = queue(root, recent_days=recent_days)
             chosen = rows if limit == 0 else rows[:limit]
             if not chosen:

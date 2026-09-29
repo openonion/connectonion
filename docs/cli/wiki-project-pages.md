@@ -118,6 +118,30 @@ messages like any other. An older folder is listed, not given a page:
 A page made on a later, incremental run holds that run's messages; run
 `co wiki projects --full` to file its older ones too.
 
+### Measured (workspace attribution)
+
+On the owner's machine on 2026-09-30, read-only, counts only, 180 days, 1,579
+session files (8.4 s, against 7.5 s before):
+
+| | Before | After |
+|---|---|---|
+| Typed messages | 1,364 | 1,365 |
+| Filed under a project folder | 750 in 44 folders | 1,001 in 49 folders |
+| Typed in the `~/projects` workspace, reaching no page | 590 | 340 |
+| Of those, filed by the repository they worked in | — | 250, into 24 project folders (14 active in the last 14 days); 21 sessions, 8 of them split across folders |
+
+Against the owner's notebook (22 project pages, read only), 194 of the 250 land on
+5 existing pages; 30 folders have messages and no page, 16 of them active in the
+last 14 days (they would get a page) and 14 older (listed).
+
+The 340 that stay out: 312 are in 22 Codex Desktop threads that hold only
+messages — no tool call, no `turn_context` — so they name no folder by this
+rule; the other 28 are Claude Code sessions whose calls touched nothing inside a
+repository. The assistant's replies in those Codex threads do name paths
+(counted, not read: 282 of the 312 would be placed, into 10 folders), but a
+reply is not a place the session worked, so they are left out until decided
+otherwise.
+
 Each project page gets a private folder:
 
 | File | Holds |

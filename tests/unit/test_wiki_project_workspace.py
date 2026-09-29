@@ -41,8 +41,11 @@ def codex_session(path: Path, cwd: str, turns, *, session=""):
                                                   "originator": "codex_cli_rs"}}]
     for number, (text, days, calls) in enumerate(turns):
         when = ago(days)
+        # As in a real rollout, the turn's context (and the folder it runs in)
+        # comes just before the message that opens the turn.
+        moved = next((value for kind, value in calls if kind == "cwd"), cwd)
         rows.append({"timestamp": when, "type": "turn_context",
-                     "payload": {"cwd": cwd, "turn_id": f"t{number}", "workspace_roots": [cwd]}})
+                     "payload": {"cwd": moved, "turn_id": f"t{number}", "workspace_roots": [cwd]}})
         rows.append({"timestamp": when, "type": "response_item", "payload": {
             "type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}})
         for index, (kind, value) in enumerate(calls):
@@ -54,9 +57,6 @@ def codex_session(path: Path, cwd: str, turns, *, session=""):
             elif kind == "shell":
                 rows.append({"timestamp": when, "type": "response_item", "payload": {
                     "type": "function_call", "name": "shell", "call_id": call, "arguments": json.dumps(value)}})
-            elif kind == "cwd":
-                rows.append({"timestamp": when, "type": "turn_context",
-                             "payload": {"cwd": value, "turn_id": f"t{number}"}})
             elif kind == "output":
                 rows.append({"timestamp": when, "type": "response_item", "payload": {
                     "type": "custom_tool_call_output", "call_id": call, "output": value}})
@@ -161,11 +161,11 @@ def test_a_session_that_moved_between_repositories_is_split_per_message(ws):
     codex_session(ws.codex / "2026/09/28/rollout-m.jsonl", str(ws.projects), [
         ("first alpha", 3, [("exec", exec_command("cat " + ws.p("alpha/src/a.py"))),
                             ("exec", exec_command("ls " + ws.p("alpha/src")))]),
-        ("then beta", 3, [("shell", {"command": ["bash", "-lc", "git -C beta log -3"]}),
+        ("then beta", 2.9, [("shell", {"command": ["bash", "-lc", "git -C beta log -3"]}),
                           ("cwd", ws.p("beta"))]),
         # No tools in this turn: it goes where the whole session worked most (alpha: 2 calls, beta: 2 --
         # a tie, and the folder touched first wins).
-        ("thanks, that is all", 3, []),
+        ("thanks, that is all", 2.8, []),
     ])
     extract(ws.root, ws.subs)
     beta = next(r for r in ws.notebook.list("projects") if r != "projects/alpha.md")
@@ -176,9 +176,9 @@ def test_a_session_that_moved_between_repositories_is_split_per_message(ws):
 def test_a_turn_without_tools_follows_the_repository_the_session_worked_in_most(ws):
     codex_session(ws.codex / "2026/09/28/rollout-q.jsonl", str(ws.projects), [
         ("what is left to do?", 2, []),
-        ("fix gamma", 2, [("exec", exec_command("pytest", workdir=ws.p("gamma"))),
+        ("fix gamma", 1.9, [("exec", exec_command("pytest", workdir=ws.p("gamma"))),
                           ("exec", exec_command("cat " + ws.p("gamma/src/x.py")))]),
-        ("and one alpha thing", 2, [("exec", exec_command("cat " + ws.p("alpha/src/y.py")))]),
+        ("and one alpha thing", 1.8, [("exec", exec_command("cat " + ws.p("alpha/src/y.py")))]),
     ])
     extract(ws.root, ws.subs)
     gamma = next(r for r in ws.notebook.list("projects") if r.startswith("projects/gamma"))
