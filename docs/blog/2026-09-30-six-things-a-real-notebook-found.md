@@ -1,36 +1,44 @@
-# Six things a real notebook found
+# Twenty minutes to learn nothing about Tamara
 
-The 1.9.0a1 preview was tested on a copy of the owner's notebook before
-anyone else ran it: 370 people, 138 organisations, three paid investigations
-and one maintenance run. The new evidence path worked: input tokens came down
-three to eight times against the same subjects a week earlier. Six of the ten
-problems the run found were small enough to fix the same morning, and each
-one had been hiding behind something that looked like it was working.
+Tamara's page was already good. It had her role, her phone number and a
+source for each. The 1.9.0a1 acceptance run investigated her again anyway,
+on a copy of the owner's notebook, to see what the new evidence path would add.
 
-**A citation in a search query.** Tamara's page had been investigated before,
-so its handle line read `Tamara Berryman; tamara.berryman@unsw.edu.au [2]`.
-The next investigation read that line back as a handle, `[2]` and all.
-Because the text contained an `@`, it went to Gmail as an address, and Gmail
-matched 677 unrelated mails. The run took twenty minutes and read ten million
-characters, and the page came back with nothing new. A handle is now read
-without its citation and split on semicolons. Only a whole address goes to the
-server.
+It took 20.6 minutes. It gathered 10.96 million characters, wrote 977 evidence
+files and downloaded 250 attachments: event invitations, app store receipts,
+a conference newsletter. The page that came back said nothing new. It was
+reworded and renumbered, and it cost almost a million input tokens.
 
-**A rule the model obeyed too well.** The investigate Skill said to read the
-CLI reference first. Every run did, as its first action: a 12.6k-character
-file inside a turn we had just cut to 14.8k. It is now read only before a
-`co` command, which an offline run never makes.
+Outlook had found the right 50 mails, so Outlook was not the problem. Gmail
+had found 677, and the query explained why. The investigation takes its
+search terms from the page itself, from the `Handles` and `Also known as`
+lines, so that a name learned last time is searched next time. After the
+first investigation those lines read like this:
 
-**Private copies nobody deleted.** Each run's task folder kept the material
-it had been handed. Across 98 folders that was 75 MB of the owner's mail. A
-finished task now keeps its record, its candidate page and the Skill text,
-and nothing else.
+```
+- Also known as: Tamara Berryman; tamara.berryman@unsw.edu.au [2]
+```
 
-**A copy that claimed a schedule.** The copied notebook said "Running in
-background", and `doctor` said "ok schedule". The job it pointed to runs the
-original. Status now checks that the installed job runs this notebook.
+That is written for a reader: a name, an address, and a citation to the mail
+that showed them. Split on commas, it is one handle. It contains an `@`, so it
+was sent to Gmail as an address, citation and all. Gmail does not refuse a
+query like that. Inside the query's braces, which mean OR, the stray words
+became search terms of their own, and they matched almost anything.
 
-Two smaller ones: every stage records its instruction size, not just
-investigate, and a page's status line no longer lists "evidence" as a source.
-Three more fixes are in their own pull requests, and one, pages that grow
-with every maintenance pass, needs a decision about how pages should age.
+So the better a page got, the worse its next investigation became. Every
+investigated page carries citations on its identity lines, and every one of
+them would have searched this way.
+
+The fix has two parts. A handle is read without its citation and split on
+semicolons as well as commas. And only a whole, well-formed address goes to a
+mail server as an address; a name stays a name. The test is Tamara's line,
+exactly as the model wrote it.
+
+The lesson is about where inputs come from. The page is the investigation's
+output, and here it had quietly become the next investigation's input too.
+Text written for people was being parsed as if it were written for a
+machine, and nothing complained until someone read the query.
+
+The same run found five smaller problems, fixed in the same change. The most
+concrete was 75 MB of private mail copies left in finished task folders, now
+removed when a task ends.
