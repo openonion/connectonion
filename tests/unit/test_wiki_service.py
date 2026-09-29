@@ -48,6 +48,59 @@ def test_successive_correction_and_no_input_does_not_invoke_runner(wiki):
     assert status(root)["usage_today"]["input_tokens"] == 20
 
 
+def test_a_night_with_nothing_new_calls_no_model_and_leaves_no_run(wiki):
+    """Nights with nothing new each left a run in `co wiki logs` and its usage
+    count (#1846). Nothing was read and nothing was spent: nothing to record."""
+    from connectonion.wiki.service import run_logs
+    root, sessions = wiki
+    rollout(sessions / "rollout-a.jsonl", [("user", "We choose SQL")])
+    calls = []
+    runner = lambda notebook, items, config, kind="": calls.append(items) or {"usage": {"input_tokens": 10}}
+    worked = run_sync(root, runner=runner)
+    quiet = run_sync(root, runner=runner)
+    assert quiet["outcome"] == "no_change" and len(calls) == 1
+    assert [record["id"] for record in run_logs(root)] == [worked["id"]]
+
+
+def _two_projects(wiki, monkeypatch):
+    """tallyho already cites the one message typed in its folder; kite has read nothing."""
+    root, sessions = wiki
+    notebook = Notebook(root)
+    notebook.stub_project("projects/tallyho.md", "tallyho", ["/work/tallyho"])
+    notebook.stub_project("projects/kite.md", "kite", ["/work/kite"])
+    rollout(sessions / "rollout-t.jsonl", [("user", "ship it friday")], project="/work/tallyho")
+    offset = len((sessions / "rollout-t.jsonl").read_text().splitlines()[0]) + 1
+    notebook.write("projects/tallyho.md", notebook.read("projects/tallyho.md").replace(
+        "- (none yet)", f"- [1] codex:rollout-t:{offset} — 2026-09-07"))
+    turns = []
+
+    def one_turn(book, items, config, kind="", stage="maintain", maintenance_lock_held=False):
+        turns.append(next(item["record"] for item in items if item.get("role") == "page"))
+        return {"changed": [], "usage": {"input_tokens": 110_000}, "review_candidates": []}
+
+    monkeypatch.setattr("connectonion.wiki.runner.run_stage", one_turn)
+    return root, sessions, turns
+
+
+def test_a_page_already_written_from_its_material_gets_no_turn(wiki, monkeypatch):
+    """Two of three page turns in a measured batch changed nothing, at about
+    110k tokens each (#1846). The page with something new still gets its turn."""
+    root, sessions, turns = _two_projects(wiki, monkeypatch)
+    rollout(sessions / "rollout-k.jsonl", [("user", "the logo is late")], project="/work/kite")
+    record = run_sync(root)
+    assert turns == ["projects/kite.md"]
+    assert record["up_to_date"] == ["projects/tallyho.md"] and record["runner_attempts"] == 1
+
+
+def test_material_every_page_has_already_read_spends_nothing(wiki, monkeypatch):
+    root, sessions, turns = _two_projects(wiki, monkeypatch)
+    record = run_sync(root)
+    assert turns == [] and record["runner_attempts"] == 0 and record["usage"] is None
+    assert record["outcome"] == "completed" and record["up_to_date"] == ["projects/tallyho.md"]
+    assert read_json(state_path(root, "progress.json"), {})   # read, so not read again tomorrow
+    assert run_sync(root)["outcome"] == "no_change"
+
+
 def test_failure_preserves_progress_and_counts_attempt(wiki):
     root, sessions = wiki
     rollout(sessions / "rollout-a.jsonl", [("user", "private sample text")])
@@ -522,6 +575,20 @@ def test_usage_report_aggregates_raw_records_by_stage_source_and_model(tmp_path)
     assert report["by_source"]["outlook"]["items"] == 60
     assert round(report["by_source"]["outlook"]["input_tokens_per_item"]) == round(250000 / 60)
     assert report["by_model"]["gpt-5.6-luna"]["input_tokens_per_1k_chars"] == round(250000 / 120, 1)
+
+
+def test_usage_report_says_how_many_pages_the_tokens_changed(tmp_path):
+    """What a run is worth is the pages it changed; 330k tokens for one page is the
+    number #1846 was about, and it had to be worked out by hand."""
+    from connectonion.wiki.service import usage_report
+    prepare(tmp_path)
+    runs = state_path(tmp_path, "runs")
+    runs.mkdir(parents=True, exist_ok=True)
+    for name, tokens, changed in (("a", 330_000, ["projects/kite.md"]), ("b", 70_000, ["people/a.md", "people/b.md"])):
+        write_json(runs / f"run_{name}.json", {"id": f"run_{name}", "started_at": "2026-09-08T01:00:00+00:00",
+                                               "usage": {"input_tokens": tokens}, "changed": changed})
+    report = usage_report(tmp_path)
+    assert report["pages_changed"] == 3 and report["pages_changed_per_100k_input_tokens"] == 0.75
 
 
 def test_a_format_that_moved_is_reported_instead_of_looking_like_a_quiet_week(wiki):
