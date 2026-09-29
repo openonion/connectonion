@@ -76,7 +76,7 @@ fixed "what it changes" word, a `Back:` line, and every command in
 `co audit co --since base.json --review` on pages a PR changed, and reports
 without blocking, because a model's verdict varies between runs.
 
-`co wiki` keeps its own reviewed pages (#1656), which are being rewritten
+`co rem` keeps its own reviewed pages (#1656), which are being rewritten
 (#1667); `co audit co` reports their missing examples.
 
 OneNote also has a behavioral terminal journey in `tests/unit/test_onenote.py`:

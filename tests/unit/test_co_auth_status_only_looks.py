@@ -4,7 +4,7 @@
 feishu and lark. Every other word fell through to full OpenOnion
 authentication. On a fresh machine `co auth status` printed "Welcome" and
 minted a keypair and an account; `co auth logout` logged you *in*. Shipped
-text told people to run `co auth status` (the `co wiki init` recovery tip),
+text told people to run `co auth status` (the `co rem init` recovery tip),
 so the one command offered as a safe look was the one that wrote secrets.
 
 These run against the isolated HOME tests/conftest.py gives every test.

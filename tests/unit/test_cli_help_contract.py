@@ -5,8 +5,8 @@
 each page says what it changes in a fixed word, names its way back, and every
 command `co commands` lists can be reached from `co --help`.
 
-`co wiki` prints reviewed pages word for word and is held to them by
-tests/e2e/cli/test_wiki_help_contract.py; it is being rewritten (#1667).
+`co rem` prints reviewed pages word for word and is held to them by
+tests/e2e/cli/test_rem_help_contract.py; it is being rewritten (#1667).
 """
 
 import re
@@ -17,7 +17,7 @@ from connectonion.cli import audit
 
 LABELS = re.compile(r"\b(Read-only|Writes|Sends|Deletes|Removes|Creates|Changes|Charges|"
                     r"Deploys|Installs|Uploads|Publishes|Starts|Stops|Runs)\b")
-OWN_PAGES = "co wiki"
+OWN_PAGES = "co rem"
 
 
 @pytest.mark.timeout(900)

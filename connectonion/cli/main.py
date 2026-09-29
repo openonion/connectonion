@@ -1175,7 +1175,7 @@ def server_destroy(
         raise typer.Exit(1)
 
 
-# Experimental: the Personal Wiki targets 1.9.0 and its acceptance gates are
+# Experimental: co rem targets 1.9.0 and its acceptance gates are
 # open, so the command list says so wherever `co --help` is read.
 schedule_app = _typer_app(
     help="This agent's own recurring work, from .co/schedule.yaml: see it, check it, run an entry now, "
@@ -1235,10 +1235,10 @@ def schedule_resume(name: str = typer.Argument(..., help="Entry name, as co sche
     handle_resume(name)
 
 
-from .commands.wiki_commands import make_wiki_app
+from .commands.rem_commands import make_rem_app
 
-app.add_typer(make_wiki_app(_typer_app), name="wiki",
-              short_help="Experimental: Personal Wiki — map first, investigate next. Targets 1.9.0.")
+app.add_typer(make_rem_app(_typer_app), name="rem",
+              short_help="Experimental: co rem — map first, investigate next. Targets 1.9.0.")
 
 
 # Skills command group

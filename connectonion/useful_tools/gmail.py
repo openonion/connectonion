@@ -1194,14 +1194,14 @@ class Gmail(GmailMailbox):
         """Messages received in [start, end), oldest first, with ISO dates.
 
         Gmail's search takes epoch seconds for after:/before:, returns newest
-        first, and reports the Date header in RFC 2822; the wiki importer wants
+        first, and reports the Date header in RFC 2822; co rem importer wants
         the opposite of all three, so it is normalised here.
         """
         from datetime import datetime
         from email.utils import parsedate_to_datetime
         first = int(datetime.fromisoformat(start).timestamp())
         last = int(datetime.fromisoformat(end).timestamp())
-        # The wiki files the user's own mail under the person it went to, so the
+        # co rem files the user's own mail under the person it went to, so the
         # listing carries To/Cc, fetched with From in one call per message.
         page = self._get_service().users().messages().list(
             userId='me', q=f"after:{first} before:{last}", maxResults=max_results).execute(num_retries=3)
@@ -1228,7 +1228,7 @@ class Gmail(GmailMailbox):
 
         Other contacts are the people Gmail remembers because the owner wrote to
         them; they need contacts.other.readonly, and a login without it raises,
-        which the wiki treats as "no contacts" rather than a failed map.
+        which co rem treats as "no contacts" rather than a failed map.
         """
         from googleapiclient.discovery import build
         people = build('people', 'v1', credentials=self._get_service()._http.credentials, cache_discovery=False)

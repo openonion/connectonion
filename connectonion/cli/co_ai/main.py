@@ -200,7 +200,7 @@ def start_server(
 
         trust = TrustAgent("careful", invite_code=invite_code, co_dir=co_dir)
     if agent_factory is None:
-        host(create, port=port, trust=trust, co_dir=co_dir, wiki_root=Path.home() / ".co/wiki")
+        host(create, port=port, trust=trust, co_dir=co_dir, rem_root=Path.home() / ".co/rem")
         return
 
     from ...network.host.session import SessionStorage
@@ -250,5 +250,5 @@ def start_server(
         runtime.stop()
 
     host(session_agent, port=port, trust=trust, co_dir=co_dir,
-         wiki_root=Path.home() / ".co/wiki",
+         rem_root=Path.home() / ".co/rem",
          on_agent_startup=start_watches, on_agent_shutdown=stop_watches)

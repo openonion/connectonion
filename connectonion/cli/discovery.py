@@ -41,7 +41,7 @@ def summary(cmd) -> str:
     fixed width, so a summary is never a half word.
     """
     # A short_help was written to be the listing line — it is where
-    # "Experimental:" lives for wiki, discord, slack and telegram's inbox verbs — so
+    # "Experimental:" lives for co rem, discord, slack and telegram's inbox verbs — so
     # it is used whole. Cutting it at a period dropped telegram's label, and
     # falling back to the long help dropped the others: bare `co` listed
     # previews unlabelled while `co --help` labelled them.

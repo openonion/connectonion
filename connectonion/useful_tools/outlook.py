@@ -184,7 +184,7 @@ class Outlook:
 
         url = f"{self.GRAPH_API_URL}{endpoint}"
         response = httpx.request(method, url, headers=headers, **kwargs)
-        # Graph throttles per mailbox and says how long to wait. Several wiki
+        # Graph throttles per mailbox and says how long to wait. Several co rem
         # investigations reading one mailbox at once drew 429 on 2026-09-23 and
         # the run died on a request that would have succeeded seconds later.
         #
@@ -1010,7 +1010,7 @@ class Outlook:
                      newest_first: bool = False) -> list:
         """Messages received in [start, end), oldest first; the shape list_inbox returns.
 
-        The wiki importer walks a mailbox forward from a cursor, so it needs an
+        co rem importer walks a mailbox forward from a cursor, so it needs an
         ascending, date-bounded listing rather than a newest-first search — that
         is the default and why it is the default.
 
@@ -1029,7 +1029,7 @@ class Outlook:
         }
         result = self._request("GET", "/me/messages", params=params)
         rows = self._email_dicts(result.get('value', []))
-        # The wiki files the user's own mail under the person it went to, which the
+        # co rem files the user's own mail under the person it went to, which the
         # from-address cannot say; recipients are only on this listing.
         # Each recipient keeps its name ("Ody Zhou <ody@g.com>"): dropping it mapped
         # every person the owner wrote to from Outlook as a bare address (#1844).
@@ -1037,7 +1037,7 @@ class Outlook:
             row['to'] = [self._recipient(r) for r in msg.get('toRecipients', [])]
             row['cc'] = [self._recipient(r) for r in msg.get('ccRecipients', [])]
         # Ascending either way: the flag chose which messages, not their order,
-        # and every caller including the wiki importer reads them oldest first.
+        # and every caller including co rem importer reads them oldest first.
         return sorted(rows, key=lambda row: str(row.get('date', '')))
 
     @staticmethod

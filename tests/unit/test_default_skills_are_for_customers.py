@@ -8,11 +8,11 @@ EXPECTED_DEFAULTS = {
     "install-connectonion",
     "co-browser",
     "co-mail-and-drive",
-    "wiki-init",
-    "wiki-investigate",
-    "wiki-extract",
-    "wiki-maintain",
-    "wiki-abstract",
+    "rem-init",
+    "rem-investigate",
+    "rem-extract",
+    "rem-maintain",
+    "rem-abstract",
 }
 CONTRIBUTOR_SKILLS = {"commit", "review-pr", "ship-feature"}
 

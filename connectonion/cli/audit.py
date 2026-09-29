@@ -51,7 +51,7 @@ PANEL = re.compile(r"╭─ ([^─]+?) ─")
 # a heading, so its rows are not commands.
 HEADER = re.compile(r"^(\S(?:(?!\s{2})[^\n])*?):?\s*$", re.M)
 # Sections whose rows are not commands. Anything else may list commands under
-# its own heading: `co wiki` uses "Read" and "Keep it current", gh uses
+# its own heading: `co rem` uses "Read" and "Keep it current", gh uses
 # "CORE COMMANDS", co outlook's panels are "Send" and "Scheduled sends".
 NOT_COMMANDS = re.compile(r"option|argument|flag|example|environment|usage|learn more|exit code|json field|help topic", re.I)
 # argparse lists subcommands as `{init,run,list}`.

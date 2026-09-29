@@ -523,7 +523,7 @@ class TestIntegration:
 
 
 def test_relay_holds_reads_the_record_production_sends():
-    """`co wiki open --live` counts a Host reachable only through the relay as
+    """`co rem open --live` counts a Host reachable only through the relay as
     online (#1828): the relay holds its announce socket and heard it recently."""
     from datetime import datetime, timedelta, timezone
     from connectonion.network.connect import relay_holds
