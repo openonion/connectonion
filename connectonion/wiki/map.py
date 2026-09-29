@@ -349,6 +349,55 @@ def _archive_stale(notebook: Notebook, report: dict) -> list[str]:
     return sorted(moved)
 
 
+def project_groups(rows: list[dict]) -> dict:
+    """Folders (rows shaped like `scan_projects`') grouped into projects: a worktree
+    joins its repository by origin, Codex's dated scratch folders join by name."""
+    groups = {}
+    for row in rows:
+        identity = canonical_origin(row['origin']) or row['repo'] or _scratch_identity(row['path']) or row['path']
+        group = groups.setdefault(identity, {'name': Path(row['repo'] or row['path']).name,
+                                            'paths': [], 'sessions': 0, 'first': row['first'], 'last': row['last']})
+        group['paths'].append(row['path'])
+        group['sessions'] += row['sessions']
+        group['first'] = min(group['first'], row['first'])
+        group['last'] = max(group['last'], row['last'])
+    return groups
+
+
+def file_project(notebook: Notebook, identity: str, row: dict, *, refresh: bool = True) -> tuple[str, bool]:
+    """The page for one project group: the page already listing one of its paths,
+    else a new mapped stub. Returns (record, created).
+
+    One definition of how a project page is made, for the map and for
+    `project_material` (a folder with the user's messages and no page, #1943).
+    `refresh=False` only adds missing paths: the caller saw part of the project,
+    so its counts must not replace the map's.
+    """
+    from .investigate import project_paths
+    record = _record('projects', row['name'], identity)
+    existing = next((r for r in notebook.list('projects')
+                     if any(path in project_paths(notebook.read(r)) for path in row['paths'])), None)
+    record = existing or record
+    created = notebook.stub_project(record, row['name'], row['paths'], sessions=row['sessions'],
+                                    first_seen=row['first'], last_seen=row['last'])
+    # Refresh only deterministic numeric/date fields inside Paths; retain prose.
+    page = notebook.read(record)
+    section = re.search(r'(?ms)^## Paths\n(.*?)(?=^## |\Z)', page)
+    if section:
+        body = section.group(1)
+        refreshed = (('Sessions', row['sessions']), ('First seen', row['first']), ('Last seen', row['last']))
+        for label, value in refreshed if refresh else ():
+            body = re.sub(r'^- ' + label + r': (?:[0-9-]+)$', '- ' + label + ': ' + str(value), body, flags=re.M)
+        recorded_paths = set(project_paths(page))
+        for path in row['paths']:
+            if path not in recorded_paths:
+                body = '- ' + path + '\n' + body
+        updated = page[:section.start(1)] + body + page[section.end(1):]
+        if updated != page:
+            notebook.write(record, updated)
+    return record, created
+
+
 def build_map(root: Path, subscriptions: dict, clients: dict, *args, **options) -> dict:
     """Map under the lock every other writer holds.
 
@@ -508,42 +557,14 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
                               'known public mailbox domains excluded; mailbox-provider list is not exhaustive; '
                               'organization identity unverified; existing organization pages preserved')
     save()
-    groups = {}
     if progress:
         progress("scanning local projects")
     project_rows = (scan_projects(subscriptions, days, root, on_session=inventory.session)
                     if inventory else scan_projects(subscriptions, days, root))
-    for row in project_rows:
-        identity = canonical_origin(row['origin']) or row['repo'] or _scratch_identity(row['path']) or row['path']
-        group = groups.setdefault(identity, {'name': Path(row['repo'] or row['path']).name,
-                                            'paths': [], 'sessions': 0, 'first': row['first'], 'last': row['last']})
-        group['paths'].append(row['path'])
-        group['sessions'] += row['sessions']
-        group['first'] = min(group['first'], row['first'])
-        group['last'] = max(group['last'], row['last'])
-    for identity, row in groups.items():
-        from .investigate import project_paths
-        record = _record('projects', row['name'], identity)
-        existing = next((r for r in notebook.list('projects')
-                         if any(path in project_paths(notebook.read(r)) for path in row['paths'])), None)
-        record = existing or record
-        if notebook.stub_project(record, row['name'], row['paths'], sessions=row['sessions'],
-                                 first_seen=row['first'], last_seen=row['last']):
+    for identity, row in project_groups(project_rows).items():
+        record, created = file_project(notebook, identity, row)
+        if created:
             report['created'].append(record)
-        # Refresh only deterministic numeric/date fields inside Paths; retain prose.
-        page = notebook.read(record)
-        section = re.search(r'(?ms)^## Paths\n(.*?)(?=^## |\Z)', page)
-        if section:
-            body = section.group(1)
-            for label, value in (('Sessions', row['sessions']), ('First seen', row['first']), ('Last seen', row['last'])):
-                body = re.sub(r'^- ' + label + r': (?:[0-9-]+)$', '- ' + label + ': ' + str(value), body, flags=re.M)
-            recorded_paths = set(project_paths(page))
-            for path in row['paths']:
-                if path not in recorded_paths:
-                    body = '- ' + path + '\n' + body
-            updated = page[:section.start(1)] + body + page[section.end(1):]
-            if updated != page:
-                notebook.write(record, updated)
         report['projects'].append({**row, 'record': record})
     report['coverage'] += [f'{name}: {sub.get("root", "")} — ' + _session_state(sub, report['projects'])
                            for name, sub in subscriptions.items() if sub.get('kind') in ('codex', 'claude-code')]

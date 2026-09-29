@@ -10,21 +10,46 @@ It is built for a daily round that reads only what is new: an extraction after
 the first reads only session files changed since the last one, and a page
 remembers the newest message it was written from (`written_through`), so an
 update is handed only the messages after it.
+
+A message typed in a multi-repository workspace (the owner's `~/projects`: 590
+of 1,359 messages, 43%, on 2026-09-30) is filed under the repository its
+session worked in, judged from the paths its tool calls named. A folder with
+messages and no page gets the map's page when it was active recently.
 """
 
 from __future__ import annotations
 
+import collections
 import json
+import os
+import re
+from bisect import bisect_right
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .files import SECRET_SHAPES, Notebook, WikiError, atomic_write, read_json, state_path, write_json
+from .files import (SECRET_SHAPES, Notebook, WikiError, atomic_write, maintenance_lock, read_json, state_path,
+                    write_json)
 from .investigate import project_paths
 from .scan import project_exclusion
 from .source import KINDS, SKIPPED, UNFAMILIAR, timestamp
 
 # The widest window a coding source may read (service.MAX_LOOKBACK_DAYS).
 LOOKBACK_DAYS = 180
+# A folder with messages and no page gets one if it was active this recently (#1943).
+RECENT_DAYS = 14
+# project_exclusion's word for ~/projects: a folder of repositories, not one.
+CONTAINER = "multi-repository workspace container"
+# A path a tool call names: absolute (or ~/), or the target of `cd`, `git -C`, `workdir`.
+_STOP = r"\s'\"`;|&<>(){}\[\],:\\"
+ABSOLUTE = re.compile(rf"(?<![\w.~/-])(~?/[^{_STOP}]+)")
+MOVED = re.compile(rf"(?:\bcd|\bgit\s+-C|\bworkdir\\?[\"']?\s*[:=])\s*\\?[\"']?([^{_STOP}]+)")
+# Claude Code tool inputs that name a path. Never `content`/`new_string`: the
+# text an edit writes is not a place the session worked.
+CLAUDE_PATH_KEYS = ("file_path", "path", "notebook_path", "command", "cwd", "workdir")
+# Lines worth parsing for evidence; every other line is skipped unread.
+# (`"function_call_output"` does not contain `_call"`: outputs never count.)
+CALL_MARKERS = {"claude-code": (b'"tool_use"',), "codex": (b'_call"', b'"turn_context"')}
 # A line still being written at the last extraction carries a time before it;
 # re-reading an hour is free, because a message's id makes it count once.
 OVERLAP = timedelta(hours=1)
@@ -44,13 +69,18 @@ def _private_dir(path: Path) -> Path:
     return path
 
 
-def session_messages(subscriptions: dict, *, since: datetime, wiki_root: Path | None = None) -> tuple[list[dict], dict]:
+def session_messages(subscriptions: dict, *, since: datetime, wiki_root: Path | None = None,
+                     folders: dict | None = None) -> tuple[list[dict], dict]:
     """Every message the user typed after `since`, with the folder it was typed in.
 
-    Returns (messages, counts). Counts say what was skipped and why, never what
-    was said: excluded folders by reason, harness blocks, unfamiliar shapes.
+    A message typed in a workspace container carries the project folder its
+    session worked in as `cwd`, and the container as `typed_in`; `folders`
+    (page_folders) are project folders too. Returns (messages, counts). Counts
+    say what was skipped and why, never what was said: excluded folders by
+    reason, harness blocks, unfamiliar shapes, messages attributed.
     """
-    messages, counts = [], {"files": 0, "harness": 0, "unfamiliar": 0, "excluded": {}}
+    messages, counts = [], {"files": 0, "harness": 0, "unfamiliar": 0, "excluded": {}, "attributed": 0}
+    owner = _Owners(folders or {}, wiki_root)
     for name, sub in subscriptions.items():
         kind = sub.get("kind")
         if kind not in KINDS or sub.get("enabled") is False:
@@ -63,12 +93,12 @@ def session_messages(subscriptions: dict, *, since: datetime, wiki_root: Path | 
             if path.is_symlink() or datetime.fromtimestamp(path.stat().st_mtime, timezone.utc) < since:
                 continue  # messages are appended with their own time: an older file holds none newer
             counts["files"] += 1
-            messages += _file_messages(path, kind, parse, read_meta, since, wiki_root, counts)
+            messages += _file_messages(path, kind, parse, read_meta, since, wiki_root, counts, owner)
     return sorted(messages, key=lambda m: (m["timestamp"], m["source"])), counts
 
 
-def _file_messages(path, kind, parse, read_meta, since, wiki_root, counts) -> list[dict]:
-    found = []
+def _file_messages(path, kind, parse, read_meta, since, wiki_root, counts, owner) -> list[dict]:
+    found, turns, held = [], [], []
     with path.open("rb") as source:
         first = source.readline(1_000_000)
         try:
@@ -92,19 +122,138 @@ def _file_messages(path, kind, parse, read_meta, since, wiki_root, counts) -> li
                 continue
             if not item or item.get("role") != "user":
                 continue
+            turns.append(at)  # every typed message opens a turn, wherever it was typed
             cwd = item.get("cwd") or meta.get("cwd") or ""
             why = "no folder recorded" if not cwd else project_exclusion(Path(cwd))
             if not why and wiki_root and Path(cwd).resolve().is_relative_to(wiki_root.resolve()):
                 why = "the notebook itself"
-            if why:
-                counts["excluded"][why] = counts["excluded"].get(why, 0) + 1
-                continue
             session = item.get("session") or meta.get("id") or path.stem
-            found.append({"source": f"{kind}:{session}:{at}", "tool": kind,
-                          # One spelling, so times from both tools compare as text.
-                          "timestamp": timestamp(item["timestamp"]).isoformat(),
-                          "cwd": cwd, "text": SECRET_SHAPES.sub(REDACTED, item["text"])})
+            message = {"source": f"{kind}:{session}:{at}", "tool": kind,
+                       # One spelling, so times from both tools compare as text.
+                       "timestamp": timestamp(item["timestamp"]).isoformat(),
+                       "cwd": cwd, "text": SECRET_SHAPES.sub(REDACTED, item["text"])}
+            if why == CONTAINER:
+                held.append((at, message))
+            elif why:
+                counts["excluded"][why] = counts["excluded"].get(why, 0) + 1
+            else:
+                found.append(message)
+    return found + _attributed(path, kind, held, turns, owner, counts)
+
+
+def _attributed(path, kind, held, turns, owner, counts) -> list[dict]:
+    """Messages typed in a workspace, each moved to the project folder its session worked in."""
+    if not held:
+        return []
+    container = held[0][1]["cwd"]
+    chosen = _choose(_evidence(path, kind, container, owner), turns)
+    found = []
+    for at, message in held:
+        folder = chosen(at)
+        if folder:
+            counts["attributed"] += 1
+            found.append({**message, "cwd": folder, "typed_in": message["cwd"]})
+        else:
+            counts["excluded"][CONTAINER] = counts["excluded"].get(CONTAINER, 0) + 1
     return found
+
+
+def _choose(calls: list[tuple[int, set, bool]], turns: list[int]):
+    """The folder a message's own turn touched most, else the session's; the first touched wins a tie."""
+    session, per_turn, first = collections.Counter(), collections.defaultdict(collections.Counter), {}
+    for at, folders, ahead in calls:
+        # A Codex turn_context comes just before the message whose turn it opens.
+        turn = bisect_right(turns, at) - 1 + ahead
+        for folder in sorted(folders):
+            first.setdefault(folder, len(first))
+            session[folder] += 1
+            if 0 <= turn < len(turns):
+                per_turn[turns[turn]][folder] += 1
+
+    def most(counter):
+        return max(counter, key=lambda folder: (counter[folder], -first[folder])) if counter else None
+    return lambda at: most(per_turn.get(at, {})) or most(session)
+
+
+def _evidence(path: Path, kind: str, container: str, owner) -> list[tuple[int, set, bool]]:
+    """Every tool call and change of folder in one session file: (offset, project folders, opens next turn).
+
+    Only the calls, never their output: a path named in output is not a place
+    the session worked. One call counts once per folder, however often it names it.
+    """
+    calls, here = [], container
+    markers = CALL_MARKERS[kind]
+    with path.open("rb") as source:
+        offset = 0
+        for line in source:
+            at, offset = offset, offset + len(line)
+            if not any(marker in line for marker in markers):
+                continue
+            try:
+                row = json.loads(line)
+            except (ValueError, UnicodeError):
+                continue
+            named = _named(row, kind, here) if isinstance(row, dict) else None
+            if not named:
+                continue
+            texts, here, ahead = named
+            folders = {owner(p, container) for text in texts for p in _paths(text, here)} - {None}
+            if folders:
+                calls.append((at, folders, ahead))
+    return calls
+
+
+def _named(row: dict, kind: str, here: str):
+    """(texts that name paths, the folder the call ran in, whether it opens the next turn), or None."""
+    if kind == "claude-code":
+        content = (row.get("message") or {}).get("content") if isinstance(row.get("message"), dict) else None
+        uses = [part["input"] for part in content if isinstance(part, dict) and part.get("type") == "tool_use"
+                and isinstance(part.get("input"), dict)] if isinstance(content, list) else []
+        if not uses:
+            return None
+        cwd = row.get("cwd") if isinstance(row.get("cwd"), str) and row.get("cwd") else here
+        return [cwd] + [value for use in uses for key, value in use.items()
+                        if key in CLAUDE_PATH_KEYS and isinstance(value, str)], cwd, False
+    payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+    if row.get("type") == "turn_context":
+        cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else ""
+        return ([cwd] if cwd else []), cwd or here, True
+    if row.get("type") != "response_item":
+        return None
+    value = {"function_call": payload.get("arguments"), "custom_tool_call": payload.get("input"),
+             "local_shell_call": payload.get("action")}.get(payload.get("type"))
+    if value is None:
+        return None
+    return [value if isinstance(value, str) else json.dumps(value)], here, False
+
+
+def _paths(text: str, here: str) -> set[str]:
+    """Absolute paths named in a call, and `cd` / `git -C` / `workdir` targets resolved against `here`."""
+    named = {m.group(1) for m in ABSOLUTE.finditer(text)}
+    named |= {os.path.join(here, os.path.expanduser(m.group(1))) for m in MOVED.finditer(text)}
+    return {os.path.normpath(os.path.expanduser(p)) for p in named if len(p) < 4096}
+
+
+class _Owners:
+    """A path's deepest project folder inside a workspace: a page's folder, or one with its own `.git`."""
+
+    def __init__(self, folders: dict, wiki_root: Path | None):
+        self.folders, self.cache = folders, {}
+        self.wiki = str(wiki_root.resolve()) if wiki_root else ""
+
+    def __call__(self, path: str, container: str) -> str | None:
+        if not path.startswith(container.rstrip("/") + "/"):
+            return None  # the workspace itself, or outside it: no evidence
+        if path not in self.cache:
+            if path in self.folders or os.path.exists(os.path.join(path, ".git")):
+                self.cache[path] = path if self._usable(path) else None
+            else:
+                self.cache[path] = self(os.path.dirname(path), container)
+        return self.cache[path]
+
+    def _usable(self, folder: str) -> bool:
+        inside_wiki = self.wiki and (folder == self.wiki or folder.startswith(self.wiki + "/"))
+        return not inside_wiki and not project_exclusion(Path(folder))
 
 
 def page_folders(notebook: Notebook) -> dict[str, str]:
@@ -160,12 +309,16 @@ def _keep_newest(messages: list[dict], cap: int) -> tuple[list[dict], int]:
 
 
 def extract(root: Path, subscriptions: dict, *, since: datetime | None = None, full: bool = False,
-            days: int = LOOKBACK_DAYS, now: datetime | None = None) -> dict:
+            days: int = LOOKBACK_DAYS, now: datetime | None = None, recent_days: int = RECENT_DAYS,
+            lock_held: bool = False) -> dict:
     """Refresh every project page's material; return counts, never message text.
 
     With no `since`, the first extraction reads `days` back and every later one
     reads from the previous extraction (less OVERLAP). `full` reads the whole
     window again. New messages are merged by id, so a re-read adds nothing twice.
+    A folder with messages and no page gets the map's page if its newest message
+    is within `recent_days`; older ones stay listed as `unmapped`. `lock_held`
+    says the caller already holds the maintenance lock the new pages need.
     """
     now = now or datetime.now(timezone.utc)
     notebook = Notebook(root)
@@ -174,26 +327,72 @@ def extract(root: Path, subscriptions: dict, *, since: datetime | None = None, f
     if since is None:
         previous = index.get("extracted_at")
         since = (timestamp(previous) - OVERLAP) if previous and not full else now - timedelta(days=days)
-    messages, counts = session_messages(subscriptions, since=since, wiki_root=root)
     folders = page_folders(notebook)
-    by_page, unmapped = {}, {}
+    messages, counts = session_messages(subscriptions, since=since, wiki_root=root, folders=folders)
+    created = _new_pages(root, _unmapped(messages, folders), now - timedelta(days=recent_days), lock_held)
+    if created:
+        folders = page_folders(notebook)
+    by_page = {}
     for message in messages:
         record = page_for(message["cwd"], folders)
         if record:
             by_page.setdefault(record, []).append(message)
-        else:
-            row = unmapped.setdefault(message["cwd"], {"path": message["cwd"], "messages": 0, "last": ""})
-            row["messages"] += 1
-            row["last"] = max(row["last"], message["timestamp"])
     pages = []
     for record in sorted(set(folders.values())):
         pages.append(_merge(root, record, by_page.get(record, []), full=full, now=now))
-    index = {"extracted_at": now.isoformat(), "since": since.isoformat(),
-             "unmapped": sorted(unmapped.values(), key=lambda r: r["last"], reverse=True)}
+    moved = [m for m in messages if m.get("typed_in")]
+    workspace = {"attributed": len(moved), "folders": len({m["cwd"] for m in moved}),
+                 "stayed_out": counts["excluded"].get(CONTAINER, 0)}
+    index = {"extracted_at": now.isoformat(), "since": since.isoformat(), "created": created,
+             "workspace": workspace, "unmapped": _unmapped(messages, folders)}
     write_json(base / "index.json", index)
     return {"since": since.isoformat(), "files_read": counts["files"], "messages": len(messages),
-            "pages": pages, "unmapped": index["unmapped"], "excluded": counts["excluded"],
-            "harness_blocks_skipped": counts["harness"], "unfamiliar_skipped": counts["unfamiliar"]}
+            "pages": pages, "created": created, "workspace": workspace, "unmapped": index["unmapped"],
+            "excluded": counts["excluded"], "harness_blocks_skipped": counts["harness"],
+            "unfamiliar_skipped": counts["unfamiliar"]}
+
+
+def _unmapped(messages: list[dict], folders: dict) -> list[dict]:
+    """Folders with messages and no page, most recently active first."""
+    rows = {}
+    for message in messages:
+        if page_for(message["cwd"], folders):
+            continue
+        row = rows.setdefault(message["cwd"], {"path": message["cwd"], "messages": 0, "sessions": set(),
+                                               "first": message["timestamp"], "last": ""})
+        row["messages"] += 1
+        row["sessions"].add(message["source"].rsplit(":", 1)[0])
+        row["first"] = min(row["first"], message["timestamp"])
+        row["last"] = max(row["last"], message["timestamp"])
+    return [{**row, "sessions": len(row["sessions"])}
+            for row in sorted(rows.values(), key=lambda r: r["last"], reverse=True)]
+
+
+def _new_pages(root: Path, unmapped: list[dict], cutoff: datetime, lock_held: bool) -> list[str]:
+    """The map's page for each folder active since `cutoff` that has none; returns the records made.
+
+    Made by the map's own code (`map.project_groups`, `map.file_project`), so a
+    page is the stub, the record name and the worktree-joins-its-repository
+    grouping `co wiki init` would have given it.
+    """
+    recent = [row for row in unmapped if timestamp(row["last"]) >= cutoff]
+    if not recent:
+        return []
+    from .map import file_project, project_groups
+    from .scan import _repo_identity
+    rows = []
+    for row in recent:
+        repo = _repo_identity(Path(row["path"]))
+        rows.append({"path": row["path"], "sessions": row["sessions"], "first": row["first"][:10],
+                     "last": row["last"][:10], "repo": repo.get("toplevel", ""), "origin": repo.get("origin", "")})
+    created = []
+    with nullcontext() if lock_held else maintenance_lock(root, wait=60):
+        notebook = Notebook(root)
+        for identity, group in project_groups(rows).items():
+            record, made = file_project(notebook, identity, group, refresh=False)
+            if made:
+                created.append(record)
+    return created
 
 
 def _merge(root: Path, record: str, new: list[dict], *, full: bool, now: datetime) -> dict:
