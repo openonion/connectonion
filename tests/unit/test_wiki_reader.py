@@ -60,12 +60,14 @@ def test_write_reader_lands_outside_the_notebook_and_leaves_notes_untouched(tmp_
 
 def test_write_reader_supports_windows_without_posix_flags_or_modes(tmp_path, monkeypatch):
     monkeypatch.setattr(reader.sys, "platform", "win32")
-    monkeypatch.delattr(reader.os, "O_NOFOLLOW", raising=False)
-    monkeypatch.setattr(reader.os, "chmod", lambda *args: pytest.fail("chmod called"))
+    opened = []
+    monkeypatch.setattr(reader, "_open_windows_snapshot", lambda path: opened.append(path) or os.open(
+        path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600))
 
     page = write_reader(tmp_path)
 
     assert page.is_file()
+    assert opened == [page]
 
 
 def test_write_reader_refuses_to_follow_a_planted_symlink(tmp_path, monkeypatch):

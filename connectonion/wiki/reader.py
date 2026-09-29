@@ -76,17 +76,73 @@ def reader_path(root: Path) -> Path:
     return Path(tempfile.gettempdir()) / f"co-wiki-{digest}.html"
 
 
+def _open_windows_snapshot(path: Path) -> int:
+    """Open the snapshot itself, never the target of a reparse point."""
+    import ctypes
+    import errno
+    import msvcrt
+    from ctypes import wintypes
+
+    class FileInformation(ctypes.Structure):
+        _fields_ = [("dwFileAttributes", wintypes.DWORD), ("ftCreationTime", wintypes.FILETIME),
+                    ("ftLastAccessTime", wintypes.FILETIME), ("ftLastWriteTime", wintypes.FILETIME),
+                    ("dwVolumeSerialNumber", wintypes.DWORD), ("nFileSizeHigh", wintypes.DWORD),
+                    ("nFileSizeLow", wintypes.DWORD), ("nNumberOfLinks", wintypes.DWORD),
+                    ("nFileIndexHigh", wintypes.DWORD), ("nFileIndexLow", wintypes.DWORD)]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = kernel32.CreateFileW
+    create.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+                       wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    create.restype = wintypes.HANDLE
+    information = kernel32.GetFileInformationByHandle
+    information.argtypes = [wintypes.HANDLE, ctypes.POINTER(FileInformation)]
+    information.restype = wintypes.BOOL
+    rewind = kernel32.SetFilePointerEx
+    rewind.argtypes = [wintypes.HANDLE, ctypes.c_longlong, wintypes.LPVOID, wintypes.DWORD]
+    rewind.restype = wintypes.BOOL
+    truncate = kernel32.SetEndOfFile
+    truncate.argtypes = [wintypes.HANDLE]
+    truncate.restype = wintypes.BOOL
+    close = kernel32.CloseHandle
+    close.argtypes = [wintypes.HANDLE]
+    close.restype = wintypes.BOOL
+
+    generic_write, open_always, file_attribute_normal = 0x40000000, 4, 0x80
+    file_flag_open_reparse_point, file_attribute_reparse_point = 0x00200000, 0x400
+    invalid_handle = ctypes.c_void_p(-1).value
+    handle = create(str(path), generic_write, 0, None, open_always,
+                    file_attribute_normal | file_flag_open_reparse_point, None)
+    if handle == invalid_handle:
+        raise OSError(ctypes.get_last_error(), "CreateFileW failed", path)
+    try:
+        details = FileInformation()
+        if not information(handle, ctypes.byref(details)):
+            raise OSError(ctypes.get_last_error(), "GetFileInformationByHandle failed", path)
+        if details.dwFileAttributes & file_attribute_reparse_point:
+            raise OSError(errno.ELOOP, "refusing to write through a reparse point", path)
+        if not rewind(handle, 0, None, 0) or not truncate(handle):
+            raise OSError(ctypes.get_last_error(), "could not truncate snapshot", path)
+        fd = msvcrt.open_osfhandle(handle, os.O_WRONLY | os.O_BINARY)
+        handle = None  # ownership moved to the CRT file descriptor
+        return fd
+    finally:
+        if handle is not None:
+            close(handle)
+
+
 def write_reader(root: Path) -> Path:
     page = render(root)
     path = reader_path(root)
     # The name is predictable; refuse to write through a link someone planted there.
-    no_follow = getattr(os, "O_NOFOLLOW", 0)
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | no_follow
-    fd = os.open(path, flags, 0o600)
+    if sys.platform == "win32":
+        fd = _open_windows_snapshot(path)
+    else:
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW
+        fd = os.open(path, flags, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as output:
         output.write(page)
-    # Windows does not offer POSIX file modes; on POSIX, a failed chmod must
-    # still be visible rather than silently weakening the private snapshot.
+    # Windows ACLs, not POSIX file modes, protect this temporary snapshot.
     if sys.platform != "win32":
         os.chmod(path, 0o600)
     return path
