@@ -1,5 +1,74 @@
 """Plain, pipe-friendly Wiki output. JSON serialization stays in the command layer."""
 
+import os
+import re
+import shutil
+import sys
+from datetime import datetime
+
+
+class StageProgress:
+    """init's progress: one line per stage, not one per step (#1943).
+
+    The owner's own 90-day init printed 15,498 lines -- a `listed gmail mail
+    DATE to DATE` for every seven-day window and a `saving mail bodies` every 25
+    messages -- and the summary scrolled away under them. A terminal now sees
+    each stage as one line rewritten in place; a pipe or a log sees the finished
+    line of each stage once. Every step still goes to `log`, a file, for anyone
+    diagnosing a slow or partial run.
+    """
+
+    def __init__(self, stream=None, log=None, quiet=False):
+        self.stream = stream or sys.stderr
+        self.tty = bool(getattr(self.stream, "isatty", lambda: False)())
+        self.quiet, self.log = quiet, log
+        self.stage, self.line, self.listed = None, "", {}
+        if log:
+            # Owner-only like the rest of .state; replaced on every run.
+            os.close(os.open(log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600))
+
+    def __call__(self, message, count=None):
+        if self.log:
+            with open(self.log, "a", encoding="utf-8") as handle:
+                stamp = datetime.now().isoformat(timespec="seconds")
+                handle.write(f"{stamp} {message}" + ("" if count is None else f": {count}") + "\n")
+        stage, text = self._describe(message, count)
+        if stage != self.stage:
+            self._finish()
+            self.stage = stage
+        self.line = "Wiki init: " + text
+        if self.tty and not self.quiet:
+            width = shutil.get_terminal_size((100, 20)).columns - 1
+            self.stream.write("\r\033[K" + self.line[:width])
+            self.stream.flush()
+
+    def _describe(self, message, count):
+        mail = re.match(r"(listed|scanning|scanned) (\w+) mail", message)
+        if mail:
+            verb, kind = mail.groups()
+            if verb == "listed":
+                self.listed[kind] = self.listed.get(kind, 0) + (count or 0)
+                end = re.search(r" to (\d{4}-\d{2}-\d{2})", message)
+                return kind, (f"{kind}: listing mail, {self.listed[kind]:,} so far"
+                              + (f" (to {end.group(1)})" if end else ""))
+            if verb == "scanning":
+                return kind, f"{kind}: listing mail..."
+            return kind, f"{kind}: {self.listed.get(kind, 0):,} messages listed, {count or 0:,} correspondents"
+        stage = ("mail bodies" if message.startswith("saving mail bodies") else
+                 "skills" if "skills" in message else "projects" if "project" in message else message)
+        if count is None:
+            return stage, message + "..."
+        return stage, f"{message}: {count:,}" if isinstance(count, int) else f"{message}: {count}"
+
+    def _finish(self):
+        if self.stage is not None and not self.quiet:
+            self.stream.write("\n" if self.tty else self.line + "\n")
+            self.stream.flush()
+
+    def close(self):
+        self._finish()
+        self.stage = None
+
 EMPTY = {
     'investigate': 'No pages available to investigate. Run init to build the map first.',
     'list': 'No pages found. Run init to build the map.',
@@ -77,10 +146,13 @@ def render(value, command: str, *, failed: bool = False) -> str:
                                   ('projects', 'Projects'))),
             f"Skills: {skill_names} names ({skill_count} installed copies)",
             f"New pages: {len(value.get('created') or []) + skills_created}",
-            'Investigation: not started',
             'Detailed map: .state/map.json inside this Wiki root (or rerun with --json).',
             *(f"{error.get('source', 'source')}: {error.get('error', 'unavailable')}"
               for error in value.get('errors') or []),
+            # The one page with value before any model runs (#1943): print it.
+            *(['', f"Your page: {owner['title']}", *(f"  {fact}" for fact in owner['facts']),
+               f"  {owner['path']}"] if (owner := value.get('owner_page')) else []),
+            *([''] if value.get('confirm_own_addresses') else []),
             *(value.get('confirm_own_addresses') or []),
             *(value.get('tips') or []),
             *([value['people_setup']] if value.get('people_setup') else []),
@@ -109,9 +181,12 @@ def guide(next_command) -> str:
     """One workflow shared by the overview and --help, with root-aware commands."""
     paragraphs = [
         "Wiki — map first, investigate next",
-        "First run: Build the map with " + next_command(["init"]) +
-        ". This creates People, Organizations, Projects and Skills from templates and source metadata. "
-        "It does not investigate or start background work.",
+        "First run: " + next_command(["init"]) +
+        ". A script (no model) creates People, Organizations, Projects and Skills from templates and "
+        "source metadata and prints your own page; then, in a terminal, it writes your own page with one "
+        "model turn, after saying what it will spend (--no-investigate skips that). It starts no background "
+        "work. Then read it with " + next_command(["open"]) + " and keep it current with " +
+        next_command(["start"]) + ".",
         "Choose a page: Run " + next_command(["investigate"]) +
         " without arguments to list your actual pages; no model runs. Copy its Next command to investigate one page. "
         "Do not invent page paths from examples. An exact title or email may select one unique page; "

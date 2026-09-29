@@ -407,7 +407,8 @@ def test_init_builds_all_maps_without_model_or_investigation(tmp_path, monkeypat
     assert (tmp_path / '.state/source-inventory.jsonl').is_file()
     plain = invoke(tmp_path, 'init', '--skills-dir', str(empty))
     assert plain.exit_code == 0, plain.output
-    assert 'Wiki init: mapping installed skills...' in plain.output
+    # One finished line per stage (#1943), not every step.
+    assert 'Wiki init: mapped installed skills: 0' in plain.output
     assert 'Wiki init: mapped projects: 0' in plain.output
 
 
@@ -511,8 +512,8 @@ def test_init_asks_whether_a_write_only_address_is_the_owner_s_own(tmp_path, mon
 
     plain = invoke(root, 'init', '--skills-dir', str(empty))
     assert plain.exit_code == 0, plain.output
-    assert 'Wiki init: mapping installed skills' in plain.output
-    assert 'Wiki init: scanning local projects' in plain.output
+    assert 'Wiki init: mapped installed skills' in plain.output
+    assert 'Wiki init: mapped projects' in plain.output
     assert 'aaronplus1996@gmail.com' in Text.from_ansi(plain.output).plain
 
 
@@ -547,7 +548,7 @@ def test_wiki_overview_explains_lifecycle_without_initializing(tmp_path):
     root = tmp_path / 'new wiki'
     result = invoke(root)
     assert result.exit_code == 0, result.output
-    for text in ("Build the notebook's frame", 'investigate', 'sync', '--json', '--help'):
+    for text in ('Build the notebook from', 'investigate', 'sync', '--json', '--help'):
         assert text in result.output
     assert result.output.rstrip().endswith(' init')
     assert not root.exists()

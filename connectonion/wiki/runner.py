@@ -96,6 +96,40 @@ def preflight() -> list[str]:
     return co_command()
 
 
+INSTALL = {"codex": "npm install -g @openai/codex",
+           "claude-code": "npm install -g @anthropic-ai/claude-code"}
+
+# Whose money a run spends, said before init starts the owner's page (#1943).
+PLAN = {"codex": "on your own Codex plan (your ChatGPT sign-in), not ConnectOnion credits",
+        "claude-code": "on your own Claude Code plan, not ConnectOnion credits",
+        "coai": "on your ConnectOnion credits"}
+
+
+def ready(config: dict) -> tuple[str, str]:
+    """(problem, fix) for the configured runner, or ("", "") when it can run.
+
+    Checked with no model and no subprocess: the binary on PATH (or its
+    CODEX_CMD / CLAUDE_CODE_CMD override) and, for Codex, the sign-in file the
+    quota meter reads. A missing or signed-out Codex used to surface only when
+    the first investigation failed, ten minutes into a first run (#1943).
+    Claude Code keeps its login in the system keychain, so only its binary is
+    checked; ConnectOnion's own loop needs neither.
+    """
+    runner = config.get("runner")
+    if runner == "codex":
+        from ..useful_tools.codex import _base_command
+        from .quota import _codex_auth
+        if not _base_command():
+            return "Codex is not installed", INSTALL["codex"]
+        if not _codex_auth().is_file():
+            return "Codex is not signed in", "codex login"
+    elif runner == "claude-code":
+        from ..useful_tools.claude_code import _base_command
+        if not _base_command():
+            return "Claude Code is not installed", INSTALL["claude-code"]
+    return "", ""
+
+
 # What harness_flags grants, in words, for `co wiki start`'s consent summary:
 # approving start is approving runs nobody watches, so say what they may do.
 CONFINEMENT = {
