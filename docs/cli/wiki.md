@@ -13,12 +13,33 @@ current CI blockers and remaining work.
 ## Start here
 
 ```bash
-co wiki                      # Read the guide and local status; does not initialize
-co wiki init                 # Build People, Organizations, Projects and Skills maps
-co wiki investigate          # List your actual pages; does not run a model
+co wiki init                 # Build the map (no model), show your own page, then write it (one model turn)
+co wiki open                 # Read your page
+co wiki start                # Keep it current: approve sources, turn on the daily round
 ```
 
-Copy the `Next:` command printed by `investigate` to investigate one existing
+The first run is one command (#1943). `init` is a script: it maps 90 days of
+mail and your local Codex / Claude Code sessions, saves the private mail
+material, and prints your own page's facts — who you write to most, how much
+mail, which projects you have been coding in — with the page's path, within the
+first minutes. Then, in a terminal, it writes your own page by itself (the
+bounded `investigate me --quick` pass). Before it spends anything it says which
+runner and model, that it runs on your own plan, and roughly how long; Ctrl-C
+stops it and the map is kept. It skips that step, with a one-line reason, when
+the runner is not installed or not signed in (checked before the map starts,
+without a model), when no mailbox gave an address of yours, when your page was
+already written, or when there is no terminal (scripts and `--json`) unless
+`--investigate` is given. `--no-investigate` builds the map only.
+
+Progress is one line per stage (updated in place in a terminal); every step is
+kept in `.state/init-progress.log`. Addresses that look like yours (you wrote,
+nobody replied) are listed on one line with one command that confirms the ones
+you keep: `co wiki init --mine a@example.org,b@example.org`. Mailboxes init read
+are subscribed, so `co wiki start`'s summary lists them as sources to read; start
+still asks before anything is read in the background.
+
+To fill other pages, `co wiki investigate` lists what is left, by category, and
+runs no model. Copy the `Next:` command printed by `investigate` to investigate one existing
 page. You can also supply an exact title or email when it identifies one page,
 for example `co wiki investigate 'Ody'` if that person exists in your notebook.
 Ambiguous names list the matching paths and do not start a model. Example page
@@ -54,18 +75,18 @@ Piping human output does not hide the next step. Grouped help covers:
 
 | Task | Commands |
 |---|---|
-| Map and investigate | `init`, `investigate`, `unfinished`, `map-skills`, `scan`, `stub` |
-| Browse | `open`, `list`, `show`, `search`, `people`, `status` |
-| Update and review | `sync`, `daily`, `capture`, `reflect`, `reflections`, `propose`, `review`, `abstract` |
-| Sources and background | `subscriptions`, `subscribe`, `unsubscribe`, `start`, `stop` |
-| Settings and diagnostics | `route`, `logs`, `usage`, `doctor`, `config`, `config set` |
+| Map and investigate | `init`, `investigate`, `map-skills`, `scan`, `stub` |
+| Browse | `open`, `list`, `show`, `search`, `status` |
+| Update and review | `sync`, `capture`, `reflect`, `reflections`, `propose`, `review`, `abstract` |
+| Sources and background | `sources`, `sources add`, `sources remove`, `start`, `stop` |
+| Settings and diagnostics | `config`, `config set`, `logs`, `doctor` |
 
 `start` explicitly authorizes collection and installs background maintenance
 plus at most one unfinished-page investigation per local day when the day's
 call budget allows;
 `init` does neither. A mapped page is not an investigated or quality-approved page.
-For an initial trial, `co wiki init --days 5` preserves the same five-day
-window in its suggested next command. `investigate me --quick` samples recent
+For an initial trial, `co wiki init --days 5` investigates your page over the same
+five-day window. `investigate me --quick` samples recent
 evidence, takes one synthesis turn, and marks its coverage as partial. A full
 owner investigation can read substantially more material and cost much more.
 
@@ -165,7 +186,7 @@ Every command returns a next command, including in JSON and through a pipe.
 
 | Command | Behavior |
 |---|---|
-| `co wiki init` | Run wiki-init: discover accounts/local sources, build and rank People/Project/Skills pages; investigation is a separate follow-up. |
+| `co wiki init` | Discover accounts and local sources, build People/Organizations/Projects/Skills pages with no model, print your own page's facts, then (in a terminal) write your own page with one model turn. `--no-investigate` stops after the map. |
 | `co wiki scan people --days 150 --min-mails 1` | Enumerate correspondent signals from Gmail/Outlook; no model. Repeat `--mine <address>` for own addresses. |
 | `co wiki scan orgs --days 180 --min-people 2` | List work domains that two or more people write from — where an organisation page earns its place. No model. |
 | `co wiki scan projects --days 150` | Enumerate session working directories and local Git repository identities; no model. |
@@ -417,7 +438,8 @@ verified changes stay unassessed until actual artifacts are checked.
 ### 1.8.7 integration update
 
 `co wiki --root '<root>' init --days 150` now builds people, projects and installed
-skill maps deterministically. It invokes no model and performs no investigation.
+skill maps deterministically. The map invokes no model. (Since #1943 init then
+writes your own page in a terminal; see Start here.)
 Only enabled mail sources are read. Use `subscriptions` and explicit `subscribe`
 commands to select sources first. The map records counts, dates and coverage in
 `.state/map.json` and writes people/project indexes under `notes/`; it leaves
@@ -432,7 +454,8 @@ reversible text chunks so line-limited tools can read all of it.
 
 The requirement-to-code/test checklist and remaining decisions are in
 [wiki-187-checklist.md](wiki-187-checklist.md). This update supersedes earlier
-references to init launching a model or investigating the owner in the same run.
+references to init launching a model or investigating the owner in the same run;
+#1943 later brought back that one step, for the owner's page only, by the owner's decision.
 
 ### First-run People and installed Skills
 
@@ -452,7 +475,8 @@ This lists 90 days of mail by default: correspondent metadata plus the short
 preview the provider lists with each message. A seven-day window that fills the
 provider's 200-message listing cap is split until every message in it is
 listed, so a busy week is no longer cut off at 200 without a word. Init does not
-install a schedule or enable ongoing mail collection.
+install a schedule. It subscribes the mailboxes it read, so `start` offers them,
+but nothing is read in the background until `start` is approved.
 
 #### Private mail materials
 
@@ -487,8 +511,8 @@ domain (accounts.google.com and google.com are one), and a domain only notice
 senders write from gets no page. With `--mail`, only explicitly selected
 mailboxes are read. Missing or failed sources appear in the mapping coverage;
 without a selected mailbox the command explains why People is empty.
-The terminal shows mapping stages and a short count of People, Organizations,
-Projects and Skills. Full per-source details stay in `.state/map.json` under the
+The terminal shows one line per mapping stage, a short count of People,
+Organizations, Projects and Skills, and your own page's facts. Full per-source details stay in `.state/map.json` under the
 Wiki root and in `--json` output. A custom `--days` window is preserved in the
 printed next command and retry tips.
 
@@ -505,7 +529,7 @@ projects folder into separate projects.
 
 Initialization reports partial failure with a nonzero exit if a selected mail source cannot be initialized or read. Completed maps remain available; provider error text is not exposed. Recovery commands retain the notebook root. Automated-looking correspondents are explicitly labelled candidates, not silently certified as people.
 
-After init, the suggested `co wiki investigate me --quick` is a bounded first
+The `co wiki investigate me --quick` that init runs for you is a bounded first
 pass: it samples recent items across available source types and labels the
 result partial. Remove `--quick` for a comprehensive owner investigation;
 that can take several extraction turns and substantially more time and model

@@ -45,7 +45,10 @@ def test_init_keeps_five_day_window_in_next_steps_and_partial_retry(tmp_path):
                                           'init', '--days', '5'])
     payload = json.loads(result.stdout)
     assert result.exit_code == 0
-    assert payload['next'].endswith('investigate me --days 5 --quick')
+    # #1943: the first run's next step is reading the page; the manual command
+    # for the owner's page keeps the window, in the reason it was not run here.
+    assert payload['next'].endswith(' open')
+    assert 'investigate me --days 5 --quick' in payload['data']['investigate_me']['reason']
     assert all('init --days 5' in tip for tip in payload['data']['tips'])
 
     with patch('connectonion.wiki.map.build_map', return_value={

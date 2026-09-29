@@ -407,7 +407,8 @@ def test_init_builds_all_maps_without_model_or_investigation(tmp_path, monkeypat
     assert (tmp_path / '.state/source-inventory.jsonl').is_file()
     plain = invoke(tmp_path, 'init', '--skills-dir', str(empty))
     assert plain.exit_code == 0, plain.output
-    assert 'Wiki init: mapping installed skills...' in plain.output
+    # One finished line per stage (#1943), not every step.
+    assert 'Wiki init: mapped installed skills: 0' in plain.output
     assert 'Wiki init: mapped projects: 0' in plain.output
 
 
@@ -511,8 +512,8 @@ def test_init_asks_whether_a_write_only_address_is_the_owner_s_own(tmp_path, mon
 
     plain = invoke(root, 'init', '--skills-dir', str(empty))
     assert plain.exit_code == 0, plain.output
-    assert 'Wiki init: mapping installed skills' in plain.output
-    assert 'Wiki init: scanning local projects' in plain.output
+    assert 'Wiki init: mapped installed skills' in plain.output
+    assert 'Wiki init: mapped projects' in plain.output
     assert 'aaronplus1996@gmail.com' in Text.from_ansi(plain.output).plain
 
 
