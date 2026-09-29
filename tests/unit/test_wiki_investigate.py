@@ -2,6 +2,7 @@
 
 import json
 import types
+from pathlib import Path
 
 import pytest
 
@@ -301,36 +302,66 @@ def test_completed_extraction_chunks_are_reused_after_interruption(tmp_path):
     assert (root / '.state/extracts/investigate').is_dir()
 
 
-def test_owner_over_input_limit_reaches_writer_with_every_digest_and_existing_page(tmp_path, monkeypatch):
+def test_over_input_limit_the_writer_searches_evidence_files_instead_of_digests(tmp_path, monkeypatch):
+    """#1850: summarising everything first cost the owner's page 39 digest calls
+    and 75 minutes. Over the limit, the material becomes files the one turn
+    searches; no digest call is made."""
     root = _notebook(tmp_path, "codex")
     config = read_config(root)
     original = inv.Notebook(root).read("people/vern.md")
-    items = [{"text": f"message {i}: " + "x" * 30_000, "source": f"outlook:{i}",
+    items = [{"text": f"message {i}: " + "x" * 30_000, "source": f"outlook:{i}", "role": "other",
+              "speaker": "vern@x.y", "subject": f"Contract {i}",
               "timestamp": f"2026-09-{i + 1:02d}T00:00:00Z"} for i in range(12)]
+    items[7]["text"] += " The capstone runs 3 March to 30 May."
     assert len(json.dumps(items)) > config["limits"]["input_chars_per_batch"]
     monkeypatch.setattr(inv, "gather", lambda *a, **kw: (items, ["outlook: 12 matched"]))
-    seen = []
-
-    def extract(chunk, config, kind):
-        seen.extend(chunk)
-        return {"notes": "\n".join(i["source"] for i in chunk), "usage": {"input_tokens": 10}}
+    seen = {}
 
     def write(notebook, material, config, **kw):
+        evidence = next(i for i in material if i["role"] == "evidence-index")
+        index = Path(evidence["file"])
+        folder = index.parent
+        seen.update(folder=folder, sources=evidence["sources"])
         assert original in material[0]["text"]
-        assert all(i["role"] == "extract" for i in material[2:])
-        text = "\n".join(i["text"] for i in material[2:])
-        assert all(i["source"] in text for i in items)
         assert len(json.dumps(material)) < config["limits"]["input_chars_per_batch"]
+        assert "has NOT been summarised" in evidence["text"] and str(folder) in evidence["text"]
+        # Every item is on disk under its citable id, and a search finds the needle.
+        text = "\n".join(p.read_text() for p in folder.rglob("*.md") if p.name != "index.md")
+        assert all(f"### {i['source']} ·" in text for i in items)
+        hit = [p for p in folder.rglob("*.md") if "capstone runs 3 March" in p.read_text()]
+        assert len(hit) == 1 and "### outlook:7 ·" in hit[0].read_text()
+        assert hit[0].relative_to(folder).as_posix() in index.read_text()
         page = notebook.path("people/vern.md")
         page.write_text(original.replace("- Role: Unknown", "- Role: Account owner [1]"))
         return {"changed": ["people/vern.md"], "usage": {"input_tokens": 5}}
 
-    out = inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7,
-                          clients={}, subscriptions={}, extractor=extract, runner=write)
-    assert seen == items
-    assert out["changed"] == ["people/vern.md"]
-    assert out["usage"]["input_tokens"] == 10 * out["items"] + 5
+    out = inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7, clients={}, subscriptions={},
+                          extractor=lambda *a: pytest.fail("no digest pass"), runner=write)
+
+    assert out["changed"] == ["people/vern.md"] and out["usage"] == {"input_tokens": 5}
+    assert sorted(seen["sources"]) == sorted(i["source"] for i in items)
+    assert any(line.startswith("evidence: ") and "searched, not summarised" in line for line in out["coverage"])
+    assert not seen["folder"].exists(), "private mail copies are removed after the run"
     assert "investigated" in inv.Notebook(root).read("people/vern.md")
+
+
+def test_a_page_citing_an_evidence_file_entry_passes_the_source_check(tmp_path):
+    from connectonion.wiki.page_review import validate
+
+    root = _notebook(tmp_path, "codex")
+    original = inv.Notebook(root).read("people/vern.md")
+    items = [{"role": "evidence-index", "source": "investigation:evidence", "sources": ["outlook:7"],
+              "text": "index"}]
+
+    def cited(source):
+        head, _, tail = original.partition("\n## Sources\n")
+        body = head.replace("- Role: Unknown", "- Role: Capstone supervisor [1]")
+        return body + "\n## Sources\n- [1] " + source + "\n" + tail.split("\n", 1)[-1]
+
+    errors = [e for e in validate("people/vern.md", cited("outlook:7"), original, items) if "source" in e]
+    invented = [e for e in validate("people/vern.md", cited("outlook:99"), original, items) if "source" in e]
+
+    assert errors == [] and invented == ["Citation has no identifiable source: 1"]
 
 
 def test_impossible_chunk_limit_fails_before_spending_tokens():

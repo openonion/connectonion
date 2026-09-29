@@ -194,6 +194,12 @@ so they identify nothing a week later.
   `Handles`. The next investigation searches it; you do not.
 - A mailbox the coverage marks "not searched" (not connected, or unsubscribed):
   one line in `Uncertainties`. Do not work around it.
+- An `evidence-index` item means the material was too large for one turn and
+  was written to files, not summarised. Work from the page: for each Unknown
+  or stale field, search the evidence directory (`rg -il '<name|topic>'`), then
+  read only the matching entries (`sed -n`, a file tool). Do not read every
+  file. Cite the source id in the `###` heading of each entry you used, and
+  end with the files you read and what stayed open.
 - Read relevant documents in the known project/source directories. PDFs, Word
   documents, spreadsheets, slides and calendar attachments are evidence, too.
   Follow file references from messages; do not sweep unrelated private folders.

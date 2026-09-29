@@ -475,7 +475,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     if stage_progress:
         stage_progress("preparing evidence", len(items))
     config = read_config(root)
-    from .inquiry import routing, stage_config
+    from .inquiry import routing
     original_material = None
     if routing(root):
         import uuid
@@ -497,21 +497,39 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     synthesis_calls = 3 if routing(root) else 1
     if max_calls is not None and max_calls < synthesis_calls:
         raise WikiError("Insufficient call budget for investigation; page preserved")
+    now = datetime.now(timezone.utc).isoformat()
+    evidence_dir = None
     if gathered_chars > room:
         if stage_progress:
-            stage_progress("extracting long evidence")
+            stage_progress("writing evidence files")
         # Too much for one turn. Not "keep the newest and drop the rest": the
-        # oldest mail is where a relationship's terms were set. Digest it in
-        # order, through the extraction Skill, and let the one investigate turn read the
-        # digests -- the same two-pass shape the timeline mode already runs.
-        items, digest_usage = digest_in_chunks(items, stage_config(root, config, "extract"), extractor,
-                                               root=root,
-                                               max_calls=None if max_calls is None else max_calls - synthesis_calls,
-                                               progress=stage_progress)
-        usage_by_stage["extract"] = digest_usage
-        coverage.append(f"digest: {gathered_chars:,} chars gathered (~{gathered_chars // 4:,} tokens), over the "
-                        f"{room:,}-char room for one turn; summarised in {len(items)} chunk(s) first")
-    now = datetime.now(timezone.utc).isoformat()
+        # oldest mail is where a relationship's terms were set. And not
+        # "summarise it all first" either: that was 39 digest calls and 75
+        # minutes for the owner's page (#1850). The material goes into files
+        # and the one investigate turn searches them for what the page needs.
+        import shutil
+        import uuid
+
+        from .evidence import write_evidence
+        from .files import state_path
+        evidence_dir = state_path(root, f"evidence/{uuid.uuid4().hex}")
+        shutil.rmtree(evidence_dir, ignore_errors=True)
+        laid_out = write_evidence(evidence_dir, items)
+        index_text = laid_out["index"].read_text(encoding="utf-8")
+        shown = index_text if len(index_text) <= room // 2 else (
+            index_text[:room // 2] + f"\n[Index continues in {laid_out['index']}; read the rest there.]\n")
+        items = [{"role": "evidence-index", "source": "investigation:evidence", "timestamp": now,
+                  "file": str(laid_out["index"]), "sources": laid_out["sources"],
+                  "text": (f"The gathered evidence ({len(laid_out['sources'])} items, {laid_out['chars']:,} "
+                           f"characters) did not fit one turn and has NOT been summarised. It is in files under "
+                           f"{evidence_dir}. For each Unknown or stale field on the page, search those files "
+                           "with rg/grep, then read only the matching entries with sed or a file tool; use ls to "
+                           "see the layout. Cite the source id from the `###` heading of each entry you rely on. "
+                           "In your final reply, list the files you read and the questions left open.\n\n"
+                           + shown)}]
+        coverage.append(f"evidence: {gathered_chars:,} chars gathered (~{gathered_chars // 4:,} tokens), over the "
+                        f"{room:,}-char room for one turn; written to {laid_out['files']} files and searched, "
+                        "not summarised first")
     from .page_review import normalize
     current_page = normalize(record, notebook.read(record))
     prompt_items = [
@@ -536,7 +554,14 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         runner = run_stage
     if stage_progress:
         stage_progress("writing investigation")
-    result = runner(notebook, prompt_items, config, stage="investigate")
+    try:
+        result = runner(notebook, prompt_items, config, stage="investigate")
+    finally:
+        # Copies of private mail do not accumulate under .state, run after run;
+        # the report keeps which files were read.
+        if evidence_dir is not None:
+            import shutil
+            shutil.rmtree(evidence_dir, ignore_errors=True)
     if stage_progress:
         stage_progress("recording result")
     usage_by_stage["investigate"] = result.get("usage")
