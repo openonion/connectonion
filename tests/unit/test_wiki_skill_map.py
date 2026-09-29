@@ -117,7 +117,9 @@ def test_init_uses_connected_mail_without_prompts(tmp_path, monkeypatch):
     selected = runner.invoke(app, ['wiki', '--root', str(tmp_path), 'init', '--mail', 'outlook'])
     assert selected.exit_code == 0, selected.output
     assert calls == ['outlook']
-    assert not service.subscriptions(tmp_path)['outlook']['enabled']
+    # A mailbox init read is subscribed for the daily round (#1943); start still asks.
+    assert service.subscriptions(tmp_path)['outlook']['enabled']
+    assert not service.subscriptions(tmp_path)['outlook']['consented']
     invalid = runner.invoke(app, ['wiki', '--root', str(tmp_path), 'init', '--mail', 'invalid'])
     assert invalid.exit_code == 1
 

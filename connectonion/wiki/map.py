@@ -261,6 +261,30 @@ def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
         notebook.write(record, page)
 
 
+def owner_summary(notebook: Notebook, report: dict) -> dict | None:
+    """What the owner's page says right now, for init to print (#1943).
+
+    The one page with value straight after the map is the owner's -- mail
+    volume, who they write to most, where they have been coding -- and a first
+    run used to end on counts of empty pages without showing it. This reads the
+    page itself, so the terminal says what the page says: its title and every
+    stated line of Who they are and History, citations dropped, Unknowns left out.
+    """
+    record = (report.get('owner') or {}).get('record')
+    if not record or not notebook.path(record).is_file():
+        return None
+    page = notebook.read(record)
+    title = page.splitlines()[0][2:].strip() if page.startswith('# ') else record
+    facts = []
+    for section in ('Who they are', 'History'):
+        body = re.search(rf'(?ms)^## {re.escape(section)}\n(.*?)(?=^## |\Z)', page)
+        for line in (body.group(1).splitlines() if body else []):
+            line = re.sub(r'(?:\s*\[\d+\])+\s*$', '', line.strip().removeprefix('- ').strip())
+            if line and 'Unknown' not in line:
+                facts.append(line)
+    return {'record': record, 'path': str(notebook.path(record)), 'title': title, 'facts': facts}
+
+
 SCRATCH = re.compile(r'/Documents/Codex/\d{4}-\d{2}-\d{2}/([^/]+?)(?:-\d+)?$')
 
 
@@ -365,6 +389,8 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
     if progress:
         progress("mapping installed skills")
     report['skills'] = map_skills(notebook, skill_directories, lock_held=True)
+    if progress:
+        progress("mapped installed skills", len(report['skills'].get('skills') or []))
     if inventory:
         for skill in report['skills']['skills']:
             inventory.skill(skill)

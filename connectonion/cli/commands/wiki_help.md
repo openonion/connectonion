@@ -10,7 +10,7 @@ co wiki — a notebook about the people, projects and tools in your work, kept u
 Experimental: a preview; its commands may change before 1.9.0.
 
 Build (once)
-  init          Build the notebook's frame and private 90-day mail materials. No model.
+  init          Build the notebook from 90 days of mail and sessions, then write your page.
   investigate   Fill a page, a whole category, or your own page, using a model.
 Read
   open          Browse the notebook in your browser.
@@ -44,33 +44,54 @@ Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, 
 ## co wiki init
 
 ```
-Build the notebook's frame: a page for each person you write to, each organization,
-each coding project and each installed Skill, plus your own page, already titled
-with your name and filled with who you write to most and where you work. Lists
-90 days of mail headers, the preview line your provider lists with each message (to
-name people by your greeting), saved contacts, and session metadata. Then saves a
-private copy of each listed message body, once, so investigating a person later
-reads it from disk. Does not run a model, does not turn on the schedule.
+Build the notebook, then write your own page. One command, two parts.
 
-Usage:    co wiki init [--days N] [--mine ADDRESS]... [--name NAME] [--mail gmail|outlook]... [--no-mail-archive]
-Example:  co wiki init --days 90 --name "Aaron Xie" --mine aaron@mail.openonion.ai
+First a script, no model: a page for each person you write to, each organization,
+each coding project and each installed Skill, plus your own page, titled with your
+name and filled with who you write to most and where you work. init prints that
+page when the map is done. It lists 90 days of mail headers, the preview line your
+provider lists with each message (to name people by your greeting), saved
+contacts, and session metadata, then saves a private copy of each listed message
+body, once, so investigating a person later reads it from disk.
+
+Then, in a terminal, it writes your own page by itself: the bounded first pass of
+co wiki investigate me --quick, one model turn on your own plan, about 10 minutes.
+It names the runner and model before it starts; Ctrl-C stops it and the map is
+kept. It is skipped, with the reason, when the runner is missing or signed out,
+when no mailbox gave an address of yours, or when your page was already written.
+Then, by the same rules, it writes the pages of projects active in the last 14
+days from the messages you typed in their sessions: one call each, about a minute
+and ~90k billed input tokens, cost stated first, one line per page, stopping at
+the weekly budget or floor. Older projects: co wiki projects write.
+
+Usage:    co wiki init [--days N] [--mine ADDRESS[,ADDRESS...]] [--name NAME] [--mail gmail|outlook]...
+                       [--no-mail-archive] [--investigate | --no-investigate]
+Example:  co wiki init --days 90 --name "Aaron Xie" --mine aaron@mail.openonion.ai,aaron@openonion.ai
 
 Inputs:   Connected mailboxes (co auth google, co auth microsoft) and local Codex /
-          Claude Code sessions. --mine adds an address that is yours; init also lists
-          addresses that look like yours and prints the --mine command for each.
-Output:   Pages under ~/.co/wiki (or --root), progress on stderr, and private
-          files under .state/: source-inventory.md and .jsonl (what was listed,
-          window by window), and mail/ (one body per message, per-person and
-          per-project indexes). A seven-day window at the 200-message listing cap
-          is split until all of it is listed. Mail bodies never go into a page and
-          never leave this machine. Re-running keeps anything written and reuses
-          saved bodies.
+          Claude Code sessions. --mine adds addresses that are yours (commas, or
+          repeat it). Addresses that look like yours are listed on one line, with
+          one command that confirms the ones you keep.
+Options:  --investigate     Write your page even without a terminal (scripts, --json).
+          --no-investigate  Build the map only.
+Output:   Your page's facts and where it is; one progress line per stage on stderr
+          (every step in .state/init-progress.log); pages under ~/.co/wiki (or
+          --root); private files under .state/: source-inventory.md and .jsonl
+          (what was listed, window by window), and mail/ (one body per message,
+          per-person and per-project indexes). A seven-day window at the
+          200-message listing cap is split until all of it is listed. Mail bodies
+          never go into a page and never leave this machine. Re-running keeps
+          anything written and reuses saved bodies.
 Effects:  Writes pages and private files (owner-only). Reads mail bodies unless
-          --no-mail-archive. No model, no cost, no schedule.
+          --no-mail-archive. Mailboxes it read are subscribed for the daily round;
+          nothing is read in the background until co wiki start is approved. The
+          map costs nothing; your page is one model turn, each recent project one
+          more. No schedule.
 Takes:    About 10 minutes to map 90 days of two mailboxes; saving bodies takes
-          longer. An interrupted run resumes where it stopped.
+          longer; your page about 10 more, then about a minute per recent project.
+          An interrupted run resumes where it stopped.
 
-Next:     co wiki investigate me --quick (bounded, partial first pass; retain --days N)
+Next:     co wiki open   (read your page), then co wiki start (keep it current)
 Back:     co wiki --help
 ```
 
@@ -90,8 +111,9 @@ Usage:
                                                most useful first. Default --limit 5.
   co wiki investigate me                       Investigate your own page from your recent work.
   co wiki investigate me --quick               Bounded first pass; says what it did not cover.
-  co wiki investigate all --budget 10          The first pass after init: the whole queue, highest
-                                               first, until 10 points of your Codex week are spent.
+                                               init runs this for you in a terminal.
+  co wiki investigate all --budget 10          The whole queue, highest first, until 10 points
+                                               of your Codex week are spent.
 
   CATEGORY is one of: people, projects, orgs, skills, all (people, projects and orgs
   in one queue, by weight)
@@ -101,7 +123,7 @@ Examples:
   co wiki investigate people/ody-zhou-c6a901ffd8.md
   co wiki investigate people --limit 3
   co wiki investigate projects --list          (show the order, run nothing)
-  co wiki investigate all --list               (the first pass's order, run nothing)
+  co wiki investigate all --list               (the whole queue's order, run nothing)
 
 What each kind reads:
   people    Every message to or from their addresses, searched on the server, with

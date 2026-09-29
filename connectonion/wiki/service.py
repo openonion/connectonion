@@ -99,6 +99,29 @@ def subscriptions(root: Path) -> dict:
     return defaults
 
 
+def subscribe_read_mail(root: Path, kinds) -> list[str]:
+    """Mailboxes init has just read are the ones the daily round should read.
+
+    They were left switched off, so `start`'s summary listed the very mailboxes
+    the map was built from as "unsubscribed" and the daily round never read
+    mail at all (#1943). This is a choice, not consent: `consented` stays as it
+    was, and nothing is read in the background until `start` is approved. A
+    mailbox the user unsubscribed stays unsubscribed.
+    """
+    changed = []
+    with maintenance_lock(root):
+        sources = subscriptions(root)
+        for kind in kinds:
+            source = sources.get(kind)
+            if not source or source.get("unsubscribed") or source.get("enabled"):
+                continue
+            source["enabled"] = True
+            changed.append(kind)
+        if changed:
+            write_json(state_path(root, "subscriptions.json"), sources)
+    return changed
+
+
 def approve_sources(root: Path) -> None:
     """Internal consent handoff for tests/future start; never called by inspection."""
     with maintenance_lock(root):
