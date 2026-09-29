@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .files import Notebook, read_json, state_path
 from .investigate import project_paths
+from .scan import home_or_above
 
 MAX_LEADS = 15
 
@@ -51,6 +52,10 @@ def page_leads(notebook: Notebook, items: list[dict]) -> list[str]:
     leads = []
     if directories:
         pages = {record: project_paths(notebook.read(record)) for record in notebook.list("projects")}
+        # A page for the home directory (an older map made one) holds every
+        # folder, so it would be the lead for every session nothing else covers.
+        pages = {record: roots for record, roots in pages.items()
+                 if not (roots and all(home_or_above(root) for root in roots))}
         for directory in directories:
             # The most specific project holding this folder, not every ancestor:
             # a page for the home directory holds every session there is.
@@ -66,6 +71,9 @@ def page_leads(notebook: Notebook, items: list[dict]) -> list[str]:
         if hits:
             leads.append((hits, person["path"]))
     for record in notebook.list("projects"):
+        roots = project_paths(notebook.read(record))
+        if roots and all(home_or_above(root) for root in roots):
+            continue  # its title is the user's name, which is in every path
         title = next((line[2:].strip() for line in notebook.read(record).splitlines() if line.startswith("# ")), "")
         hits = _named(title, text)
         if hits and all(record != lead for _, lead in leads):

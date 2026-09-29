@@ -198,8 +198,21 @@ def canonical_origin(origin: str) -> str:
     return origin
 
 
+def home_or_above(path) -> bool:
+    """The home directory or one of its parents: every session runs under it."""
+    try:
+        resolved, home = Path(path).expanduser().resolve(), Path.home().resolve()
+    except OSError:
+        return False
+    return resolved == home or resolved in home.parents
+
+
 def project_exclusion(path: Path) -> str:
     """Ignore execution sandboxes, not legitimate projects sharing a display name."""
+    # A session started in ~ is not a project, and a page for ~ becomes the
+    # project of every folder nothing else covers (2026-09-30).
+    if home_or_above(path):
+        return "home directory"
     normalized = str(path.resolve())
     parts = Path(normalized).parts
     if any(parts[i:i + 2] == (".state", "tasks") for i in range(len(parts) - 1)):

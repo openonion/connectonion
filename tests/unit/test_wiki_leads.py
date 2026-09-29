@@ -39,3 +39,29 @@ def test_the_owner_is_not_a_lead_and_projects_are_found_by_name(tmp_path):
     items = [{"role": "extract", "text": "Aaron wants the One bot in Lark; ConnectOnion needs a release. one more."}]
     leads = page_leads(notebook, items)
     assert set(leads) == {"projects/one.md", "projects/connectonion.md"}
+
+
+def test_the_home_directory_is_never_a_lead(tmp_path, monkeypatch):
+    """A project page for /Users/<name> held every session that ran anywhere no
+    other project covered, and its title is in every path: on the owner's
+    notebook it was picked three nights running and filled with unrelated notes."""
+    from pathlib import Path
+    from connectonion.wiki.files import Notebook
+    from connectonion.wiki.leads import page_leads
+    home = Path.home()
+    notebook = Notebook(tmp_path)
+    notebook.stub_project("projects/home.md", home.name, [str(home)], sessions=2)
+    notebook.stub_project("projects/tallyho.md", "tallyho", [str(home / "code" / "tallyho")], sessions=4)
+    items = [{"project": str(home / "Documents" / "scratch"), "text": f"worked in {home}/Documents/scratch"},
+             {"project": str(home / "code" / "tallyho"), "text": "ran the tests"}]
+    leads = page_leads(notebook, items)
+    assert "projects/home.md" not in leads
+    assert "projects/tallyho.md" in leads
+
+
+def test_the_map_does_not_make_the_home_directory_a_project():
+    from pathlib import Path
+    from connectonion.wiki.scan import project_exclusion
+    assert project_exclusion(Path.home()) == "home directory"
+    assert project_exclusion(Path.home().parent) == "home directory"
+    assert project_exclusion(Path.home() / "code" / "tallyho") != "home directory"

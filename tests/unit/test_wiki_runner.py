@@ -477,3 +477,21 @@ def test_a_sync_that_outlasts_the_wait_leaves_the_page_where_it_can_be_found(tmp
         runner._promote_candidate(notebook, "people/mia.md", candidate, original, [], tmp_path, None)
     thread.join()
     assert str(candidate) in str(error.value) and candidate.is_file()
+
+
+def test_a_one_page_turn_that_writes_nothing_leaves_the_page_and_is_not_a_refusal(notebook, monkeypatch):
+    """The skill says to write the page back unchanged when the material adds
+    nothing; a model sometimes writes nothing at all. That was refused, the
+    material stayed pending, and the same page was worked again every night
+    (projects/changxing, three nights, 2026-09-27..29)."""
+    record = 'projects/tallyho.md'
+    notebook.stub_project(record, 'tallyho', ['/work/tallyho'])
+    before = notebook.read(record)
+    monkeypatch.setattr('connectonion.wiki.runner.run_task',
+                        lambda *a, **k: {'usage': None, 'result': 'nothing new for this page'})
+    result = run_stage(notebook, [
+        {'role': 'page', 'record': record, 'text': before, 'source': 'investigation:page', 'one_page': True},
+        {'role': 'user', 'source': 'codex:abc:1', 'text': 'unrelated chat', 'timestamp': '2026-09-29'}],
+        default_config(), stage='maintain', maintenance_lock_held=True)
+    assert notebook.read(record) == before
+    assert result['changed'] == []
