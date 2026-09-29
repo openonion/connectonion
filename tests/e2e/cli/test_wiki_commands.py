@@ -67,6 +67,24 @@ def test_addresses_held_for_review_are_listed_only_when_asked_for(tmp_path):
     assert invoke(tmp_path, "list", "projects", "--review").exit_code != 0
 
 
+def test_list_people_puts_the_most_mailed_first_not_the_first_file_name(tmp_path):
+    """#1670: sorted by file name, an agent's 0x… mailbox came before colleagues."""
+    from connectonion.wiki.files import state_path, write_json
+
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    for record in ("people/0x3c3ae74550.md", "people/alice.md", "people/zoe.md"):
+        notebook.write(record, "# " + record)
+    write_json(state_path(tmp_path, "map.json"), {"people": [
+        {"record": "people/0x3c3ae74550.md", "mails": 2},
+        {"record": "people/zoe.md", "mails": 180},
+        {"record": "people/alice.md", "mails": 40}]})
+
+    listing = invoke(tmp_path, "--json", "list", "people")
+
+    assert json.loads(listing.stdout)["data"] == ["people/zoe.md", "people/alice.md", "people/0x3c3ae74550.md"]
+
+
 def test_json_next_command_preserves_custom_root(tmp_path):
     root = tmp_path / "wiki with spaces"
     result = runner.invoke(app, ["wiki", "--root", str(root), "--json", "status"])

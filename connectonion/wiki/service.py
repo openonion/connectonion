@@ -776,6 +776,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
                 options = {"maintenance_lock_held": True} if runner is run_stage else {}
                 result = runner(Notebook(root), items, config, kind=kind, **options)
             record["usage_by_stage"]["maintain"] = result.get("usage")
+            if result.get("instructions_chars"):
+                record.setdefault("instructions_chars", {})["maintain"] = result["instructions_chars"]
             for key, value in (result.get("usage") or {}).items():
                 usage[key] = usage.get(key, 0) + value
         else:
@@ -865,9 +867,25 @@ def usage_report(root: Path, days: int | None = None) -> dict:
     for model, table in by_model.items():
         table["chars_in"] = chars_by_model[model]
         table["input_tokens_per_1k_chars"] = round(table.get("input_tokens", 0) / max(chars_by_model[model] / 1000, 0.001), 1)
+    # The fixed part of every turn: the composed Skill text, re-sent on each
+    # tool round. #1851 set a 15k-character ceiling for a one-page turn; this
+    # is where a regression shows up (older runs did not record it).
+    sizes = {}
+    for run in runs:
+        for stage, chars in (run.get("instructions_chars") or {}).items():
+            if isinstance(chars, int):
+                sizes.setdefault(stage, []).append(chars)
+    for stage, values in sizes.items():
+        table = by_stage.setdefault(stage, {})
+        table["instructions_chars_mean"] = round(sum(values) / len(values))
+        table["instructions_chars_max"] = max(values)
+        table["over_instructions_target"] = max(values) > INSTRUCTIONS_TARGET_CHARS
     # What the tokens bought (#1846): a page turn that changes nothing costs the same.
     changed = sum(len(run.get("changed") or []) for run in runs)
     per_100k = round(changed * 100_000 / total["input_tokens"], 2) if total.get("input_tokens") else None
     return {"runs": len(runs), "days": days, "total": total, "pages_changed": changed,
             "pages_changed_per_100k_input_tokens": per_100k, "by_stage": by_stage,
             "by_model": by_model, "by_source": by_source}
+
+
+INSTRUCTIONS_TARGET_CHARS = 15_000

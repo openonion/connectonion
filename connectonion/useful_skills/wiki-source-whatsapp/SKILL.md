@@ -5,58 +5,53 @@ description: What is true of WhatsApp chats as a Wiki source — who is speaking
 
 # WhatsApp as a source
 
+Why these rules: docs/wiki-skills/wiki-source-whatsapp.md
+
 Read this together with the stage Skill that loaded it. That one says what to
 produce; this one says only what is true of **this** source.
 
 ## What reaches you
 
 Only the chats the user named with `co wiki sources add whatsapp --chat <id>`.
-The phone is in many more groups — family, unrelated communities, other
-clients — and none of them is in the batch. So a person or a group that is not
-here is not "absent from the user's life"; it was not chosen.
+A person or group missing from the batch was not chosen; never treat it as
+absent from the user's life.
 
 Each item carries:
 
-- `role: user` — something the account owner typed on their own phone. This is
-  the user's own voice, the most important material in the batch.
-- `role: other` — someone else in the chat, with their display name as
-  `speaker`. Keep both sides, as with mail: the other side is a person.
+- `role: user` — typed by the account owner: the user's own voice, the most
+  important material.
+- `role: other` — someone else, with their display name as `speaker`. Keep both
+  sides, as with mail.
 - `correspondent` / `subject` — the chat id. `…@g.us` is a group;
-  `…@s.whatsapp.net` or `…@lid` is one person. A chat id is not a name and
-  never goes on a page as one.
+  `…@s.whatsapp.net` or `…@lid` is one person. A chat id never goes on a page
+  as a name.
 
-The agent's own replies are left out on purpose. When the user's assistant
-answered in the chat, that answer is execution, not the user — the same rule as
-coding sessions. If a message in the batch refers to "what the bot said", the
-bot's words are not here; do not reconstruct them.
+The agent's own replies are left out on purpose: they are execution, not the
+user. If a message refers to "what the bot said", do not reconstruct it.
 
 ## A batch is one conversation
 
-A batch holds whole chats, oldest chat first. A group chat is many people at
-once: write each person's page from what *they* said, and the group's own page
-(a project, a client relationship, a rolling agenda) from what was agreed in it.
-The same person can appear in several groups; one page for them, with each
-group as a place they were met.
+Whole chats, oldest first. In a group, write each person's page from what
+*they* said, and the group's own page (a project, a client relationship, a
+rolling agenda) from what was agreed in it. One page per person across groups,
+with each group as a place they were met.
 
 ## Groups are clients' rooms
 
-Most business WhatsApp groups are one client each. Never carry a fact from one
-group onto a page about another group's client, and never put one client's
-numbers, prices or guests on another client's page — even when the user is the
-same and the topic is the same. When a fact came from a group, say which one in
-its source line.
+Most business groups are one client each. Never carry a fact, number, price or
+guest from one group onto another group's client page, even when the user and
+topic are the same. Name the group in the source line of any fact from it.
 
 ## Photos, documents and voice notes
 
-A media message arrives as its text plus a line such as
-`[image saved at /…/media/3EB0….jpg]`. That is a real file on this machine:
-open it when it matters to the page — a contract photo, a floor plan, a
-screenshot someone asked about. `[document could not be fetched: …]` means the
-file is gone; record that it existed, never guess what it said.
+`[image saved at /…/media/3EB0….jpg]` is a real local file: open it when it
+matters to the page (a contract photo, a floor plan, a screenshot someone asked
+about). `[document could not be fetched: …]` means the file is gone: record
+that it existed, never guess its content.
 
 ## Short messages
 
-WhatsApp is terse. "ok", "👍", "done" answer the message before them; read them
-with it, and do not write a page about a thumbs-up. A decision in WhatsApp is
-often a short "yes go ahead" from the user after a longer proposal from someone
-else — the proposal is the content, the user's "yes" is the decision.
+"ok", "👍", "done" answer the message before them; read them with it, and never
+write a page about a thumbs-up. A short "yes go ahead" from the user after
+someone else's proposal is a decision: the proposal is the content, the "yes"
+the decision.

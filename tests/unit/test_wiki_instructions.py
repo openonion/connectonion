@@ -70,6 +70,51 @@ def test_no_stage_carries_its_own_second_copy_of_the_person_shape():
     assert owners == ["wiki-page-person"], owners
 
 
+def test_every_page_category_has_its_own_page_shape():
+    """An org page used to get every page shape and the CLI reference, 63.7k
+    characters, because the record-to-kind map had no `orgs`."""
+    from connectonion.skills_catalog import useful_skills_dir
+    from connectonion.wiki.queue import CATEGORIES
+    from connectonion.wiki.runner import page_kind_of
+
+    for category, prefix in CATEGORIES.items():
+        kind = page_kind_of(prefix + "example.md")
+        assert kind, category
+        assert (useful_skills_dir() / f"wiki-page-{kind}/SKILL.md").is_file(), category
+
+
+def test_an_org_page_turn_carries_only_the_org_shape(tmp_path):
+    from connectonion.wiki.runner import task_prompt
+
+    task_prompt(tmp_path, [{"role": "page", "record": "orgs/acme.md", "text": "# Acme"}], "investigate")
+    given = (tmp_path / "instructions.md").read_text(encoding="utf-8")
+
+    assert given == instructions("investigate", page_kind="org")
+    assert len(given) < len(instructions("investigate")) - 10_000
+
+
+@pytest.mark.parametrize("stage", ["investigate", "maintain"])
+@pytest.mark.parametrize("kind", ["person", "project", "org", "skill"])
+def test_a_one_page_turn_stays_within_15k_characters_of_instructions(stage, kind):
+    """#1851: the Skill text is re-sent on every tool round. It was 30.6k for an
+    investigation and 22.9k for maintenance; rationale now lives in
+    docs/wiki-skills/, and a rule that makes a turn heavier has to pay for it."""
+    assert len(instructions(stage, page_kind=kind)) <= 15_000
+
+
+def test_every_runtime_skill_names_where_its_rationale_lives():
+    from connectonion.skills_catalog import useful_skills_dir
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[2]
+    for name in ("wiki-investigate", "wiki-maintain", "wiki-extract", "wiki-abstract", "wiki-page-person",
+                 "wiki-page-org", "wiki-page-project", "wiki-page-skill", "wiki-source-codex",
+                 "wiki-source-whatsapp"):
+        text = (useful_skills_dir() / name / "SKILL.md").read_text(encoding="utf-8")
+        assert f"Why these rules: docs/wiki-skills/{name}.md" in text, name
+        assert (repo / "docs" / "wiki-skills" / f"{name}.md").is_file(), name
+
+
 def test_project_and_skill_templates_match_created_skeletons(tmp_path):
     """A model must receive the same exact headings that mapping created."""
     import re
