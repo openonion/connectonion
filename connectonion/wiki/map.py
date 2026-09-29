@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .files import Notebook, atomic_write, maintenance_lock
+from .files import Notebook, atomic_write, maintenance_lock, read_json, state_path
 from .scan import scan_people, scan_projects, canonical_origin, AUTOMATED_HINT
 from .skill_map import map_skills
 from .org_map import map_orgs
@@ -304,6 +304,31 @@ def _mapped_only(page: str) -> bool:
         (line for line in page.splitlines() if line.startswith('Investigation:')), '')
 
 
+def _held(group: list[dict], page: str) -> bool:
+    """Titled by an address and the owner never wrote to it: kept, but not a person yet (#1844).
+
+    After names were found for 176 pages, 43 of the owner's people pages were
+    still titled by a bare address -- automated and one-way senders. Held
+    pages are not queued for investigation or listed until a remap finds a
+    name or a reply from the owner, or the owner investigates one. An address
+    the owner has written to is a correspondent, the agent's own address
+    included, so it is never held; an investigated page is someone's work.
+    """
+    title = page.split('\n', 1)[0]
+    return '@' in title and not any(row.get('sent') for row in group) and _mapped_only(page)
+
+
+def needs_review(root: Path) -> set[str]:
+    """Pages the last map held that are still only map output.
+
+    Read from the pages as well as the map, so investigating one promotes it at once.
+    """
+    notebook = Notebook(root)
+    held = {row['record'] for row in read_json(state_path(root, 'map.json'), {}).get('people', [])
+            if row.get('needs_review')}
+    return {record for record in held if notebook.path(record).is_file() and _mapped_only(notebook.read(record))}
+
+
 def _archive_stale(notebook: Notebook, report: dict) -> list[str]:
     """Move pages an earlier map made, and nobody investigated, that this map would not make.
 
@@ -452,7 +477,8 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
                                  'sent': sum(row.get('sent', 0) for row in group),
                                  'received': sum(row.get('received', 0) for row in group),
                                  'boxes': sorted({box for row in group for box in row.get('boxes', [])}),
-                                 'classification': 'automated candidate' if automated else 'unassessed'})
+                                 'classification': 'automated candidate' if automated else 'unassessed',
+                                 'needs_review': _held(group, notebook.read(record))})
         org_rows += [{'address': a, 'record': record} for a in addresses]
         # Asked about, not acted on: the page stays exactly as it is until the
         # owner answers with --mine, because only they can tell their own
@@ -484,6 +510,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
             notebook.write(record, page)
             report['created'].append(record)
     report['possible_own_addresses'].sort(key=lambda row: (-row['sent'], row['address']))
+    report['needs_review'] = [row['record'] for row in report['people'] if row.get('needs_review')]
     if report['possible_own_addresses']:
         count = len(report['possible_own_addresses'])
         report['coverage'].append(

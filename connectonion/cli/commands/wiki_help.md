@@ -189,9 +189,11 @@ Back:     co wiki --help
 ```
 List pages in one category, or every category with its count. Read-only.
 
-Usage:    co wiki list [people|projects|orgs|skills|notes] [--aliases]
+Usage:    co wiki list [people|projects|orgs|skills|notes] [--aliases | --review]
 Example:  co wiki list people --aliases
           --aliases shows each person's addresses and other names.
+          --review  shows the addresses held back: no name, and you never wrote
+                    to them. A reply, a name, or investigating one brings it back.
 Next:     co wiki show PAGE
 Back:     co wiki --help
 ```

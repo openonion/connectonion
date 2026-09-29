@@ -445,6 +445,9 @@ def make_wiki_app(factory):
                 if kind not in available:
                     tips.append(f"Connect {provider.title()} for People: co auth {provider}; then run "
                                 + _next(ctx, ["init", *window]) + ".")
+            if result.get("needs_review"):
+                tips.append(f"Held for review, not investigated or listed (no name, never written to): "
+                            f"{len(result['needs_review'])}. See " + _next(ctx, ["list", "people", "--review"]))
             if tips:
                 result["tips"] = tips
             candidates = result.get("possible_own_addresses") or []
@@ -714,8 +717,10 @@ def make_wiki_app(factory):
 
     @wiki.command("list", cls=V("co wiki list"))
     def list_records(ctx: typer.Context, category: str = typer.Argument(""),
-                     aliases: bool = typer.Option(False, "--aliases")):
+                     aliases: bool = typer.Option(False, "--aliases"),
+                     review: bool = typer.Option(False, "--review")):
         from ...wiki.files import CATEGORIES, Notebook, WikiError
+        from ...wiki.map import needs_review
 
         def operation(root):
             notebook = Notebook(root)
@@ -724,10 +729,15 @@ def make_wiki_app(factory):
                     raise WikiError("--aliases goes with people")
                 people = notebook.people()
                 return people, (["show", people[0]["path"]] if people else ["init"])
+            held = needs_review(root)
+            if review:
+                if category not in ("", "people"):
+                    raise WikiError("--review goes with people")
+                return sorted(held), (["show", min(held)] if held else ["list", "people"])
             if not category:
-                counts = {name: len(notebook.list(name)) for name in CATEGORIES if notebook.list(name)}
+                counts = {name: count for name in CATEGORIES if (count := len(set(notebook.list(name)) - held))}
                 return (counts, ["list", next(iter(counts))]) if counts else ([], ["init"])
-            records = notebook.list(category)
+            records = [record for record in notebook.list(category) if record not in held]
             if not records and category == "people" and not ctx.obj["json"]:
                 from ...wiki.files import state_path
                 from ...wiki.service import mail_available

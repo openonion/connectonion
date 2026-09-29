@@ -202,6 +202,7 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co wiki stub org "UNSW" --domain unsw.edu.au --person people/vern-chan.md` | Create an organisation skeleton; `People here` holds links, not copies. |
 | `co wiki stub project "Aurora" --path /path/to/repo` | Create a project skeleton. |
 | `co wiki list people --aliases` | Existing identity roster: page, title, aliases, addresses, relationship summary. |
+| `co wiki list people --review` | Pages held for review: titled by an address the owner never wrote to. |
 | `co wiki investigate people/alice.md` | Read the existing page, gather sources, digest oversized material, fill that same page through the Skill. |
 | `co wiki investigate` | What is left to investigate, by category, most useful first. No model. |
 | `co wiki investigate people --limit 3` | Investigate up to three unfinished people pages, most mail first; `--list` prints the order and runs nothing. Also `projects`, `orgs`, `skills`. |
@@ -516,7 +517,13 @@ to that one person ("Hi Larry,", "Larry 你好，", "子明，"). A greeting to 
 people names none of them. On the owner's notebook this named 176 of 195 people
 the map had titled with a bare address. An organisation is the registrable
 domain (accounts.google.com and google.com are one), and a domain only notice
-senders write from gets no page. With `--mail`, only explicitly selected
+senders write from gets no page. A page still titled by a bare address whose
+sender the owner never wrote to is held for review: kept, but left out of the
+investigation queue, `co wiki list` and the reader's contents. `co wiki list
+people --review` shows them; a later init that finds a name or a reply from the
+owner, or investigating one by its path, brings it back. A nameless address the
+owner has written to, the agent's own included, stays an ordinary page, and an
+investigated page is never held. With `--mail`, only explicitly selected
 mailboxes are read. Missing or failed sources appear in the mapping coverage;
 without a selected mailbox the command explains why People is empty.
 The terminal shows one line per mapping stage, a short count of People,

@@ -313,7 +313,7 @@ const CATEGORY_ASK = {
 };
 function label(c) { return CATEGORY_LABEL[c] || c; }
 function byPath(path) { return WIKI.records.find(r => r.path === path); }
-function listedRecords() { return WIKI.records.filter(r => !r.catalog_parent && r.path !== "skills/catalog/index.md"); }
+function listedRecords() { return WIKI.records.filter(r => !r.catalog_parent && !r.needs_review && r.path !== "skills/catalog/index.md"); }
 function inCategory(category) { return listedRecords().filter(r => r.category === category); }
 function initCommand() { return "co wiki --root '" + String(WIKI.root).replace(/'/g, "'\\''") + "' init --mail outlook"; }
 function fmtDate(iso) {

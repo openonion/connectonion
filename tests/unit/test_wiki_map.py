@@ -619,3 +619,73 @@ def test_a_page_an_older_map_titled_with_an_address_takes_the_name_found_now(tmp
     build_map(tmp_path, {}, {}, skill_directories=[skills])
     assert notebook.read('people/larry.md').startswith('# Larry\n')
     assert notebook.read('people/kept.md').startswith('# kept@q.com\n')
+
+
+def _map(tmp_path, monkeypatch, people):
+    skills = tmp_path / 'installed'
+    skills.mkdir(exist_ok=True)
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a: (people, set()))
+    monkeypatch.setattr('connectonion.wiki.map.scan_projects', lambda *a: [])
+    return build_map(tmp_path, {}, {}, skill_directories=[skills])
+
+
+def test_a_nameless_address_the_owner_never_wrote_to_waits_for_review(tmp_path, monkeypatch):
+    """After names were found for 176 pages, 43 of the owner's people pages were
+    still titled by a bare address: senders the owner never wrote to. Each would
+    have cost an investigation and filled the contents with addresses (#1844).
+    Held back, never deleted; a nameless address the owner wrote to, and the
+    agent's own address, stay people."""
+    from connectonion.wiki.queue import order
+    from connectonion.wiki.reader import snapshot
+    prepare(tmp_path)
+    result = _map(tmp_path, monkeypatch, [
+        {'name': '', 'address': 'x7@shop.example', 'mails': 5, 'sent': 0, 'received': 5, 'one_way': True},
+        {'name': '', 'address': 'client@firm.example', 'mails': 2, 'sent': 1, 'received': 1, 'one_way': False},
+        {'name': '', 'address': '0xa633fd2e63@mail.openonion.ai', 'mails': 6, 'sent': 3, 'received': 3,
+         'one_way': False},
+        {'name': 'Ann Lee', 'address': 'ann@partner.example', 'mails': 1, 'sent': 0, 'received': 1,
+         'one_way': True}])
+    pages = {row['addresses'][0]: row['record'] for row in result['people']}
+    held = pages['x7@shop.example']
+    assert result['needs_review'] == [held]
+    assert Notebook(tmp_path).read(held).startswith('# x7@shop.example\n')          # kept, not deleted
+    assert Notebook(tmp_path).read(pages['0xa633fd2e63@mail.openonion.ai']).startswith('# 0xa633fd2e63@')
+    queued = [row['path'] for row in order(tmp_path, 'people')]
+    assert held not in queued
+    assert {pages['client@firm.example'], pages['0xa633fd2e63@mail.openonion.ai'],
+            pages['ann@partner.example']} <= set(queued)
+    records = {row['path']: row for row in snapshot(tmp_path)['records']}
+    assert records[held]['needs_review']                          # still linkable, left off the contents
+    assert not any(row.get('needs_review') for path, row in records.items() if path != held)
+
+
+def test_a_reply_or_a_name_on_a_later_map_brings_the_page_back(tmp_path, monkeypatch):
+    from connectonion.wiki.map import needs_review
+    prepare(tmp_path)
+    quiet = [{'name': '', 'address': 'a@one.example', 'mails': 2, 'sent': 0, 'received': 2, 'one_way': True},
+             {'name': '', 'address': 'b@two.example', 'mails': 2, 'sent': 0, 'received': 2, 'one_way': True}]
+    first = _map(tmp_path, monkeypatch, quiet)
+    assert len(first['needs_review']) == 2 and needs_review(tmp_path) == set(first['needs_review'])
+    answered = [{**quiet[0], 'mails': 3, 'sent': 1, 'one_way': False}, {**quiet[1], 'name': 'Bo Chen'}]
+    second = _map(tmp_path, monkeypatch, answered)
+    assert second['needs_review'] == [] and needs_review(tmp_path) == set()
+    assert {row['record'] for row in second['people']} == set(first['needs_review'])
+
+
+def test_an_investigated_page_is_never_held_for_review(tmp_path, monkeypatch):
+    """Investigating a held page is the owner asking for it, so it leaves the
+    bucket at once; a page someone has investigated is never put in it."""
+    from connectonion.wiki.map import needs_review
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person('people/kept.md', 'kept@q.example', ['kept@q.example'], email='kept@q.example')
+    notebook.note_investigation('people/kept.md', 'gmail')
+    before = notebook.read('people/kept.md')
+    result = _map(tmp_path, monkeypatch, [
+        {'name': '', 'address': 'kept@q.example', 'mails': 2, 'sent': 0, 'received': 2, 'one_way': True},
+        {'name': '', 'address': 'held@q.example', 'mails': 2, 'sent': 0, 'received': 2, 'one_way': True}])
+    held = result['needs_review']
+    assert len(held) == 1 and 'people/kept.md' not in held
+    assert notebook.read('people/kept.md') == before
+    notebook.note_investigation(held[0], 'gmail')
+    assert needs_review(tmp_path) == set()
