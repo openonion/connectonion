@@ -525,6 +525,12 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
                    f"\"sources\":{json.dumps(sources, ensure_ascii=False)},\"reason\":\"why no change\"}}. "
                    "Do not write this receipt if you could not read or assess the material; report that as a failure. ")
 
+    from .tier import current, summary_prompt
+    # The tier recorded for this model by `co wiki config set model` (#1847).
+    summary = bool(candidate) and stage == "investigate" and current(notebook.root, config) == "summary"
+    if summary:
+        prompt = summary_prompt(directory) + POLICY
+
     def changed():
         if candidate:
             # The candidate can replace only this one page. Another
@@ -535,6 +541,7 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
         return sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
 
     metrics = {"stage": stage, "harness": config["runner"], "model": config["model"],
+               "tier": "summary" if summary else "agent",
                "instructions_chars": len((directory / "instructions.md").read_text()),
                "material_chars": len((directory / "material.json").read_text()),
                "readable_material_chars": len((directory / "material.md").read_text()),
@@ -554,6 +561,9 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
             prompt += f" Read {directory / 'synthesize.json'} and retain unresolved findings and cited correction reasons."
         selected_config = stage_config(notebook.root, config, "render") if candidate else config
         result = run_task(workdir, prompt, selected_config, stage)
+        if summary:
+            from .tier import page_from_reply
+            candidate.write_text(page_from_reply(result.get("result")), encoding="utf-8")
         metrics["render_usage"] = result.get("usage")
         result["usage"] = {key: inquiry_usage.get(key, 0) + (result.get("usage") or {}).get(key, 0)
                            for key in inquiry_usage.keys() | (result.get("usage") or {}).keys()} or None

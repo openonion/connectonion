@@ -202,6 +202,7 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co wiki stub org "UNSW" --domain unsw.edu.au --person people/vern-chan.md` | Create an organisation skeleton; `People here` holds links, not copies. |
 | `co wiki stub project "Aurora" --path /path/to/repo` | Create a project skeleton. |
 | `co wiki list people --aliases` | Existing identity roster: page, title, aliases, addresses, relationship summary. |
+| `co wiki list people --review` | Pages held for review: titled by an address the owner never wrote to. |
 | `co wiki investigate people/alice.md` | Read the existing page, gather sources, digest oversized material, fill that same page through the Skill. |
 | `co wiki investigate` | What is left to investigate, by category, most useful first. No model. |
 | `co wiki investigate people --limit 3` | Investigate the next three people, the last 14 days' correspondents first (`--recent-days`): a person investigated before reads only the mail since then ([details](wiki-people-pages.md)). `--list` prints the order and the cost and runs nothing. `projects`, `orgs`, `skills` take unfinished pages, most mail or sessions first. |
@@ -263,6 +264,34 @@ omits the model flag. Changing runner without a model chooses that harness's
 default. Old coai configs which retained the unused Codex default migrate to
 their previous effective behavior (COAI's default). No credential belongs in
 Wiki configuration.
+
+### The job's shape: agent or summary tier
+
+Not every model can drive tools, and model names change under us, so the
+shape of an investigation is measured rather than read off the name (#1847).
+Changing `model` or `runner` runs a capability check: one investigation of a
+built-in fixture page (two mails, in a throwaway notebook; none of your data)
+through the configured runner, graded by code — the page must state the
+fixture's fact and cite a fixture message. The result is recorded in
+`.state/tier.json` with the runner, model and time it was checked for.
+
+| Tier | Who gathers | Who writes the page |
+|---|---|---|
+| `agent` | Wiki's code gathers; the harness reads the material with its file tools | The model writes the page file itself, as the investigate Skill says |
+| `summary` | Wiki's code gathers everything, including a project's files, and hands it all over inline (digested first if it does not fit) | The model replies with the page, one page per call; the reply becomes the candidate |
+
+The agent tier is tried first; a model that fails it but fills the page by
+reply is the summary tier; a model that does neither is not recorded and the
+command fails with a `Next:` line. `co wiki config` shows the tier in force.
+A notebook never checked, or checked for another runner or model, runs as the
+agent tier (the behaviour before the check existed) and `co wiki config`
+says so and names the command that checks it. `--no-check` saves a new model
+without checking it.
+
+```bash
+co wiki config set model gpt-6-luna      # saves, checks, records the tier
+co wiki config                           # Tier: in force, checked, when
+```
 
 Equivalent direct CLI delegation, useful in a shell script:
 
@@ -518,7 +547,13 @@ to that one person ("Hi Larry,", "Larry 你好，", "子明，"). A greeting to 
 people names none of them. On the owner's notebook this named 176 of 195 people
 the map had titled with a bare address. An organisation is the registrable
 domain (accounts.google.com and google.com are one), and a domain only notice
-senders write from gets no page. With `--mail`, only explicitly selected
+senders write from gets no page. A page still titled by a bare address whose
+sender the owner never wrote to is held for review: kept, but left out of the
+investigation queue, `co wiki list` and the reader's contents. `co wiki list
+people --review` shows them; a later init that finds a name or a reply from the
+owner, or investigating one by its path, brings it back. A nameless address the
+owner has written to, the agent's own included, stays an ordinary page, and an
+investigated page is never held. With `--mail`, only explicitly selected
 mailboxes are read. Missing or failed sources appear in the mapping coverage;
 without a selected mailbox the command explains why People is empty.
 The terminal shows one line per mapping stage, a short count of People,

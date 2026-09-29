@@ -704,18 +704,32 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
     path = state_path(root, f"runs/{record['id']}.json")
     if not items:
         write_json(state_path(root, "progress.json"), updated)
-        write_json(path, record)
+        # Nothing new was read and no model ran, so there is no run to list
+        # (#1846). Messages passed over in an unfamiliar format are still said.
+        if record["warning"]:
+            write_json(path, record)
         return record
     from .extract import finished_digest, forget_digest, remember_digest
     digested = finished_digest(root, items, kind) if record["extracted"] else None
     extract_calls = 1 if record["extracted"] and digested is None else 0
     # One call per page the material concerns (#1656): the script finds them,
     # the model updates one at a time. A fake runner in tests keeps the single
-    # whole-notebook call.
-    leads = []
+    # whole-notebook call. A page that has already read what points at it gets
+    # no call at all (#1846).
+    leads, current = [], []
     if runner is None or runner is run_stage:
-        from .leads import page_leads
-        leads = page_leads(Notebook(root), items)[:PAGES_PER_BATCH]
+        from .leads import nothing_new, page_leads
+        found = page_leads(Notebook(root), items)
+        current = [lead for lead in found if nothing_new(Notebook(root), lead, items)]
+        leads = [lead for lead in found if lead not in current][:PAGES_PER_BATCH]
+    if current:
+        record["up_to_date"] = current
+    if current and not leads:
+        record.update(outcome="completed", report="Every page this material concerns has already read it")
+        write_json(state_path(root, "progress.json"), updated)
+        forget_digest(root)
+        write_json(path, record)
+        return record
     room = 10**6 if uncapped else limits["runner_calls_per_day"] - status(root)["runner_attempts_today"] - extract_calls
     if room < 1:
         raise WikiError("Daily runner-attempt limit reached; source progress was not advanced")
@@ -866,7 +880,11 @@ def usage_report(root: Path, days: int | None = None) -> dict:
         table["instructions_chars_mean"] = round(sum(values) / len(values))
         table["instructions_chars_max"] = max(values)
         table["over_instructions_target"] = max(values) > INSTRUCTIONS_TARGET_CHARS
-    return {"runs": len(runs), "days": days, "total": total, "by_stage": by_stage,
+    # What the tokens bought (#1846): a page turn that changes nothing costs the same.
+    changed = sum(len(run.get("changed") or []) for run in runs)
+    per_100k = round(changed * 100_000 / total["input_tokens"], 2) if total.get("input_tokens") else None
+    return {"runs": len(runs), "days": days, "total": total, "pages_changed": changed,
+            "pages_changed_per_100k_input_tokens": per_100k, "by_stage": by_stage,
             "by_model": by_model, "by_source": by_source}
 
 

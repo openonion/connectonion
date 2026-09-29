@@ -31,6 +31,7 @@ def _title(record: str, text: str) -> str:
 
 def snapshot(root: Path) -> dict:
     """Everything the page shows, read once; no model, no writes into the notebook."""
+    from .map import needs_review
     from .reviews import listing
     notebook = Notebook(root)
     records = []
@@ -40,6 +41,10 @@ def snapshot(root: Path) -> dict:
         records.append({"path": record, "category": record.split("/")[0],
                         "title": _title(record, text) + (" (automated candidate)" if "- Correspondent classification: automated candidate;" in text else ""), "text": text,
                         "updated": updated.isoformat(timespec="seconds")})
+    # Held for review (#1844): still linkable, left off the contents until promoted.
+    held = needs_review(root)
+    for record in records:
+        record["needs_review"] = record["path"] in held
     groups = {}
     for record in records:
         if record["path"].startswith("skills/catalog/") and record["path"] != "skills/catalog/index.md":

@@ -12,6 +12,7 @@ Left out on purpose:
   owner's second Gmail (106 sent, 0 received) would top the list and pull the
   owner's own mail into a page about nobody;
 - automated candidates, which are not people;
+- addresses held for review (#1844): no name, and the owner never wrote to them;
 - a page investigated in the last week, so a daily category run does not
   spend the budget re-reading what it just read.
 """
@@ -20,6 +21,7 @@ import re
 from datetime import date, datetime, timezone
 
 from .files import Notebook, read_json, state_path
+from .map import needs_review
 
 CATEGORIES = {"people": "people/", "projects": "projects/", "orgs": "orgs/", "skills": "skills/catalog/"}
 RECENT_DAYS = 7
@@ -58,6 +60,7 @@ def order(root, category: str, today: date | None = None) -> list[dict]:
     excluded |= {row.get("record") for row in state.get("possible_own_addresses", [])}
     excluded |= {row.get("record") for row in state.get("people", [])
                  if row.get("classification") == "automated candidate"}
+    excluded |= needs_review(root)
     rows = []
     for entry in Notebook(root).unfinished(prefix.split("/")[0]):
         path = entry["path"]
