@@ -45,8 +45,19 @@ iteration boundary. A Full Access user turn defers watch data to a separate
 Read only turn.
 
 On its first web-server start, `co ai` creates a private owner invite in
-`~/.co/keys.env`. The code is never printed in startup logs. When you are ready
-to connect your own client, reveal it intentionally:
+`~/.co/keys.env`. When you run `co ai` in your own terminal, it shows the
+agent's address, the invite code and the link to open it in O Chat:
+
+```text
+  Your agent is starting
+  Address  0x3d40…
+  Invite   ABCDE-FGHJK-MNPQR   (give it only to people you let in)
+  Open     https://chat.openonion.ai/0x3d40…
+```
+
+When the output is not a terminal (a deployed host, where it becomes the system
+log), the code is never printed; the line says `run co keys --reveal to see
+it` instead:
 
 ```bash
 co keys --reveal

@@ -7,14 +7,12 @@ const status = document.querySelector('#status')
 const form = document.querySelector('#message-form')
 const input = document.querySelector('#message')
 const submit = form.querySelector('button[type="submit"]')
-const overview = document.querySelector('#overview')
-const quickCard = document.querySelector('#quick-card')
-const quickActions = document.querySelector('#quick-actions')
 const capabilityList = document.querySelector('#capability-list')
 const capabilityCount = document.querySelector('#capability-count')
 const skillFilter = document.querySelector('#skill-filter')
 const searchEmpty = document.querySelector('#search-empty')
 const agentAddress = document.querySelector('#agent-address')
+const cardAddress = document.querySelector('#card-address')
 const diagnosticSkills = document.querySelector('#diagnostic-skills')
 const diagnosticConversation = document.querySelector('#diagnostic-conversation')
 const appRevision = document.querySelector('#app-revision')
@@ -82,9 +80,7 @@ function emptyCapabilities() {
 
 function renderSkills(skills = []) {
   const ordered = [...skills].sort((left, right) => left.name.localeCompare(right.name))
-  quickActions.replaceChildren(...ordered.slice(0, 3).map(skillButton))
-  quickCard.hidden = ordered.length === 0
-  overview.classList.toggle('single', ordered.length === 0)
+  // The page opens on the agent's card; skills stay folded under Capabilities.
 
   capabilityList.replaceChildren()
   if (ordered.length) {
@@ -121,6 +117,8 @@ function renderSnapshot(snapshot) {
   if (previousSkills !== serialized) { renderSkills(snapshot.skills); previousSkills = serialized }
   const ready = snapshot.connectionState === 'connected'
   agentAddress.textContent = snapshot.agentAddress
+  cardAddress.textContent = snapshot.agentAddress || ''
+  cardAddress.hidden = !snapshot.agentAddress
   diagnosticConversation.textContent = snapshot.sessionId || 'Created by the first action'
   connectionLabel.textContent = ready ? (snapshot.status === 'idle' ? 'Connected' : 'Agent ' + snapshot.status) : snapshot.connectionState
   connection.classList.toggle('connected', ready)

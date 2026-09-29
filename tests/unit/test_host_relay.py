@@ -412,3 +412,27 @@ class TestCreateRouteHandlers:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+# Owner, 2026-09-29: the public directory is opt-in (oo-api#255 lists only
+# profiles with listed: true) and shows a card: name, address, one line.
+
+def test_an_agent_is_unlisted_unless_its_host_yaml_says_listed():
+    from connectonion.network.host.server import _build_agent_profile
+    meta = {"name": "ops", "tagline": "Answers guests. Also drafts replies.", "skills": []}
+    assert "listed" not in _build_agent_profile(meta)
+    assert _build_agent_profile(meta, directory="unlisted").get("listed") is None
+    assert _build_agent_profile(meta, directory="listed")["listed"] is True
+
+
+def test_a_misspelt_directory_setting_is_refused_not_guessed():
+    import pytest
+    from connectonion.network.host.server import _build_agent_profile
+    with pytest.raises(ValueError, match="directory"):
+        _build_agent_profile({"name": "ops", "skills": []}, directory="public")
+
+
+def test_the_card_carries_one_line_about_the_agent():
+    from connectonion.network.host.server import _build_agent_profile
+    profile = _build_agent_profile({"name": "ops", "tagline": "Answers guests. Also drafts replies.", "skills": []})
+    assert profile["bio"] == "Answers guests."

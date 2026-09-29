@@ -18,6 +18,7 @@ Used by:
 
 import logging
 import os
+import sys
 import threading
 import time
 import webbrowser
@@ -97,6 +98,28 @@ def _prepare_owner_onboarding(co_dir: Path) -> bool:
     return _ensure_owner_invite(co_dir)
 
 
+def show_owner_card(agent_address: str, stream=None) -> None:
+    """What the owner needs to connect: the address, the invite code, the link.
+
+    Owner, 2026-09-29: on a fresh laptop `co ai` said "Owner invite created.
+    Run co keys --reveal" and nothing else, so whoever set it up could not
+    connect a client. The code is shown in the owner's own terminal. When
+    stdout is not a terminal -- a deployed host, where stdout is the system
+    log, readable by anyone on the box and kept with the logs -- it says where
+    the code is instead of what it is.
+    """
+    stream = stream or sys.stdout
+    invite = os.environ.get("CO_INVITE_CODE", "")
+    lines = ["", "  Your agent is starting", f"  Address  {agent_address}"]
+    if invite and stream.isatty():
+        lines += [f"  Invite   {invite}   (give it only to people you let in)",
+                  f"  Open     https://chat.openonion.ai/{agent_address}"]
+    elif invite:
+        lines += ["  Invite   run `co keys --reveal` to see it"]
+    stream.write("\n".join(lines) + "\n\n")
+    stream.flush()
+
+
 def start_server(
     agent,
     port: int = 8000,
@@ -131,18 +154,16 @@ def start_server(
 
     from ...network.host.config import load_host_config
     co_dir = selected_identity_dir()
-    if invite_code is None and _prepare_owner_onboarding(co_dir):
-        from ..commands.project_cmd_lib import console
-
-        console.print(
-            "[green]Owner invite created.[/green] Run [bold]co keys --reveal[/bold] when onboarding your client."
-        )
-    elif invite_code is not None:
+    if invite_code is None:
+        _prepare_owner_onboarding(co_dir)
+    else:
         from ..commands.project_cmd_lib import ensure_global_config
 
         ensure_global_config()
     config = load_host_config(co_dir)
     addr_data = address.load(co_dir)
+    if invite_code is None and addr_data:
+        show_owner_card(addr_data["address"])
 
     def configured(new_agent):
         if full_access:

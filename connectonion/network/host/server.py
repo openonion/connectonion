@@ -255,7 +255,10 @@ def _extract_agent_metadata(create_agent: Callable,
     return metadata, sample
 
 
-def _build_agent_profile(agent_metadata: dict) -> dict:
+DIRECTORY_SETTINGS = ("listed", "unlisted")
+
+
+def _build_agent_profile(agent_metadata: dict, directory: str | None = None) -> dict:
     """Build the publishable display profile sent with relay ANNOUNCEs.
 
     Carries display fields only — alias, tool names, model, and the names+descriptions
@@ -266,7 +269,19 @@ def _build_agent_profile(agent_metadata: dict) -> dict:
     (The agent's prompt summary is broadcast separately via the top-level ANNOUNCE
     `summary` field — it is not part of this profile and not made private by it.)
     """
+    if directory is not None and directory not in DIRECTORY_SETTINGS:
+        raise ValueError(f"host.yaml directory: {directory!r} is not a setting; "
+                         f"use {' or '.join(DIRECTORY_SETTINGS)} (default unlisted)")
     profile = {"alias": agent_metadata["name"]}
+    # The public directory is opt-in (owner, 2026-09-29): internal agents were
+    # listed for anyone to see. Only `directory: listed` in host.yaml adds it,
+    # and a listing shows the card (alias, bio, address), never the skills.
+    if directory == "listed":
+        profile["listed"] = True
+    from .ws_router.dashboard import first_sentence
+    bio = first_sentence(agent_metadata.get("tagline"), limit=140)
+    if bio:
+        profile["bio"] = bio
     if agent_metadata.get("tools"):
         profile["tools"] = agent_metadata["tools"]
     if agent_metadata.get("model"):
@@ -1272,7 +1287,7 @@ def host(
 
     # Create relay lifespan callbacks (runs in same event loop as HTTP/WebSocket)
     on_startup, on_shutdown = None, None
-    relay_profile = _build_agent_profile(agent_metadata)
+    relay_profile = _build_agent_profile(agent_metadata, directory=config.get("directory"))
     if relay_url:
         # Pre-bind run_ws_session's host-wide deps so relay only needs to pass
         # (send_msg, recv_msg). Each call = one client session full lifecycle
