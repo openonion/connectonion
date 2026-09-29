@@ -72,3 +72,31 @@ def page_leads(notebook: Notebook, items: list[dict]) -> list[str]:
             leads.append((hits, record))
     leads.sort(key=lambda lead: (-lead[0], lead[1]))
     return [record for _, record in leads[:MAX_LEADS]]
+
+
+def nothing_new(notebook: Notebook, record: str, items: list[dict]) -> bool:
+    """Whether the page has already read every message here that points at it.
+
+    A page turn re-sends the page and the material, about 110k tokens, and two
+    of three leads in a measured batch changed nothing (#1846). What points at a
+    page is what made it a lead: a message typed in its folders, or one naming
+    it. The page has read a message it cites, and a project page has read the
+    messages `co wiki projects write` wrote it from. One unread message, or none
+    pointing at it, and the page gets its turn.
+    """
+    from .page_review import SOURCE_ID
+    from .project_material import page_state, stored
+    text = notebook.read(record)
+    roots = project_paths(text) if record.startswith("projects/") else []
+    person = next((p for p in notebook.people() if p["path"] == record), {})
+    title = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), "")
+    names = {person.get("title", title), *person.get("aliases", [])}
+    pointing = {source for item in items
+                if (item.get("project") and _under(str(item["project"]), roots))
+                or any(_named(name, str(item.get("text", ""))) for name in names)
+                for source in item.get("sources") or [item.get("source")] if source}
+    read = {source.rstrip(".,;") for source in SOURCE_ID.findall(text)}
+    if roots:
+        through = page_state(notebook.root, record).get("written_through") or ""
+        read |= {m["source"] for m in stored(notebook.root, record) if m["timestamp"] <= through}
+    return bool(pointing) and pointing <= read

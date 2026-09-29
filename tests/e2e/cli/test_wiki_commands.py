@@ -50,6 +50,23 @@ def test_file_listing_show_and_literal_search(tmp_path):
     assert "people/alice.md" in matches.output
 
 
+def test_addresses_held_for_review_are_listed_only_when_asked_for(tmp_path):
+    """#1844: a nameless address the owner never wrote to stays off the list until promoted."""
+    from connectonion.wiki.files import state_path, write_json
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/alice.md", "Alice")
+    notebook.stub_person("people/x7.md", "x7@shop.example", ["x7@shop.example"])
+    write_json(state_path(tmp_path, "map.json"), {"people": [{"record": "people/alice.md"},
+                                                             {"record": "people/x7.md", "needs_review": True}]})
+    listing = invoke(tmp_path, "--json", "list", "people")
+    assert json.loads(listing.output)["data"] == ["people/alice.md"]
+    assert json.loads(invoke(tmp_path, "--json", "list").output)["data"]["people"] == 1
+    held = invoke(tmp_path, "--json", "list", "people", "--review")
+    assert json.loads(held.output)["data"] == ["people/x7.md"]
+    assert invoke(tmp_path, "list", "projects", "--review").exit_code != 0
+
+
 def test_list_people_puts_the_most_mailed_first_not_the_first_file_name(tmp_path):
     """#1670: sorted by file name, an agent's 0x… mailbox came before colleagues."""
     from connectonion.wiki.files import state_path, write_json
@@ -102,11 +119,37 @@ def test_read_commands_do_not_invoke_a_provider(tmp_path, monkeypatch):
 def test_config_set_is_explicit_and_does_not_prepare_content(tmp_path):
     root = tmp_path / "wiki"
     result = invoke(root, "config", "set", "schedule.timezone", "Australia/Sydney",
-                    "model", "gpt-5.6-luna")
+                    "model", "gpt-5.6-luna", "--no-check")
     assert result.exit_code == 0, result.output
     assert (root / "config.yaml").is_file()
     assert not (root / "people").exists()
     assert "gpt-5.6-luna" in invoke(root, "config").output
+
+
+def test_config_set_model_checks_it_on_a_fixture_page_and_records_its_tier(tmp_path, monkeypatch):
+    """#1847: the tier comes from what the model did, not from its name."""
+    def plain_model(workspace, prompt, config, stage):   # can reply, cannot drive tools
+        page = re.search(r"^# Ada Fixture$.*?^Investigation:[^\n]*$", prompt, re.M | re.S).group(0)
+        source = re.search(r"gmail:[0-9a-f]{12}", prompt).group(0)
+        return {"outcome": "natural", "usage": None, "result": page.replace(
+            "## Who they are\n- Unknown — not investigated yet",
+            "## Who they are\n- Head of research at Lovelace Instruments. [1]").replace(
+            "- (none yet)", f"- [1] {source}")}
+
+    monkeypatch.setattr("connectonion.wiki.runner.run_task", plain_model)
+    root = tmp_path / "wiki"
+    result = invoke(root, "config", "set", "model", "gpt-7-nova")
+    assert result.exit_code == 0, result.output
+    assert "Tier: summary" in result.stdout
+    recorded = json.loads((root / ".state/tier.json").read_text())
+    assert (recorded["tier"], recorded["model"]) == ("summary", "gpt-7-nova")
+    assert not (root / "people").exists()
+    shown = invoke(root, "config").output
+    assert "In force: summary" in shown and shown.rstrip().endswith(f"Next: co wiki --root {root} status")
+    invoke(root, "config", "set", "model", "gpt-7-pico", "--no-check")
+    shown = invoke(root, "config").output
+    assert "last checked for codex gpt-7-nova" in shown
+    assert shown.rstrip().endswith(f"Next: co wiki --root {root} config set model gpt-7-pico")
 
 
 @pytest.mark.parametrize("schedule", [None, {}, {"times": ["17:00"], "timezone": "Not/AZone"}])
@@ -533,6 +576,19 @@ def test_init_asks_whether_a_write_only_address_is_the_owner_s_own(tmp_path, mon
     assert 'Wiki init: mapped installed skills' in plain.output
     assert 'Wiki init: mapped projects' in plain.output
     assert 'aaronplus1996@gmail.com' in Text.from_ansi(plain.output).plain
+
+
+def test_init_says_how_many_addresses_are_held_for_review_and_where_to_see_them(tmp_path, monkeypatch):
+    monkeypatch.setattr('connectonion.wiki.service.subscriptions', lambda root: {})
+    monkeypatch.setattr('connectonion.wiki.map._mail_rows', lambda *a, **kw: ([
+        {'name': '', 'address': 'x7@shop.example', 'mails': 5, 'sent': 0, 'received': 5, 'one_way': True}], set()))
+    empty = tmp_path / 'empty-skills'
+    empty.mkdir()
+    root = tmp_path / 'wiki'
+    result = invoke(root, 'init', '--skills-dir', str(empty))
+    assert result.exit_code == 0, result.output
+    assert "Held for review, not investigated or listed (no name, never written to): 1." in result.output
+    assert f"--root {root} list people --review" in result.output
 
 
 @pytest.mark.parametrize("state,expected", [

@@ -446,6 +446,9 @@ def make_wiki_app(factory):
                 if kind not in available:
                     tips.append(f"Connect {provider.title()} for People: co auth {provider}; then run "
                                 + _next(ctx, ["init", *window]) + ".")
+            if result.get("needs_review"):
+                tips.append(f"Held for review, not investigated or listed (no name, never written to): "
+                            f"{len(result['needs_review'])}. See " + _next(ctx, ["list", "people", "--review"]))
             if tips:
                 result["tips"] = tips
             candidates = result.get("possible_own_addresses") or []
@@ -724,8 +727,10 @@ def make_wiki_app(factory):
 
     @wiki.command("list", cls=V("co wiki list"))
     def list_records(ctx: typer.Context, category: str = typer.Argument(""),
-                     aliases: bool = typer.Option(False, "--aliases")):
+                     aliases: bool = typer.Option(False, "--aliases"),
+                     review: bool = typer.Option(False, "--review")):
         from ...wiki.files import CATEGORIES, Notebook, WikiError
+        from ...wiki.map import needs_review
 
         def operation(root):
             notebook = Notebook(root)
@@ -734,11 +739,16 @@ def make_wiki_app(factory):
                     raise WikiError("--aliases goes with people")
                 people = notebook.people()
                 return people, (["show", people[0]["path"]] if people else ["init"])
+            held = needs_review(root)
+            if review:
+                if category not in ("", "people"):
+                    raise WikiError("--review goes with people")
+                return sorted(held), (["show", min(held)] if held else ["list", "people"])
             if not category:
-                counts = {name: len(notebook.list(name)) for name in CATEGORIES if notebook.list(name)}
+                counts = {name: count for name in CATEGORIES if (count := len(set(notebook.list(name)) - held))}
                 return (counts, ["list", next(iter(counts))]) if counts else ([], ["init"])
             from ...wiki.queue import by_weight
-            records = by_weight(root, notebook.list(category))
+            records = [record for record in by_weight(root, notebook.list(category)) if record not in held]
             if not records and category == "people" and not ctx.obj["json"]:
                 from ...wiki.files import state_path
                 from ...wiki.service import mail_available
@@ -936,17 +946,25 @@ def make_wiki_app(factory):
     def inspect_config(ctx: typer.Context):
         from ...wiki.config import read_config
         from ...wiki.inquiry import routing
+        from ...wiki.tier import describe
+
+        def operation(root):
+            config = read_config(root, validated=False)
+            tier = describe(root, config)
+            # Unchecked runs as the agent tier, said so, with the command that measures it (#1847).
+            return ({"path": str(root / "config.yaml"), "saved": (root / "config.yaml").exists(),
+                     "config": config, "tier": tier, "routes": routing(root)},
+                    ["status"] if tier["checked"] else ["config", "set", "model", str(config.get("model"))])
         if ctx.invoked_subcommand is None:
-            _handle(ctx, lambda root: ({"path": str(root / "config.yaml"),
-                                       "saved": (root / "config.yaml").exists(),
-                                       "config": read_config(root, validated=False),
-                                       "routes": routing(root)}, ["status"]), ["doctor"])
+            _handle(ctx, operation, ["doctor"])
 
     @config_app.command("set", cls=V("co wiki config set"))
-    def change_config(ctx: typer.Context, values: List[str] = typer.Argument(...)):
+    def change_config(ctx: typer.Context, values: List[str] = typer.Argument(...),
+                      no_check: bool = typer.Option(False, "--no-check")):
         from ...wiki.config import read_config, set_config
         from ...wiki.files import WikiError
         from ...wiki.inquiry import STAGES, clear_route, routing, set_route
+        from ...wiki.tier import check_and_record
 
         def operation(root):
             if len(values) % 2:
@@ -963,7 +981,14 @@ def make_wiki_app(factory):
                     clear_route(root, stage)
                 else:
                     set_route(root, stage, config["runner"], model)
-            return {"config": config, "routes": routing(root)}, ["config"]
+            value = {"config": config, "routes": routing(root)}
+            # The tier is measured when the model changes, never read off its name (#1847).
+            if {"model", "runner"} & set(values[::2]) and not no_check:
+                if not ctx.obj["json"]:
+                    typer.echo(f"Checking {config['model']} on a fixture page (one or two model calls)...",
+                               err=True)
+                value["check"] = check_and_record(root, config)
+            return value, ["config"]
         _handle(ctx, operation, ["config"])
 
     @wiki.command("logs", cls=V("co wiki logs"))
