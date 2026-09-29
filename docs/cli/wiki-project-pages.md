@@ -118,6 +118,10 @@ messages like any other. An older folder is listed, not given a page:
 A page made on a later, incremental run holds that run's messages; run
 `co wiki projects --full` to file its older ones too.
 
+`co wiki init` runs the same extraction before it writes the projects active in
+the last 14 days, so a repository worked in only from the workspace, with no page
+before, is among the projects the first run writes.
+
 ### Measured (workspace attribution)
 
 On the owner's machine on 2026-09-30, read-only, counts only, 180 days, 1,579

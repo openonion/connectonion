@@ -288,3 +288,28 @@ def test_projects_says_what_was_attributed_created_and_left(ws, monkeypatch):
     body = data["data"]
     assert body["workspace"] == {"attributed": 3, "folders": 3, "stayed_out": 1}
     assert body["created"] == [] and [row["path"] for row in body["unmapped"]] == [ws.p("gamma")]
+
+
+def test_inits_recent_projects_step_writes_a_workspace_attributed_project(ws, monkeypatch):
+    """The first run (#1946) writes the projects active this fortnight; a repository
+    worked in only from the workspace, with no page before, is one of them."""
+    from connectonion.cli.commands.wiki_commands import _first_projects
+    from connectonion.wiki.config import read_config
+    home = Path(os.environ["HOME"])
+    codex_session(home / ".codex/sessions/2026/09/28/rollout-b.jsonl", str(ws.projects), [
+        ("beta needs a release", 1, [("exec", exec_command("git status", workdir=ws.p("beta")))])])
+    written = []
+
+    def write_page(root, record, **kw):
+        written.append(record)
+        return {"record": record, "changed": [record]}
+
+    monkeypatch.setattr("connectonion.wiki.project_pages.write_page", write_page)
+    monkeypatch.setattr("connectonion.wiki.quota.read", lambda config: {"unknown": "no meter in tests"})
+    ctx = types.SimpleNamespace(obj={"json": False, "root": ws.root})
+    said = []
+    result = _first_projects(ctx, ws.root, read_config(ws.root), "on your Codex plan", said.append)
+    beta = next(r for r in ws.notebook.list("projects") if r.startswith("projects/beta"))
+    assert result["started"] and written == [beta]
+    assert said == [f"  {beta}: written"]
+    assert texts(ws.root, beta) == ["beta needs a release"]
