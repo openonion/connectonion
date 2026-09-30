@@ -174,6 +174,11 @@ def render(value, command: str, *, failed: bool = False) -> str:
             text += '\n\nThe Next command lists page paths directly; no extra flags are needed.'
         if command == 'init' and not failed:
             text += '\n\nMap initialized. Investigation has not started; the Next line begins with your own page.'
+    return printable(text)
+
+
+def printable(text: str) -> str:
+    """No control characters from page or source text reach the terminal."""
     return ''.join(char for char in text if char in '\n\t' or (ord(char) >= 32 and not 127 <= ord(char) <= 159))
 
 

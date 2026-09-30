@@ -76,23 +76,34 @@ def _absent_mail(selected, available, failed, sources, chosen_by_hand) -> dict:
     return reasons
 
 
-def _emit(ctx, value, arguments, *, failed=False):
+def _emit(ctx, value, arguments, *, failed=False, draw=None):
+    """Print a result and its Next line: styled in a terminal, the same words anywhere else.
+
+    `draw` turns a result into markup of its own (status's dashboard); any
+    other result is `render`'s text with commands, counts and errors marked.
+    """
+    from ..style import next_line
+    from . import rem_look
     command = _next(ctx, arguments)
     if ctx.obj["json"]:
         typer.echo(json.dumps({"ok": not failed, "data": value, "next": command}, ensure_ascii=False))
+    elif draw and not failed:
+        from .rem_output import printable
+        rem_look.say(printable(draw(value)))
+        rem_look.say(next_line(command))
     else:
         path, parent = [ctx.info_name or "status"], ctx.parent
         while parent is not None and parent.info_name not in (None, "rem") and parent.parent is not None:
             path.insert(0, parent.info_name)
             parent = parent.parent
         text = render(value, " ".join(path), failed=failed)
-        typer.echo(text, err=failed)
-        typer.echo(f"Next: {command}", err=failed)
+        rem_look.say(rem_look.result(text, titled=not isinstance(value, str)), err=failed, plain=text)
+        rem_look.say(next_line(command), err=failed)
     if failed:
         raise typer.Exit(1)
 
 
-def _handle(ctx, operation, recovery, *, retry=None):
+def _handle(ctx, operation, recovery, *, retry=None, draw=None):
     from ...rem.files import RemError
 
     try:
@@ -108,7 +119,13 @@ def _handle(ctx, operation, recovery, *, retry=None):
                      retry if retry and getattr(error, "_rem_retry_page", False) else recovery)
         _emit(ctx, message, next_step, failed=True)
         return
-    _emit(ctx, value, arguments, failed=failed)
+    _emit(ctx, value, arguments, failed=failed, draw=draw)
+
+
+def _dashboard(ctx, verbose=False):
+    """How status draws its result: a small dashboard, internals only with --verbose (#1996)."""
+    from .rem_status import dashboard
+    return lambda value: dashboard(ctx.obj["root"], value, lambda arguments: _next(ctx, arguments), verbose=verbose)
 
 
 def _moved(ctx, old: str, new: list):
@@ -397,7 +414,7 @@ def make_rem_app(factory):
             _carry_over(ctx)
         if ctx.invoked_subcommand is None:
             if ctx.obj["json"]:
-                inspect_status(ctx)
+                inspect_status(ctx, verbose=False)
             else:
                 from ...rem.service import status
                 show("co rem")
@@ -405,7 +422,7 @@ def make_rem_app(factory):
                 def operation(root):
                     result = status(root)
                     return result, ["investigate"] if result["configured"] else ["init"]
-                _handle(ctx, operation, ["config"])
+                _handle(ctx, operation, ["config"], draw=_dashboard(ctx))
 
     V = verbatim
 
@@ -905,9 +922,10 @@ def make_rem_app(factory):
         _handle(ctx, lambda root: (stop(root, scheduler=rem_schedule.default_scheduler()), ["status"]), ["status"])
 
     @rem.command("status", cls=V("co rem status"))
-    def inspect_status(ctx: typer.Context):
+    def inspect_status(ctx: typer.Context, verbose: bool = typer.Option(False, "--verbose")):
         from ...rem.service import status
-        _handle(ctx, lambda root: (status(root, live_quota=True), ["logs"]), ["config"])
+        _handle(ctx, lambda root: (status(root, live_quota=True), ["logs"]), ["config"],
+                draw=_dashboard(ctx, verbose))
 
     def _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days):
         from ...rem.files import RemError
