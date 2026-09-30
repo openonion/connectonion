@@ -120,13 +120,32 @@ def _contact_names(clients: dict) -> dict:
     return names
 
 
+def _count_owner_names(row: dict, own: bool, mine: set, names: dict) -> None:
+    """Add what this mail calls the owner to `names` (see scan_people)."""
+    if own:
+        sender = _display_name(row, _address(row.get("from", "")))
+        if sender:
+            names["sent"][sender] += 1
+        return
+    headers = [str(h) for h in list(row.get("to") or []) + list(row.get("cc") or [])]
+    for name, address in getaddresses(headers):
+        name = name.strip(' "')
+        local = address.lower().split("@")[0]
+        # "xietianle <xietianle@...>" is the address again, not a name.
+        if (address.lower() in mine and name and "@" not in name and not _HEADER_WORD.match(name)
+                and name.casefold().replace(" ", "").replace(".", "") != local.replace(".", "")):
+            names["addressed"][name] += 1
+
+
 def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
                 on_row=None, on_window=None, own_names=None) -> list[dict]:
     """Every correspondent across every mailbox, with the signals a Skill ranks by.
 
-    `own_names`, a Counter, is given the From display name of each mail the
-    owner sent: what they call themselves, which a mailbox's configured name
-    ("Aaron x" on a real account, #2008) is not.
+    `own_names`, {"addressed": Counter, "sent": Counter}, is given what the
+    owner is called (#2008): the display name others put on the owner's address
+    in the To and Cc of mail they sent, and the From name of mail the owner
+    sent. A real account's configured name was "Aaron x", and Outlook stamps
+    it on every sent mail; correspondents wrote "Aaron Xie".
     """
     mine = {a.lower() for a in own_addresses}
     for client in clients.values():
@@ -149,10 +168,8 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
                 if on_row:
                     on_row(kind, row)
                 own = _address(row.get("from", "")) in mine or "@" not in _address(row.get("from", ""))
-                if own and own_names is not None:
-                    sender = _display_name(row, _address(row.get("from", "")))
-                    if sender:
-                        own_names[sender] += 1
+                if own_names is not None:
+                    _count_owner_names(row, own, mine, own_names)
                 # One sent message can be relevant to several people. Map each
                 # recipient, while the body archive still stores it only once.
                 recipients = _addresses(row.get("to")) + _addresses(row.get("cc"))

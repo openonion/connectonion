@@ -804,36 +804,46 @@ def test_a_1_8_confirm_hint_on_the_owner_s_page_is_corrected_to_co_rem(tmp_path,
     assert 'co wiki' not in page and 'co rem init --mine me2@x.example' in page
 
 
-def test_the_owner_is_named_as_they_sign_their_sent_mail_not_as_the_mailbox_is_configured(tmp_path, monkeypatch):
+def test_the_owner_is_named_as_others_address_them_not_as_the_mailbox_is_configured(tmp_path, monkeypatch):
     """#2008: a real account's configured name was "Aaron x" and the page was
-    people/account-owner-….md; every mail he sent went out as "Aaron Xie"."""
+    people/account-owner-….md. Outlook stamps that name on every sent mail too
+    (83 times on the real 7-day map); the people writing to him put "Aaron Xie"
+    (and "Aaron xie") on his address, and "xietianle" is only the address again."""
     import collections
     from connectonion.rem.map import _owner_name
 
     class Mail:
-        def my_addresses(self): return {'me@example.org'}
+        def my_addresses(self): return {'xietianle@example.org'}
         def my_name(self): return 'Aaron x'
 
         def list_between(self, start, end, limit):
             day = start[:10]
-            return [{'id': f'{day}-1', 'date': start, 'from': 'Aaron Xie <me@example.org>',
+            return [{'id': f'{day}-1', 'date': start, 'from': 'xietianle@example.org', 'from_name': 'Aaron x',
                      'to': ['Bob Stone <bob@partner.example>'], 'subject': 'Plan'},
-                    {'id': f'{day}-2', 'date': start, 'from': 'me@example.org', 'from_name': 'Aaron Xie',
+                    {'id': f'{day}-2', 'date': start, 'from': 'Aaron x <xietianle@example.org>',
                      'to': ['bob@partner.example'], 'subject': 'Plan 2'},
-                    {'id': f'{day}-3', 'date': start, 'from': 'A. X. <me@example.org>',
-                     'to': ['bob@partner.example'], 'subject': 'Plan 3'},
-                    {'id': f'{day}-4', 'date': start, 'from': 'Bob Stone <bob@partner.example>',
-                     'to': ['me@example.org'], 'subject': 'Re: Plan'}]
+                    {'id': f'{day}-3', 'date': start, 'from': 'Bob Stone <bob@partner.example>',
+                     'to': ['Aaron Xie <xietianle@example.org>'], 'subject': 'Re: Plan'},
+                    {'id': f'{day}-4', 'date': start, 'from': 'Ann Lee <ann@partner.example>',
+                     'to': ['Bob Stone <bob@partner.example>'], 'cc': ['Aaron xie <xietianle@example.org>'],
+                     'subject': 'Intro'},
+                    {'id': f'{day}-5', 'date': start, 'from': 'Cy <cy@partner.example>',
+                     'to': ['xietianle <xietianle@example.org>'], 'subject': 'Hi'}]
 
-    assert _owner_name({'gmail': Mail()}, '', collections.Counter({'Aaron Xie': 3, 'A. X.': 1})) == 'Aaron Xie'
-    assert _owner_name({'gmail': Mail()}, 'Given Name', collections.Counter({'Aaron Xie': 3})) == 'Given Name'
-    assert _owner_name({'gmail': Mail()}, '', collections.Counter()) == 'Aaron x'
+    def names(addressed=(), sent=()):
+        return {'addressed': collections.Counter(dict(addressed)), 'sent': collections.Counter(dict(sent))}
+
+    assert _owner_name({'o': Mail()}, '', names({'Aaron Xie': 2, 'Aaron xie': 1, 'Aaron x': 2},
+                                                {'Aaron x': 83})) == 'Aaron Xie'
+    assert _owner_name({'o': Mail()}, '', names(sent={'Ada Owner': 3})) == 'Ada Owner'
+    assert _owner_name({'o': Mail()}, 'Given Name', names({'Aaron Xie': 3})) == 'Given Name'
+    assert _owner_name({'o': Mail()}, '', names()) == 'Aaron x'
 
     prepare(tmp_path)
     skills = tmp_path / 'installed'
     skills.mkdir()
     monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
-    result = build_map(tmp_path, {}, {'gmail': Mail()}, skill_directories=[skills], days=14)
+    result = build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=14)
     record = result['owner']['record']
     assert record.startswith('people/aaron-xie-')
     page = Notebook(tmp_path).read(record)
@@ -841,5 +851,5 @@ def test_the_owner_is_named_as_they_sign_their_sent_mail_not_as_the_mailbox_is_c
     # Your own page has no "How the user writes to them" (#2008).
     assert '## How the user writes to them' not in page and '## Cadence' in page
     # A later map keeps the file where it is, whatever the name turns out to be.
-    assert build_map(tmp_path, {}, {'gmail': Mail()}, skill_directories=[skills], days=14,
+    assert build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=14,
                      name='Someone Else')['owner']['record'] == record

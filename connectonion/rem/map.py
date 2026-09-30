@@ -1,5 +1,6 @@
 """Build a deterministic, resumable entity map before any investigation."""
 
+import collections
 import hashlib
 import json
 import re
@@ -182,16 +183,22 @@ def _session_state(subscription: dict, projects: list) -> str:
 
 
 def _owner_name(clients: dict, given: str = '', sent_names=None) -> str:
-    """What the owner is called: what they said, else what they sign their mail as, else a mailbox's name.
+    """What the owner is called: what they said, else what others call them, else their sent From name.
 
-    The most common From display name in the owner's own sent mail comes before
-    the name a mailbox has configured: a real account's configured name was
-    "Aaron x" while every mail he sent went out as "Aaron Xie" (#2008).
+    A real account's configured name was "Aaron x", and Outlook stamps it on
+    every mail sent, so the sent From name said "Aaron x" too; the people
+    writing to him put "Aaron Xie" on his address (#2008). The name others use
+    comes first (spellings that differ only in case are one name), then the
+    sent From name, then a mailbox's configured name.
     """
     if given.strip():
         return given.strip()
-    if sent_names:
-        return sent_names.most_common(1)[0][0].strip()
+    for key in ('addressed', 'sent'):
+        groups = {}
+        for name, count in ((sent_names or {}).get(key) or {}).items():
+            groups.setdefault(name.strip().casefold(), collections.Counter())[name.strip()] += count
+        if groups:
+            return max(groups.values(), key=lambda group: sum(group.values())).most_common(1)[0][0]
     for client in clients.values():
         try:
             name = client.my_name() if hasattr(client, 'my_name') else ''
@@ -598,8 +605,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
             inventory.skill(skill)
         inventory.save(report)
     save()
-    import collections
-    sent_names = collections.Counter()
+    sent_names = {"addressed": collections.Counter(), "sent": collections.Counter()}
     if inventory:
         people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress,
                                  inventory=inventory, own_names=sent_names)

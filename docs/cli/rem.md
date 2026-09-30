@@ -66,11 +66,14 @@ already written, or when there is no terminal (scripts and `--json`) unless
 projects wait for `co rem projects write`; more people for
 `co rem investigate people`.
 
-Your page is titled with the name you sign your mail with: `--name` if given,
-else the most common From display name in the mail you sent, else the name a
-mailbox has configured (a real account's was "Aaron x" while every sent mail
-said "Aaron Xie", #2008). A new notebook names the file after you
-(`people/aaron-xie-….md`); an existing page keeps its path.
+Your page is titled with what you are called: `--name` if given, else the
+name the people writing to you put on your address (the To and Cc of mail you
+received; spellings that differ only in case are one name, and a name that is
+just the address, `xietianle`, is not one), else the From name of mail you
+sent, else the name a mailbox has configured (#2008). On the owner's real
+account the configured name was "Aaron x", and Outlook stamps it on every sent
+mail too; correspondents wrote "Aaron Xie". A new notebook names the file after
+you (`people/aaron-xie-….md`); an existing page keeps its path.
 
 Progress is one line per stage (updated in place in a terminal); every step is
 kept in `.state/init-progress.log`. Addresses that look like yours (you wrote,
