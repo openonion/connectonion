@@ -662,6 +662,10 @@ def handle_check(name: str) -> None:
         if then:
             print_tip(f"Next: {then}")
     if problems:
+        # A fix outside co (`pip install 'connectonion[whatsapp]'`) names no
+        # co command; the step after it is to check again (#2008).
+        if not any(" Next: " in problem for problem in problems):
+            print_tip(f"Next: co {name} check")
         sys.exit(EXIT_CONFIG)
     inbox = Inbox(name)
     recovery_error = inbox.root / "recovery-error.txt"

@@ -36,3 +36,8 @@ def test_the_next_step_is_its_own_next_line(monkeypatch, capsys):
     out = _check(monkeypatch, capsys, "No linked session. Next: co whatsapp listen — scan the QR code.")
     plain = SGR.sub("", out).splitlines()
     assert plain == ["✗ No linked session.", "Next: co whatsapp listen — scan the QR code."]
+
+
+def test_a_fix_outside_co_ends_on_checking_again(monkeypatch, capsys):
+    out = _check(monkeypatch, capsys, "The WhatsApp library is not installed. Run: pip install 'connectonion[whatsapp]'")
+    assert SGR.sub("", out).splitlines()[-1] == "Next: co whatsapp check"
