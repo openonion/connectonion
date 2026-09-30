@@ -84,7 +84,7 @@ def muted(text: str) -> str:
 
 
 def next_line(cmd: str) -> str:
-    """`Next: <command>`, the one line every co result ends with."""
+    """`Next: <command>`, the one line every result ends with."""
     return f"[co.next]Next:[/co.next] {command(cmd)}"
 
 
