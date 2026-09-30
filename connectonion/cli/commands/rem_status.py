@@ -59,7 +59,7 @@ def next_to_write(root, counts: dict) -> tuple:
     owner = (read_json(state_path(root, "map.json"), {}).get("owner") or {}).get("record")
     book = Notebook(root)
     if owner and book.path(owner).is_file() and mapped_only(book.read(owner)):
-        return "your own page", ["investigate", "me", "--quick"]
+        return "your own page", ["investigate", "me"]
     if not any(row["mapped"] for row in counts.values()):
         return "nothing mapped yet", ["init"]
     for category, label in CATEGORIES:

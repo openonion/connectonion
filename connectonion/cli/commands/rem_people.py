@@ -61,7 +61,7 @@ def owner_first(ctx, root) -> list[str]:
         status = next((line for line in notebook.read(record).splitlines() if line.startswith("Investigation:")), "")
         if last_investigated(status) is None:
             lines.append(f"First, your own page ({record}), not investigated yet: "
-                         + _next(ctx, ["investigate", "me", "--quick"]))
+                         + _next(ctx, ["investigate", "me"]))
     possible = [row for row in state.get("possible_own_addresses") or [] if row.get("address")][:6]
     if possible:
         # Spelled here, never read from the map: a 1.8 map stored `co wiki init --mine`.

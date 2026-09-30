@@ -346,7 +346,54 @@ def _spending_skipped(ctx, *, want, problem, fix) -> str:
     return ""
 
 
-def _first_projects(ctx, root, config, plan, say) -> dict:
+# The first run's spending (owner, 2026-09-30): your page from everything you
+# sent, the few people you write to most, then your recent projects -- enough
+# that the first minutes show something true about you and the people around
+# you, and never more than half of the notebook's weekly investigation budget.
+FIRST_RUN_PEOPLE = 3
+FIRST_RUN_POINTS = 5
+
+
+def _first_run_gate(root, config):
+    """Before each first-run page: why not to start it, or ''.
+
+    The weekly floor and budget as for any investigation (#1843), and this
+    run's own FIRST_RUN_POINTS of the Codex week. Without a meter (another
+    runner, or Codex not reporting) the page counts are the only bound.
+    """
+    from ...rem import quota
+    from ...rem.service import run_logs
+    start = quota.read(config)
+
+    def gate():
+        meter = quota.read(config)
+        stop = quota.blocks(meter, quota.points_spent(run_logs(root), meter), config["limits"])
+        if stop or "unknown" in meter or "unknown" in start:
+            return stop
+        used = meter["used_percent"] - start["used_percent"]
+        return (f"the first run has used {used} of its {FIRST_RUN_POINTS} points of the Codex week"
+                if used >= FIRST_RUN_POINTS else "")
+    return gate
+
+
+def _first_people(ctx, root, gate) -> dict:
+    """The people you wrote to most in the last 14 days, after your own page (owner, 2026-09-30).
+
+    The same queue, one-turn investigation and lines as `co rem investigate
+    people`, cut to FIRST_RUN_PEOPLE and to the first run's budget; the daily
+    round works through the rest.
+    """
+    from ...rem.service import subscriptions
+    from .rem_people import run_people
+    stopped = gate()
+    if stopped:
+        return {"started": False, "reason": f"People pages were not written: {stopped}."}
+    result, _, _ = run_people(ctx, root, limit=FIRST_RUN_PEOPLE, recent_days=14, days=None, list_only=False,
+                              gate=gate, clients_for=_mail_clients, subscriptions=subscriptions, logged=_logged)
+    return result if isinstance(result, dict) else {"started": False, "reason": result}
+
+
+def _first_projects(ctx, root, config, plan, say, gate=None) -> dict:
     """The project pages of projects active in the last 14 days, after your own page (#1943).
 
     The owner decided the first run should also leave the projects you are
@@ -366,6 +413,13 @@ def _first_projects(ctx, root, config, plan, say) -> dict:
     if not recent:
         return {"started": False, "reason": f"No project active in the last {RECENT_DAYS} days has messages "
                                             "to write from."}
+    def weekly():
+        reading = quota.read(config)
+        return quota.blocks(reading, quota.points_spent(run_logs(root), reading), config["limits"])
+    gate = gate or weekly
+    stopped = gate()
+    if stopped:   # said before the cost line, which would promise pages that will not be written
+        return {"started": False, "reason": f"Project pages were not written: {stopped}."}
     count = len(recent)
     rem_look.line(f"Writing the {count} project page{'s' if count > 1 else ''} active in the last {RECENT_DAYS} "
                f"days from your own session messages, {plan}: about {count} minute{'s' if count > 1 else ''} "
@@ -373,9 +427,6 @@ def _first_projects(ctx, root, config, plan, say) -> dict:
                + _cost_line(estimate(recent), quota.read(config)) + " Ctrl-C stops it; pages already written "
                "are kept.", err=ctx.obj["json"])
 
-    def gate():
-        reading = quota.read(config)
-        return quota.blocks(reading, quota.points_spent(run_logs(root), reading), config["limits"])
 
     def one(record):
         try:
@@ -402,13 +453,16 @@ def _init_done(ctx, result) -> str:
     counts = [f"{len(result.get(kind) or [])} {label}" for kind, label in
               (("people", "people"), ("orgs", "organizations"), ("projects", "projects"))]
     written = (["your page"] if (result.get("investigate_me") or {}).get("outcome") == "completed" else [])
+    people = sum(page.get("outcome") == "accepted" for page in (result.get("people_pages") or {}).get("pages") or [])
+    written += [f"{people} {'person' if people == 1 else 'people'}"] if people else []
     projects = sum(page.get("outcome") == "accepted" for page in (result.get("project_pages") or {}).get("pages") or [])
     written += [f"{projects} project page{'s' if projects != 1 else ''}"] if projects else []
     owner = (result.get("owner_page") or {}).get("path") or ""
     return "\n".join([
         "",
         f"Your notebook: {', '.join(counts)} and {names} skill{'s' if names != 1 else ''}.",
-        "Written this run: " + (" and ".join(written) if written else "nothing yet") + ".",
+        "Written this run: " + (", ".join(written[:-1]) + " and " + written[-1] if len(written) > 1
+                                else written[0] if written else "nothing yet") + ".",
         *([f"Your page: {owner}"] if owner else []),
         "Then keep it current: " + _next(ctx, ["start"]) + " (it asks before anything is read in the background)."])
 
@@ -568,7 +622,7 @@ def make_rem_app(factory):
                 raise typer.Exit(1)
             result["runner"] = {"runner": config["runner"], "model": config["model"], "ready": not problem,
                                 **({"problem": problem, "fix": fix} if problem else {})}
-            retry_me = ["investigate", "me", *window, "--quick"]
+            retry_me = ["investigate", "me", *window]
             reason = _first_page_skipped(ctx, root, result, want=write_mine, problem=problem, fix=fix,
                                          retry=retry_me, init=["init", *window])
             if not ctx.obj["json"]:
@@ -584,14 +638,16 @@ def make_rem_app(factory):
                 result["investigate_me"] = {"started": False, "reason": reason}
                 say(reason)
             else:
-                me_days = days if window else 30  # what `investigate me --quick` reads without --days
-                cost = (f"Writing your own page now from what you sent and your coding sessions of the last "
-                        f"{me_days} days: one model turn with {config['runner']} ({config['model']}), "
-                        f"{plan}. Usually about 10 minutes. Ctrl-C stops it; the map is kept. "
-                        "(--no-investigate skips this.)")
+                me_days = days if window else 30  # what `investigate me` reads without --days
+                cost = (f"First run, {plan}, with {config['runner']} ({config['model']}): your own page from "
+                        f"everything you sent and your coding sessions of the last {me_days} days, then the "
+                        f"{FIRST_RUN_PEOPLE} people you wrote to most in the last 14 days, then the projects "
+                        f"you worked on in the last 14 days. One model turn each, about 15 minutes for your "
+                        f"page; it stops at {FIRST_RUN_POINTS} points of the Codex week. Ctrl-C stops it and "
+                        "keeps the map and every page written. (--no-investigate skips this.)")
                 rem_look.say(rem_look.highlight(cost, counts=True), err=ctx.obj["json"], plain=cost)
                 try:
-                    _investigate_me(root, days=days if window else None, quick=True)
+                    _investigate_me(root, days=days if window else None, quick=False)
                 except KeyboardInterrupt:
                     result.update(investigation="interrupted",
                                   investigate_me={"started": True, "outcome": "interrupted"})
@@ -606,23 +662,37 @@ def make_rem_app(factory):
                 record = summary["record"] if summary else result["owner"]["record"]
                 result.update(investigation="completed",
                               investigate_me={"started": True, "outcome": "completed", "page": record})
-                say("Your page is written (a first pass; it says what it did not cover): "
-                    + str(Notebook(root).path(record)))
-            # Then the projects you worked on in the last two weeks, by the same rules (#1943).
+                say("Your page is written: " + str(Notebook(root).path(record)))
+            # Then the people you write to most, and the projects you worked on,
+            # in the last two weeks, by the same rules and one budget (#1943).
             skipped = _spending_skipped(ctx, want=write_mine, problem=problem, fix=fix)
             if skipped:
+                result["people_pages"] = {"started": False, "reason": "People pages were not written: " + skipped}
                 result["project_pages"] = {"started": False, "reason": "Project pages were not written: " + skipped}
                 if skipped not in (reason or ""):  # said once: the owner-page line may already say why
                     say(result["project_pages"]["reason"])
             else:
+                gate = _first_run_gate(root, config)
                 try:
-                    result["project_pages"] = _first_projects(ctx, root, config, plan, say)
+                    result["people_pages"] = _first_people(ctx, root, gate)
+                except KeyboardInterrupt:
+                    result["people_pages"] = {"started": True, "outcome": "interrupted"}
+                    stopped = ("Stopped. The map and every page written so far are kept; write the rest with "
+                               + _next(ctx, ["investigate", "people"]) + ".")
+                    _emit(ctx, result if ctx.obj["json"] else stopped, ["investigate", "people"])
+                    raise typer.Exit(130)
+                if result["people_pages"].get("reason"):
+                    say(result["people_pages"]["reason"])
+                try:
+                    result["project_pages"] = _first_projects(ctx, root, config, plan, say, gate)
                 except KeyboardInterrupt:
                     result["project_pages"] = {"started": True, "outcome": "interrupted"}
                     stopped = ("Stopped. The map and every page written so far are kept; write the rest with "
                                + _next(ctx, ["projects", "write"]) + ".")
                     _emit(ctx, result if ctx.obj["json"] else stopped, ["projects", "write"])
                     raise typer.Exit(130)
+                if result["project_pages"].get("reason"):
+                    say(result["project_pages"]["reason"])
             return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
         _handle(ctx, run, ["sources"])
 
@@ -710,7 +780,7 @@ def make_rem_app(factory):
                 rows[category] = {"unfinished": len(queue),
                                   "next": [row["path"] for row in queue if not row["recent"]][:3]}
             first = next((c for c in CATEGORIES if rows[c]["next"]), None)
-            return rows, (["investigate", "me", "--quick"] if pending
+            return rows, (["investigate", "me"] if pending
                           else ["investigate", first] if first else ["list"])
 
         def by_category(root, category):

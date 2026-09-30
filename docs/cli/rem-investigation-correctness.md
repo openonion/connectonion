@@ -85,7 +85,7 @@ count reads as a floor ("at least 12 mails"). Singular counts are singular.
 ## 3. The owner's own page first
 
 When the owner's page has never been investigated, `co rem investigate`
-lists it first and its Next line is `co rem investigate me --quick`;
+lists it first and its Next line is `co rem investigate me`;
 `co rem investigate people --list` names it above the queue. Addresses the
 owner wrote to many times and never heard from (likely the owner's own) are
 shown with one command that confirms them all: `co rem init --mine a,b,c`.
