@@ -848,6 +848,64 @@ def test_a_project_turn_is_given_the_notebook_s_organisations(tmp_path):
     assert inv.org_pages(notebook, 'people/nobody.md', ['someone@else.example']) == []
 
 
+# ------------------------------------------------ #1982: a checkout on an old branch is not the project's state
+
+
+def _repo(tmp_path):
+    """A main checkout left on an August branch while main moved on to 1.9.0a3."""
+    import os
+    import subprocess
+    repo = tmp_path / 'work' / 'connectonion'
+    repo.mkdir(parents=True)
+
+    def git(*args, date='2026-09-29T10:00:00+00:00'):
+        env = {**os.environ, 'GIT_AUTHOR_DATE': date, 'GIT_COMMITTER_DATE': date, 'GIT_AUTHOR_NAME': 't',
+               'GIT_AUTHOR_EMAIL': 't@x.y', 'GIT_COMMITTER_NAME': 't', 'GIT_COMMITTER_EMAIL': 't@x.y',
+               'GIT_CONFIG_GLOBAL': os.devnull, 'GIT_CONFIG_NOSYSTEM': '1'}
+        subprocess.run(['git', '-C', str(repo), *args], check=True, capture_output=True, env=env)
+    git('init', '-q', '-b', 'main')
+    (repo / 'pyproject.toml').write_text('[project]\nversion = "1.8.0a3"\n')
+    git('add', '.')
+    git('commit', '-qm', 'August', date='2026-08-30T10:00:00+00:00')
+    git('branch', 'feat/1.8-paid-browser-release')
+    (repo / 'pyproject.toml').write_text('[project]\nversion = "1.9.0a3"\n')
+    git('commit', '-qam', 'September')
+    git('update-ref', 'refs/remotes/origin/main', 'main')
+    git('checkout', '-q', 'feat/1.8-paid-browser-release')
+    return repo
+
+
+def test_a_checkout_weeks_behind_the_newest_session_is_flagged_and_the_version_comes_from_origin_main(tmp_path):
+    """1.9.0a3: the main checkout was on an August branch, so the page said 1.8.0a3."""
+    text = inv.checkout_state(str(_repo(tmp_path)), newest_session='2026-09-29')
+    assert 'branch feat/1.8-paid-browser-release, HEAD committed 2026-08-30' in text
+    assert 'origin/main, last committed 2026-09-29' in text
+    assert 'version 1.9.0a3' in text and '1.8.0a3' not in text
+    assert '30 days older than the newest session' in text
+
+
+def test_a_checkout_on_the_current_line_is_recorded_without_a_warning(tmp_path):
+    import subprocess
+    repo = _repo(tmp_path)
+    subprocess.run(['git', '-C', str(repo), 'checkout', '-q', 'main'], check=True, capture_output=True)
+    text = inv.checkout_state(str(repo), newest_session='2026-09-29')
+    assert 'branch main, HEAD committed 2026-09-29' in text and 'older than' not in text
+    assert inv.checkout_state(str(tmp_path / 'not-a-repo')) == ''
+
+
+def test_a_project_turn_is_given_the_checkout_state_as_citable_evidence(tmp_path, monkeypatch):
+    root = _notebook(tmp_path, 'codex')
+    repo = _repo(tmp_path)
+    inv.Notebook(root).stub_project('projects/co.md', 'connectonion', [str(repo)], last_seen='2026-09-29')
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([], ['codex: 0 sessions in window']))
+    received = []
+    inv.investigate(root, 'projects/co.md', 'connectonion', [str(repo)], days=150, clients={}, subscriptions={},
+                    runner=lambda notebook, items, config, stage: received.extend(items) or
+                    {'changed': [], 'usage': None})
+    state = next(item for item in received if item['role'] == 'checkout-state')
+    assert state['source'] == f'git:{repo}' and 'older than the newest session' in state['text']
+
+
 # ------------------------------------------------ #1984: an empty since-window calls no model
 
 

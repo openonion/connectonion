@@ -657,6 +657,18 @@ worktree folds into its main checkout's page:
 - Sessions: 116
 ```
 
+The main checkout is one branch's working tree, not the project's state (#1982).
+On the owner's machine it sat on an August branch, and the page said version
+1.8.0a3 the week 1.9.0a3 shipped. So an investigation hands the turn one
+`checkout-state` item per listed checkout, cited as `git:<path>`: the branch it is
+on and its HEAD's commit date, the project's current line (`origin/HEAD`, else
+`origin/main`, `origin/master`, `main`, `master`, else the most recently committed
+branch) with its last commit date and the version in its `pyproject.toml` or
+`package.json`, and -- when HEAD is more than 14 days older than the project's
+newest session -- a line saying the checkout's files are not the current state
+and the version comes from that line instead. The file list is unchanged; the
+turn is told which of what it reads is stale.
+
 Some folders are not projects, and the map leaves them out (`not_a_project` in
 `rem/scan.py`):
 

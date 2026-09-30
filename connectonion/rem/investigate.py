@@ -221,6 +221,69 @@ def project_file_texts(paths: list[str], *, max_files: int = 12, chars_per_file:
     return items
 
 
+# Where a repository's current line is, in the order it is looked for.
+CURRENT_REFS = ("origin/HEAD", "origin/main", "origin/master", "main", "master")
+# A checkout whose HEAD is this much older than the newest session is not what is being worked on.
+STALE_CHECKOUT_DAYS = 14
+
+
+def _git(path: str, *args: str) -> str:
+    import subprocess
+    try:
+        done = subprocess.run(["git", "-C", path, *args], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return done.stdout.strip() if done.returncode == 0 else ""
+
+
+def _version_at(path: str, ref: str) -> str:
+    for name, pattern in (("pyproject.toml", r'(?m)^version\s*=\s*"([^"]+)"'),
+                          ("package.json", r'"version"\s*:\s*"([^"]+)"')):
+        found = re.search(pattern, _git(path, "show", f"{ref}:{name}"))
+        if found:
+            return f"{found[1]} ({name})"
+    return ""
+
+
+def checkout_state(path: str, newest_session: str = "") -> str:
+    """Which branch a checkout is on, how old its HEAD is, and where the project's current line is (#1982).
+
+    After #1965 a project page read the main checkout, which on the owner's
+    machine was on an August branch: the page said 1.8.0a3 the week 1.9.0a3
+    shipped. The working tree is one branch's state; the version and state
+    come from origin/main (else main, else the most recently committed branch),
+    and a HEAD weeks older than the project's newest session is named as stale.
+    """
+    if not (Path(path) / ".git").exists():
+        return ""
+    head = _git(path, "log", "-1", "--format=%cI", "HEAD")
+    if not head:
+        return ""
+    branch = _git(path, "rev-parse", "--abbrev-ref", "HEAD") or "detached"
+    ref = next((r for r in CURRENT_REFS if _git(path, "rev-parse", "--verify", "--quiet", r + "^{commit}")), "") \
+        or _git(path, "for-each-ref", "--sort=-committerdate", "--count=1", "--format=%(refname:short)", "refs/heads")
+    lines = [f"Checkout {path}: branch {branch}, HEAD committed {head[:10]}."]
+    line_date = _git(path, "log", "-1", "--format=%cI", ref) if ref else ""
+    if ref and line_date:
+        version = _version_at(path, ref)
+        lines.append(f"The project's current line is {ref}, last committed {line_date[:10]}"
+                     + (f"; version {version} there." if version else "."))
+    newest = newest_session[:10]
+    if newest and re.fullmatch(r"\d{4}-\d{2}-\d{2}", newest):
+        behind = (datetime.fromisoformat(newest).date() - datetime.fromisoformat(head).date()).days
+        if behind > STALE_CHECKOUT_DAYS:
+            lines.append(f"This checkout's HEAD is {behind} days older than the newest session ({newest}): its "
+                         f"files are not the project's current state. Take the version and state from "
+                         f"{ref or 'the newest session'}, not from files read in this checkout.")
+    return " ".join(lines)
+
+
+def _newest_session(root: Path, record: str, page: str) -> str:
+    from .project_material import page_state
+    seen = re.findall(r"(?m)^- Last seen: (\d{4}-\d{2}-\d{2})", page)
+    return max([*seen, str(page_state(root, record).get("last_activity") or "")[:10]])
+
+
 def _patient(call, *args, attempts: int = 4):
     """One transient timeout must not end a ten-minute gather.
 
@@ -667,6 +730,12 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                           "text": "Candidate local evidence files, not proof of their contents:\n" +
                                   "\n".join(leads),
                           "timestamp": datetime.now(timezone.utc).isoformat()})
+        newest = _newest_session(root, record, corrected)
+        for path in project_paths(corrected)[:4]:
+            state = checkout_state(path, newest)
+            if state:
+                items.append({"role": "checkout-state", "source": f"git:{path}", "text": state,
+                              "timestamp": datetime.now(timezone.utc).isoformat()})
     if not gathered_items and not leads:
         # Nothing about the subject, so nothing to write from: the page and the
         # coverage note are not material (#1974).
