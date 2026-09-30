@@ -632,11 +632,11 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
         inventory.snapshot_report = report
         report['source_inventory'] = inventory.save(report)
     state.parent.mkdir(parents=True, exist_ok=True)
-    # The owner's page from an earlier init, so a page made from --name alone
-    # is the one a mailbox connected later fills, not a second owner.
     # An upgraded notebook is tidied first, from the map before this one (#1999).
     from .tidy import tidy
     report['tidied'] = tidy(root, lock_held=True)
+    # The owner's page from an earlier init, so a page made from --name alone
+    # is the one a mailbox connected later fills, not a second owner.
     earlier = json.loads(state.read_text()).get('owner') if state.is_file() else None
     # An address confirmed once (--mine, or folded into the owner's page by
     # tidy) stays the owner's: without this the next map, run without --mine,
