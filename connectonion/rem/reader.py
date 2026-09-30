@@ -43,8 +43,15 @@ def snapshot(root: Path) -> dict:
                         "updated": updated.isoformat(timespec="seconds")})
     # Held for review (#1844): still linkable, left off the contents until promoted.
     held = needs_review(root)
+    # What is counted, written, and when it was last active comes from one
+    # place (`census`), the same that `co rem status` counts with (#2008).
+    from .census import counts, pages
+    found = pages(root)
     for record in records:
         record["needs_review"] = record["path"] in held
+        entry = found.get(record["path"])
+        if entry:
+            record.update(written=entry["written"], last_activity=entry["last"], service=entry["service"])
     groups = {}
     for record in records:
         if record["path"].startswith("skills/catalog/") and record["path"] != "skills/catalog/index.md":
@@ -60,7 +67,7 @@ def snapshot(root: Path) -> dict:
     return {"as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "categories": list(CATEGORIES), "records": records,
             "status": status(root), "subscriptions": subscriptions(root),
-            "logs": run_logs(root)[:20], "reviews": listing(root)}
+            "logs": run_logs(root)[:20], "reviews": listing(root), "counts": counts(root, found)}
 
 
 def render(root: Path) -> str:
@@ -147,7 +154,7 @@ def host_online(address: str, timeout: float = 3.0) -> bool:
 def open_snapshot(root: Path, *, launch: bool, **notes) -> dict:
     path = open_reader(root, launch=launch)
     return {"page": str(path), "link": path.as_uri(), "launched": launch,
-            "note": "local snapshot; run again after the next maintenance pass", **notes}
+            "note": "a snapshot of the notebook as it is now; co rem open again shows later changes", **notes}
 
 
 def live_or_snapshot(root: Path, address, *, live: bool, launch: bool) -> dict:

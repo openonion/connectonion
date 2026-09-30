@@ -313,7 +313,8 @@ const CATEGORY_ASK = {
 };
 function label(c) { return CATEGORY_LABEL[c] || c; }
 function byPath(path) { return REM.records.find(r => r.path === path); }
-function listedRecords() { return REM.records.filter(r => !r.catalog_parent && !r.needs_review && r.path !== "skills/catalog/index.md"); }
+// Services still on a people page (census.py) are left off like held pages (#2008).
+function listedRecords() { return REM.records.filter(r => !r.catalog_parent && !r.needs_review && !r.service && r.path !== "skills/catalog/index.md"); }
 function inCategory(category) { return listedRecords().filter(r => r.category === category); }
 function initCommand() { return "co rem --root '" + String(REM.root).replace(/'/g, "'\\''") + "' init --mail outlook"; }
 function fmtDate(iso) {
@@ -547,9 +548,15 @@ function known(r) {
   // The page's own status line (files.py note_pass) says whether an
   // investigation pass ran; a page can still hold findings from before one.
   const investigated = /\binvestigated\b/.test(stamp.replace(/not investigated yet/, "")) || (!stamp && !missing.length);
-  const status = investigated ? "Investigated" : learned ? "Some findings" : "Mapped";
-  // A mapped History line says "last: <date>"; an investigated lead says "Last contact: <date>".
-  const last = (/\blast(?: contact)?:\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || String(r.updated || "").slice(0, 10);
+  // Written or not is the census's answer (census.py), the one co rem status
+  // counts with: a mapped skill's description or a project's paths read here
+  // as findings, and "174 with findings" meant three written pages (#2008).
+  const status = r.written === undefined ? (investigated ? "Investigated" : learned ? "Some findings" : "Mapped")
+    : !r.written ? "Mapped" : investigated ? "Investigated" : "Some findings";
+  // The page's own last activity (census.py), never the file's mtime: a map
+  // rewrites every project page, and "Recently active" dated them all today.
+  const last = r.last_activity !== undefined ? r.last_activity
+    : (/\blast(?: contact)?:\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || String(r.updated || "").slice(0, 10);
   const summary = (intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || kept.find(k => k.title.toLowerCase() === "history") || { text: "" }).text
     .split("\n").map(l => l.replace(/^\s*[-*]\s*/, "").replace(/[#*`>]/g, "").trim()).find(Boolean) || "";
   const k = { intro, kept, missing, status, last, summary, stamp: stamp.replace(/^Investigation:\s*/, "") };
@@ -629,7 +636,7 @@ function overview() {
     main.appendChild(el("h2", { class: "section" }, [el("span", { text: "Recently active" }), el("span", { class: "n", text: "last contact or change first" })]));
     main.appendChild(el("ul", { class: "toc" }, recent.map(r => el("li", {}, [
       el("a", { href: "#r=" + encodeURIComponent(r.path), text: r.title }),
-      el("span", { class: "when", text: label(r.category).replace(/s$/, "") + " · " + shortDate(known(r).last) })]))));
+      el("span", { class: "when", text: label(r.category).replace(/s$/, "") + (known(r).last ? " · " + shortDate(known(r).last) : "") })]))));
   }
   for (const c of REM.categories) {
     const items = inCategory(c).sort(byActivity);
