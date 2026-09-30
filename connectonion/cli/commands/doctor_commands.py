@@ -10,6 +10,7 @@ LLM-Note:
 """
 
 import os
+import re
 import shlex
 import shutil
 import sys
@@ -25,7 +26,7 @@ from ...backend import backend_url
 from ...credentials import account_in_token, api_key_account_mismatch
 from ...project import project_co_dir, project_identity
 
-console = Console()
+console = Console(highlight=False)   # colour by role only, never by what a line contains (#2008)
 
 # The right-hand column of every credential row is a command, not an
 # instruction. "set OPENAI_API_KEY in global keys.env" told people what to
@@ -125,7 +126,7 @@ def verdict(problems: list, warnings: list = ()) -> int:
     under one, so the last line now counts them too.
     """
     if not problems and not warnings:
-        console.print("[bold green]✅ Diagnostics complete — nothing wrong[/bold green]\n")
+        console.print("[bold green]✓ Diagnostics complete — nothing wrong[/bold green]\n")
         return 0
 
     if problems:
@@ -700,11 +701,17 @@ def _path_co_version(co_path: str) -> "tuple[str | None, str | None]":
         from ... import __version__
         return __version__, None
     try:
-        result = subprocess.run([co_path, "--version"], capture_output=True, text=True, timeout=10)
+        # NO_COLOR: in a terminal the child sees a TTY-derived colour choice
+        # or FORCE_COLOR, and `co --version` answering in colour never equals
+        # this version, so a terminal said "`co` runs the other one" where a
+        # pipe said ✓ for the very same install (#2008).
+        env = {**os.environ, "NO_COLOR": "1", "TERM": "dumb"}
+        env.pop("FORCE_COLOR", None)
+        result = subprocess.run([co_path, "--version"], capture_output=True, text=True, timeout=10, env=env)
     except (OSError, subprocess.SubprocessError) as error:
         return None, f"{type(error).__name__}: {error}"
     if result.returncode != 0:
         last = (result.stderr or result.stdout or "").strip().splitlines()[-1:]
         return None, f"`co --version` exited {result.returncode}" + (f": {last[0][:160]}" if last else "")
-    words = result.stdout.split()
+    words = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout).split()
     return (words[-1] if words else None), None

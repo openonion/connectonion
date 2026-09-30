@@ -700,7 +700,7 @@ $ co doctor
 │ Authentication ✓ Valid credentials       │
 └──────────────────────────────────────────┘
 
-✅ Diagnostics complete — nothing wrong
+✓ Diagnostics complete — nothing wrong
 ```
 
 The closing "run 'co auth'" line appears only when this machine is not

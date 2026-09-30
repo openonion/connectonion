@@ -59,7 +59,10 @@ from ..core.usage import DEFAULT_MODEL
 
 # Package startup loads only global settings. --env-file replaces them explicitly.
 
-console = Console()
+# No auto-highlighting (#2008): Rich's default turned `co --version` into
+# `co 1.9.0a5` with "1.9" alone in bold cyan, and coloured any number or path
+# a message happened to contain. Colour is what style.py's roles say it is.
+console = Console(highlight=False)
 
 
 from .typer_groups import NegativeIds, _OneSuggestion
