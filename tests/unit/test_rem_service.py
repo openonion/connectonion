@@ -303,16 +303,24 @@ def test_stop_does_not_wait_for_a_running_batch(tmp_path, monkeypatch):
     rollout(sessions / "rollout-a.jsonl", [("user", "hello")])
     scheduler = FakeScheduler()
     start(root, confirm=lambda s: True, scheduler=scheduler, runner=_runner_recording([]))
+    import os
     import subprocess  # noqa: E401 - a second process holds the lock, as a real batch would
     import sys
     import textwrap
+    from pathlib import Path
+    import connectonion
+    # The child imports this checkout, not whatever is installed: with a
+    # relative PYTHONPATH and another test's chdir, it imported an older
+    # connectonion with no rem, died, and this failed at random under -n 8.
+    checkout = str(Path(connectonion.__file__).resolve().parent.parent)
     holder = subprocess.Popen([sys.executable, "-c", textwrap.dedent(f"""
         import time
         from pathlib import Path
         from connectonion.rem.files import maintenance_lock
         with maintenance_lock(Path({str(root.resolve())!r})):
             print("held", flush=True); time.sleep(30)
-    """)], stdout=subprocess.PIPE, text=True)
+    """)], stdout=subprocess.PIPE, text=True,
+        env={**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, [checkout, os.environ.get("PYTHONPATH")]))})
     try:
         assert holder.stdout.readline().strip() == "held"
         assert stop(root, scheduler=scheduler)["enabled"] is False

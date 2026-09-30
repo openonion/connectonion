@@ -1,6 +1,7 @@
 """co rem sends tasks to the COAI CLI; harness internals belong to COAI."""
 
 import json
+import os
 import time
 import subprocess
 from pathlib import Path
@@ -561,12 +562,15 @@ def test_a_folder_a_killed_run_left_is_scrubbed_once_it_is_old(tmp_path):
     assert (working / "material.json").is_file()
 
 
-def test_the_model_s_co_ai_gets_an_absolute_pythonpath(notebook, delegate, monkeypatch):
+def test_the_model_s_co_ai_gets_an_absolute_pythonpath(notebook, delegate, monkeypatch, tmp_path):
     """PYTHONPATH=. resolved against .state/tasks imported an older connectonion."""
+    # Its own cwd: in a parallel run another test's chdir made "." resolve to a
+    # second entry beside the checkout, and an equality check failed at random.
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PYTHONPATH", ".")
     run_stage(notebook, [], default_config(), stage="abstract")
-    env = delegate[0][1]["env"]
-    assert env["PYTHONPATH"] == str(Path(".").resolve())
+    parts = delegate[0][1]["env"]["PYTHONPATH"].split(os.pathsep)
+    assert str(tmp_path.resolve()) in parts and all(Path(part).is_absolute() for part in parts)
 
 
 def test_check_skill_fails_in_seconds_with_the_cause(tmp_path, monkeypatch):

@@ -400,7 +400,23 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a3
+## Current Version: 1.9.0a4
+
+1.9.0a4 fixes what running 1.9.0a2/a3 on the owner's real notebook found
+(#1974 and the acceptance run's #1981–#1987). Pages are no longer stamped
+investigated when nothing about the subject was read, and an empty window
+since the last investigation calls no model; one people queue puts the owner
+and two-way correspondents first, with vendors and services out; one bad
+citation drops one line, not the page; a person page opens on who they are to
+you, what is open and the last contact, with coverage off the page; a skill is
+one catalog page with its use counted; worktrees fold into their repository;
+co rem reads what the owner typed in Codex Desktop (774 messages that were
+dropped); org investigations work again. Stable is 1.8.9. See
+[1.9.0a4 notes](docs/releases/1.9.0a4.md).
+
+- 1.9.0a4 (#1974 A/B/C, #1978, #1981–#1985, #1987; tests that read the clock, cwd or an installed connectonion made independent of them.)
+
+## Previous preview: 1.9.0a3
 
 1.9.0a3 is 1.9.0a2 as it was meant to ship. The v1.9.0a2 tag was pushed but
 never published: its release run failed one test that assumed it was not near
