@@ -68,6 +68,15 @@ def test_init_archive_is_private_resumable_and_people_read_it_without_listing(tm
     assert [item["text"] for item in items] == ["--- Email Body ---\nbody shared",
                                                  "--- Email Body ---\nbody reply"]
     assert any("loaded from private init archive" in note for note in coverage)
+    # An org is read from the same archive by domain: no provider, no listing (#1963).
+    items, coverage = gather("Example", ["example.org"], days=1, clients={}, subscriptions={},
+                             archive_root=tmp_path, record="orgs/example.md")
+    assert [item["text"] for item in items] == ["--- Email Body ---\nbody shared",
+                                                 "--- Email Body ---\nbody reply"]
+    assert any("2 loaded from private init archive" in note for note in coverage)
+    items, _ = gather("Other", ["other.org"], days=1, clients={}, subscriptions={},
+                      archive_root=tmp_path, record="orgs/other.md")
+    assert items == []
     class DeltaMail:
         calls = []
         attachments = []

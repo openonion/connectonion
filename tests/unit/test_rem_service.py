@@ -1011,7 +1011,8 @@ def test_maintenance_works_one_page_per_turn_and_a_failure_costs_only_that_page(
         if page["record"] == "people/b.md":
             raise RunFailed("Candidate rejected: Citation has no identifiable source: 1", {"input_tokens": 5})
         return {"changed": [page["record"]], "usage": {"input_tokens": 10}, "review_candidates": [],
-                "instructions_chars": {"people/a.md": 14_100, "people/c.md": 14_600}[page["record"]]}
+                "instructions_chars": {"people/a.md": 14_100, "people/c.md": 14_600}[page["record"]],
+                "page_chars": {"people/a.md": [2_000, 2_400], "people/c.md": [3_000, 3_000]}[page["record"]]}
 
     monkeypatch.setattr("connectonion.rem.runner.run_stage", one_turn)
     material = [{"role": "extract", "text": "notes", "source": "codex:x +1", "timestamp": "2026-09-27"}]
@@ -1023,3 +1024,5 @@ def test_maintenance_works_one_page_per_turn_and_a_failure_costs_only_that_page(
     assert result["usage"] == {"input_tokens": 25}
     # #1959: the largest one-page turn, so logs --usage can check the 15k ceiling for maintain too.
     assert result["instructions_chars"] == 14_600
+    # #1956: each page's size before and after, so a run that doubles a page shows it.
+    assert result["page_chars"] == {"people/a.md": [2_000, 2_400], "people/c.md": [3_000, 3_000]}

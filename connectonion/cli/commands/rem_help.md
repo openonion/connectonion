@@ -159,9 +159,16 @@ limits.quota_floor_percent (default 70%), and says which. The page in flight
 finishes. Without a meter (another runner, Codex signed out) --limit is the bound.
 
 Effects:  Reads message bodies and files. Calls the model configured in co rem config:
-          one call for most pages. A subject with hundreds of messages is summarised
-          in parts first, and can take 30–40 minutes. Pages run one after another,
-          not in parallel. The mailbox servers throttle parallel reads.
+          one call per page. Material too large for one turn is written to evidence
+          files the model searches, not summarised first; files are removed after the
+          run. A page investigated before reads only what is new since then. Pages
+          run one after another, not in parallel. The mailbox servers throttle
+          parallel reads.
+
+For the model writing a page: the Skill covers the common case. The material
+is the only source; a field it does not answer stays Unknown. Cite the source
+id in each evidence entry's heading. Offline runs use no web and no other
+command.
 Requires: co rem init.
 Output:   The updated pages, and one line per page: accepted, refused (and why), or skipped.
 

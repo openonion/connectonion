@@ -97,11 +97,22 @@ def test_an_org_page_turn_carries_only_the_org_shape(tmp_path):
 def test_a_one_page_turn_is_not_told_to_read_the_cli_reference_up_front(kind):
     """#1960: "read the CLI reference first" was obeyed on every run, a 12.6k
     `cat` that made a 14.8k turn carry ~27k. Only a turn that runs `co` needs it."""
-    import re
-
     text = instructions("investigate", page_kind=kind)
-    assert not re.search(r"CLI\.md\)\s+relative to this Skill's\s+directory first", text)
-    assert "Only before running a `co ...` command" in text
+    assert "CLI.md" not in text and "CLI reference" not in text
+    assert "`co rem <command> --help`" in text
+
+
+def test_an_investigation_carries_only_its_own_kind_s_steps():
+    """Owner, 2026-09-30: a person turn carried a project's Paths rules and a web
+    lookup it could never run. Each kind now gets the core plus its own steps."""
+    person, project = instructions("investigate", page_kind="person"), instructions("investigate", page_kind="project")
+
+    assert "# Investigating a person" in person and "# Investigating a project" not in person
+    assert "# Investigating a project" in project and "Signature block first" not in project
+    for text in (person, project):
+        assert "co browser" not in text                       # offline: the web block is not runtime text
+        assert "A field the material does not answer stays `Unknown`" in text
+        assert "## Only what is new" in text
 
 
 @pytest.mark.parametrize("stage", ["investigate", "maintain"])
@@ -142,3 +153,11 @@ def test_project_and_skill_templates_match_created_skeletons(tmp_path):
         assert headings == re.findall(r'^## .+$', notebook.read(record), re.MULTILINE)
         for stage in ('init', 'maintain', 'investigate'):
             assert template in instructions(stage)
+
+
+def test_maintenance_is_told_what_is_still_open_and_how_large_a_page_may_grow():
+    """#1956: four batches grew one page from 26.5k to 53.7k characters, re-adding
+    week-old items as open threads."""
+    text = instructions("maintain", page_kind="project")
+    assert "Only what is still open is an open thread" in text
+    assert "about 15k characters" in text
