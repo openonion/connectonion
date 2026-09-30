@@ -279,3 +279,53 @@ def test_the_audit_runs_each_page_and_each_status_command_both_ways():
     assert [(f.path, f.check) for f in findings] == [("co status", "look")]
     assert "Next:" in findings[0].detail
     assert dict((rule, passing) for rule, passing, _ in audit.score(findings, checked))["look"] == 0
+
+
+# -- what #2008 found the look rule missing --
+
+def test_a_line_repeated_at_the_top_is_caught():
+    noise = "[env] ~/.co/keys.env\n"
+    details = look(GOOD, noise * 2 + styled(GOOD))    # also different words: the pipe never had it
+    assert any("twice at the top" in d and "[env] ~/.co/keys.env" in d for d in details)
+    assert look(noise * 2 + GOOD, noise * 2 + styled(GOOD)) == [
+        "help prints `[env] ~/.co/keys.env` twice at the top"]
+
+
+def test_the_terminal_run_gives_stderr_a_terminal(tmp_path, monkeypatch):
+    # `[env]` printed only when stderr was a TTY, and the audit piped stderr.
+    script = tmp_path / "tool"
+    script.write_text("import sys\nprint(sys.stdout.isatty(), sys.stderr.isatty())\n"
+                      "print('err', file=sys.stderr)\n")
+    monkeypatch.setattr(audit, "program", lambda _: [sys.executable, str(script)])
+    page = audit.run(["tool"], terminal=True)
+    assert page.text.split() == ["True", "True"] and page.err.strip() == "err"
+    assert audit.run(["tool"]).text.split() == ["False", "False"]
+
+
+def test_a_word_coloured_in_pieces_is_caught():
+    # Rich's highlighter: `co 1.9.0a5` with `1.9` alone in bold cyan.
+    plain, shown = "co 1.9.0a5\nNext: co keys\n", "co \x1b[1;36m1.9\x1b[0m.0a5\n" + next_line_as_printed("co keys")
+    [detail] = look(plain, shown, path="co status", output=True)
+    assert "coloured in pieces" in detail and "1.9.0a5" in detail
+    # Typer colours a <metavar> inside a path on a help page on purpose.
+    assert look(GOOD + "~/.co/<name>/x\n", styled(GOOD) + "~/.co/\x1b[1;33m<name>\x1b[0m/x\n") == []
+
+
+def test_a_word_in_one_colour_beside_punctuation_is_not_pieces():
+    shown = "Run (\x1b[1;36mco auth\x1b[0m) or \x1b[2m~/.co/keys.env\x1b[0m.\n" + next_line_as_printed("co keys")
+    assert look("Run (co auth) or ~/.co/keys.env.\nNext: co keys\n", shown, path="co status", output=True) == []
+
+
+def test_an_emoji_in_a_panel_title_is_caught():
+    titled = styled(GOOD).replace("╭─ Options ─", "╭─ 📊 Options ─")
+    [detail] = look(GOOD.replace("╭─ Options ─", "╭─ 📊 Options ─"), titled)
+    assert "emoji in a panel title" in detail
+
+
+def test_a_status_command_without_a_next_line_is_caught():
+    [detail] = look("Balance 3\n", "\x1b[1mBalance\x1b[0m 3\n", path="co status", output=True)
+    assert "no Next: line" in detail
+
+
+def test_the_status_commands_include_the_ones_2008_found():
+    assert {"co auth status", "co whatsapp check"} <= set(audit.STATUS)

@@ -24,6 +24,8 @@ from unittest.mock import Mock, patch
 
 from rich.console import Console
 
+from connectonion.cli.style import THEME
+
 from .argparse_runner import ArgparseCliRunner
 
 
@@ -311,7 +313,7 @@ class TestCredentialStatus:
             file=output,
             force_terminal=False,
             color_system=None,
-            width=140,
+            width=140, theme=THEME,
         )
         with patch.object(Path, "home", return_value=fake_home):
             with patch.object(status_commands, "console", test_console):
@@ -345,7 +347,7 @@ class TestCredentialStatus:
             file=output,
             force_terminal=False,
             color_system=None,
-            width=160,
+            width=160, theme=THEME,
         )
         with patch.dict(
             os.environ,

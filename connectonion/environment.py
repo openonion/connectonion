@@ -18,6 +18,7 @@ PROVIDER_FIELDS = ("ACCESS_TOKEN", "REFRESH_TOKEN", "TOKEN_EXPIRES_AT", "SCOPES"
 PROVIDER_PREFIXES = ("GOOGLE", "MICROSOFT")
 _selected: Path | None = None
 _loaded: dict[str, str] = {}
+_announced: set[Path] = set()   # files CO_DEBUG_ENV has already named
 # A selection that failed at CLI startup. Every other command exits on it;
 # `co env` runs anyway, because it is the command that explains the failure.
 _selection_error: "EnvironmentError | None" = None
@@ -153,7 +154,12 @@ def load_environment() -> None:
     for key, value in values.items():
         if key not in os.environ and key not in blocked:
             publish_values({key: value if key in oauth_keys else resolved[key]})
-    if path.is_file() and (sys.stderr.isatty() or os.getenv("CO_DEBUG_ENV") == "1"):
+    # Only on request, once per file (#2008): printed whenever stderr was a
+    # terminal, `[env] …/keys.env` opened every command 2-3 times over (this
+    # runs at import and again per command). `co status`, `co doctor` and
+    # `co env` already name the file where someone is asking about it.
+    if path.is_file() and os.getenv("CO_DEBUG_ENV") == "1" and path not in _announced:
+        _announced.add(path)
         print(f"[env] {path}", file=sys.stderr)
 
 

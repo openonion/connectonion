@@ -16,8 +16,10 @@ program, hard rules first and judgement last:
   waiting for input, writes nothing, has a usage line and an example of this
   command, every flag an example uses is documented, examples hold no private
   data, and every listed subcommand has its own page.
-- look: run again the way a person's terminal runs it, the page says the same
-  words, with colour only there (#1997).
+- look: run again the way a person's terminal runs it (stdout and stderr each
+  a pty), the page says the same words, nothing repeated at the top, no word
+  coloured in pieces, no emoji panel title, a status command ends on Next,
+  with colour only there (#1997, #2008).
 - review(): for pages that pass, a model judges what a rule cannot: clear,
   says what it reads or changes, a realistic example, simple, and whether a
   listed item has a short reference when the command acts on one.
@@ -139,13 +141,77 @@ def run(argv: list, terminal: bool = False) -> Page:
     env.pop("TTY_COMPATIBLE", None)   # Rich obeys it before NO_COLOR and FORCE_COLOR
     env.pop("GITHUB_ACTIONS", None)
     try:
-        done = subprocess.run([*program(argv[0]), *argv[1:]], cwd=work, env=env, stdin=subprocess.DEVNULL,
-                              capture_output=True, text=True, timeout=20)
+        done = (_in_terminal if terminal else _in_pipe)([*program(argv[0]), *argv[1:]], work, env)
     except subprocess.TimeoutExpired:
         return Page(code=-1, text="", hung=True)
     created = [f for root in (home, work) for f in root.rglob("*") if f.is_file()]
     wrote = str(created[0].relative_to(home if created[0].is_relative_to(home) else work)) if created else ""
     return Page(done.returncode, done.stdout or done.stderr, wrote, err=done.stderr if done.stdout else "")
+
+
+RUN_TIMEOUT = 20   # seconds; nothing a page or a status command runs may wait for input
+
+
+def _in_pipe(command: list, work: Path, env: dict) -> subprocess.CompletedProcess:
+    return subprocess.run(command, cwd=work, env=env, stdin=subprocess.DEVNULL,
+                          capture_output=True, text=True, timeout=RUN_TIMEOUT)
+
+
+def _drain(fd: int, into: list) -> None:
+    """Read a pty until its far end closes, which a pty reports as EIO."""
+    while True:
+        try:
+            data = os.read(fd, 65536)
+        except OSError:
+            return
+        if not data:
+            return
+        into.append(data)
+
+
+def _in_terminal(command: list, work: Path, env: dict) -> subprocess.CompletedProcess:
+    """stdout and stderr each a 100-column pty, as in a person's terminal (#2008).
+
+    With stderr a pipe, whatever a program prints only when stderr is a
+    terminal never reached the audit: `[env] …/keys.env` opened every co
+    command 2-3 times in a real terminal while the look rule saw nothing.
+    Without pty (Windows) it falls back to pipes; FORCE_COLOR still colours.
+    """
+    try:
+        import fcntl
+        import pty
+        import termios
+    except ImportError:
+        return _in_pipe(command, work, env)
+    import signal
+    import struct
+    import threading
+
+    pairs = [pty.openpty() for _ in range(2)]
+    for _, follower in pairs:
+        fcntl.ioctl(follower, termios.TIOCSWINSZ, struct.pack("HHHH", 50, int(env.get("COLUMNS", 100)), 0, 0))
+    chunks = [[], []]
+    proc = subprocess.Popen(command, cwd=work, env=env, stdin=subprocess.DEVNULL,
+                            stdout=pairs[0][1], stderr=pairs[1][1], start_new_session=True)
+    for _, follower in pairs:
+        os.close(follower)
+    readers = [threading.Thread(target=_drain, args=(leader, into), daemon=True)
+               for (leader, _), into in zip(pairs, chunks)]
+    for reader in readers:
+        reader.start()
+    try:
+        code = proc.wait(timeout=RUN_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        os.killpg(proc.pid, signal.SIGKILL)   # its own session: a child would keep the pty open
+        proc.wait()
+        raise
+    finally:
+        for reader in readers:
+            reader.join(timeout=5)   # a child left running may hold the pty; stop waiting
+        for leader, _ in pairs:
+            os.close(leader)
+    out, err = (b"".join(c).decode("utf-8", "replace").replace("\r\n", "\n") for c in chunks)
+    return subprocess.CompletedProcess(command, code, out, err)
 
 
 def help_page(argv: list, terminal: bool = False) -> Page:
@@ -335,7 +401,15 @@ STATUS = (
     "co doctor",
     "co commands",
     "co rem status",
+    "co auth status",
+    "co whatsapp check",   # every inbox `check` prints through the same handler
 )
+# Lines of a printout searched for a repeat: startup noise comes first (#2008).
+TOP = 5
+# Emoji a panel title must not carry: pictographs and the miscellaneous
+# symbols (⚠ ☁), not the dingbats ✓ ✗ that mark a row.
+EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u26FF]")
+PANEL_TOP = re.compile(r"^\s*[╭┌┏]")
 
 
 def _tokens(text: str) -> list:
@@ -357,6 +431,46 @@ def _difference(said: str, shown: str) -> str:
         return ""
     extra, missing = Counter(b) - Counter(a), Counter(a) - Counter(b)
     return f"it shows {' '.join(list(extra)[:4]) or '(nothing)'} where an agent reads {' '.join(list(missing)[:4]) or '(nothing)'}"
+
+
+def _repeated_at_top(text: str) -> str:
+    """The first line printed twice among the first TOP lines, or "".
+
+    `[env] …/keys.env` opened every co command two or three times in a real
+    terminal (#2008); a blank line or a frame drawn twice is not a repeat.
+    """
+    seen = set()
+    for line in [ANSI.sub("", line).strip() for line in text.splitlines() if line.strip()][:TOP]:
+        if line in seen and FRAME.sub("", line):
+            return line
+        seen.add(line)
+    return ""
+
+
+def _pieces(shown: str) -> list:
+    """Words a terminal printout colours in pieces: letters or digits in two styles inside one word.
+
+    Rich's default highlighter does this to whatever looks like a number, date
+    or path (`co 1.9.0a5` with `1.9` alone in cyan, #2008). A word in one style
+    beside punctuation in another (`(co auth)`) is not pieces.
+    """
+    found = []
+    for line in shown.splitlines():
+        chars, state = [], ""
+        for part in re.split(r"(\x1b\[[0-9;]*m)", re.sub(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)", "", line)):
+            if SGR.fullmatch(part):
+                state = "" if part in ("\x1b[0m", "\x1b[m") else state + part
+            else:
+                chars += [(c, state) for c in ANSI.sub("", part)]
+        word = []
+        for c, style in chars + [(" ", "")]:
+            if not c.isspace():
+                word.append((c, style))
+                continue
+            if len({style for c, style in word if c.isalnum()}) > 1:
+                found.append("".join(c for c, _ in word))
+            word = []
+    return found
 
 
 def _unshaped_next(shown: str) -> list:
@@ -397,9 +511,25 @@ def look(path: str, plain: Page, styled: Page, output: bool = False) -> list:
     moved = _difference(said, shown)
     if moved:
         details.append(f"shows different words in a terminal: {moved}")
+    twice = _repeated_at_top(styled.err) or _repeated_at_top(styled.text) or _repeated_at_top(shown)
+    if twice:
+        details.append(f"prints `{twice}` twice at the top")
+    if ours:
+        # Output only: a help page is drawn by Typer, whose own highlighter
+        # colours `--options` and `<metavars>` on purpose, also inside a path.
+        pieces = _pieces(shown) if output else []
+        if pieces:
+            details.append(f"has words coloured in pieces (auto-highlighting; make the Console with "
+                           f"highlight=False): {' '.join(dict.fromkeys(pieces[:4]))}")
+        titles = [ANSI.sub("", line).strip() for line in shown.splitlines()
+                  if PANEL_TOP.match(ANSI.sub("", line)) and EMOJI.search(line)]
+        if titles:
+            details.append(f"has an emoji in a panel title: {titles[0][:60]}")
     if output and ours:
         details += [f"prints a Next: line without style.next_line's shape: {ANSI.sub('', line)}"
                     for line in _unshaped_next(shown)]
+        if not any(ANSI.sub("", line).lstrip().startswith("Next:") for line in shown.splitlines()):
+            details.append("has no Next: line; a status command ends on the step to take (style.next_line)")
     return [Finding(path, "look", f"{what} {detail}") for detail in details]
 
 

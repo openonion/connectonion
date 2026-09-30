@@ -11,6 +11,8 @@ from unittest.mock import Mock, patch
 
 from rich.console import Console
 
+from connectonion.cli.style import THEME
+
 
 def _status(tmp_path, monkeypatch, balance):
     from connectonion.cli.commands import status_commands
@@ -29,7 +31,7 @@ def _status(tmp_path, monkeypatch, balance):
                          return_value=Mock(status_code=200, json=lambda: {"deployments": []})), \
             patch.object(Path, "home", return_value=tmp_path / "home"), \
             patch.object(status_commands, "console",
-                         Console(file=output, force_terminal=False, color_system=None, width=140)):
+                         Console(file=output, force_terminal=False, color_system=None, width=140, theme=THEME)):
         status_commands.handle_status()
     return output.getvalue()
 

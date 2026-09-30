@@ -28,14 +28,14 @@ class TestTheLastLineAgreesWithTheBody:
         assert verdict([]) == 0
 
         out = capsys.readouterr().out
-        assert '✅' in out
+        assert '✓ Diagnostics complete — nothing wrong' in out   # ✓ like every row, not ✅ (#2008)
 
     def test_one_problem_is_named_in_the_summary(self, capsys):
         verdict(["user/email-outreach: broken symlink"])
 
         out = capsys.readouterr().out
         assert 'email-outreach' in out
-        assert '✅' not in out, "the summary claimed success over its own finding"
+        assert 'nothing wrong' not in out, "the summary claimed success over its own finding"
 
     def test_several_are_all_named(self, capsys):
         verdict(["a: broken symlink", "b: not on PATH", "c: auth failed"])

@@ -172,3 +172,21 @@ def test_the_model_row_is_not_called_config(out, monkeypatch, tmp_path):
     assert len(rows) == 1 and "host.yaml" in rows[0]
     assert "Not found (optional)" not in out.getvalue()
     assert any("Model" in line and "not set" in line for line in out.getvalue().splitlines())
+
+
+def test_the_version_is_asked_for_without_colour(monkeypatch):
+    # In a terminal the co on PATH answered `co \x1b[1;36m1.9\x1b[0m.0a5`, which
+    # never equals this version: a terminal said "`co` runs the other one"
+    # where a pipe said ✓ for the same install (#2008).
+    import subprocess
+
+    seen = {}
+
+    def run(argv, **kwargs):
+        seen.update(kwargs["env"])
+        return Mock(returncode=0, stdout="co \x1b[1;36m1.8\x1b[0m.8b3\n")
+
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    monkeypatch.setattr(subprocess, "run", run)
+    assert doctor_commands._path_co_version("/x/co") == ("1.8.8b3", None)
+    assert seen["NO_COLOR"] == "1" and "FORCE_COLOR" not in seen
