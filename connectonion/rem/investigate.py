@@ -40,7 +40,8 @@ class NothingFound(RemError):
 def _nothing_found(record: str, subject: str, coverage: list[str], *, me: bool = False,
                    digested: bool = False, usage=None) -> NothingFound:
     searched = "; ".join(line for line in coverage
-                         if not line.startswith(("Requested investigation window", "Quick first pass")))
+                         if not line.startswith(("Requested investigation window", "Quick first pass",
+                                                 "Page last investigated")))
     searched = searched if len(searched) <= 400 else searched[:400] + "…"
     why = ("every digest of the material came back empty" if digested
            else "no mail, attachment, session or chat message about them was found")
@@ -49,6 +50,34 @@ def _nothing_found(record: str, subject: str, coverage: list[str], *, me: bool =
     return NothingFound(f"Not written: {why} for {subject} ({searched or 'no source searched'}). {record} "
                         f"was not changed and is not marked investigated. Name another address or name with "
                         f"`co rem investigate {target} --handle {handle}`.", usage)
+
+
+def org_pages(notebook: Notebook, record: str, handles: list[str], *, limit: int = 40) -> list[str]:
+    """Organisation pages the subject's Company (a project's Organisation) can link to (#1974).
+
+    The page Skills say to link them, but the turn was never told which org
+    pages exist: 0 of 4 person pages linked one that did. For a person, the
+    pages whose Domains hold one of their mail domains (or a parent of it);
+    for a project, the notebook's organisations. Context, never evidence.
+    """
+    if not record.startswith(("people/", "projects/")):
+        return []
+    mine = {handle.rpartition("@")[2].casefold() for handle in handles if is_address(handle)}
+    found = []
+    for org in notebook.list("orgs"):
+        text = notebook.read(org)
+        title = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), org)
+        section = text.partition("## Domains\n")[2].split("\n## ", 1)[0]
+        domains = [re.sub(r"\s*\[W?\d+\].*$", "", line[2:]).strip().casefold()
+                   for line in section.splitlines() if line.startswith("- ")]
+        if record.startswith("projects/"):
+            found.append(f"{org} — {title}")
+            continue
+        matched = [domain for domain in domains
+                   if any(own == domain or own.endswith("." + domain) for own in mine)]
+        if matched:
+            found.append(f"{org} — {title} ({', '.join(matched)})")
+    return found[:limit]
 
 
 def quick_evidence(items: list[dict], *, max_items: int = 24,
@@ -711,7 +740,14 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
          "timestamp": now, "source": "investigation:page"},
         {"role": "coverage", "text": "Sources searched for handles " + ", ".join(handles) + ":\n"
                                      + "\n".join(coverage), "timestamp": now, "source": "investigation:coverage"},
-    ] + ([{"role": "quick-first-pass", "source": "investigation:quick-scope",
+    ] + ([{"role": "org-pages", "source": "investigation:org-pages", "timestamp": now,
+           "text": "Organisation pages this notebook already has"
+                   + (" for the subject's mail domains" if record.startswith("people/") else "")
+                   + ". Where the material shows the subject belongs to one, write its field (Company, or "
+                     "Organisation on a project page) as a link, [Name](../orgs/<file>.md). Context, not "
+                     "evidence:\n" + "\n".join(f"- {line}" for line in linkable)}]
+         if (linkable := org_pages(notebook, record, handles)) else []) + (
+        [{"role": "quick-first-pass", "source": "investigation:quick-scope",
            "timestamp": now, "text": "This is a bounded, partial first pass. Use only the supplied sample; "
                                      "disclose the sampling limit in Uncertainties."}]
          if quick else []) + items

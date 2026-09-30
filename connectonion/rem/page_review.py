@@ -220,7 +220,8 @@ def drop_owner_addresses(text: str, owner: set[str]) -> tuple[str, list[str]]:
 # What an investigation hands the model about itself, not about the subject.
 # A page that cites only these was written from nothing (#1974).
 CONTEXT_SOURCES = ("investigation:page", "investigation:coverage", "investigation:quick-scope",
-                   "investigation:project-inventory", "investigation:original-evidence")
+                   "investigation:project-inventory", "investigation:original-evidence",
+                   "investigation:org-pages")
 
 
 def _known_sources(items: list[dict]) -> set:

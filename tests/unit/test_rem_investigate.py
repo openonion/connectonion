@@ -709,7 +709,9 @@ def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monk
     assert 10 <= inv.window_since(page) <= 12                               # UTC vs local date at the edges
 
     seen = {}
-    monkeypatch.setattr(inv, "gather", lambda *a, **kw: ([], []))
+    # One new mail: with none, the run stops before the model (#1974).
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: (
+        [{"source": "gmail:1", "role": "other", "timestamp": "2026-09-29", "text": "New."}], []))
 
     def write(book, material, config, **kw):
         seen["coverage"] = next(i["text"] for i in material if i["role"] == "coverage")
@@ -818,3 +820,29 @@ def test_the_routed_original_evidence_copy_is_deleted_when_the_run_ends(tmp_path
     inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], days=7, clients={}, subscriptions={},
                     runner=lambda *a, **kw: {'changed': [], 'usage': None})
     assert not list((root / '.state' / 'evidence').glob('*.json'))
+
+
+def test_a_person_turn_is_told_the_org_pages_its_company_can_link_to(tmp_path, monkeypatch):
+    """The page Skills say to link Company to the org page; 0 of 4 did, because the
+    turn was never told which org pages exist (#1974)."""
+    root = _notebook(tmp_path, 'codex')
+    notebook = inv.Notebook(root)
+    notebook.stub_org('orgs/unsw-1234.md', 'UNSW Sydney', ['unsw.edu.au'])
+    notebook.stub_org('orgs/acme-5678.md', 'Acme', ['acme.example'])
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (
+        [{'source': 'gmail:1', 'role': 'other', 'timestamp': '2026-09-01', 'text': 'Vern wrote.'}], ['gmail: 1']))
+    received = []
+    inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern', 'vern.chan@unsw.edu.au'], days=7, clients={},
+                    subscriptions={}, runner=lambda notebook, items, config, stage: received.extend(items) or
+                    {'changed': [], 'usage': None})
+    orgs = next(item for item in received if item['role'] == 'org-pages')
+    assert 'orgs/unsw-1234.md — UNSW Sydney (unsw.edu.au)' in orgs['text'] and 'acme' not in orgs['text']
+    assert '[Name](../orgs/<file>.md)' in orgs['text']
+
+
+def test_a_project_turn_is_given_the_notebook_s_organisations(tmp_path):
+    notebook = inv.Notebook(tmp_path)
+    notebook.stub_org('orgs/acme-5678.md', 'Acme', ['acme.example'])
+    notebook.stub_project('projects/tide.md', 'Tide', ['/w/tide'])
+    assert inv.org_pages(notebook, 'projects/tide.md', ['/w/tide']) == ['orgs/acme-5678.md — Acme']
+    assert inv.org_pages(notebook, 'people/nobody.md', ['someone@else.example']) == []

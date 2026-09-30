@@ -101,8 +101,13 @@ validator already decides which citations resolve, and dropping acts on that
 decision without changing what the model is told (the skill wording belongs to
 #1974 A).
 
-On a person page, `Company:` naming an organisation the notebook has a page for
-becomes a link to that page.
+The page Skills already say to link Company (a project's Organisation) to the
+organisation page, but the turn was never told which organisation pages exist.
+Now a person's turn is handed the org pages whose Domains hold one of their mail
+domains (or a parent domain), and a project's turn the notebook's organisations
+(`investigation:org-pages`, context, never evidence). After the turn, a person
+page whose `Company:` names an organisation page's title exactly is linked to it
+by code as well.
 
 ## 10. The daily round reads mail
 
