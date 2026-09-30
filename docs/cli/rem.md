@@ -146,18 +146,56 @@ co rem --root /private/path/to/rem map-skills
 co rem --root /private/path/to/rem map-skills --skills-dir /known/project/.co/skills
 ```
 
-The generated `skills/catalog/index.md` links to one documentation skeleton per
-distinct source file. Metadata seeds the name, description and original path;
-usage, inputs/outputs, related projects and history await evidence. Same-name
-files remain distinct; aliases resolving to the same source are deduplicated.
-Reruns preserve page content and retain pages whose source disappeared. Only the
-generated index is refreshed. Original `SKILL.md` files are not changed or run, and `skills/approved/` remains
-write-protected. Catalog pages now include a fenced, verbatim source snapshot
-after the overview, with the original path, snapshot time and SHA-256. Rebuilding
-refreshes only the generated snapshot/metadata block and preserves authored notes.
-Unchanged snapshots keep their timestamp; missing sources retain the last snapshot.
-Snapshots that exceed the page limit or trigger existing secret-shaped-content
-protection are explicitly reported as unavailable, never silently truncated.
+The generated `skills/catalog/index.md` links to **one page per skill name**
+(#1974). A skill installed three times — in `~/.claude/skills`, `~/.codex/skills`
+and `~/.agents/skills` — is one page, not three. The page links to the source
+file instead of pasting it, and keeps the frontmatter facts short: the name, the
+description, the allowed tools. Its `Source` section, which the map owns and
+rewrites on every run, lists each copy:
+
+```text
+## Source
+- File: /home/you/.claude/skills/ship-feature/SKILL.md
+- Discovery: claude-user
+- Allowed tools: Bash, Read
+- Content: sha256 3f2a9c1e04b7; 3 installed copies
+- Also installed at: /home/you/.codex/skills/ship-feature/SKILL.md (identical)
+- Also installed at: /home/you/.agents/skills/ship-feature/SKILL.md (differs: sha256 77b0d2e41f9a)
+- Status: mapped from metadata; behavior not verified
+```
+
+Copies are compared by content hash, so a copy that has drifted says so. A copy
+in a temporary or package location — a git worktree (`.claude/worktrees/`,
+`.worktree/`, `.worktrees/`, `.codex/worktrees/`), `site-packages`, a plugin
+cache — never becomes the `File` of a page and never
+makes a page of its own; it is listed as `Also installed at` on the page of a
+copy that lives somewhere real. A name found only in such places is listed in
+the index under "Only in temporary or package locations", without a page.
+
+`Usage history` opens with what your own coding sessions say, counted by a
+script with no model: how many times the skill was invoked and when last.
+
+```text
+- Invoked 14 times in your coding sessions in the last 180 days, last on 2026-09-28 (Claude Code 9, Codex 5). ...
+```
+
+Claude Code counts a `Skill` tool call and a `/skill-name` command; Codex counts
+a `$skill-name` in a message you typed and a tool call that reads the skill's
+`SKILL.md`, once per turn. co rem's own runs are not counted. An invocation is
+not a completed run: `Current status` and `Performance` still wait for run
+evidence. Counts are cached per session file under `.state/skill-usage.json`,
+so a rerun reads only what changed.
+
+Rerunning the map (`init`, `sync`'s map, or `map-skills`) moves an older
+notebook to this shape. Pages made one per copy are merged into the name's page:
+a page with written content keeps it (sections are merged line by line, citations
+renumbered), the pasted `SKILL.md` snapshot is removed, and the old page is
+moved to `.state/archived/` — never deleted. Its record becomes an **alias**
+(`.state/aliases.json`): links to it in other pages are rewritten, and a command
+given the old name opens the merged page. A page whose only source was a
+temporary copy and that holds nothing but map output is archived the same way.
+Original `SKILL.md` files are never changed or run, and `skills/approved/`
+remains write-protected.
 
 Defaults cover the co/Claude skill search roots, conventional agent/Codex skill
 roots, and co ai's bundled default allowlist. This is a shallow inventory, not
@@ -576,14 +614,56 @@ Organizations, Projects and Skills, and your own page's facts. Full per-source d
 co rem root and in `--json` output. A custom `--days` window is preserved in the
 printed next command and retry tips.
 
-Skills lists one catalog entry per name. Open it to inspect each installed copy
-and its source path; implementations may differ. All underlying pages, links and
-annotations are preserved. The generated index is not counted as another skill.
-Project discovery excludes system temporary directories and removed Codex worktrees.
-It also excludes co rem task copies under any notebook's `.state/tasks` and
-generated fixture notebooks, plus workspace containers holding multiple Git
-repositories, so repeated runs do not turn scratch pages or the enclosing
-projects folder into separate projects.
+Skills lists one catalog page per name; the page lists each installed copy and
+says which differ. The generated index is not counted as another skill.
+
+#### One page per repository
+
+A project is its repository, not each folder a session ran in (#1974). A git
+worktree folds into its main checkout's page:
+
+- a folder whose `.git` is a file saying `gitdir: <repo>/.git/worktrees/<name>`
+  belongs to `<repo>`;
+- a folder under `<repo>/.claude/worktrees/` belongs to `<repo>`, even after
+  Claude Code removed it;
+- a folder under `.worktree/` or `.worktrees/` that no longer exists belongs to
+  the repository beside it whose folder name starts its own
+  (`~/projects/.worktree/browser-139` → `~/projects/browser`); with no such
+  repository it is left out rather than guessed.
+
+`Paths` lists the repository root and a count, not the worktrees:
+
+```text
+## Paths
+- /home/you/projects/connectonion
+- Worktrees: 49
+- Sessions: 116
+```
+
+Some folders are not projects, and the map leaves them out (`not_a_project` in
+`rem/scan.py`):
+
+| Folder | Why |
+|---|---|
+| your home folder, or above it | it holds every session there is (#1944) |
+| inside a hidden folder (`~/.claude/plugins/cache/…`, `~/projects/.artifacts/…`) and not a git repository | a cache, a plugin install or build output |
+| a Claude Code scheduled-task folder (`…/scheduled-tasks/…`) | a task's working folder |
+| not in a git repository, one session, at most 3 messages you typed | a one-off chat (`create-a-scheduled-task-called-weekday`, a plugin install folder) |
+
+A folder with two sessions, a repository, or a longer conversation stays a
+project. System temporary directories, removed Codex worktrees, co rem's own task
+copies, fixture notebooks and multi-repository workspace containers stay out as
+before.
+
+A notebook mapped before this has split and junk pages. The next map merges
+them: every existing page listing one of the repository's paths (worktrees
+compared as their main checkout) folds into one page — the one with the most
+written content, so an investigated page is never merged into an empty one.
+Written lines of the other page are merged section by section with citations
+renumbered, its message material under `.state/projects/` is merged too, and the
+page itself moves to `.state/archived/` with its record kept as an alias
+(`.state/aliases.json`). A junk folder's page that holds only map output is
+archived; one somebody wrote in is kept.
 
 ### Preview reliability checks
 
