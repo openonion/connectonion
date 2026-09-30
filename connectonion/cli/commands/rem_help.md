@@ -56,12 +56,12 @@ body, once, so investigating a person later reads it from disk.
 
 Then, in a terminal, it writes your own page by itself from everything you sent
 and your coding sessions of the last 30 days: co rem investigate me, one model
-turn on your own plan, about 15 minutes. Then the 3 people you wrote to most in
-the last 14 days (co rem investigate people, one turn each), then the pages of
-projects active in the last 14 days from the messages you typed in their
-sessions (one call each, about a minute and ~90k billed input tokens). It names
-the runner, model and plan before it starts and stops at 5 points of the Codex
-week, or at the weekly budget or floor; Ctrl-C stops it and keeps the map and
+turn on your own plan, about 15 minutes (refused, it writes the quick first
+pass instead). Then everyone in the people queue, every project with session
+messages and the organisations you correspond with, 12 pages at a time, one
+turn each; on a real 1,880-mail notebook that was 198 of 242 pages in about 25
+minutes. It names the runner, model and plan before it starts and stops starting
+pages at 60 points of the Codex week, or at the weekly budget or floor; Ctrl-C stops it and keeps the map and
 every page written. It is skipped, with the reason, when the runner is missing
 or signed out, when no mailbox gave an address of yours, or when your page was
 already written. More people: co rem investigate people. Older projects: co rem
@@ -161,7 +161,7 @@ page unmarked.
 
 Budget: with the Codex runner every investigation records your Codex week before
 and after, and counts toward investigation's weekly budget (limits.
-investigation_quota_points, default 10). A CATEGORY run stops starting pages when
+investigation_quota_points, default 20). A CATEGORY run stops starting pages when
 that budget is spent, when --budget is spent, or once the week is at
 limits.quota_floor_percent (default 70%), and says which. The page in flight
 finishes. Without a meter (another runner, Codex signed out) --limit is the bound.
