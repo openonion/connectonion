@@ -131,6 +131,7 @@ def run(argv: list, terminal: bool = False) -> Page:
     env.setdefault("PYTHONUSERBASE", site.getuserbase())
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env.pop("NO_COLOR" if terminal else "FORCE_COLOR", None)
+    env.pop("TTY_COMPATIBLE", None)   # Rich obeys it before NO_COLOR and FORCE_COLOR
     env.pop("GITHUB_ACTIONS", None)
     try:
         done = subprocess.run([*program(argv[0]), *argv[1:]], cwd=work, env=env, stdin=subprocess.DEVNULL,
@@ -360,9 +361,12 @@ def _unshaped_next(shown: str) -> list:
 
     buffer = io.StringIO()
     Console(file=buffer, theme=THEME, force_terminal=True, color_system="256").print(next_line("co"))
-    shape = buffer.getvalue().split("co")[0]   # `Next:` styled, then the command's style opening
-    return [line.strip() for line in shown.splitlines()
-            if ANSI.sub("", line).lstrip().startswith("Next:") and not line.lstrip().startswith(shape)]
+    # `Next:` in its style, then the command in its own; a few words may come
+    # between them (`Next: See every list:  co trust list`).
+    label, rest = buffer.getvalue().split(" ", 1)
+    opens = rest.split("co")[0]
+    return [line.strip() for line in shown.splitlines() if ANSI.sub("", line).lstrip().startswith("Next:")
+            and not (line.lstrip().startswith(label + " ") and opens in line)]
 
 
 def look(path: str, plain: Page, styled: Page, output: bool = False) -> list:

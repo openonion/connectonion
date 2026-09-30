@@ -238,6 +238,8 @@ def test_a_status_next_line_must_have_the_shared_shape():
     assert look(plain, balance + next_line_as_printed("co keys"), path="co status", output=True) == []
     [detail] = look(plain, balance + "\x1b[2mNext: co keys\x1b[0m\n", path="co status", output=True)
     assert detail.startswith("output") and "Next:" in detail
+    why = next_line_as_printed("co keys").replace("Next:\x1b[0m ", "Next:\x1b[0m Show them:  ")
+    assert look("Balance 3\nNext: Show them:  co keys\n", balance + why, path="co status", output=True) == []
 
 
 def test_status_commands_are_read_only_and_leave_co_rem_status_to_its_rewrite():
