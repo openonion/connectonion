@@ -884,3 +884,152 @@ def test_a_project_turn_is_given_the_notebook_s_organisations(tmp_path):
     notebook.stub_project('projects/tide.md', 'Tide', ['/w/tide'])
     assert inv.org_pages(notebook, 'projects/tide.md', ['/w/tide']) == ['orgs/acme-5678.md — Acme']
     assert inv.org_pages(notebook, 'people/nobody.md', ['someone@else.example']) == []
+
+
+# ------------------------------------------------ #1982: a checkout on an old branch is not the project's state
+
+
+def _repo(tmp_path):
+    """A main checkout left on an August branch while main moved on to 1.9.0a3."""
+    import os
+    import subprocess
+    repo = tmp_path / 'work' / 'connectonion'
+    repo.mkdir(parents=True)
+
+    def git(*args, date='2026-09-29T10:00:00+00:00'):
+        env = {**os.environ, 'GIT_AUTHOR_DATE': date, 'GIT_COMMITTER_DATE': date, 'GIT_AUTHOR_NAME': 't',
+               'GIT_AUTHOR_EMAIL': 't@x.y', 'GIT_COMMITTER_NAME': 't', 'GIT_COMMITTER_EMAIL': 't@x.y',
+               'GIT_CONFIG_GLOBAL': os.devnull, 'GIT_CONFIG_NOSYSTEM': '1'}
+        subprocess.run(['git', '-C', str(repo), *args], check=True, capture_output=True, env=env)
+    git('init', '-q', '-b', 'main')
+    (repo / 'pyproject.toml').write_text('[project]\nversion = "1.8.0a3"\n')
+    git('add', '.')
+    git('commit', '-qm', 'August', date='2026-08-30T10:00:00+00:00')
+    git('branch', 'feat/1.8-paid-browser-release')
+    (repo / 'pyproject.toml').write_text('[project]\nversion = "1.9.0a3"\n')
+    git('commit', '-qam', 'September')
+    git('update-ref', 'refs/remotes/origin/main', 'main')
+    git('checkout', '-q', 'feat/1.8-paid-browser-release')
+    return repo
+
+
+def test_a_checkout_weeks_behind_the_newest_session_is_flagged_and_the_version_comes_from_origin_main(tmp_path):
+    """1.9.0a3: the main checkout was on an August branch, so the page said 1.8.0a3."""
+    text = inv.checkout_state(str(_repo(tmp_path)), newest_session='2026-09-29')
+    assert 'branch feat/1.8-paid-browser-release, HEAD committed 2026-08-30' in text
+    assert 'origin/main, last committed 2026-09-29' in text
+    assert 'version 1.9.0a3' in text and '1.8.0a3' not in text
+    assert '30 days older than the newest session' in text
+
+
+def test_a_checkout_on_the_current_line_is_recorded_without_a_warning(tmp_path):
+    import subprocess
+    repo = _repo(tmp_path)
+    subprocess.run(['git', '-C', str(repo), 'checkout', '-q', 'main'], check=True, capture_output=True)
+    text = inv.checkout_state(str(repo), newest_session='2026-09-29')
+    assert 'branch main, HEAD committed 2026-09-29' in text and 'older than' not in text
+    assert inv.checkout_state(str(tmp_path / 'not-a-repo')) == ''
+
+
+def test_a_project_turn_is_given_the_checkout_state_as_citable_evidence(tmp_path, monkeypatch):
+    root = _notebook(tmp_path, 'codex')
+    repo = _repo(tmp_path)
+    inv.Notebook(root).stub_project('projects/co.md', 'connectonion', [str(repo)], last_seen='2026-09-29')
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([], ['codex: 0 sessions in window']))
+    received = []
+    inv.investigate(root, 'projects/co.md', 'connectonion', [str(repo)], days=150, clients={}, subscriptions={},
+                    runner=lambda notebook, items, config, stage: received.extend(items) or
+                    {'changed': [], 'usage': None})
+    state = next(item for item in received if item['role'] == 'checkout-state')
+    assert state['source'] == f'git:{repo}' and 'older than the newest session' in state['text']
+
+
+# ------------------------------------------------ #1984: an empty since-window calls no model
+
+
+def _investigated(root, record, days_ago):
+    from datetime import date, timedelta
+    notebook = inv.Notebook(root)
+    day = (date.today() - timedelta(days=days_ago)).isoformat()
+    page = notebook.read(record).replace("· not investigated yet", f"· investigated {day} (gmail)")
+    # A real investigation cites what it read; one that cites nothing is hollow (#1974).
+    notebook.write(record, page.replace("- (none yet)", "- [1] gmail:0123456789ab"))
+    return day
+
+
+def test_a_since_window_that_gathered_nothing_calls_no_model_and_says_nothing_new(tmp_path, monkeypatch):
+    """1.9.0a3: Tamara's window since her last investigation gathered 0 items,
+    0 mails and 0 sessions, and still made a 92k-token turn that deleted one line."""
+    root = _notebook(tmp_path, 'codex')
+    day = _investigated(root, 'people/vern.md', 3)
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (
+        [], ['gmail (me@x.y): searched on the server for vern@x.y over 4 days, 0 matched, 0 bodies read',
+             'codex: 0 sessions in window']))
+    before = inv.Notebook(root).read('people/vern.md')
+    with pytest.raises(inv.NothingNew) as caught:
+        inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], days=4, clients={}, subscriptions={},
+                        runner=lambda *a, **kw: pytest.fail('no model call for an empty window'))
+    assert inv.Notebook(root).read('people/vern.md') == before
+    message = str(caught.value)
+    assert f'Nothing new since {day}' in message and 'gmail' in message
+    assert '--handle' not in message   # the handles found the subject before; nothing is wrong with them
+
+
+def test_a_project_s_file_list_alone_is_not_new_material_for_a_page_investigated_before(tmp_path, monkeypatch):
+    """A project page always has files to list; with no session or mail since
+    its last investigation the turn would only re-read what the page reflects."""
+    root = _notebook(tmp_path, 'codex')
+    folder = tmp_path / 'work' / 'tide'
+    folder.mkdir(parents=True)
+    (folder / 'README.md').write_text('# Tide\n')
+    inv.Notebook(root).stub_project('projects/tide.md', 'Tide', [str(folder)])
+    _investigated(root, 'projects/tide.md', 5)
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([], ['codex: 0 sessions in window']))
+    with pytest.raises(inv.NothingNew):
+        inv.investigate(root, 'projects/tide.md', 'Tide', [str(folder)], days=6, clients={}, subscriptions={},
+                        runner=lambda *a, **kw: pytest.fail('no model call on the file list alone'))
+
+
+def test_a_project_never_investigated_is_still_read_from_its_files(tmp_path, monkeypatch):
+    root = _notebook(tmp_path, 'codex')
+    folder = tmp_path / 'work' / 'tide'
+    folder.mkdir(parents=True)
+    (folder / 'README.md').write_text('# Tide\n')
+    inv.Notebook(root).stub_project('projects/tide.md', 'Tide', [str(folder)])
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([], ['codex: 0 sessions in window']))
+    called = []
+    inv.investigate(root, 'projects/tide.md', 'Tide', [str(folder)], days=150, clients={}, subscriptions={},
+                    runner=lambda *a, **kw: called.append(1) or {'changed': [], 'usage': None})
+    assert called == [1]
+
+
+def test_a_person_with_nothing_new_leaves_the_update_queue(tmp_path, monkeypatch):
+    """Without a record of the empty pass the same person was gathered again on every run."""
+    from datetime import datetime, timezone
+    from connectonion.rem import people_pages
+    from connectonion.rem.files import state_path, write_json
+    root = _notebook(tmp_path, 'codex')
+    _investigated(root, 'people/vern.md', 3)
+    write_json(state_path(root, 'people/activity.json'), {'people/vern.md': datetime.now(timezone.utc).isoformat()})
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([], ['gmail: 0 matched']))
+    row = next(r for r in people_pages.queue(root) if r['record'] == 'people/vern.md')
+    assert row['mode'] == 'update'
+    with pytest.raises(inv.NothingNew):
+        people_pages.investigate_person(root, row, clients={}, subscriptions={})
+    assert 'people/vern.md' not in {r['record'] for r in people_pages.queue(root)}
+
+
+def test_a_quick_pass_reports_its_sampling_limit_in_the_reply_not_on_the_page(tmp_path, monkeypatch):
+    """#1975: coverage stays off the page; the runner records it and the model says it in its reply."""
+    root = _notebook(tmp_path, 'codex')
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (
+        [{'source': 'gmail:1', 'role': 'other', 'timestamp': '2026-09-01', 'text': 'Vern wrote.'}], ['gmail: 1']))
+    received = []
+    inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], days=7, clients={}, subscriptions={}, quick=True,
+                    runner=lambda notebook, items, config, stage: received.extend(items) or
+                    {'changed': [], 'usage': None})
+    scope = next(item for item in received if item['role'] == 'quick-first-pass')['text']
+    assert 'Uncertainties' not in scope and 'final reply' in scope
+    from connectonion.rem.runner import task_prompt
+    prompt = task_prompt(tmp_path, received, 'investigate')
+    assert 'explicit coverage limits' not in prompt and 'states the sampling limit' in prompt

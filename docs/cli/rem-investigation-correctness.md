@@ -18,6 +18,19 @@ before any model call:
 - the message says what was searched and names the next step, e.g.
   `co rem investigate people/x.md --handle ADDRESS`.
 
+**Nothing new since the last investigation (#1984).** A page investigated
+before is read only over the days since then. When that window gathers nothing
+-- no mail, attachment, session line or chat message -- the run stops before any
+model call as well, for a project too: its file list is always there, and alone
+it is not new material. The page and its status line are unchanged, the run
+record's outcome is `nothing_new`, and the message says "Nothing new since
+<date>" with what was searched, not a `--handle` to try (the handles found the
+subject before). A person's empty pass is remembered in
+`.state/people/investigated.json`, so the next run does not gather the same
+empty window again; the daily round charges it no call and names it
+`nothing_new` in the run's pages. 1.9.0a3 made a 92k-token turn for a person
+whose window held nothing; its only change was deleting one Uncertainties line.
+
 The same holds after digesting: on the summary tier, when every digest of the
 material comes back empty, the synthesis turn is not run and nothing is stamped
 (the digest calls already spent are recorded).

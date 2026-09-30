@@ -218,6 +218,23 @@ def test_a_refused_person_does_not_end_the_first_portion(root, monkeypatch):
     assert result["run"]["pages"][0]["outcome"] == "refused" and result["run"]["usage"] == {"input_tokens": 5}
 
 
+def test_a_person_with_nothing_new_is_named_so_and_costs_the_portion_no_call(root, monkeypatch):
+    """#1984: no model ran, so the day's calls are still there for the next person."""
+    from connectonion.rem.investigate import NothingNew
+    _round(monkeypatch)
+    monkeypatch.setattr(daily, "INVESTIGATION_CALLS", 2)
+    order = []
+
+    def person(root, row, **kw):
+        order.append(row["record"])
+        if row["record"] == "people/ada.md":
+            raise NothingNew("Nothing new since 2026-09-27 for Ada")
+        return {"changed": [row["record"]]}
+    result = daily.run_daily(root, maintain=no_change, person_one=person)
+    assert order == ["people/ada.md", "people/cy.md", "people/bob.md"]
+    assert result["outcome"] == "completed" and result["run"]["pages"][0]["outcome"] == "nothing_new"
+
+
 def test_later_runs_follow_only_what_is_new(root, monkeypatch):
     client = FakeMail([])
     _round(monkeypatch, clients={"gmail": client})

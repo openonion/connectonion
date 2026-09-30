@@ -663,6 +663,53 @@ def test_a_nameless_address_the_owner_never_wrote_to_waits_for_review(tmp_path, 
     assert not any(row.get('needs_review') for path, row in records.items() if path != held)
 
 
+def test_a_sender_named_after_its_own_domain_is_a_service_not_a_person(tmp_path, monkeypatch):
+    """1.9.0a3 on the owner's notebook: Apple Developer, Airbnb, Google Cloud,
+    Retool and X were people pages. None of their addresses says no-reply; what
+    gives them away is a display name that is the sender's own domain, and mail
+    that mostly comes in (#1987)."""
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person('people/airbnb.md', 'Airbnb', ['discover@airbnb.com'], email='discover@airbnb.com')
+    result = _map(tmp_path, monkeypatch, [
+        {'name': 'Apple Developer', 'address': 'developer@email.apple.com', 'mails': 4, 'sent': 1, 'received': 3,
+         'one_way': False},
+        {'name': 'Apple Developer', 'address': 'developer@insideapple.apple.com', 'mails': 3, 'sent': 0,
+         'received': 3, 'one_way': True},
+        {'name': 'Airbnb', 'address': 'discover@airbnb.com', 'mails': 6, 'sent': 0, 'received': 6, 'one_way': True},
+        {'name': 'Google Cloud', 'address': 'googlecloud@google.com', 'mails': 5, 'sent': 0, 'received': 5,
+         'one_way': True},
+        {'name': 'Retool', 'address': 'learn@retool.com', 'mails': 5, 'sent': 0, 'received': 5, 'one_way': True},
+        {'name': 'X', 'address': 'notify@x.com', 'mails': 4, 'sent': 1, 'received': 3, 'one_way': False},
+        # People stay: one whose own domain is their name, one who wrote first,
+        # and a company desk the owner writes back to as often as it writes.
+        {'name': 'Aaron Wu', 'address': 'aaron@aaron.dev', 'mails': 6, 'sent': 1, 'received': 5, 'one_way': False},
+        {'name': 'Mia Tan', 'address': 'mia@acme.example', 'mails': 5, 'sent': 0, 'received': 5, 'one_way': True},
+        {'name': 'Acme Sales', 'address': 'sales@acme.example', 'mails': 4, 'sent': 2, 'received': 2,
+         'one_way': False}])
+    assert {row.get('name') for row in result['people']} == {'Aaron Wu', 'Mia Tan', 'Acme Sales'}
+    listed = {row['address'] for row in result['automated_correspondents']}
+    assert {'developer@email.apple.com', 'developer@insideapple.apple.com', 'discover@airbnb.com',
+            'googlecloud@google.com', 'learn@retool.com', 'notify@x.com'} <= listed
+    assert 'people/airbnb.md' in result['archived']                   # map output only: moved, not deleted
+
+
+def test_an_address_titled_page_the_owner_only_ever_writes_to_is_held(tmp_path, monkeypatch):
+    """1.9.0a3 listed aaron@openonion.ai as a person: 10 sent, none received, no
+    name -- the shape of the owner's own other mailbox. It is still asked about
+    with --mine, and held off the list and the queue until it is answered (#1987)."""
+    from connectonion.rem.map import needs_review
+    prepare(tmp_path)
+    result = _map(tmp_path, monkeypatch, [
+        {'name': '', 'address': 'aaron@openonion.ai', 'mails': 10, 'sent': 10, 'received': 0, 'one_way': True},
+        {'name': '', 'address': 'client@firm.example', 'mails': 2, 'sent': 1, 'received': 1, 'one_way': False},
+        {'name': 'Dana Reyes', 'address': 'dana@client.example', 'mails': 4, 'sent': 4, 'received': 0,
+         'one_way': True}])
+    pages = {row['addresses'][0]: row['record'] for row in result['people']}
+    assert result['needs_review'] == [pages['aaron@openonion.ai']] == sorted(needs_review(tmp_path))
+    assert 'aaron@openonion.ai' in {row['address'] for row in result['possible_own_addresses']}
+
+
 def test_a_reply_or_a_name_on_a_later_map_brings_the_page_back(tmp_path, monkeypatch):
     from connectonion.rem.map import needs_review
     prepare(tmp_path)

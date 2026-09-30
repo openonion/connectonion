@@ -161,9 +161,15 @@ def investigate_person(root: Path, row: dict, *, clients: dict, subscriptions: d
     from . import investigate as investigation
     title, names = handles(root, row["record"])
     started = datetime.now(timezone.utc)
-    result = investigation.investigate(root, row["record"], title, names, days=row["days"], clients=clients,
-                                       subscriptions=subscriptions, max_calls=max_calls, progress=progress,
-                                       stage_progress=stage_progress)
+    try:
+        result = investigation.investigate(root, row["record"], title, names, days=row["days"], clients=clients,
+                                           subscriptions=subscriptions, max_calls=max_calls, progress=progress,
+                                           stage_progress=stage_progress)
+    except investigation.NothingNew:
+        # The window was read and held nothing: mail before `started` is not
+        # new next run, or the same person is gathered again every run (#1984).
+        mark_investigated(root, row["record"], started)
+        raise
     mark_investigated(root, row["record"], started)
     return result
 

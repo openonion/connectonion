@@ -256,7 +256,7 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem stub org "UNSW" --domain unsw.edu.au --person people/vern-chan.md` | Create an organisation skeleton; `People here` holds links, not copies. |
 | `co rem stub project "Aurora" --path /path/to/repo` | Create a project skeleton. |
 | `co rem list people --aliases` | Existing identity roster: page, title, aliases, addresses, relationship summary. |
-| `co rem list people --review` | Pages held for review: titled by an address the owner never wrote to. |
+| `co rem list people --review` | Pages held for review: titled by an address the owner never wrote to, or only ever wrote to. |
 | `co rem investigate people/alice.md` | Read the existing page, gather sources, digest oversized material, fill that same page through the Skill. |
 | `co rem investigate` | What is left to investigate, by category, most useful first. No model. |
 | `co rem investigate people --limit 3` | Investigate the next three people, the last 14 days' correspondents first (`--recent-days`): a person investigated before reads only the mail since then ([details](rem-people-pages.md)). `--list` prints the order and the cost and runs nothing. `projects`, `orgs`, `skills` take unfinished pages, most mail or sessions first. |
@@ -623,7 +623,15 @@ investigation queue, `co rem list` and the reader's contents. `co rem list
 people --review` shows them; a later init that finds a name or a reply from the
 owner, or investigating one by its path, brings it back. A nameless address the
 owner has written to, the agent's own included, stays an ordinary page, and an
-investigated page is never held. With `--mail`, only explicitly selected
+investigated page is never held -- except one the owner only ever writes to and
+never hears from, the shape of their own other mailbox: it is held too, and
+still asked about with `init --mine` (#1987). A sender whose display name is its
+own domain ("Airbnb" <discover@airbnb.com>, "Google Cloud" <googlecloud@google.com>,
+"X" <notify@x.com>) and who writes at least three times as often as the owner
+answers is a service: listed with the notice senders, no people page, and an
+older map's page for it that holds only map output is archived. Someone writing
+from their own name at a domain named after them (aaron@aaron.dev) stays a person.
+Skills and projects are one page per skill name and per repository (below). With `--mail`, only explicitly selected
 mailboxes are read. Missing or failed sources appear in the mapping coverage;
 without a selected mailbox the command explains why People is empty.
 The terminal shows one line per mapping stage, a short count of People,
@@ -656,6 +664,18 @@ worktree folds into its main checkout's page:
 - Worktrees: 49
 - Sessions: 116
 ```
+
+The main checkout is one branch's working tree, not the project's state (#1982).
+On the owner's machine it sat on an August branch, and the page said version
+1.8.0a3 the week 1.9.0a3 shipped. So an investigation hands the turn one
+`checkout-state` item per listed checkout, cited as `git:<path>`: the branch it is
+on and its HEAD's commit date, the project's current line (`origin/HEAD`, else
+`origin/main`, `origin/master`, `main`, `master`, else the most recently committed
+branch) with its last commit date and the version in its `pyproject.toml` or
+`package.json`, and -- when HEAD is more than 14 days older than the project's
+newest session -- a line saying the checkout's files are not the current state
+and the version comes from that line instead. The file list is unchanged; the
+turn is told which of what it reads is stale.
 
 Some folders are not projects, and the map leaves them out (`not_a_project` in
 `rem/scan.py`):

@@ -134,7 +134,7 @@ def _logged(root, record, phase, call):
     from ...rem.runner import RunFailed
     from ...rem.service import now
     from ...rem import quota
-    from ...rem.investigate import NothingFound
+    from ...rem.investigate import NothingFound, NothingNew
     from ...rem.service import abandon_stale_runs, running_marker
     config = read_config(root)
     abandon_stale_runs(root)
@@ -172,6 +172,7 @@ def _logged(root, record, phase, call):
         return result
     except BaseException as error:
         run.update(outcome=("refused" if isinstance(error, RunFailed) and "rejected" in str(error) else
+                            "nothing_new" if isinstance(error, NothingNew) else
                             "nothing_found" if isinstance(error, NothingFound) else
                             "interrupted" if isinstance(error, KeyboardInterrupt) else "failed"),
                    error=str(error)[:1000], usage=getattr(error, "usage", None) or run.get("usage"))
