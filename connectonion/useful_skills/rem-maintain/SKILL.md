@@ -41,6 +41,12 @@ When the task hands you one `page` item with the batch as material:
 - Keep everything still right. Add, correct and date; do not rewrite sections the
   material says nothing about.
 - If the material says nothing new about this subject, write the page back unchanged.
+- **Only what is still open is an open thread.** Check each item's date against
+  the newest material: an item the material closes, or an old item it does not
+  reopen, moves to `History` as one dated line. Never add a past item as open.
+- **A page stays readable in one sitting, about 15k characters.** When an
+  addition would pass that, fold the oldest `History` entries into dated one-line
+  summaries (keeping their citations) before adding more.
 - Write the complete page to the candidate file named in the task, and stop.
 
 ## Work a batch in this order
