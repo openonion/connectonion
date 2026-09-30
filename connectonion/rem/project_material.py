@@ -114,7 +114,7 @@ def _file_messages(path, kind, parse, read_meta, since, rem_root, counts, owner)
                 continue
             try:
                 row = json.loads(line)
-                item = parse(row, since) if isinstance(row, dict) else None
+                item = parse(row, since, meta) if isinstance(row, dict) else None
             except (ValueError, UnicodeError, AttributeError, TypeError, RemError):
                 continue
             if item is SKIPPED or item is UNFAMILIAR:

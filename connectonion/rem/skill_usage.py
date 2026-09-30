@@ -6,8 +6,9 @@ What counts as an invocation, per harness, once per turn:
 - Claude Code: a `Skill` tool call (`{"name": "Skill", "input": {"skill": …}}`)
   and a `/name` command (`<command-name>/name</command-name>` in the user's row).
   A resumed session repeats earlier rows with the same `uuid`; each counts once.
-- Codex: `$name` in a message the user typed, and a tool call whose arguments
-  name `…/skills/<name>/SKILL.md` -- how Codex loads a skill. Codex lists every
+- Codex: `$name` in a message the user typed (the reading `sync` uses, #1978),
+  and a tool call whose arguments name `…/skills/<name>/SKILL.md` -- how Codex
+  loads a skill, in a subagent's thread too. Codex lists every
   available skill's path in its own context, so only tool-call arguments count,
   never message text that merely mentions a path.
 
@@ -27,10 +28,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import RemError, read_json, state_path, write_json
-from .source import INJECTED_BLOCK, KINDS, source_files
+from .source import KINDS, source_files
 
 CACHE = "skill-usage.json"
-VERSION = 1
+# 2: Codex messages are read as `sync` reads them (#1978); older caches are recounted.
+VERSION = 2
+EVER = datetime(1970, 1, 1, tzinfo=timezone.utc)
 COMMAND = re.compile(r"<command-name>/([^<\s]+)</command-name>")
 MENTION = re.compile(r"(?<![\w$])\$([A-Za-z][\w.:-]*)")
 LOADED = re.compile(r"/skills/([A-Za-z0-9][\w.:-]*)/SKILL\.md")
@@ -94,9 +97,14 @@ def _codex_events(path: Path) -> list[list]:
                 value = payload.get("arguments") or payload.get("input") or payload.get("action")
                 names = LOADED.findall(value if isinstance(value, str) else json.dumps(value))
             elif kind == "message" and payload.get("role") == "user":
-                text = "\n".join(part.get("text", "") for part in payload.get("content") or []
-                                 if isinstance(part, dict) and isinstance(part.get("text"), str))
-                names = [] if INJECTED_BLOCK.match(text) else MENTION.findall(text)
+                # `sync`'s own reading of a typed message (#1978): a `$name` in what a
+                # subagent was handed, in an imported Claude Code history or in a block
+                # the client injected was not the user starting a skill.
+                try:
+                    item = KINDS["codex"]["message"](row, EVER, meta)
+                except (RemError, AttributeError, TypeError):
+                    continue
+                names = MENTION.findall(item["text"]) if isinstance(item, dict) else []
             else:
                 continue
             for name in names:

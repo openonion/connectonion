@@ -180,7 +180,8 @@ script with no model: how many times the skill was invoked and when last.
 ```
 
 Claude Code counts a `Skill` tool call and a `/skill-name` command; Codex counts
-a `$skill-name` in a message you typed and a tool call that reads the skill's
+a `$skill-name` in a message you typed (read as `sync` reads it, Codex Desktop
+included) and a tool call that reads the skill's
 `SKILL.md`, once per turn. co rem's own runs are not counted. An invocation is
 not a completed run: `Current status` and `Performance` still wait for run
 evidence. Counts are cached per session file under `.state/skill-usage.json`,
@@ -411,6 +412,22 @@ rather than stopping at 40 messages. It searches aliases and project paths;
 an owner identified by mailbox address receives their own typed session
 messages. Injected Skill prompts are not reingested as user experience.
 The importer still labels oversized pasted session text as truncated.
+
+What counts as a message you typed to Codex (#1978). Codex Desktop puts every
+message in the user slot under a metadata block, typed or injected, and says
+in `content_item_kinds` what each part is. A message whose parts are all
+`user.*` (text, an image) is yours and is read; one that names anything else
+(`agents_md.instructions`, `environments.environment_context`,
+`plugins.recommendations`, `goal.internal_context`, a selected skill), or no
+kinds at all, is the client talking and is skipped and counted. A message that
+opens with a harness tag is still skipped, except the in-app browser context
+Desktop puts in front of what you typed: that block is dropped and your words
+are kept. Two kinds of thread are not read as yours: a subagent's (the
+approval reviewer, a spawned worker), whose user slot the agent wrote; and the
+history of a Claude Code session imported into Desktop, which co rem already
+reads from Claude Code itself. What you type after an import is read. The Codex
+CLI's plain three-key message is read as before. `$skill-name` counts in a
+skill page's Usage history use the same reading.
 
 PDF, DOCX, XLSX, PPTX (including tables/notes), plain text, HTML and ICS
 attachments are read; XLSX needs `pip install 'connectonion[rem]'`, and
