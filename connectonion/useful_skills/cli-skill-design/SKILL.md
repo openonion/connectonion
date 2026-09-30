@@ -34,8 +34,9 @@ never reads the source: it runs `co --help`, opens every command a page lists,
 and judges each page from what it printed, the way an agent meets it. `co rem`
 is walked but held to its own verbatim pages by
 `tests/e2e/cli/test_rem_help_contract.py`. There is no baseline and no
-waiver: a new command fails CI until its page passes. Printed by a real `co` in
-an empty HOME and cwd, `co <cmd> --help` must:
+waiver outside `co rem`'s shrinking `LOOK_PENDING` (#1996): a new command fails
+CI until its page passes. Printed by a real `co` in an empty HOME and cwd,
+`co <cmd> --help` must:
 
 | check | how to pass it |
 |---|---|
@@ -46,6 +47,7 @@ an empty HOME and cwd, `co <cmd> --help` must:
 | a way back | **do not write it.** `name_the_way_back(app)` in `cli/typer_groups.py` appends `Back: <parent> --help` to every page from the command tree |
 | real references | every `co …` in an Example, Next or Back line must be a command some page lists, and every flag in an Example must appear on the page of the command it runs |
 | reachable | every command `co commands` lists must be listed on a page reachable from `co --help`; a label or subcommand that only the source knows does not count |
+| looks finished | the page, run again as a person's terminal runs it, is coloured there, plain in a pipe, and the same words both ways; see Look below |
 
 Two other register tests apply to every leaf:
 `test_every_command_has_a_next_step.py` needs an entry in `command_tips.NEXT`
@@ -68,6 +70,37 @@ CI's colour on, because Rich puts escape codes between words:
 pytest -q tests/unit/test_cli_help_contract.py tests/unit/test_every_command_has_a_next_step.py tests/unit/test_cli_tips_name_real_commands.py
 GITHUB_ACTIONS=true FORCE_COLOR=1 pytest -q tests/unit/test_cli_help_contract.py
 ```
+
+### Look: one visual standard (#1997)
+
+Every co command prints through `connectonion/cli/style.py`, so the same thing
+looks the same everywhere:
+
+- **Palette.** A command a person can run is `command` (bold cyan), a number
+  that matters `count`, a filesystem path `path`, a warning `warn`, an error
+  `error`, a section title `heading`, a finished good state `ok`, detail
+  `muted`. Print with `style.console()`; a page written as one string goes
+  through `style.markup(text)`, which colours its commands without changing a
+  word.
+- **Next line.** A result ends with `style.next_line("co …")`: `Next:` bold,
+  the command in the command colour. `print_tip` and the `NEXT` table already
+  draw it.
+- **Status layout.** A header line saying where things stand, then sections,
+  one line per item; details go behind `--verbose`, not into the default view.
+- **Progress.** `style.progress()`: a bar with i/N when the total is known, a
+  spinner with elapsed time when it is not. It draws nothing off a terminal.
+- **Plain when it should be plain.** No escape codes under `NO_COLOR`, in a
+  pipe, a log or launchd, and never in `--json`; the words are the same either
+  way. Decide with Rich (`console().is_terminal`), not `isatty()`, so
+  `FORCE_COLOR` and `NO_COLOR` are obeyed.
+
+`co audit`'s `look` rule checks it: every help page, and the read-only status
+commands in `audit.STATUS` (`co status`, `co doctor`, `co commands`), run once as
+an agent (`NO_COLOR=1 TERM=dumb`, 200 columns) and once as a terminal
+(`FORCE_COLOR=1 TERM=xterm-256color`, 100 columns). It fails a page that is
+coloured in the pipe, has no colour in the terminal, or says different words
+(a table that cuts `/long/path` to `/lo…` at 100 columns does; use
+`overflow="fold"`), and a status command whose `Next:` line lacks the shape.
 
 ### Write "what it changes" from the handler, not the name
 
@@ -382,6 +415,7 @@ with a failed run.
 
 - [ ] `test_cli_help_contract.py` passes for every new or changed command, also with `GITHUB_ACTIONS=true FORCE_COLOR=1`
 - [ ] Each page has an `Example:` epilog whose flags exist, and a first line with the fixed "what it changes" word, written from the handler
+- [ ] Output prints through `cli/style.py`: coloured in a terminal, the same words plain under `NO_COLOR` and in a pipe (`co audit co <group>` shows `look`)
 - [ ] Every new leaf has a `command_tips.NEXT` entry
 - [ ] A goal for the new group is in `test_cli_discovery_journeys.py`, and it passes with `-m real_api`
 - [ ] Help teaches purpose, observed inputs, procedure, effects, results, verification and recovery before listing options
