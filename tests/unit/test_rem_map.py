@@ -803,7 +803,8 @@ def test_a_1_8_confirm_hint_on_the_owner_s_page_is_corrected_to_co_rem(tmp_path,
                               'received). If it is yours: co wiki init --mine me2@x.example\n'))
     build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=90)
     page = notebook.read(record)
-    assert 'co wiki' not in page and 'co rem init --mine me2@x.example' in page
+    # No longer asked by this map, so the line goes rather than stay stale (#2017).
+    assert 'co wiki' not in page and 'me2@x.example' not in page
 
 
 def test_the_owner_is_named_as_others_address_them_not_as_the_mailbox_is_configured(tmp_path, monkeypatch):
@@ -855,3 +856,107 @@ def test_the_owner_is_named_as_others_address_them_not_as_the_mailbox_is_configu
     # A later map keeps the file where it is, whatever the name turns out to be.
     assert build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=14,
                      name='Someone Else')['owner']['record'] == record
+
+
+# ------------------------------------------- the 1.9.0a5 acceptance run (#2017, #2018)
+
+
+def _row(name, address, sent, received):
+    return {'name': name, 'address': address, 'mails': sent + received, 'sent': sent, 'received': received,
+            'one_way': not (sent and received), 'boxes': ['gmail']}
+
+
+def test_a_fresh_map_makes_no_page_for_booking_otp_and_portal_senders(tmp_path, monkeypatch):
+    """#2018: the acceptance map made team-telnyx and held pages for Workday's OTP
+    sender, Singapore Airlines' booking desk, Lebara and Telnyx's portal; tidy,
+    run before the map, had nothing to act on. The notebook a map leaves is tidy."""
+    from connectonion.rem.map import service_page
+    from connectonion.rem.tidy import tidy
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    services = [_row('Team Telnyx', 'discover@telnyx.com', 0, 3), _row('', 'portal@telnyx.com', 0, 2),
+                _row('', 'booking@singaporeair.com', 0, 1), _row('', 'hub24management@otp.workday.com', 0, 1),
+                _row('', 'hub24management@myworkday.com', 0, 1), _row('', 'mylebara@lebara.com.au', 0, 1)]
+    people = [_row('Mia Tan', 'mia@acme.example', 0, 5), _row('John Smith', 'john@smith.dev', 0, 2),
+              _row('Ann Lee', 'ann@partner.com.au', 2, 2), _row('', 'eishi.sn@gmail.com', 0, 2)]
+    monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (services + people, set()))
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    listed = {row['address'] for row in result['automated_correspondents']}
+    assert listed >= {row['address'] for row in services}
+    mapped = {row.get('address') for row in result['people']}
+    assert mapped >= {'mia@acme.example', 'john@smith.dev', 'ann@partner.com.au', 'eishi.sn@gmail.com'}
+    assert not any(service_page(p['title'], p['emails'], None, set()) for p in Notebook(tmp_path).people())
+    assert tidy(tmp_path) == {}
+
+
+def test_an_older_maps_held_page_for_a_service_is_archived_by_the_next_map(tmp_path, monkeypatch):
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    notebook = Notebook(tmp_path)
+    notebook.stub_person('people/portal.md', 'portal@telnyx.com', ['portal@telnyx.com'], email='portal@telnyx.com')
+    monkeypatch.setattr('connectonion.rem.map._mail_rows',
+                        lambda *a, **kw: ([_row('', 'portal@telnyx.com', 0, 2)], set()))
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    assert 'people/portal.md' in result['archived']
+    assert notebook.people() == []
+
+
+def test_a_mailbox_provider_or_an_event_relay_is_never_an_organisation(tmp_path, monkeypatch):
+    """#2018: orgs/yahoo-com-hk (Ian, ischihang@yahoo.com.hk) and luma-mail.com,
+    reached through a person whose display name joined a relay address."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    people = [_row('Ian', 'ischihang@yahoo.com.hk', 22, 1), _row('Tracy Wu', 'tracy@hotmail.co.uk', 3, 1),
+              _row('Kim Park', 'kim@naver.com', 1, 1), _row('Jo Lin', 'jo@outlook.com.au', 1, 1),
+              _row('Sam Lee', 'sam@acme.com.au', 2, 2), _row('Sam Lee', 'sam-lee@user.luma-mail.com', 0, 253)]
+    monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (people, set()))
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    assert [row['domain'] for row in result['orgs']] == ['acme.com.au']
+
+
+def test_a_remap_rewrites_the_owners_map_lines_instead_of_adding_more(tmp_path, monkeypatch):
+    """#2017: after a re-map the owner's page still said "In the 90 days to
+    2026-09-25", and each map added its "Possibly also the owner's" lines again
+    at the new counts."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+
+    class Mail:
+        def my_addresses(self): return {'xietianle@outlook.com'}
+        def my_name(self): return 'Aaron Xie'
+
+    counts = iter([101, 108, 110])
+
+    def mail_rows(*a, **kw):
+        sent = next(counts)
+        rows = [_row('', 'aaronplus1996@gmail.com', sent, 0), _row('Ody Zhou', 'ody@x.example', sent, 5)]
+        return rows, {'xietianle@outlook.com'}
+
+    monkeypatch.setattr('connectonion.rem.map._mail_rows', mail_rows)
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
+    first = build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=90)
+    notebook = Notebook(tmp_path)
+    record = first['owner']['record']
+    stale = notebook.read(record).replace(f"to {first['started'][:10]}:", 'to 2026-09-25:')
+    notebook.write(record, stale.replace('observed ' + first['started'], 'observed 2026-09-25T10:00:00+00:00'))
+    # Someone investigated the address's page, so tidy leaves it and the map keeps asking.
+    mine = first['possible_own_addresses'][0]['record']
+    notebook.write(mine, notebook.read(mine).replace('not investigated yet', 'investigated 2026-09-28'))
+    build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=90)
+    last = build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=90)
+    page = notebook.read(record)
+    possibly = [line for line in page.splitlines() if line.startswith("- Possibly also the owner's:")]
+    assert possibly == ["- Possibly also the owner's: aaronplus1996@gmail.com (110 sent, none received). "
+                        "If it is yours: co rem init --mine aaronplus1996@gmail.com"]
+    history = [line for line in page.splitlines() if line.startswith('- In the ')]
+    assert history == [f"- In the 90 days to {last['started'][:10]}: wrote 110 and received 5 messages with "
+                       "1 correspondents in gmail. [1]"]
+    assert '2026-09-25' not in page and page.count('Most mail with:') == 1
+    assert f"- [1] Enumeration metadata, observed {last['started']}" in page

@@ -2,7 +2,7 @@
 
 import re
 
-from .scan import PERSONAL_MAILBOX
+from .scan import personal_mailbox
 
 
 def _domain(address: str) -> str:
@@ -14,7 +14,7 @@ def _domain(address: str) -> str:
     if not local or len(labels) < 2 or not all(
             re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', label) for label in labels):
         return ''
-    return domain if domain not in PERSONAL_MAILBOX else ''
+    return '' if personal_mailbox(domain) else domain
 
 
 # Second-level labels under a country code: unsw.edu.au and example.co.uk are the

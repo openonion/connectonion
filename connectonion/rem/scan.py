@@ -27,7 +27,11 @@ AUTOMATED_HINT = re.compile(r"no-?reply|noreply|notification|newsletter|mailer|c
                             r"news@|billing|receipts?@|invoice@|bounce|support@|team@|hello@|info@|"
                             # Account and notice desks the 1.9.0a5 notebook still kept as people (#2008):
                             # donotreply@dunsnumberlookup.dnb.com, notify@x.com, unsub+…@reply.github.com.
-                            r"do-?not-?reply|notify@|^unsub\+",
+                            r"do-?not-?reply|notify@|^unsub\+|"
+                            # Role desks that only ever wrote in on the 1.9.0a5 acceptance map (#2018):
+                            # portal@telnyx.com, discover@telnyx.com, booking@singaporeair.com.
+                            r"^(?:portal|bookings?|reservations?|discover|otp|verify|verification|security"
+                            r"|accounts?|orders?|welcome|members?)@",
                             re.IGNORECASE)
 
 # Mailbox providers, not employers. A domain here says where someone keeps their
@@ -39,6 +43,17 @@ PERSONAL_MAILBOX = frozenset({
     "icloud.com", "me.com", "mac.com", "aol.com", "protonmail.com", "proton.me", "gmx.com",
     "qq.com", "163.com", "126.com", "foxmail.com", "sina.com", "bigpond.com", "optusnet.com.au",
 })
+# A provider's name under any country suffix is the same provider: yahoo.com.hk
+# became an organisation on the 1.9.0a5 acceptance map (#2018).
+_PROVIDER = re.compile(r"^(?:gmail|googlemail|outlook|hotmail|live|msn|yahoo|ymail|icloud|aol|gmx|proton|protonmail"
+                       r"|yandex|mail|qq|163|126|139|yeah|foxmail|sina|sohu|naver|daum|hanmail|rediffmail|zoho)"
+                       r"\.(?:(?:com?|net)\.)?[a-z]{2,3}$")
+
+
+def personal_mailbox(domain: str) -> bool:
+    """A mailbox provider's domain: it says where someone keeps their mail, not who they work for."""
+    domain = domain.casefold().rstrip(".")
+    return domain in PERSONAL_MAILBOX or bool(_PROVIDER.match(domain))
 
 
 # A display name that is a header word is not a name: the owner's test mail,
@@ -485,7 +500,7 @@ def scan_orgs(people: list[dict], min_people: int = 2, own_addresses=()) -> list
     domains = collections.defaultdict(lambda: {"people": [], "notices": [], "mails": 0, "last": ""})
     for person in people:
         domain = str(person.get("address", "")).rsplit("@", 1)[-1].lower()
-        if not domain or domain in PERSONAL_MAILBOX or domain in own:
+        if not domain or personal_mailbox(domain) or domain in own:
             continue
         entry = domains[domain]
         # A notice sender is not someone we deal with. Run over 180 real days the

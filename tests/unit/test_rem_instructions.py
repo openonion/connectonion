@@ -214,3 +214,12 @@ def test_the_owner_flag_on_the_page_item_is_what_composes_it(tmp_path):
     assert "# Your own page" in (tmp_path / "instructions.md").read_text()
     task_prompt(tmp_path, [{**page, "owner": False}], "investigate")
     assert "# Your own page" not in (tmp_path / "instructions.md").read_text()
+
+
+def test_an_investigation_or_daily_update_is_told_how_large_a_page_may_grow():
+    """#2019: a daily update is an investigation, and the size rule lived only in
+    maintain: one pass grew a project page from 13.4k to 25.3k characters."""
+    for kind in ("person", "project", "org", "skill"):
+        text = instructions("investigate", page_kind=kind)
+        assert "about 15k characters" in text and "20,000" in text
+    assert "20,000" in instructions("maintain", page_kind="project")
