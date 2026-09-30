@@ -470,10 +470,28 @@ def searched_sources(coverage: list[str]) -> list[str]:
     A source searched with nothing found stays: the daily round reads the line
     to know which sources a page has already been checked against.
     """
-    notes = ("budget", "digest", "evidence:", "Requested investigation window:", "Quick first pass:")
+    notes = ("budget", "digest", "evidence:", "Requested investigation window:", "Quick first pass:",
+             "Page last investigated")
     return list(dict.fromkeys(
         line.split(" (")[0].split(":")[0] for line in coverage
         if not line.startswith(notes) and "not searched" not in line and ": unreadable" not in line))
+
+
+def last_investigated(page: str):
+    from .queue import last_investigated as from_status
+    line = next((l for l in page.splitlines() if l.startswith("Investigation:")), "")
+    return from_status(line)
+
+
+def window_since(page: str, default: int = 150) -> int:
+    """Days to gather for a page: since its last investigation, else `default`.
+
+    The script already read everything before that date into the page; asking
+    again re-read months of mail to add a week (owner, 2026-09-30)."""
+    last = last_investigated(page)
+    if not last:
+        return default
+    return max(1, (datetime.now(timezone.utc).date() - last).days + 1)
 
 
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
@@ -492,6 +510,12 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                              quick=quick, archive_root=root, record=record)
     coverage.append(f"Requested investigation window: {days} days ending "
                     f"{datetime.now(timezone.utc).date().isoformat()}")
+    last = last_investigated(notebook.read(record))
+    if last:
+        # The page already reflects what came before; say so where the turn
+        # reads it, so it adds the new material instead of rewriting the page.
+        coverage.append(f"Page last investigated {last.isoformat()}: it already reflects material before "
+                        "that date; add only what this material says that is new.")
     available_items = len(items)
     if quick:
         items = quick_evidence(items)

@@ -631,6 +631,31 @@ def test_the_status_line_never_names_the_evidence_layout_as_a_source():
     assert inv.searched_sources(coverage) == ["outlook", "gmail", "codex", "claude-code"]
 
 
+def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monkeypatch):
+    """Owner, 2026-09-30: the script already read everything before the last
+    investigation into the page; asking again re-read months to add a week."""
+    from datetime import date, timedelta
+    root = _notebook(tmp_path, "codex")
+    notebook = inv.Notebook(root)
+    assert inv.window_since(notebook.read("people/vern.md")) == 150        # never investigated
+    ten_days_ago = (date.today() - timedelta(days=10)).isoformat()
+    page = notebook.read("people/vern.md").replace("· not investigated yet", f"· investigated {ten_days_ago} (gmail)")
+    notebook.write("people/vern.md", page)
+    assert 10 <= inv.window_since(page) <= 12                               # UTC vs local date at the edges
+
+    seen = {}
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: ([], []))
+
+    def write(book, material, config, **kw):
+        seen["coverage"] = next(i["text"] for i in material if i["role"] == "coverage")
+        return {"changed": [], "usage": None}
+
+    out = inv.investigate(root, "people/vern.md", "Vern", ["vern@x.y"], days=11, clients={}, subscriptions={},
+                          runner=write)
+    assert f"Page last investigated {ten_days_ago}" in seen["coverage"]
+    assert not any(s.startswith("Page last") for s in inv.searched_sources(out["coverage"]))
+
+
 def test_only_whole_addresses_are_searched_on_the_mail_server():
     """#1954: a handle still carrying a citation or prose is not an address; Gmail
     matched 677 unrelated mails for one such handle."""

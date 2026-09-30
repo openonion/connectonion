@@ -609,8 +609,9 @@ def make_rem_app(factory):
                 clients = {kind: client for kind, client in clients.items() if handle}
             skipped = "" if clients or not record.startswith("projects/") else \
                 "not read for a project page; name its mail with --handle"
+            from ...rem.investigate import window_since
             return _logged(root, record, "investigate", lambda update: investigate(
-                root, record, title, handles, days=days or 150, clients=clients,
+                root, record, title, handles, days=days or window_since(text), clients=clients,
                 subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped,
                 stage_progress=update))
 
