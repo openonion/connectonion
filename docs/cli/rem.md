@@ -677,8 +677,9 @@ reader and `co rem status` both ask it:
   counted: pages held for review (no name, never written to), services and
   automated senders that still have a people page, and the skills index.
 - **Written**: a page someone or a model wrote — its status line no longer says
-  "not investigated yet" — or a page another page's written lines were merged
-  into. A mapped page with a description or paths is not written.
+  "not investigated yet". A merge keeps the investigated page's status, so a
+  merged page counts exactly when what it kept was written. A mapped page with a
+  description or paths is not written.
 - **Last activity**: the page's own date — the last contact of a person, the
   last session of a project, the date of its last investigation — never the
   file's modification time, which is when the last map rewrote it. "Recently
