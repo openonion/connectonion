@@ -83,7 +83,7 @@ def test_skill_source_refresh_retains_authored_description(tmp_path):
     nb.write(record,nb.read(record).replace('First','My own explanation'))
     source.write_text(source.read_text().replace('First','Second'))
     map_skills(nb,[source.parent.parent]);page=nb.read(record)
-    assert 'My own explanation' in page and '## Current installed metadata\nSecond' in page
+    assert 'My own explanation' in page and '- Installed description: Second' in page
     map_skills(nb,[source.parent.parent]);assert nb.read(record)==page
 
 

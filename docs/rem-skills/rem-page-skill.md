@@ -40,3 +40,35 @@ without a model or mail. It matches explicit slash-command names, so a
 tool-based invocation or another harness's run is not seen, and a summary
 record says nothing about which source version ran or whether the goal was
 achieved.
+
+## One page per name, the source linked (#1974)
+
+On the owner's notebook in September 2026 the catalog held 420 pages for 163
+skill names: one per installed copy, including copies inside temporary git
+worktrees and `site-packages`, and 409 of them pasted the whole `SKILL.md` (one
+page ran to 1,530 lines). A reader looking for "what is ship-feature and do I
+use it" found three near-identical copies of its instructions and no answer.
+
+So the map makes one page per name. Copies are compared by content hash and
+listed in the map-owned `Source` block, where a drifted copy says it differs;
+that is the evidence that links copies, so the Skill no longer says to keep them
+distinct. A temporary or package copy is listed but never the page's `File`,
+because it disappears or changes with the next checkout or upgrade. The source is
+linked, not pasted: the page is for deciding whether to use the skill, and the
+instructions are one click away.
+
+## Usage is counted by a script
+
+How often and when a skill was last invoked is a count, not a judgement, so the
+map takes it from the session transcripts without a model: `Skill` tool calls
+and `/name` commands in Claude Code, `$name` in a typed Codex message and a tool
+call reading the skill's `SKILL.md`, once per turn. It is stated as invocations,
+never as runs completed, because nothing in a transcript line says the task
+succeeded.
+
+## Merging never deletes
+
+Pages from before are folded into the name's page by the map: written lines are
+merged section by section, the old page is moved to `.state/archived/`, and its
+record stays resolvable as an alias. The same mechanism merges a repository's
+split project pages.

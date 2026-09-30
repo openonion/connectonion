@@ -245,14 +245,110 @@ def main_checkout(path: str) -> str:
         if home:
             return os.path.normpath(os.path.join(path, home[1]))
     layout = CLAUDE_WORKTREE.match(path)
-    return layout[1] + (layout[2] or "") if layout else ""
+    if layout:
+        return layout[1] + (layout[2] or "")
+    # `~/projects/.worktree/browser-139`, `repo/.worktrees/fix`: a removed one no
+    # longer says where home is, so the folder beside it whose name starts its
+    # own is home (#1974). With none, it is not guessed.
+    folder = WORKTREE_FOLDER.match(path)
+    if folder and not git.exists():
+        home = _beside(folder[1], folder[2])
+        return home + (folder[3] or "") if home else ""
+    return ""
+
+
+WORKTREE_FOLDER = re.compile(r"^(/.+?)/\.worktrees?/([^/]+)(/.*)?$")
+
+
+def _beside(parent: str, name: str) -> str:
+    """The repository a `.worktree(s)/<name>` folder was made from: the folder
+    holding `.worktrees/` when it is a repository, else the repository next to
+    `.worktree/` whose name starts `<name>` (the longest such name)."""
+    if (Path(parent) / ".git").exists():
+        return parent
+    try:
+        names = [child.name for child in Path(parent).iterdir()
+                 if not child.name.startswith(".") and (child / ".git").exists()]
+    except OSError:
+        return ""
+    fits = [repo for repo in names if name == repo or re.match(re.escape(repo) + r"[-_.]", name)]
+    return os.path.join(parent, max(fits, key=len)) if fits else ""
+
+
+# A turn of one short session: a one-off chat, not a project (#1974).
+SHORT_SESSION_TURNS = 3
+SHORT_SESSION = "one short session outside a repository"
+
+
+def home_or_above(path: Path) -> bool:
+    """The home folder or one of its parents: it holds every session there is (#1944)."""
+    try:
+        home = Path.home().resolve()
+        return home == path.resolve() or home.is_relative_to(path.resolve())
+    except OSError:
+        return False
+
+
+def not_a_project(row: dict) -> str:
+    """Why a folder a session ran in is not a project, or "" when it is one (#1974).
+
+    On the owner's machine the map made pages for a Codex chat named after its
+    first prompt ("create-a-scheduled-task-called-weekday"), for plugin-install
+    folders, and for build output under a hidden folder -- each with one session
+    and no repository. A repository is always a project; so is a folder the user
+    came back to, or talked in for more than a few turns. `row` is a
+    `scan_projects` row: `path`, `repo`, `sessions`, and `turns` when counted.
+    """
+    path = Path(row["path"])
+    if home_or_above(path):
+        return "home directory"
+    if row.get("repo") or main_checkout(row["path"]) or (path / ".git").exists():
+        return ""
+    parts = path.parts
+    if any(part in ("scheduled-tasks", "scheduled_tasks") for part in parts):
+        return "scheduled-task folder"
+    if any(part.startswith(".") for part in parts[1:]):
+        return "hidden folder outside a repository (a cache, a plugin or build output)"
+    turns = row.get("turns")
+    if row.get("sessions", 0) <= 1 and turns is not None and turns <= SHORT_SESSION_TURNS:
+        return SHORT_SESSION
+    return ""
+
+
+def session_turns(path: Path, kind: str, limit: int = SHORT_SESSION_TURNS + 1) -> int:
+    """How many turns the user started in one session file, counted up to `limit`.
+
+    Claude Code: messages the user typed (the same reading `sync` does). Codex:
+    `turn_context` records, one per turn -- a desktop Codex message carries
+    metadata the typed-message reader does not take as typed.
+    """
+    from .source import KINDS
+    since = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    turns = 0
+    try:
+        with path.open("rb") as handle:
+            for line in handle:
+                if kind == "codex":
+                    turns += b'"turn_context"' in line[:200]
+                elif b'"user"' in line:
+                    try:
+                        item = KINDS[kind]["message"](json.loads(line), since)
+                    except (ValueError, UnicodeError, RemError, AttributeError, TypeError):
+                        continue
+                    turns += isinstance(item, dict)
+                if turns >= limit:
+                    break
+    except OSError:
+        return limit
+    return turns
 
 
 def scan_projects(subscriptions: dict, days: int, rem_root: Path | None = None,
                   on_session=None) -> list[dict]:
     """Every `cwd` a coding session ran in, with how often and how recently."""
     since = datetime.now(timezone.utc) - timedelta(days=days)
-    projects = collections.defaultdict(lambda: {"sessions": 0, "first": "", "last": "", "tools": set()})
+    projects = collections.defaultdict(lambda: {"sessions": 0, "first": "", "last": "", "tools": set(),
+                                                "files": []})
     for name, sub in subscriptions.items():
         kind = sub.get("kind")
         if sub.get("enabled") is False or kind not in KINDS or not Path(sub.get("root", "")).is_dir():
@@ -277,6 +373,7 @@ def scan_projects(subscriptions: dict, days: int, rem_root: Path | None = None,
             if on_session:
                 on_session(name, path, stamp, cwd)
             entry = projects[cwd]
+            entry["files"].append((kind, path))
             entry["sessions"] += 1
             entry["tools"].add(kind)
             day = stamp.date().isoformat()
@@ -285,7 +382,11 @@ def scan_projects(subscriptions: dict, days: int, rem_root: Path | None = None,
     out = []
     for cwd, e in projects.items():
         repo = _repo_identity(Path(cwd))
-        out.append({"path": cwd, "name": Path(cwd).name or cwd, "sessions": e["sessions"],
+        # Only a lone session outside a repository can be a one-off chat, so only
+        # its file is read past the first line.
+        turns = session_turns(e["files"][0][1], e["files"][0][0]) \
+            if e["sessions"] == 1 and not repo.get("toplevel") else None
+        out.append({"path": cwd, "name": Path(cwd).name or cwd, "sessions": e["sessions"], "turns": turns,
                     "first": e["first"], "last": e["last"], "tools": sorted(e["tools"]),
                     # A worktree is not a second project. 33 paths on one machine
                     # were about a dozen repositories once collapsed by origin.

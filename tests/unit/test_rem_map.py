@@ -506,7 +506,11 @@ def test_pages_an_older_map_made_are_archived_when_this_map_would_not_make_them(
     result = build_map(tmp_path, {}, {}, skill_directories=[skills])
     assert len(result['projects']) == 1                                       # one scratch project, not two
     kept = result['projects'][0]['record']
-    assert set(result['archived']) == {'projects/notebook-1.md', *({'projects/rvc-a.md', 'projects/rvc-b.md'} - {kept})}
+    # The other scratch page is merged into the kept one (#1974): moved to the archive too.
+    merged = {old for row in result['projects'] for old in row.get('merged', [])}
+    assert set(result['archived']) | merged == {'projects/notebook-1.md',
+                                                *({'projects/rvc-a.md', 'projects/rvc-b.md'} - {kept})}
+    assert all((tmp_path / '.state/archived' / old).is_file() for old in merged)
     assert notebook.path('projects/notebook-2.md').is_file()                  # investigated: never moved
     assert (tmp_path / '.state/archived/projects/notebook-1.md').is_file()    # moved, not deleted
     dora = [row['record'] for row in result['people'] if row.get('name') == 'Dora Chen'][0]
