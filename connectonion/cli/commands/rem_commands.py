@@ -409,7 +409,7 @@ def _write_my_page(root, days, say):
 # judged the cost small and the wait the real problem.
 FIRST_RUN_PEOPLE = 0   # 0: everyone in the people queue
 FIRST_RUN_POINTS = 60
-FIRST_RUN_WORKERS = 16
+FIRST_RUN_WORKERS = 12
 
 
 def _first_run_gate(root, config):
