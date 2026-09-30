@@ -72,3 +72,23 @@ def test_the_owner_is_not_a_lead_and_projects_are_found_by_name(tmp_path):
     items = [{"role": "extract", "text": "Aaron wants the One bot in Lark; ConnectOnion needs a release. one more."}]
     leads = page_leads(notebook, items)
     assert set(leads) == {"projects/one.md", "projects/connectonion.md"}
+
+
+def test_notes_route_to_the_project_they_name_and_say_which_names_have_no_page(tmp_path):
+    """#1985: sessions typed in the workspace root matched no project folder, and
+    ten of eleven project notes in one sync reached no page, silently."""
+    from connectonion.rem.leads import named_projects, note_leads
+
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_project("projects/connectonion.md", "connectonion", ["/Users/x/projects/connectonion"])
+    notebook.stub_project("projects/chat.md", "O Chat", ["/Users/x/projects/oo-chat"])
+    notes = ("## People\n- **Dora** — dora@example.org\n\n"
+             "## Projects\n- **ConnectOnion** — co rem renamed from wiki\n"
+             "- **oo-chat** — reader restyle\n- **Night Runner** — cron agent idea\n\n"
+             "## Decisions\n- **Rename** — wiki becomes co rem\n")
+
+    assert named_projects(notes) == ["ConnectOnion", "oo-chat", "Night Runner"]
+    found, unrouted = note_leads(notebook, notes)
+    assert found == ["projects/connectonion.md", "projects/chat.md"]   # by title, and by folder name
+    assert unrouted == ["Night Runner"]

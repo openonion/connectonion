@@ -927,6 +927,21 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
             record["extract_notes"] = f".state/extracts/{record['id']}.md"
             remember_digest(root, digested_items, kind, f"extracts/{record['id']}.md")
             items = [] if notes == NOTHING else [extraction_item(notes, items)]
+        if items and leads and record.get("extract_notes"):
+            # The notes name projects the raw material could not point at (#1985).
+            # Pages found that way join the batch while the day has attempts left;
+            # names no page answers to are recorded, never dropped silently.
+            from .leads import note_leads
+            named, unrouted = note_leads(Notebook(root), items[0].get("text", ""))
+            spare = max(0, room - len(leads))
+            extra = [page for page in named if page not in leads and page not in current][:spare]
+            if extra:
+                leads += extra
+                record["runner_attempts"] = record["runner_attempts"] + len(extra)
+                record["routed_by_name"] = extra
+                write_json(path, record)
+            if unrouted:
+                record["unrouted_projects"] = unrouted
         if items:
             stage = "maintain"
             if leads:
@@ -947,7 +962,9 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
         ingest(root, result.get("review_candidates", []))
         record.update(outcome="completed", usage=usage or None, changed=result.get("changed", []),
                       refused=result.get("refused", 0), refusals=result.get("refusals", []),
-                      report=result.get("report", ""))
+                      report=result.get("report", "") + (
+                          f"; notes about {', '.join(record['unrouted_projects'])} matched no project page "
+                          "(kept in the extract notes)" if record.get("unrouted_projects") else ""))
         # A refused page no longer holds back the batch, but the user's own
         # correction to that page is not marked done: it waits for the next pass.
         refused_pages = {row["record"] for row in result.get("refusals", [])}

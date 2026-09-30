@@ -28,8 +28,8 @@ page (person, project, organisation, skill) follow below this core.
 
 ## Only what is new
 
-When the coverage says the page was last investigated on a date and the
-material starts after it, the page already reflects everything before that date.
+When the coverage says the page was last updated from its sources on a date
+and the material starts after it, the page already reflects everything before that date.
 Add what the new material says; leave the rest as it is, word for word. A value
 the new material moves on from: update it, and put the old state in `History`
 with its date. A value it contradicts: name both in `Uncertainties`.
