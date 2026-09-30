@@ -1,6 +1,7 @@
 name: help-gate
 
-# The model half of `co audit` (#1657, #1735), for PRs that touch the CLI.
+# The model half of `co audit` (#1657, #1735), for PRs that touch the CLI,
+# and the visual standard (#1997) on the pages a PR changed.
 #
 # The hard rules (example, what it changes, way back, reachable, real flags)
 # already run on every PR in tests.yml through tests/unit/test_cli_help_contract.py
@@ -40,7 +41,20 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
+      - name: The pages this PR added or changed meet the visual standard (#1997)
+        # Styled in a terminal, plain under NO_COLOR, the same words, no raw
+        # field dumps. Hard rules, no model. Reported, not yet blocking: today
+        # 4 of 314 outputs pass, because Typer prints every Example: and Back:
+        # command unstyled, so every PR that touches a page would fail on a
+        # line it did not write. Remove continue-on-error once the first
+        # step-4 PR of #1997 colours those lines where they are rendered.
+        continue-on-error: true
+        run: |
+          pip install -q -e .
+          co audit co --since "$RUNNER_TEMP/base.json" --style
+
       - name: Review the pages this PR added or changed
+        if: always()
         env:
           OPENONION_API_KEY: ${{ secrets.OPENONION_API_KEY }}
         run: |

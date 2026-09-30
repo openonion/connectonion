@@ -57,6 +57,16 @@ kubectl), `CORE COMMANDS` with `name:` rows (gh), and argparse's
 `{build,serve}`. A listed word whose page is its parent's page word for word
 is not counted as a command.
 
+## The visual standard (`--style`)
+
+`co audit co --style` swaps the rules above for the visual standard in
+[style.md](style.md). Each page is printed under a pseudo-terminal and into a
+`NO_COLOR` pipe, and read-only `status`/`check`/`ls`/`doctor` commands are also
+run the same two ways. It passes when the terminal run is styled, including
+the command on each `Next:`/`Example:`/`Back:` line, the pipe run has no
+escape codes, the words match, and nothing prints a raw field dump. Results
+are scored per rule and per group.
+
 ## Model review (`--review`)
 
 Only pages that pass every rule are reviewed. A text-only model judges five
@@ -74,7 +84,10 @@ PR and blocks on any problem. It adds three house conventions of ours: a
 fixed "what it changes" word, a `Back:` line, and every command in
 `co commands` reachable from `co --help`. The `help-gate` workflow runs
 `co audit co --since base.json --review` on pages a PR changed, and reports
-without blocking, because a model's verdict varies between runs.
+without blocking, because a model's verdict varies between runs. Before that
+it runs `co audit co --since base.json --style` on the same pages. This is
+reported, not blocking, until the `Example:` and `Back:` lines Typer renders
+are coloured in one place (#1997, step 4). After that it blocks.
 
 `co rem` keeps its own reviewed pages (#1656), which are being rewritten
 (#1667); `co audit co` reports their missing examples.

@@ -94,6 +94,37 @@ line: "Show your credit balance…", "Who may call your agent…", "…
 ~/.co/keys.env, which every project reads". When two groups sound alike
 (`co skills` and `co sub`), each says which one is the other.
 
+## How the output looks (#1997)
+
+Every `co` command prints with `connectonion/cli/style.py`, and
+`co audit co --style` checks the result from outside. The full standard is in
+`docs/cli/style.md`. In short:
+
+| role | look | call |
+|---|---|---|
+| command, and the command on a `Next:` line | cyan | `command(cmd)`, `next_line(cmd)` (stderr) |
+| path | cyan, `~` for home | `path(p)` |
+| heading / first line of a result | bold | `heading(text)`, `section(title, rows)` |
+| number | bold, unit in words | `count(n, "page")` |
+| success / warning / error | green ✓ / yellow ! / red ✗ | `ok(t)`, `warn(t)`, `error(t)` |
+| detail | dim | `dim(t)` |
+| long work | bar with n/total, or spinner with elapsed time | `progress(total, label)`, `spinner(label)` |
+
+- A status-style result starts with one line that answers the question. After
+  it come sections with one line per item, details behind `--verbose`, and
+  one `Next:`. Never print an internal record as `snake_case: value` lines.
+- Output is plain under `NO_COLOR`, in a pipe, a log file, launchd, `TERM=dumb`
+  and `--json` (call `plain_output()`). The words are the same either way.
+- A command in the `status`, `check`, `ls` or `doctor` family that says
+  `Read-only` on its help page is also run by the audit. Keep it fast and
+  make sure it never waits for input.
+
+Check a page while you write it:
+
+```bash
+co audit co <group> <command> --style
+```
+
 ## Help is the usage skill
 
 ### Design each help page around a task
@@ -380,6 +411,7 @@ with a failed run.
 
 ## Done checklist
 
+- [ ] `co audit co <group> --style` passes for every new or changed page (output built with `cli/style.py`)
 - [ ] `test_cli_help_contract.py` passes for every new or changed command, also with `GITHUB_ACTIONS=true FORCE_COLOR=1`
 - [ ] Each page has an `Example:` epilog whose flags exist, and a first line with the fixed "what it changes" word, written from the handler
 - [ ] Every new leaf has a `command_tips.NEXT` entry
