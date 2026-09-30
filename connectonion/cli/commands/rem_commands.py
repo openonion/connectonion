@@ -196,9 +196,24 @@ def _logged(root, record, phase, call):
     turn = Turn({"investigate me": "Writing your page…", "projects write": f"Writing {record}…"}
                 .get(phase, f"Investigating {record}…"))
 
+    # Where the time went, stage by stage: a one-day investigation took 8
+    # minutes and the record could not say whether it was gathering, the
+    # model or validation (#2002, #2016).
+    open_stage = {"name": None, "at": None}
+
+    def close_stage(at):
+        if open_stage["name"]:
+            seconds = run.setdefault("stage_seconds", {})
+            seconds[open_stage["name"]] = round(seconds.get(open_stage["name"], 0)
+                                                + (at - open_stage["at"]).total_seconds(), 1)
+
     def update(stage, processed=None, total=None, usage=None):
+        moment = now()
+        if stage != open_stage["name"]:
+            close_stage(moment)
+            open_stage.update(name=stage, at=moment)
         run["stage"] = stage
-        run["stage_updated_at"] = now().isoformat()
+        run["stage_updated_at"] = moment.isoformat()
         if processed is not None:
             run["stage_processed"] = processed
         else:
@@ -239,6 +254,8 @@ def _logged(root, record, phase, call):
         failure._rem_retry_page = True
         raise failure from error
     finally:
+        close_stage(now())
+        open_stage["name"] = None
         run["finished_at"] = now().isoformat()
         run["quota"]["after"] = quota.read(config)
         from datetime import datetime

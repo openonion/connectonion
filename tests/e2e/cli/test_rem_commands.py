@@ -973,6 +973,33 @@ def test_interrupted_investigation_keeps_completed_chunk_usage(tmp_path):
     assert run['usage'] == {'input_tokens': 1200}
 
 
+def test_a_run_record_says_how_long_each_stage_took(tmp_path, monkeypatch):
+    """#2016: a one-day investigation took 8 minutes and the record could not say
+    whether gathering, the model or validation spent them."""
+    from datetime import datetime, timedelta, timezone
+    from connectonion.cli.commands.rem_commands import _logged
+
+    prepare(tmp_path)
+    clock = {'t': datetime(2026, 10, 1, 9, 0, tzinfo=timezone.utc)}
+    monkeypatch.setattr('connectonion.rem.service.now', lambda: clock['t'])
+
+    def run(update):
+        update('gathering sources')
+        clock['t'] += timedelta(seconds=40)
+        update('gathering gmail mail', 3, 10)
+        clock['t'] += timedelta(seconds=5)
+        update('gathering gmail mail', 10, 10)       # same stage: counts, not a new one
+        clock['t'] += timedelta(seconds=5)
+        update('writing investigation')
+        clock['t'] += timedelta(seconds=290)
+        return {'changed': []}
+
+    _logged(tmp_path, 'people/owner.md', 'investigate me', run)
+    record = json.loads(next((tmp_path / '.state/runs').glob('*.json')).read_text())
+    assert record['stage_seconds'] == {'gathering sources': 40.0, 'gathering gmail mail': 10.0,
+                                       'writing investigation': 290.0}
+
+
 def test_category_run_reports_partial_failure_nonzero(tmp_path, monkeypatch):
     prepare(tmp_path)
     Notebook(tmp_path).stub_person('people/ada.md', 'Ada', ['ada@example.org'], email='ada@example.org')
