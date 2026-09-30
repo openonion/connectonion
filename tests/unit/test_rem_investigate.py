@@ -487,23 +487,51 @@ def test_an_org_s_mail_is_asked_of_the_server_by_domain_not_found_by_listing_eve
     """UNSW spent ten of 18.5 minutes listing 2,269 Outlook and 1,557 Gmail headers
     week by week to find one domain (#1963). The mailbox can answer "mail from or
     to this domain" itself; what it answers loosely is still checked here."""
-    class ByDomain(Quiet):
-        def __init__(self): self.asked = []
-        def list_between(self, s, e, n): raise AssertionError("listed the whole mailbox")
-        def list_with(self, address, start, end, **kw):
-            self.asked.append(address)
-            return [{"id": "1", "from": "Ada <ada@unsw.edu.au>", "to": ["me@x.y"],
-                     "subject": "Pilot", "date": "2026-07-21T00:00:00Z"},
-                    {"id": "2", "from": "Bo <bo@elsewhere.org>", "to": ["me@x.y"],
-                     "subject": "Unrelated", "date": "2026-07-22T00:00:00Z"}]
-        def get_email_body(self, i): return f"--- Email Body ---\nbody {i}"
-
-    box = ByDomain()
+    box = LikeGraph()
     items, coverage = inv.gather("UNSW", ["@unsw.edu.au", "unsw.edu.au", "UNSW"], days=90,
                                  clients={"outlook": box}, subscriptions={}, record="orgs/unsw.md")
-    assert box.asked == ["unsw.edu.au"]
+    assert box.asked == ["unsw"]            # #1981: Graph answers 500 for participants:<bare domain>
     assert [i["text"].split("\n")[-1] for i in items] == ["body 1"]
-    assert "searched on the server for unsw.edu.au" in coverage[0] and "1 matched" in coverage[0]
+    assert "searched on the server for unsw" in coverage[0] and "1 matched" in coverage[0]
+
+
+class LikeGraph(Quiet):
+    """What Graph did on the owner's mailbox (2026-09-30): `participants:unsw.edu.au`
+    and `participants:@unsw.edu.au` → HTTP 500; `participants:unsw` → rows."""
+    def __init__(self): self.asked = []
+    def list_between(self, s, e, n): raise AssertionError("listed the whole mailbox")
+    def list_with(self, address, start, end, **kw):
+        from connectonion.provider_credentials import ProviderCredentialError
+        self.asked.append(address)
+        if "." in address and "@" not in address.lstrip("@") or address.startswith("@"):
+            raise ProviderCredentialError("provider_unavailable", "Microsoft Graph API error (HTTP 500).",
+                                          "co outlook inbox", status=500)
+        return [{"id": "1", "from": "Ada <ada@unsw.edu.au>", "to": ["me@x.y"],
+                 "subject": "Pilot", "date": "2026-07-21T00:00:00Z"},
+                {"id": "2", "from": "Bo <bo@elsewhere.org>", "to": ["me@x.y"],
+                 "subject": "Unrelated", "date": "2026-07-22T00:00:00Z"}]
+    def get_email_body(self, i): return f"--- Email Body ---\nbody {i}"
+
+
+def test_a_mailbox_that_fails_is_a_gap_in_coverage_and_the_other_mailbox_is_still_read():
+    """#1981: one Graph 500 ended every org investigation before Gmail was asked."""
+    class Broken(LikeGraph):
+        def list_with(self, address, start, end, **kw):
+            from connectonion.provider_credentials import ProviderCredentialError
+            raise ProviderCredentialError("provider_unavailable", "Microsoft Graph API error (HTTP 500).",
+                                          "co outlook inbox", status=500)
+
+    class Gmail(LikeGraph):
+        def list_with(self, address, start, end, **kw):
+            self.asked.append(address)
+            return LikeGraph.list_with(self, "unsw", start, end)
+
+    gmail = Gmail()
+    items, coverage = inv.gather("UNSW", ["unsw.edu.au"], days=90, clients={"outlook": Broken(), "gmail": gmail},
+                                 subscriptions={}, record="orgs/unsw.md")
+    assert gmail.asked[0] == "unsw.edu.au"          # Gmail takes the bare domain
+    assert any(l.startswith("outlook") and "server search failed (HTTP 500); not searched" in l for l in coverage)
+    assert [i["text"].split("\n")[-1] for i in items] == ["body 1"]
 
 
 def test_a_person_handle_shaped_like_a_domain_is_not_a_domain_search():

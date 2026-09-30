@@ -15,6 +15,7 @@ from functools import partial
 from pathlib import Path
 
 from .config import read_config
+from ..provider_credentials import ProviderCredentialError
 from .files import Notebook, RemError, is_address, maintenance_lock
 from .mail import _address, _list_all, correspondent, strip_noise, strip_quoted
 from .source import KINDS, collect, timestamp
@@ -255,6 +256,17 @@ def _matches(row: dict, handles: list[str], mine: set) -> bool:
     return any(handle in haystack for handle in handles)
 
 
+def _server_term(kind: str, domain: str) -> str:
+    """What each mail server is asked for an organisation's domain.
+
+    Gmail's from:/to:/cc: take a bare domain. Graph's KQL `participants:` does
+    not: `participants:unsw.edu.au` answers HTTP 500, which made every org
+    investigation in 1.9.0a3 fail (#1981), while `participants:unsw` answers.
+    The label is looser; `_matches` keeps only mail on the domain itself.
+    """
+    return domain.split(".")[0] if kind == "outlook" else domain
+
+
 def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscriptions: dict,
            progress=None, attachments_dir: Path | None = None,
            sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
@@ -352,18 +364,28 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         # citation in it made Gmail match 677 unrelated mails (#1954). A bare
         # domain is not an address; org pages search it through `domains` above.
         emails = sorted({h.strip() for h in handles if is_address(h) and h not in mine})
+        unavailable = None
         for begin, finish in intervals:
             if domains and hasattr(client, "list_with"):
-                # Both servers take a bare domain where they take an address
-                # (Gmail's from:/to:/cc:, Graph's participants:), so an org is
-                # one query rather than every header in the window. The server
-                # may match loosely; the handles still decide what is kept. A
-                # university's mail runs past list_with's 1,000-row default.
-                rows = [r for address in domains + emails
-                        for r in (_patient(partial(client.list_with, max_results=DOMAIN_RESULTS),
-                                           address, begin.isoformat(), finish.isoformat()) or [])
-                        if _matches(r, handles, mine)]
-                searched += f"; searched on the server for {', '.join(domains + emails)}"
+                # One server query per domain rather than every header in the
+                # window. The server may match loosely; the handles still decide
+                # what is kept. A university's mail runs past list_with's
+                # 1,000-row default.
+                terms = [_server_term(kind, domain) for domain in domains] + emails
+                try:
+                    rows = [r for term in terms
+                            for r in (_patient(partial(client.list_with, max_results=DOMAIN_RESULTS),
+                                               term, begin.isoformat(), finish.isoformat()) or [])
+                            if _matches(r, handles, mine)]
+                except ProviderCredentialError as error:
+                    # One mailbox failing is that mailbox's gap, not the page's:
+                    # a Graph 500 used to end the whole investigation before
+                    # Gmail was asked (#1981). Auth failures still stop the run.
+                    if error.code != "provider_unavailable":
+                        raise
+                    unavailable = f"server search failed (HTTP {error.status or '?'})"
+                    break
+                searched += f"; searched on the server for {', '.join(terms)}"
             elif emails and hasattr(client, "list_with"):
                 # A verified address is server-searchable; the local archive
                 # supplies the older interval so only gaps need a query.
@@ -384,6 +406,9 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 if row["id"] not in taken and (not sent_only or _address(row["from"]) in mine):
                     taken.add(row["id"])
                     hit.append(row)
+        if unavailable:
+            coverage.append(f"{kind}: {searched}; {unavailable}; not searched")
+            continue
         if progress:
             progress(kind, end, len(local) + len(hit))
         if sent_only:
