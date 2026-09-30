@@ -70,6 +70,25 @@ from .gmail_mailbox import GmailMailbox
 GMAIL_ATTACHMENT_LIMIT = 25_000_000
 
 
+
+def _iso_date(header: str, fallback: str) -> str:
+    """An RFC 2822 Date header as ISO 8601 with its offset.
+
+    A `-0000` date ("no timezone information") parses to a naive datetime, and
+    co rem refuses a timestamp without an offset: one such Date from a real
+    mailbox stopped `co rem investigate me` and init's first page with "Source
+    contains an invalid timestamp" (#2013). RFC 5322 reads -0000 as UTC.
+    """
+    from datetime import timezone as _tz
+    from email.utils import parsedate_to_datetime
+    try:
+        moment = parsedate_to_datetime(header)
+    except (TypeError, ValueError):
+        return fallback
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=_tz.utc)
+    return moment.isoformat()
+
 class Gmail(GmailMailbox):
     """Gmail tool for reading and managing emails."""
 
@@ -1179,10 +1198,7 @@ class Gmail(GmailMailbox):
                 userId='me', id=message_id, format='metadata',
                 metadataHeaders=['From', 'To', 'Cc', 'Subject', 'Date']).execute()
             headers = {h['name']: h['value'] for h in message.get('payload', {}).get('headers', [])}
-            try:
-                date = parsedate_to_datetime(headers.get('Date', '')).isoformat()
-            except (TypeError, ValueError):
-                date = start
+            date = _iso_date(headers.get('Date', ''), start)
             rows.append({'id': message_id, 'from': headers.get('From', ''), 'to': [headers.get('To', '')],
                          'cc': [headers.get('Cc', '')] if headers.get('Cc') else [],
                          'subject': headers.get('Subject', ''), 'date': date,
@@ -1208,10 +1224,7 @@ class Gmail(GmailMailbox):
         self._last_message_page = page
         rows = self._email_dicts(page.get('messages', []), max_results, recipients=True)
         for row in rows:
-            try:
-                row['date'] = parsedate_to_datetime(row['date']).isoformat()
-            except (TypeError, ValueError):
-                row['date'] = start
+            row['date'] = _iso_date(row['date'], start)
         return sorted(rows, key=lambda row: (row['date'], row['id']))
 
     def my_addresses(self) -> set:

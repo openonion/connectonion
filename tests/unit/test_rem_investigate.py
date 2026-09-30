@@ -1068,3 +1068,30 @@ def test_investigate_me_marks_the_page_as_the_owners_and_drops_the_how_the_user_
                                                                 "investigated yet\n\n", "")
     assert not any("How the user writes" in e for e in validate("people/vern.md", written, written, [], owner=True))
     assert any("How the user writes" in e for e in validate("people/vern.md", written, written, []))
+
+
+def test_a_gmail_date_with_no_timezone_is_read_as_utc():
+    """#2013: a `-0000` Date parsed to a naive time, and co rem refused it."""
+    from connectonion.useful_tools.gmail import _iso_date
+
+    assert _iso_date("Thu, 09 Jul 2026 01:50:17 -0000", "2026-07-01T00:00:00+00:00") == "2026-07-09T01:50:17+00:00"
+    assert _iso_date("Thu, 09 Jul 2026 11:50:17 +1000", "x") == "2026-07-09T11:50:17+10:00"
+    assert _iso_date("not a date", "2026-07-01T00:00:00+00:00") == "2026-07-01T00:00:00+00:00"
+
+
+def test_one_saved_mail_with_an_unreadable_date_is_skipped_not_the_whole_run(tmp_path, monkeypatch):
+    """#2013: one naive date in the init archive stopped `investigate me` and init's
+    first page with "Source contains an invalid timestamp"."""
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    good = {"_mail_id": "a", "role": "user", "speaker": "me@x.y", "timestamp": (now - timedelta(days=2)).isoformat(),
+            "text": "kept", "source": "gmail:a"}
+    naive = {**good, "_mail_id": "b", "timestamp": "2026-07-09T01:50:17", "text": "undated", "source": "gmail:b"}
+    monkeypatch.setattr("connectonion.rem.mail_archive.person_material",
+                        lambda root, record: ({"gmail": [good, naive]}, now - timedelta(days=30), now))
+
+    items, coverage = inv.gather("Me", ["me@x.y"], days=7, clients={}, subscriptions={},
+                                 archive_root=tmp_path, record="people/me.md")
+
+    assert [i["text"] for i in items] == ["kept"]
+    assert "gmail: 1 saved message(s) skipped for an unreadable date" in coverage
