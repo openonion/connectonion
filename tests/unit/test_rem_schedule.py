@@ -1,5 +1,6 @@
 """The clock is the OS's; we only write one declarative job file and ask it to load it."""
 
+import os
 import plistlib
 from pathlib import Path
 
@@ -160,6 +161,8 @@ def test_the_job_s_pythonpath_is_absolute(tmp_path, monkeypatch):
     """The owner's job carried PYTHONPATH=".", which the model's co ai resolved
     against .state/tasks: an older installed connectonion, "Skill 'rem-investigate' not found"."""
     scheduler, _ = make(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PYTHONPATH", ".")
     plist = plistlib.loads(scheduler.render(tmp_path / "rem", default_config()).encode())
-    assert plist["EnvironmentVariables"]["PYTHONPATH"] == str(Path(".").resolve())
+    parts = plist["EnvironmentVariables"]["PYTHONPATH"].split(os.pathsep)
+    assert str(tmp_path.resolve()) in parts and all(Path(part).is_absolute() for part in parts)
