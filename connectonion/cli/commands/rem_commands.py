@@ -197,7 +197,12 @@ def _investigation_pages(notebook):
 
 def _resolve_page(notebook, selector):
     from ...rem.files import RemError
+    from ...rem.merge import aliases, resolve
     pages = _investigation_pages(notebook)
+    # A page merged into another (#1974) answers to its old record and stem.
+    table = aliases(notebook.root)
+    selector = next((old for old in table if Path(old).stem == selector), selector)
+    selector = resolve(notebook.root, selector)
     if selector in notebook.list():
         return selector
     candidate = notebook.root / selector
@@ -623,8 +628,9 @@ def make_rem_app(factory):
                 clients = {kind: client for kind, client in clients.items() if handle}
             skipped = "" if clients or not record.startswith("projects/") else \
                 "not read for a project page; name its mail with --handle"
+            from ...rem.investigate import window_since
             return _logged(root, record, "investigate", lambda update: investigate(
-                root, record, title, handles, days=days or 150, clients=clients,
+                root, record, title, handles, days=days or window_since(text), clients=clients,
                 subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped,
                 stage_progress=update))
 
@@ -811,7 +817,8 @@ def make_rem_app(factory):
                     raise RemError("No page for you yet: init makes it from a connected mailbox or from your "
                                     "name. Run `co rem init --name \"Your Name\"`")
                 category = page.split("/")[0]
-            text = Notebook(root).read(page)
+            from ...rem.merge import resolve
+            text = Notebook(root).read(resolve(root, page))
             return text, (["investigate", record] if "Unknown" in text else ["list", category])
         _handle(ctx, operation, recovery)
 

@@ -383,7 +383,8 @@ def _new_pages(root: Path, unmapped: list[dict], cutoff: datetime, lock_held: bo
     rows = []
     for row in recent:
         repo = _repo_identity(Path(row["path"]))
-        rows.append({"path": row["path"], "sessions": row["sessions"], "first": row["first"][:10],
+        rows.append({"path": row["path"], "sessions": row["sessions"], "turns": row["messages"],
+                     "first": row["first"][:10],
                      "last": row["last"][:10], "repo": repo.get("toplevel", ""), "origin": repo.get("origin", "")})
     created = []
     with nullcontext() if lock_held else maintenance_lock(root, wait=60):
@@ -426,3 +427,24 @@ def mark_written(root: Path, record: str, through: str, *, now: datetime | None 
     state = page_state(root, record)
     state.update(written_through=through, written_at=(now or datetime.now(timezone.utc)).isoformat())
     write_json(folder / "state.json", state)
+
+
+def adopt(root: Path, old: str, new: str) -> int:
+    """Page `old` was merged into `new` (#1974): its messages go with it.
+
+    Extraction reads only what is new, so messages filed under the old page
+    would never be filed again. They are merged by id into the new page's
+    material; the old folder moves to `.state/archived/projects/`. Returns how
+    many messages were added.
+    """
+    folder = _folder(root, old)
+    if not folder.is_dir():
+        return 0
+    messages = stored(root, old)
+    result = _merge(root, new, messages, full=False, now=datetime.now(timezone.utc)) if messages else {"added": 0}
+    target = state_path(root, f"archived/projects-material/{Path(old).stem}")
+    target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if target.exists():
+        target = target.with_name(f"{target.name}-{datetime.now(timezone.utc):%Y%m%d%H%M%S%f}")
+    folder.replace(target)
+    return result["added"]

@@ -11,6 +11,7 @@ import json
 import os
 import re
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from pathlib import Path
 
 from .config import read_config
@@ -19,6 +20,8 @@ from .mail import _address, _list_all, correspondent, strip_noise, strip_quoted
 from .source import KINDS, collect, timestamp
 
 MAIL_KINDS = ("outlook", "gmail")
+DOMAIN_HANDLE = re.compile(r"^@?([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})$")
+DOMAIN_RESULTS = 10_000
 
 
 def quick_evidence(items: list[dict], *, max_items: int = 24,
@@ -214,10 +217,17 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     start = end - timedelta(days=days)
     items, coverage = [], []
     own_addresses = set()
+    # An org is its domain: "unsw.edu.au" or "@unsw.edu.au" on the page. Only
+    # for org pages -- a person's "vern.chan" alias is shaped like a domain too.
+    domains = sorted({match[1] for h in handles if (match := DOMAIN_HANDLE.match(h))}) \
+        if record.startswith("orgs/") else []
     archived = None
     if archive_root is not None and record.startswith("people/"):
         from .mail_archive import person_material
         archived = person_material(archive_root, record)
+    elif archive_root is not None and domains:
+        from .mail_archive import domain_material
+        archived = domain_material(archive_root, domains)
     cached_by_provider, cached_start, cached_end = archived if archived else ({}, None, None)
     # A mailbox the user unsubscribed after init stays out, archive or not.
     cached_by_provider = {kind: rows for kind, rows in cached_by_provider.items()
@@ -283,10 +293,22 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         for item in local:
             add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""))
         # Only a whole address goes to the server: a page line with prose or a
-        # citation in it made Gmail match 677 unrelated mails (#1954).
+        # citation in it made Gmail match 677 unrelated mails (#1954). A bare
+        # domain is not an address; org pages search it through `domains` above.
         emails = sorted({h.strip() for h in handles if is_address(h) and h not in mine})
         for begin, finish in intervals:
-            if emails and hasattr(client, "list_with"):
+            if domains and hasattr(client, "list_with"):
+                # Both servers take a bare domain where they take an address
+                # (Gmail's from:/to:/cc:, Graph's participants:), so an org is
+                # one query rather than every header in the window. The server
+                # may match loosely; the handles still decide what is kept. A
+                # university's mail runs past list_with's 1,000-row default.
+                rows = [r for address in domains + emails
+                        for r in (_patient(partial(client.list_with, max_results=DOMAIN_RESULTS),
+                                           address, begin.isoformat(), finish.isoformat()) or [])
+                        if _matches(r, handles, mine)]
+                searched += f"; searched on the server for {', '.join(domains + emails)}"
+            elif emails and hasattr(client, "list_with"):
                 # A verified address is server-searchable; the local archive
                 # supplies the older interval so only gaps need a query.
                 rows = [r for address in emails
@@ -371,6 +393,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             if chat:
                 said += " " + item.get("speaker", "") + " " + item.get("correspondent", "")
             return any(h in said.lower() for h in handles)
+        told = 0
         try:
             while True:
                 batch = read(scoped, cursor, 40, 200_000)
@@ -379,8 +402,12 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 if batch.progress == cursor:
                     break
                 cursor = batch.progress
-                if stage_progress:
-                    stage_progress(f"gathering {name} {'chats' if chat else 'sessions'}", scanned)
+                # The count goes in the line itself: the CLI prints a count only
+                # beside a total, and sessions have none, so a real run printed
+                # 24 identical lines. A batch that added nothing is not news.
+                if stage_progress and scanned > told:
+                    told = scanned
+                    stage_progress(f"gathering {name} {'chats' if chat else 'sessions'}: {scanned:,} scanned", scanned)
         except RemError as error:
             coverage.append(f"{name}: unreadable ({error})")
         related = len(picked)
@@ -493,10 +520,28 @@ def searched_sources(coverage: list[str]) -> list[str]:
     A source searched with nothing found stays: the daily round reads the line
     to know which sources a page has already been checked against.
     """
-    notes = ("budget", "digest", "evidence:", "Requested investigation window:", "Quick first pass:")
+    notes = ("budget", "digest", "evidence:", "Requested investigation window:", "Quick first pass:",
+             "Page last investigated")
     return list(dict.fromkeys(
         line.split(" (")[0].split(":")[0] for line in coverage
         if not line.startswith(notes) and "not searched" not in line and ": unreadable" not in line))
+
+
+def last_investigated(page: str):
+    from .queue import last_investigated as from_status
+    line = next((l for l in page.splitlines() if l.startswith("Investigation:")), "")
+    return from_status(line)
+
+
+def window_since(page: str, default: int = 150) -> int:
+    """Days to gather for a page: since its last investigation, else `default`.
+
+    The script already read everything before that date into the page; asking
+    again re-read months of mail to add a week (owner, 2026-09-30)."""
+    last = last_investigated(page)
+    if not last:
+        return default
+    return max(1, (datetime.now(timezone.utc).date() - last).days + 1)
 
 
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
@@ -515,6 +560,12 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                              quick=quick, archive_root=root, record=record)
     coverage.append(f"Requested investigation window: {days} days ending "
                     f"{datetime.now(timezone.utc).date().isoformat()}")
+    last = last_investigated(notebook.read(record))
+    if last:
+        # The page already reflects what came before; say so where the turn
+        # reads it, so it adds the new material instead of rewriting the page.
+        coverage.append(f"Page last investigated {last.isoformat()}: it already reflects material before "
+                        "that date; add only what this material says that is new.")
     available_items = len(items)
     if quick:
         items = quick_evidence(items)

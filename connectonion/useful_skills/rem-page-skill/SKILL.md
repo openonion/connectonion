@@ -99,15 +99,18 @@ Link older records when numerous.
 - `Open threads`: concrete next actions, owners/dates when known.
 - `Uncertainties`: missing logs, unread sources, stale results, unresolved
   identity/version attribution. Do not manufacture a complete-looking dashboard.
-- `Source`: original skill file link/path and discovery location. Keep distinct
-  installed copies distinct until evidence links them.
+- `Source`: the map owns it: the source file (linked, never pasted), discovery
+  location, allowed tools and every installed copy, identical or differing by
+  content hash. Leave it as the map wrote it.
 - `Sources`: numbered references with source id, date, confidence; every
   investigated claim cited. Mark inference.
 
 **Mapping and later review**
 
-Mapping creates missing pages from metadata, leaving unsupported sections
-Unknown; reruns never overwrite existing content. Later review adds source-file
+Mapping creates one page per skill name from metadata, leaving unsupported
+sections Unknown, and opens `Usage history` with the invocation count and
+last-used date from the user's sessions; reruns refresh only those map-owned
+lines and never overwrite other content. Later review adds source-file
 and execution evidence, adds missing sections to older pages, and preserves
 identity, useful prior content and the runner-owned `Investigation:` line. Never
 execute a skill merely to document it.

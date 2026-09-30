@@ -47,8 +47,16 @@ def instructions(stage: str, kind: str = "", *, page_kind: str = "") -> str:
         raise RemError(f"Unknown stage {stage!r}; expected one of {', '.join(STAGES)}")
     directory = useful_skills_dir()
     text = (directory / f"rem-{stage}/SKILL.md").read_text(encoding="utf-8")
-    if stage in ("init", "investigate") and not page_kind:
+    if stage == "init":
         text += "\n\n---\n\n# co rem CLI reference (included; no relative lookup needed)\n" + (directory / "rem-init/CLI.md").read_text(encoding="utf-8")
+    # Investigation is a core plus the steps for this kind of subject. One file
+    # held a person's identity rules, a project's Paths rules and a web lookup
+    # every turn carried, whatever it was investigating; the owner asked that a
+    # turn carry only what its subject needs (2026-09-30).
+    if stage == "investigate":
+        pattern = f"rem-investigate-{page_kind}/SKILL.md" if page_kind else "rem-investigate-*/SKILL.md"
+        for steps in sorted(directory.glob(pattern)):
+            text += "\n\n---\n\n" + steps.read_text(encoding="utf-8")
     # A page's shape belongs to the page, not to the stage that happens to be
     # writing it. It lived inside one stage as prose, was copied into a second,
     # and the two drifted within a day -- one of them renaming the headings the
@@ -58,9 +66,10 @@ def instructions(stage: str, kind: str = "", *, page_kind: str = "") -> str:
         for page in sorted(directory.glob(pattern)):
             text += "\n\n---\n\n" + page.read_text(encoding="utf-8")
     if page_kind:
+        # A link some Skills keep, made absolute. No "read the CLI reference"
+        # line is added: `co <command> --help` is how a turn finds a command.
         reference = directory / "rem-init/CLI.md"
         text = text.replace("](../rem-init/CLI.md)", f"]({reference})")
-        text += f"\n\nIf supplementary source CLI commands are needed, read {reference} first."
     if stage == "abstract" or not kind:
         return text
     source = directory / f"rem-source-{kind}/SKILL.md"
@@ -625,6 +634,9 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
                "instructions_chars": metrics["instructions_chars"],
                "report": str(result.get("result") or "")[:1000],
                "review_candidates": read_json(directory / "review-candidates.json", [])}
+    if record and record in before and notebook.path(record).is_file():
+        # Before and after, so a run that doubles a page shows it (#1956).
+        outcome["page_chars"] = [len(before[record]), len(notebook.read(record))]
     scrub_task(directory)
     return outcome
 

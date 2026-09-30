@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .files import Notebook, atomic_write, maintenance_lock, read_json, state_path
-from .scan import scan_people, scan_projects, canonical_origin, main_checkout, AUTOMATED_HINT
+from .scan import (scan_people, scan_projects, canonical_origin, main_checkout, not_a_project,
+                   AUTOMATED_HINT, SHORT_SESSION)
 from .skill_map import map_skills
 from .org_map import map_orgs
 
@@ -345,6 +346,8 @@ def _archive_stale(notebook: Notebook, report: dict) -> list[str]:
     used = {row.get('record') for row in report['people'] + report['projects'] + report['orgs'] if row.get('record')}
     used.add((report.get('owner') or {}).get('record'))
     covered = {path for row in report['projects'] for path in row.get('paths', [])}
+    # A folder this map found is not a project (#1974): its mapped-only page goes too.
+    dropped = {row['path'] for row in report.get('projects_dropped', [])}
     emails = {email.casefold() for person in notebook.people() if person['path'] in used for email in person['emails']}
     notices = {row['address'].casefold() for row in report.get('automated_correspondents', [])}
     for person in notebook.people():
@@ -361,7 +364,7 @@ def _archive_stale(notebook: Notebook, report: dict) -> list[str]:
         if record in used or not _mapped_only(page):
             continue
         paths = project_paths(page)
-        if paths and all(path in covered or project_exclusion(Path(path)) for path in paths):
+        if paths and all(path in covered or path in dropped or project_exclusion(Path(path)) for path in paths):
             moved.append(record)
     # An organisation this map would not make: a subdomain now merged into its
     # company, or a domain only notice senders use.
@@ -374,29 +377,85 @@ def _archive_stale(notebook: Notebook, report: dict) -> list[str]:
     return sorted(moved)
 
 
-def project_groups(rows: list[dict]) -> dict:
+def project_groups(rows: list[dict], dropped: list | None = None) -> dict:
     """Folders (rows shaped like `scan_projects`') grouped into projects: a worktree
     joins its repository by origin, Codex's dated scratch folders join by name.
 
-    A worktree is listed as its main checkout, never as itself (#1955). One that
-    no longer exists has no origin to join by, so it joins whichever group its
-    checkout is in; else its Sessions would overwrite the repository's.
+    A worktree is listed as its main checkout, never as itself (#1955), and a
+    group counts its worktrees instead (#1974). One that no longer exists has no
+    origin to join by, so it joins whichever group its checkout is in; else its
+    Sessions would overwrite the repository's. A folder that is not a project
+    (`scan.not_a_project`) makes no group; it goes to `dropped` with the reason.
     """
     def identity(row):
         return canonical_origin(row['origin']) or row['repo']
-    known = {main_checkout(row['path']) or row['path']: identity(row) for row in rows if identity(row)}
-    groups = {}
+    kept, short, out = [], {}, []
     for row in rows:
-        path = main_checkout(row['path']) or row['path']
+        why = not_a_project(row)
+        # A lone short chat is judged with the rest of its project: one of six
+        # dated scratch folders for one piece of work is not a one-off.
+        if why == SHORT_SESSION:
+            short[row['path']] = why
+        elif why:
+            out.append({'path': row['path'], 'sessions': row['sessions'], 'reason': why})
+            continue
+        kept.append(row)
+    known = {main_checkout(row['path']) or row['path']: identity(row) for row in kept if identity(row)}
+    groups = {}
+    for row in kept:
+        checkout = main_checkout(row['path'])
+        path = checkout or row['path']
         key = identity(row) or known.get(path) or _scratch_identity(path) or path
-        group = groups.setdefault(key, {'name': Path(row['repo'] or path).name,
-                                       'paths': [], 'sessions': 0, 'first': row['first'], 'last': row['last']})
+        group = groups.setdefault(key, {'name': Path(row['repo'] or path).name, 'paths': [], 'worktrees': [],
+                                       'members': [],
+                                       'sessions': 0, 'first': row['first'], 'last': row['last']})
+        group['members'].append(row['path'])
         if path not in group['paths']:
             group['paths'].append(path)
+        if checkout and row['path'] not in group['worktrees']:
+            group['worktrees'].append(row['path'])
         group['sessions'] += row['sessions']
         group['first'] = min(group['first'], row['first'])
         group['last'] = max(group['last'], row['last'])
+    for key, group in list(groups.items()):
+        members = [row for row in kept if row['path'] in group['members']]
+        if group['sessions'] <= 1 and all(row['path'] in short for row in members):
+            out += [{'path': row['path'], 'sessions': row['sessions'], 'reason': SHORT_SESSION} for row in members]
+            del groups[key]
+            continue
+        group['worktrees'] = len(group['worktrees'])
+        del group['members']
+    if dropped is not None:
+        dropped += out
     return groups
+
+
+def _listed_paths(page: str) -> list[str]:
+    """The folders a project page lists, worktrees as their main checkout. An
+    investigated page may write one as prose -- "- `/path` — working directory
+    recorded ..." -- and that page is still the folder's page."""
+    from .investigate import collapse_worktree_paths, project_paths
+    listed = project_paths(collapse_worktree_paths(page))
+    section = page.partition('## Paths\n')[2].split('\n## ', 1)[0]
+    listed += [main_checkout(path) or path for path in re.findall(r'^- `(/[^`]+)`', section, re.M)]
+    return list(dict.fromkeys(listed))
+
+
+def _project_pages(notebook: Notebook, paths: list[str], record: str) -> list[tuple[str, bool]]:
+    """Every existing page for one project, with whether it may be merged away.
+
+    A page belongs when the map's identity names it or it lists one of the
+    project's folders, worktrees compared as their main checkout. It may be
+    merged into another only if it lists no folder of a different project that
+    still exists: an older page naming two repositories stays whole.
+    """
+    wanted = set(paths)
+    found = {}
+    for page in notebook.list('projects'):
+        listed = _listed_paths(notebook.read(page))
+        if page == record or wanted.intersection(listed):
+            found[page] = not any(path not in wanted and Path(path).exists() for path in listed)
+    return list(found.items())
 
 
 def file_project(notebook: Notebook, identity: str, row: dict, *, refresh: bool = True) -> tuple[str, bool]:
@@ -407,17 +466,25 @@ def file_project(notebook: Notebook, identity: str, row: dict, *, refresh: bool 
     `project_material` (a folder with the user's messages and no page, #1943).
     `refresh=False` only adds missing paths: the caller saw part of the project,
     so its counts must not replace the map's.
+
+    Several existing pages for one repository -- a page per worktree, from maps
+    before #1955 and #1974 -- become one: the page with the most written content
+    is kept and the others are merged into it (`merge.merge_into`), never deleted.
     """
     from .investigate import collapse_worktree_paths, project_paths
-    record = _record('projects', row['name'], identity)
-    # Compared as corrected, so a page an earlier map filled with worktrees is
-    # found and fixed rather than joined by a second page for the same checkout.
-    existing = next((r for r in notebook.list('projects')
-                     if any(path in project_paths(collapse_worktree_paths(notebook.read(r)))
-                            for path in row['paths'])), None)
-    record = existing or record
-    created = notebook.stub_project(record, row['name'], row['paths'], sessions=row['sessions'],
-                                    first_seen=row['first'], last_seen=row['last'])
+    from .merge import merge_into, resolve, weight
+    record = resolve(notebook.root, _record('projects', row['name'], identity))
+    pages = _project_pages(notebook, row['paths'], record)
+    if pages:
+        # Most written first; on a tie the page the map would name.
+        pages.sort(key=lambda item: (weight(notebook.read(item[0])), item[0] == record), reverse=True)
+        record = pages[0][0]
+        for other, mergeable in pages[1:]:
+            if mergeable:
+                row.setdefault('merged', []).append(merge_into(notebook, record, other, 'same repository')['from'])
+    worktrees = row.get('worktrees') or 0
+    created = notebook.stub_project(record, row['name'], row['paths'], worktrees=worktrees,
+                                    sessions=row['sessions'], first_seen=row['first'], last_seen=row['last'])
     # Refresh only deterministic numeric/date fields inside Paths; retain prose.
     original = notebook.read(record)
     page = collapse_worktree_paths(original)
@@ -427,6 +494,14 @@ def file_project(notebook: Notebook, identity: str, row: dict, *, refresh: bool 
         refreshed = (('Sessions', row['sessions']), ('First seen', row['first']), ('Last seen', row['last']))
         for label, value in refreshed if refresh else ():
             body = re.sub(r'^- ' + label + r': (?:[0-9-]+)$', '- ' + label + ': ' + str(value), body, flags=re.M)
+        if refresh and worktrees:
+            if re.search(r'^- Worktrees: \d+$', body, re.M):
+                body = re.sub(r'^- Worktrees: \d+$', f'- Worktrees: {worktrees}', body, flags=re.M)
+            else:
+                lines = body.splitlines(keepends=True)
+                last = max((i for i, line in enumerate(lines) if line.startswith('- /')), default=-1)
+                lines.insert(last + 1, f'- Worktrees: {worktrees}\n')
+                body = ''.join(lines)
         recorded_paths = set(project_paths(page))
         for path in row['paths']:
             if path not in recorded_paths:
@@ -476,9 +551,9 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
     save()
     if progress:
         progress("mapping installed skills")
-    report['skills'] = map_skills(notebook, skill_directories, lock_held=True)
+    report['skills'] = map_skills(notebook, skill_directories, lock_held=True, subscriptions=subscriptions)
     if progress:
-        progress("mapped installed skills", len(report['skills'].get('skills') or []))
+        progress("mapped installed skills", len(report['skills']['created']) + len(report['skills']['preserved']))
     if inventory:
         for skill in report['skills']['skills']:
             inventory.skill(skill)
@@ -602,11 +677,20 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
         progress("scanning local projects")
     project_rows = (scan_projects(subscriptions, days, root, on_session=inventory.session)
                     if inventory else scan_projects(subscriptions, days, root))
-    for identity, row in project_groups(project_rows).items():
+    dropped = []
+    for identity, row in project_groups(project_rows, dropped).items():
         record, created = file_project(notebook, identity, row)
         if created:
             report['created'].append(record)
         report['projects'].append({**row, 'record': record})
+    report['projects_dropped'] = dropped
+    if dropped:
+        report['coverage'].append(f"{len(dropped)} folder{'s' if len(dropped) > 1 else ''} with sessions not made "
+                                  "projects (home, caches, one-off chats; reasons in .state/map.json)")
+    merged = [name for row in report['projects'] for name in row.get('merged', [])]
+    if merged:
+        report['coverage'].append(f"{len(merged)} project page{'s' if len(merged) > 1 else ''} for the same "
+                                  "repository merged into one; the old names are aliases in .state/aliases.json")
     report['coverage'] += [f'{name}: {sub.get("root", "")} — ' + _session_state(sub, report['projects'])
                            for name, sub in subscriptions.items() if sub.get('kind') in ('codex', 'claude-code')]
     if report.get('owner'):

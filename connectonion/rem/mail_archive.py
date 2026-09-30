@@ -156,34 +156,67 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None) -> dict
     return {key: value for key, value in result.items() if key not in ("failed_keys", "owner_addresses")}
 
 
+def _material_item(snapshot: dict, own: set) -> dict:
+    from .mail import strip_noise, strip_quoted
+    provider, message_id = snapshot["provider"], snapshot["id"]
+    sender = str(snapshot.get("from") or "")
+    body = str(snapshot.get("body") or "")
+    head, _, rest = body.partition("--- Email Body ---")
+    text = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
+    sender_address = _address(sender)
+    return {"role": "user" if sender_address in own or "@" not in sender_address else "other",
+            "speaker": sender, "text": text, "timestamp": snapshot.get("date", ""),
+            "subject": snapshot.get("subject", ""), "source": f"{provider}:{_key(message_id)[:12]}",
+            "_mail_id": message_id}
+
+
+def _material(manifest: dict, snapshots: list[dict]) -> tuple[dict[str, list[dict]], datetime, datetime]:
+    own = {address.casefold() for address in manifest.get("owner_addresses", [])}
+    by_provider: dict[str, list[dict]] = {provider: [] for provider in manifest.get("providers", [])}
+    for snapshot in snapshots:
+        by_provider.setdefault(snapshot["provider"], []).append(_material_item(snapshot, own))
+    return (by_provider, datetime.fromisoformat(manifest["range_start"]),
+            datetime.fromisoformat(manifest["range_end"]))
+
+
 def person_material(root: Path, record: str) -> tuple[dict[str, list[dict]], datetime, datetime] | None:
     """Read a complete local archive for one mapped page, without a provider query."""
     manifest = read_json(state_path(root, "mail/archive.json"), {})
-    if manifest.get("phase") != "complete":
-        return None
     index = person_index_path(root, record)
-    if not index.is_file():
+    if manifest.get("phase") != "complete" or not index.is_file():
         return None
-    own = {address.casefold() for address in manifest.get("owner_addresses", [])}
-    by_provider: dict[str, list[dict]] = {provider: [] for provider in manifest.get("providers", [])}
-    from .mail import strip_noise, strip_quoted
+    snapshots = []
     for line in index.read_text(encoding="utf-8").splitlines():
         ref = json.loads(line)
         snapshot = read_json(state_path(root, ref["message"].removeprefix(".state/")), {})
         if (not isinstance(snapshot, dict) or snapshot.get("id") != ref["id"]
                 or snapshot.get("provider") != ref["provider"] or "body" not in snapshot):
             return None
-        provider, message_id = snapshot["provider"], snapshot["id"]
-        sender = str(snapshot.get("from") or "")
-        body = str(snapshot.get("body") or "")
-        head, _, rest = body.partition("--- Email Body ---")
-        text = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
-        sender_address = _address(sender)
-        by_provider.setdefault(provider, []).append({"role": "user" if sender_address in own or "@" not in sender_address else "other",
-                                                     "speaker": sender, "text": text,
-                                                     "timestamp": snapshot.get("date", ""),
-                                                     "subject": snapshot.get("subject", ""),
-                                                     "source": f"{provider}:{_key(message_id)[:12]}",
-                                                     "_mail_id": message_id})
-    return (by_provider, datetime.fromisoformat(manifest["range_start"]),
-            datetime.fromisoformat(manifest["range_end"]))
+        snapshots.append(snapshot)
+    return _material(manifest, snapshots)
+
+
+def domain_material(root: Path, domains: list[str]) -> tuple[dict[str, list[dict]], datetime, datetime] | None:
+    """An org's mail from the complete local archive: every snapshot a domain is on.
+
+    People get an index at init; an org has none, so UNSW's page said "0 loaded
+    from private init archive" and listed 3,800 headers from the providers
+    instead (#1963). Each snapshot carries its own from/to/cc, so reading them
+    is the index: a few thousand small local files, not a mailbox walked a week
+    at a time. `.sub.domain` counts too -- student.unsw.edu.au is UNSW.
+    """
+    manifest = read_json(state_path(root, "mail/archive.json"), {})
+    if manifest.get("phase") != "complete" or not domains:
+        return None
+    suffixes = tuple(f"{sep}{domain}" for domain in domains for sep in ("@", "."))
+    snapshots = []
+    for provider in manifest.get("providers", []):
+        for path in sorted(state_path(root, f"mail/messages/{provider}").glob("*.json")):
+            snapshot = read_json(path, {})
+            if not isinstance(snapshot, dict) or snapshot.get("provider") != provider or "body" not in snapshot:
+                return None
+            addresses = [_address(snapshot.get("from", "")), *_addresses(snapshot.get("to")),
+                         *_addresses(snapshot.get("cc"))]
+            if any(address.endswith(suffixes) for address in addresses):
+                snapshots.append(snapshot)
+    return _material(manifest, snapshots)

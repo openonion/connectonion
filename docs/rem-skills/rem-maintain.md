@@ -157,3 +157,7 @@ plain-text search handles." Filename examples also included
 directory table listed the person-page contents (contact fields, dated history of
 both sides, how each side writes, cadence, what is open and to whom, unknowns);
 those now live only in `rem-page-person`, which is appended at runtime.
+
+## Only what is open, and a page that stays readable (#1956)
+
+In the 1.9.0a1 acceptance run (2026-09-30), four `sync --all` batches grew `projects/connectonion` from 26.5k to 53.7k characters and from 69 to 175 sources. The growth was mostly week-old 1.8.5 items re-added as "Open threads". The last batch cost 1.73M input tokens for one page, because every turn re-reads the page it maintains. The rule gives open threads a date check and gives the page a size it folds its oldest history into.

@@ -85,6 +85,9 @@ The count above includes the merged prompt-free initialization changes.
 
 ## Skill original-source snapshots at initialization
 
+> Superseded by #1974 (1.9.0a4): catalog pages link the source instead of pasting it,
+> one page per skill name. See `docs/cli/rem.md`.
+
 - Catalog pages embed the original source as inert fenced Markdown near the
   overview, with file path, snapshot timestamp and SHA-256. No model is called.
 - Generated blocks refresh without replacing authored notes; unchanged sources

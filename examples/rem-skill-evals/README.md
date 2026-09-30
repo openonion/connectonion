@@ -86,3 +86,16 @@ same shape checks: the coverage line 11 times across the 5 investigated
 people, no lead on any of the 5, and one of the 2 written project pages with
 2,766 CJK characters outside quotes under English headings. One run a case
 shows direction, not a rate.
+
+After #1971 split investigation into a core plus `rem-investigate-<kind>`,
+the same runs were repeated with the instructions composed as production sends
+them (`runner.instructions("investigate", page_kind=…)`, written as a temporary
+skill). `rem-project-sessions / many-requests-few-outcomes` passed again (6/6,
+check_pages pass). The person case and `rem-project / working-cli` ran out of
+15 steps; so did origin/main's own composition on the person case, lead rule
+or not. The agent spent its steps on `git log` / `git show` of the commit that
+added these fixtures: the eval workspace sits inside the repository, and
+nothing keeps git history from the Agent the way `.co/benchmarks/` is kept.
+Given 25 steps, the person page it wrote opened on the lead ("… Mia owes the
+signed SOW by 3 October 2026 [5]. Last contact: 2026-09-10 via Gmail [5].")
+and passed check_pages, with no coverage line.

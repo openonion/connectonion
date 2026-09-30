@@ -73,17 +73,15 @@ Unknown — not investigated yet. Last contact: Unknown.
 Rules:
 
 - **The lead comes first**: under the title, before `Contact`, 2–3 cited
-  sentences a reader gets on the first screen: who they are to the user and the
-  relationship; what is open between them, who owes whom what (or `Nothing open
-  as of <date>`); and `Last contact: <date>` (the newest message either way,
-  with its channel). It shortens the sections below and never contradicts
-  them; no contact details, no heading.
+  sentences: who they are to the user; what is open, who owes whom what (or
+  `Nothing open as of <date>`); `Last contact: <date>` (newest message either
+  way, with its channel). A summary of the sections below; no contact details,
+  no heading.
 - **`Contact` is fields, not prose.** Never put a contact detail in a sentence
   or the summary instead of its field; a missing one stays `Unknown`.
 - **`Language` is observed**: the language the person writes to the user in,
-  from their own messages (`English`, `Mandarin; English for contracts`). Do not
-  wait for them to declare it. `Unknown` only when nothing they wrote is in the
-  material.
+  from their own messages (`English`, `Mandarin; English for contracts`).
+  `Unknown` only when nothing they wrote is in the material.
 - **`Company` comes from the address domain and the signature block**
   (`@unsw.edu.au` is UNSW; the signature gives department, office, direct line).
   A mailbox provider (gmail, outlook, qq) is not a company: `Unknown`. Where an
@@ -110,8 +108,7 @@ Rules:
   else (same first name) is left out and named in `Uncertainties`; it never
   empties this person's fields.
 - **`Uncertainties`** lists what is unknown about this person, inferred but
-  unconfirmed, or referenced but not read. Never where you searched or how much
-  you read: the runner records coverage.
+  unconfirmed, or referenced but not read; never where you searched.
 - **Numbered claims.** Each entry: the claim, confidence (high / medium / low),
   date observed, source id. Reuse a number for a repeated claim; never list one
   claim under two numbers. List only claims a sentence cites.

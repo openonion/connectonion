@@ -472,6 +472,60 @@ def test_a_person_s_mail_is_asked_of_the_server_not_found_by_listing_everything(
     assert "searched on the server" in coverage[0] and "2 matched" in coverage[0]
 
 
+def test_an_org_s_mail_is_asked_of_the_server_by_domain_not_found_by_listing_everything():
+    """UNSW spent ten of 18.5 minutes listing 2,269 Outlook and 1,557 Gmail headers
+    week by week to find one domain (#1963). The mailbox can answer "mail from or
+    to this domain" itself; what it answers loosely is still checked here."""
+    class ByDomain(Quiet):
+        def __init__(self): self.asked = []
+        def list_between(self, s, e, n): raise AssertionError("listed the whole mailbox")
+        def list_with(self, address, start, end, **kw):
+            self.asked.append(address)
+            return [{"id": "1", "from": "Ada <ada@unsw.edu.au>", "to": ["me@x.y"],
+                     "subject": "Pilot", "date": "2026-07-21T00:00:00Z"},
+                    {"id": "2", "from": "Bo <bo@elsewhere.org>", "to": ["me@x.y"],
+                     "subject": "Unrelated", "date": "2026-07-22T00:00:00Z"}]
+        def get_email_body(self, i): return f"--- Email Body ---\nbody {i}"
+
+    box = ByDomain()
+    items, coverage = inv.gather("UNSW", ["@unsw.edu.au", "unsw.edu.au", "UNSW"], days=90,
+                                 clients={"outlook": box}, subscriptions={}, record="orgs/unsw.md")
+    assert box.asked == ["unsw.edu.au"]
+    assert [i["text"].split("\n")[-1] for i in items] == ["body 1"]
+    assert "searched on the server for unsw.edu.au" in coverage[0] and "1 matched" in coverage[0]
+
+
+def test_a_person_handle_shaped_like_a_domain_is_not_a_domain_search():
+    """"vern.chan" is a person's alias, not a domain; people keep their own path."""
+    class Listing(Quiet):
+        listed = 0
+        def list_between(self, s, e, n):
+            self.listed += 1
+            return []
+        def list_with(self, *a, **k): raise AssertionError("searched a person by domain")
+
+    box = Listing()
+    inv.gather("Vern", ["vern.chan", "Vern"], days=14, clients={"outlook": box}, subscriptions={},
+               record="people/vern.md")
+    assert box.listed
+
+
+def test_session_progress_carries_a_count_and_never_repeats_a_line(tmp_path, monkeypatch):
+    """Sessions printed up to 24 identical "gathering claude-code sessions" lines and
+    no count (#1963): a reader could not tell progress from a loop."""
+    from connectonion.rem.source import Batch
+    batches = iter([Batch([{"text": "a", "timestamp": "2026-07-01T00:00:00+00:00"}] * 40, {"n": 1}),
+                    Batch([], {"n": 2}),
+                    Batch([{"text": "b", "timestamp": "2026-07-02T00:00:00+00:00"}] * 3, {"n": 3}),
+                    Batch([], {"n": 3})])
+    monkeypatch.setattr(inv, "collect", lambda *a, **k: next(batches))
+    lines = []
+    inv.gather("Vern", ["vern"], days=14, clients={}, record="people/vern.md",
+               subscriptions={"claude-code": {"kind": "claude-code", "root": str(tmp_path)}},
+               stage_progress=lambda stage, *counts: lines.append(stage))
+    assert lines == ["gathering claude-code sessions: 40 scanned", "gathering claude-code sessions: 43 scanned"]
+
+
 def test_a_mailbox_not_searched_is_named_in_coverage():
     _, coverage = inv.gather("Vern Chan", ["vern.chan@unsw.edu.au"], days=30, clients={"outlook": Quiet()},
                              subscriptions={"gmail": {"kind": "gmail", "unsubscribed": True}})
@@ -629,6 +683,31 @@ def test_the_status_line_never_names_the_evidence_layout_as_a_source():
     ]
 
     assert inv.searched_sources(coverage) == ["outlook", "gmail", "codex", "claude-code"]
+
+
+def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monkeypatch):
+    """Owner, 2026-09-30: the script already read everything before the last
+    investigation into the page; asking again re-read months to add a week."""
+    from datetime import date, timedelta
+    root = _notebook(tmp_path, "codex")
+    notebook = inv.Notebook(root)
+    assert inv.window_since(notebook.read("people/vern.md")) == 150        # never investigated
+    ten_days_ago = (date.today() - timedelta(days=10)).isoformat()
+    page = notebook.read("people/vern.md").replace("· not investigated yet", f"· investigated {ten_days_ago} (gmail)")
+    notebook.write("people/vern.md", page)
+    assert 10 <= inv.window_since(page) <= 12                               # UTC vs local date at the edges
+
+    seen = {}
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: ([], []))
+
+    def write(book, material, config, **kw):
+        seen["coverage"] = next(i["text"] for i in material if i["role"] == "coverage")
+        return {"changed": [], "usage": None}
+
+    out = inv.investigate(root, "people/vern.md", "Vern", ["vern@x.y"], days=11, clients={}, subscriptions={},
+                          runner=write)
+    assert f"Page last investigated {ten_days_ago}" in seen["coverage"]
+    assert not any(s.startswith("Page last") for s in inv.searched_sources(out["coverage"]))
 
 
 def test_only_whole_addresses_are_searched_on_the_mail_server():
