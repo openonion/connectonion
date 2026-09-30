@@ -222,6 +222,11 @@ class Notebook:
                        "How the user writes to them", "Cadence", "Uncertainties")
     PERSON_CONTACT = ("Email", "Phone", "Company", "Role", "Signing entity",
                       "Handles", "Language", "Also known as")
+    # The lead under the title, before `Contact` (#1974, #1580): who they are to
+    # the user, what is open, last contact. A real page opened on eight contact
+    # fields with its one open thread at line 33. No heading, so the roster's
+    # section list and every page already written stay valid.
+    PERSON_LEAD = "Unknown — not investigated yet. Last contact: Unknown."
 
     def stub_person(self, record: str, name: str, handles=(), **known) -> bool:
         """Create the page with its sections already in place, all Unknown.
@@ -243,7 +248,7 @@ class Notebook:
         # stage had, and sends the paid stage looking for it.
         seeded = {"Handles": ", ".join(handles), "Also known as": ", ".join(handles)}
         seeded.update({k.replace("_", " ").capitalize(): v for k, v in known.items() if v})
-        lines = [f"# {name}", "", "## Contact"]
+        lines = [f"# {name}", "", self.PERSON_LEAD, "", "## Contact"]
         lines += [f"- {label}: {seeded.get(label) or 'Unknown'}" for label in self.PERSON_CONTACT]
         for section in self.PERSON_SECTIONS:
             lines += ["", f"## {section}", "- Unknown — not investigated yet"]

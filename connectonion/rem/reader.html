@@ -525,6 +525,8 @@ const MECHANICAL = new Set(["contact", "history", "uncertainties", "sources", "p
 // What mapping writes where an answer will go (files.py): a placeholder, not a finding.
 const PLACEHOLDER = /identity unverified|classification unassessed|^\s*[-*]\s*\(none yet\)\s*$/i;
 const STAMP = /^Investigation:[^\n]*$/m;
+// A person page's lead as mapping writes it (files.py PERSON_LEAD, #1974): a slot, not a finding.
+const UNFILLED_LEAD = /^Unknown\s*—\s*not investigated yet\.?(?:\s*Last contact:\s*Unknown\.?)?$/i;
 const KNOWN = new Map();
 function known(r) {
   if (KNOWN.has(r.path)) return KNOWN.get(r.path);
@@ -536,7 +538,7 @@ function known(r) {
   let intro = "";
   for (const part of body.split(/^(?=## )/m)) {
     const head = /^## ([^\n]*)\n?/.exec(part);
-    if (!head) { intro = part.trim(); continue; }
+    if (!head) { intro = UNFILLED_LEAD.test(part.trim()) ? "" : part.trim(); continue; }
     const text = part.slice(head[0].length).split("\n").filter(l => !UNKNOWN_LINE.test(l) && !PLACEHOLDER.test(l) && !repeatsTitle(l)).join("\n").trim();
     if (text) kept.push({ title: head[1].trim(), text });
     else if (!MECHANICAL.has(head[1].trim().toLowerCase())) missing.push(head[1].trim());
@@ -546,7 +548,8 @@ function known(r) {
   // investigation pass ran; a page can still hold findings from before one.
   const investigated = /\binvestigated\b/.test(stamp.replace(/not investigated yet/, "")) || (!stamp && !missing.length);
   const status = investigated ? "Investigated" : learned ? "Some findings" : "Mapped";
-  const last = (/\blast:\s*(\d{4}-\d{2}-\d{2})/.exec(r.text) || [])[1] || String(r.updated || "").slice(0, 10);
+  // A mapped History line says "last: <date>"; an investigated lead says "Last contact: <date>".
+  const last = (/\blast(?: contact)?:\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || String(r.updated || "").slice(0, 10);
   const summary = (intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || kept.find(k => k.title.toLowerCase() === "history") || { text: "" }).text
     .split("\n").map(l => l.replace(/^\s*[-*]\s*/, "").replace(/[#*`>]/g, "").trim()).find(Boolean) || "";
   const k = { intro, kept, missing, status, last, summary, stamp: stamp.replace(/^Investigation:\s*/, "") };

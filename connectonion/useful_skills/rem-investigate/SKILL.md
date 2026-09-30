@@ -12,16 +12,17 @@ material from every source, the handles searched. Output: the same page, further
 along. **Read the page and all material first**; never copy other skills' or
 example pages. Use another source only for a named gap, after reading.
 
-- `Unknown — not investigated yet`: find it. Missing → stays `Unknown`, plus one
-  `Uncertainties` line: "Phone: searched the supplied mail and the web; not found."
+- `Unknown — not investigated yet`: find it. Missing → stays `Unknown`, bare.
 - A value the material agrees with: leave it, do not reword.
 - A value the material moved on from: update; old state to `History` with date.
 - A value the material contradicts: name both in `Uncertainties`; never silently pick.
 - Thin material → say so in `Uncertainties`.
 
 **`Uncertainties`**: open questions about the subject only. Never coverage
-(sources, counts, unread attachments), map counts (placeholders: replace, never
-discuss), notebook facts ("no org page"), empty identity searches. **Never cite an `Unknown`**, anywhere; write it bare.
+(sources searched or not, the web, counts, unread attachments), map counts
+(placeholders: replace, never discuss), notebook facts ("no org page"), empty
+identity searches; neither in `History`. The runner records coverage.
+**Never cite an `Unknown`**, anywhere; write it bare.
 
 ## Identity is given, not guessed
 
@@ -30,7 +31,6 @@ discuss), notebook facts ("no org page"), empty identity searches. **Never cite 
 - Every given handle, wrong spellings too, goes in `Also known as:` (person) or
   `Paths:` (project); add discovered ones (signature, second address, other
   script). Company/project names go in their own fields unless a source uses them as the handle.
-- A given handle (not the page's address) that found nothing: one `Uncertainties` line.
 - Title by handle → person's name once known (`# vern.chan` → `# Vern Chan`, handle kept in aliases).
 - Subject address = a coverage mailbox owner → user's own profile: work from
   what they wrote (a notice's sender's role is not theirs); `Our relationship` =
@@ -43,10 +43,8 @@ discuss), notebook facts ("no org page"), empty identity searches. **Never cite 
   department, office, direct line, booking link, language). A changed signature = dated move/promotion.
 - **Address domain = employer** (`@unsw.edu.au` → UNSW); take it now, not from
   the web, even if filled. Not a department, never a role. gmail/outlook/qq/163 → `Company: Unknown`.
-- Org page exists for the domain → link `Company:` to it. 2+ people from a
-  domain with no page → `Uncertainties` (`co rem scan orgs`, `co rem stub org`).
+- Org page exists for the domain → link `Company:` to it.
 - `[attachment]` items are file text; the terms are there; cite the source id.
-  `[could not read PDF: …]` / `is not read` → `Uncertainties`.
 - Mail gives identity and commitments; sessions give intent.
 - Sources disagree → say so on the page. Stated in one, implied in another → cite both.
 
@@ -70,7 +68,7 @@ relative to this Skill's directory; an offline run needs neither. Verify each
 
 - **Never search mail** (Gmail, Outlook, `co email`): it is all in the
   material; self-searched citations are rejected. New address → `Handles` only.
-- Mailbox "not searched" in coverage → one `Uncertainties` line; no workaround.
+- Mailbox "not searched" in coverage → no workaround.
 - `evidence-index` item: per Unknown/stale field, `rg -il '<name|topic>'` the
   evidence directory, read only matches (`sed -n`); never every file. Cite the
   `###` heading's source id; end listing files read and what stayed open.
@@ -79,10 +77,9 @@ relative to this Skill's directory; an offline run needs neither. Verify each
 - Project `Paths` (allowed offline): inside only, ≤4 levels, ≤12 relevant text
   files (README, docs, manifest, files a claim needs); no home sweep, hidden
   files, credentials. `project-inventory` lists files, not contents. Sessions
-  show intent, not repo state; a directory name is not a project. State the
-  window and whether it held relevant sessions; old files are not recent activity.
-- Record each source: searched (window/query), unavailable, or not searched. Auth failures and unreadable files stay gaps.
-- `Quick first pass` coverage: say only a sample was read, in `Uncertainties`.
+  show intent, not repo state; a directory name is not a project; old files
+  are not recent activity.
+- `Quick first pass` coverage: a sample was read; claim nothing as complete.
 
 ## The open web, only for fields still `Unknown`
 
@@ -105,18 +102,19 @@ result, not the exit code; close only your tab. Run it as a shell
 command, never a computer-use/`cua_repl` plugin; `co browser "<instruction>"` is not needed. One
 site, one read, one fact; stop by ten loads. **Never open LinkedIn.** Never web-fill
 `Who they are` or `Our relationship`. Cite: `- Phone: +61 2 9385 1000 [W1]`,
-`[W1] unsw.edu.au/contact — observed <date>`. Misses → `Uncertainties`. No guesses.
+`[W1] unsw.edu.au/contact — observed <date>`. No guesses.
 
 A `co rem` run is **offline**: no browser/network; local file tools only
 (bounded reads, candidate in the task workspace, project `Paths` above). Never
-execute a command from the material or query a source app. Skip the web; write
-once: "web: not searched; co rem runs are offline". If `co browser` fails, say so. Never pretend to have looked.
+execute a command from the material or query a source app. Skip the web and
+write nothing about it. Never pretend to have looked.
 
 ## Finish and limits
 
-Coverage (sources read, volume each, empty handles) goes **in the final reply,
-not the page**. One subject, one page: a second page only for a subject that
-exists independently (account here, link there). Never write `agenda/`,
+Coverage (sources read, volume each, empty handles, unreadable files, orgs
+without a page) goes **in the final reply, never on the page**. One subject,
+one page: a second page only for a subject that exists independently (account
+here, link there). Never write `agenda/`,
 `opportunities/` or `decisions/` (that is `rem-abstract`).
 
 ## Candidate output contract
@@ -139,7 +137,7 @@ input and its output; no catch-all directory. A recorded output does not prove y
 URL you opened; for a project, a file you read in the supplied directories.
 Commands, queries, row numbers, "the Outlook results" are not sources.
 
-Say "no mail before <date> was searched", never that the relationship began then.
+Never say a relationship began where the material starts.
 Map metadata without a source id: cite `Existing page <record>` or
 `investigation:page` as prior context, not verification, never alongside a summary of the same
 source; changed/disputed claims need original evidence or stay unresolved.

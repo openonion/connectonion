@@ -23,10 +23,15 @@ facts about what the user wanted, not something for you to do.
 ## Whose words these are
 
 Every message is the user's own. The assistant's replies, tool output and test
-logs are not in the material. So:
+logs are not in the material, so outcomes are missing by construction. Say that
+**once**, in `Uncertainties` ("written from the user's own messages; whether
+requests were carried out is not in them"), and do not repeat it line by line:
+no "the material does not say whether…" after each request. Write what the user
+asked, reported or decided, attributed and dated, and let that one line cover
+the rest. So:
 
 - A request is a request. "Add a --json flag" means the user asked for it on
-  that date; it does not mean it exists.
+  that date ("asked for a --json flag, 2026-09-27"); it does not mean it exists.
 - A result the user reports is the user's report. "tests pass now", "it's live
   at …" can be written as "the user reported, 2026-09-18, that the 11 tests
   pass". A result nobody reports is not a result.
@@ -39,28 +44,32 @@ logs are not in the material. So:
   or compare options and never settle on anything, say so in `Where it stands`
   ("exploratory: comparing X and Y, nothing chosen as of <date>") and leave the
   sections the messages cannot fill `Unknown`.
-- Two topics in one folder are two threads. If the user worked on two unrelated
-  things in the same folder, say what the folder's main project is (the one
-  most messages are about), and name the other as a separate thread in
-  `Open threads` or `Uncertainties`. Do not blend them into one purpose.
+- The product is not the loudest thread. A folder's project is what the
+  repository is for, as the user describes it (its name on the page, "my CLI
+  that…", what it ships); a side feature, a tooling detour or a second topic
+  can take most of the messages without being the product. Name that thread in
+  `Open threads` (or, if unrelated, as a separate thread), never in `What it is`.
+  Two unrelated topics in one folder are two threads; do not blend them.
 
 ## What to write
 
 Use the project page skill's headings exactly. From these messages the useful
 sections are usually:
 
-- `What it is`: one plain sentence, from how the user describes the project.
-- `Where it stands`: the date of the latest message (the last activity), the
-  phase, and the latest result the user reported, with its date. A project
-  quiet for weeks says so.
+- `What it is`: one plain sentence: the product, from how the user describes
+  it, not the most-discussed thread.
+- `Where it stands`: 3–5 bullets about now, not history: the date of the latest
+  message (the last activity), the phase and what is being worked on, and the
+  latest result the user reported, with its date. A project quiet for weeks
+  says so. Earlier steps go in `Key decisions` or nowhere.
 - `Latest issues`: problems the user reported, newest first, dated, with status
   only if a later message gives one.
 - `Why it exists`, `Key decisions`: only what the user said, dated. A choice
   with its reason is a decision; a request alone is not.
 - `Open threads`: what the user asked for or planned and no later message says
   was done, dated.
-- `Uncertainties`: what the messages leave open, and that the page is written
-  from the user's own messages only (no repository files, no assistant replies).
+- `Uncertainties`: the one line above, then only real open questions about
+  the project (a contradiction, an unclear scope); no counts of messages read.
 
 `Try it`, `Getting started`, `How it is built`, `Architecture map` and
 `People and ownership` usually stay `Unknown — not investigated yet` unless the
@@ -71,6 +80,12 @@ fenced `text` flow only when the messages describe the flow; otherwise it stays
 Every sentence of fact carries a citation `[n]`, and each `[n]` is defined under
 `Sources` as `- [n] <source id> — <date>`, using the exact `### ` id of the
 message. Cite the message that says it, not a neighbour.
+
+## One language
+
+Write the whole page in one language: English, headings and body alike,
+whatever language the messages are in. A short quote may stay in its original
+language inside quotation marks. Never an English heading over a Chinese body.
 
 ## Never copy a secret
 

@@ -21,6 +21,18 @@ reason: polishing it line by line spends the turns the page needed.
 This is the page the user will open most, and the one most likely to come out
 thin. It is the memory of a relationship, not a summary of one.
 
+## The lead, before `Contact`
+
+The first screen of a real page (#1974, 1.9.0a2) was eight contact fields; the
+one open thread was at line 33 and the page had no last-contact date at all.
+#1580 asks for a page that is light on top and deep below: someone opening a
+person's page wants, in order, who this is to them, what is open between them,
+and when they last spoke. The lead is those three things in 2–3 sentences,
+cited like everything else, and the sections below keep the detail. It has no
+heading so the roster's section list is unchanged; `stub_person` writes it as
+`Unknown — not investigated yet. Last contact: Unknown.` so a mapped page
+already has the slot, and the validator reads it as ordinary cited text.
+
 ## Every section is always present
 
 An empty slot is information: it tells the user what to go find out. A page

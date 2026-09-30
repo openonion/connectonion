@@ -11,9 +11,8 @@ Why these rules: docs/rem-skills/rem-page-person.md
 about this person: read both in full, then write the page. Do not look for
 example pages, earlier outputs, logs, other skills or the repository to copy a
 format from; the shape is below. Look beyond the material only for a gap you can
-name (a phone number, an employer), and record what you checked in
-`Uncertainties`. Write the whole page in one go, check it once against the
-rules, fix what is wrong in one edit, and stop.
+name (a phone number, an employer). Write the whole page in one go, check it
+once against the rules, fix what is wrong in one edit, and stop.
 
 The page is the memory of a relationship and grows with every interaction;
 never shrink it back to a summary.
@@ -27,6 +26,8 @@ The following is structure only. Placeholders are never evidence. Use only suppl
 
 ```markdown
 # <observed name>
+
+Unknown — not investigated yet. Last contact: Unknown.
 
 ## Contact
 - Email: Unknown
@@ -71,6 +72,12 @@ The following is structure only. Placeholders are never evidence. Use only suppl
 
 Rules:
 
+- **The lead comes first**: under the title, before `Contact`, 2–3 cited
+  sentences a reader gets on the first screen: who they are to the user and the
+  relationship; what is open between them, who owes whom what (or `Nothing open
+  as of <date>`); and `Last contact: <date>` (the newest message either way,
+  with its channel). It shortens the sections below and never contradicts
+  them; no contact details, no heading.
 - **`Contact` is fields, not prose.** Never put a contact detail in a sentence
   or the summary instead of its field; a missing one stays `Unknown`.
 - **`Language` is observed**: the language the person writes to the user in,
@@ -102,8 +109,9 @@ Rules:
   arrive filled from the mapped addresses; keep them. Material about somebody
   else (same first name) is left out and named in `Uncertainties`; it never
   empties this person's fields.
-- **`Uncertainties`** lists what is unknown, inferred but unconfirmed, or
-  referenced but not read.
+- **`Uncertainties`** lists what is unknown about this person, inferred but
+  unconfirmed, or referenced but not read. Never where you searched or how much
+  you read: the runner records coverage.
 - **Numbered claims.** Each entry: the claim, confidence (high / medium / low),
   date observed, source id. Reuse a number for a repeated claim; never list one
   claim under two numbers. List only claims a sentence cites.

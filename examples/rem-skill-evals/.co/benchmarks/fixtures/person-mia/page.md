@@ -1,5 +1,7 @@
 # Mia Chen
 
+Unknown — not investigated yet. Last contact: Unknown.
+
 ## Contact
 - Email: mia.chen@harbouranalytics.example
 - Phone: Unknown

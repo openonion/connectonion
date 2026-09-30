@@ -198,7 +198,23 @@ def test_map_creates_the_page_with_its_structure_already_settled(tmp_path):
     # The handles it was given are on the page; everything else is a work item.
     assert "- Handles: emma, 艾茅, szh526" not in page
     assert "- Also known as: emma, 艾玛, szh526" in page
-    assert page.count("Unknown — not investigated yet") == len(Notebook.PERSON_SECTIONS)
+    # Every section, plus the lead under the title.
+    assert page.count("Unknown — not investigated yet") == len(Notebook.PERSON_SECTIONS) + 1
+
+
+def test_a_person_page_opens_on_its_lead_before_the_contact_fields(tmp_path):
+    """#1974: a real page opened on eight contact fields, its one open thread at
+    line 33 and no last-contact date anywhere. The lead slot sits under the
+    title, before `Contact`, with no heading of its own (#1580)."""
+    for name in CATEGORIES:
+        (tmp_path / name).mkdir(parents=True, exist_ok=True)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/mia.md", "Mia Chen", ["mia@harbour.example"])
+
+    lines = notebook.read("people/mia.md").splitlines()
+
+    assert lines[:5] == ["# Mia Chen", "", Notebook.PERSON_LEAD, "", "## Contact"]
+    assert "Last contact:" in Notebook.PERSON_LEAD
 
 
 def test_a_second_map_pass_does_not_overwrite_an_investigated_page(tmp_path):
@@ -319,3 +335,18 @@ def test_a_page_the_notebook_cannot_use_is_skipped_by_name_and_refused_by_name(t
     assert record in warning and why in warning
     with pytest.raises(RemError, match=record):
         note.read(record)
+
+
+def test_a_written_lead_is_what_the_roster_recognises_someone_by(tmp_path):
+    """The lead is the page's first line of prose, so the maintainer matching a
+    name in a session sees who the person is to the user, not a contact field."""
+    _person(tmp_path, "people/mia.md", "\n".join([
+        "# Mia Chen", "",
+        "Mia leads Harbour Analytics' data platform and is the user's pilot client [1]. "
+        "She owes the signed SOW by 3 October [2]. Last contact: 2026-09-10, her email [2].",
+        "", "## Contact", "- Email: mia@harbour.example", "- Phone: Unknown",
+    ]))
+
+    summary = Notebook(tmp_path).people()[0]["summary"]
+
+    assert summary.startswith("Mia leads Harbour Analytics")

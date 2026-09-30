@@ -41,7 +41,52 @@ def problems(case: Path, page: str) -> list[str]:
     # sees only the first 4,000 characters, so it cannot say.
     forbidden = fixture / "forbidden.txt"
     leaked = [s for s in (forbidden.read_text().split("\n") if forbidden.is_file() else []) if s and s in page]
-    return found + [f"lost mapped line: {line}" for line in kept] + [f"forbidden text on the page: {s[:12]}…" for s in leaked]
+    return (found + [f"lost mapped line: {line}" for line in kept]
+            + [f"forbidden text on the page: {s[:12]}…" for s in leaked] + shape(record, page))
+
+
+def section(page: str, heading: str) -> str:
+    match = re.search(rf"(?ms)^## {re.escape(heading)}[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)", page)
+    return match.group(1) if match else ""
+
+
+# #1974: what a reader sees first, and filler the judge might let through.
+COVERAGE = re.compile(r"web: not searched|runs are offline|\bweb\b[^.\n]{0,40}\bnot searched", re.I)
+HEDGE = re.compile(r"\b(?:do|does|did)(?: not|n't) (?:say|show|confirm|state|record|mention|report)\b"
+                   r"|\bnot (?:confirmed|verified|recorded|stated|reported)\b|\bunconfirmed\b|\bunverified\b"
+                   r"|\bno later message\b|\bwhether (?:it|this|that|they|these|the \w+) (?:was|were|is|are) "
+                   r"(?:done|built|implemented|carried out|completed|shipped|delivered)\b", re.I)
+MAX_HEDGES, MAX_STANDS = 3, 5
+QUOTED = re.compile(r"“[^”]*”|\"[^\"\n]*\"|「[^」]*」|‘[^’]*’|`[^`\n]*`")
+CJK = re.compile(r"[㐀-鿿]")
+
+
+def shape(record: str, page: str) -> list[str]:
+    """The page-shape rules of #1974 that a count can check without a judge."""
+    found = [f"coverage filler on the page: {m[0]!r}" for m in COVERAGE.finditer(page)]
+    if record.startswith("people/"):
+        # The lead: prose between the title and `## Contact`, 2–3 sentences, ending in a last-contact date.
+        lead = re.search(r"(?ms)\A# [^\n]*\n(.*?)^## Contact", page)
+        text = lead.group(1).strip() if lead else ""
+        if not text or text.startswith("Unknown — not investigated yet"):
+            found.append("no lead before Contact")
+        elif not re.search(r"Last contact:\s*(?:\d{4}-\d{2}-\d{2}|Unknown)", text):
+            found.append("the lead gives no 'Last contact: <date>'")
+        elif len([l for l in text.splitlines() if l.strip()]) > 3 or len(text) > 700:
+            found.append(f"the lead is not short: {len(text)} characters")
+    if record.startswith("projects/"):
+        stands = [l for l in section(page, "Where it stands").splitlines() if re.match(r"\s*[-*] ", l)]
+        if len(stands) > MAX_STANDS:
+            found.append(f"Where it stands has {len(stands)} bullets (at most {MAX_STANDS})")
+        body = re.split(r"(?m)^## Uncertainties", page)[0]
+        hedges = HEDGE.findall(body)
+        if len(hedges) > MAX_HEDGES:
+            found.append(f"{len(hedges)} hedges above Uncertainties (at most {MAX_HEDGES}): {hedges[:4]}")
+        # One language: English, a short quote may keep its own script.
+        prose = QUOTED.sub("", re.split(r"(?m)^## Sources", page)[0])
+        if len(CJK.findall(prose)) > 12:
+            found.append(f"{len(CJK.findall(prose))} CJK characters outside quotes on an English page")
+    return found
 
 
 def main() -> int:
