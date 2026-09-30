@@ -37,12 +37,30 @@ class NothingFound(RemError):
         self.usage = usage
 
 
-def _nothing_found(record: str, subject: str, coverage: list[str], *, me: bool = False,
-                   digested: bool = False, usage=None) -> NothingFound:
+class NothingNew(NothingFound):
+    """A page investigated before whose window since then gathered nothing: no model turn (#1984).
+
+    1.9.0a3 made a 92k-token turn for a person whose since-window held 0 mails
+    and 0 sessions; its only change was deleting one Uncertainties line. For a
+    project the file list is always there, so it alone does not count as new.
+    """
+
+
+def _searched(coverage: list[str]) -> str:
     searched = "; ".join(line for line in coverage
                          if not line.startswith(("Requested investigation window", "Quick first pass",
                                                  "Page last investigated")))
-    searched = searched if len(searched) <= 400 else searched[:400] + "…"
+    return searched if len(searched) <= 400 else searched[:400] + "…"
+
+
+def _nothing_new(record: str, subject: str, coverage: list[str], last) -> NothingNew:
+    return NothingNew(f"Nothing new since {last.isoformat()} for {subject} ({_searched(coverage) or 'no source searched'}). "
+                      f"No model was called; {record} is unchanged and keeps its status line.")
+
+
+def _nothing_found(record: str, subject: str, coverage: list[str], *, me: bool = False,
+                   digested: bool = False, usage=None) -> NothingFound:
+    searched = _searched(coverage)
     why = ("every digest of the material came back empty" if digested
            else "no mail, attachment, session or chat message about them was found")
     target = "me" if me else record
@@ -622,6 +640,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     coverage.append(f"Requested investigation window: {days} days ending "
                     f"{datetime.now(timezone.utc).date().isoformat()}")
     last = last_investigated(notebook.read(record))
+    if last and not items:
+        raise _nothing_new(record, subject, coverage, last)
     if last:
         # The page already reflects what came before; say so where the turn
         # reads it, so it adds the new material instead of rewriting the page.
@@ -749,7 +769,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
          if (linkable := org_pages(notebook, record, handles)) else []) + (
         [{"role": "quick-first-pass", "source": "investigation:quick-scope",
            "timestamp": now, "text": "This is a bounded, partial first pass. Use only the supplied sample; "
-                                     "disclose the sampling limit in Uncertainties."}]
+                                     "state the sampling limit in your final reply, not on the page."}]
          if quick else []) + items
     if original_material:
         prompt_items.append({"role": "original_evidence", "source": "investigation:original-evidence",

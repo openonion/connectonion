@@ -23,7 +23,7 @@ from zoneinfo import ZoneInfo
 from . import quota
 from .config import read_config
 from .files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
-from .investigate import investigate
+from .investigate import NothingFound, NothingNew, investigate
 from .service import mail_client, now, run_logs, run_sync, status, subscriptions
 
 # At most this many calls for the first run's portion. It was "everything but
@@ -190,9 +190,9 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
                                                      max_calls=calls)
                 except RemError as error:
                     # A refused page keeps its items pending; the portion goes on.
-                    calls -= required
-                    done.append({'page': target, 'outcome': 'refused' if 'rejected' in str(error) else 'failed',
-                                 'why': str(error)[:300]})
+                    # One stopped before any model call costs the portion nothing (#1984).
+                    calls -= 0 if isinstance(error, NothingFound) and not error.usage else required
+                    done.append({'page': target, 'outcome': _outcome(error), 'why': str(error)[:300]})
                     _add_usage(usage, getattr(error, 'usage', None))
                     continue
                 calls -= required
@@ -211,6 +211,11 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
                 try:
                     result = (investigate_one or investigate)(root, target, title, handles, days=days,
                                   clients=clients, subscriptions=sources, max_calls=calls)
+                except NothingFound as error:
+                    # Nothing to write from is this page's answer, not the round's failure.
+                    done.append({'page': target, 'outcome': _outcome(error), 'why': str(error)[:300]})
+                    _add_usage(usage, error.usage)
+                    continue
                 except RemError as error:
                     if 'call budget' not in str(error):
                         raise
@@ -234,6 +239,12 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
     investigation = None if failed or not done else {'pages': done, 'left': record.get('left')}
     return {'outcome': 'partial' if failed else 'completed',
             'maintenance': maintenance, 'investigation': investigation, 'run': record}
+
+
+def _outcome(error: RemError) -> str:
+    """What one page's run came to, in the words logs use."""
+    return ('nothing_new' if isinstance(error, NothingNew) else 'nothing_found' if isinstance(error, NothingFound)
+            else 'refused' if 'rejected' in str(error) else 'failed')
 
 
 def _stopped(root, config) -> str:
@@ -298,8 +309,7 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
                 changed += result.get('changed', [])
             except RemError as error:
                 # One refused page does not stop the others; its material stays pending.
-                done.append({'page': row['record'], 'mode': row['mode'],
-                             'outcome': 'refused' if 'rejected' in str(error) else 'failed',
+                done.append({'page': row['record'], 'mode': row['mode'], 'outcome': _outcome(error),
                              'why': str(error)[:300]})
                 _add_usage(usage, getattr(error, 'usage', None))
         left = len(rows) - sum(1 for row in done if row['outcome'] == 'accepted')
