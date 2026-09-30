@@ -617,3 +617,24 @@ def test_one_unreadable_mail_body_does_not_skip_the_first_run(first_run, monkeyp
     assert calls and calls[0]["record"] == owner_record(root)
     text = Text.from_ansi(result.output).plain
     assert "could not be saved" in text and "co auth status" not in text
+
+
+def test_a_refused_full_owner_page_falls_back_to_the_quick_first_pass(first_run, monkeypatch):
+    """Two of three real first runs (2026-10-01) had the full owner page refused
+    for citing nothing from a 139k-character evidence file; the bounded quick
+    pass, with its sample in the prompt, wrote the page on the same mailbox."""
+    from connectonion.rem.runner import RunFailed
+    tried = []
+
+    def full_refused(root, days=None, quick=False, **kw):
+        tried.append(quick)
+        if not quick:
+            raise RunFailed("Candidate rejected: page cites only the page itself")
+        return {"record": "people/me.md"}, "people/me.md"
+
+    monkeypatch.setattr("connectonion.cli.commands.rem_commands._investigate_me", full_refused)
+    root, init, _ = first_run
+    result = init("--json", "--investigate")
+    assert result.exit_code == 0, result.output
+    assert tried == [False, True]
+    assert json.loads(result.stdout)["data"]["investigate_me"]["outcome"] == "completed"

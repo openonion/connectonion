@@ -384,6 +384,24 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
         stage_progress=update), quiet=quiet)
 
 
+def _write_my_page(root, days, say):
+    """Your page in full; refused, the bounded quick pass instead (2026-10-01).
+
+    Two of three real first runs had the full page refused for citing nothing
+    from a 139k-character evidence file; the quick pass, its sample in the
+    prompt, wrote the page on the same mailbox. The first page is the one the
+    owner reads first, so it falls back rather than stays empty.
+    """
+    from ...rem.runner import RunFailed
+    try:
+        return _investigate_me(root, days=days, quick=False)
+    except RunFailed as error:
+        if "rejected" not in str(error):
+            raise
+        say(f"Your full page was refused ({str(error)[:100]}); writing the quick first pass instead.")
+        return _investigate_me(root, days=days, quick=True)
+
+
 # The first run's spending (owner, 2026-09-30, raised 2026-10-01): your page
 # from everything you sent, the people you wrote to in the last two weeks and
 # your recent projects, several at once. A real first run wrote 188 pages for
@@ -768,7 +786,7 @@ def make_rem_app(factory):
                         "keeps the map and every page written. (--no-investigate skips this.)")
                 rem_look.say(rem_look.highlight(cost, counts=True), err=ctx.obj["json"], plain=cost)
                 try:
-                    _investigate_me(root, days=days if window else None, quick=False)
+                    _write_my_page(root, days if window else None, say)
                 except KeyboardInterrupt:
                     result.update(investigation="interrupted",
                                   investigate_me={"started": True, "outcome": "interrupted"})
