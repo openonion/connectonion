@@ -57,8 +57,31 @@ def project_paths(page: str) -> list[str]:
     or session matching on the next run.
     """
     section = page.partition("## Paths\n")[2].split("\n## ", 1)[0]
-    return [re.sub(r"\s+\[\d+\](?:\s*\[\d+\])*\s*$", "", line[2:].strip())
-            for line in section.splitlines() if line.startswith("- /")]
+    return [_listed_path(line) for line in section.splitlines() if _listed_path(line)]
+
+
+def _listed_path(line: str) -> str:
+    return re.sub(r"\s+\[\d+\](?:\s*\[\d+\])*\s*$", "", line[2:].strip()) if line.startswith("- /") else ""
+
+
+def collapse_worktree_paths(page: str) -> str:
+    """The page with each worktree under Paths replaced by its main checkout, listed first.
+
+    Pages mapped before #1955 list agent worktrees and read one as the project.
+    Only a line `main_checkout` recognises goes; a folder the owner wrote, and
+    Sessions / First seen / Last seen, stay as they are.
+    """
+    from .scan import main_checkout
+    section = re.search(r"(?ms)^## Paths\n(.*?)(?=^## |\Z)", page)
+    if not section:
+        return page
+    kept, checkouts = [], []
+    for line in section.group(1).splitlines(keepends=True):
+        checkout = main_checkout(_listed_path(line)) if _listed_path(line) else ""
+        (checkouts if checkout else kept).append(checkout or line)
+    listed = {_listed_path(line) for line in kept}
+    body = "".join(f"- {path}\n" for path in dict.fromkeys(checkouts) if path not in listed) + "".join(kept)
+    return page[:section.start(1)] + body + page[section.end(1):]
 
 
 def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
@@ -68,7 +91,7 @@ def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
     lets the model pick evidence from the recorded path without repeatedly
     searching the user's home directory. File names alone prove no project fact.
     """
-    roots = [Path(path).expanduser() for path in project_paths(page)]
+    roots = [Path(path).expanduser() for path in project_paths(collapse_worktree_paths(page))]
     leads = []
     excluded = {".git", ".venv", "venv", "node_modules", "__pycache__", "dist", "build", ".state"}
     suffixes = {".md", ".txt", ".toml", ".py", ".js", ".ts", ".tsx", ".html", ".css", ".swift", ".go", ".rs"}
@@ -500,7 +523,12 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                         "do not claim comprehensive coverage or resolve unsupported conflicts.")
     leads = []
     if record.startswith("projects/"):
-        leads = project_file_inventory(notebook.read(record))
+        # The model reads the page's Paths too; a worktree left there is the
+        # stale copy it would otherwise quote as current (#1955).
+        corrected = collapse_worktree_paths(notebook.read(record))
+        if corrected != notebook.read(record):
+            notebook.write(record, corrected)
+        leads = project_file_inventory(corrected)
         if leads:
             items.append({"role": "project-inventory", "source": "investigation:project-inventory",
                           "text": "Candidate local evidence files, not proof of their contents:\n" +

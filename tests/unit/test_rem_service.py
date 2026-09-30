@@ -413,10 +413,28 @@ def test_lookback_defaults_to_two_months_and_is_capped_per_source_kind(tmp_path,
         toggle_source(root, "codex", True, project=str(tmp_path / "other"), since="400d")
 
 
-def test_sync_all_runs_batches_until_caught_up_regardless_of_the_daily_cap(rem):
+def test_sync_all_runs_batches_until_caught_up(rem):
     root, sessions = rem
-    set_config(root, ["limits.items_per_batch", "2", "limits.extract_items_per_batch", "2",
-                      "limits.runner_calls_per_day", "1"])
+    set_config(root, ["limits.items_per_batch", "2", "limits.extract_items_per_batch", "2"])
+    rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)])
+    calls, lines = [], []
+
+    def runner(notebook, items, config, kind=""):
+        calls.append(len(items))
+        return {"usage": None, "changed": []}
+    summary = run_sync(root, all_pending=True, runner=runner, on_batch=lambda n, record: lines.append(n))
+    assert calls == [2, 2, 2, 1]
+    assert summary["batches"] == 4 and summary["items"] == 7 and summary["outcome"] == "caught_up"
+    assert lines == [1, 2, 3, 4]   # one progress report per batch, as each one finishes
+    assert run_sync(root, all_pending=True, runner=runner)["batches"] == 0
+
+
+def test_sync_all_stops_at_the_daily_cap_and_says_when_it_resets(rem):
+    """On a real notebook `--all` ran 60 attempts against a cap of 30, silently,
+    for 37 minutes (#1957). The backfill keeps the cap every other run keeps."""
+    root, sessions = rem
+    set_config(root, ["schedule.timezone", "Australia/Sydney", "limits.items_per_batch", "2",
+                      "limits.extract_items_per_batch", "2", "limits.runner_calls_per_day", "2"])
     rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)])
     calls = []
 
@@ -424,9 +442,57 @@ def test_sync_all_runs_batches_until_caught_up_regardless_of_the_daily_cap(rem):
         calls.append(len(items))
         return {"usage": None, "changed": []}
     summary = run_sync(root, all_pending=True, runner=runner)
-    assert calls == [2, 2, 2, 1]
-    assert summary["batches"] == 4 and summary["items"] == 7 and summary["outcome"] == "caught_up"
-    assert run_sync(root, all_pending=True, runner=runner)["batches"] == 0
+    assert calls == [2, 2]
+    assert summary["outcome"] == "budget_exhausted" and summary["batches"] == 2 and summary["items"] == 4
+    assert "2026-09-08T00:00+10:00" in summary["reason"]
+    assert status(root)["runner_attempts_today"] == 2
+
+
+def test_ctrl_c_during_sync_all_keeps_what_finished(rem):
+    root, sessions = rem
+    set_config(root, ["limits.items_per_batch", "2", "limits.extract_items_per_batch", "2"])
+    rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)])
+    finished = []
+
+    def runner(notebook, items, config, kind=""):
+        if finished:
+            raise KeyboardInterrupt
+        return {"usage": None, "changed": []}
+    with pytest.raises(KeyboardInterrupt):
+        run_sync(root, all_pending=True, runner=runner, on_batch=lambda n, record: finished.append(record))
+    assert [record["outcome"] for record in finished] == ["completed"]
+
+
+def test_dry_run_says_how_many_runner_attempts_are_left_and_when_they_reset(rem):
+    """`status` said 30/30 while `sync --dry-run` said nothing of it (#1957)."""
+    root, sessions = rem
+    set_config(root, ["schedule.timezone", "Australia/Sydney", "limits.runner_calls_per_day", "1"])
+    rollout(sessions / "rollout-a.jsonl", [("user", "first")])
+    before = run_sync(root, dry_run=True)["daily_cap"]
+    assert (before["used"], before["limit"], before["remaining"]) == (0, 1, 1)
+    run_sync(root, runner=lambda *args, **kw: {"usage": None})
+    spent = run_sync(root, dry_run=True)["daily_cap"]
+    assert (spent["used"], spent["remaining"]) == (1, 0)
+    assert spent["resets_at"] == "2026-09-08T00:00+10:00"   # 22:00 in Sydney: midnight there
+    assert "limits.runner_calls_per_day" in spent["note"]
+
+
+def test_a_run_refused_by_the_daily_cap_leaves_a_record(rem):
+    """The refusal said "Next: logs", and logs had nothing to show (#1957)."""
+    from connectonion.rem.service import run_logs
+    root, sessions = rem
+    set_config(root, ["schedule.timezone", "Australia/Sydney", "limits.runner_calls_per_day", "1"])
+    rollout(sessions / "rollout-a.jsonl", [("user", "first")])
+    run_sync(root, runner=lambda *args, **kw: {"usage": None})
+    rollout(sessions / "rollout-a.jsonl", [("user", "first"), ("user", "second")])
+    with pytest.raises(RemError, match="2026-09-08T00:00") as refusal:
+        run_sync(root, runner=lambda *args, **kw: pytest.fail("invoked"))
+    assert "`co rem config`" in str(refusal.value)
+    # The clock is frozen, so both runs share a start time: find it by outcome.
+    [refused] = [record for record in run_logs(root) if record["outcome"] == "refused"]
+    assert refused["runner_attempts"] == 0
+    assert "limits.runner_calls_per_day" in refused["reason"]
+    assert status(root)["batches_today"] == 1   # a refusal is not a batch
 
 
 def test_claude_code_is_a_real_default_source(tmp_path, monkeypatch):

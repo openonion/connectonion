@@ -646,3 +646,21 @@ def test_only_whole_addresses_are_searched_on_the_mail_server():
                           "Tamara Berryman; t@x.y [2]", "Tamara"], days=7, clients={"gmail": box}, subscriptions={})
 
     assert box.asked == ["tamara.berryman@unsw.edu.au"]
+
+
+def test_investigation_reads_the_main_checkout_not_a_stale_agent_worktree(tmp_path):
+    # A throwaway worktree read as the project's state wrote "version 1.8.9b2"
+    # the day 1.9.0a1 shipped (#1955).
+    main = tmp_path / 'connectonion'
+    (main / '.git/worktrees/agent-a1').mkdir(parents=True)
+    (main / 'pyproject.toml').write_text('version = "1.9.0a1"')
+    worktree = main / '.claude/worktrees/agent-a1'
+    worktree.mkdir(parents=True)
+    (worktree / '.git').write_text(f'gitdir: {main}/.git/worktrees/agent-a1\n')
+    (worktree / 'pyproject.toml').write_text('version = "1.8.9b2"')
+    page = f'# connectonion\n## Paths\n- {worktree} [3]\n- /elsewhere/notes\n- Sessions: 9\n## Sources\n'
+    corrected = inv.collapse_worktree_paths(page)
+    assert inv.project_paths(corrected) == [str(main), '/elsewhere/notes']
+    assert '- Sessions: 9\n' in corrected
+    assert inv.collapse_worktree_paths(corrected) == corrected
+    assert inv.project_file_inventory(page) == [str(main / 'pyproject.toml')]

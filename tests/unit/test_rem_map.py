@@ -689,3 +689,42 @@ def test_an_investigated_page_is_never_held_for_review(tmp_path, monkeypatch):
     assert notebook.read('people/kept.md') == before
     notebook.note_investigation(held[0], 'gmail')
     assert needs_review(tmp_path) == set()
+
+
+def _repository_with_worktrees(tmp_path):
+    """A main checkout, a live agent worktree (a `.git` file pointing home) and
+    one Claude Code already removed, as ~/projects/connectonion looked (#1955)."""
+    main = tmp_path / 'code/connectonion'
+    (main / '.git/worktrees/agent-a1').mkdir(parents=True)
+    live = main / '.claude/worktrees/agent-a1'
+    live.mkdir(parents=True)
+    (live / '.git').write_text(f'gitdir: {main}/.git/worktrees/agent-a1\n')
+    return main, live, main / '.claude/worktrees/agent-b2'
+
+
+def test_worktrees_collapse_to_the_main_checkout_and_an_old_page_is_corrected(tmp_path, monkeypatch):
+    main, live, gone = _repository_with_worktrees(tmp_path)
+    root = tmp_path / 'notebook'
+    prepare(root)
+    nb = Notebook(root)
+    # The page an earlier map wrote: worktrees only, and a folder the owner added.
+    nb.stub_project('projects/connectonion-old.md', 'connectonion', [str(live), str(gone), '/elsewhere/notes'],
+                    sessions=3, first_seen='2026-09-01', last_seen='2026-09-02')
+    monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a: ([], set()))
+    origin = 'https://github.com/openonion/connectonion'
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [
+        {'path': str(main), 'repo': str(main), 'origin': origin,
+         'sessions': 2, 'first': '2026-09-10', 'last': '2026-09-29'},
+        {'path': str(live), 'repo': str(main), 'origin': origin,
+         'sessions': 5, 'first': '2026-09-20', 'last': '2026-09-30'},
+        {'path': str(gone), 'repo': '', 'origin': '',
+         'sessions': 1, 'first': '2026-09-05', 'last': '2026-09-06'}])
+    report = build_map(root, {}, {}, skill_directories=[])
+    assert [row['record'] for row in report['projects']] == ['projects/connectonion-old.md']
+    assert report['projects'][0]['sessions'] == 8
+    page = nb.read('projects/connectonion-old.md')
+    paths = page.partition('## Paths\n')[2].split('\n## ', 1)[0].splitlines()
+    assert paths[0] == f'- {main}'
+    assert '.claude/worktrees' not in page
+    assert '- /elsewhere/notes' in paths
+    assert {'- Sessions: 8', '- First seen: 2026-09-05', '- Last seen: 2026-09-30'} <= set(paths)
