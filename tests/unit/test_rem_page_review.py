@@ -361,6 +361,21 @@ def test_a_page_turn_may_cite_the_page_as_it_stood_and_carry_over_its_sources():
     assert any("identifiable source" in e for e in validate("people/dora.md", invented, original, []))
 
 
+def test_a_person_page_with_a_cited_lead_before_contact_is_accepted():
+    """#1974: the lead has no heading, so the section check is unchanged, and
+    its citations are checked like any other sentence's."""
+    sections = "".join(f"\n## {s}\n- Unknown\n" for s in Notebook.PERSON_SECTIONS)
+    contact = "\n".join(f"- {label}: Unknown" for label in Notebook.PERSON_CONTACT)
+    page = ("# Mia Chen\n\nMia is the user's pilot client and owes the signed SOW by 3 October [{n}]. "
+            f"Last contact: 2026-09-10 [1].\n\n## Contact\n{contact}\n{sections}\n## Sources\n"
+            "- [1] gmail:person-mia:5 — 2026-09-10, high\n")
+    items = [{"source": "gmail:person-mia:5"}]
+
+    assert validate("people/mia.md", page.format(n=1), "", items) == []
+    assert normalize("people/mia.md", page.format(n=1)).startswith("# Mia Chen\n\nMia is the user's pilot client")
+    assert "Missing or duplicate citation: 2" in validate("people/mia.md", page.format(n=2), "", items)
+
+
 # ------------------------------------------- #1974: what an investigation may claim
 
 

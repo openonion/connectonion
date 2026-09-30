@@ -148,15 +148,23 @@ first source and patching with the rest loses that.
   bio pasted there is somebody else's page.
 - **Page-load budget:** five is generous; ten means the site does not have it.
 - **A guess is worse than a gap**: the next pass would build on it.
-- **Offline `co rem` runs** have no browser or network; saying so once stops
-  a reader wondering whether the web was tried.
+- **Offline `co rem` runs** have no browser or network, and the page says
+  nothing about it. The Skill used to require the line "web: not searched; co
+  rem runs are offline"; on the 1.9.0a2 run it was on 5 of 5 pages, the same
+  sentence about the runner on every person, contradicting the rule that
+  `Uncertainties` is about the subject only (#1974). The runner already keeps
+  what was searched in the task record and on the `Investigation:` line.
 
 ## Finish, then say what you did not finish
 
 The coverage reply is kept with the run and tells a later run whether the page
 is worth re-investigating or is simply about someone quiet. An `Uncertainties`
 section that lists every source searched reads as an audit log and buries the
-questions that matter.
+questions that matter. The same counts leaked into `History` too ("8 bodies
+read"), so every line that used to send coverage to `Uncertainties` (a phone
+number searched for, a handle that found nothing, an unreadable PDF, a mailbox
+not searched, a domain with no org page) now sends it to the final reply
+(#1974).
 
 ## What this stage must not do
 

@@ -16,8 +16,7 @@ Why these rules: docs/rem-skills/rem-investigate.md
   file you read as its own source.
 - A `project-inventory` item lists candidate files, not their contents. A
   directory name alone is not a project.
-- State the window and whether it held relevant sessions; old files are not
-  recent activity.
+- Old files are not recent activity.
 
 ## What to produce
 

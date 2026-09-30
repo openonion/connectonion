@@ -90,6 +90,9 @@ def test_a_mapped_page_leads_with_what_is_known(tmp_path, monkeypatch):
     notebook.stub_person("people/quiet.md", "Quiet Person", handles=["quiet@example.com"])
     notebook.write("people/known.md", "# Known Person\n\nRuns the Aurora pilot with us.\n\n"
                    "## History\n- Observed mail count: 3; first: 2026-09-01; last: 2026-09-20.\n")
+    # #1974: an investigated lead dates the last contact, and lists rank by that date, not the file's mtime.
+    notebook.write("people/recent.md", "# Recent Person\n\nThe user's pilot client; owes the SOW [1]. "
+                   "Last contact: 2026-09-10 [1].\n\n## Contact\n- Email: r@example.com\n")
 
     result = CliRunner().invoke(app, ["rem", "--root", str(root), "--json", "open", "--no-launch"])
     link = json.loads(result.stdout)["data"]["link"]
@@ -108,7 +111,7 @@ def test_a_mapped_page_leads_with_what_is_known(tmp_path, monkeypatch):
             page.goto(link + "#c=people")
             page.get_by_role("heading", name="People", exact=True).wait_for()
             titles = page.locator(".hits .t a").all_inner_texts()
-            assert titles.index("Known Person") < titles.index("Quiet Person")
+            assert titles.index("Known Person") < titles.index("Recent Person") < titles.index("Quiet Person")
             assert "Runs the Aurora pilot with us." in page.locator(".hits").inner_text()
         finally:
             browser.close()

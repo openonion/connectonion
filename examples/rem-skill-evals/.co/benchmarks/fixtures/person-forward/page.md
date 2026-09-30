@@ -1,5 +1,7 @@
 # Tom Baker
 
+Unknown — not investigated yet. Last contact: Unknown.
+
 ## Contact
 - Email: tom@brightpath.example
 - Phone: Unknown

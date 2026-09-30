@@ -9,8 +9,7 @@ Why these rules: docs/rem-skills/rem-page-project.md
 
 **How to do it.** Read the page and the material in full. Never search example
 pages, earlier outputs, logs, skills or the repository for a format; look beyond
-the material only for a named gap, recording what you checked in
-`Uncertainties`. Write once, check once, fix in one edit, stop.
+the material only for a named gap. Write once, check once, fix in one edit, stop.
 
 Write for a first-time reader (designer, programmer, operator, nontechnical
 colleague): purpose and flow before implementation, short opening, plain
@@ -52,8 +51,9 @@ language, terms explained. Use exactly these headings:
 
 **The opening: one sentence, one diagram, one entry point**
 
-- `What it is`: one plain sentence: who uses it, to achieve what. No history,
-  stack inventory or unexplained acronyms.
+- `What it is`: one plain sentence: the repository's product, who uses it, to
+  achieve what; never the most-discussed side thread. No history, stack
+  inventory or unexplained acronyms.
 - `Overview`: a compact ASCII diagram in a fenced `text` block, normally 3–7
   labelled steps, about 5–10 lines, narrow-screen readable: the user's starting
   point, main actions or service interactions, outcome. At most one short
@@ -69,10 +69,10 @@ evidence.
 
 **Current work and joining the team**
 
-- `Where it stands`: observation date; last activity date (say if quiet for
-  months); current phase, goal, success criteria; completed versus planned work;
-  latest verified run or test result with date ("11 tests pass, 2026-09-18"), or
-  none found. Passing results go here, not `Latest issues`. A snapshot, not a log.
+- `Where it stands`: 3–5 bullets, now, not a log: last activity date (say if
+  quiet for months); current phase and goal; latest verified run or test result
+  with date ("11 tests pass, 2026-09-18"), or none found. Passing results go
+  here, not `Latest issues`; the past goes in `Key decisions`.
 - `Latest issues`: recent bugs, regressions, blockers, newest first: date,
   symptom, user impact, status, evidence, and a next diagnostic step or issue
   link when known. A report is not a verified diagnosis; a proposed fix is not a

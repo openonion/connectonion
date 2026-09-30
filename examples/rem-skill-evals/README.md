@@ -23,6 +23,11 @@ clear arc, a decision reversed, a folder that was only ever exploration, two
 unrelated topics in one folder, a password pasted in a message (in
 `forbidden.txt`, so `check_pages.py` fails the page if it appears anywhere), and
 an update that gets only the messages since the page was last written.
+Three more came from reading real pages (#1974): a folder whose messages are
+mostly about a side feature (`What it is` must still name the product), a
+project of fifteen requests and one reported result (the "outcomes are not in
+these messages" caveat said once, not per line), and messages mixing Chinese
+and English (one language on the page).
 
 ## What the two checks cover
 
@@ -35,7 +40,12 @@ an update that gets only the messages since the page was last written.
   pipeline (`normalize_numbered_sources` → `restore_runner_fields` →
   `validate`), which is what decides whether a real investigation's page is
   saved or refused. It also checks the whole page for strings in a fixture's
-  `forbidden.txt`.
+  `forbidden.txt`, and the page shape of #1974 that a count can see: a person
+  page opens on a lead with `Last contact:` before `Contact`; no page says the
+  web was not searched; a project's `Where it stands` has at most 5 bullets,
+  at most 3 hedges ("does not say", "unverified", …) sit above `Uncertainties`,
+  and no CJK text stands outside quotation marks. The hedge pattern is English
+  only, which the one-language rule makes enough.
 
 ## Limits
 
@@ -57,3 +67,35 @@ an update that gets only the messages since the page was last written.
 Every failure in the baseline was the agent running out of steps: it read the
 page and the material in two steps, then searched the workspace for example
 pages, logs and other skills to copy a format from.
+
+## Results, 2026-09-30 (#1974: person lead, no coverage filler, project pages from messages)
+
+One case per skill, one run each, co/gemini-3.8-flash, 15 steps, driven
+through `connectonion.benchmark.runner` (agent and judge) with the case list
+cut to one, then `check_pages.py`:
+
+| suite / case | skill | judge checks | check_pages | agent cost |
+|---|---|---|---|---|
+| rem-person / colleague-with-signature | rem-investigate (+ rem-page-person) | 9/9 | pass | $0.17 |
+| rem-project-sessions / many-requests-few-outcomes | rem-project-sessions | 6/6 | pass | $0.14 |
+| rem-project-sessions / product-not-the-loudest-thread | rem-project-sessions | 5/5 | pass | $0.11 |
+| rem-project-sessions / mixed-language-messages | rem-project-sessions | 5/5 | pass | $0.09 |
+
+The "before" is the owner's own notebook as 1.9.0a2 wrote it, read with the
+same shape checks: the coverage line 11 times across the 5 investigated
+people, no lead on any of the 5, and one of the 2 written project pages with
+2,766 CJK characters outside quotes under English headings. One run a case
+shows direction, not a rate.
+
+After #1971 split investigation into a core plus `rem-investigate-<kind>`,
+the same runs were repeated with the instructions composed as production sends
+them (`runner.instructions("investigate", page_kind=…)`, written as a temporary
+skill). `rem-project-sessions / many-requests-few-outcomes` passed again (6/6,
+check_pages pass). The person case and `rem-project / working-cli` ran out of
+15 steps; so did origin/main's own composition on the person case, lead rule
+or not. The agent spent its steps on `git log` / `git show` of the commit that
+added these fixtures: the eval workspace sits inside the repository, and
+nothing keeps git history from the Agent the way `.co/benchmarks/` is kept.
+Given 25 steps, the person page it wrote opened on the lead ("… Mia owes the
+signed SOW by 3 October 2026 [5]. Last contact: 2026-09-10 via Gmail [5].")
+and passed check_pages, with no coverage line.

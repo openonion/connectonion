@@ -27,6 +27,16 @@ share one structure only if the headings match exactly;
 compares every `## ` line in the Skill with the created skeleton. That is why
 the Skill uses bold labels, not `##` headings, for its own subsections.
 
+## `What it is` is the product; `Where it stands` is now
+
+On the 1.9.0a2 notebook the connectonion page's `What it is` described co rem,
+the thread most sessions were about that month, not the repository's product;
+and `Where it stands` ran to 11 bullets of history (#1974). The most-discussed
+thread is a fact about the user's month, not about the project, so it goes in
+`Open threads`. `Where it stands` is 3–5 bullets because a snapshot that
+needs more is a log, and the log already has homes (`Key decisions`,
+`Latest issues`).
+
 ## The opening stays short
 
 Every caveat and link in the introduction buries the one sentence, diagram and

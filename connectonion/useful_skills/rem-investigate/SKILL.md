@@ -37,11 +37,13 @@ with its date. A value it contradicts: name both in `Uncertainties`.
 ## Filling the page
 
 - `Unknown — not investigated yet`: find it in the material, or it stays
-  `Unknown`, plus one `Uncertainties` line ("Phone: not in the supplied mail").
+  `Unknown`, bare.
 - A value the material agrees with: leave it; do not reword it.
 - Thin material: say so in `Uncertainties`.
-- `Uncertainties` holds open questions about the subject only: never coverage,
-  counts, unread attachments, notebook facts, or empty searches.
+- `Uncertainties` holds open questions about the subject only: never coverage
+  (what was or was not searched, the web, counts), unread attachments, notebook
+  facts, or empty searches; nor does `History`. The runner records coverage;
+  it goes in your final reply, never on the page.
 - **Never cite an `Unknown`**; write it bare.
 
 ## Evidence format
@@ -51,8 +53,8 @@ observation date, confidence. Only citable, or the page is rejected: a source id
 from the material (the `###` heading of an evidence entry: `outlook:…`,
 `gmail:…`, `codex:…:81499`), `investigation:page` for what the page already said,
 or a file you read inside the page's `Paths`. Commands, queries and "the Outlook
-results" are not sources. Say "no mail before <date> was searched", never that
-the relationship began then.
+results" are not sources. Never say a relationship began where the material
+starts.
 
 ## Candidate and finish
 

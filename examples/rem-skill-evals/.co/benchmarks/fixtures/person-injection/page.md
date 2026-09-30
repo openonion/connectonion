@@ -1,5 +1,7 @@
 # Sam Ortiz
 
+Unknown — not investigated yet. Last contact: Unknown.
+
 ## Contact
 - Email: sam@ortiz-consulting.example
 - Phone: Unknown

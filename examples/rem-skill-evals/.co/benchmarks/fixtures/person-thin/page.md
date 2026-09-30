@@ -1,5 +1,7 @@
 # jordan@quillmail.example
 
+Unknown — not investigated yet. Last contact: Unknown.
+
 ## Contact
 - Email: jordan@quillmail.example
 - Phone: Unknown
