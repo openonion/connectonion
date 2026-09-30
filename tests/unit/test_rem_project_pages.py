@@ -215,7 +215,7 @@ def _page_citing(source):
         elif section == "Paths":
             lines += ["- /work/tide", "- Sessions: 2", "- First seen: 2026-09-01", "- Last seen: 2026-09-29"]
         else:
-            lines.append("- Unknown — not investigated yet")
+            lines.append("- Unknown")
     lines += ["", "## Sources", f"- [1] {source} — 2026-09-28", ""]
     return "\n".join(lines)
 
@@ -295,3 +295,54 @@ def test_projects_shows_the_order_and_the_cost_and_spends_nothing(world, monkeyp
     assert "projects/tide.md  (last active" in result.stdout and "first write" in result.stdout
     assert "Cost: 1 model call(s)" in result.stdout and "Nothing was spent." in result.stdout
     assert f"Next: co rem --root {world.root} projects write" in result.stdout
+
+
+def _two_active_projects(world):
+    home = Path(os.environ["HOME"])
+    codex(home / ".codex/sessions/2026/09/20/rollout-a.jsonl", "/work/tide", [("user", "tide", 1)])
+    codex(home / ".codex/sessions/2026/09/20/rollout-b.jsonl", "/work/old-bot", [("user", "bot", 2)])
+
+
+def test_projects_write_ends_with_a_readable_summary_not_a_yaml_dump(world, monkeypatch):
+    """#2008: 1.9.0a5 ended `projects write` with `pages:` / `outcome: accepted` YAML."""
+    from typer.testing import CliRunner
+
+    from connectonion.cli.main import app
+    _two_active_projects(world)
+    monkeypatch.setattr("connectonion.rem.project_pages.write_page",
+                        lambda root, record, **kw: {"record": record, "changed": [record]})
+    monkeypatch.setattr("connectonion.rem.quota.read", lambda config: {"unknown": "no meter in tests"})
+    result = CliRunner().invoke(app, ["rem", "--root", str(world.root), "projects", "write"])
+    assert result.exit_code == 0, result.output
+    assert "Wrote 2 project pages of 2." in result.stdout
+    assert "  projects/tide.md: written" in result.stdout
+    assert "outcome:" not in result.stdout and "pages:" not in result.stdout
+    assert "billed input tokens" in result.output and "(1 new message, first write)" not in result.output
+
+
+def test_ctrl_c_in_projects_write_names_what_was_written_and_the_next_command(world, monkeypatch):
+    from typer.testing import CliRunner
+
+    from connectonion.cli.main import app
+    _two_active_projects(world)
+    done = []
+
+    def write(root, record, **kw):
+        if done:
+            raise KeyboardInterrupt
+        done.append(record)
+        return {"record": record, "changed": [record]}
+
+    monkeypatch.setattr("connectonion.rem.project_pages.write_page", write)
+    monkeypatch.setattr("connectonion.rem.quota.read", lambda config: {"unknown": "no meter in tests"})
+    result = CliRunner().invoke(app, ["rem", "--root", str(world.root), "projects", "write"])
+    assert result.exit_code == 130
+    assert f"Stopped: 1 page written before the stop ({done[0]}), and kept." in result.stdout
+    assert f"Next: co rem --root {world.root} projects write" in result.stdout
+
+
+def test_one_new_message_is_singular(world):
+    from connectonion.cli.commands.rem_projects import _order_lines
+    row = {"record": "projects/tide.md", "last_activity": "2026-09-29T00:00:00Z", "new_messages": 1,
+           "mode": "first", "left_out": 0}
+    assert _order_lines([row]) == ["  projects/tide.md  (last active 2026-09-29, 1 message, first write)"]

@@ -106,7 +106,13 @@ def co_ai(monkeypatch):
         import re
         from pathlib import Path
         path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
-        path.write_text(next(Path(cwd).glob('investigate-*/notebook/people/vern.md')).read_text())
+        page = next(Path(cwd).glob('investigate-*/notebook/people/vern.md')).read_text()
+        # The least a finished page is (#2008): one cited fact, every other section a bare Unknown.
+        path.write_text(page.replace("## Who they are\n- Unknown — not investigated yet",
+                                     "## Who they are\n- Vern works at UNSW. [W1]", 1)
+                        .replace("## Sources\n- (none yet)",
+                                 "## Sources\n- [W1] https://www.unsw.edu.au/staff/vern-chan, observed 2026-09-23.", 1)
+                        .replace("- Unknown — not investigated yet", "- Unknown"))
         return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
                                      stderr="", returncode=0)
 
@@ -602,7 +608,7 @@ def test_a_listed_source_nobody_cites_is_dropped_not_a_reason_to_refuse_the_page
         page = page.replace("## Sources\n- (none yet)",
                             "## Sources\n- [1] Existing page people/vern.md, prior context only.\n"
                             "- [W1] https://www.unsw.edu.au/staff/vern-chan, observed 2026-09-23.", 1)
-        path.write_text(page)
+        path.write_text(page.replace("- Unknown — not investigated yet", "- Unknown"))
         return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
                                      stderr="", returncode=0)
 
@@ -666,7 +672,7 @@ def test_the_owners_own_address_never_lands_on_someone_elses_page(tmp_path, monk
         page = page.replace("## Who they are\n- Unknown — not investigated yet",
                             "## Who they are\n- Vern works at UNSW. [W1]", 1).replace(
             "## Sources\n- (none yet)", "## Sources\n- [W1] https://www.unsw.edu.au/staff/vern-chan, observed 2026-09-23.", 1)
-        path.write_text(page)
+        path.write_text(page.replace("- Unknown — not investigated yet", "- Unknown"))
         return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
                                      stderr="", returncode=0)
 
@@ -1033,3 +1039,32 @@ def test_a_quick_pass_reports_its_sampling_limit_in_the_reply_not_on_the_page(tm
     from connectonion.rem.runner import task_prompt
     prompt = task_prompt(tmp_path, received, 'investigate')
     assert 'explicit coverage limits' not in prompt and 'states the sampling limit' in prompt
+
+
+def test_investigate_me_marks_the_page_as_the_owners_and_drops_the_how_the_user_writes_heading(tmp_path, monkeypatch):
+    """#2008: the owner's page followed the person template ("How the user writes
+    to them: Not applicable"); `investigate me` now hands it over as the owner's."""
+    from connectonion.rem.page_review import validate
+    root = _notebook(tmp_path, "codex")
+    monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: ([
+        {"source": "codex:s:1", "role": "user", "timestamp": "2026-09-01", "text": "ship the reader"}],
+        ["codex: 1 messages in window, 1 related to subject, 1 read"]))
+    seen = []
+
+    def runner(notebook, items, config, stage):
+        seen.extend(items)
+        return {"changed": []}
+
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=5, clients={}, subscriptions={},
+                    runner=runner, sent_only=True)
+    page = next(item for item in seen if item["role"] == "page")
+    assert page["owner"] is True
+    assert "## How the user writes to them" in page["text"]   # an older page keeps it until rewritten
+    inv.Notebook(root).stub_person("people/ody.md", "Ody", ["ody@x.example"], email="ody@x.example")
+    seen.clear()
+    inv.investigate(root, "people/ody.md", "Ody", ["ody"], days=5, clients={}, subscriptions={}, runner=runner)
+    assert "owner" not in next(item for item in seen if item["role"] == "page")
+    written = inv.Notebook(root).read("people/vern.md").replace("## How the user writes to them\n- Unknown — not "
+                                                                "investigated yet\n\n", "")
+    assert not any("How the user writes" in e for e in validate("people/vern.md", written, written, [], owner=True))
+    assert any("How the user writes" in e for e in validate("people/vern.md", written, written, []))

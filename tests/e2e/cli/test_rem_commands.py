@@ -134,7 +134,7 @@ def test_config_set_model_checks_it_on_a_fixture_page_and_records_its_tier(tmp_p
         return {"outcome": "natural", "usage": None, "result": page.replace(
             "## Who they are\n- Unknown — not investigated yet",
             "## Who they are\n- Head of research at Lovelace Instruments. [1]").replace(
-            "- (none yet)", f"- [1] {source}")}
+            "- (none yet)", f"- [1] {source}").replace("- Unknown — not investigated yet", "- Unknown")}
 
     monkeypatch.setattr("connectonion.rem.runner.run_task", plain_model)
     root = tmp_path / "rem"

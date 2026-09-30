@@ -68,6 +68,7 @@ def test_investigation_promotes_only_valid_new_candidate(tmp_path, monkeypatch, 
     old = nb.read('projects/atlas.md')
     candidate = old.replace('## What it is\n- Unknown — not investigated yet', '## What it is\nA local demo. [1]')
     candidate = candidate.replace('- (none yet)', '- [1] observed 2026-09-19 — fixture:readme')
+    candidate = candidate.replace('- Unknown — not investigated yet', '- Unknown')
     if invalid:
         candidate += '\n## Overview\nDuplicate\n'
     def run(directory, prompt, config, stage):
@@ -459,3 +460,40 @@ def test_company_links_to_the_organisation_page_when_there_is_one(tmp_path):
     assert link_company(notebook, 'people/mia.md', linked) == linked
     other = original.replace('- Company: Unknown', '- Company: Acme [1]')
     assert link_company(notebook, 'people/mia.md', other) == other
+
+
+def test_an_investigated_page_that_still_says_not_investigated_yet_is_refused(tmp_path):
+    """#2008: project pages came back after 0.6-0.9M tokens with five and six
+    sections still saying "Unknown — not investigated yet"."""
+    from connectonion.rem import runner
+    from connectonion.rem.page_review import placeholder_errors
+    from connectonion.rem.runner import RunFailed
+    prepare(tmp_path)
+    nb = Notebook(tmp_path)
+    nb.stub_project('projects/atlas.md', 'Atlas')
+    old = nb.read('projects/atlas.md')
+    written = (old.replace('## What it is\n- Unknown — not investigated yet', '## What it is\nA local demo. [1]')
+               .replace('- (none yet)', '- [1] observed 2026-09-19 — fixture:readme'))
+    errors = placeholder_errors(written)
+    assert len(errors) == 1 and 'Where it stands' in errors[0] and 'What it is' not in errors[0]
+    assert 'bare "Unknown"' in errors[0]
+    finished = written.replace('- Unknown — not investigated yet', '- Unknown')
+    assert placeholder_errors(finished) == []
+    items = [{'role': 'page', 'record': 'projects/atlas.md', 'text': old},
+             {'source': 'fixture:readme', 'text': 'A local demo.'}]
+    candidate = tmp_path / 'candidate.md'
+    candidate.write_text(written)
+    with pytest.raises(RunFailed, match='not investigated yet'):
+        runner._promote_candidate(nb, 'projects/atlas.md', candidate, old, items, tmp_path, None)
+    assert nb.read('projects/atlas.md') == old
+    candidate.write_text(finished)
+    runner._promote_candidate(nb, 'projects/atlas.md', candidate, old, items, tmp_path, None)
+    assert 'A local demo. [1]' in nb.read('projects/atlas.md')
+
+
+def test_the_project_skills_ask_for_the_overview_and_no_placeholder_and_never_guess_a_dictated_name():
+    from connectonion.rem import project_pages
+    from connectonion.rem.runner import instructions
+    for text in (project_pages.instructions(), instructions('investigate', page_kind='project')):
+        assert 'is required' in text and 'Overview' in text
+        assert 'refused' in text and 'misheard' in text and 'never guess' in text.lower()

@@ -1,5 +1,6 @@
 """Build a deterministic, resumable entity map before any investigation."""
 
+import collections
 import hashlib
 import json
 import re
@@ -19,7 +20,7 @@ def _record(category: str, name: str, identity: str) -> str:
 
 
 def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None, progress=None,
-               inventory=None) -> tuple[list[dict], set]:
+               inventory=None, own_names=None) -> tuple[list[dict], set]:
     own, available, merged = set(mine), {}, {}
     for kind, client in clients.items():
         try:
@@ -34,7 +35,7 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None, prog
         try:
             rows = scan_people({kind: client}, days, own,
                                on_row=inventory.mail if inventory else None,
-                               on_window=inventory.window if inventory else None)
+                               on_window=inventory.window if inventory else None, own_names=own_names)
         except Exception as error:
             coverage.append(f'{kind}: metadata scan failed ({type(error).__name__}); incomplete')
             if errors is not None: errors.append({'source': kind, 'stage': 'metadata', 'error': type(error).__name__})
@@ -245,10 +246,23 @@ def _session_state(subscription: dict, projects: list) -> str:
     return 'scanned' if projects else 'scanned; no sessions in this window'
 
 
-def _owner_name(clients: dict, given: str = '') -> str:
-    """What the owner is called: what they said, else what a mailbox has on file."""
+def _owner_name(clients: dict, given: str = '', sent_names=None) -> str:
+    """What the owner is called: what they said, else what others call them, else their sent From name.
+
+    A real account's configured name was "Aaron x", and Outlook stamps it on
+    every mail sent, so the sent From name said "Aaron x" too; the people
+    writing to him put "Aaron Xie" on his address (#2008). The name others use
+    comes first (spellings that differ only in case are one name), then the
+    sent From name, then a mailbox's configured name.
+    """
     if given.strip():
         return given.strip()
+    for key in ('addressed', 'sent'):
+        groups = {}
+        for name, count in ((sent_names or {}).get(key) or {}).items():
+            groups.setdefault(name.strip().casefold(), collections.Counter())[name.strip()] += count
+        if groups:
+            return max(groups.values(), key=lambda group: sum(group.values())).most_common(1)[0][0]
     for client in clients.values():
         try:
             name = client.my_name() if hasattr(client, 'my_name') else ''
@@ -299,6 +313,10 @@ def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
         addresses = ', '.join(owner['addresses'])
         for label in ('Email', 'Handles', 'Also known as'):
             page = re.sub(rf'^- {label}: .*$', f'- {label}: {addresses}', page, count=1, flags=re.M)
+    if mapped_only:
+        # Your own page has no "How the user writes to them" (#2008); a real one
+        # said "Not applicable" under it.
+        page = re.sub(r'^## How the user writes to them\n(?:- [^\n]*\n)*\n?', '', page, count=1, flags=re.M)
     days, date = report['days'], report['started'][:10]
     own = {row['record'] for row in report['possible_own_addresses']}
     people = [row for row in report['people'] if row.get('classification') == 'unassessed'
@@ -657,17 +675,21 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
             inventory.skill(skill)
         inventory.save(report)
     save()
+    sent_names = {"addressed": collections.Counter(), "sent": collections.Counter()}
     if inventory:
         people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress,
-                                 inventory=inventory)
+                                 inventory=inventory, own_names=sent_names)
     else:
-        people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress)
+        people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress,
+                                 own_names=sent_names)
     roster = notebook.people()
     if own:
         aliases = sorted({address.casefold() for address in own})
         existing = next((p['path'] for p in roster if set(aliases).intersection(p['emails'])), None)
-        owner_record = existing or earlier or _record('people', 'Account owner', aliases[0])
-        owner_name = _owner_name(clients, name)
+        owner_name = _owner_name(clients, name, sent_names)
+        # A new notebook's file is named after the owner, not "account-owner-…";
+        # an existing page keeps its path (links and runs point at it).
+        owner_record = existing or earlier or _record('people', owner_name, aliases[0])
         if notebook.stub_person(owner_record, 'Account owner', aliases, email=', '.join(aliases)):
             report['created'].append(owner_record)
         report['owner'] = {'record': owner_record, 'addresses': aliases}

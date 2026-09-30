@@ -16,7 +16,8 @@ def _filled(prompt: str) -> str:
     source = re.search(r"gmail:[0-9a-f]{12}", prompt).group(0)
     return (page.replace("## Who they are\n- Unknown — not investigated yet",
                          "## Who they are\n- Head of research at Lovelace Instruments. [1]")
-                .replace("- (none yet)", f"- [1] {source}"))
+                .replace("- (none yet)", f"- [1] {source}")
+                .replace("- Unknown — not investigated yet", "- Unknown"))
 
 
 def _envelope(result: str) -> dict:

@@ -27,7 +27,7 @@ STAGES = ("init", "extract", "maintain", "investigate", "abstract")
 PAGE_WRITING_STAGES = ("init", "maintain", "investigate")
 
 
-def instructions(stage: str, kind: str = "", *, page_kind: str = "") -> str:
+def instructions(stage: str, kind: str = "", *, page_kind: str = "", owner: bool = False) -> str:
     """The stage Skill, plus the source Skill when the stage reads a source.
 
     Two axes, and they are independent. A stage says what to produce -- a
@@ -65,6 +65,11 @@ def instructions(stage: str, kind: str = "", *, page_kind: str = "") -> str:
         pattern = f"rem-page-{page_kind}/SKILL.md" if page_kind else "rem-page-*/SKILL.md"
         for page in sorted(directory.glob(pattern)):
             text += "\n\n---\n\n" + page.read_text(encoding="utf-8")
+    if owner and stage == "investigate":
+        # The owner's page is a person's page with its own lead and rules
+        # (#2008): it took the roles the owner listed for a partner as his own.
+        # Named outside rem-page-* so no other page's turn carries it.
+        text += "\n\n---\n\n" + (directory / "rem-owner-page/SKILL.md").read_text(encoding="utf-8")
     if page_kind:
         # A link some Skills keep, made absolute. No "read the CLI reference"
         # line is added: `co <command> --help` is how a turn finds a command.
@@ -364,7 +369,8 @@ def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "") 
         # Appended anyway, it took a one-page turn to 17.5k characters (#2000).
         kind = ""
     one_page = stage == "investigate" or (stage == "maintain" and any(item.get("one_page") for item in items))
-    text = instructions(stage, kind, page_kind=page_kind if one_page and record else "")
+    owner = any(i.get("role") == "page" and i.get("owner") for i in items)
+    text = instructions(stage, kind, page_kind=page_kind if one_page and record else "", owner=owner)
     material = directory / "material.json"
     skill = directory / "instructions.md"
     material.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -445,7 +451,7 @@ PROMOTE_WAIT_SECONDS = 1800
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False):
     from .page_review import (drop_owner_addresses, drop_uncited_sources, drop_unresolved, link_company,
-                              normalize_numbered_sources, restore_runner_fields, validate)
+                              normalize_numbered_sources, placeholder_errors, restore_runner_fields, validate)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     text = restore_runner_fields(record, candidate.read_text(encoding="utf-8"), original)
@@ -458,7 +464,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text = link_company(notebook, record, drop_uncited_sources(text))
     if record.startswith("projects/"):
         text = _project_window_notice(text, items)
-    errors = validate(record, text, original, items)
+    errors = validate(record, text, original, items, owner=record == owner.get("record")) + placeholder_errors(text)
     # Sync owns this same lock. Compare and write together so a completed
     # concurrent update cannot be silently replaced by an older candidate.
     # Wait for it: at 05:00 on 2026-09-28 a finished project page was dropped

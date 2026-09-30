@@ -204,6 +204,21 @@ reason, and `written_through` does not move, so the next run tries again. An
 accepted page's status line gains `written <date> (own messages: codex,
 claude-code)`.
 
+Two more checks since #2008. A page that still says `Unknown — not
+investigated yet` in any section is refused (the map's placeholder; the section
+becomes content or a bare `Unknown`): on 1.9.0a5's real run two project pages
+came back after 614k and 922k billed input with five and six sections still
+saying it. `Overview` is required when your messages show the architecture (the
+parts and how work moves between them), as a fenced `text` flow; and a
+dictated name ("WTF engine") is corrected only when the material itself shows
+the right term, never guessed.
+
+`co rem projects write` states, before the first page, about how many billed
+input tokens and minutes the pages will take: the median of this notebook's
+own completed page runs, or 750k and ~4.5 minutes a page before there are any
+(measured on 2026-10-01). It ends with one line per page (`written`, or why
+not) and what is left; Ctrl-C names the pages written before the stop.
+
 Your messages say what you wanted, decided and saw; they do not prove a build
 passed or a site went live. The skill writes a request as a request and a
 reported result as reported by you, and leaves what the messages do not say

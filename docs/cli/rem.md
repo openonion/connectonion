@@ -40,24 +40,40 @@ mail, which projects you have been coding in — with the page's path, within th
 first minutes. Then, in a terminal, it writes your own page by itself: the whole
 `investigate me`, from everything you sent and your coding sessions of the last
 30 days (or `--days`), one model turn over evidence files, about 15 minutes.
-Next come the 3 people you wrote to most in the last 14 days, one turn each, and
-then your recent projects. Before it spends anything it says which runner and
-model, that it runs on your own plan, and roughly how long. The whole first run
-stops starting pages once it has used 5 points of the Codex week (half the
-notebook's weekly 10), or at the weekly floor. Ctrl-C stops it and keeps the map
-and every page written; `co rem investigate people` writes more people. It skips that step, with a one-line reason, when
+Next come the 3 people you wrote to most in the last 14 days, one turn each,
+reading the run's own `--days` of their mail (not the 150 days a full
+investigation reads), and then your 3 most recently active projects, from the
+messages you typed in their Codex and Claude Code sessions (the
+`co rem projects write` pass, #1947). `--first-people N` and
+`--first-projects N` change the counts (0 for none).
+
+Before it spends anything it says one total (#2008): which runner and model,
+that it runs on your own plan, and "About N pages (...), ~X billed input tokens,
+~Y minutes (an estimate ...)". Per page it is the median of this notebook's own
+completed runs of that kind (`.state/runs/`); before there are any, the
+defaults measured on the owner's real notebook on 2026-10-01: your page 680k and
+~6 minutes (measured 678k, 6m17s), a person 425k and ~5 minutes (150k–700k), a
+project 750k and ~4.5 minutes (614k and 922k, 4–5 minutes). 1.9.0a5 said "~90k
+and about a minute" per project and wrote every project active in the window.
+The whole first run stops starting pages once it has used 5 points of the Codex
+week (half the notebook's weekly 10), or at the weekly floor. Ctrl-C stops it,
+says which pages were written, keeps the map and every page, and names the
+command that continues. It skips the model steps, with a one-line reason, when
 the runner is not installed or not signed in (checked before the map starts,
 without a model), when no mailbox gave an address of yours, when your page was
 already written, or when there is no terminal (scripts and `--json`) unless
-`--investigate` is given. `--no-investigate` builds the map only.
+`--investigate` is given. `--no-investigate` builds the map only. Older
+projects wait for `co rem projects write`; more people for
+`co rem investigate people`.
 
-After your page, by the same rules, init writes the project pages of projects
-active in the last 14 days, from the messages you typed in their Codex and Claude
-Code sessions (the `co rem projects write` pass, #1947). It states the cost first
-— one call per project, about a minute and ~90k billed input tokens each, plus
-the Codex week's meter — prints one line per page, and stops starting pages at
-the weekly investigation budget or the floor kept for your own work. Older
-projects wait for `co rem projects write`.
+Your page is titled with what you are called: `--name` if given, else the
+name the people writing to you put on your address (the To and Cc of mail you
+received; spellings that differ only in case are one name, and a name that is
+just the address, `xietianle`, is not one), else the From name of mail you
+sent, else the name a mailbox has configured (#2008). On the owner's real
+account the configured name was "Aaron x", and Outlook stamps it on every sent
+mail too; correspondents wrote "Aaron Xie". A new notebook names the file after
+you (`people/aaron-xie-….md`); an existing page keeps its path.
 
 Progress is one line per stage (updated in place in a terminal); every step is
 kept in `.state/init-progress.log`. Addresses that look like yours (you wrote,
@@ -793,6 +809,18 @@ archived; one somebody wrote in is kept.
 ### Preview reliability checks
 
 Initialization reports partial failure with a nonzero exit if a selected mail source cannot be initialized or read. Completed maps remain available; provider error text is not exposed. Recovery commands retain the notebook root. Automated-looking correspondents are explicitly labelled candidates, not silently certified as people.
+
+Your own page has its own spec (#2008), the `rem-owner-page` Skill, composed
+after the person page only for `investigate me`. It leads with who you are and
+what you are working on now, from your coding sessions (the projects and what
+you did in them, dated); your roles appear only when you state them about
+yourself or someone states them about you, never from a list you wrote about
+someone else (a real page took "Partner at OpenOnion, running marketing" from
+the owner's own description of a partner); `Open threads` is what you owe and
+are owed; `History` is dated events, not the map's mail counts. It has no "How
+the user writes to them" section. The same attribution rule is in
+`rem-investigate-person` for everyone: a role in a list the user writes about
+someone else is that person's.
 
 init runs the whole `co rem investigate me` for you. `--quick` is a bounded
 pass that samples recent items across available source types and labels the

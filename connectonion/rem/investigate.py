@@ -788,7 +788,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # The instructions this page's turn is actually given (task_prompt), not
     # the no-page-kind worst case, which carries every page shape and the CLI
     # reference and left ~33k characters less room for material.
-    overhead = len(instructions("investigate", page_kind=page_kind_of(record))) + len(notebook.read(record)) + 4000
+    overhead = (len(instructions("investigate", page_kind=page_kind_of(record), owner=sent_only))
+                + len(notebook.read(record)) + 4000)
     room = config["limits"]["input_chars_per_batch"] - overhead
     from .tier import current
     summary = current(root, config) == "summary"
@@ -853,9 +854,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                         f"{room:,}-char room for one turn; written to {laid_out['files']} files and searched, "
                         "not summarised first")
     from .page_review import normalize
-    current_page = normalize(record, notebook.read(record))
+    # `sent_only` is `investigate me`: the owner's own page, with its own spec (#2008).
+    current_page = normalize(record, notebook.read(record), owner=sent_only)
     prompt_items = [
-        {"role": "page", "record": record,
+        {"role": "page", "record": record, **({"owner": True} if sent_only else {}),
          "text": f"The page as it stands, at {record}. Fill its Unknowns, update what "
                  f"has moved, keep what is right:\n\n{current_page}",
          "timestamp": now, "source": "investigation:page"},

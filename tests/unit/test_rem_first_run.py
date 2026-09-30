@@ -374,7 +374,10 @@ def test_after_me_the_recent_projects_are_written_one_line_each(projects):
     assert calls[0]["record"] == owner_record(root)  # me first, then the people
     assert written == ["projects/alpha.md", "projects/beta.md"]  # the old one waits
     text = Text.from_ansi(result.output).plain
-    assert "~180k billed input tokens" in text and "Cost:" in text and "Ctrl-C" in text
+    # One total before the first page (#2008), from measured defaults on a notebook with no runs yet.
+    assert "About 4 pages (your page, 1 person and 2 projects), ~2.6M billed input tokens" in text
+    assert "an estimate from runs measured on a real notebook" in text and "Ctrl-C" in text
+    assert text.count("billed input tokens") == 1
     assert text.count(": written") == 2
     assert "projects/old.md" not in text
 
@@ -442,8 +445,9 @@ def test_after_me_the_three_people_written_to_most_then_projects(people):
     assert people_written == ["people/p0.md", "people/p1.md", "people/p2.md"]
     assert projects_written == ["projects/alpha.md", "projects/beta.md"]
     text = Text.from_ansi(result.output).plain
-    assert "the 3 people you wrote to most in the last 14 days" in text
-    assert "it stops at 5 points of the Codex week" in text
+    assert "the 3 people you wrote to most in the last 14 days, from the last 90 days of their mail" in text
+    assert "About 6 pages (your page, 3 people and 2 projects)" in text and "Investigating" not in text
+    assert "It stops at 5 points of the Codex week" in text
     assert "Written this run: your page, 3 people and 2 project pages." in text
 
 
@@ -481,3 +485,81 @@ def test_ctrl_c_during_people_keeps_the_pages_and_names_the_rest(people, monkeyp
     assert result.exit_code == 130
     assert people_written == ["people/p0.md"]
     assert f"--root {root} investigate people" in Text.from_ansi(result.output).plain
+
+
+# ------------------------------------------- what the first run spends (#2008)
+
+
+def test_the_first_run_is_capped_and_a_flag_raises_the_cap(people, monkeypatch):
+    """1.9.0a5 queued every project active in the window: 13 on a real notebook."""
+    root, init, calls, people_written, projects_written = people
+    rows = [{"record": f"projects/p{n}.md", "mode": "first", "last_activity": "2026-09-29T00:00:00Z",
+             "recent": True, "new_messages": 1, "chars": 100, "left_out": 0} for n in range(5)]
+    monkeypatch.setattr("connectonion.rem.project_pages.queue",
+                        lambda root, **kw: [row for row in rows if row["record"] not in projects_written])
+    assert init().exit_code == 0
+    assert projects_written == ["projects/p0.md", "projects/p1.md", "projects/p2.md"]
+    assert len(people_written) == 3
+    projects_written.clear()
+    people_written.clear()
+    result = init("--first-projects", "5", "--first-people", "1", "--json", "--investigate")
+    assert result.exit_code == 0, result.output
+    assert len(projects_written) == 5 and people_written == ["people/p0.md"]
+    plan = json.loads(result.stdout)["data"]["first_run"]
+    assert plan["counts"] == {"owner": 1, "person": 1, "project": 5}
+
+
+def test_first_run_people_read_the_runs_own_window_not_150_days(people, monkeypatch):
+    root, init, calls, people_written, _ = people
+    seen = []
+
+    def investigate_person(root, row, **kw):
+        seen.append(row["days"])
+        people_written.append(row["record"])
+        return {"record": row["record"], "changed": [row["record"]]}
+
+    monkeypatch.setattr("connectonion.rem.people_pages.investigate_person", investigate_person)
+    result = init("--days", "7")
+    assert result.exit_code == 0, result.output
+    assert seen == [7, 7, 7]
+    assert "the last 7 days, from the last 7 days of their mail" in Text.from_ansi(result.output).plain
+
+
+def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
+    from connectonion.rem import first_run as fr
+
+    def run(phase, record, tokens, seconds, outcome="completed"):
+        return {"phase": phase, "record": record, "outcome": outcome, "seconds": seconds,
+                "usage": {"input_tokens": tokens}}
+
+    runs = [run("projects write", "projects/a.md", 614_000, 240), run("projects write", "projects/b.md", 922_000, 300),
+            run("projects write", "projects/c.md", 700_000, 270),
+            run("projects write", "projects/d.md", 9_000_000, 900, outcome="interrupted"),
+            run("investigate", "orgs/x.md", 5_000_000, 999)]
+    assert fr.per_page(runs, "project") == {"input_tokens": 700_000, "seconds": 270, "measured": 3}
+    assert fr.per_page(runs, "person") == {**fr.DEFAULTS["person"], "measured": 0}
+    total = fr.plan(runs, owner=False, people=0, projects=2)
+    assert total["input_tokens"] == 1_400_000 and total["minutes"] == 9
+    line = fr.announce(total, "on your Codex plan")
+    assert line == ("About 2 pages (2 projects), ~1.4M billed input tokens on your Codex plan, ~9 minutes "
+                    "(an estimate from this notebook's own runs).")
+    mixed = fr.announce(fr.plan(runs, owner=True, people=1, projects=1), "on your Codex plan")
+    assert "About 3 pages (your page, 1 person and 1 project)" in mixed and "measured defaults otherwise" in mixed
+
+
+def test_ctrl_c_says_what_was_written_and_what_continues(people, monkeypatch):
+    root, init, calls, people_written, projects_written = people
+
+    def second_project_is_stopped(root, record, **kw):
+        if projects_written:
+            raise KeyboardInterrupt
+        projects_written.append(record)
+        return {"record": record, "changed": [record]}
+
+    monkeypatch.setattr("connectonion.rem.project_pages.write_page", second_project_is_stopped)
+    result = init()
+    assert result.exit_code == 130
+    text = Text.from_ansi(result.output).plain
+    assert "Stopped: 5 pages written before the stop" in text
+    assert "projects/alpha.md), and kept." in text
+    assert f"Next: co rem --root {root} projects write" in text

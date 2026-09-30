@@ -462,7 +462,8 @@ def test_a_finished_investigation_waits_for_a_sync_instead_of_losing_its_page(tm
     candidate = tmp_path / "candidate.md"
     candidate.write_text(original.replace("## Who they are\n- Unknown — not investigated yet",
                                           "## Who they are\n- Leads the data team. [1]")
-                         .replace("- (none yet)", "- [1] gmail:m:1"))
+                         .replace("- (none yet)", "- [1] gmail:m:1")
+                         .replace("- Unknown — not investigated yet", "- Unknown"))
     thread = _hold_lock(tmp_path, 1.0)
     runner._promote_candidate(notebook, "people/mia.md", candidate, original,
                               [{"source": "gmail:m:1"}], tmp_path, None)
