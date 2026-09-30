@@ -189,3 +189,7 @@ provider is the destination; there is no automatic escalation when a stage
 fails. Examples of the transfer/invention errors seen: an offline fixture read
 as an offline product; an unresolved review plus an unknown launch date turned
 into "launch must follow that review".
+
+## Reading the CLI reference only when a command is run (#1960)
+
+The rule used to say "read the CLI reference first". In the 1.9.0a1 acceptance run (2026-09-30), the model obeyed it in every investigation: its first action was to `cat` the 12.6k-character reference. A 14.8k turn really carried about 27k, which undid the 15k ceiling from #1851. Offline runs, the common case, never run a `co` command, so they never need the reference.

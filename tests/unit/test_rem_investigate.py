@@ -667,3 +667,54 @@ def test_a_mailbox_left_out_on_purpose_says_why_not_that_it_is_disconnected():
                                  mail_skipped="not read for a project page; name its mail with --handle")
     assert "outlook: not read for a project page; name its mail with --handle; not searched" in coverage
     assert not any("co auth" in line for line in coverage)
+
+
+def test_the_status_line_never_names_the_evidence_layout_as_a_source():
+    """#1962: pages were stamped `(outlook, gmail, codex, claude-code, evidence)`;
+    evidence is how the material was laid out, not where it came from."""
+    coverage = [
+        "outlook (me@x.y): searched on the server for t@x.y over 150 days, 50 matched, 50 bodies read",
+        "gmail (me@g.com): searched on the server for t@x.y over 150 days, 0 matched, 0 bodies read",
+        "codex: 1,200 messages in window, 0 related to subject, 0 read (handle or project match)",
+        "claude-code: 900 messages in window, 3 related to subject, 3 read (handle or project match)",
+        "whatsapp: no chats chosen, not searched",
+        "evidence: 2,160,000 chars gathered, written to 303 files and searched, not summarised first",
+        "Requested investigation window: 150 days ending 2026-09-30",
+    ]
+
+    assert inv.searched_sources(coverage) == ["outlook", "gmail", "codex", "claude-code"]
+
+
+def test_only_whole_addresses_are_searched_on_the_mail_server():
+    """#1954: a handle still carrying a citation or prose is not an address; Gmail
+    matched 677 unrelated mails for one such handle."""
+    class Box(Quiet):
+        asked = []
+        def list_between(self, s, e, n): raise AssertionError("listed the whole mailbox")
+        def list_with(self, address, start, end):
+            self.asked.append(address)
+            return []
+
+    box = Box()
+    inv.gather("Tamara", ["tamara.berryman@unsw.edu.au", "tamara.berryman@unsw.edu.au [2]",
+                          "Tamara Berryman; t@x.y [2]", "Tamara"], days=7, clients={"gmail": box}, subscriptions={})
+
+    assert box.asked == ["tamara.berryman@unsw.edu.au"]
+
+
+def test_investigation_reads_the_main_checkout_not_a_stale_agent_worktree(tmp_path):
+    # A throwaway worktree read as the project's state wrote "version 1.8.9b2"
+    # the day 1.9.0a1 shipped (#1955).
+    main = tmp_path / 'connectonion'
+    (main / '.git/worktrees/agent-a1').mkdir(parents=True)
+    (main / 'pyproject.toml').write_text('version = "1.9.0a1"')
+    worktree = main / '.claude/worktrees/agent-a1'
+    worktree.mkdir(parents=True)
+    (worktree / '.git').write_text(f'gitdir: {main}/.git/worktrees/agent-a1\n')
+    (worktree / 'pyproject.toml').write_text('version = "1.8.9b2"')
+    page = f'# connectonion\n## Paths\n- {worktree} [3]\n- /elsewhere/notes\n- Sessions: 9\n## Sources\n'
+    corrected = inv.collapse_worktree_paths(page)
+    assert inv.project_paths(corrected) == [str(main), '/elsewhere/notes']
+    assert '- Sessions: 9\n' in corrected
+    assert inv.collapse_worktree_paths(corrected) == corrected
+    assert inv.project_file_inventory(page) == [str(main / 'pyproject.toml')]

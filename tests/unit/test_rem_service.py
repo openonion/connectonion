@@ -232,6 +232,25 @@ def test_declined_start_reads_nothing_and_installs_nothing(tmp_path, monkeypatch
     assert scheduler.installed == [] and calls == []
 
 
+def test_a_copied_notebook_does_not_claim_the_original_s_schedule(tmp_path):
+    """#1964: worker.json travels with a copy; status said "Running in background"
+    and doctor "ok schedule" for a launchd job whose --root was the original."""
+    from connectonion.rem.schedule import Launchd
+    root = tmp_path / "copy"
+    prepare(root)
+    write_json(state_path(root, "consent.json"), {})
+    write_json(state_path(root, "worker.json"), {"enabled": True, "scheduler": "launchd",
+                                                 "label": "ai.openonion.co-wiki"})
+
+    shown = status(root)
+    assert shown["state"].startswith("Not scheduled here") and shown["next_run"] is None
+
+    plist = Launchd().plist_path(root)
+    plist.parent.mkdir(parents=True, exist_ok=True)
+    plist.write_text("<plist/>")
+    assert status(root)["state"].startswith("Running in background")
+
+
 def test_first_start_consents_installs_and_runs_one_batch_then_repeat_start_does_not_rerun(tmp_path, monkeypatch):
     from connectonion.rem.service import start
     root, sessions = tmp_path / "rem", tmp_path / "sessions"
@@ -394,10 +413,28 @@ def test_lookback_defaults_to_two_months_and_is_capped_per_source_kind(tmp_path,
         toggle_source(root, "codex", True, project=str(tmp_path / "other"), since="400d")
 
 
-def test_sync_all_runs_batches_until_caught_up_regardless_of_the_daily_cap(rem):
+def test_sync_all_runs_batches_until_caught_up(rem):
     root, sessions = rem
-    set_config(root, ["limits.items_per_batch", "2", "limits.extract_items_per_batch", "2",
-                      "limits.runner_calls_per_day", "1"])
+    set_config(root, ["limits.items_per_batch", "2", "limits.extract_items_per_batch", "2"])
+    rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)])
+    calls, lines = [], []
+
+    def runner(notebook, items, config, kind=""):
+        calls.append(len(items))
+        return {"usage": None, "changed": []}
+    summary = run_sync(root, all_pending=True, runner=runner, on_batch=lambda n, record: lines.append(n))
+    assert calls == [2, 2, 2, 1]
+    assert summary["batches"] == 4 and summary["items"] == 7 and summary["outcome"] == "caught_up"
+    assert lines == [1, 2, 3, 4]   # one progress report per batch, as each one finishes
+    assert run_sync(root, all_pending=True, runner=runner)["batches"] == 0
+
+
+def test_sync_all_stops_at_the_daily_cap_and_says_when_it_resets(rem):
+    """On a real notebook `--all` ran 60 attempts against a cap of 30, silently,
+    for 37 minutes (#1957). The backfill keeps the cap every other run keeps."""
+    root, sessions = rem
+    set_config(root, ["schedule.timezone", "Australia/Sydney", "limits.items_per_batch", "2",
+                      "limits.extract_items_per_batch", "2", "limits.runner_calls_per_day", "2"])
     rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)])
     calls = []
 
@@ -405,9 +442,57 @@ def test_sync_all_runs_batches_until_caught_up_regardless_of_the_daily_cap(rem):
         calls.append(len(items))
         return {"usage": None, "changed": []}
     summary = run_sync(root, all_pending=True, runner=runner)
-    assert calls == [2, 2, 2, 1]
-    assert summary["batches"] == 4 and summary["items"] == 7 and summary["outcome"] == "caught_up"
-    assert run_sync(root, all_pending=True, runner=runner)["batches"] == 0
+    assert calls == [2, 2]
+    assert summary["outcome"] == "budget_exhausted" and summary["batches"] == 2 and summary["items"] == 4
+    assert "2026-09-08T00:00+10:00" in summary["reason"]
+    assert status(root)["runner_attempts_today"] == 2
+
+
+def test_ctrl_c_during_sync_all_keeps_what_finished(rem):
+    root, sessions = rem
+    set_config(root, ["limits.items_per_batch", "2", "limits.extract_items_per_batch", "2"])
+    rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)])
+    finished = []
+
+    def runner(notebook, items, config, kind=""):
+        if finished:
+            raise KeyboardInterrupt
+        return {"usage": None, "changed": []}
+    with pytest.raises(KeyboardInterrupt):
+        run_sync(root, all_pending=True, runner=runner, on_batch=lambda n, record: finished.append(record))
+    assert [record["outcome"] for record in finished] == ["completed"]
+
+
+def test_dry_run_says_how_many_runner_attempts_are_left_and_when_they_reset(rem):
+    """`status` said 30/30 while `sync --dry-run` said nothing of it (#1957)."""
+    root, sessions = rem
+    set_config(root, ["schedule.timezone", "Australia/Sydney", "limits.runner_calls_per_day", "1"])
+    rollout(sessions / "rollout-a.jsonl", [("user", "first")])
+    before = run_sync(root, dry_run=True)["daily_cap"]
+    assert (before["used"], before["limit"], before["remaining"]) == (0, 1, 1)
+    run_sync(root, runner=lambda *args, **kw: {"usage": None})
+    spent = run_sync(root, dry_run=True)["daily_cap"]
+    assert (spent["used"], spent["remaining"]) == (1, 0)
+    assert spent["resets_at"] == "2026-09-08T00:00+10:00"   # 22:00 in Sydney: midnight there
+    assert "limits.runner_calls_per_day" in spent["note"]
+
+
+def test_a_run_refused_by_the_daily_cap_leaves_a_record(rem):
+    """The refusal said "Next: logs", and logs had nothing to show (#1957)."""
+    from connectonion.rem.service import run_logs
+    root, sessions = rem
+    set_config(root, ["schedule.timezone", "Australia/Sydney", "limits.runner_calls_per_day", "1"])
+    rollout(sessions / "rollout-a.jsonl", [("user", "first")])
+    run_sync(root, runner=lambda *args, **kw: {"usage": None})
+    rollout(sessions / "rollout-a.jsonl", [("user", "first"), ("user", "second")])
+    with pytest.raises(RemError, match="2026-09-08T00:00") as refusal:
+        run_sync(root, runner=lambda *args, **kw: pytest.fail("invoked"))
+    assert "`co rem config`" in str(refusal.value)
+    # The clock is frozen, so both runs share a start time: find it by outcome.
+    [refused] = [record for record in run_logs(root) if record["outcome"] == "refused"]
+    assert refused["runner_attempts"] == 0
+    assert "limits.runner_calls_per_day" in refused["reason"]
+    assert status(root)["batches_today"] == 1   # a refusal is not a batch
 
 
 def test_claude_code_is_a_real_default_source(tmp_path, monkeypatch):
@@ -522,6 +607,18 @@ def test_run_record_breaks_usage_down_by_stage_source_and_size(tmp_path, monkeyp
                                         "maintain": {"input_tokens": 20, "output_tokens": 5}}
     assert record["items_by_source"] == {"codex": 40}
     assert record["chars_in"] > 40 * 6 and record["seconds"] >= 0
+
+
+def test_a_sync_record_carries_each_stage_s_instruction_size(tmp_path, monkeypatch):
+    """#1959: only investigate recorded it, so logs --usage could not check the 15k
+    ceiling for extract or maintain."""
+    root = _extract_world(tmp_path, monkeypatch, 40)
+    record = run_sync(root, runner=lambda nb, items, cfg, kind="": {"usage": {"input_tokens": 20}, "changed": [],
+                                                                    "instructions_chars": 14_300},
+                      extractor=lambda items, cfg, kind="": {"notes": "## Decisions\n- fact 1 — user, codex:s:0",
+                                                             "usage": {"input_tokens": 100},
+                                                             "instructions_chars": 9_500})
+    assert record["instructions_chars"] == {"extract": 9_500, "maintain": 14_300}
 
 
 def test_failed_maintain_keeps_extraction_usage_and_does_not_advance(tmp_path, monkeypatch):
@@ -913,7 +1010,8 @@ def test_maintenance_works_one_page_per_turn_and_a_failure_costs_only_that_page(
         seen.append(page["record"])
         if page["record"] == "people/b.md":
             raise RunFailed("Candidate rejected: Citation has no identifiable source: 1", {"input_tokens": 5})
-        return {"changed": [page["record"]], "usage": {"input_tokens": 10}, "review_candidates": []}
+        return {"changed": [page["record"]], "usage": {"input_tokens": 10}, "review_candidates": [],
+                "instructions_chars": {"people/a.md": 14_100, "people/c.md": 14_600}[page["record"]]}
 
     monkeypatch.setattr("connectonion.rem.runner.run_stage", one_turn)
     material = [{"role": "extract", "text": "notes", "source": "codex:x +1", "timestamp": "2026-09-27"}]
@@ -923,3 +1021,5 @@ def test_maintenance_works_one_page_per_turn_and_a_failure_costs_only_that_page(
     assert result["refusals"] == [{"record": "people/b.md",
                                    "errors": ["Candidate rejected: Citation has no identifiable source: 1"]}]
     assert result["usage"] == {"input_tokens": 25}
+    # #1959: the largest one-page turn, so logs --usage can check the 15k ceiling for maintain too.
+    assert result["instructions_chars"] == 14_600

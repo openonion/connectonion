@@ -10,6 +10,7 @@ judgement the Skill makes; this only hands it the signals.
 import collections
 import html
 import json
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from email.utils import getaddresses
@@ -224,6 +225,27 @@ def project_exclusion(path: Path) -> str:
     if not path.is_dir() and "/.codex/worktrees/" in normalized:
         return "removed Codex worktree"
     return ""
+
+
+CLAUDE_WORKTREE = re.compile(r"^(/.+?)/\.claude/worktrees/[^/]+(/.*)?$")
+
+
+def main_checkout(path: str) -> str:
+    """The repository checkout a worktree belongs to, or "" for anything else.
+
+    Every coding session's `cwd` became a project path, so one real page listed
+    about 70 `.claude/worktrees/agent-*` folders and no main checkout, and
+    investigation read a stale agent's copy as the project's state (#1955). A
+    live worktree says where home is in its `.git` file; one Claude Code has
+    removed still says so in its path.
+    """
+    git = Path(path) / ".git"
+    if git.is_file():
+        home = re.fullmatch(r"gitdir:\s*(.+?)/\.git/worktrees/[^/]+/?\s*", git.read_text(errors="replace"))
+        if home:
+            return os.path.normpath(os.path.join(path, home[1]))
+    layout = CLAUDE_WORKTREE.match(path)
+    return layout[1] + (layout[2] or "") if layout else ""
 
 
 def scan_projects(subscriptions: dict, days: int, rem_root: Path | None = None,

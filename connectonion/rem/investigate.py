@@ -15,7 +15,7 @@ from functools import partial
 from pathlib import Path
 
 from .config import read_config
-from .files import Notebook, RemError, maintenance_lock
+from .files import Notebook, RemError, is_address, maintenance_lock
 from .mail import _address, _list_all, correspondent, strip_noise, strip_quoted
 from .source import KINDS, collect, timestamp
 
@@ -60,8 +60,31 @@ def project_paths(page: str) -> list[str]:
     or session matching on the next run.
     """
     section = page.partition("## Paths\n")[2].split("\n## ", 1)[0]
-    return [re.sub(r"\s+\[\d+\](?:\s*\[\d+\])*\s*$", "", line[2:].strip())
-            for line in section.splitlines() if line.startswith("- /")]
+    return [_listed_path(line) for line in section.splitlines() if _listed_path(line)]
+
+
+def _listed_path(line: str) -> str:
+    return re.sub(r"\s+\[\d+\](?:\s*\[\d+\])*\s*$", "", line[2:].strip()) if line.startswith("- /") else ""
+
+
+def collapse_worktree_paths(page: str) -> str:
+    """The page with each worktree under Paths replaced by its main checkout, listed first.
+
+    Pages mapped before #1955 list agent worktrees and read one as the project.
+    Only a line `main_checkout` recognises goes; a folder the owner wrote, and
+    Sessions / First seen / Last seen, stay as they are.
+    """
+    from .scan import main_checkout
+    section = re.search(r"(?ms)^## Paths\n(.*?)(?=^## |\Z)", page)
+    if not section:
+        return page
+    kept, checkouts = [], []
+    for line in section.group(1).splitlines(keepends=True):
+        checkout = main_checkout(_listed_path(line)) if _listed_path(line) else ""
+        (checkouts if checkout else kept).append(checkout or line)
+    listed = {_listed_path(line) for line in kept}
+    body = "".join(f"- {path}\n" for path in dict.fromkeys(checkouts) if path not in listed) + "".join(kept)
+    return page[:section.start(1)] + body + page[section.end(1):]
 
 
 def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
@@ -71,7 +94,7 @@ def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
     lets the model pick evidence from the recorded path without repeatedly
     searching the user's home directory. File names alone prove no project fact.
     """
-    roots = [Path(path).expanduser() for path in project_paths(page)]
+    roots = [Path(path).expanduser() for path in project_paths(collapse_worktree_paths(page))]
     leads = []
     excluded = {".git", ".venv", "venv", "node_modules", "__pycache__", "dist", "build", ".state"}
     suffixes = {".md", ".txt", ".toml", ".py", ".js", ".ts", ".tsx", ".html", ".css", ".swift", ".go", ".rs"}
@@ -221,7 +244,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             # Each mailbox knows only its own login. The owner's other addresses
             # are the owner too, not correspondents to search the server for: a
             # first `investigate me` searched for them and found 6 of ~150 mails.
-            mine |= {h for h in handles if "@" in h}
+            mine |= {h for h in handles if is_address(h)}
         own_addresses.update(mine)
         local = [item for item in cached_by_provider.get(kind, [])
                  if start <= timestamp(item["timestamp"]) < end
@@ -269,7 +292,10 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             continue
         for item in local:
             add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""))
-        emails = sorted({h for h in handles if "@" in h and h not in mine and h.lstrip("@") not in domains})
+        # Only a whole address goes to the server: a page line with prose or a
+        # citation in it made Gmail match 677 unrelated mails (#1954). A bare
+        # domain is not an address; org pages search it through `domains` above.
+        emails = sorted({h.strip() for h in handles if is_address(h) and h not in mine})
         for begin, finish in intervals:
             if domains and hasattr(client, "list_with"):
                 # Both servers take a bare domain where they take an address
@@ -486,6 +512,20 @@ def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: P
     return digests, usage
 
 
+def searched_sources(coverage: list[str]) -> list[str]:
+    """The sources this code searched, for the page's status line.
+
+    Not every coverage line is a source: `evidence:` says how the material was
+    laid out, and the 1.9.0a1 run stamped `(…, evidence)` on real pages (#1962).
+    A source searched with nothing found stays: the daily round reads the line
+    to know which sources a page has already been checked against.
+    """
+    notes = ("budget", "digest", "evidence:", "Requested investigation window:", "Quick first pass:")
+    return list(dict.fromkeys(
+        line.split(" (")[0].split(":")[0] for line in coverage
+        if not line.startswith(notes) and "not searched" not in line and ": unreadable" not in line))
+
+
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
@@ -510,7 +550,12 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                         "do not claim comprehensive coverage or resolve unsupported conflicts.")
     leads = []
     if record.startswith("projects/"):
-        leads = project_file_inventory(notebook.read(record))
+        # The model reads the page's Paths too; a worktree left there is the
+        # stale copy it would otherwise quote as current (#1955).
+        corrected = collapse_worktree_paths(notebook.read(record))
+        if corrected != notebook.read(record):
+            notebook.write(record, corrected)
+        leads = project_file_inventory(corrected)
         if leads:
             items.append({"role": "project-inventory", "source": "investigation:project-inventory",
                           "text": "Candidate local evidence files, not proof of their contents:\n" +
@@ -633,14 +678,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # The status line names the sources this code searched. Whether the web
     # was reached is the Skill's to report, on the page: a real run (2026-09-14)
     # had `co browser` fail inside the thread while this line still said "web".
-    searched = [c.split(" (")[0].split(":")[0] for c in coverage
-                if not c.startswith(("budget", "digest", "Requested investigation window:",
-                                     "Quick first pass:"))
-                and "not searched" not in c and ": unreadable" not in c]
+    searched = searched_sources(coverage)
     with maintenance_lock(root):
         from .reviews import ingest
         ingest(root, result.get("review_candidates", []))
-        notebook.note_investigation(record, ", ".join(dict.fromkeys(searched)))
+        notebook.note_investigation(record, ", ".join(searched))
     return {"record": record, "items": len(items), "items_available": available_items,
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,

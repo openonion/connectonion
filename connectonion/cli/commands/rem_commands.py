@@ -361,7 +361,20 @@ def _first_projects(ctx, root, config, plan, say) -> dict:
 
 def make_rem_app(factory):
     rem = factory(help="co rem", no_args_is_help=False)
-    rem.info.cls = verbatim("co rem", rem.info.cls)
+    base = verbatim("co rem", rem.info.cls)
+
+    class RemGroup(base):
+        def invoke(self, ctx):
+            # The callback below runs before Click prints a subcommand's help,
+            # and by then the subcommand's arguments are gone from ctx; here
+            # they are still visible. `co rem projects --help` moved the
+            # owner's real notebook and replaced their schedule: reading a help
+            # page writes nothing.
+            rest = [*getattr(ctx, "_protected_args", []), *ctx.args]
+            ctx.meta["rem_asks_help"] = "--help" in rest
+            return super().invoke(ctx)
+
+    rem.info.cls = RemGroup
 
     @rem.callback(invoke_without_command=True)
     def overview(ctx: typer.Context,
@@ -369,7 +382,8 @@ def make_rem_app(factory):
                  json_out: bool = typer.Option(False, "--json", help="Machine-readable output with next command")):
         ctx.obj = {"root": (root or Path.home() / ".co/rem").expanduser().resolve(),
                    "default_root": root is None, "json": json_out}
-        _carry_over(ctx)
+        if not ctx.resilient_parsing and not ctx.meta.get("rem_asks_help"):
+            _carry_over(ctx)
         if ctx.invoked_subcommand is None:
             if ctx.obj["json"]:
                 inspect_status(ctx)
@@ -594,8 +608,8 @@ def make_rem_app(factory):
             for line in text.splitlines():
                 low = line.strip().lstrip("-").strip().casefold()
                 if low.startswith(("also known as:", "email:", "handles:")) and ":" in line:
-                    known += [h.strip() for h in line.split(":", 1)[1].replace("、", ",").split(",")
-                              if h.strip() and h.strip() != "Unknown"]
+                    from ...rem.files import split_handles
+                    known += split_handles(line.split(":", 1)[1])
             handles = list(dict.fromkeys([*handle, *known, title.split(" (")[0]]))
             clients = clients_for(root)
             if record.startswith("projects/"):
@@ -868,15 +882,36 @@ def make_rem_app(factory):
         from ...rem.files import RemError
         from ...rem.service import run_sync
 
+        finished = []
+
+        def progress(number, record):
+            # A backfill ran 37 minutes over five batches with no output at all
+            # (#1957). One line per batch, on stderr so --json stays one document.
+            finished.append(record)
+            typer.echo(f"Batch {number}: {record['items']} items, {len(record.get('changed') or [])} pages "
+                       f"changed, {record.get('runner_attempts', 0)} model calls, {record.get('seconds')}s "
+                       f"({record['outcome']})", err=True)
+
         def operation(root):
             if dry_run or source or with_person or all_pending:
-                record = run_sync(root, source=source, with_person=with_person, dry_run=dry_run,
-                                  scheduled=scheduled, all_pending=all_pending)
+                try:
+                    record = run_sync(root, source=source, with_person=with_person, dry_run=dry_run,
+                                      scheduled=scheduled, all_pending=all_pending, on_batch=progress)
+                except KeyboardInterrupt:
+                    # Ctrl-C exited 130 with nothing said; the finished batches are
+                    # kept, and the interrupted one reads again next time.
+                    pages = len({page for record in finished for page in record.get("changed") or []})
+                    typer.echo(f"Stopped: {len(finished)} batch{'es' if len(finished) != 1 else ''} finished "
+                               f"({sum(r['items'] for r in finished)} items, {pages} pages changed); the "
+                               f"interrupted batch reads again next time. See {_next(ctx, ['logs'])}.", err=True)
+                    raise typer.Exit(130)
                 if scheduled and record is None:
                     return {"due": False, "ran": False}, ["status"]
                 if all_pending:
                     if record["outcome"] not in ("caught_up",):
-                        raise RemError(f"Backfill stopped after {record['batches']} batches: {record['outcome']}")
+                        why = record.get("reason") or record["outcome"]
+                        raise RemError(f"Backfill stopped after {record['batches']} batches "
+                                       f"({record['items']} items): {why}")
                     return record, ["status"]
                 if dry_run:
                     return record, ["sync"]

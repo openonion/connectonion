@@ -169,6 +169,10 @@ class Launchd:
         path.unlink()
         return True
 
+    def installed(self, root: Path) -> bool:
+        """Is a job for this root, and not another, on disk? No launchctl call."""
+        return self.plist_path(root).is_file() or self._legacy(root) is not None
+
     def describe(self, root: Path) -> dict:
         """What launchd itself says -- the plist being present is not the job being alive."""
         root = Path(root).resolve()
@@ -197,6 +201,9 @@ class Unsupported:
                         "run `co rem sync` yourself or schedule it with cron/systemd")
 
     def uninstall(self, root):
+        return False
+
+    def installed(self, root):
         return False
 
     def describe(self, root):

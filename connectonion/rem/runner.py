@@ -445,11 +445,42 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
     return refusals
 
 
+# What a finished task keeps: its record, the page it proposed, the review
+# questions and the Skill text it was given. The rest is a private copy of the owner's mail and pages.
+TASK_KEEPS = ("result.json", "candidate.md", "review-candidates.json", "instructions.md")
+
+
+def scrub_task(directory: Path) -> None:
+    """Remove a finished task's copies of the material and the notebook.
+
+    Every run left them behind: a real notebook held 98 task folders, 75 MB of
+    material.json/material.md, one naming the owner's legal name, while the
+    evidence directory was deleted "so copies of private mail do not
+    accumulate" (#1958).
+    """
+    import shutil
+    for path in directory.iterdir():
+        if path.name in TASK_KEEPS:
+            continue
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            path.unlink(missing_ok=True)
+
+
+def scrub_finished_tasks(workdir: Path) -> None:
+    # Only finished ones: another run may be working in its own folder right now.
+    for folder in workdir.iterdir():
+        if folder.is_dir() and (folder / "result.json").is_file():
+            scrub_task(folder)
+
+
 def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "",
               *, stage: str = "maintain", maintenance_lock_held: bool = False) -> dict:
     """Run investigation and maintenance on disposable page copies before promotion."""
     workdir = notebook.root / ".state" / "tasks"
     workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    scrub_finished_tasks(workdir)
     directory = Path(tempfile.mkdtemp(prefix=f"{stage}-", dir=workdir))
     from .reflections import POLICY
     from .reflections import context as reflections
@@ -585,14 +616,17 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
                      for key in (usage or {}).keys() | inquiry_usage.keys()}
         write_json(directory / "result.json", {**metrics, "status": "failed", "error": str(error),
                    "usage": usage, "duration_seconds": time.monotonic() - started, "changed": changed()})
+        scrub_task(directory)
         raise RunFailed(str(error), usage, changed()) from error
     write_json(directory / "result.json", {**metrics, "status": "candidate_accepted" if candidate else "execution_finished",
                "usage": result.get("usage"), "duration_seconds": time.monotonic() - started,
                "changed": changed(), "report": result.get("result")})
-    return {"usage": result.get("usage"), "changed": changed(), "refused": len(refusals), "refusals": refusals,
-            "instructions_chars": metrics["instructions_chars"],
-            "report": str(result.get("result") or "")[:1000],
-            "review_candidates": read_json(directory / "review-candidates.json", [])}
+    outcome = {"usage": result.get("usage"), "changed": changed(), "refused": len(refusals), "refusals": refusals,
+               "instructions_chars": metrics["instructions_chars"],
+               "report": str(result.get("result") or "")[:1000],
+               "review_candidates": read_json(directory / "review-candidates.json", [])}
+    scrub_task(directory)
+    return outcome
 
 
 run_stage.preflight = preflight

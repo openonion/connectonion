@@ -309,6 +309,14 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
     if not state_path(root, "consent.json").is_file():
         return "Not started — run `co rem start` to authorize sources and begin", None
     worker = worker_state(root)
+    if worker.get("enabled") and worker.get("scheduler") == "launchd":
+        # worker.json travels with a copied notebook; the job it describes runs
+        # the original's --root. A copy said "Running in background" and doctor
+        # said "ok schedule" for a schedule that never ran it (#1964).
+        from .schedule import Launchd
+        if not Launchd().installed(root):
+            return ("Not scheduled here — the saved schedule belongs to another notebook or was removed; "
+                    "`co rem start` schedules this one"), None
     if worker.get("enabled"):
         slot = next_slot(config, zone)
         return f"Running in background ({worker.get('scheduler', 'scheduler')}); next slot {slot or 'unknown'}", slot
@@ -340,10 +348,32 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
             "date": str(today), "timezone": saved_zone or "Unknown (UTC reporting fallback only)",
             "schedule_times": config.get("schedule", {}).get("times", []), "next_run": slot,
             "worker": worker_state(root),
-            "batches_today": len(recent), "runner_attempts_today": sum(record.get("runner_attempts", 0) for record in attempted),
+            # A run the cap refused is recorded so logs can show it (#1957); it read nothing.
+            "batches_today": sum(record.get("outcome") != "refused" for record in recent),
+            "runner_attempts_today": sum(record.get("runner_attempts", 0) for record in attempted),
             "usage_today": usage, "usage_coverage": coverage,
             "last_run": logs[0] if logs else None,
             **(_quota_status(config, logs) if live_quota else {})}
+
+
+CAP_LIMIT = "Daily runner-attempt limit reached"
+
+
+def daily_cap(root: Path) -> dict:
+    """The day's runner attempts: used, left, and when the count starts again.
+
+    The day is the notebook's own (schedule.timezone), the same day `status`
+    counts in, so the reset named here is the one the cap will actually honour.
+    """
+    config, state = read_config(root), status(root)
+    saved_zone = config.get("schedule", {}).get("timezone", "")
+    zone = ZoneInfo(saved_zone) if saved_zone else timezone.utc
+    midnight = datetime.fromisoformat(state["date"]).replace(tzinfo=zone) + timedelta(days=1)
+    limit, used = config["limits"]["runner_calls_per_day"], state["runner_attempts_today"]
+    resets = midnight.isoformat(timespec="minutes")
+    return {"used": used, "limit": limit, "remaining": max(0, limit - used), "resets_at": resets,
+            "note": (f"{max(0, limit - used)} of {limit} runner attempts left today; the count resets "
+                     f"{resets}. limits.runner_calls_per_day sets it")}
 
 
 def _quota_status(config: dict, logs: list[dict]) -> dict:
@@ -497,7 +527,7 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
     """
     from .runner import RunFailed, run_stage
     notebook = Notebook(root)
-    usage, changed, refusals, reviews = {}, [], [], []
+    usage, changed, refusals, reviews, sizes = {}, [], [], [], []
     for record in leads:
         page_items = [{"role": "page", "record": record, "source": "investigation:page", "one_page": True,
                        "timestamp": now().isoformat(),
@@ -507,6 +537,7 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
             result = run_stage(notebook, page_items, config, kind=kind, stage="maintain", maintenance_lock_held=True)
             changed += result.get("changed", [])
             reviews += result.get("review_candidates", [])
+            sizes += [result["instructions_chars"]] if result.get("instructions_chars") else []
             part = result.get("usage")
         except RunFailed as error:
             refusals.append({"record": record, "errors": [str(error)[:400]]})
@@ -515,12 +546,14 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
             usage[key] = usage.get(key, 0) + value
     return {"usage": usage or None, "changed": sorted(set(changed)), "refused": len(refusals),
             "refusals": refusals, "report": f"{len(leads)} pages worked one at a time",
-            "review_candidates": reviews[:2]}
+            "review_candidates": reviews[:2],
+            # The largest one-page turn: the 15k ceiling is per turn (#1959).
+            "instructions_chars": max(sizes) if sizes else None}
 
 
 def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bool = False,
              scheduled: bool = False, all_pending: bool = False, runner=None, extractor=None,
-             _uncapped: bool = False) -> dict | None:
+             on_batch=None) -> dict | None:
     """One bounded batch; caller must have recorded explicit source consent.
 
     `scheduled` is what the background tick passes: run only if a saved time has
@@ -528,9 +561,12 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
     no lock taken and nothing read. Stopped notebooks tick to nothing.
 
     `all_pending` is the backfill: batch after batch, oldest material first,
-    until nothing is pending. It is user-initiated and explicit, so the daily
-    attempt cap -- a guard against unattended runaway -- does not apply; a
-    failed batch stops it, as does a refusal to start.
+    until nothing is pending or the day's runner attempts are spent. It once
+    ignored the cap as "user-initiated", and on a real notebook ran 60 attempts
+    against a cap of 30 in 37 silent minutes (#1957): typed by hand is not the
+    same as watched. A failed batch stops it too. `on_batch(n, record)` is
+    called as each batch finishes, so the caller can show progress and, on
+    Ctrl-C, say what finished.
     """
     root = root.resolve()
     # Inspection must win over every execution mode, including recursive backfill.
@@ -543,19 +579,31 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
                    if sub.get("kind") in CHAT_KINDS else {"candidate_files": None, "message_count": None, "body_reads": False,
                          "source_available": mail_available(sub["kind"]),
                          "cursor": progress.get(name, {}).get("cursor") or sub.get("since")})
-            for name, sub in _selected_sources(root, source).items()}}
+            for name, sub in _selected_sources(root, source).items()},
+            # `status` said 30/30 while the dry run said nothing of it (#1957).
+            "daily_cap": daily_cap(root)}
     if all_pending:
-        records = []
+        records, spent = [], ""
         while True:
-            record = run_sync(root, source=source, with_person=with_person, runner=runner,
-                              extractor=extractor, _uncapped=True)
+            try:
+                record = run_sync(root, source=source, with_person=with_person, runner=runner,
+                                  extractor=extractor)
+            except RemError as error:
+                if CAP_LIMIT not in str(error):
+                    raise
+                spent = str(error)
+                break
             if record["outcome"] == "no_change":
                 break
             records.append(record)
+            if on_batch:
+                on_batch(len(records), record)
             if record["outcome"] != "completed":
                 break
-        outcome = "caught_up" if not records or records[-1]["outcome"] == "completed" else records[-1]["outcome"]
-        return {"outcome": outcome, "batches": len(records), "items": sum(r["items"] for r in records),
+        outcome = ("budget_exhausted" if spent else "caught_up" if not records
+                   or records[-1]["outcome"] == "completed" else records[-1]["outcome"])
+        return {"outcome": outcome, **({"reason": spent} if spent else {}),
+                "batches": len(records), "items": sum(r["items"] for r in records),
                 "changed": sorted({path for r in records for path in r.get("changed", [])}),
                 "usage": {key: sum((r.get("usage") or {}).get(key, 0) for r in records)
                           for key in ("input_tokens", "output_tokens", "cached_input_tokens")},
@@ -571,7 +619,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         try:
             record = run_sync(root, source=source, with_person=with_person, runner=runner, extractor=extractor)
         except RemError as error:
-            if "Daily runner-attempt limit" not in str(error):
+            if CAP_LIMIT not in str(error):
                 raise
             # The day's calls are spent: the slot is served, not owed. Leaving it
             # owed retried it on every five-minute tick until midnight and wrote
@@ -590,7 +638,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         if not isinstance(progress, dict):
             raise RemError("Invalid source progress; preserve it for diagnosis")
         return _sync_locked(root, selected, progress, config, runner, extractor,
-                            uncapped=_uncapped, with_person=with_person, include_local=not source)
+                            with_person=with_person, include_local=not source)
 
 
 @contextmanager
@@ -617,7 +665,7 @@ def _terminate_as_interrupt():
         signal.signal(signal.SIGTERM, previous)
 
 
-def _sync_locked(root, selected, progress, config, runner, extractor=None, *, uncapped=False,
+def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
                  with_person="", include_local=True):
     from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
     from .runner import maintenance_instructions, run_stage
@@ -730,9 +778,17 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
         forget_digest(root)
         write_json(path, record)
         return record
-    room = 10**6 if uncapped else limits["runner_calls_per_day"] - status(root)["runner_attempts_today"] - extract_calls
+    room = limits["runner_calls_per_day"] - status(root)["runner_attempts_today"] - extract_calls
     if room < 1:
-        raise RemError("Daily runner-attempt limit reached; source progress was not advanced")
+        cap = daily_cap(root)
+        reason = (f"{CAP_LIMIT} ({cap['used']} of {cap['limit']} used today; this batch needs "
+                  f"{extract_calls + 1}); source progress was not advanced. The count resets "
+                  f"{cap['resets_at']}; to allow more, raise limits.runner_calls_per_day with `co rem config`")
+        # Recorded, so the logs the refusal points at show it (#1957). No
+        # attempts are charged: nothing was read into a model.
+        record.update(outcome="refused", reason=reason, finished_at=now().isoformat())
+        write_json(path, record)
+        raise RemError(reason)
     leads = leads[:room]
     attempts = extract_calls + (len(leads) or 1)
     runner = runner or run_stage
@@ -759,6 +815,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
                       run_extract(items, config, kind, root=root))
             usage = dict(digest.get("usage") or {})
             record["usage_by_stage"]["extract"] = digest.get("usage")
+            if digest.get("instructions_chars"):
+                record.setdefault("instructions_chars", {})["extract"] = digest["instructions_chars"]
             notes = digest["notes"].strip()
             # The digest is the only thing the maintainer sees. Keeping it is how
             # a thin page gets traced to the pass that lost the fact.
