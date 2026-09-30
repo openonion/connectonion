@@ -13,6 +13,7 @@ investigation. No network, no Codex.
 """
 
 import io
+import re
 import json
 
 import pytest
@@ -161,23 +162,42 @@ def test_a_90_day_scan_prints_a_handful_of_lines_and_logs_the_rest(first_run):
     assert log.count("listed gmail mail") >= 13  # every seven-day window is still recorded
 
 
-def test_a_terminal_sees_each_stage_updated_in_place():
+class Terminal(io.StringIO):
+    def isatty(self):
+        return True
+
+
+def test_a_terminal_sees_a_bar_per_stage_and_each_finished_stage_once():
+    """#1996: 90 days is thirteen seven-day windows, so listing mail is a bar that fills;
+    each stage's finished line stays, once, above the next stage's bar."""
     from connectonion.cli.commands.rem_output import StageProgress
 
-    class Terminal(io.StringIO):
-        def isatty(self):
-            return True
-
     screen = Terminal()
-    progress = StageProgress(stream=screen)
+    progress = StageProgress(stream=screen, days=90)
     for week in range(13):
         progress(f"listed gmail mail 2026-0{1 + week % 9}-01 to 2026-0{1 + week % 9}-08", 4)
     progress("scanned gmail mail metadata", 3)
     progress("scanning local projects")
+    progress("scanning local projects (codex sessions)", "50/80")
     progress("mapped projects", 2)
     progress.close()
-    assert "\r" in screen.getvalue()
-    assert screen.getvalue().count("\n") == 2  # one finished line per stage
+    shown = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", screen.getvalue())
+    assert "━" in shown and "13/13" in shown and "50/80" in shown
+    assert shown.count("co rem init: ") == 2
+    assert "co rem init: gmail: 52 messages listed, 3 correspondents" in shown
+
+
+def test_a_model_turn_is_a_spinner_with_its_time_in_a_terminal_and_lines_elsewhere(capsys):
+    from connectonion.cli.commands.rem_output import Turn
+
+    screen = Terminal()
+    with Turn("Writing your page…", stream=screen) as turn:
+        turn.stage("gathering sources")
+    shown = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", screen.getvalue())
+    assert "Writing your page… (gathering sources)" in shown and re.search(r"\d:\d\d:\d\d", shown)
+    with Turn("Writing your page…", stream=io.StringIO()) as turn:
+        turn.stage("gathering sources")
+    assert capsys.readouterr().err == "Investigation: gathering sources\n"
 
 
 # ---------------------------------------------------- investigating me
@@ -197,6 +217,19 @@ def test_runner_ok_investigates_me_once_with_inits_window(first_run):
     assert "your own" in text and "Ctrl-C" in text
     assert text.rstrip().endswith(f"--root {root} open")
     assert f"--root {root} start" in text
+
+
+def test_init_ends_with_what_is_in_the_notebook_what_was_written_and_what_is_next(first_run):
+    """#1996: the map's counts scrolled away under the model turn; the last lines say them again, skills included."""
+    root, init, _ = first_run
+    result = init()
+    assert result.exit_code == 0, result.output
+    tail = result.output.rstrip().splitlines()[-5:]
+    assert tail[0] == "Your notebook: 4 people, 3 organizations, 0 projects and 0 skills."
+    assert tail[1] == "Written this run: your page."
+    assert tail[2].startswith("Your page: ") and tail[2].endswith(".md")
+    assert tail[3].startswith(f"Then keep it current: co rem --root {root} start")
+    assert tail[4] == f"Next: co rem --root {root} open"
 
 
 def test_default_window_matches_the_old_next_command(first_run):

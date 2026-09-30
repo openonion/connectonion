@@ -162,6 +162,9 @@ def _logged(root, record, phase, call):
            "quota": {"before": quota.read(config)}, **running_marker()}
     path = state_path(root, f"runs/{run['id']}.json")
     write_json(path, run)
+    from .rem_output import Turn
+    turn = Turn({"investigate me": "Writing your page…", "projects write": f"Writing {record}…"}
+                .get(phase, f"Investigating {record}…"))
 
     def update(stage, processed=None, total=None, usage=None):
         run["stage"] = stage
@@ -178,10 +181,11 @@ def _logged(root, record, phase, call):
             run["usage"] = usage
         write_json(path, run)
         detail = f" ({processed}/{total})" if processed is not None and total is not None else ""
-        typer.echo(f"Investigation: {stage}{detail}", err=True)
+        turn.stage(f"{stage}{detail}")
 
     try:
-        result = call(update)
+        with turn:
+            result = call(update)
         run.update(outcome="completed", usage=result.get("usage"), usage_by_stage=result.get("usage_by_stage") or {},
                    changed=result.get("changed") or [], items=result.get("items", 0),
                    chars_in=result.get("chars_gathered") or 0, coverage=result.get("coverage") or [],
@@ -387,6 +391,28 @@ def _first_projects(ctx, root, config, plan, say) -> dict:
     return {"started": True, **done}
 
 
+def _init_done(ctx, result) -> str:
+    """init's last word (#1996): what is in the notebook, skills included, what was written, what is next.
+
+    The map's summary is printed before anything is spent; by the end it has
+    scrolled away under the model turns, so the counts are said once more.
+    """
+    skills = result.get("skills") or {}
+    names = len({str(row.get("name", "")).casefold() for row in skills.get("skills") or []})
+    counts = [f"{len(result.get(kind) or [])} {label}" for kind, label in
+              (("people", "people"), ("orgs", "organizations"), ("projects", "projects"))]
+    written = (["your page"] if (result.get("investigate_me") or {}).get("outcome") == "completed" else [])
+    projects = sum(page.get("outcome") == "accepted" for page in (result.get("project_pages") or {}).get("pages") or [])
+    written += [f"{projects} project page{'s' if projects != 1 else ''}"] if projects else []
+    owner = (result.get("owner_page") or {}).get("path") or ""
+    return "\n".join([
+        "",
+        f"Your notebook: {', '.join(counts)} and {names} skill{'s' if names != 1 else ''}.",
+        "Written this run: " + (" and ".join(written) if written else "nothing yet") + ".",
+        *([f"Your page: {owner}"] if owner else []),
+        "Then keep it current: " + _next(ctx, ["start"]) + " (it asks before anything is read in the background)."])
+
+
 def make_rem_app(factory):
     rem = factory(help="co rem", no_args_is_help=False)
     base = verbatim("co rem", rem.info.cls)
@@ -474,7 +500,7 @@ def make_rem_app(factory):
                     errors.append({"source": kind, "stage": "client", "error": type(error).__name__})
             failed = {row["source"]: row["error"] for row in errors}
             # One line per stage on the terminal; every step in the log (#1943).
-            progress = StageProgress(log=state_path(root, "init-progress.log"), quiet=ctx.obj["json"])
+            progress = StageProgress(log=state_path(root, "init-progress.log"), quiet=ctx.obj["json"], days=days)
             try:
                 result = build_map(root, sources, clients, days=days,
                                    skill_directories=skills_dir or None, mine=owned, source_errors=errors,
@@ -545,13 +571,14 @@ def make_rem_app(factory):
             retry_me = ["investigate", "me", *window, "--quick"]
             reason = _first_page_skipped(ctx, root, result, want=write_mine, problem=problem, fix=fix,
                                          retry=retry_me, init=["init", *window])
+            from . import rem_look
             if not ctx.obj["json"]:
                 # The map's summary and your page's facts first: value before any spending.
-                typer.echo(render(result, "init"))
+                text = render(result, "init")
+                rem_look.say(rem_look.result(text), plain=text)
                 typer.echo()
-            keep = ("Then keep it current: " + _next(ctx, ["start"])
-                    + " (it asks before anything is read in the background).")
-            say = (lambda text: None) if ctx.obj["json"] else typer.echo
+            say = ((lambda text: None) if ctx.obj["json"] else
+                   lambda text: rem_look.say(rem_look.highlight(text, counts=True), plain=text))
             plan = rem_runner.PLAN.get(config["runner"], "on the configured runner")
             from ...rem.files import RemError
             if reason:
@@ -559,10 +586,11 @@ def make_rem_app(factory):
                 say(reason)
             else:
                 me_days = days if window else 30  # what `investigate me --quick` reads without --days
-                typer.echo(f"Writing your own page now from what you sent and your coding sessions of the last "
-                           f"{me_days} days: one model turn with {config['runner']} ({config['model']}), "
-                           f"{plan}. Usually about 10 minutes. Ctrl-C stops it; the map is kept. "
-                           "(--no-investigate skips this.)", err=ctx.obj["json"])
+                cost = (f"Writing your own page now from what you sent and your coding sessions of the last "
+                        f"{me_days} days: one model turn with {config['runner']} ({config['model']}), "
+                        f"{plan}. Usually about 10 minutes. Ctrl-C stops it; the map is kept. "
+                        "(--no-investigate skips this.)")
+                rem_look.say(rem_look.highlight(cost, counts=True), err=ctx.obj["json"], plain=cost)
                 try:
                     _investigate_me(root, days=days if window else None, quick=True)
                 except KeyboardInterrupt:
@@ -596,7 +624,7 @@ def make_rem_app(factory):
                                + _next(ctx, ["projects", "write"]) + ".")
                     _emit(ctx, result if ctx.obj["json"] else stopped, ["projects", "write"])
                     raise typer.Exit(130)
-            return (result if ctx.obj["json"] else keep), ["open"]
+            return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
         _handle(ctx, run, ["sources"])
 
     @rem.command("investigate", cls=V("co rem investigate"))
