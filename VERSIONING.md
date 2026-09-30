@@ -411,7 +411,7 @@ your whole page, the 3 people you wrote to most in the last 14 days, and your
 recent projects, stopping at 5 points of the Codex week. Stable is 1.8.9. See
 [1.9.0a5 notes](docs/releases/1.9.0a5.md).
 
-- 1.9.0a5 (#1996, #1997; the first run's page, people and budget; status ends on the step it names.)
+- 1.9.0a5 (#1996, #1997; first run capped with one estimate from real runs, owner page spec and name, no placeholder left in a written page (#2011); one census, truthful status, upgraded notebooks tidied (#2010, #1999); the look checked as a terminal shows it (#2009); maintain under 15k (#2006); urllib3 2.8.0 (#2007).)
 
 ## Previous preview: 1.9.0a4
 
