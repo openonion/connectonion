@@ -85,6 +85,10 @@ looks the same everywhere:
 - **Next line.** A result ends with `style.next_line("co …")`: `Next:` bold,
   the command in the command colour. `print_tip` and the `NEXT` table already
   draw it.
+- **Colour by role only.** A Rich `Console` you make yourself takes
+  `highlight=False`, or Rich colours whatever looks like a number, date or
+  path and a word comes out in pieces. No emoji in a panel title or heading,
+  and nothing printed at startup before the command's own first line.
 - **Status layout.** A header line saying where things stand, then sections,
   one line per item; details go behind `--verbose`, not into the default view.
 - **Progress.** `style.progress()`: a bar with i/N when the total is known, a
@@ -95,12 +99,14 @@ looks the same everywhere:
   `FORCE_COLOR` and `NO_COLOR` are obeyed.
 
 `co audit`'s `look` rule checks it: every help page, and the read-only status
-commands in `audit.STATUS` (`co status`, `co doctor`, `co commands`), run once as
+commands in `audit.STATUS` (`co status`, `co doctor`, `co commands`, …), run once as
 an agent (`NO_COLOR=1 TERM=dumb`, 200 columns) and once as a terminal
-(`FORCE_COLOR=1 TERM=xterm-256color`, 100 columns). It fails a page that is
+(`FORCE_COLOR=1 TERM=xterm-256color`, 100 columns, stdout and stderr each a pty). It fails a page that is
 coloured in the pipe, has no colour in the terminal, or says different words
 (a table that cuts `/long/path` to `/lo…` at 100 columns does; use
-`overflow="fold"`), and a status command whose `Next:` line lacks the shape.
+`overflow="fold"`), a status command whose `Next:` line lacks the shape or is
+missing, a line repeated at the top, a word coloured in pieces, and an emoji
+in a panel title.
 
 ### Write "what it changes" from the handler, not the name
 

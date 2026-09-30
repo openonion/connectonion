@@ -55,8 +55,12 @@ gh: 228 pages
 | `look` | run again as a person's terminal runs it, the page says different words, or it is coloured in a pipe; for `co`, also a page with no colour in the terminal |
 
 `look` runs each checked page a second time with `FORCE_COLOR=1`,
-`TERM=xterm-256color` and 100 columns (the first run is `NO_COLOR=1`,
-`TERM=dumb`, 200 columns), so an audit takes about twice as long. Words are
+`TERM=xterm-256color` and 100 columns, with stdout and stderr each a
+pseudo-terminal where the platform has one (the first run is `NO_COLOR=1`,
+`TERM=dumb`, 200 columns, into pipes), so an audit takes about twice as long.
+Both streams are terminals because a person's are: with stderr a pipe, the
+`[env] …/keys.env` that opened every `co` command two or three times in a
+real terminal never reached the audit (#2008). Words are
 compared without colour, whitespace and frame characters, and in any order,
 because a table narrowed to 100 columns folds a long value beside its
 description; a value cut to `connec…` is a different word. A plain page in a
@@ -71,7 +75,15 @@ Every `co` command prints through `connectonion/cli/style.py`:
   dim, warnings yellow, errors bold red, section titles bold underlined.
   A page written as one string goes through `style.markup()`.
 - **Next line**: a result ends with `Next: <command>`, drawn by
-  `style.next_line`.
+  `style.next_line`. Only the command is coloured, not a parenthetical after it.
+- **Colour by role only**: every console is made with `highlight=False`
+  (`style.console()` is). Rich's default highlighter colours whatever looks
+  like a number, date or path, so `co 1.9.0a5` came out with `1.9` alone in
+  cyan and a date in three pieces; a word is one colour or none.
+- **Titles are words**: no emoji in a panel title or a section heading
+  (`📊 Account Status` became the section `Account`).
+- **The first line is the command's own**: nothing printed at startup, and no
+  line printed twice at the top.
 - **Status layout**: a header line, then sections, one line per item; details
   behind `--verbose`.
 - **Progress**: `style.progress()`, a bar with i/N when the total is known, a
@@ -80,8 +92,17 @@ Every `co` command prints through `connectonion/cli/style.py`:
   pipe, a log or launchd, or with `--json`; the same words either way.
 
 Beside the help pages, `co audit co` runs the read-only status commands in
-`audit.STATUS` (`co status`, `co doctor`, `co commands`) both ways, and fails
-a `Next:` line there that is not drawn the way `style.next_line` draws it.
+`audit.STATUS` (`co status`, `co doctor`, `co commands`, `co rem status`,
+`co auth status`, `co whatsapp check`) both ways, and fails a `Next:` line
+there that is not drawn the way `style.next_line` draws it, or a status
+command with no `Next:` line at all.
+
+In a terminal run of any `co` page or status command, `look` also fails:
+
+- the same line twice among the first five (startup noise such as `[env]`);
+- a word coloured in pieces: two runs of letters or digits inside one
+  whitespace-delimited word in different styles, the mark of auto-highlighting;
+- an emoji in a panel title.
 
 Subcommands are read from the layouts real CLIs print: Typer/Rich panels
 (any title but Options and Arguments), `Commands:`-style sections (uv, click,
