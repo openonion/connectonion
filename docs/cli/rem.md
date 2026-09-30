@@ -731,9 +731,9 @@ line itself. The sync result and the map report carry `tidied`, what moved, by p
 A real person is never folded into the owner. **"Possibly yours"** — the
 addresses `init` offers to confirm with `--mine` — lists only addresses that
 never replied *and* carry the owner's own name or confirmed address in the
-address or its display name. The 1.9.0a5 run offered sixteen, four of them
-colleagues and friends who answer on other channels; the list now holds the two
-that are the owner's. An address confirmed once (`--mine`, or folded by tidy)
+address or its display name. The owner's notebook offered seventeen, fifteen
+of them colleagues and friends who answer on other channels; the list now holds
+the two that are the owner's. An address confirmed once (`--mine`, or folded by tidy)
 stays the owner's at the next map without repeating `--mine`.
 
 A fresh map no longer makes the duplicate skill pages either: a skill named
@@ -742,7 +742,10 @@ after its folder joins the named skill whose name its folder ends with
 carry the same description.
 
 Measured on a copy of the owner's notebook (2026-10-01, never the notebook
-itself): see the pull request for the before/after counts.
+itself): people pages 381 → 357 (22 services archived, 2 own addresses folded),
+skill catalog pages 153 → 150, "possibly yours" 17 → 0, pages with
+`web: not searched` 4 → 0, pages citing `investigation:coverage` 5 → 0 (9
+lines removed). A second pass changed nothing.
 
 ## Paths
 - /home/you/projects/connectonion

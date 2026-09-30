@@ -129,9 +129,9 @@ def looks_own(group: list[dict], tokens: set[str]) -> list[dict]:
     Only write-only rows, and none when any address of the group ever replied:
     a reply is someone else. When the map knows the owner (their addresses or
     name), the address or its display name must also carry one of their words.
-    The owner's 1.9.0a5 run offered sixteen, and most were colleagues and
-    friends who answer on other channels -- Larry, Vivian, Ivan, Lisa -- whom
-    one `--mine` would have made the owner. Knowing nothing of the owner, the
+    The owner's notebook offered seventeen, and fifteen were colleagues and
+    friends who answer on other channels, whom one `--mine` would have made
+    the owner. Knowing nothing of the owner, the
     map still asks about every write-only address, as before.
     """
     if any(row.get('received') for row in group):
