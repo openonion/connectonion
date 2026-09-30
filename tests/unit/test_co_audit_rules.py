@@ -167,3 +167,102 @@ def test_rendered_help_describes_short_references_with_sequential_examples():
     assert "Example:  co onenote create 2" in one_note_help["create"].output
     assert "numbered by ls" in one_note_help["create"].output
     assert all(" | " not in result.output for result in one_note_help.values())
+
+
+# -- look (#1997): what a person's terminal shows beside what an agent reads --
+
+def styled(text):
+    """A page as a terminal prints it: coloured, and wrapped at 100 columns instead of 200."""
+    return text.replace(" Usage:", " \x1b[1;33mUsage:\x1b[0m").replace("Send one message. ", "Send one\n message. ")
+
+
+def look(plain, terminal, path="co mail send", **kind):
+    return [f.detail for f in audit.look(path, Page(0, plain), Page(0, terminal), **kind)]
+
+
+def test_a_page_styled_in_a_terminal_and_plain_in_a_pipe_with_the_same_words_passes():
+    assert look(GOOD, styled(GOOD)) == []
+
+
+def test_a_co_page_with_no_colour_in_a_terminal_is_caught():
+    [detail] = look(GOOD, GOOD)
+    assert "no colour in a terminal" in detail and "connectonion/cli/style.py" in detail
+
+
+def test_another_program_may_be_plain_in_a_terminal_on_purpose():
+    tool = GOOD.replace("co mail", "tool mail")
+    assert look(tool, tool, path="tool mail send") == []
+
+
+def test_colour_in_a_pipe_is_caught_for_any_program():
+    coloured = styled(GOOD).replace("co mail", "tool mail")
+    [detail] = look(coloured, coloured, path="tool mail send")
+    assert "colour codes under NO_COLOR" in detail
+
+
+def test_different_words_in_a_terminal_are_caught_and_named():
+    cut = styled(GOOD).replace("Copy to", "Copy …")
+    [detail] = look(GOOD, cut)
+    assert "different words" in detail and "shows … where an agent reads to" in detail
+
+
+def test_a_frame_redrawn_at_another_width_is_the_same_words():
+    narrow = styled(GOOD).replace("╭─ Options ─────────────╮", "╭─ Options ─╮").replace("╰───────────────────────╯", "╰─╯")
+    assert look(GOOD, narrow) == []
+
+
+def test_a_table_cell_folded_beside_its_description_is_the_same_words():
+    folded = styled(GOOD).replace("│ --cc   TEXT  Copy to  │", "│ --cc   TE  Copy to  │\n│        XT           │")
+    assert look(GOOD, folded) == []
+
+
+def test_a_terminal_run_that_fails_is_caught():
+    [finding] = audit.look("co mail send", Page(0, GOOD), Page(1, ""))
+    assert finding.check == "look" and "exit 1" in finding.detail
+
+
+def next_line_as_printed(command):
+    import io
+
+    from rich.console import Console
+
+    from connectonion.cli import style
+
+    buffer = io.StringIO()
+    Console(file=buffer, theme=style.THEME, force_terminal=True, color_system="256").print(style.next_line(command))
+    return buffer.getvalue()
+
+
+def test_a_status_next_line_must_have_the_shared_shape():
+    plain, balance = "Balance 3\nNext: co keys\n", "\x1b[1mBalance\x1b[0m 3\n"
+    assert look(plain, balance + next_line_as_printed("co keys"), path="co status", output=True) == []
+    [detail] = look(plain, balance + "\x1b[2mNext: co keys\x1b[0m\n", path="co status", output=True)
+    assert detail.startswith("output") and "Next:" in detail
+
+
+def test_status_commands_are_read_only_and_leave_co_rem_status_to_its_rewrite():
+    assert {"co status", "co doctor", "co commands"} <= set(audit.STATUS)
+    assert "co rem status" not in audit.STATUS
+
+
+def test_the_audit_runs_each_page_and_each_status_command_both_ways():
+    ran = []
+    top = " Usage: co [OPTIONS] COMMAND\n\nCommands:\n  status   Show status. Read-only.\n\n Example:  co status\n"
+    leaf = " Usage: co status [OPTIONS]\n\n Example:  co status\n"
+
+    def runner(argv, terminal=False):
+        ran.append(("help", " ".join(argv), terminal))
+        text = top if argv == ["co"] else leaf
+        return Page(0, styled(text) if terminal else text)
+
+    def output(argv, terminal=False):
+        ran.append(("output", " ".join(argv), terminal))
+        return Page(0, "Balance \x1b[1m3\x1b[0m\n" if terminal else "Balance 3\n", err="Next: co keys\n")
+
+    findings, checked = audit.audit(["co", "status"], runner=runner, output=output)
+    assert set(checked) == {"co status"}
+    assert ("help", "co status", True) in ran and ("help", "co", True) not in ran
+    assert {("output", "co status", False), ("output", "co status", True)} <= set(ran)
+    assert [(f.path, f.check) for f in findings] == [("co status", "look")]
+    assert "Next:" in findings[0].detail
+    assert dict((rule, passing) for rule, passing, _ in audit.score(findings, checked))["look"] == 0
