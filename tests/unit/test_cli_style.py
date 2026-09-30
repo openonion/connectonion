@@ -36,3 +36,34 @@ def test_progress_draws_nothing_off_a_terminal():
         task = bar.add_task("Saving mail", total=3)
         bar.advance(task, 3)
     assert out.file.getvalue() == ""
+
+
+PAGE = """co proxy — share this computer's internet connection.
+
+  co proxy share [to <address>]   lend your connection to one agent
+  co proxy diagnose [<address>]   why a share is not working (else: co proxy share to <address>)
+
+<address> defaults to the one `co remote-browser config` remembered, [not] a cobalt.
+
+Options:
+  --ttl SEC       stop after this long
+
+Start with: co proxy share to 0xHOST
+Example:  co proxy share to 0xabc... --ttl 3600
+Next: co proxy status
+Back: co --help"""
+
+
+def test_a_hand_written_page_prints_word_for_word_off_a_terminal():
+    assert render(style.markup(PAGE), terminal=False) == PAGE + "\n"
+
+
+def test_a_hand_written_page_colours_its_commands_titles_and_next_line_in_a_terminal():
+    shown = render(style.markup(PAGE), terminal=True)
+    commands = re.findall(r"\x1b\[1;36m(.*?)\x1b\[0m", shown)
+    assert commands == ["co proxy", "co proxy share [to <address>]", "co proxy diagnose [<address>]",
+                        "co proxy share to <address>", "co remote-browser config", "co proxy share to 0xHOST",
+                        "co proxy share to 0xabc... --ttl 3600", "co proxy status", "co --help"]
+    assert "\x1b[1;4mOptions:\x1b[0m" in shown
+    assert render(style.next_line("co proxy status"), terminal=True) in shown
+    assert ANSI.sub("", shown) == PAGE + "\n"

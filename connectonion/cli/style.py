@@ -22,7 +22,12 @@ Usage:
     out = console()
     out.print(f"Mapped {count(312)} people. Open them with {command('co rem open')}.")
     out.print(next_line("co rem start"))
+
+A page written as one string rather than built by Typer (`co proxy`) goes
+through `markup`, which colours what it can find without changing a word.
 """
+
+import re
 
 from rich.console import Console
 from rich.markup import escape
@@ -86,6 +91,41 @@ def muted(text: str) -> str:
 def next_line(cmd: str) -> str:
     """`Next: <command>`, the one line every result ends with."""
     return f"[co.next]Next:[/co.next] {command(cmd)}"
+
+
+# A `co …` command in text written as one string: at the start of a line,
+# after a label's `: `, a `| ` or a backtick, and up to two spaces, ` — `, a
+# closing backtick or bracket, or the end of the line. Prose that merely uses
+# the word is not found in the middle of a sentence, and `cobalt` never is.
+_COMMAND = re.compile(r"(^[ \t]*|(?<=: )|(?<=:  )|(?<=\| )|(?<=`))(co(?: (?!— )[^\s`)]+)*?)(?=  | — |[`)]|$)")
+_HEADING = re.compile(r"[A-Z][A-Za-z ]*:")
+_NEXT = re.compile(r"(\s*)Next: (.*)")
+
+
+def _commands(line: str) -> str:
+    out, last = "", 0
+    for found in _COMMAND.finditer(line):
+        out += escape(line[last:found.start(2)]) + command(found.group(2))
+        last = found.end(2)
+    return out + escape(line[last:])
+
+
+def _line(line: str) -> str:
+    if _HEADING.fullmatch(line):
+        return heading(line)
+    shown = _NEXT.fullmatch(line)
+    if shown:   # next_line's shape, with or without a few words before the command
+        return f"{shown.group(1)}[co.next]Next:[/co.next] {_commands(shown.group(2))}"
+    return _commands(line)
+
+
+def markup(text: str) -> str:
+    """Text written as one string (a hand-written help page, a tip) in the palette, word for word.
+
+    Each command it shows is a `command`, an `Options:`-style title a
+    `heading`, and a `Next:` line has next_line's shape.
+    """
+    return "\n".join(_line(line) for line in text.split("\n"))
 
 
 def progress(out: Console = None) -> Progress:
