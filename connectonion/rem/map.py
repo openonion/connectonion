@@ -578,7 +578,8 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
     save()
     if progress:
         progress("mapping installed skills")
-    report['skills'] = map_skills(notebook, skill_directories, lock_held=True, subscriptions=subscriptions)
+    report['skills'] = map_skills(notebook, skill_directories, lock_held=True, subscriptions=subscriptions,
+                                  **({'progress': progress} if progress else {}))
     if progress:
         progress("mapped installed skills", len(report['skills']['created']) + len(report['skills']['preserved']))
     if inventory:
@@ -702,8 +703,9 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
     save()
     if progress:
         progress("scanning local projects")
-    project_rows = (scan_projects(subscriptions, days, root, on_session=inventory.session)
-                    if inventory else scan_projects(subscriptions, days, root))
+    # Only what is given is passed: a progress-less caller keeps the call it always made.
+    project_rows = scan_projects(subscriptions, days, root, **({'on_session': inventory.session} if inventory else {}),
+                                 **({'progress': progress} if progress else {}))
     dropped = []
     for identity, row in project_groups(project_rows, dropped).items():
         record, created = file_project(notebook, identity, row)

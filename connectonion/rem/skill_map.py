@@ -217,8 +217,11 @@ def _listed_files(page: str) -> list[str]:
 
 
 def map_skills(notebook: Notebook, directories: list[Path] | None = None, *, lock_held: bool = False,
-               subscriptions: dict | None = None, days: int = 180) -> dict:
-    """One page per skill name; merge per-copy pages; refresh the map-owned lines and the index."""
+               subscriptions: dict | None = None, days: int = 180, progress=None) -> dict:
+    """One page per skill name; merge per-copy pages; refresh the map-owned lines and the index.
+
+    `progress(message, "i/N")` every ten names, so init can draw a bar.
+    """
     from .config import prepare
     from .merge import mapped_only, merge_into, weight
     from .skill_usage import usage, usage_line
@@ -236,7 +239,10 @@ def map_skills(notebook: Notebook, directories: list[Path] | None = None, *, loc
         counted = usage(subscriptions, [rows[0]["name"] for rows in by_name.values()], root=notebook.root, days=days)
         existing = _existing(notebook)
         links = []
-        for key in sorted(set(by_name) | set(existing)):
+        keys = sorted(set(by_name) | set(existing))
+        for number, key in enumerate(keys, 1):
+            if progress and (number == 1 or number % 10 == 0 or number == len(keys)):
+                progress("mapping installed skills", f"{number}/{len(keys)}")
             rows = by_name.get(key, [])
             # The page's File: a copy somewhere real, the content most copies share, then by path.
             shared = {row["sha256"]: sum(r["sha256"] == row["sha256"] for r in rows) for row in rows}

@@ -285,8 +285,14 @@ Back:     co rem --help
 Show whether the schedule is on, when it runs next, what ran today, and what it cost.
 Read-only.
 
-Usage:    co rem status
+Usage:    co rem status [--verbose]
 Example:  co rem status
+Output:   One line each: the state and next run; the notebook (people, projects,
+          organizations and skills, written of mapped, and what to write next);
+          today's runs, pages changed and tokens; each mailbox with the command
+          that fixes it; the last run.
+Options:  --verbose   Also every internal field: schedule times, worker, token
+                      counters and their coverage, the full last run record.
 Next:     co rem logs   (details of each run)
 Back:     co rem --help
 ```
