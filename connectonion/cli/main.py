@@ -422,15 +422,15 @@ def commands():
     from rich.markup import escape
 
     from .discovery import command_tree
-    from .style import command, console as style_console
+    from .style import command, next_line, console as style_console
     out = style_console()
     entries = command_tree(app)
     width = max(len(e.path) for e in entries)
     for entry in entries:
         out.print(f"{command(entry.path)}{' ' * (width - len(entry.path))}  {escape(entry.summary)}", emoji=False)
     out.print()
-    out.print(f"Options for one command: {command('co <command> --help')}")
     out.print(f"Functions inside the browser: {command('co browser help')}")
+    out.print(next_line("co <command> --help"))   # a result ends on its Next line (#2008)
 
 
 claude_app = _typer_app(help="Experimental — run Claude Code in this terminal and follow the same session from a browser. "

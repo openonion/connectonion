@@ -684,7 +684,10 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
     code = verdict(found, warnings)
     # Only when it is true: this line used to follow "✓ Valid credentials".
     if not authenticated:
-        console.print("[dim]Not authenticated with OpenOnion — run 'co auth' for managed models[/dim]\n")
+        console.print("[dim]Not authenticated with OpenOnion: managed models need it.[/dim]")
+    # Every result ends on the step to take (#2008); doctor ended on a dim hint.
+    from .command_tips import print_tip
+    print_tip("Next: co auth" if not authenticated else "Next: co status")
     return code
 
 

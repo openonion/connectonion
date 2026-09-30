@@ -100,8 +100,10 @@ command with no `Next:` line at all.
 In a terminal run of any `co` page or status command, `look` also fails:
 
 - the same line twice among the first five (startup noise such as `[env]`);
-- a word coloured in pieces: two runs of letters or digits inside one
-  whitespace-delimited word in different styles, the mark of auto-highlighting;
+- in a status command's output, a word coloured in pieces: two runs of
+  letters or digits inside one whitespace-delimited word in different styles,
+  the mark of auto-highlighting (help pages are exempt: Typer colours
+  `--options` and `<metavars>` on purpose, also inside a path);
 - an emoji in a panel title.
 
 Subcommands are read from the layouts real CLIs print: Typer/Rich panels

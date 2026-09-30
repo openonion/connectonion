@@ -304,13 +304,16 @@ def test_the_terminal_run_gives_stderr_a_terminal(tmp_path, monkeypatch):
 
 def test_a_word_coloured_in_pieces_is_caught():
     # Rich's highlighter: `co 1.9.0a5` with `1.9` alone in bold cyan.
-    [detail] = look(GOOD + "co 1.9.0a5\n", styled(GOOD) + "co \x1b[1;36m1.9\x1b[0m.0a5\n")
+    plain, shown = "co 1.9.0a5\nNext: co keys\n", "co \x1b[1;36m1.9\x1b[0m.0a5\n" + next_line_as_printed("co keys")
+    [detail] = look(plain, shown, path="co status", output=True)
     assert "coloured in pieces" in detail and "1.9.0a5" in detail
+    # Typer colours a <metavar> inside a path on a help page on purpose.
+    assert look(GOOD + "~/.co/<name>/x\n", styled(GOOD) + "~/.co/\x1b[1;33m<name>\x1b[0m/x\n") == []
 
 
 def test_a_word_in_one_colour_beside_punctuation_is_not_pieces():
-    shown = styled(GOOD) + "Run (\x1b[1;36mco auth\x1b[0m) or \x1b[2m~/.co/keys.env\x1b[0m.\n"
-    assert look(GOOD + "Run (co auth) or ~/.co/keys.env.\n", shown) == []
+    shown = "Run (\x1b[1;36mco auth\x1b[0m) or \x1b[2m~/.co/keys.env\x1b[0m.\n" + next_line_as_printed("co keys")
+    assert look("Run (co auth) or ~/.co/keys.env.\nNext: co keys\n", shown, path="co status", output=True) == []
 
 
 def test_an_emoji_in_a_panel_title_is_caught():

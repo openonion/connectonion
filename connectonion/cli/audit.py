@@ -515,7 +515,9 @@ def look(path: str, plain: Page, styled: Page, output: bool = False) -> list:
     if twice:
         details.append(f"prints `{twice}` twice at the top")
     if ours:
-        pieces = _pieces(shown)
+        # Output only: a help page is drawn by Typer, whose own highlighter
+        # colours `--options` and `<metavars>` on purpose, also inside a path.
+        pieces = _pieces(shown) if output else []
         if pieces:
             details.append(f"has words coloured in pieces (auto-highlighting; make the Console with "
                            f"highlight=False): {' '.join(dict.fromkeys(pieces[:4]))}")
