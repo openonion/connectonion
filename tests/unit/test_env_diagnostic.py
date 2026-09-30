@@ -62,7 +62,8 @@ def test_a_terminal_gets_it_only_when_it_asks(tmp_path):
     command, and the owner read it as noise (#2008); `co status`, `co doctor`
     and `co env` name the file where someone is asking which one won."""
     assert "[env]" not in _run(tmp_path, tty=True)
-    assert "[env]" in _run(tmp_path, {"CO_DEBUG_ENV": "1"}, tty=True)
+    (tmp_path / "asks").mkdir()
+    assert "[env]" in _run(tmp_path / "asks", {"CO_DEBUG_ENV": "1"}, tty=True)
 
 
 def test_co_debug_env_forces_it_back_on(tmp_path):
