@@ -726,7 +726,7 @@ when nothing needs tidying. No model is called. What it does:
 An investigated page is never archived or folded: a person's work on a page is
 not undone by a rule about its address. Every action is appended to
 `.state/tidy.json` with the page, what was done and, for removed lines, the
-line itself. The sync's run log and the map report carry `tidied`.
+line itself. The sync result and the map report carry `tidied`, what moved, by page.
 
 A real person is never folded into the owner. **"Possibly yours"** — the
 addresses `init` offers to confirm with `--mine` — lists only addresses that

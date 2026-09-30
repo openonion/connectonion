@@ -743,12 +743,16 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
     with maintenance_lock(root), _terminate_as_interrupt():
         config = validate(read_config(root))
         abandon_stale_runs(root)
+        # An upgraded notebook is tidied by its first sync, before anything reads it (#1999).
+        from .tidy import tidy
+        tidied = tidy(root, lock_held=True)
         selected = _selected_sources(root, source)
         progress = read_json(state_path(root, "progress.json"), {})
         if not isinstance(progress, dict):
             raise RemError("Invalid source progress; preserve it for diagnosis")
-        return _sync_locked(root, selected, progress, config, runner, extractor,
-                            with_person=with_person, include_local=not source)
+        record = _sync_locked(root, selected, progress, config, runner, extractor,
+                              with_person=with_person, include_local=not source)
+        return {**record, "tidied": tidied} if tidied and isinstance(record, dict) else record
 
 
 @contextmanager
