@@ -70,12 +70,14 @@ def instructions(stage: str, kind: str = "", *, page_kind: str = "") -> str:
         # line is added: `co <command> --help` is how a turn finds a command.
         reference = directory / "rem-init/CLI.md"
         text = text.replace("](../rem-init/CLI.md)", f"]({reference})")
-    if stage == "abstract" or not kind:
-        return text
-    source = directory / f"rem-source-{kind}/SKILL.md"
-    if source.is_file():
-        text += "\n\n---\n\n" + source.read_text(encoding="utf-8")
-    return text
+    if stage != "abstract" and kind:
+        source = directory / f"rem-source-{kind}/SKILL.md"
+        if source.is_file():
+            text += "\n\n---\n\n" + source.read_text(encoding="utf-8")
+    # "Why these rules: docs/…" is for whoever edits the Skill. Shown to the
+    # model, it was followed: the a4 UNSW turn read the rationale doc from the
+    # installed wheel, bringing back the text #1851 moved out (#2001).
+    return re.sub(r"(?m)^Why these rules: .*\n+", "", text)
 
 
 def extraction_instructions(kind: str = "") -> str:
@@ -356,6 +358,11 @@ def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "") 
     """Keep large input out of argv; supply the canonical stage/source/page Skills."""
     record = next((i.get("record", "") for i in items if i.get("role") == "page"), "")
     page_kind = page_kind_of(record)
+    if stage == "maintain" and any(item.get("role") == "extract" for item in items):
+        # Maintenance of extraction notes reads notes, not the source: how Codex
+        # or WhatsApp store the user's words was the extract turn's concern.
+        # Appended anyway, it took a one-page turn to 17.5k characters (#2000).
+        kind = ""
     one_page = stage == "investigate" or (stage == "maintain" and any(item.get("one_page") for item in items))
     text = instructions(stage, kind, page_kind=page_kind if one_page and record else "")
     material = directory / "material.json"
