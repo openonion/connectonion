@@ -613,3 +613,21 @@ def test_a_mailbox_left_out_on_purpose_says_why_not_that_it_is_disconnected():
                                  mail_skipped="not read for a project page; name its mail with --handle")
     assert "outlook: not read for a project page; name its mail with --handle; not searched" in coverage
     assert not any("co auth" in line for line in coverage)
+
+
+def test_investigation_reads_the_main_checkout_not_a_stale_agent_worktree(tmp_path):
+    # A throwaway worktree read as the project's state wrote "version 1.8.9b2"
+    # the day 1.9.0a1 shipped (#1955).
+    main = tmp_path / 'connectonion'
+    (main / '.git/worktrees/agent-a1').mkdir(parents=True)
+    (main / 'pyproject.toml').write_text('version = "1.9.0a1"')
+    worktree = main / '.claude/worktrees/agent-a1'
+    worktree.mkdir(parents=True)
+    (worktree / '.git').write_text(f'gitdir: {main}/.git/worktrees/agent-a1\n')
+    (worktree / 'pyproject.toml').write_text('version = "1.8.9b2"')
+    page = f'# connectonion\n## Paths\n- {worktree} [3]\n- /elsewhere/notes\n- Sessions: 9\n## Sources\n'
+    corrected = inv.collapse_worktree_paths(page)
+    assert inv.project_paths(corrected) == [str(main), '/elsewhere/notes']
+    assert '- Sessions: 9\n' in corrected
+    assert inv.collapse_worktree_paths(corrected) == corrected
+    assert inv.project_file_inventory(page) == [str(main / 'pyproject.toml')]
