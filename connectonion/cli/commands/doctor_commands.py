@@ -56,9 +56,9 @@ def _repair_runtime(*, yes: bool) -> None:
     checks = runtime_checks()
     unhealthy = [check for check in checks if check.status not in {"ok", "idle"}]
     plan = Table(show_header=True, box=box.SIMPLE, padding=(0, 1))
-    plan.add_column("Check", style="cyan")
-    plan.add_column("State")
-    plan.add_column("Proposed change")
+    plan.add_column("Check", style="cyan", overflow="fold")
+    plan.add_column("State", overflow="fold")
+    plan.add_column("Proposed change", overflow="fold")
     for check in unhealthy:
         change = shlex.join(check.repair) if check.repair else "no safe automatic repair"
         plan.add_row(check.label, check.status, change)
@@ -75,9 +75,9 @@ def _repair_runtime(*, yes: bool) -> None:
 
     outcomes = repair_runtime(checks, approve=approve)
     result = Table(show_header=True, box=box.SIMPLE, padding=(0, 1))
-    result.add_column("Check", style="cyan")
-    result.add_column("Outcome")
-    result.add_column("Detail")
+    result.add_column("Check", style="cyan", overflow="fold")
+    result.add_column("Outcome", overflow="fold")
+    result.add_column("Detail", overflow="fold")
     if outcomes:
         for outcome in outcomes:
             style = {"repaired": "green", "still-blocked": "red"}.get(outcome.outcome, "yellow")
@@ -327,10 +327,12 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
 
     console.print("\n[bold cyan]🔍 ConnectOnion Diagnostics[/bold cyan]\n")
 
-    # System checks
+    # System checks. Every column folds rather than cuts: in an 80-column
+    # terminal Rich's default turned the package path into `…/connec…`, so a
+    # person saw less than a pipe did (#1997).
     system_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 1))
-    system_table.add_column("Check", style="cyan")
-    system_table.add_column("Status")
+    system_table.add_column("Check", style="cyan", overflow="fold")
+    system_table.add_column("Status", overflow="fold")
 
     # Version
     system_table.add_row("Version", f"[green]✓[/green] {__version__}")
@@ -392,8 +394,8 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
 
     # Configuration checks
     config_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 1))
-    config_table.add_column("Check", style="cyan")
-    config_table.add_column("Status")
+    config_table.add_column("Check", style="cyan", overflow="fold")
+    config_table.add_column("Status", overflow="fold")
 
     # Check for host.yaml (project config)
     # The project's, found by walking up -- the rule since #660. As a bare
@@ -528,8 +530,8 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
 
     # Browser checks (stealth driver integrity)
     browser_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 1))
-    browser_table.add_column("Check", style="cyan")
-    browser_table.add_column("Status")
+    browser_table.add_column("Check", style="cyan", overflow="fold")
+    browser_table.add_column("Status", overflow="fold")
 
     from ...useful_tools.browser_tools.browser import (
         driver_stealth_status,
@@ -585,8 +587,8 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
     problems = find_skill_problems()
 
     skills_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 1))
-    skills_table.add_column("Check", style="cyan")
-    skills_table.add_column("Status")
+    skills_table.add_column("Check", style="cyan", overflow="fold")
+    skills_table.add_column("Status", overflow="fold")
 
     counts = {}
     for skill in skills:
@@ -622,8 +624,8 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
     authenticated = False
     if api_key:
         connectivity_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 1))
-        connectivity_table.add_column("Check", style="cyan")
-        connectivity_table.add_column("Status")
+        connectivity_table.add_column("Check", style="cyan", overflow="fold")
+        connectivity_table.add_column("Status", overflow="fold")
 
         # Check backend reachability
         selected_backend = backend_url()

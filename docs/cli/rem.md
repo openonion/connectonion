@@ -5,7 +5,7 @@ long-term supported in 1.9.0 (#1664 names it first). The command surface and
 every `--help` page are the agreed design in #1656; the pages themselves live
 in `connectonion/cli/commands/rem_help.md` and a test holds them to the code.
 Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
-`unsubscribe`, `route`, `usage`) still work until 1.9 and print their new name.
+`unsubscribe`, `route`, `usage`) still work until 1.9.0 and print their new name.
 
 See the [2026-09-17 progress review](rem-progress.md) for the feature inventory,
 current CI blockers and remaining work.
@@ -37,10 +37,15 @@ The first run is one command (#1943). `init` is a script: it maps 90 days of
 mail and your local Codex / Claude Code sessions, saves the private mail
 material, and prints your own page's facts — who you write to most, how much
 mail, which projects you have been coding in — with the page's path, within the
-first minutes. Then, in a terminal, it writes your own page by itself (the
-bounded `investigate me --quick` pass). Before it spends anything it says which
-runner and model, that it runs on your own plan, and roughly how long; Ctrl-C
-stops it and the map is kept. It skips that step, with a one-line reason, when
+first minutes. Then, in a terminal, it writes your own page by itself: the whole
+`investigate me`, from everything you sent and your coding sessions of the last
+30 days (or `--days`), one model turn over evidence files, about 15 minutes.
+Next come the 3 people you wrote to most in the last 14 days, one turn each, and
+then your recent projects. Before it spends anything it says which runner and
+model, that it runs on your own plan, and roughly how long. The whole first run
+stops starting pages once it has used 5 points of the Codex week (half the
+notebook's weekly 10), or at the weekly floor. Ctrl-C stops it and keeps the map
+and every page written; `co rem investigate people` writes more people. It skips that step, with a one-line reason, when
 the runner is not installed or not signed in (checked before the map starts,
 without a model), when no mailbox gave an address of yours, when your page was
 already written, or when there is no terminal (scripts and `--json`) unless
@@ -109,9 +114,10 @@ plus at most one unfinished-page investigation per local day when the day's
 call budget allows;
 `init` does neither. A mapped page is not an investigated or quality-approved page.
 For an initial trial, `co rem init --days 5` investigates your page over the same
-five-day window. `investigate me --quick` samples recent
-evidence, takes one synthesis turn, and marks its coverage as partial. A full
-owner investigation can read substantially more material and cost much more.
+five-day window. `investigate me --quick` is the older bounded pass: it samples
+recent evidence, takes one synthesis turn, and marks its coverage as partial.
+init no longer uses it, since #1850's evidence files let one turn search
+everything you sent.
 
 ## Installed-skill skeletons at initialization
 
@@ -706,11 +712,9 @@ archived; one somebody wrote in is kept.
 
 Initialization reports partial failure with a nonzero exit if a selected mail source cannot be initialized or read. Completed maps remain available; provider error text is not exposed. Recovery commands retain the notebook root. Automated-looking correspondents are explicitly labelled candidates, not silently certified as people.
 
-The `co rem investigate me --quick` that init runs for you is a bounded first
-pass: it samples recent items across available source types and labels the
-result partial. Remove `--quick` for a comprehensive owner investigation;
-that can take several extraction turns and substantially more time and model
-usage. `--quick` is only for `me`, and neither mode approves a candidate
+init runs the whole `co rem investigate me` for you. `--quick` is a bounded
+pass that samples recent items across available source types and labels the
+result partial; it is only for `me`, and neither mode approves a candidate
 without review.
 
 `co rem investigate <page> --days 5` reports source gathering, evidence

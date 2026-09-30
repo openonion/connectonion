@@ -38,7 +38,7 @@ Every page:   co rem <command> --help
 Advanced:     co rem advanced --help   (scan, map-skills, stub, reflect, reflections,
               propose, review, abstract, capture, projects)
 Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
-              and usage still work until 1.9 and print their new name.
+              and usage still work until 1.9.0 and print their new name.
 ```
 
 ## co rem init
@@ -54,15 +54,18 @@ provider lists with each message (to name people by your greeting), saved
 contacts, and session metadata, then saves a private copy of each listed message
 body, once, so investigating a person later reads it from disk.
 
-Then, in a terminal, it writes your own page by itself: the bounded first pass of
-co rem investigate me --quick, one model turn on your own plan, about 10 minutes.
-It names the runner and model before it starts; Ctrl-C stops it and the map is
-kept. It is skipped, with the reason, when the runner is missing or signed out,
-when no mailbox gave an address of yours, or when your page was already written.
-Then, by the same rules, it writes the pages of projects active in the last 14
-days from the messages you typed in their sessions: one call each, about a minute
-and ~90k billed input tokens, cost stated first, one line per page, stopping at
-the weekly budget or floor. Older projects: co rem projects write.
+Then, in a terminal, it writes your own page by itself from everything you sent
+and your coding sessions of the last 30 days: co rem investigate me, one model
+turn on your own plan, about 15 minutes. Then the 3 people you wrote to most in
+the last 14 days (co rem investigate people, one turn each), then the pages of
+projects active in the last 14 days from the messages you typed in their
+sessions (one call each, about a minute and ~90k billed input tokens). It names
+the runner, model and plan before it starts and stops at 5 points of the Codex
+week, or at the weekly budget or floor; Ctrl-C stops it and keeps the map and
+every page written. It is skipped, with the reason, when the runner is missing
+or signed out, when no mailbox gave an address of yours, or when your page was
+already written. More people: co rem investigate people. Older projects: co rem
+projects write.
 
 Usage:    co rem init [--days N] [--mine ADDRESS[,ADDRESS...]] [--name NAME] [--mail gmail|outlook]...
                        [--no-mail-archive] [--investigate | --no-investigate]
@@ -285,8 +288,14 @@ Back:     co rem --help
 Show whether the schedule is on, when it runs next, what ran today, and what it cost.
 Read-only.
 
-Usage:    co rem status
+Usage:    co rem status [--verbose]
 Example:  co rem status
+Output:   One line each: the state and next run; the notebook (people, projects,
+          organizations and skills, written of mapped, and what to write next);
+          today's runs, pages changed and tokens; each mailbox with the command
+          that fixes it; the last run.
+Options:  --verbose   Also every internal field: schedule times, worker, token
+                      counters and their coverage, the full last run record.
 Next:     co rem logs   (details of each run)
 Back:     co rem --help
 ```

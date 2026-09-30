@@ -18,6 +18,8 @@ entry from command_tips.NEXT. This test makes the table the register:
   after `--help`, and once (not per nesting level) for a three-deep path.
 """
 
+import re
+
 import pytest
 from typer.testing import CliRunner
 
@@ -85,6 +87,14 @@ class TestItIsPrinted:
         assert result.exit_code == 0
         assert "Next:" not in result.stderr
 
+    def test_a_terminal_sees_the_same_words_with_next_and_its_command_styled(self):
+        # One look for every co command (#1997): `Next:` bold, the command in the command colour.
+        env = {"FORCE_COLOR": "1", "NO_COLOR": None, "TTY_COMPATIBLE": None}
+        shown = runner.invoke(cli_main.app, ["trust", "admin", "remove", "0xabc"], env=env).stderr
+        assert "\x1b[1mNext:\x1b[0m See every list:  \x1b[1;36mco trust list\x1b[0m" in shown
+        plain = runner.invoke(cli_main.app, ["trust", "admin", "remove", "0xabc"], env={"NO_COLOR": "1"}).stderr
+        assert "\x1b" not in plain and re.sub(r"\x1b\[[0-9;]*m", "", shown) == plain
+
     def test_handler_entries_print_nothing_here(self, monkeypatch):
         monkeypatch.setitem(command_tips.NEXT, "co trust admin remove", HANDLER)
         result = runner.invoke(cli_main.app, ["trust", "admin", "remove", "0xabc"])
@@ -127,3 +137,17 @@ def test_wildcard_resolution_prefers_the_exact_key():
     assert next_step_for("co email default") is not HANDLER     # exact
     with pytest.raises(KeyError):
         next_step_for("co nosuchgroup thing")
+
+
+def test_a_handlers_tip_is_styled_in_a_terminal_and_word_for_word_in_a_pipe(monkeypatch, capsys):
+    tip = "Read one with: co gmail read [3]"
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.delenv("TTY_COMPATIBLE", raising=False)
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    command_tips.print_tip(tip)
+    shown = capsys.readouterr().out
+    monkeypatch.delenv("FORCE_COLOR")
+    command_tips.print_tip(tip)
+    plain = capsys.readouterr().out
+    assert "\x1b[1;36mco gmail read [3]\x1b[0m" in shown
+    assert plain == tip + "\n" == re.sub(r"\x1b\[[0-9;]*m", "", shown)

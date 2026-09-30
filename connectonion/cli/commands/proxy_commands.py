@@ -453,6 +453,13 @@ Add --json for the stable JSON envelope."""
 AGENT_ADDRESS = re.compile(r"^0x[0-9a-fA-F]{64}$")
 
 
+def _print_page(text: str, stderr: bool = False) -> None:
+    """A help page in co's look in a terminal, word for word and plain anywhere else (#1997)."""
+    from .. import style
+
+    style.console(stderr=stderr).print(style.markup(text), emoji=False)
+
+
 def _diagnose_command(rest: list, as_json: bool, configured_address) -> int:
     """`diagnose` checks a share, so its help and its errors are about shares.
 
@@ -461,12 +468,12 @@ def _diagnose_command(rest: list, as_json: bool, configured_address) -> int:
     command — and any word at all was looked up as if it were an address.
     """
     if rest[:1] in (["--help"], ["-h"], ["help"]):
-        print(DIAGNOSE_HELP)
+        _print_page(DIAGNOSE_HELP)
         return 0
     target = rest[0] if rest else configured_address()
     if not target:
         print("Which share? Nothing is remembered to default to.\n", file=sys.stderr)
-        print(DIAGNOSE_HELP, file=sys.stderr)
+        _print_page(DIAGNOSE_HELP, stderr=True)
         return 2
     if not AGENT_ADDRESS.match(target):
         print(f"{target!r} is not an agent address — one looks like 0x followed by "
@@ -492,7 +499,7 @@ def handle_proxy(args) -> int:
         del args[index : index + 2]
 
     if not args or args[0] in ("--help", "-h", "help"):
-        print(USAGE)
+        _print_page(USAGE)
         return 0
 
     from .remote_browser_commands import NOT_CONFIGURED, configured_address
@@ -502,7 +509,7 @@ def handle_proxy(args) -> int:
         return _status(as_json)
     if verb not in {"share", "stop", "diagnose"}:
         print(f"Unknown command: co proxy {verb}", file=sys.stderr)
-        print(USAGE, file=sys.stderr)
+        _print_page(USAGE, stderr=True)
         return 2
 
     if verb == "diagnose":

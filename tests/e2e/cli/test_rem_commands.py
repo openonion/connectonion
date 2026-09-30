@@ -180,7 +180,7 @@ def test_real_process_piped_output_keeps_next_command(tmp_path, json_mode):
     next_command = json.loads(result.stdout)["next"] if json_mode else result.stdout.split("Next: ")[1].strip()
     assert "co rem --root " in next_command
     assert str(root) in next_command
-    assert next_command.endswith(" logs")
+    assert next_command.endswith(" init")  # nothing built yet: the step status names
     assert not root.exists()
 
 
@@ -710,13 +710,55 @@ def test_empty_human_results_are_explained(tmp_path, command, message):
     assert 'Next:' in result.output
 
 
-def test_human_status_uses_labels_and_unknown_usage(tmp_path):
-    result = invoke(tmp_path, 'status')
-    assert result.exit_code == 0, result.output
-    assert 'co rem status' in result.output
-    assert 'Input tokens: Unknown' in result.output
-    assert '"state":' not in result.output
-    assert 'null' not in result.output
+def _notebook_with_a_run(root, monkeypatch):
+    """Two people (one written), three skills, gmail read by the round, one investigation today."""
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.service import now
+    prepare(root)
+    notebook = Notebook(root)
+    notebook.stub_person('people/alice.md', 'Alice', ['alice@example.org'])
+    notebook.stub_person('people/bob.md', 'Bob', ['bob@example.org'])
+    notebook.note_investigation('people/alice.md', 'gmail')
+    for name in ('deploy', 'blog', 'triage'):
+        notebook.stub_skill(f'skills/catalog/{name}.md', name, f'/skills/{name}/SKILL.md')
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: kind == 'gmail')
+    write_json(state_path(root, 'subscriptions.json'), {'gmail': {'id': 'gmail', 'kind': 'gmail', 'enabled': True,
+                                                                  'consented': True, 'adapter': 'available'}})
+    write_json(state_path(root, 'runs/run_' + 'a' * 32 + '.json'), {
+        'id': 'run_' + 'a' * 32, 'started_at': now().isoformat(), 'phase': 'investigate',
+        'record': 'people/alice.md', 'outcome': 'completed', 'changed': ['people/alice.md'],
+        'runner_attempts': 0, 'usage': {'input_tokens': 91234, 'output_tokens': 812}, 'items': 3})
+
+
+def test_status_is_a_dashboard_of_the_notebook_not_a_dump_of_fields(tmp_path, monkeypatch):
+    """#1996: one header line, the notebook with skills, today, mailboxes with fixes, the last run in one line."""
+    _notebook_with_a_run(tmp_path, monkeypatch)
+    lines = invoke(tmp_path, 'status').output.splitlines()
+    assert lines[0].startswith('co rem status · not started') and 'co rem start' in lines[0]
+    assert '  People         1 written of 2 mapped' in lines
+    assert '  Skills         0 written of 3 mapped' in lines
+    assert any(line.startswith('  To write next  1 people page not written: co rem --root') for line in lines)
+    assert '  1 run · 1 page changed · tokens unknown' in lines   # a manual run is not a runner attempt
+    assert '  ✓ Gmail    read by the daily round' in lines
+    assert '  ✗ Outlook  not connected — co auth microsoft' in lines
+    last = [line for line in lines if line.startswith('Last run')]
+    assert len(last) == 1 and 'investigate people/alice.md · completed · 1 page changed · 91,234 tokens in' in last[0]
+    assert lines[-1] == f'Next: co rem --root {tmp_path} start'  # the step its first line names
+    for internal in ('Known attempts', 'Schedule times', 'Worker', 'Runner attempts today', 'Usage by stage'):
+        assert internal not in '\n'.join(lines), internal
+
+
+def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_path, monkeypatch):
+    _notebook_with_a_run(tmp_path, monkeypatch)
+    verbose = invoke(tmp_path, 'status', '--verbose').output
+    assert 'Details' in verbose and 'Known attempts: 0' in verbose and 'Schedule times:' in verbose
+    assert 'Record: people/alice.md' in verbose
+    data = json.loads(invoke(tmp_path, '--json', 'status').output)
+    assert set(data) == {'ok', 'data', 'next'} and data['next'].endswith(' start')
+    assert set(data['data']) == {'state', 'root', 'configured', 'date', 'timezone', 'schedule_times', 'next_run',
+                                 'worker', 'batches_today', 'runner_attempts_today', 'usage_today',
+                                 'usage_coverage', 'last_run', 'mailboxes', 'codex_week',
+                                 'investigation_this_week', 'quota', 'investigation_quota'}
 
 
 def test_unfinished_tip_names_an_existing_page_and_preserves_root(tmp_path):
@@ -833,16 +875,16 @@ def test_json_investigate_discovery_and_missing_selection(tmp_path):
 def test_a_wrapper_can_put_its_own_name_on_every_next_step(tmp_path, monkeypatch):
     """A thin `remi` command that forwards to `co rem` is only a product if the tips
     agree with it: a user who typed `remi status` and is told `co rem --root /long/path
-    logs` has been handed the wiring. The wrapper names itself in the environment and
+    init` has been handed the wiring. The wrapper names itself in the environment and
     every Next line follows; the root is omitted when it is the default one."""
     monkeypatch.setenv("CO_REM_PROGRAM", "remi")
     result = runner.invoke(app, ["rem", "--root", str(tmp_path), "status"])
     assert result.exit_code == 0, result.output
-    assert result.output.strip().endswith(f"Next: remi --root {tmp_path} logs")
+    assert result.output.strip().endswith(f"Next: remi --root {tmp_path} init")
     from pathlib import Path
     default_root = Path.home() / ".co" / "rem"   # the harness already isolates HOME per test
     result = runner.invoke(app, ["rem", "--root", str(default_root), "status"])
-    assert result.output.strip().endswith("Next: remi logs")  # the default root is not spelled out
+    assert result.output.strip().endswith("Next: remi init")  # the default root is not spelled out
 
 
 def test_subscribing_a_whatsapp_chat_points_at_start(tmp_path):
@@ -1081,3 +1123,12 @@ def test_the_overview_help_names_projects_among_the_advanced_commands(tmp_path):
     result = invoke(tmp_path, "--help")
     advanced = result.output[result.output.index("Advanced:"):result.output.index("Old names:")]
     assert "projects" in advanced
+
+
+def test_status_ends_on_the_step_its_first_line_names(tmp_path, monkeypatch):
+    """A notebook never started read "run co rem start" and then "Next: co rem logs"."""
+    from connectonion.cli.commands.rem_status import status_next
+    assert status_next({"configured": False, "state": "Not started"}) == ["init"]
+    assert status_next({"configured": True, "state": "Not started — run `co rem start`"}) == ["start"]
+    assert status_next({"configured": True, "state": "Stopped — background maintenance is off"}) == ["start"]
+    assert status_next({"configured": True, "state": "Running in background (launchd); next slot 07:00"}) == ["logs"]
