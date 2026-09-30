@@ -126,7 +126,7 @@ def test_an_address_confirmed_once_stays_the_owners_at_the_next_map(tmp_path, mo
     (tmp_path / "installed").mkdir()
     row = {"name": "", "address": "aaronplus1996@gmail.com", "mails": 106, "sent": 106, "received": 0, "one_way": True}
 
-    def mail_rows(clients, days, mine, coverage, errors=None, progress=None):
+    def mail_rows(clients, days, mine, coverage, errors=None, progress=None, **kw):
         own = {address.lower() for address in mine}
         return ([dict(row)] if row["address"] not in own else []), own
 
