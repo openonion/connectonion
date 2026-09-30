@@ -904,14 +904,22 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # The status line names the sources this code searched. Whether the web
     # was reached is the Skill's to report, on the page: a real run (2026-09-14)
     # had `co browser` fail inside the thread while this line still said "web".
-    searched = searched_sources(coverage)
-    with maintenance_lock(root):
-        from .reviews import ingest
-        ingest(root, result.get("review_candidates", []))
-        notebook.note_investigation(record, ", ".join(searched))
+    record_result(root, notebook, record, result.get("review_candidates", []), searched_sources(coverage))
     return {"record": record, "items": len(items), "items_available": available_items,
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,
             "usage_by_stage": usage_by_stage, "report": result.get("report", ""),
             "instructions_chars": {"investigate": result.get("instructions_chars")}}
+
+
+def record_result(root, notebook, record: str, review_candidates: list, searched: list[str]) -> None:
+    """Keep what a finished investigation proposed and mark its page investigated.
+
+    It waits for the lock: the model turn is already paid for, and with several
+    pages in flight (the first run writes four at once) two finish together.
+    """
+    with maintenance_lock(root, wait=60):
+        from .reviews import ingest
+        ingest(root, review_candidates)
+        notebook.note_investigation(record, ", ".join(searched))

@@ -116,10 +116,11 @@ class Turn:
     """One model turn, which can take ten minutes: in a terminal a spinner with the time so far
     ("Writing your page… 3:12", #1996); anywhere else one line per stage, as before."""
 
-    def __init__(self, label, stream=None):
-        self.label, self.stream = label, stream or sys.stderr
+    def __init__(self, label, stream=None, quiet=False):
+        """`quiet`: several turns run at once (init's first pages) and each says one line when done."""
+        self.label, self.stream, self.quiet = label, stream or sys.stderr, quiet
         self.bar = None
-        if getattr(self.stream, "isatty", lambda: False)():
+        if not quiet and getattr(self.stream, "isatty", lambda: False)():
             self.bar = Progress(SpinnerColumn(style="co.command"), TextColumn("{task.description}"),
                                 TimeElapsedColumn(), console=_terminal(self.stream), transient=True)
 
@@ -130,9 +131,9 @@ class Turn:
         return self
 
     def stage(self, text):
-        if self.bar is None:
+        if self.bar is None and not self.quiet:
             typer.echo(f"Investigation: {text}", err=True)
-        else:
+        elif self.bar is not None:
             self.bar.update(self.task, description=f"{self.label} {style.muted('(' + text + ')')}")
 
     def __exit__(self, *exc):

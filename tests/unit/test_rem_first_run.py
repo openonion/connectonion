@@ -372,10 +372,10 @@ def test_after_me_the_recent_projects_are_written_one_line_each(projects):
     result = init()
     assert result.exit_code == 0, result.output
     assert calls[0]["record"] == owner_record(root)  # me first, then the people
-    assert written == ["projects/alpha.md", "projects/beta.md"]  # the old one waits
+    assert sorted(written) == ["projects/alpha.md", "projects/beta.md"]  # the old one waits
     text = Text.from_ansi(result.output).plain
     assert "~180k billed input tokens" in text and "Cost:" in text and "Ctrl-C" in text
-    assert text.count(": written") == 2
+    assert "projects/alpha.md: written" in text and "projects/beta.md: written" in text
     assert "projects/old.md" not in text
 
 
@@ -397,7 +397,7 @@ def test_json_with_investigate_writes_projects_and_reports_them(projects):
     result = init("--json", "--investigate")
     assert result.exit_code == 0, result.output
     pages = json.loads(result.stdout)["data"]["project_pages"]
-    assert pages["started"] and [row["page"] for row in pages["pages"]] == written == [
+    assert pages["started"] and sorted(row["page"] for row in pages["pages"]) == sorted(written) == [
         "projects/alpha.md", "projects/beta.md"]
 
 
@@ -433,45 +433,47 @@ def people(projects, monkeypatch):
     return root, init, calls, people_written, written
 
 
-def test_after_me_the_three_people_written_to_most_then_projects(people):
-    """Owner, 2026-09-30: the first run shows the people around you, not only you."""
+def test_after_me_the_people_you_wrote_to_and_projects_four_at_a_time(people):
+    """Owner, 2026-09-30: the first run shows the people around you, not only
+    you; 2026-10-01: all of the last fortnight's, several at once."""
     root, init, calls, people_written, projects_written = people
     result = init()
     assert result.exit_code == 0, result.output
     assert [call["record"] for call in calls] == [owner_record(root)]
-    assert people_written == ["people/p0.md", "people/p1.md", "people/p2.md"]
-    assert projects_written == ["projects/alpha.md", "projects/beta.md"]
+    assert sorted(people_written) == [f"people/p{n}.md" for n in range(5)]
+    assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md"]
     text = Text.from_ansi(result.output).plain
-    assert "the 3 people you wrote to most in the last 14 days" in text
-    assert "it stops at 5 points of the Codex week" in text
-    assert "Written this run: your page, 3 people and 2 project pages." in text
+    assert "up to 20 people you wrote to in the last 14 days" in text
+    assert "4 at a time" in text and "it stops at 20 points of the Codex week" in text
+    assert "Written this run: your page, 5 people and 2 project pages." in text
 
 
-def test_the_first_run_stops_at_its_five_points_and_keeps_what_is_written(people, monkeypatch):
+def test_the_first_run_stops_starting_pages_at_its_twenty_points(people, monkeypatch):
+    """Pages in flight finish; nothing new starts once 20 points are used."""
+    import re as regex
     root, init, calls, people_written, projects_written = people
     meter = {"used_percent": 10, "window_minutes": 10080, "resets_at": 4102444800, "plan": "plus"}
     monkeypatch.setattr("connectonion.rem.quota.read", lambda config: dict(meter))
 
-    def one_person_costs_six_points(root, row, **kw):
+    def one_person_costs_twelve_points(root, row, **kw):
         people_written.append(row["record"])
-        meter["used_percent"] += 6
+        meter["used_percent"] += 12
         return {"record": row["record"], "changed": [row["record"]]}
 
-    monkeypatch.setattr("connectonion.rem.people_pages.investigate_person", one_person_costs_six_points)
+    monkeypatch.setattr("connectonion.rem.people_pages.investigate_person", one_person_costs_twelve_points)
     result = init("--json", "--investigate")
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)["data"]
-    assert people_written == ["people/p0.md"]
-    assert "used 6 of its 5 points" in data["people_pages"]["stopped"]
-    assert projects_written == []
-    assert "used 6 of its 5 points" in data["project_pages"]["reason"]
+    assert 4 <= len(people_written) <= 5 and projects_written == []
+    assert regex.search(r"used \d+ of its 20 points", data["people_pages"]["stopped"])
+    assert regex.search(r"used \d+ of its 20 points", data["project_pages"]["reason"])
 
 
 def test_ctrl_c_during_people_keeps_the_pages_and_names_the_rest(people, monkeypatch):
     root, init, calls, people_written, _ = people
 
     def interrupted(root, row, **kw):
-        if people_written:
+        if row["record"] == "people/p2.md":
             raise KeyboardInterrupt
         people_written.append(row["record"])
         return {"record": row["record"], "changed": [row["record"]]}
@@ -479,5 +481,86 @@ def test_ctrl_c_during_people_keeps_the_pages_and_names_the_rest(people, monkeyp
     monkeypatch.setattr("connectonion.rem.people_pages.investigate_person", interrupted)
     result = init()
     assert result.exit_code == 130
-    assert people_written == ["people/p0.md"]
-    assert f"--root {root} investigate people" in Text.from_ansi(result.output).plain
+    assert "people/p2.md" not in people_written
+    text = Text.from_ansi(result.output).plain
+    assert f"--root {root} investigate people" in text and f"--root {root} projects write" in text
+
+
+# ------------------------------------------- several pages at once (owner, 2026-10-01)
+
+
+def test_the_first_run_writes_people_and_projects_several_at_once(people, monkeypatch):
+    """A person takes minutes, most of it waiting on the mailbox and the model,
+    and the owner judged the cost small: the first run writes four at a time."""
+    import threading
+    root, init, calls, people_written, projects_written = people
+    together = threading.Barrier(4, timeout=5)
+
+    def slow_person(root, row, **kw):
+        together.wait()  # only returns once four pages are in flight together
+        people_written.append(row["record"])
+        return {"record": row["record"], "changed": [row["record"]]}
+
+    monkeypatch.setattr("connectonion.rem.people_pages.investigate_person", slow_person)
+    result = init("--json", "--investigate")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert [row["outcome"] for row in data["people_pages"]["pages"]][:4] == ["accepted"] * 4
+
+
+def test_the_first_run_covers_every_recent_correspondent_not_three(people):
+    root, init, calls, people_written, projects_written = people
+    result = init()
+    assert result.exit_code == 0, result.output
+    assert sorted(people_written) == [f"people/p{n}.md" for n in range(5)]
+    assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md"]
+
+
+def test_marking_people_investigated_at_once_loses_none(tmp_path, monkeypatch):
+    """Four people finishing together each read investigated.json, add
+    themselves and write it back; without the lock the last write wins."""
+    import threading
+    import time
+    from datetime import datetime, timezone
+    from connectonion.rem import people_pages
+    real = people_pages.read_json
+
+    def slow_read(path, default):
+        value = real(path, default)
+        time.sleep(0.05)  # the gap another thread writes into
+        return value
+
+    monkeypatch.setattr(people_pages, "read_json", slow_read)
+    when = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    threads = [threading.Thread(target=people_pages.mark_investigated, args=(tmp_path, f"people/p{n}.md", when))
+               for n in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    done = json.loads((tmp_path / ".state/people/investigated.json").read_text())
+    assert sorted(done) == [f"people/p{n}.md" for n in range(4)]
+
+
+def test_a_finished_investigation_waits_for_the_lock_instead_of_losing_the_page(tmp_path):
+    """Two pages finishing a second apart: the second used to raise "co rem is
+    busy" after its model turn had been paid for."""
+    import threading
+    from connectonion.rem.files import Notebook, maintenance_lock
+    from connectonion.rem.investigate import record_result
+    notebook = Notebook(tmp_path)
+    notebook.write("people/p0.md", "# P0\n\nInvestigation: mapped 2026-09-30 · not investigated yet\n")
+    held, release = threading.Event(), threading.Event()
+
+    def hold():
+        with maintenance_lock(tmp_path):
+            held.set()
+            release.wait(5)
+
+    holder = threading.Thread(target=hold)
+    holder.start()
+    held.wait(5)
+    threading.Timer(0.5, release.set).start()
+    record_result(tmp_path, notebook, "people/p0.md", [], ["outlook"])
+    holder.join()
+    assert "investigated" in notebook.read("people/p0.md")
