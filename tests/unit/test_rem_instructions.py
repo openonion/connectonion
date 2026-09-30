@@ -161,3 +161,30 @@ def test_maintenance_is_told_what_is_still_open_and_how_large_a_page_may_grow():
     text = instructions("maintain", page_kind="project")
     assert "Only what is still open is an open thread" in text
     assert "about 15k characters" in text
+
+
+# ------------------------------------------- your own page has its own spec (#2008)
+
+
+def test_only_the_owners_investigation_carries_the_owner_page_spec_and_it_stays_under_15k():
+    """A real owner page took "Partner at OpenOnion, running marketing" from a mail
+    where the owner listed Ody's roles, and followed the person template."""
+    owner = instructions("investigate", page_kind="person", owner=True)
+    person = instructions("investigate", page_kind="person")
+    assert "# Your own page" in owner and "# Your own page" not in person
+    assert "# Your own page" not in instructions("maintain") and "# Your own page" not in instructions("init")
+    assert len(owner) <= 15_000
+    for text in (owner, person):   # the role rule is for every person, the owner included
+        assert "A role in a list the user writes about someone else is that person's" in text
+    for rule in ("what they are working on now", "coding", "Open threads", "not history",
+                 "**the user states them about"):
+        assert rule in owner, rule
+
+
+def test_the_owner_flag_on_the_page_item_is_what_composes_it(tmp_path):
+    from connectonion.rem.runner import task_prompt
+    page = {"role": "page", "record": "people/aaron.md", "text": "# Aaron", "owner": True}
+    task_prompt(tmp_path, [page], "investigate")
+    assert "# Your own page" in (tmp_path / "instructions.md").read_text()
+    task_prompt(tmp_path, [{**page, "owner": False}], "investigate")
+    assert "# Your own page" not in (tmp_path / "instructions.md").read_text()

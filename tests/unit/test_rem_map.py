@@ -836,7 +836,10 @@ def test_the_owner_is_named_as_they_sign_their_sent_mail_not_as_the_mailbox_is_c
     result = build_map(tmp_path, {}, {'gmail': Mail()}, skill_directories=[skills], days=14)
     record = result['owner']['record']
     assert record.startswith('people/aaron-xie-')
-    assert Notebook(tmp_path).read(record).startswith('# Aaron Xie\n')
+    page = Notebook(tmp_path).read(record)
+    assert page.startswith('# Aaron Xie\n')
+    # Your own page has no "How the user writes to them" (#2008).
+    assert '## How the user writes to them' not in page and '## Cadence' in page
     # A later map keeps the file where it is, whatever the name turns out to be.
     assert build_map(tmp_path, {}, {'gmail': Mail()}, skill_directories=[skills], days=14,
                      name='Someone Else')['owner']['record'] == record

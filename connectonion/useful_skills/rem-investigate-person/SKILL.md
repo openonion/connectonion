@@ -16,9 +16,11 @@ Why these rules: docs/rem-skills/rem-investigate.md
   names go in their own field.
 - A page titled by a handle gets the person's name once known (`# vern.chan` →
   `# Vern Chan`, handle kept in aliases).
-- The subject is the owner of a coverage mailbox → the user's own profile: work
-  from what they wrote; `Our relationship` = account owner; `How the user
-  writes to them` = not applicable.
+- The subject is the owner of a coverage mailbox → the user's own page: follow
+  `rem-owner-page`.
+- **A role in a list the user writes about someone else is that person's, not
+  the user's.** A role is the subject's only when the subject states it or
+  someone states it about them.
 - Another page for the same person: name it in `Uncertainties`; do not merge.
 
 ## Reading the mail

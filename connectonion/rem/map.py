@@ -242,6 +242,10 @@ def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
         addresses = ', '.join(owner['addresses'])
         for label in ('Email', 'Handles', 'Also known as'):
             page = re.sub(rf'^- {label}: .*$', f'- {label}: {addresses}', page, count=1, flags=re.M)
+    if mapped_only:
+        # Your own page has no "How the user writes to them" (#2008); a real one
+        # said "Not applicable" under it.
+        page = re.sub(r'^## How the user writes to them\n(?:- [^\n]*\n)*\n?', '', page, count=1, flags=re.M)
     days, date = report['days'], report['started'][:10]
     own = {row['record'] for row in report['possible_own_addresses']}
     people = [row for row in report['people'] if row.get('classification') == 'unassessed'

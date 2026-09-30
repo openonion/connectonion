@@ -725,6 +725,18 @@ archived; one somebody wrote in is kept.
 
 Initialization reports partial failure with a nonzero exit if a selected mail source cannot be initialized or read. Completed maps remain available; provider error text is not exposed. Recovery commands retain the notebook root. Automated-looking correspondents are explicitly labelled candidates, not silently certified as people.
 
+Your own page has its own spec (#2008), the `rem-owner-page` Skill, composed
+after the person page only for `investigate me`. It leads with who you are and
+what you are working on now, from your coding sessions (the projects and what
+you did in them, dated); your roles appear only when you state them about
+yourself or someone states them about you, never from a list you wrote about
+someone else (a real page took "Partner at OpenOnion, running marketing" from
+the owner's own description of a partner); `Open threads` is what you owe and
+are owed; `History` is dated events, not the map's mail counts. It has no "How
+the user writes to them" section. The same attribution rule is in
+`rem-investigate-person` for everyone: a role in a list the user writes about
+someone else is that person's.
+
 init runs the whole `co rem investigate me` for you. `--quick` is a bounded
 pass that samples recent items across available source types and labels the
 result partial; it is only for `me`, and neither mode approves a candidate

@@ -8,9 +8,15 @@ from urllib.parse import unquote, urlparse
 from .files import Notebook, RemError
 
 
-def headings(record: str) -> tuple[str, ...]:
+# The owner's own page has no "How the user writes to them" (#2008): it said
+# "Not applicable" on a real owner page, a heading for nothing.
+NOT_ON_OWNER_PAGE = 'How the user writes to them'
+
+
+def headings(record: str, owner: bool = False) -> tuple[str, ...]:
     if record.startswith('people/'):
-        return ('Contact', *Notebook.PERSON_SECTIONS, 'Sources')
+        return ('Contact', *(h for h in Notebook.PERSON_SECTIONS if not (owner and h == NOT_ON_OWNER_PAGE)),
+                'Sources')
     if record.startswith('projects/'):
         return (*Notebook.PROJECT_SECTIONS, 'Sources')
     if record.startswith('orgs/'):
@@ -35,9 +41,9 @@ def prose(text: str) -> str:
     return '\n'.join(lines)
 
 
-def normalize(record: str, text: str) -> str:
+def normalize(record: str, text: str, owner: bool = False) -> str:
     """Add missing canonical sections without dropping or rewriting old content."""
-    required = headings(record)
+    required = headings(record, owner)
     if not required:
         return text
     matches = list(re.finditer(r'^## (.+)$', prose(text), re.M))
@@ -287,14 +293,15 @@ def placeholder_errors(candidate: str) -> list[str]:
              'write what the material shows, or a bare "Unknown"'] if left else [])
 
 
-def validate(record: str, candidate: str, original: str, items: list[dict], pages=frozenset()) -> list[str]:
+def validate(record: str, candidate: str, original: str, items: list[dict], pages=frozenset(),
+             owner: bool = False) -> list[str]:
     """Structural checks only; citation existence does not prove factual entailment."""
     body = prose(candidate)
     errors = []
     if len(re.findall(r'^# .+', body, re.M)) != 1:
         errors.append('Expected exactly one page title')
     counts = Counter(re.findall(r'^## (.+)$', body, re.M))
-    errors += [f'Section must occur once: {h}' for h in headings(record) if counts[h] != 1]
+    errors += [f'Section must occur once: {h}' for h in headings(record, owner) if counts[h] != 1]
     errors += [f'Duplicate section: {h}' for h, n in counts.items() if n > 1]
     if re.findall(r'^Investigation:.*$', body, re.M) != re.findall(r'^Investigation:.*$', original, re.M):
         errors.append('Investigation status belongs to the runner')
