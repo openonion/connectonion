@@ -254,9 +254,8 @@ def test_a_run_lends_the_command_no_credential_from_the_environment(tmp_path, mo
     assert audit.run(["tool"], terminal=True).text.split() == ["None", "kept"]
 
 
-def test_status_commands_are_read_only_and_leave_co_rem_status_to_its_rewrite():
-    assert {"co status", "co doctor", "co commands"} <= set(audit.STATUS)
-    assert "co rem status" not in audit.STATUS
+def test_the_status_commands_include_co_rem_status_now_that_it_is_a_dashboard():
+    assert {"co status", "co doctor", "co commands", "co rem status"} <= set(audit.STATUS)
 
 
 def test_the_audit_runs_each_page_and_each_status_command_both_ways():
