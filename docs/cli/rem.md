@@ -5,7 +5,7 @@ long-term supported in 1.9.0 (#1664 names it first). The command surface and
 every `--help` page are the agreed design in #1656; the pages themselves live
 in `connectonion/cli/commands/rem_help.md` and a test holds them to the code.
 Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
-`unsubscribe`, `route`, `usage`) still work until 1.9 and print their new name.
+`unsubscribe`, `route`, `usage`) still work until 1.9.0 and print their new name.
 
 See the [2026-09-17 progress review](rem-progress.md) for the feature inventory,
 current CI blockers and remaining work.

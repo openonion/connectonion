@@ -38,7 +38,7 @@ Every page:   co rem <command> --help
 Advanced:     co rem advanced --help   (scan, map-skills, stub, reflect, reflections,
               propose, review, abstract, capture, projects)
 Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
-              and usage still work until 1.9 and print their new name.
+              and usage still work until 1.9.0 and print their new name.
 ```
 
 ## co rem init

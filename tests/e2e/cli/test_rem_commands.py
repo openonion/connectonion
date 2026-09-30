@@ -180,7 +180,7 @@ def test_real_process_piped_output_keeps_next_command(tmp_path, json_mode):
     next_command = json.loads(result.stdout)["next"] if json_mode else result.stdout.split("Next: ")[1].strip()
     assert "co rem --root " in next_command
     assert str(root) in next_command
-    assert next_command.endswith(" logs")
+    assert next_command.endswith(" init")  # nothing built yet: the step status names
     assert not root.exists()
 
 
@@ -743,7 +743,7 @@ def test_status_is_a_dashboard_of_the_notebook_not_a_dump_of_fields(tmp_path, mo
     assert '  ✗ Outlook  not connected — co auth microsoft' in lines
     last = [line for line in lines if line.startswith('Last run')]
     assert len(last) == 1 and 'investigate people/alice.md · completed · 1 page changed · 91,234 tokens in' in last[0]
-    assert lines[-1] == f'Next: co rem --root {tmp_path} logs'
+    assert lines[-1] == f'Next: co rem --root {tmp_path} start'  # the step its first line names
     for internal in ('Known attempts', 'Schedule times', 'Worker', 'Runner attempts today', 'Usage by stage'):
         assert internal not in '\n'.join(lines), internal
 
@@ -754,7 +754,7 @@ def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_pat
     assert 'Details' in verbose and 'Known attempts: 0' in verbose and 'Schedule times:' in verbose
     assert 'Record: people/alice.md' in verbose
     data = json.loads(invoke(tmp_path, '--json', 'status').output)
-    assert set(data) == {'ok', 'data', 'next'} and data['next'].endswith(' logs')
+    assert set(data) == {'ok', 'data', 'next'} and data['next'].endswith(' start')
     assert set(data['data']) == {'state', 'root', 'configured', 'date', 'timezone', 'schedule_times', 'next_run',
                                  'worker', 'batches_today', 'runner_attempts_today', 'usage_today',
                                  'usage_coverage', 'last_run', 'mailboxes', 'codex_week',
@@ -875,16 +875,16 @@ def test_json_investigate_discovery_and_missing_selection(tmp_path):
 def test_a_wrapper_can_put_its_own_name_on_every_next_step(tmp_path, monkeypatch):
     """A thin `remi` command that forwards to `co rem` is only a product if the tips
     agree with it: a user who typed `remi status` and is told `co rem --root /long/path
-    logs` has been handed the wiring. The wrapper names itself in the environment and
+    init` has been handed the wiring. The wrapper names itself in the environment and
     every Next line follows; the root is omitted when it is the default one."""
     monkeypatch.setenv("CO_REM_PROGRAM", "remi")
     result = runner.invoke(app, ["rem", "--root", str(tmp_path), "status"])
     assert result.exit_code == 0, result.output
-    assert result.output.strip().endswith(f"Next: remi --root {tmp_path} logs")
+    assert result.output.strip().endswith(f"Next: remi --root {tmp_path} init")
     from pathlib import Path
     default_root = Path.home() / ".co" / "rem"   # the harness already isolates HOME per test
     result = runner.invoke(app, ["rem", "--root", str(default_root), "status"])
-    assert result.output.strip().endswith("Next: remi logs")  # the default root is not spelled out
+    assert result.output.strip().endswith("Next: remi init")  # the default root is not spelled out
 
 
 def test_subscribing_a_whatsapp_chat_points_at_start(tmp_path):
@@ -1123,3 +1123,12 @@ def test_the_overview_help_names_projects_among_the_advanced_commands(tmp_path):
     result = invoke(tmp_path, "--help")
     advanced = result.output[result.output.index("Advanced:"):result.output.index("Old names:")]
     assert "projects" in advanced
+
+
+def test_status_ends_on_the_step_its_first_line_names(tmp_path, monkeypatch):
+    """A notebook never started read "run co rem start" and then "Next: co rem logs"."""
+    from connectonion.cli.commands.rem_status import status_next
+    assert status_next({"configured": False, "state": "Not started"}) == ["init"]
+    assert status_next({"configured": True, "state": "Not started — run `co rem start`"}) == ["start"]
+    assert status_next({"configured": True, "state": "Stopped — background maintenance is off"}) == ["start"]
+    assert status_next({"configured": True, "state": "Running in background (launchd); next slot 07:00"}) == ["logs"]

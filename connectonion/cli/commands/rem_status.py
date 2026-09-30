@@ -39,6 +39,17 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     return "\n".join(lines)
 
 
+def status_next(value: dict) -> list:
+    """What status ends on: the step its first line names, or the log once it runs by itself.
+
+    It ended on `co rem logs` whatever it said, so a notebook that was never
+    started read "run co rem start" and then "Next: co rem logs".
+    """
+    if not value.get("configured"):
+        return ["init"]
+    return ["logs"] if str(value.get("state", "")).startswith("Running") else ["start"]
+
+
 def notebook(root) -> dict:
     """Pages per category: mapped (every page) and written (filled by a model or by hand since the map)."""
     from ...rem.files import Notebook
