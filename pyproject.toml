@@ -93,7 +93,7 @@ dependencies = [
     "pyasn1>=0.6.4",
     "Pygments>=2.20.0",
     "soupsieve>=2.8.4",
-    "urllib3>=2.7.0",
+    "urllib3>=2.8.0",
 ]
 
 [project.optional-dependencies]
