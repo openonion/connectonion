@@ -19,6 +19,11 @@ Why these rules: docs/rem-skills/rem-investigate.md
 - The subject is the owner of a coverage mailbox → the user's own profile: work
   from what they wrote; `Our relationship` = account owner; `How the user
   writes to them` = not applicable.
+- On the owner's own page, `Role` and `Company` come only from the owner's
+  signature or what they say about themselves ("I run…", "my role"). Mail the
+  owner wrote *to* someone describes that person ("you", a bio or claims list
+  written for them): it belongs on their page, never the owner's. Two real
+  first runs gave the owner a recipient's role this way.
 - Another page for the same person: name it in `Uncertainties`; do not merge.
 
 ## Reading the mail
