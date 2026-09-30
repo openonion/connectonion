@@ -125,8 +125,10 @@ class Turn:
 
     def __enter__(self):
         if self.bar is not None:
+            from . import rem_look
             self.bar.start()
             self.task = self.bar.add_task(self.label)
+            rem_look.LIVE = self.bar.console   # progress lines print above the spinner, not over it
         return self
 
     def stage(self, text):
@@ -137,6 +139,8 @@ class Turn:
 
     def __exit__(self, *exc):
         if self.bar is not None:
+            from . import rem_look
+            rem_look.LIVE = None
             self.bar.stop()
 
 EMPTY = {

@@ -29,10 +29,14 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
              *_today(root, value), "", *_mailboxes(root), ""]
     budget = value.get("investigation_quota")
     if budget:
+        # "0 of 10 points" beside 3.0M tokens today read as a contradiction
+        # (#2008): points are percent of the Codex week, moved only by
+        # investigations; maintenance is bounded by the daily call cap instead.
         lines.append(f"{style.heading('Budget')}     {_number(budget['spent_points'])} of "
                      f"{_number(budget['budget_points'])} investigation points this week · "
                      f"Codex week {highlight(value.get('codex_week', 'unknown'))}")
-    lines.append(f"{style.heading('Last run')}   {_last_run(value.get('last_run'))}")
+        lines.append(f"  {style.muted('A point is 1% of your Codex week, counted for investigations only; daily maintenance is bounded by its call cap.')}")
+    lines.append(f"{style.heading('Last run')}   {_last_run(value.get('last_run'), _zone(root))}")
     if verbose:
         from .rem_output import _lines
         lines += ["", style.heading("Details"), *(highlight(line) for line in _lines(value, indent=2))]
@@ -47,20 +51,25 @@ def status_next(value: dict) -> list:
     """
     if not value.get("configured"):
         return ["init"]
+    # The first thing under "To write next", when there is one (#2008): the
+    # dashboard said `investigate me` there and then "Next: co rem logs".
+    if value.get("root"):
+        _, arguments = next_to_write(Path(value["root"]), notebook(value["root"]))
+        if arguments:
+            return arguments
     return ["logs"] if str(value.get("state", "")).startswith("Running") else ["start"]
 
 
 def notebook(root) -> dict:
-    """Pages per category: mapped (every page) and written (filled by a model or by hand since the map)."""
-    from ...rem.files import Notebook
-    from ...rem.merge import mapped_only
-    book, counts = Notebook(root), {}
-    for category, _ in CATEGORIES:
-        records = [record for record in book.list(category) if category != "skills"
-                   or record.startswith("skills/catalog/") and record != "skills/catalog/index.md"]
-        counts[category] = {"mapped": len(records),
-                            "written": sum(not mapped_only(book.read(record)) for record in records)}
-    return counts
+    """Pages per category, mapped and written, counted the way the reader counts them (`rem.census`)."""
+    from ...rem.census import counts
+    return counts(Path(root))
+
+
+def _zone(root):
+    from ...rem.config import read_config
+    from ...rem.service import notebook_zone
+    return notebook_zone(read_config(root))
 
 
 def next_to_write(root, counts: dict) -> tuple:
@@ -116,6 +125,9 @@ def _today(root, value: dict) -> list[str]:
     usage = value.get("usage_today") or {}
     spent = ("tokens unknown" if usage.get("input_tokens") is None else
              f"{_number(usage['input_tokens'])} tokens in, {_number(usage.get('output_tokens') or 0)} out")
+    missing = usage.get("runs_without_usage") or 0
+    if missing and usage.get("input_tokens") is not None:
+        spent += f" ({_plural(missing, 'run')} without usage)"
     return [f"{style.heading('Today')}  {value.get('date', '')}",
             f"  {_plural(value.get('batches_today', 0), 'run')} · {_plural(changed, 'page')} changed · {spent}"]
 
@@ -130,11 +142,14 @@ def _mailboxes(root) -> list[str]:
     return lines
 
 
-def _last_run(run) -> str:
+def _last_run(run, zone) -> str:
+    """One line; the time in the notebook's zone, like every other time status shows (#2008)."""
+    from datetime import datetime
     if not run:
         return "none yet"
     what = " ".join(filter(None, [run.get("phase") or "sync", run.get("record")]))
-    parts = [highlight(part) for part in (run["started_at"][:16].replace("T", " "), what,
+    started = datetime.fromisoformat(run["started_at"]).astimezone(zone).strftime("%Y-%m-%d %H:%M")
+    parts = [highlight(part) for part in (started, what,
                                           str(run.get("outcome", "unknown")).replace("_", " "))]
     parts.append(_plural(len(run.get("changed") or []), "page") + " changed")
     tokens = (run.get("usage") or {}).get("input_tokens")
