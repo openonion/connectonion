@@ -743,3 +743,67 @@ def test_investigation_reads_the_main_checkout_not_a_stale_agent_worktree(tmp_pa
     assert '- Sessions: 9\n' in corrected
     assert inv.collapse_worktree_paths(corrected) == corrected
     assert inv.project_file_inventory(page) == [str(main / 'pyproject.toml')]
+
+
+# ------------------------------------------------ #1974: no stamp without material
+
+
+def test_nothing_gathered_refuses_before_any_model_call_and_does_not_stamp(tmp_path, monkeypatch):
+    """1.9.0a2 stamped founders@unsw "investigated" from the page and the coverage note alone."""
+    root = _notebook(tmp_path, 'codex')
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (
+        [], ['gmail (me@x.y): searched on the server for vern@x.y over 150 days, 0 matched, 0 bodies read']))
+    before = inv.Notebook(root).read('people/vern.md')
+    with pytest.raises(inv.NothingFound) as caught:
+        inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], days=7, clients={}, subscriptions={},
+                        runner=lambda *a, **kw: pytest.fail('no model call without material'))
+    assert inv.Notebook(root).read('people/vern.md') == before
+    message = str(caught.value)
+    assert 'not marked investigated' in message
+    assert '`co rem investigate people/vern.md --handle ADDRESS`' in message
+    assert 'gmail' in message
+
+
+def test_empty_digests_stop_before_the_page_turn_and_keep_their_usage(tmp_path, monkeypatch):
+    """The founders@unsw log: 8 bodies read, "summarised in 0 chunk(s)", page stamped anyway."""
+    from connectonion.rem.extract import NOTHING
+    from connectonion.rem.files import state_path, write_json
+    root = _notebook(tmp_path, 'codex')
+    config = read_config(root)
+    write_json(state_path(root, "tier.json"), {"tier": "summary", "runner": config["runner"],
+                                               "model": config["model"], "checked_at": "2026-09-30"})
+    rows = [{'source': f'gmail:{i}', 'role': 'other', 'timestamp': f'2026-09-{i + 1:02d}',
+             'text': 'x' * 40_000} for i in range(8)]
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (rows, ['gmail: 8 matched, 8 bodies read']))
+    with pytest.raises(inv.NothingFound) as caught:
+        inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], days=7, clients={}, subscriptions={},
+                        runner=lambda *a, **kw: pytest.fail('no page turn on empty digests'),
+                        extractor=lambda chunk, settings, kind: {'notes': NOTHING,
+                                                                 'usage': {'input_tokens': 100}})
+    assert caught.value.usage['input_tokens'] >= 100
+    assert 'investigated 2' not in inv.Notebook(root).read('people/vern.md')
+
+
+def test_the_skill_is_checked_before_minutes_of_gathering(tmp_path, monkeypatch):
+    """A relative PYTHONPATH made the model's co ai import an older connectonion
+    and fail with "Skill 'rem-investigate' not found" -- after the gather."""
+    from connectonion.rem import runner
+    root = _notebook(tmp_path, 'codex')
+
+    def missing(root, stage):
+        raise inv.RemError("co ai cannot find the rem-investigate Skill")
+    monkeypatch.setattr(runner, 'check_skill', missing)
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: pytest.fail('checked before gathering'))
+    with pytest.raises(inv.RemError, match='rem-investigate Skill'):
+        inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], days=7, clients={}, subscriptions={})
+
+
+def test_the_routed_original_evidence_copy_is_deleted_when_the_run_ends(tmp_path, monkeypatch):
+    from connectonion.rem import inquiry
+    root = _notebook(tmp_path, 'codex')
+    monkeypatch.setattr(inquiry, 'routing', lambda root: {'plan': 'x'})
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (
+        [{'source': 'gmail:1', 'role': 'other', 'timestamp': '2026-09-01', 'text': 'Vern wrote.'}], ['gmail: 1']))
+    inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], days=7, clients={}, subscriptions={},
+                    runner=lambda *a, **kw: {'changed': [], 'usage': None})
+    assert not list((root / '.state' / 'evidence').glob('*.json'))

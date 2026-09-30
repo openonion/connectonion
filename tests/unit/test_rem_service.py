@@ -1,7 +1,7 @@
 """Successive-pass orchestration tested with a synthetic, deterministic runner."""
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -1026,3 +1026,84 @@ def test_maintenance_works_one_page_per_turn_and_a_failure_costs_only_that_page(
     assert result["instructions_chars"] == 14_600
     # #1956: each page's size before and after, so a run that doubles a page shows it.
     assert result["page_chars"] == {"people/a.md": [2_000, 2_400], "people/c.md": [3_000, 3_000]}
+
+
+# ------------------------------------------- #1974: the daily round reads mail
+
+
+def test_status_says_a_connected_mailbox_the_round_does_not_read_and_the_fix(tmp_path, monkeypatch):
+    """Notebooks made before #1946 had Gmail connected, Enabled: No, while doctor said "connected"."""
+    prepare(tmp_path)
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "gmail")
+    lines = status(tmp_path)["mailboxes"]
+    assert "not read by the daily round" in lines["gmail"] and "co rem sources add gmail" in lines["gmail"]
+    assert "not connected" in lines["outlook"] and "co auth microsoft" in lines["outlook"]
+
+
+def test_start_offers_connected_mailboxes_and_only_an_approval_subscribes_them(tmp_path, monkeypatch):
+    from connectonion.rem.service import start, subscriptions
+    root, sessions = tmp_path / "rem", tmp_path / "sessions"
+    monkeypatch.setattr("connectonion.rem.service.codex_sessions_root", lambda: sessions)
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "gmail")
+    monkeypatch.setattr("connectonion.rem.service.now", lambda: datetime(2026, 9, 7, 12, tzinfo=timezone.utc))
+    rollout(sessions / "rollout-a.jsonl", [("user", "hello")])
+    shown = []
+    declined = start(root, confirm=lambda summary: shown.append(summary) or False, scheduler=FakeScheduler(),
+                     runner=_runner_recording([]))
+    assert declined["started"] is False
+    assert "read from now on if you approve" in shown[0]["sources"]["gmail"]["state"]
+    assert subscriptions(root)["gmail"]["enabled"] is False
+
+    monkeypatch.setattr("connectonion.rem.service.run_sync", lambda root, runner=None: {"outcome": "completed"})
+    start(root, confirm=lambda summary: True, scheduler=FakeScheduler(), runner=_runner_recording([]))
+    gmail = subscriptions(root)["gmail"]
+    assert gmail["enabled"] is True and gmail["consented"] is True
+    assert "read by the daily round" in status(root)["mailboxes"]["gmail"]
+
+
+def test_a_mailbox_the_owner_removed_is_not_offered_again(tmp_path, monkeypatch):
+    from connectonion.rem.service import consent_summary, toggle_source
+    prepare(tmp_path)
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "gmail")
+    toggle_source(tmp_path, "gmail", False)
+    assert consent_summary(tmp_path)["sources"]["gmail"]["state"] == "unsubscribed"
+
+
+def test_stale_running_records_are_marked_abandoned_by_the_next_writer(tmp_path, monkeypatch):
+    """Two records said "running" for days on the owner's notebook."""
+    import os
+    from connectonion.rem.service import abandon_stale_runs, run_logs
+    prepare(tmp_path)
+    runs = state_path(tmp_path, "runs")
+    runs.mkdir(parents=True, exist_ok=True)
+    old = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    fresh = datetime.now(timezone.utc).isoformat()
+    write_json(runs / f"run_{'a' * 32}.json", {"id": f"run_{'a' * 32}", "started_at": old, "outcome": "running",
+                                              "runner_attempts": 1})
+    write_json(runs / f"run_{'b' * 32}.json", {"id": f"run_{'b' * 32}", "started_at": fresh, "outcome": "running",
+                                              "pid": 2 ** 22 + 7, "host": __import__("socket").gethostname()})
+    write_json(runs / f"run_{'c' * 32}.json", {"id": f"run_{'c' * 32}", "started_at": fresh, "outcome": "running",
+                                              "pid": os.getpid(), "host": __import__("socket").gethostname()})
+    assert sorted(abandon_stale_runs(tmp_path)) == [f"run_{'a' * 32}", f"run_{'b' * 32}"]
+    outcomes = {record["id"][4]: record for record in run_logs(tmp_path)}
+    assert outcomes["a"]["outcome"] == "abandoned" and "timeout" in outcomes["a"]["reason"]
+    assert outcomes["b"]["outcome"] == "abandoned" and "no longer running" in outcomes["b"]["reason"]
+    assert outcomes["c"]["outcome"] == "running"
+
+
+def test_usage_by_model_says_unrecorded_and_skips_per_1k_without_sizes(tmp_path):
+    """logs --usage showed a model "?" and an absurd per-1k figure (tokens over 0 characters)."""
+    from connectonion.rem.service import usage_report
+    prepare(tmp_path)
+    runs = state_path(tmp_path, "runs")
+    runs.mkdir(parents=True, exist_ok=True)
+    write_json(runs / "run_a.json", {"id": "run_a", "started_at": "2026-09-08T01:00:00+00:00",
+                                     "outcome": "completed", "usage": {"input_tokens": 900000}})
+    write_json(runs / "run_b.json", {"id": "run_b", "started_at": "2026-09-08T02:00:00+00:00", "model": "m",
+                                     "outcome": "completed", "usage": {"input_tokens": 1000}, "chars_in": 4000})
+    write_json(runs / "run_c.json", {"id": "run_c", "started_at": "2026-09-08T03:00:00+00:00", "model": "m",
+                                     "outcome": "completed", "usage": {"input_tokens": 500000}})
+    report = usage_report(tmp_path)
+    assert "?" not in report["by_model"] and "unrecorded" in report["by_model"]
+    assert "input_tokens_per_1k_chars" not in report["by_model"]["unrecorded"]
+    assert report["by_model"]["m"]["input_tokens_per_1k_chars"] == 250.0

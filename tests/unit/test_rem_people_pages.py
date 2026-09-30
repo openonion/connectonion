@@ -261,3 +261,102 @@ def test_project_pages_with_new_messages_are_followed_with_since(root, monkeypat
                              project_one=lambda root, record, **kw: written.append(record) or {"changed": [record]})
     assert written == ["projects/tide.md"] and calls and calls[0]
     assert result["run"]["pages"][0]["outcome"] == "accepted"
+
+
+# ------------------------------------------------------- #1974: one queue, honest
+
+
+def _people(tmp_path, rows, *, automated=()):
+    root = tmp_path / "ranked"
+    prepare_notebook(root)
+    notebook = Notebook(root)
+    for row in rows:
+        notebook.stub_person(row["record"], row["record"][7:-3].title(), row["addresses"], email=row["addresses"][0])
+    write_json(state_path(root, "map.json"), {"days": 90, "people": [{"classification": "unassessed", **row}
+                                                                   for row in rows],
+                                              "automated_correspondents": [{"address": a} for a in automated],
+                                              "projects": [], "orgs": []})
+    return root
+
+
+def test_two_way_correspondents_rank_by_recency_and_volume_before_one_way_mail(tmp_path):
+    """1.9.0a2: vendors and one-mail contacts came first because only the last date counted."""
+    root = _people(tmp_path, [
+        {"record": "people/colleague.md", "addresses": ["col@work.example"], "mails": 600, "sent": 250,
+         "received": 350, "last": ago(8)[:10]},
+        {"record": "people/stranger.md", "addresses": ["one@else.example"], "mails": 1, "sent": 0, "received": 1,
+         "last": ago(1)[:10]},
+        {"record": "people/quiet.md", "addresses": ["quiet@work.example"], "mails": 3, "sent": 1, "received": 2,
+         "last": ago(9)[:10]},
+        {"record": "people/cold.md", "addresses": ["cold@pitch.example"], "mails": 4, "sent": 0, "received": 4,
+         "last": ago(2)[:10]},
+    ])
+    rows = queue(root, recent_days=1)
+    assert [row["record"] for row in rows] == ["people/colleague.md", "people/quiet.md", "people/cold.md",
+                                               "people/stranger.md"]
+
+
+def test_automated_senders_and_vendors_on_notice_domains_are_left_out(tmp_path):
+    root = _people(tmp_path, [
+        {"record": "people/ada.md", "addresses": ["ada@work.example"], "mails": 5, "sent": 2, "received": 3,
+         "last": ago(3)[:10]},
+        {"record": "people/airbnb.md", "addresses": ["express@airbnb.example"], "mails": 20, "sent": 0,
+         "received": 20, "last": ago(1)[:10]},
+        {"record": "people/aws.md", "addresses": ["no-reply-aws@amazon.example"], "mails": 9, "sent": 0,
+         "received": 9, "last": ago(1)[:10]},
+        {"record": "people/host.md", "addresses": ["host@airbnb.example"], "mails": 3, "sent": 1,
+         "received": 2, "last": ago(1)[:10]},
+    ], automated=["automated@airbnb.example"])
+    records = [row["record"] for row in queue(root)]
+    assert records == ["people/host.md", "people/ada.md"] or records == ["people/ada.md", "people/host.md"]
+    assert "people/airbnb.md" not in records and "people/aws.md" not in records
+
+
+def test_a_hollow_investigation_puts_the_page_back_in_the_queue(tmp_path):
+    """Pages stamped "investigated" by a run that read nothing are unfinished, from the run record."""
+    from connectonion.rem.queue import hollow_investigations
+    root = _people(tmp_path, [
+        {"record": "people/founders.md", "addresses": ["founders@uni.example"], "mails": 8, "sent": 1,
+         "received": 7, "last": ago(20)[:10]},
+        {"record": "people/real.md", "addresses": ["real@uni.example"], "mails": 8, "sent": 1,
+         "received": 7, "last": ago(20)[:10]},
+    ])
+    today = NOW.date().isoformat()
+    for slug in ("founders", "real"):
+        investigated(root, f"people/{slug}.md", today)
+    runs = state_path(root, "runs")
+    runs.mkdir(parents=True, exist_ok=True)
+    write_json(runs / "run_a.json", {"id": "run_a", "started_at": ago(0.1), "phase": "investigate",
+                                     "record": "people/founders.md", "outcome": "completed", "coverage": [
+                                         "gmail (me@x): 8 matched, 8 bodies read, 0 attachments read",
+                                         "digest: 900,000 chars gathered; summarised in 0 chunk(s) first"]})
+    write_json(runs / "run_b.json", {"id": "run_b", "started_at": ago(0.1), "phase": "investigate",
+                                     "record": "people/real.md", "outcome": "completed", "coverage": [
+                                         "gmail (me@x): 8 matched, 8 bodies read, 0 attachments read"]})
+    assert hollow_investigations(root) == {"people/founders.md"}
+    rows = {row["record"]: row for row in queue(root)}
+    assert rows["people/founders.md"]["mode"] == "full" and "people/real.md" not in rows
+
+
+def test_a_run_that_read_no_body_is_hollow_whatever_it_matched(tmp_path):
+    from connectonion.rem.queue import hollow_investigations
+    root = _people(tmp_path, [])
+    runs = state_path(root, "runs")
+    runs.mkdir(parents=True, exist_ok=True)
+    write_json(runs / "run_c.json", {"id": "run_c", "started_at": ago(0.1), "phase": "investigate",
+                                     "record": "people/listing.md", "outcome": "completed", "coverage": [
+                                         "gmail (me@x): scanned 33 matched mails over 150 days, 33 matched, "
+                                         "0 bodies read, 0 attachments read",
+                                         "codex: 900 messages in window, 0 related to subject, 0 read"]})
+    assert hollow_investigations(root) == {"people/listing.md"}
+
+
+def test_the_cost_says_its_counts_are_the_maps_and_a_floor(root):
+    from connectonion.cli.commands.rem_people import cost_line, order_lines
+    rows = queue(root)
+    rows[0]["mails"] = 1
+    line = order_lines(rows[:1])[0]
+    assert "1 mail " in line and "1 mails" not in line
+    assert "at least" in line
+    text = cost_line(estimate(rows[:1]), {})
+    assert "the map" in text and "1 mails" not in text

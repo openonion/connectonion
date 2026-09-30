@@ -732,3 +732,26 @@ def test_worktrees_collapse_to_the_main_checkout_and_an_old_page_is_corrected(tm
     assert '.claude/worktrees' not in page
     assert '- /elsewhere/notes' in paths
     assert {'- Sessions: 8', '- First seen: 2026-09-05', '- Last seen: 2026-09-30'} <= set(paths)
+
+
+def test_a_1_8_confirm_hint_on_the_owner_s_page_is_corrected_to_co_rem(tmp_path, monkeypatch):
+    """The owner's page kept "If it is yours: co wiki init --mine …" from a 1.8 map."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+
+    class Mail:
+        def my_addresses(self): return {'me@outlook.example'}
+        def my_name(self): return 'Me Owner'
+
+    monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a: ([], {'me@outlook.example'}))
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=90)
+    record = result['owner']['record']
+    notebook = Notebook(tmp_path)
+    notebook.write(record, notebook.read(record).replace(
+        '## Uncertainties\n', '## Uncertainties\n- Possibly also the owner\'s: me2@x.example (9 sent, none '
+                              'received). If it is yours: co wiki init --mine me2@x.example\n'))
+    build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=90)
+    page = notebook.read(record)
+    assert 'co wiki' not in page and 'co rem init --mine me2@x.example' in page
