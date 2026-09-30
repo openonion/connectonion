@@ -74,6 +74,38 @@ def page_leads(notebook: Notebook, items: list[dict]) -> list[str]:
     return [record for _, record in leads[:MAX_LEADS]]
 
 
+def named_projects(notes: str) -> list[str]:
+    """The project names an extraction wrote under `## Projects` (`- **Name** — …`)."""
+    section = re.search(r"(?ms)^## Projects\s*$(.*?)(?=^## |\Z)", notes)
+    return list(dict.fromkeys(m.strip() for m in re.findall(r"(?m)^\s*-\s+\*\*([^*]+)\*\*", section[1])))\
+        if section else []
+
+
+def note_leads(notebook: Notebook, notes: str) -> tuple[list[str], list[str]]:
+    """Project pages the extraction names, and the names no page answers to.
+
+    Page leads come from the raw material, by the folder a session ran in or a
+    page's title in the text. Sessions typed in the workspace root match no
+    folder, and "the Wiki/REM work" names no title: ten of eleven project notes
+    in one sync reached no page and the run said nothing (#1985). The notes
+    name the project; match that name to a page's title or its folders' names.
+    """
+    pages = {}
+    for record in notebook.list("projects"):
+        text = notebook.read(record)
+        title = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), "")
+        keys = {title.casefold(), *(Path(p).name.casefold() for p in project_paths(text))}
+        pages[record] = {k for k in keys if k}
+    found, unrouted = [], []
+    for name in named_projects(notes):
+        matches = [record for record, keys in pages.items() if name.casefold() in keys]
+        if matches:
+            found += [m for m in matches if m not in found]
+        else:
+            unrouted.append(name)
+    return found, unrouted
+
+
 def nothing_new(notebook: Notebook, record: str, items: list[dict]) -> bool:
     """Whether the page has already read every message here that points at it.
 

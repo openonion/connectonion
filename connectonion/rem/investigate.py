@@ -42,7 +42,7 @@ def _nothing_found(record: str, subject: str, coverage: list[str], *, me: bool =
                    digested: bool = False, usage=None) -> NothingFound:
     searched = "; ".join(line for line in coverage
                          if not line.startswith(("Requested investigation window", "Quick first pass",
-                                                 "Page last investigated")))
+                                                 "Page last updated from its sources")))
     searched = searched if len(searched) <= 400 else searched[:400] + "…"
     why = ("every digest of the material came back empty" if digested
            else "no mail, attachment, session or chat message about them was found")
@@ -602,16 +602,22 @@ def searched_sources(coverage: list[str]) -> list[str]:
     to know which sources a page has already been checked against.
     """
     notes = ("budget", "digest", "evidence:", "Requested investigation window:", "Quick first pass:",
-             "Page last investigated")
+             "Page last updated from its sources")
     return list(dict.fromkeys(
         line.split(" (")[0].split(":")[0] for line in coverage
         if not line.startswith(notes) and "not searched" not in line and ": unreadable" not in line))
 
 
 def last_investigated(page: str):
-    from .queue import last_investigated as from_status
+    """The last pass that read this page's sources: `investigated` or `written`.
+
+    `co rem projects write` stamps `written <date>`; counted only as
+    "investigated", the next investigation of that project re-read 150 days,
+    397 items and 1.58M tokens after a write the same day (#1983)."""
+    from datetime import date
     line = next((l for l in page.splitlines() if l.startswith("Investigation:")), "")
-    return from_status(line)
+    days = re.findall(r"(?<!not )(?:investigated|written) (\d{4}-\d{2}-\d{2})", line)
+    return max(date.fromisoformat(d) for d in days) if days else None
 
 
 def window_since(page: str, default: int = 150) -> int:
@@ -650,8 +656,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     if last:
         # The page already reflects what came before; say so where the turn
         # reads it, so it adds the new material instead of rewriting the page.
-        coverage.append(f"Page last investigated {last.isoformat()}: it already reflects material before "
-                        "that date; add only what this material says that is new.")
+        coverage.append(f"Page last updated from its sources {last.isoformat()}: it already reflects "
+                        "material before that date; add only what this material says that is new.")
     available_items = len(items)
     if quick:
         items = quick_evidence(items)
