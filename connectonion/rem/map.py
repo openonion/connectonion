@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .files import Notebook, atomic_write, maintenance_lock, read_json, state_path
-from .scan import scan_people, scan_projects, canonical_origin, AUTOMATED_HINT
+from .scan import scan_people, scan_projects, canonical_origin, main_checkout, AUTOMATED_HINT
 from .skill_map import map_skills
 from .org_map import map_orgs
 
@@ -376,13 +376,23 @@ def _archive_stale(notebook: Notebook, report: dict) -> list[str]:
 
 def project_groups(rows: list[dict]) -> dict:
     """Folders (rows shaped like `scan_projects`') grouped into projects: a worktree
-    joins its repository by origin, Codex's dated scratch folders join by name."""
+    joins its repository by origin, Codex's dated scratch folders join by name.
+
+    A worktree is listed as its main checkout, never as itself (#1955). One that
+    no longer exists has no origin to join by, so it joins whichever group its
+    checkout is in; else its Sessions would overwrite the repository's.
+    """
+    def identity(row):
+        return canonical_origin(row['origin']) or row['repo']
+    known = {main_checkout(row['path']) or row['path']: identity(row) for row in rows if identity(row)}
     groups = {}
     for row in rows:
-        identity = canonical_origin(row['origin']) or row['repo'] or _scratch_identity(row['path']) or row['path']
-        group = groups.setdefault(identity, {'name': Path(row['repo'] or row['path']).name,
-                                            'paths': [], 'sessions': 0, 'first': row['first'], 'last': row['last']})
-        group['paths'].append(row['path'])
+        path = main_checkout(row['path']) or row['path']
+        key = identity(row) or known.get(path) or _scratch_identity(path) or path
+        group = groups.setdefault(key, {'name': Path(row['repo'] or path).name,
+                                       'paths': [], 'sessions': 0, 'first': row['first'], 'last': row['last']})
+        if path not in group['paths']:
+            group['paths'].append(path)
         group['sessions'] += row['sessions']
         group['first'] = min(group['first'], row['first'])
         group['last'] = max(group['last'], row['last'])
@@ -398,15 +408,19 @@ def file_project(notebook: Notebook, identity: str, row: dict, *, refresh: bool 
     `refresh=False` only adds missing paths: the caller saw part of the project,
     so its counts must not replace the map's.
     """
-    from .investigate import project_paths
+    from .investigate import collapse_worktree_paths, project_paths
     record = _record('projects', row['name'], identity)
+    # Compared as corrected, so a page an earlier map filled with worktrees is
+    # found and fixed rather than joined by a second page for the same checkout.
     existing = next((r for r in notebook.list('projects')
-                     if any(path in project_paths(notebook.read(r)) for path in row['paths'])), None)
+                     if any(path in project_paths(collapse_worktree_paths(notebook.read(r)))
+                            for path in row['paths'])), None)
     record = existing or record
     created = notebook.stub_project(record, row['name'], row['paths'], sessions=row['sessions'],
                                     first_seen=row['first'], last_seen=row['last'])
     # Refresh only deterministic numeric/date fields inside Paths; retain prose.
-    page = notebook.read(record)
+    original = notebook.read(record)
+    page = collapse_worktree_paths(original)
     section = re.search(r'(?ms)^## Paths\n(.*?)(?=^## |\Z)', page)
     if section:
         body = section.group(1)
@@ -418,7 +432,7 @@ def file_project(notebook: Notebook, identity: str, row: dict, *, refresh: bool 
             if path not in recorded_paths:
                 body = '- ' + path + '\n' + body
         updated = page[:section.start(1)] + body + page[section.end(1):]
-        if updated != page:
+        if updated != original:
             notebook.write(record, updated)
     return record, created
 

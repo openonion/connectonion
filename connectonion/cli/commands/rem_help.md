@@ -297,13 +297,18 @@ schedule runs.
 
 Usage:    co rem sync [--dry-run] [--source NAME] [--with ADDRESS] [--all]
 Example:  co rem sync --dry-run
-          --dry-run   shows what is waiting without reading bodies or calling a model
+          --dry-run   shows what is waiting, and the runner attempts left today and
+                      when they reset, without reading bodies or calling a model
           --source    only one source from co rem sources
           --with      only mail with one person
-          --all       keep going until nothing is waiting (ignores the daily cap)
+          --all       keep going until nothing is waiting or the day's runner
+                      attempts are spent; one line per batch on stderr. To go
+                      further today, raise limits.runner_calls_per_day
           --scheduled what the schedule passes: run only if a scheduled time is due
 
-Effects:  Reads message bodies, calls the model, updates pages.
+Effects:  Reads message bodies, calls the model, updates pages. A run the daily
+          cap refuses is kept in co rem logs. Ctrl-C keeps finished batches and
+          says what finished; the interrupted one reads again next time.
 Requires: co rem start (it records your approval of the sources).
 Next:     co rem logs
 Back:     co rem --help

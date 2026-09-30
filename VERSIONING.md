@@ -409,10 +409,14 @@ running `co wiki`; `co wiki` itself runs nothing, exits 2 and names the co rem
 command until 1.10. Also: nameless addresses the owner never wrote to are held
 for review (#1844); a night with nothing new calls no model and a page that has
 read its material gets no turn (#1846); `config set model` measures the model's
-tier instead of reading its name (#1847). Stable is 1.8.9. See
+tier instead of reading its name (#1847). The first run is one command that
+prints your page and then writes it and your recent projects; people are
+investigated recent first from new mail only; the daily round finishes once
+and follows what is new (#1943, #1946-#1951); a help page moves nothing.
+Stable is 1.8.9. See
 [1.9.0a2 notes](docs/releases/1.9.0a2.md).
 
-- 1.9.0a2 (rename to co rem with folder, schedule and variable migration and a co wiki tombstone; held-for-review addresses; quiet nights; measured agent/summary tier.)
+- 1.9.0a2 (rename to co rem with folder, schedule and variable migration and a co wiki tombstone; held-for-review addresses; quiet nights; measured agent/summary tier; one-command first run, project pages from own messages, workspace attribution, people recent-first, daily split; --help carries nothing over.)
 
 ## 1.9.0a1
 
