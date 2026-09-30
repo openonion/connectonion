@@ -227,7 +227,7 @@ def test_init_ends_with_what_is_in_the_notebook_what_was_written_and_what_is_nex
     assert result.exit_code == 0, result.output
     tail = result.output.rstrip().splitlines()[-5:]
     assert tail[0] == "Your notebook: 4 people, 3 organizations, 0 projects and 0 skills."
-    assert tail[1] == "Written this run: your page and 1 person."
+    assert tail[1] == "Written this run: your page, 1 person and 3 organisation pages."
     assert tail[2].startswith("Your page: ") and tail[2].endswith(".md")
     assert tail[3].startswith(f"Then keep it current: co rem --root {root} start")
     assert tail[4] == f"Next: co rem --root {root} open"
@@ -372,11 +372,10 @@ def test_after_me_the_recent_projects_are_written_one_line_each(projects):
     result = init()
     assert result.exit_code == 0, result.output
     assert calls[0]["record"] == owner_record(root)  # me first, then the people
-    assert sorted(written) == ["projects/alpha.md", "projects/beta.md"]  # the old one waits
+    assert sorted(written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
     text = Text.from_ansi(result.output).plain
-    assert "~180k billed input tokens" in text and "Cost:" in text and "Ctrl-C" in text
-    assert "projects/alpha.md: written" in text and "projects/beta.md: written" in text
-    assert "projects/old.md" not in text
+    assert "~270k billed input tokens" in text and "Cost:" in text and "Ctrl-C" in text
+    assert text.count("projects/") >= 3 and "projects/old.md: written" in text
 
 
 def test_projects_follow_the_same_skip_rules(projects, monkeypatch):
@@ -398,7 +397,7 @@ def test_json_with_investigate_writes_projects_and_reports_them(projects):
     assert result.exit_code == 0, result.output
     pages = json.loads(result.stdout)["data"]["project_pages"]
     assert pages["started"] and sorted(row["page"] for row in pages["pages"]) == sorted(written) == [
-        "projects/alpha.md", "projects/beta.md"]
+        "projects/alpha.md", "projects/beta.md", "projects/old.md"]
 
 
 def test_the_weekly_floor_stops_project_pages(projects, monkeypatch):
@@ -439,13 +438,13 @@ def test_after_me_the_people_you_wrote_to_and_projects_four_at_a_time(people):
     root, init, calls, people_written, projects_written = people
     result = init()
     assert result.exit_code == 0, result.output
-    assert [call["record"] for call in calls] == [owner_record(root)]
+    assert calls[0]["record"] == owner_record(root)  # then the organisations, alongside
     assert sorted(people_written) == [f"people/p{n}.md" for n in range(5)]
-    assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md"]
+    assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
     text = Text.from_ansi(result.output).plain
-    assert "up to 20 people you wrote to in the last 14 days" in text
+    assert "the people you write to, your projects and the organisations you correspond with" in text
     assert "4 at a time" in text and "it stops at 20 points of the Codex week" in text
-    assert "Written this run: your page, 5 people and 2 project pages." in text
+    assert "Written this run: your page, 5 people, 3 project pages and 3 organisation pages." in text
 
 
 def test_the_first_run_stops_starting_pages_at_its_twenty_points(people, monkeypatch):
@@ -513,7 +512,7 @@ def test_the_first_run_covers_every_recent_correspondent_not_three(people):
     result = init()
     assert result.exit_code == 0, result.output
     assert sorted(people_written) == [f"people/p{n}.md" for n in range(5)]
-    assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md"]
+    assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
 
 
 def test_marking_people_investigated_at_once_loses_none(tmp_path, monkeypatch):
@@ -564,3 +563,13 @@ def test_a_finished_investigation_waits_for_the_lock_instead_of_losing_the_page(
     record_result(tmp_path, notebook, "people/p0.md", [], ["outlook"])
     holder.join()
     assert "investigated" in notebook.read("people/p0.md")
+
+
+def test_the_first_run_goes_on_to_older_projects_and_organisations(people):
+    """Most pages written on the first run (owner, 2026-10-01): after the recent
+    ones, the older projects and the organisations you correspond with."""
+    root, init, calls, people_written, projects_written = people
+    result = init()
+    assert result.exit_code == 0, result.output
+    assert "projects/old.md" in projects_written
+    assert any(call["record"].startswith("orgs/") for call in calls), [c["record"] for c in calls]

@@ -308,10 +308,11 @@ def test_inits_recent_projects_step_writes_a_workspace_attributed_project(ws, mo
     monkeypatch.setattr("connectonion.rem.quota.read", lambda config: {"unknown": "no meter in tests"})
     ctx = types.SimpleNamespace(obj={"json": False, "root": ws.root})
     said = []
-    _, result = _first_pages(ctx, ws.root, read_config(ws.root), "on your Codex plan", said.append, lambda: "")
+    result = _first_pages(ctx, ws.root, read_config(ws.root), "on your Codex plan", said.append,
+                          lambda: "")["project_pages"]
     beta = next(r for r in ws.notebook.list("projects") if r.startswith("projects/beta"))
-    assert result["started"] and written == [beta]
-    assert said == [f"  {beta}: written"]
+    assert result["started"] and written[0] == beta  # the recent one first; older ones follow
+    assert f"  {beta}: written" in said
     assert texts(ws.root, beta) == ["beta needs a release"]
 
 
