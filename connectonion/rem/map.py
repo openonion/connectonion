@@ -191,27 +191,24 @@ def service_page(title: str, emails: list[str], row: dict | None, automated: set
     """Is this people page a service or an automated sender, by today's rules (#1987, #2008)?
 
     The map keeps such senders off the people map from now on; this answers the
-    same question for a page an older map already made. `row` is the page's row
-    in the last map (it knows the mail's direction), `automated` the addresses
-    that map listed as notice senders. A page the last map did not see is judged
-    on its address and title alone, as if it only ever wrote in: a desk the owner
-    also writes to is a correspondent, and only the map's row can say so.
+    same question for a page an older map already made. With the page's `row`
+    from the last map, the map's own rule decides, on the direction of its mail.
+    Without one, the page is judged on its address and title: listed by that map
+    as a notice sender (`automated`), shaped like a system, or named after its
+    own domain and only ever writing in.
     """
     addresses = [address.casefold() for address in emails]
     if not addresses:
         return False
-    if all(address in automated for address in addresses):
+    if row:
+        group = [{'address': address, 'name': row.get('name') or title, 'sent': row.get('sent', 0),
+                  'received': row.get('received', 0),
+                  'one_way': row.get('one_way')}
+                 for address in addresses]
+        return all(_notice(one) for one in group) or _service(group)
+    if all(address in automated or MACHINE.search(address) or RELAY.search(address) for address in addresses):
         return True
-    if all(MACHINE.search(address) or RELAY.search(address) for address in addresses):
-        return True
-    # A sending subdomain is bulk only when the owner never wrote back: the
-    # owner's own aaron.xie@mail.openonion.ai has the same shape (#2008).
-    if row and not row.get('sent') and all(BULK.search(address) for address in addresses):
-        return True
-    received = int(row.get('received') or 0) if row else 1
-    group = [{'address': address, 'name': (row or {}).get('name') or title,
-              'sent': (row or {}).get('sent', 0), 'received': received} for address in addresses]
-    return _service(group)
+    return _service([{'address': address, 'name': title, 'sent': 0, 'received': 1} for address in addresses])
 
 
 def _people_groups(rows: list[dict]) -> list[list[dict]]:
@@ -799,7 +796,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
                            for name, sub in subscriptions.items() if sub.get('kind') in ('codex', 'claude-code')]
     if report.get('owner'):
         _fill_owner(notebook, report, owner_name)
-    report['archived'] = _archive_stale(notebook, report)
+    report['archived'] = (report['tidied'] or {}).get('archived service', []) + _archive_stale(notebook, report)
     if report['archived']:
         report['coverage'].append(f"{len(report['archived'])} pages an earlier map made and nobody investigated were "
                                   "duplicates or sandboxes; moved to .state/archived/")

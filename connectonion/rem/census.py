@@ -58,7 +58,8 @@ def pages(root: Path) -> dict:
     from .map import needs_review, service_page
     notebook = Notebook(root)
     state = read_json(state_path(root, "map.json"), {})
-    rows = {row.get("record"): row for row in state.get("people", []) if row.get("record")}
+    # Rows with an address: the owner's row names only the record.
+    rows = {row.get("record"): row for row in state.get("people", []) if row.get("record") and row.get("address")}
     automated = {row["address"].casefold() for row in state.get("automated_correspondents", [])
                  if row.get("address")}
     owner = (state.get("owner") or {}).get("record")

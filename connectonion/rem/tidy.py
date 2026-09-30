@@ -61,7 +61,7 @@ def _services(notebook: Notebook, state: dict) -> list[dict]:
     """People pages for services and automated senders, never investigated: archived."""
     from .census import written
     from .map import service_page
-    rows = {row.get("record"): row for row in state.get("people", []) if row.get("record")}
+    rows = {row.get("record"): row for row in state.get("people", []) if row.get("record") and row.get("address")}
     automated = {row["address"].casefold() for row in state.get("automated_correspondents", []) if row.get("address")}
     owner = (state.get("owner") or {}).get("record")
     moved = []
