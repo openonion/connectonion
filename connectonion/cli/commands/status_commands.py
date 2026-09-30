@@ -585,4 +585,6 @@ def handle_status(reveal: bool = False):
     # thing to teach here is the rest of the surface.
     from .command_tips import STATUS_TIPS, rotating_tip, tips_enabled
     if tips_enabled():
-        console.print(f"\n[dim]💡 {rotating_tip('status', STATUS_TIPS)}[/dim]\n", highlight=False)
+        from .. import style
+        # The command in the tip is coloured like every co command (#1997).
+        style.console().print(f"\n💡 {style.markup(rotating_tip('status', STATUS_TIPS))}\n", emoji=False)

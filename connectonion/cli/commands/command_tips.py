@@ -8,7 +8,6 @@ the source for tip strings and checks each named command against the register.
 
 import os
 import re
-import sys
 from pathlib import Path
 from typing import Sequence
 
@@ -59,13 +58,24 @@ def forget_next_step_named() -> None:
     _NEXT_STEP_NAMED = False
 
 
+def _print_styled(line: str, stderr: bool = False) -> None:
+    """In a terminal, the line in co's look (#1997); anywhere else the same words, plain, as they always were."""
+    from .. import style
+
+    out = style.console(stderr=stderr)
+    if out.is_terminal:
+        out.print(style.markup(line), emoji=False)
+    else:
+        print(line, file=out.file, flush=True)
+
+
 def print_tip(message: str) -> None:
-    """Print a plain, unwrapped tip; markup in a user-supplied path stays literal."""
+    """Print an unwrapped tip, its command coloured in a terminal; markup in a user-supplied path stays literal."""
     global _NEXT_STEP_NAMED
     message = re.sub(r"\[/?(?:bold|dim|yellow|cyan|red|green)(?: [a-z]+)?\]", "", message)
     if _NAMES_A_NEXT_STEP.search(message):
         _NEXT_STEP_NAMED = True
-    print(selected_tip(message))
+    _print_styled(selected_tip(message))
 
 
 def rotating_tip(group: str, tips: Sequence[str]) -> str:
@@ -322,7 +332,8 @@ def print_next_step(path: str) -> None:
     Called from _OneSuggestion.invoke with the leaf's full path. Prints on
     stderr: stdout stays the command's data (a `--json` caller parses it),
     and stderr survives `| cat` and reaches a capturing agent all the same.
-    Dim only when stderr is a terminal so a log file gets plain text.
+    Styled like every co Next line only when stderr is a terminal, so a log
+    file gets plain text (#1997).
 
     A path mapped to HANDLER prints nothing here — the handler already
     printed a tip that depends on what it found, which this table cannot
@@ -337,10 +348,7 @@ def print_next_step(path: str) -> None:
         return          # the coverage test, not the user, reports this
     if not tip:
         return
-    line = f"Next: {selected_tip(tip)}"
-    if sys.stderr.isatty():
-        line = f"\033[2m{line}\033[0m"
-    print(line, file=sys.stderr, flush=True)
+    _print_styled(f"Next: {selected_tip(tip)}", stderr=True)
 
 
 # What `co status` teaches, one per run. Each names a command, not a page:
