@@ -5,7 +5,7 @@ notebook kept services as people (Apple ID, notify@x.com, GitHub's unsub+
 reply addresses), two of the owner's own addresses queued as people, three
 pairs of pages for one skill, and old pages carrying `web: not searched` and
 `investigation:coverage` citations. Every map and every sync calls `tidy`
-first. It is idempotent and calls no model. Nothing is deleted: pages move to
+first, and a map calls it again at its end (#2018). It is idempotent and calls no model. Nothing is deleted: pages move to
 `.state/archived/` (folded ones leave an alias, as `merge.merge_into` does),
 and every action -- each removed line with its text -- is appended to
 `.state/tidy.json`. A page someone investigated is never moved or folded.
@@ -28,7 +28,7 @@ COVERAGE = re.compile(r"^\s*- \[(W?\d+)\] investigation:coverage\b.*$")
 RUNNER_COVERAGE = "source-collection record for this investigation"
 
 
-def tidy(root: Path, *, lock_held: bool = False) -> dict:
+def tidy(root: Path, *, lock_held: bool = False, own_addresses: bool = True) -> dict:
     """Tidy under the notebook lock; returns {action: [pages]} for what changed."""
     root = Path(root)
     if not (root / ".state").is_dir():
@@ -37,8 +37,9 @@ def tidy(root: Path, *, lock_held: bool = False) -> dict:
         notebook, actions = Notebook(root), []
         state = read_json(state_path(root, "map.json"), {})
         actions += _services(notebook, state)
-        actions += _own_addresses(notebook, state)
+        actions += _own_addresses(notebook, state) if own_addresses else []
         actions += _skills(notebook)
+        actions += _orgs(notebook)
         actions += _lines(notebook)
         if not actions:
             return {}
@@ -71,6 +72,27 @@ def _services(notebook: Notebook, state: dict) -> list[dict]:
             continue
         if service_page(person["title"], person["emails"], rows.get(record), automated):
             moved.append({"action": "archived service", "page": record, "archived": _archive(notebook, record)})
+    return moved
+
+
+def _orgs(notebook: Notebook) -> list[dict]:
+    """Organisation pages for a mailbox provider or an event relay, never investigated: archived (#2018).
+
+    Where someone keeps their mail is not who they work for: orgs/yahoo-com-hk
+    and orgs/luma-mail-com were on the 1.9.0a5 acceptance notebook.
+    """
+    from .census import written
+    from .map import RELAY
+    from .scan import personal_mailbox
+    moved = []
+    for record in notebook.list("orgs"):
+        text = notebook.read(record)
+        section = text.partition("## Domains\n")[2].split("\n## ", 1)[0]
+        domains = re.findall(r"^- ([A-Za-z0-9.-]+)\s*$", section, re.M)
+        if written(text) or not domains:
+            continue
+        if all(personal_mailbox(domain) or RELAY.search("x@" + domain) for domain in domains):
+            moved.append({"action": "archived organisation", "page": record, "archived": _archive(notebook, record)})
     return moved
 
 
@@ -111,7 +133,26 @@ def _own_addresses(notebook: Notebook, state: dict) -> list[dict]:
         owner["addresses"] = sorted(confirmed | set(added))
         state.update(owner=owner, possible_own_addresses=kept)
         write_json(state_path(notebook.root, "map.json"), state)
-    return folded
+    return folded + _owner_lines(notebook, record, {row.get("address", "").casefold() for row in kept})
+
+
+def _owner_lines(notebook: Notebook, record: str, asked: set[str]) -> list[dict]:
+    """The owner's "Possibly also the owner's" lines: one per address still asked, no others (#2017)."""
+    from .map import POSSIBLY, owner_possibly
+    text, seen, lines, gone = notebook.read(record), set(), [], []
+    for line in text.split("\n"):
+        if not line.startswith(POSSIBLY):
+            continue
+        address = line[len(POSSIBLY):].split(" ", 1)[0].casefold()
+        if address in asked and address not in seen:
+            seen.add(address)
+            lines.append(line)
+        else:
+            gone.append(line)
+    if not gone:
+        return []
+    notebook.write(record, owner_possibly(text, lines))
+    return [{"action": "removed line", "page": record, "line": line} for line in gone]
 
 
 def _fold_owner(notebook: Notebook, owner: str, page: str, emails: list[str]) -> None:

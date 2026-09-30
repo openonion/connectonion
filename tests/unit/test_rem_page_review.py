@@ -497,3 +497,32 @@ def test_the_project_skills_ask_for_the_overview_and_no_placeholder_and_never_gu
     for text in (project_pages.instructions(), instructions('investigate', page_kind='project')):
         assert 'is required' in text and 'Overview' in text
         assert 'refused' in text and 'misheard' in text and 'never guess' in text.lower()
+
+
+# ------------------------------------------- a page stays readable in one sitting (#2019)
+
+
+def _grown(old: str, size: int) -> str:
+    """The page with History grown to `size` characters, every line cited."""
+    line = '- 2026-09-01: a dated line of history, one of many the update added. [1]\n'
+    body = old.replace('- (none yet)', '- [1] observed 2026-09-19 — fixture:readme')
+    history = line * max(0, (size - len(body)) // len(line) + 1)
+    return body.replace('\n## Sources\n', '\n' + history + '\n## Sources\n', 1)
+
+
+def test_a_candidate_over_the_limit_that_grew_the_page_is_refused(tmp_path):
+    """1.9.0a5 acceptance: one daily update took projects/connectonion from 13,421
+    to 25,255 characters. Only the growth past the limit is refused."""
+    from connectonion.rem.page_review import PAGE_LIMIT, size_errors
+    prepare(tmp_path)
+    nb = Notebook(tmp_path)
+    nb.stub_project('projects/atlas.md', 'Atlas')
+    old = _grown(nb.read('projects/atlas.md'), 13_421)
+    grown = _grown(old, 25_255)
+    assert PAGE_LIMIT == 20_000
+    errors = size_errors(grown, old)
+    assert errors and '25,' in errors[0] and '20,000' in errors[0] and 'History' in errors[0]
+    assert any('20,000' in error for error in validate('projects/atlas.md', grown, old, []))
+    assert size_errors(_grown(old, 18_000), old) == []               # growth under the limit: fine
+    oversized = _grown(old, 26_000)
+    assert size_errors(_grown(old, 22_000), oversized) == []         # an oversized page may come down in steps

@@ -727,7 +727,9 @@ addresses, D&B, Microsoft), two of the owner's own addresses as people still
 queued for investigation, three pairs of pages for one skill, and old pages
 still carrying `web: not searched …` and `investigation:coverage` citations.
 
-**Tidy runs by itself**, at the start of every map (`co rem init`) and every
+**Tidy runs by itself**, at the start and again at the end of every map
+(`co rem init`; the pass at the end leaves the owner's own addresses to the
+next run, because the map has just asked about them), and at the start of every
 sync (the daily round and `co rem sync`), under the notebook lock. It is
 idempotent: a tidy notebook is left exactly as it is, and nothing is written
 when nothing needs tidying. No model is called. What it does:
@@ -737,6 +739,7 @@ when nothing needs tidying. No model is called. What it does:
 | A people page for a service or automated sender, never investigated (the map's `automated_correspondents`, the #1987 service rule, or an automated address) | moved to `.state/archived/people/…` | move the file back |
 | A people page for an address that is clearly the owner's: never replied to, and the address or display name carries the owner's name or an address the owner already confirmed | folded into the owner's page (`merge.merge_into`: written lines kept, page archived, record an alias); the address added to the owner's addresses | `.state/aliases.json` names the archived copy |
 | Two catalog pages for one skill (a `SKILL.md` without a `name:` takes its folder's name, so `~/.codex/skills/changxing-nonfiction-refine` and `~/.agents/skills/nonfiction-refine` were two skills) | folded into the page of the named skill, as the map does for copies | as above |
+| An organisation page for a mailbox provider (`gmail.com`, `yahoo.com.hk`, `outlook.com.au`, `qq.com`, `163.com` …) or an event platform's relay domain (`luma-mail.com`), never investigated | moved to `.state/archived/orgs/…` | move the file back |
 | A line `- web: not searched …`, or a `Sources` entry `[N] investigation:coverage …` and its `[N]` markers | that line or marker removed; every other line kept | the removed text is in the log |
 
 An investigated page is never archived or folded: a person's work on a page is
@@ -751,6 +754,46 @@ address or its display name. The owner's notebook offered seventeen, fifteen
 of them colleagues and friends who answer on other channels; the list now holds
 the two that are the owner's. An address confirmed once (`--mine`, or folded by tidy)
 stays the owner's at the next map without repeating `--mine`.
+
+**Why twice (#2018).** The 1.9.0a5 acceptance run's map made
+`team-telnyx` (`discover@telnyx.com`) and held pages for Workday's OTP sender,
+Singapore Airlines' `booking@`, Lebara's `mylebara@` and Telnyx's `portal@`,
+and tidy, run before that map, had nothing to act on. The map and tidy ask one
+question (`map.service_page`), and it now also covers:
+
+- a role desk that only writes in: `portal@`, `booking@`, `bookings@`,
+  `reservations@`, `discover@`, `otp@`, `verify@`, `security@`, `account@`,
+  `orders@`, `welcome@`, `members@`;
+- a sending platform (`myworkday.com`, `workday.com`) or an `otp.` sending
+  subdomain, the way `mail.` and `news.` already were;
+- an address whose local part carries the domain's own name (`mylebara@lebara.com.au`)
+  and that the owner never wrote to;
+- a display name with the domain's name anywhere in it ("Team Telnyx"), not
+  only first.
+
+So a fresh map makes none of these, and tidy at the end of the map archives a
+page the map before it made. **A mailbox provider is never an organisation**:
+the list of known providers is kept, and a provider's name under any country
+suffix (`yahoo.com.hk`, `hotmail.co.uk`, `outlook.com.au`) is one too; an event
+platform's relay (`luma-mail.com`, 253 mails from one sender) makes no
+organisation either.
+
+**The owner's page is rewritten, not appended to (#2017).** The acceptance
+run's owner page carried nine "Possibly also the owner's" lines, the same
+three addresses at different counts, two of them already confirmed and folded,
+and History still said "In the 90 days to 2026-09-25" after a re-map. Each map
+now replaces every "Possibly also the owner's" line with the current list, and
+replaces its own History lines ("In the N days to …", "Most mail with …",
+"Coding sessions in the same window …") and its `[1]` enumeration source with
+today's. Tidy drops the line of an address it confirms or folds. Other lines
+are never touched.
+
+Measured on the same copy after 1.9.0a5's tidy (never the notebook itself):
+people pages 357 → 349 (8 more services: Telnyx's portal, Singapore Airlines'
+booking desk, both Workday senders, Lebara, TEN13's community desk,
+"Partnership LexGeneris", "Swim School UNSWFAC"), held pages 25 → 19,
+organisation pages 142 → 140 (`yahoo.com.hk`, `luma-mail.com`), "Possibly also
+the owner's" lines on the owner's page 9 → 0. A second pass changed nothing.
 
 A fresh map no longer makes the duplicate skill pages either: a skill named
 after its folder joins the named skill whose name its folder ends with

@@ -293,11 +293,27 @@ def placeholder_errors(candidate: str) -> list[str]:
              'write what the material shows, or a bare "Unknown"'] if left else [])
 
 
+# The skills ask for about 15k characters; past this a candidate that grew the
+# page is refused (#2019). On a copy of the owner's notebook (2026-10-01) 696 of
+# 698 pages were under 15k and the largest page grown from read material was
+# 18.9k; one daily update took a project page from 13.4k to 25.3k.
+PAGE_LIMIT = 20_000
+
+
+def size_errors(candidate: str, original: str) -> list[str]:
+    """A page over the limit may not grow; one already over may come down in steps."""
+    if len(candidate) <= PAGE_LIMIT or len(candidate) <= len(original):
+        return []
+    return [f'Page is {len(candidate):,} characters (was {len(original):,}), over the {PAGE_LIMIT:,} limit; '
+            'keep it near 15,000: fold the oldest History into dated one-line summaries with their '
+            'citations, and keep the lead and the current state']
+
+
 def validate(record: str, candidate: str, original: str, items: list[dict], pages=frozenset(),
              owner: bool = False) -> list[str]:
     """Structural checks only; citation existence does not prove factual entailment."""
     body = prose(candidate)
-    errors = []
+    errors = size_errors(candidate, original)
     if len(re.findall(r'^# .+', body, re.M)) != 1:
         errors.append('Expected exactly one page title')
     counts = Counter(re.findall(r'^## (.+)$', body, re.M))

@@ -136,3 +136,52 @@ def test_an_address_confirmed_once_stays_the_owners_at_the_next_map(tmp_path, mo
     again = build_map(tmp_path, {}, {}, skill_directories=[tmp_path / "installed"])   # no --mine this time
     assert "aaronplus1996@gmail.com" in again["owner"]["addresses"]
     assert again["possible_own_addresses"] == []
+
+
+# ------------------------------------------- the 1.9.0a5 acceptance run (#2017, #2018)
+
+
+def test_the_owners_possibly_yours_lines_follow_what_is_still_asked(tmp_path):
+    """#2017: the owner's page carried nine "Possibly also the owner's" lines, the
+    same three addresses at different counts, two already confirmed and folded."""
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/aaron.md", "Aaron Xie", ["openonionai@gmail.com"], email="openonionai@gmail.com")
+    asked = ["aaronplus1996@gmail.com (108 sent", "aaron@openonion.ai (22 sent", "aaronplus1996@gmail.com (101 sent",
+             "aaron@openonion.ai (10 sent", "aaronchen@openonion.ai (10 sent", "aaronchen@openonion.ai (8 sent"]
+    lines = "".join(f"- Possibly also the owner's: {one}, none received). If it is yours: co rem init --mine x\n"
+                    for one in asked)
+    page = notebook.read("people/aaron.md").replace("## Uncertainties\n", "## Uncertainties\n" + lines)
+    notebook.write("people/aaron.md", page.replace("- Unknown — not investigated yet\n\n## Sources", "\n## Sources"))
+    _person(notebook, "people/cx.md", "常兴", "aaronplus1996@gmail.com")
+    _state(tmp_path, owner={"record": "people/aaron.md", "addresses": ["openonionai@gmail.com", "aaron@openonion.ai"]},
+           people=[{"record": "people/cx.md", "address": "aaronplus1996@gmail.com", "name": "常兴", "sent": 108,
+                    "received": 0}],
+           possible_own_addresses=[{"address": "aaronchen@openonion.ai", "sent": 10, "record": "people/ac.md"}])
+
+    tidy(tmp_path)
+
+    page = notebook.read("people/aaron.md")
+    kept = [line for line in page.splitlines() if line.startswith("- Possibly also the owner's:")]
+    assert kept == ["- Possibly also the owner's: aaronchen@openonion.ai (10 sent, none received). "
+                    "If it is yours: co rem init --mine x"]                   # confirmed ones gone, one line each
+    assert "- Email: openonionai@gmail.com, aaronplus1996@gmail.com" in page
+    assert tidy(tmp_path) == {} and notebook.read("people/aaron.md") == page  # idempotent
+
+
+def test_organisation_pages_for_mailbox_providers_and_relays_are_archived(tmp_path):
+    """#2018: orgs/yahoo-com-hk and orgs/luma-mail-com (253 mails, one sender) on the copy."""
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    for domain in ("yahoo.com.hk", "luma-mail.com", "hotmail.co.uk", "unsw.edu.au"):
+        notebook.stub_org(f"orgs/{domain}.md", domain, [domain], [])
+    notebook.stub_org("orgs/qq.md", "qq.com", ["qq.com"], [])
+    notebook.write("orgs/qq.md", notebook.read("orgs/qq.md").replace("not investigated yet", "investigated 2026-09-28"))
+    _state(tmp_path)
+
+    done = tidy(tmp_path)
+
+    assert done == {"archived organisation": ["orgs/hotmail.co.uk.md", "orgs/luma-mail.com.md",
+                                              "orgs/yahoo.com.hk.md"]}
+    assert sorted(notebook.list("orgs")) == ["orgs/qq.md", "orgs/unsw.edu.au.md"]   # investigated stays
+    assert (tmp_path / ".state/archived/orgs/yahoo.com.hk.md").is_file()

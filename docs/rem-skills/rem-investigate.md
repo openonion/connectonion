@@ -248,3 +248,13 @@ overturned hypotheses and open questions; ID checks do not prove truth. Never
 rewrite executable skills; never escalate to another provider. Container traits are not the subject's (an
 offline fixture ≠ offline product). No dependencies or deadlines from adjacent
 facts. Describe only sources actually supplied or searched.
+
+## A page stays readable in one sitting (#2019)
+
+A daily update is an investigation over the new material only, and it had no
+size rule: one pass took `projects/connectonion` from 13.4k to 25.3k characters
+(1.9.0a5 acceptance run, 2026-10-01). The maintain Skill's rule -- about 15k,
+fold the oldest `History` into dated one-line summaries, keep the lead and the
+current state -- now applies here too, and the runner refuses a candidate over
+20,000 characters that is longer than the page it replaces
+(`page_review.size_errors`; the reasons for 20k are in `rem-maintain.md`).
