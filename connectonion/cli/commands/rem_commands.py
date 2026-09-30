@@ -408,8 +408,8 @@ def _write_my_page(root, days, say):
 # about 20M input tokens without moving the Codex week off 28%, so the owner
 # judged the cost small and the wait the real problem.
 FIRST_RUN_PEOPLE = 0   # 0: everyone in the people queue
-FIRST_RUN_POINTS = 40
-FIRST_RUN_WORKERS = 8
+FIRST_RUN_POINTS = 50
+FIRST_RUN_WORKERS = 12
 
 
 def _first_run_gate(root, config):
