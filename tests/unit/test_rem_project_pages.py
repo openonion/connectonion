@@ -215,7 +215,7 @@ def _page_citing(source):
         elif section == "Paths":
             lines += ["- /work/tide", "- Sessions: 2", "- First seen: 2026-09-01", "- Last seen: 2026-09-29"]
         else:
-            lines.append("- Unknown — not investigated yet")
+            lines.append("- Unknown")
     lines += ["", "## Sources", f"- [1] {source} — 2026-09-28", ""]
     return "\n".join(lines)
 

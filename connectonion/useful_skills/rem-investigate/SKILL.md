@@ -37,7 +37,11 @@ with its date. A value it contradicts: name both in `Uncertainties`.
 ## Filling the page
 
 - `Unknown — not investigated yet`: find it in the material, or it stays
-  `Unknown`, bare.
+  `Unknown`, bare. A page that still says `not investigated yet` in any section
+  after this turn is refused.
+- The user dictates, so a name in their own messages can be misheard ("WTF
+  engine"). Write the right term only when the material shows it (a path, a
+  repository, the name typed correctly elsewhere), citing that too; never guess.
 - A value the material agrees with: leave it; do not reword it.
 - Thin material: say so in `Uncertainties`.
 - `Uncertainties` holds open questions about the subject only: never coverage

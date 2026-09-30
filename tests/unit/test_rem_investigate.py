@@ -106,7 +106,13 @@ def co_ai(monkeypatch):
         import re
         from pathlib import Path
         path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
-        path.write_text(next(Path(cwd).glob('investigate-*/notebook/people/vern.md')).read_text())
+        page = next(Path(cwd).glob('investigate-*/notebook/people/vern.md')).read_text()
+        # The least a finished page is (#2008): one cited fact, every other section a bare Unknown.
+        path.write_text(page.replace("## Who they are\n- Unknown — not investigated yet",
+                                     "## Who they are\n- Vern works at UNSW. [W1]", 1)
+                        .replace("## Sources\n- (none yet)",
+                                 "## Sources\n- [W1] https://www.unsw.edu.au/staff/vern-chan, observed 2026-09-23.", 1)
+                        .replace("- Unknown — not investigated yet", "- Unknown"))
         return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
                                      stderr="", returncode=0)
 
@@ -602,7 +608,7 @@ def test_a_listed_source_nobody_cites_is_dropped_not_a_reason_to_refuse_the_page
         page = page.replace("## Sources\n- (none yet)",
                             "## Sources\n- [1] Existing page people/vern.md, prior context only.\n"
                             "- [W1] https://www.unsw.edu.au/staff/vern-chan, observed 2026-09-23.", 1)
-        path.write_text(page)
+        path.write_text(page.replace("- Unknown — not investigated yet", "- Unknown"))
         return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
                                      stderr="", returncode=0)
 
@@ -666,7 +672,7 @@ def test_the_owners_own_address_never_lands_on_someone_elses_page(tmp_path, monk
         page = page.replace("## Who they are\n- Unknown — not investigated yet",
                             "## Who they are\n- Vern works at UNSW. [W1]", 1).replace(
             "## Sources\n- (none yet)", "## Sources\n- [W1] https://www.unsw.edu.au/staff/vern-chan, observed 2026-09-23.", 1)
-        path.write_text(page)
+        path.write_text(page.replace("- Unknown — not investigated yet", "- Unknown"))
         return types.SimpleNamespace(stdout=json.dumps({"outcome": "natural", "result": "ok", "usage": None}),
                                      stderr="", returncode=0)
 

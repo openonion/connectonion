@@ -438,7 +438,7 @@ PROMOTE_WAIT_SECONDS = 1800
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False):
     from .page_review import (drop_owner_addresses, drop_uncited_sources, drop_unresolved, link_company,
-                              normalize_numbered_sources, restore_runner_fields, validate)
+                              normalize_numbered_sources, placeholder_errors, restore_runner_fields, validate)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     text = restore_runner_fields(record, candidate.read_text(encoding="utf-8"), original)
@@ -451,7 +451,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text = link_company(notebook, record, drop_uncited_sources(text))
     if record.startswith("projects/"):
         text = _project_window_notice(text, items)
-    errors = validate(record, text, original, items)
+    errors = validate(record, text, original, items) + placeholder_errors(text)
     # Sync owns this same lock. Compare and write together so a completed
     # concurrent update cannot be silently replaced by an older candidate.
     # Wait for it: at 05:00 on 2026-09-28 a finished project page was dropped

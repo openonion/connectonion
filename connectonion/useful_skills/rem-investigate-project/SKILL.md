@@ -20,7 +20,9 @@ Why these rules: docs/rem-skills/rem-investigate.md
 
 ## What to produce
 
-Follow `rem-page-project`, skeleton headings exact. Close the `Overview` `text`
-fence, or write `Unknown — <what evidence is missing>`. An example file does not
+Follow `rem-page-project`, skeleton headings exact. **`Overview` is required
+when the material shows the architecture** (its parts and how work moves between
+them): a closed `text` fence with arrows. Otherwise write
+`Unknown — <what evidence is missing>`. An example file does not
 prove an output. Current code is not a decision (local code ≠ a decision to stay
 local).

@@ -71,15 +71,29 @@ sections are usually:
 - `Uncertainties`: the one line above, then only real open questions about
   the project (a contradiction, an unclear scope); no counts of messages read.
 
-`Try it`, `Getting started`, `How it is built`, `Architecture map` and
-`People and ownership` usually stay `Unknown — not investigated yet` unless the
-user spelled them out. A plausible diagram is not evidence: `Overview` is a
-fenced `text` flow only when the messages describe the flow; otherwise it stays
-`Unknown`.
+**No section is left saying `Unknown — not investigated yet`**: that is the
+map's placeholder, and a page that keeps it after this turn is refused. Each
+section becomes what the messages show, or a bare `Unknown`. `Try it`,
+`Getting started`, `How it is built`, `Architecture map` and `People and
+ownership` are usually `Unknown` unless the user spelled them out.
+
+**`Overview` is required when the messages show the architecture**: which parts
+there are and how a request, a file or a job moves between them. Draw it as a
+fenced `text` block with `->` or `|`/`v` arrows, from what the user said. A
+plausible diagram is not evidence: when the messages never describe the parts,
+`Overview` is `Unknown`.
 
 Every sentence of fact carries a citation `[n]`, and each `[n]` is defined under
 `Sources` as `- [n] <source id> — <date>`, using the exact `### ` id of the
 message. Cite the message that says it, not a neighbour.
+
+## Dictated words
+
+The user often dictates, so a product or tool name can arrive misheard ("WTF
+engine", "COREME.Net"). Write the right term only when the material itself
+shows it (the folder name, a path, a command, the same name typed correctly in
+another message) and cite that message too; otherwise quote the words as
+typed. Never guess a correction.
 
 ## One language
 

@@ -266,6 +266,27 @@ def _material(value: str, *, known, record, original, old_sources, items) -> boo
                     and not any(source in value for source in CONTEXT_SOURCES)))
 
 
+PLACEHOLDER = 'Unknown — not investigated yet'
+
+
+def placeholder_errors(candidate: str) -> list[str]:
+    """A page an investigation returns may not keep the map's placeholder (#2008).
+
+    Project pages came back after 0.6-0.9M tokens with five and six sections
+    still reading "Unknown — not investigated yet": the page said it had not
+    been investigated right after it was. A section becomes what the material
+    shows, or a bare `Unknown` when it shows nothing. Only for a page's own
+    investigation: an upkeep pass that touched one line of a page is not asked
+    to finish the rest.
+    """
+    content = prose(candidate).partition('\n## Sources\n')[0]
+    parts = re.split(r'(?m)^## (.+)$', content)
+    left = [parts[i].strip() for i in range(1, len(parts), 2)
+            if i + 1 < len(parts) and PLACEHOLDER in parts[i + 1]]
+    return ([f'Sections still say "{PLACEHOLDER}" after the investigation: {", ".join(left)}; '
+             'write what the material shows, or a bare "Unknown"'] if left else [])
+
+
 def validate(record: str, candidate: str, original: str, items: list[dict], pages=frozenset()) -> list[str]:
     """Structural checks only; citation existence does not prove factual entailment."""
     body = prose(candidate)
