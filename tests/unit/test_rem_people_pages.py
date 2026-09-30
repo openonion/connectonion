@@ -90,10 +90,13 @@ def test_new_mail_after_an_investigation_is_an_update_over_only_the_days_since(r
 
 
 def test_mail_later_the_same_day_is_new_when_the_run_time_is_known(root):
-    investigated(root, "people/ada.md", NOW.date().isoformat())
-    people_pages.mark_investigated(root, "people/ada.md", NOW - timedelta(hours=3))
-    write_json(state_path(root, "people/activity.json"), {"people/ada.md": ago(1 / 24)})
-    row = next(row for row in queue(root) if row["record"] == "people/ada.md")
+    # Noon, so "three hours ago" is the same calendar day whenever the suite runs;
+    # at 00:00-03:00 UTC it fell on yesterday and the window was two days.
+    noon = NOW.replace(hour=12, minute=0, second=0, microsecond=0)
+    investigated(root, "people/ada.md", noon.date().isoformat())
+    people_pages.mark_investigated(root, "people/ada.md", noon - timedelta(hours=3))
+    write_json(state_path(root, "people/activity.json"), {"people/ada.md": (noon - timedelta(hours=1)).isoformat()})
+    row = next(row for row in queue(root, now=noon) if row["record"] == "people/ada.md")
     assert (row["mode"], row["days"]) == ("update", 1)
 
 
