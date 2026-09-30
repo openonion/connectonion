@@ -78,4 +78,5 @@ def run_extract(items: list[dict], config: dict, kind: str = "", *, root: Path) 
         notes = output.read_text(encoding="utf-8").strip() if output.is_file() else ""
         if not notes:
             raise RunFailed("co ai extraction returned no notes file", result.get("usage"))
-        return {"notes": notes, "usage": result.get("usage")}
+        return {"notes": notes, "usage": result.get("usage"),
+                "instructions_chars": len((directory / "instructions.md").read_text(encoding="utf-8"))}

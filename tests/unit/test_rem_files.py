@@ -7,6 +7,31 @@ from connectonion.rem.config import prepare, read_config, set_config
 from connectonion.rem.files import CATEGORIES, MAX_NOTE_BYTES, Notebook, RemError, maintenance_lock
 
 
+def test_a_cited_page_line_yields_bare_names_and_addresses():
+    """#1954: `Tamara Berryman; tamara.berryman@unsw.edu.au [2]` came back as one
+    handle, `[2]` included, and went to Gmail as an address (677 wrong mails)."""
+    from connectonion.rem.files import is_address, split_handles
+
+    handles = split_handles(" Tamara Berryman; `tamara.berryman@unsw.edu.au` [2], Tam [W1]、Unknown")
+
+    assert handles == ["Tamara Berryman", "tamara.berryman@unsw.edu.au", "Tam"]
+    assert [h for h in handles if is_address(h)] == ["tamara.berryman@unsw.edu.au"]
+    assert not is_address("tamara.berryman@unsw.edu.au [2]")
+
+
+def test_the_roster_reads_aliases_without_their_citations(tmp_path):
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/tamara.md", "Tamara Berryman", ["tam"])
+    page = notebook.read("people/tamara.md")
+    line = next(l for l in page.splitlines() if l.lstrip("- ").startswith("Also known as:"))
+    notebook.write("people/tamara.md", page.replace(
+        line, "- Also known as: Tamara Berryman; tamara.berryman@unsw.edu.au [2], Tam [3]", 1))
+
+    person = next(p for p in notebook.people() if p["path"] == "people/tamara.md")
+
+    assert person["aliases"] == ["Tam", "Tamara Berryman", "tamara.berryman@unsw.edu.au"]
+
+
 def test_inspection_does_not_initialize(tmp_path):
     root = tmp_path / "rem"
     assert read_config(root)["model"] == "gpt-6-luna"
