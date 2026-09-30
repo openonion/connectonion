@@ -449,7 +449,8 @@ def _project_window_notice(text: str, items: list[dict]) -> str:
 PROMOTE_WAIT_SECONDS = 1800
 
 
-def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False):
+def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
+                       investigation=True):
     from .page_review import (drop_owner_addresses, drop_uncited_sources, drop_unresolved, link_company,
                               normalize_numbered_sources, placeholder_errors, restore_runner_fields, validate)
     if not candidate.is_file():
@@ -464,7 +465,12 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text = link_company(notebook, record, drop_uncited_sources(text))
     if record.startswith("projects/"):
         text = _project_window_notice(text, items)
-    errors = validate(record, text, original, items, owner=record == owner.get("record")) + placeholder_errors(text)
+    errors = validate(record, text, original, items, owner=record == owner.get("record"))
+    # Only a page's own investigation must finish its sections. Applied to a
+    # one-page maintenance turn, it refused every page not investigated yet:
+    # 290k tokens and no page changed in one a5 sync (#2014).
+    if investigation:
+        errors += placeholder_errors(text)
     # Sync owns this same lock. Compare and write together so a completed
     # concurrent update cannot be silently replaced by an older candidate.
     # Wait for it: at 05:00 on 2026-09-28 a finished project page was dropped
@@ -714,7 +720,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                            for key in inquiry_usage.keys() | (result.get("usage") or {}).keys()} or None
         if candidate:
             _promote_candidate(notebook, record, candidate, before[record], items, directory, result.get("usage"),
-                               lock_held=maintenance_lock_held)
+                               lock_held=maintenance_lock_held, investigation=stage == "investigate")
         elif stage in ("maintain", "abstract"):
             refusals = _promote_maintenance(notebook, Notebook(task_root), before, items, directory,
                                             result.get("usage"), maintenance_lock_held)

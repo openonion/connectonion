@@ -587,3 +587,27 @@ def test_check_skill_fails_in_seconds_with_the_cause(tmp_path, monkeypatch):
         runner.check_skill(tmp_path, "investigate")
     assert calls[0][1]["cwd"] == str(tmp_path / ".state" / "tasks")
     assert calls[0][1]["timeout"] <= 60
+
+
+def test_maintenance_adds_to_a_page_it_was_not_asked_to_finish(tmp_path):
+    """#2014: the placeholder rule for a page's own investigation refused every
+    one-page maintenance turn on a never-investigated page (290k tokens, 0 pages)."""
+    from connectonion.rem import runner
+    from connectonion.rem.runner import RunFailed
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/mia.md", "Mia", ["mia@h.example"], email="mia@h.example")
+    original = notebook.read("people/mia.md")
+    one_line = (original.replace("## Who they are\n- Unknown — not investigated yet",
+                                 "## Who they are\n- Leads the data team. [1]", 1)
+                .replace("- (none yet)", "- [1] gmail:m:1"))
+    candidate = tmp_path / "candidate.md"
+
+    candidate.write_text(one_line)
+    with pytest.raises(RunFailed, match="not investigated yet"):
+        runner._promote_candidate(notebook, "people/mia.md", candidate, original, [{"source": "gmail:m:1"}],
+                                  tmp_path, None)
+    candidate.write_text(one_line)
+    runner._promote_candidate(notebook, "people/mia.md", candidate, original, [{"source": "gmail:m:1"}],
+                              tmp_path, None, investigation=False)
+    assert "Leads the data team." in notebook.read("people/mia.md")

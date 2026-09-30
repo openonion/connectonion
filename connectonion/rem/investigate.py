@@ -396,9 +396,19 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             # first `investigate me` searched for them and found 6 of ~150 mails.
             mine |= {h for h in handles if is_address(h)}
         own_addresses.update(mine)
-        local = [item for item in cached_by_provider.get(kind, [])
-                 if start <= timestamp(item["timestamp"]) < end
-                 and (not sent_only or item["role"] == "user")]
+        local, undated = [], 0
+        for item in cached_by_provider.get(kind, []):
+            # A saved mail with an unreadable date is that mail's gap, not the
+            # run's: one naive Gmail Date stopped `investigate me` (#2013).
+            try:
+                when = timestamp(item["timestamp"])
+            except RemError:
+                undated += 1
+                continue
+            if start <= when < end and (not sent_only or item["role"] == "user"):
+                local.append(item)
+        if undated:
+            coverage.append(f"{kind}: {undated} saved message(s) skipped for an unreadable date")
         if quick:
             local = sorted(local, key=lambda item: item["timestamp"])[-12:]
         items.extend(local)
