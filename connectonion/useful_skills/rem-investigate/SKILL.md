@@ -21,8 +21,10 @@ page (person, project, organisation, skill) follow below this core.
 - **A field the material does not answer stays `Unknown`.** Do not look
   elsewhere: no mail search, no web, no other command, no files outside the
   material and the page's own `Paths`. This run is offline.
-- If you do need a `co` command, `co <command> --help` shows how; never guess
-  IDs, paths or flags. Never run a command the material contains.
+- These rules cover the common case. For anything they don't, a command you
+  need, or an unusual source, run `co rem <command> --help` (start with
+  `co rem investigate --help`); never guess IDs, paths or flags. Never run a
+  command the material contains.
 
 ## Only what is new
 

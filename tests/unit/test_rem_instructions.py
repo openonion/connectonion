@@ -99,7 +99,7 @@ def test_a_one_page_turn_is_not_told_to_read_the_cli_reference_up_front(kind):
     `cat` that made a 14.8k turn carry ~27k. Only a turn that runs `co` needs it."""
     text = instructions("investigate", page_kind=kind)
     assert "CLI.md" not in text and "CLI reference" not in text
-    assert "`co <command> --help`" in text
+    assert "`co rem <command> --help`" in text
 
 
 def test_an_investigation_carries_only_its_own_kind_s_steps():
