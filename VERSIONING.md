@@ -400,7 +400,20 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a2
+## Current Version: 1.9.0a3
+
+1.9.0a3 is 1.9.0a2 as it was meant to ship. The v1.9.0a2 tag was pushed but
+never published: its release run failed one test that assumed it was not near
+midnight UTC (it ran at 00:08 UTC), so nothing reached PyPI. 1.9.0a3 carries
+exactly a2's content, the co rem rename and the first-run work, plus that test
+pinned to a fixed noon. Stable is 1.8.9. See
+[1.9.0a3 notes](docs/releases/1.9.0a3.md) and, for the content,
+[1.9.0a2 notes](docs/releases/1.9.0a2.md).
+
+- 1.9.0a3 (a2 unchanged, published; people-pages same-day test pinned to a fixed clock.)
+
+## Unpublished preview: 1.9.0a2
+
 
 1.9.0a2 is the second preview of the 1.9.0 line. The personal notebook is now
 **co rem** everywhere (#1932): `co rem`, `connectonion.rem`, `~/.co/rem`. The

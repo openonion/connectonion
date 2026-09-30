@@ -25,8 +25,19 @@ python -m pip install --upgrade 'connectonion==1.8.9'
 
 ## Current preview
 
-None right now. Stable 1.8.9 supersedes every 1.8.9 preview (b1 through b23);
-the next previews will be 1.9.0, the personal Wiki's long-term release.
+Alpha **1.9.0a3**: the personal notebook is **co rem** now, with a first run
+you can read. `co rem init` maps your mail and sessions with no model, prints
+your own page, then writes it and your recent projects' pages by themselves,
+cost stated first. Project pages come from the messages you typed to Codex and
+Claude Code; people are investigated recent correspondents first, from new mail
+only; the daily round finishes once a day and otherwise follows what is new. A
+co wiki notebook, schedule and scripts carry over. (1.9.0a3 is 1.9.0a2, which
+was tagged but not published.) See [1.9.0a3 notes](releases/1.9.0a3.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a3'
+co rem status
+```
 
 <details>
 <summary>The preview line that became 1.8.5</summary>

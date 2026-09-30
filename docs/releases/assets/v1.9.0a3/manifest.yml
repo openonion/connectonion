@@ -1,0 +1,2 @@
+version: v1.9.0a3
+no_visual_change: "1.9.0a3 is 1.9.0a2 unchanged plus a test fix; the a2 capture shows the same output"
