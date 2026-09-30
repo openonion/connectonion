@@ -25,17 +25,16 @@ python -m pip install --upgrade 'connectonion==1.8.9'
 
 ## Current preview
 
-Alpha **1.9.0a3**: the personal notebook is **co rem** now, with a first run
-you can read. `co rem init` maps your mail and sessions with no model, prints
-your own page, then writes it and your recent projects' pages by themselves,
-cost stated first. Project pages come from the messages you typed to Codex and
-Claude Code; people are investigated recent correspondents first, from new mail
-only; the daily round finishes once a day and otherwise follows what is new. A
-co wiki notebook, schedule and scripts carry over. (1.9.0a3 is 1.9.0a2, which
-was tagged but not published.) See [1.9.0a3 notes](releases/1.9.0a3.md).
+Alpha **1.9.0a4**: co rem, fixed from running it on a real notebook. Pages
+are no longer stamped investigated without material, one bad citation drops one
+line instead of the page, a person page opens on who they are to you and the
+last contact, a skill is one page with its use counted, a repository is one
+project, and what you typed in Codex Desktop is read at last. It follows
+**1.9.0a3**, the co rem rename with a first run you can read. See
+[1.9.0a4 notes](releases/1.9.0a4.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.0a3'
+python -m pip install --upgrade 'connectonion==1.9.0a4'
 co rem status
 ```
 
