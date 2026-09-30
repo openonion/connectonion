@@ -11,9 +11,17 @@ from connectonion.rem.config import prepare, read_config, set_config
 
 
 class Quiet:
+    """One mail from Vern: an investigation with nothing about its subject stops before the model (#1974)."""
     def my_addresses(self): return {"me@x.y"}
-    def list_between(self, s, e, n): return []
-    def get_email_body(self, i): return ""
+    def list_between(self, s, e, n):
+        return [{"id": "q1", "from": "vern.chan@unsw.edu.au", "to": ["me@x.y"], "subject": "Hello", "date": s}]
+    def get_email_body(self, i): return "Hi, Vern here."
+
+
+@pytest.fixture(autouse=True)
+def skill_found(monkeypatch):
+    """The real check spawns the interpreter; its own tests are in test_rem_runner."""
+    monkeypatch.setattr("connectonion.rem.runner.check_skill", lambda root, stage: None)
 
 
 def test_transient_connection_error_retries_body_fetch(monkeypatch):
@@ -140,7 +148,8 @@ def test_investigation_reports_privacy_safe_stages(tmp_path):
                     clients={"outlook": Quiet()}, subscriptions={}, runner=fake_runner,
                     stage_progress=lambda stage, *counts: stages.append((stage, counts)))
     assert [stage for stage, _ in stages] == [
-        "gathering sources", "preparing evidence", "writing investigation", "recording result"]
+        "gathering sources", "gathering outlook mail", "preparing evidence", "writing investigation",
+        "recording result"]
 
 
 def test_project_inventory_is_bounded_and_excludes_hidden_or_sensitive_files(tmp_path):
@@ -195,7 +204,8 @@ def test_an_investigation_the_user_starts_runs_confined(tmp_path, co_ai, runner)
 @pytest.mark.parametrize("runner", sorted(PINNED))
 def test_the_scheduled_daily_investigation_runs_confined(tmp_path, co_ai, monkeypatch, runner):
     from connectonion.rem.daily import run_daily
-    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "outlook")
+    monkeypatch.setattr("connectonion.rem.daily.mail_client", lambda kind, **kw: Quiet())
     root = _pinned_notebook(tmp_path, runner)
     result = run_daily(root, scheduled=True,
                        maintain=lambda root, scheduled: {"outcome": "no_change"})
@@ -228,7 +238,8 @@ def test_the_status_line_names_the_sources_searched_and_does_not_claim_the_web(t
 
 def test_investigation_status_excludes_sources_not_searched(tmp_path, monkeypatch):
     root = _notebook(tmp_path, "codex")
-    monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: ([], [
+    monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: ([
+        {"source": "codex:s:1", "role": "user", "timestamp": "2026-09-01", "text": "Vern's project"}], [
         "outlook: project mail not requested; not searched",
         "gmail: project mail not requested; not searched",
         "codex: 10 messages in window, 0 related to subject, 0 read",
@@ -432,7 +443,7 @@ def test_failed_command_never_marks_owner_investigated(tmp_path, monkeypatch, co
         stdout=stdout, stderr="command failed", returncode=returncode))
     with pytest.raises(inv.RemError, match="co ai"):
         inv.investigate(root, "people/vern.md", "Vern", ["vern"], days=7,
-                        clients={}, subscriptions={})
+                        clients={"outlook": Quiet()}, subscriptions={})
     assert inv.Notebook(root).read("people/vern.md") == before
 
 
@@ -447,7 +458,7 @@ def test_timeout_preserves_unfinished_page(tmp_path, monkeypatch, co_ai):
     monkeypatch.setattr("subprocess.run", timeout)
     with pytest.raises(inv.RemError, match="timed out"):
         inv.investigate(root, "people/vern.md", "Vern", ["vern"], days=7,
-                        clients={}, subscriptions={})
+                        clients={"outlook": Quiet()}, subscriptions={})
     assert inv.Notebook(root).read("people/vern.md") == before
 
 
@@ -554,7 +565,7 @@ def test_a_listed_source_nobody_cites_is_dropped_not_a_reason_to_refuse_the_page
     from pathlib import Path
     from connectonion.rem.files import Notebook
 
-    def fake_run(argv, cwd, capture_output, text, timeout):
+    def fake_run(argv, cwd, capture_output, text, timeout, env=None):
         import re
         path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
         page = next(Path(cwd).glob('investigate-*/notebook/people/vern.md')).read_text()
@@ -618,7 +629,7 @@ def test_the_owners_own_address_never_lands_on_someone_elses_page(tmp_path, monk
     from pathlib import Path
     from connectonion.rem.files import Notebook, state_path, write_json
 
-    def fake_run(argv, cwd, capture_output, text, timeout):
+    def fake_run(argv, cwd, capture_output, text, timeout, env=None):
         import re
         path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
         page = next(Path(cwd).glob('investigate-*/notebook/people/vern.md')).read_text()
@@ -698,7 +709,9 @@ def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monk
     assert 10 <= inv.window_since(page) <= 12                               # UTC vs local date at the edges
 
     seen = {}
-    monkeypatch.setattr(inv, "gather", lambda *a, **kw: ([], []))
+    # One new mail: with none, the run stops before the model (#1974).
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: (
+        [{"source": "gmail:1", "role": "other", "timestamp": "2026-09-29", "text": "New."}], []))
 
     def write(book, material, config, **kw):
         seen["coverage"] = next(i["text"] for i in material if i["role"] == "coverage")
@@ -743,3 +756,93 @@ def test_investigation_reads_the_main_checkout_not_a_stale_agent_worktree(tmp_pa
     assert '- Sessions: 9\n' in corrected
     assert inv.collapse_worktree_paths(corrected) == corrected
     assert inv.project_file_inventory(page) == [str(main / 'pyproject.toml')]
+
+
+# ------------------------------------------------ #1974: no stamp without material
+
+
+def test_nothing_gathered_refuses_before_any_model_call_and_does_not_stamp(tmp_path, monkeypatch):
+    """1.9.0a2 stamped founders@unsw "investigated" from the page and the coverage note alone."""
+    root = _notebook(tmp_path, 'codex')
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (
+        [], ['gmail (me@x.y): searched on the server for vern@x.y over 150 days, 0 matched, 0 bodies read']))
+    before = inv.Notebook(root).read('people/vern.md')
+    with pytest.raises(inv.NothingFound) as caught:
+        inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], days=7, clients={}, subscriptions={},
+                        runner=lambda *a, **kw: pytest.fail('no model call without material'))
+    assert inv.Notebook(root).read('people/vern.md') == before
+    message = str(caught.value)
+    assert 'not marked investigated' in message
+    assert '`co rem investigate people/vern.md --handle ADDRESS`' in message
+    assert 'gmail' in message
+
+
+def test_empty_digests_stop_before_the_page_turn_and_keep_their_usage(tmp_path, monkeypatch):
+    """The founders@unsw log: 8 bodies read, "summarised in 0 chunk(s)", page stamped anyway."""
+    from connectonion.rem.extract import NOTHING
+    from connectonion.rem.files import state_path, write_json
+    root = _notebook(tmp_path, 'codex')
+    config = read_config(root)
+    write_json(state_path(root, "tier.json"), {"tier": "summary", "runner": config["runner"],
+                                               "model": config["model"], "checked_at": "2026-09-30"})
+    rows = [{'source': f'gmail:{i}', 'role': 'other', 'timestamp': f'2026-09-{i + 1:02d}',
+             'text': 'x' * 40_000} for i in range(8)]
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (rows, ['gmail: 8 matched, 8 bodies read']))
+    with pytest.raises(inv.NothingFound) as caught:
+        inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], days=7, clients={}, subscriptions={},
+                        runner=lambda *a, **kw: pytest.fail('no page turn on empty digests'),
+                        extractor=lambda chunk, settings, kind: {'notes': NOTHING,
+                                                                 'usage': {'input_tokens': 100}})
+    assert caught.value.usage['input_tokens'] >= 100
+    assert 'investigated 2' not in inv.Notebook(root).read('people/vern.md')
+
+
+def test_the_skill_is_checked_before_minutes_of_gathering(tmp_path, monkeypatch):
+    """A relative PYTHONPATH made the model's co ai import an older connectonion
+    and fail with "Skill 'rem-investigate' not found" -- after the gather."""
+    from connectonion.rem import runner
+    root = _notebook(tmp_path, 'codex')
+
+    def missing(root, stage):
+        raise inv.RemError("co ai cannot find the rem-investigate Skill")
+    monkeypatch.setattr(runner, 'check_skill', missing)
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: pytest.fail('checked before gathering'))
+    with pytest.raises(inv.RemError, match='rem-investigate Skill'):
+        inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], days=7, clients={}, subscriptions={})
+
+
+def test_the_routed_original_evidence_copy_is_deleted_when_the_run_ends(tmp_path, monkeypatch):
+    from connectonion.rem import inquiry
+    root = _notebook(tmp_path, 'codex')
+    monkeypatch.setattr(inquiry, 'routing', lambda root: {'plan': 'x'})
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (
+        [{'source': 'gmail:1', 'role': 'other', 'timestamp': '2026-09-01', 'text': 'Vern wrote.'}], ['gmail: 1']))
+    inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], days=7, clients={}, subscriptions={},
+                    runner=lambda *a, **kw: {'changed': [], 'usage': None})
+    assert not list((root / '.state' / 'evidence').glob('*.json'))
+
+
+def test_a_person_turn_is_told_the_org_pages_its_company_can_link_to(tmp_path, monkeypatch):
+    """The page Skills say to link Company to the org page; 0 of 4 did, because the
+    turn was never told which org pages exist (#1974)."""
+    root = _notebook(tmp_path, 'codex')
+    notebook = inv.Notebook(root)
+    notebook.stub_org('orgs/unsw-1234.md', 'UNSW Sydney', ['unsw.edu.au'])
+    notebook.stub_org('orgs/acme-5678.md', 'Acme', ['acme.example'])
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (
+        [{'source': 'gmail:1', 'role': 'other', 'timestamp': '2026-09-01', 'text': 'Vern wrote.'}], ['gmail: 1']))
+    received = []
+    inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern', 'vern.chan@unsw.edu.au'], days=7, clients={},
+                    subscriptions={}, runner=lambda notebook, items, config, stage: received.extend(items) or
+                    {'changed': [], 'usage': None})
+    orgs = next(item for item in received if item['role'] == 'org-pages')
+    assert 'orgs/unsw-1234.md — UNSW Sydney (unsw.edu.au)' in orgs['text'] and 'acme' not in orgs['text']
+    assert '[Name](../orgs/<file>.md)' in orgs['text']
+
+
+def test_a_project_turn_is_given_the_notebook_s_organisations(tmp_path):
+    notebook = inv.Notebook(tmp_path)
+    notebook.stub_org('orgs/acme-5678.md', 'Acme', ['acme.example'])
+    notebook.stub_project('projects/tide.md', 'Tide', ['/w/tide'])
+    assert inv.org_pages(notebook, 'projects/tide.md', ['/w/tide']) == ['orgs/acme-5678.md — Acme']
+    assert inv.org_pages(notebook, 'people/nobody.md', ['someone@else.example']) == []

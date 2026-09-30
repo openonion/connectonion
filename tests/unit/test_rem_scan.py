@@ -152,12 +152,16 @@ def test_under_coai_the_page_is_read_back_from_disk(tmp_path, monkeypatch):
 
     class Quiet:
         def my_addresses(self): return {"me@x.y"}
-        def list_between(self, s, e, n): return []
-        def get_email_body(self, i): return ""
+        def list_between(self, s, e, n):
+            return [{"id": "q1", "from": "vern.chan@unsw.edu.au", "to": ["me@x.y"], "subject": "Hi", "date": s}]
+        def get_email_body(self, i): return "Hi, Vern here."
 
     handed = []
 
-    def fake_co_ai(argv, cwd, capture_output, text, timeout):
+    def fake_co_ai(argv, cwd, capture_output, text, timeout, env=None):
+        import types
+        if argv[1] == "-c":  # the Skill check before the gather (#1974)
+            return types.SimpleNamespace(stdout="", stderr="", returncode=0)
         page = root / "people/vern.md"
         import re
         from pathlib import Path
@@ -356,3 +360,10 @@ def test_a_greeting_to_an_agents_address_does_not_name_the_agent_after_its_owner
     people = scan_people({"gmail": Box("me@x.y", [_sent(["0x3c3ae74550@mail.openonion.ai"], "Hi Ody, confirmed")])},
                          30, set())
     assert people[0]["name"] == ""
+
+
+def test_a_header_word_is_not_a_name():
+    """A page titled "From gws": the owner's test mail put that text in the To line."""
+    sent = {"from": "me@x.y", "to": ["From gws <aaron@work.example>"], "cc": []}
+    assert _display_name(sent, "aaron@work.example") == ""
+    assert _display_name({"from": "me@x.y", "to": ["Fromm Ada <a@b.c>"], "cc": []}, "a@b.c") == "Fromm Ada"

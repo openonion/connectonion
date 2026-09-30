@@ -121,10 +121,14 @@ class Launchd:
                 dirs.append(str(Path(binary).parent))
         dirs += ["/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         env = {"PATH": ":".join(dict.fromkeys(dirs)), "HOME": str(Path.home())}
-        if os.environ.get("PYTHONPATH"):
+        from .runner import child_pythonpath
+        pythonpath = child_pythonpath()
+        if pythonpath:
             # The job must run the same connectonion the user is running now; a
-            # development checkout only exists on PYTHONPATH.
-            env["PYTHONPATH"] = os.environ["PYTHONPATH"]
+            # development checkout only exists on PYTHONPATH. Absolute: the
+            # owner's job carried ".", and the model's co ai, run from
+            # .state/tasks, imported an older connectonion (#1974).
+            env["PYTHONPATH"] = pythonpath
         job = {
             "Label": label_for(root),
             "ProgramArguments": [*command,

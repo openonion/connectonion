@@ -374,3 +374,88 @@ def test_a_person_page_with_a_cited_lead_before_contact_is_accepted():
     assert validate("people/mia.md", page.format(n=1), "", items) == []
     assert normalize("people/mia.md", page.format(n=1)).startswith("# Mia Chen\n\nMia is the user's pilot client")
     assert "Missing or duplicate citation: 2" in validate("people/mia.md", page.format(n=2), "", items)
+
+
+# ------------------------------------------- #1974: what an investigation may claim
+
+
+def _person(tmp_path):
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person('people/mia.md', 'Mia', ['mia@h.example'], email='mia@h.example')
+    return notebook, notebook.read('people/mia.md')
+
+
+PAGE_ITEM = {'role': 'page', 'record': 'people/mia.md', 'source': 'investigation:page'}
+COVERAGE_ITEM = {'role': 'coverage', 'source': 'investigation:coverage'}
+
+
+def test_a_page_citing_only_itself_and_the_coverage_note_is_refused(tmp_path):
+    """founders@unsw, 1.9.0a2: nothing about the subject read, page stamped investigated."""
+    _, original = _person(tmp_path)
+    candidate = (original.replace('## Who they are\n- Unknown — not investigated yet',
+                                  '## Who they are\n- No mail was found about Mia. [1]')
+                 .replace('- (none yet)', '- [1] investigation:coverage — the collector record'))
+    errors = validate('people/mia.md', candidate, original, [PAGE_ITEM, COVERAGE_ITEM])
+    assert any('cites only the page itself and the coverage note' in e for e in errors)
+
+
+def test_a_page_with_one_real_source_beside_the_coverage_note_passes_that_check(tmp_path):
+    _, original = _person(tmp_path)
+    candidate = (original.replace('## Who they are\n- Unknown — not investigated yet',
+                                  '## Who they are\n- Leads the data team. [1]\n- Searched two mailboxes. [2]')
+                 .replace('- (none yet)', '- [1] gmail:abc123\n- [2] investigation:coverage'))
+    errors = validate('people/mia.md', candidate, original,
+                      [PAGE_ITEM, COVERAGE_ITEM, {'source': 'gmail:abc123'}])
+    assert not any('cites only' in e for e in errors)
+
+
+def test_one_miscopied_citation_drops_its_line_not_the_page(tmp_path):
+    """A project page was refused after 199 s and 16k output tokens for one mistyped UUID."""
+    from connectonion.rem.page_review import drop_unresolved
+    _, original = _person(tmp_path)
+    items = [PAGE_ITEM, {'source': 'gmail:abc123'}, {'source': 'gmail:def456'}]
+    candidate = (original
+                 .replace('- Role: Unknown', '- Role: Head of data [3]')
+                 .replace('## Who they are\n- Unknown — not investigated yet',
+                          '## Who they are\n- Leads the data team. [1]\n- Joined in 2024. [3]\n'
+                          '- Works with Ody. [2][3]')
+                 .replace('- (none yet)', '- [1] gmail:abc123\n- [2] gmail:def456\n- [3] gmail:abc12Z-typo'))
+    repaired, dropped = drop_unresolved('people/mia.md', candidate, original, items)
+    assert dropped == {'citations': ['3'], 'lines': 2}
+    assert 'Joined in 2024' not in repaired and 'gmail:abc12Z-typo' not in repaired
+    assert '- Works with Ody. [2]' in repaired and '- Leads the data team. [1]' in repaired
+    assert '- Role: Unknown' in repaired
+    assert validate('people/mia.md', repaired, original, items) == []
+
+
+def test_a_section_left_empty_by_a_dropped_line_says_unknown(tmp_path):
+    from connectonion.rem.page_review import drop_unresolved
+    _, original = _person(tmp_path)
+    candidate = (original.replace('## Cadence\n- Unknown — not investigated yet', '## Cadence\n- Weekly. [2]')
+                 .replace('## Who they are\n- Unknown — not investigated yet', '## Who they are\n- Analyst. [1]')
+                 .replace('- (none yet)', '- [1] gmail:abc123\n- [2] nowhere:1'))
+    repaired, dropped = drop_unresolved('people/mia.md', candidate, original, [PAGE_ITEM, {'source': 'gmail:abc123'}])
+    assert '## Cadence\n- Unknown' in repaired and dropped['lines'] == 1
+
+
+def test_a_citation_with_no_sources_entry_is_dropped_too(tmp_path):
+    from connectonion.rem.page_review import drop_unresolved
+    _, original = _person(tmp_path)
+    candidate = (original.replace('## Who they are\n- Unknown — not investigated yet',
+                                  '## Who they are\n- Analyst. [1]\n- Tall. [7]')
+                 .replace('- (none yet)', '- [1] gmail:abc123'))
+    repaired, dropped = drop_unresolved('people/mia.md', candidate, original, [PAGE_ITEM, {'source': 'gmail:abc123'}])
+    assert 'Tall.' not in repaired and dropped == {'citations': ['7'], 'lines': 1}
+
+
+def test_company_links_to_the_organisation_page_when_there_is_one(tmp_path):
+    from connectonion.rem.page_review import link_company
+    notebook, original = _person(tmp_path)
+    notebook.stub_org('orgs/unsw-1234.md', 'UNSW', ['unsw.edu.au'])
+    text = original.replace('- Company: Unknown', '- Company: UNSW [1]')
+    linked = link_company(notebook, 'people/mia.md', text)
+    assert '- Company: [UNSW](../orgs/unsw-1234.md) [1]' in linked
+    assert link_company(notebook, 'people/mia.md', linked) == linked
+    other = original.replace('- Company: Unknown', '- Company: Acme [1]')
+    assert link_company(notebook, 'people/mia.md', other) == other

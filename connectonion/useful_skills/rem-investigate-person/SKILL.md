@@ -27,8 +27,9 @@ Why these rules: docs/rem-skills/rem-investigate.md
   department, office, direct line, booking link, language). A changed signature
   is a dated move or promotion.
 - **Address domain = employer** (`@unsw.edu.au` → UNSW), never a role;
-  gmail/outlook/qq/163 → `Company: Unknown`. An org page for the domain → link
-  `Company:` to it.
+  gmail/outlook/qq/163 → `Company: Unknown`. An org page for the domain (listed
+  in the `investigation:org-pages` item) → `Company:` is that link,
+  `[Name](../orgs/<file>.md)`, cited to the mail that shows it.
 - `[attachment]` entries are the file's text; the terms are there; cite their id.
   An unreadable attachment → your final reply.
 - Mail gives identity and commitments; sessions give intent. Sources disagree →

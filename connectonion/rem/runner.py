@@ -105,6 +105,74 @@ def preflight() -> list[str]:
     return co_command()
 
 
+def child_env(config: dict | None = None) -> dict:
+    """The environment the model's `co ai` runs in: ours, with PYTHONPATH made absolute.
+
+    The child runs with its cwd in `.state/tasks`. A development checkout run
+    as `PYTHONPATH=. co rem ...` -- and the schedule written from it -- handed
+    the child `.`, which there is the task folder: it imported an older
+    installed connectonion and failed with "Skill 'rem-investigate' not found"
+    after minutes of gathering (#1974).
+    """
+    environment = os.environ.copy()
+    pythonpath = child_pythonpath()
+    if pythonpath:
+        environment["PYTHONPATH"] = pythonpath
+    if (config or {}).get("runner") == "claude-code":
+        # co rem's Claude route promises a subscription-backed run. Do not let an
+        # ambient API key silently turn a scheduled notebook update into API spend.
+        environment.pop("ANTHROPIC_API_KEY", None)
+    return environment
+
+
+def absolute_pythonpath(value: str) -> str:
+    # An empty entry means the current directory too, which is the same trap.
+    return os.pathsep.join(str(Path(part or ".").resolve()) for part in value.split(os.pathsep))
+
+
+def child_pythonpath() -> str:
+    """PYTHONPATH for a process that must import this very connectonion, from any cwd.
+
+    The caller's entries made absolute, and, when this connectonion is a source
+    checkout rather than an installed package, the checkout itself: `python -m`
+    from inside the checkout finds it by cwd alone, which a child in
+    `.state/tasks` (or launchd's `/`) does not share.
+    """
+    parts = absolute_pythonpath(os.environ["PYTHONPATH"]).split(os.pathsep) if os.environ.get("PYTHONPATH") else []
+    if not getattr(sys, "frozen", False):
+        import connectonion
+        checkout = Path(connectonion.__file__).resolve().parent.parent
+        if not {"site-packages", "dist-packages"} & set(checkout.parts) and str(checkout) not in parts:
+            parts.insert(0, str(checkout))
+    return os.pathsep.join(parts)
+
+
+def check_skill(root: Path, stage: str) -> None:
+    """Can the model's `co ai` find the stage Skill from where it will run? Seconds, before any gather.
+
+    Asked of the same interpreter, cwd and environment `run_task` uses, since
+    that is where the import that lost the Skill happened. A frozen bundle
+    carries its own Skills and is not asked.
+    """
+    if getattr(sys, "frozen", False):
+        return
+    workspace = Path(root) / ".state" / "tasks"
+    workspace.mkdir(parents=True, exist_ok=True, mode=0o700)
+    name = f"rem-{stage}"
+    code = ("import sys\nfrom connectonion.skills_catalog import default_skill_path\n"
+            f"sys.exit(0 if default_skill_path({name!r}) else 3)")
+    try:
+        done = subprocess.run([sys.executable, "-c", code], cwd=str(workspace), env=child_env(),
+                              capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise RemError(f"Could not check that co ai finds the {name} Skill: {error}") from error
+    if done.returncode:
+        detail = (done.stderr or "").strip().splitlines()[-1:] or ["it imports a connectonion without it"]
+        raise RemError(f"co ai cannot find the {name} Skill when run from {workspace} ({detail[0][:200]}); "
+                       "nothing was gathered. Run co rem from one installation, with PYTHONPATH unset "
+                       "or absolute.")
+
+
 INSTALL = {"codex": "npm install -g @openai/codex",
            "claude-code": "npm install -g @anthropic-ai/claude-code"}
 
@@ -186,18 +254,11 @@ def run_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
     # Let the shared native adapter time out and close its subprocesses first.
     # Killing the co parent before its own deadline bypasses that cleanup.
     process_timeout = timeout + 15 if config["runner"] != "coai" else timeout
-    options = {}
-    if config["runner"] == "claude-code":
-        # co rem's Claude route promises a subscription-backed run. Do not let an
-        # ambient API key silently turn a scheduled notebook update into API spend.
-        environment = os.environ.copy()
-        environment.pop("ANTHROPIC_API_KEY", None)
-        options["env"] = environment
     try:
         completed = subprocess.run(
             [*preflight(), "ai", "--json", *harness_flags(config, stage), prompt],
             cwd=str(workspace.resolve()), capture_output=True, text=True,
-            timeout=process_timeout, **options)
+            timeout=process_timeout, env=child_env(config))
     except subprocess.TimeoutExpired as error:
         raise RunFailed(f"co ai timed out after {timeout}s; source progress was preserved") from error
     except OSError as error:
@@ -375,8 +436,8 @@ PROMOTE_WAIT_SECONDS = 1800
 
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False):
-    from .page_review import (drop_owner_addresses, drop_uncited_sources, normalize_numbered_sources,
-                              restore_runner_fields, validate)
+    from .page_review import (drop_owner_addresses, drop_uncited_sources, drop_unresolved, link_company,
+                              normalize_numbered_sources, restore_runner_fields, validate)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     text = restore_runner_fields(record, candidate.read_text(encoding="utf-8"), original)
@@ -384,7 +445,9 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     removed = []
     if record.startswith("people/") and record != owner.get("record"):
         text, removed = drop_owner_addresses(text, {a.casefold() for a in owner.get("addresses", [])})
-    text = drop_uncited_sources(normalize_numbered_sources(text))
+    # One miscopied id drops what rests on it, not the page (#1974).
+    text, dropped = drop_unresolved(record, normalize_numbered_sources(text), original, items)
+    text = link_company(notebook, record, drop_uncited_sources(text))
     if record.startswith("projects/"):
         text = _project_window_notice(text, items)
     errors = validate(record, text, original, items)
@@ -401,7 +464,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         if not notebook.path(record).is_file() or notebook.read(record) != original:
             errors.append("Page changed during investigation; preserve current page and retry")
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,
-                   "owner_addresses_removed": removed,
+                   "owner_addresses_removed": removed, "citations_dropped": dropped["citations"],
+                   "lines_dropped": dropped["lines"],
                    "factual_quality": "not automatically assessed"})
         if errors:
             # The run is paid for; the page it wrote is kept where the reader can see
@@ -420,8 +484,8 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
     Nothing is lost by refusing a page on its own: its candidate is kept under
     refused/, and investigating that page reads every source again.
     """
-    from .page_review import (drop_uncited_sources, headings, normalize_numbered_sources, restore_runner_fields,
-                              validate)
+    from .page_review import (drop_uncited_sources, drop_unresolved, headings, normalize_numbered_sources,
+                              restore_runner_fields, validate)
     after = {record: working.read(record) for record in working.list()}
     changed = sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
     accepted, refusals = [], []
@@ -429,15 +493,17 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         if record not in after:
             refusals.append({"record": record, "errors": ["Maintenance must preserve existing page"]})
             continue
-        text = drop_uncited_sources(normalize_numbered_sources(
-            restore_runner_fields(record, after[record], before.get(record, ''))))
+        text, _ = drop_unresolved(record, normalize_numbered_sources(
+            restore_runner_fields(record, after[record], before.get(record, ''))), before.get(record, ''), items,
+            pages=set(before))
+        text = drop_uncited_sources(text)
         working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
         errors = validate(record, text, before.get(record, ''), items, pages=set(before)) if headings(record) else []
         if errors:
             refusals.append({"record": record, "errors": errors})
             kept = directory / "refused" / record
             kept.parent.mkdir(parents=True, exist_ok=True)
-            kept.write_text(text, encoding="utf-8")
+            kept.write_text(after[record], encoding="utf-8")  # what the model wrote, unrepaired
         else:
             accepted.append((record, text))
     # run_sync already holds this lock across collection and checkpoint commit.
@@ -465,11 +531,14 @@ def scrub_task(directory: Path) -> None:
     Every run left them behind: a real notebook held 98 task folders, 75 MB of
     material.json/material.md, one naming the owner's legal name, while the
     evidence directory was deleted "so copies of private mail do not
-    accumulate" (#1958).
+    accumulate" (#1958). What is kept is the owner's alone: a candidate page
+    quotes their mail, and 1.9.0a2 left it 0644 (#1974).
     """
     import shutil
     for path in directory.iterdir():
         if path.name in TASK_KEEPS:
+            if path.is_file() and not path.is_symlink():
+                path.chmod(0o600)
             continue
         if path.is_dir() and not path.is_symlink():
             shutil.rmtree(path, ignore_errors=True)
@@ -477,10 +546,19 @@ def scrub_task(directory: Path) -> None:
             path.unlink(missing_ok=True)
 
 
+# A folder with no result.json this old was left by a run that was killed: the
+# longest run (three routed turns at the largest timeout) is well inside it.
+ABANDONED_TASK_SECONDS = 6 * 3600
+
+
 def scrub_finished_tasks(workdir: Path) -> None:
-    # Only finished ones: another run may be working in its own folder right now.
+    # Finished ones, and ones a killed run left long ago: another run may be
+    # working in its own folder right now, and that one is recent.
+    stale = time.time() - ABANDONED_TASK_SECONDS
     for folder in workdir.iterdir():
-        if folder.is_dir() and (folder / "result.json").is_file():
+        if not folder.is_dir() or folder.is_symlink():
+            continue
+        if (folder / "result.json").is_file() or folder.stat().st_mtime < stale:
             scrub_task(folder)
 
 
@@ -491,6 +569,19 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
     workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
     scrub_finished_tasks(workdir)
     directory = Path(tempfile.mkdtemp(prefix=f"{stage}-", dir=workdir))
+    # Everything written for this turn is a copy of the owner's mail or pages,
+    # the model's own files included (it inherits the mask). 1.9.0a2 left 73 MB
+    # of them 0644 (#1974). The mask is the process's, so it is put back.
+    previous_mask = os.umask(0o077)
+    try:
+        return _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory)
+    finally:
+        # Ctrl-C and anything else unexpected too, not only a RemError.
+        scrub_task(directory)
+        os.umask(previous_mask)
+
+
+def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory):
     from .reflections import POLICY
     from .reflections import context as reflections
     from .reviews import context as reviews
@@ -625,7 +716,6 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
                      for key in (usage or {}).keys() | inquiry_usage.keys()}
         write_json(directory / "result.json", {**metrics, "status": "failed", "error": str(error),
                    "usage": usage, "duration_seconds": time.monotonic() - started, "changed": changed()})
-        scrub_task(directory)
         raise RunFailed(str(error), usage, changed()) from error
     write_json(directory / "result.json", {**metrics, "status": "candidate_accepted" if candidate else "execution_finished",
                "usage": result.get("usage"), "duration_seconds": time.monotonic() - started,
@@ -637,7 +727,6 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
     if record and record in before and notebook.path(record).is_file():
         # Before and after, so a run that doubles a page shows it (#1956).
         outcome["page_chars"] = [len(before[record]), len(notebook.read(record))]
-    scrub_task(directory)
     return outcome
 
 

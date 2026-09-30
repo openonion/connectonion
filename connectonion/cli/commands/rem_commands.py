@@ -117,6 +117,7 @@ def _moved(ctx, old: str, new: list):
 
 
 UNITS = {"people": "mails", "projects": "sessions", "orgs": "people"}
+UNITS_ONE = {"mails": ("mail",), "sessions": ("session",), "people": ("person", "people"), "": ("", "")}
 
 
 def _logged(root, record, phase, call):
@@ -133,12 +134,15 @@ def _logged(root, record, phase, call):
     from ...rem.runner import RunFailed
     from ...rem.service import now
     from ...rem import quota
+    from ...rem.investigate import NothingFound
+    from ...rem.service import abandon_stale_runs, running_marker
     config = read_config(root)
+    abandon_stale_runs(root)
     # Manual investigation counts toward the weekly budget like the round (#1842).
     run = {"id": "run_" + uuid.uuid4().hex, "started_at": now().isoformat(), "phase": phase,
            "record": record, "model": config["model"], "outcome": "running",
            "runner_attempts": 0, "usage": None, "changed": [], "sources": [], "items": 0,
-           "quota": {"before": quota.read(config)}}
+           "quota": {"before": quota.read(config)}, **running_marker()}
     path = state_path(root, f"runs/{run['id']}.json")
     write_json(path, run)
 
@@ -168,6 +172,7 @@ def _logged(root, record, phase, call):
         return result
     except BaseException as error:
         run.update(outcome=("refused" if isinstance(error, RunFailed) and "rejected" in str(error) else
+                            "nothing_found" if isinstance(error, NothingFound) else
                             "interrupted" if isinstance(error, KeyboardInterrupt) else "failed"),
                    error=str(error)[:1000], usage=getattr(error, "usage", None) or run.get("usage"))
         if isinstance(error, KeyboardInterrupt):
@@ -635,19 +640,32 @@ def make_rem_app(factory):
                 stage_progress=update))
 
         def overview(root):
+            from ...rem.people_pages import queue as people_queue
+            from .rem_people import owner_first
             state = read_json(state_path(root, "map.json"), {})
             owner = (state.get("owner") or {}).get("record")
             if not owner and not Notebook(root).list():
                 return "No pages available to investigate: the map has not been built yet.", ["init"]
             rows = {}
+            # Your own page first while it has never been investigated (#1943,
+            # #1974); "has an Unknown" kept the Next line on it forever.
+            first_lines = owner_first(ctx, root)
+            pending = bool(owner) and any(line.startswith("First, your own page") for line in first_lines)
+            if owner:
+                rows["me"] = {"page": owner, "investigated": not pending}
+            if first_lines:
+                rows["first"] = first_lines
             for category in CATEGORIES:
+                if category == "people":
+                    # The same queue `investigate people --list` prints and runs (#1974).
+                    queue = people_queue(root)
+                    rows[category] = {"unfinished": len(queue), "next": [row["record"] for row in queue][:3]}
+                    continue
                 queue = order(root, category)
                 rows[category] = {"unfinished": len(queue),
                                   "next": [row["path"] for row in queue if not row["recent"]][:3]}
-            if owner:
-                rows["me"] = {"page": owner, "unfinished": owner in {p["path"] for p in Notebook(root).unfinished("people")}}
             first = next((c for c in CATEGORIES if rows[c]["next"]), None)
-            return rows, (["investigate", "me", "--quick"] if owner and rows["me"]["unfinished"]
+            return rows, (["investigate", "me", "--quick"] if pending
                           else ["investigate", first] if first else ["list"])
 
         def by_category(root, category):
@@ -657,9 +675,10 @@ def make_rem_app(factory):
             if list_only:
                 rows = ranked()
                 if not ctx.obj["json"]:
-                    unit = {"people": "mails", "projects": "sessions", "orgs": "people"}.get(category)
+                    from .rem_people import counted
+                    unit = UNITS.get(category)
                     rows = [f"{row['path']}  ("
-                            + (f"{row['weight']} {unit or UNITS.get(row['path'].split('/')[0], '')}, "
+                            + (f"{counted(row['weight'], *UNITS_ONE[unit or UNITS.get(row['path'].split('/')[0], '')])}, "
                                if unit or category == "all" else "")
                             + (f"investigated {row['last_investigated']}" if row["last_investigated"]
                                else "not investigated") + (", skipped: this week" if row["recent"] else "") + ")"
@@ -845,6 +864,10 @@ def make_rem_app(factory):
         def confirm(summary):
             text = render(summary, "start — source access and schedule")
             if yes:
+                if any("if you approve" in str(source.get("state")) for source in summary["sources"].values()):
+                    # --yes approves what was shown before; a mailbox offered for
+                    # the first time is shown now, on stderr (#1974).
+                    typer.echo(text, err=True)
                 return True
             if not sys.stdin.isatty():
                 typer.echo(text, err=True)
@@ -1013,9 +1036,14 @@ def make_rem_app(factory):
             config = read_config(root, validated=False)
             tier = describe(root, config)
             # Unchecked runs as the agent tier, said so, with the command that measures it (#1847).
+            if not tier["checked"]:
+                # In the note, not the Next line: "Next: co rem config set model
+                # gpt-6-luna" read as "you have not set the model yet" (#1974).
+                tier["note"] += (f"; to check it, set the same model again: "
+                                 + _next(ctx, ["config", "set", "model", str(config.get("model"))])
+                                 + " (one or two model calls)")
             return ({"path": str(root / "config.yaml"), "saved": (root / "config.yaml").exists(),
-                     "config": config, "tier": tier, "routes": routing(root)},
-                    ["status"] if tier["checked"] else ["config", "set", "model", str(config.get("model"))])
+                     "config": config, "tier": tier, "routes": routing(root)}, ["status"])
         if ctx.invoked_subcommand is None:
             _handle(ctx, operation, ["doctor"])
 
@@ -1079,7 +1107,7 @@ def make_rem_app(factory):
         from ...rem.config import read_config, validate
         from ...rem.files import RemError
         from ...rem.runner import co_command
-        from ...rem.service import mail_available, status, subscriptions
+        from ...rem.service import status, subscriptions
 
         def operation(root):
             checks, rem_fixes = [], []
@@ -1117,9 +1145,16 @@ def make_rem_app(factory):
                   "openpyxl installed; XLSX attachments are read" if sheets
                   else "not installed; XLSX attachments are named, not read",
                   f"python -m pip install 'connectonion[rem]=={__version__}'")
-            for kind, provider in (("gmail", "google"), ("outlook", "microsoft")):
-                there = mail_available(kind)
-                check(f"mailbox {kind}", there, "connected" if there else "not connected", f"co auth {provider}")
+            from ...rem.service import mailbox_state
+            sources = subscriptions(root)
+            for kind in ("gmail", "outlook"):
+                # "connected" while the daily round read nothing from it (#1974):
+                # connected, subscribed and approved are three different facts.
+                state, fix = mailbox_state(kind, sources.get(kind, {}))
+                if fix.startswith("co rem "):
+                    check(f"mailbox {kind}", False, state, rem_fix=fix.split()[2:])
+                else:
+                    check(f"mailbox {kind}", not fix, state, fix)
             for name, sub in subscriptions(root).items():
                 if sub.get("kind") in ("codex", "claude-code") and sub.get("enabled", True):
                     check(f"sessions {name}", Path(sub.get("root", "")).is_dir(), sub.get("root", ""),

@@ -28,11 +28,15 @@ order (most mail or sessions first). A single page and `me` are unchanged.
 
 ## Order
 
-People are ordered by the date of the last mail with them — the newest of the
-map's `last` and any later listing (below) — with the last `--recent-days`
-(default 14) first, then everyone older, newest first. Left out, as before: the
-owner (`investigate me`), addresses that may be the owner's, and automated
-senders.
+People the owner wrote to at least once come first, then people who wrote
+more than once and were never answered, then one-mail contacts (#1974). Within
+each, the last `--recent-days` (default 14) first, then by the map's mail count
+decayed by the weeks since the last mail. Left out: the owner (`investigate me`,
+listed first while never investigated), addresses that may be the owner's,
+automated senders, and vendors whose domain also sends notices. The overview
+`co rem investigate` and `people --list` read the same queue. Counts are the
+map's, a floor for what the 150-day read finds; see
+[rem-investigation-correctness.md](rem-investigation-correctness.md).
 
 ## Windows: only what is new
 
