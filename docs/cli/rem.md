@@ -522,7 +522,7 @@ the run before, at most 5 pages. Both stop at the weekly budget or the floor and
 record how many pages are left ([details](rem-people-pages.md#the-daily-round-four-runs-two-jobs-1723)). Initialization currently builds the map without a model call; manual
 investigation remains outside the scheduled cap.
 
-The UI is a static snapshot; run `open` again after changing pages. No merge,
+The UI is a static snapshot of the notebook as it is now; run `open` again to see later changes (`--no-launch` says so and ends on `co rem open`). No merge,
 release, new background job, broad mailbox backfill or production co rem rewrite
 is implied by the architecture refactor.
 
@@ -665,6 +665,88 @@ worktree folds into its main checkout's page:
 `Paths` lists the repository root and a count, not the worktrees:
 
 ```text
+## One count for every screen (#2008)
+
+The reader said "174 with findings" when three pages had been written: a mapped
+skill page shows its description and a mapped project page its paths, and both
+read as findings. People were 76 on one screen and 82 on another, skills 159 and
+152. Now `connectonion/rem/census.py` is the only place that decides, and the
+reader and `co rem status` both ask it:
+
+- **Counted**: people, projects, organisations and skill catalog pages. Not
+  counted: pages held for review (no name, never written to), services and
+  automated senders that still have a people page, and the skills index.
+- **Written**: a page someone or a model wrote — its status line no longer says
+  "not investigated yet". A merge keeps the investigated page's status, so a
+  merged page counts exactly when what it kept was written. A mapped page with a
+  description or paths is not written.
+- **Last activity**: the page's own date — the last contact of a person, the
+  last session of a project, the date of its last investigation — never the
+  file's modification time, which is when the last map rewrote it. "Recently
+  active" in the reader lists written pages by it and shows it.
+
+## co rem status (#1996, #2008)
+
+- Every time is in the notebook's timezone (`schedule.timezone`), the last run
+  included; UTC only when none is saved.
+- A run whose process is gone on this machine (Ctrl-C, a closed terminal, a
+  kill) shows **interrupted** at once. Status stays read-only: the next command
+  that writes runs closes the record, as before.
+- Today's tokens add up every run that reported usage — investigations
+  included, which the day's total used to leave out — and say
+  "N runs without usage" instead of turning the total into "unknown".
+- `People 3 written of 82` is the census above, the same as the reader.
+- The budget line says its unit: points are percent of the Codex week, moved by
+  investigation runs only. Maintenance runs are bounded by the daily call cap,
+  so a day of maintenance tokens beside "0 of 10 points" is not a contradiction,
+  and the line now says so.
+- `Next` is the first thing under "To write next" (`co rem investigate me` on a
+  notebook whose own page is still mapped), then `start` or `logs` as before.
+
+## Tidying a notebook made by an older version (#1999, #2008)
+
+Maps get better, and the pages an older map made stay. An upgraded notebook
+kept services as people (Apple ID, `notify@x.com`, GitHub's `unsub+…` reply
+addresses, D&B, Microsoft), two of the owner's own addresses as people still
+queued for investigation, three pairs of pages for one skill, and old pages
+still carrying `web: not searched …` and `investigation:coverage` citations.
+
+**Tidy runs by itself**, at the start of every map (`co rem init`) and every
+sync (the daily round and `co rem sync`), under the notebook lock. It is
+idempotent: a tidy notebook is left exactly as it is, and nothing is written
+when nothing needs tidying. No model is called. What it does:
+
+| Found | Done | Undo |
+|---|---|---|
+| A people page for a service or automated sender, never investigated (the map's `automated_correspondents`, the #1987 service rule, or an automated address) | moved to `.state/archived/people/…` | move the file back |
+| A people page for an address that is clearly the owner's: never replied to, and the address or display name carries the owner's name or an address the owner already confirmed | folded into the owner's page (`merge.merge_into`: written lines kept, page archived, record an alias); the address added to the owner's addresses | `.state/aliases.json` names the archived copy |
+| Two catalog pages for one skill (a `SKILL.md` without a `name:` takes its folder's name, so `~/.codex/skills/changxing-nonfiction-refine` and `~/.agents/skills/nonfiction-refine` were two skills) | folded into the page of the named skill, as the map does for copies | as above |
+| A line `- web: not searched …`, or a `Sources` entry `[N] investigation:coverage …` and its `[N]` markers | that line or marker removed; every other line kept | the removed text is in the log |
+
+An investigated page is never archived or folded: a person's work on a page is
+not undone by a rule about its address. Every action is appended to
+`.state/tidy.json` with the page, what was done and, for removed lines, the
+line itself. The sync result and the map report carry `tidied`, what moved, by page.
+
+A real person is never folded into the owner. **"Possibly yours"** — the
+addresses `init` offers to confirm with `--mine` — lists only addresses that
+never replied *and* carry the owner's own name or confirmed address in the
+address or its display name. The owner's notebook offered seventeen, fifteen
+of them colleagues and friends who answer on other channels; the list now holds
+the two that are the owner's. An address confirmed once (`--mine`, or folded by tidy)
+stays the owner's at the next map without repeating `--mine`.
+
+A fresh map no longer makes the duplicate skill pages either: a skill named
+after its folder joins the named skill whose name its folder ends with
+(`changxing-` + `nonfiction-refine`) when the two copies are the same file or
+carry the same description.
+
+Measured on a copy of the owner's notebook (2026-10-01, never the notebook
+itself): people pages 381 → 357 (22 services archived, 2 own addresses folded),
+skill catalog pages 153 → 150, "possibly yours" 17 → 0, pages with
+`web: not searched` 4 → 0, pages citing `investigation:coverage` 5 → 0 (9
+lines removed). A second pass changed nothing.
+
 ## Paths
 - /home/you/projects/connectonion
 - Worktrees: 49

@@ -738,12 +738,13 @@ def test_status_is_a_dashboard_of_the_notebook_not_a_dump_of_fields(tmp_path, mo
     assert '  People         1 written of 2 mapped' in lines
     assert '  Skills         0 written of 3 mapped' in lines
     assert any(line.startswith('  To write next  1 people page not written: co rem --root') for line in lines)
-    assert '  1 run · 1 page changed · tokens unknown' in lines   # a manual run is not a runner attempt
+    # A manual run records no runner attempts, and its tokens count all the same (#2008).
+    assert '  1 run · 1 page changed · 91,234 tokens in, 812 out' in lines
     assert '  ✓ Gmail    read by the daily round' in lines
     assert '  ✗ Outlook  not connected — co auth microsoft' in lines
     last = [line for line in lines if line.startswith('Last run')]
     assert len(last) == 1 and 'investigate people/alice.md · completed · 1 page changed · 91,234 tokens in' in last[0]
-    assert lines[-1] == f'Next: co rem --root {tmp_path} start'  # the step its first line names
+    assert lines[-1] == f'Next: co rem --root {tmp_path} investigate people'  # the first thing to write (#2008)
     for internal in ('Known attempts', 'Schedule times', 'Worker', 'Runner attempts today', 'Usage by stage'):
         assert internal not in '\n'.join(lines), internal
 
@@ -751,10 +752,10 @@ def test_status_is_a_dashboard_of_the_notebook_not_a_dump_of_fields(tmp_path, mo
 def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_path, monkeypatch):
     _notebook_with_a_run(tmp_path, monkeypatch)
     verbose = invoke(tmp_path, 'status', '--verbose').output
-    assert 'Details' in verbose and 'Known attempts: 0' in verbose and 'Schedule times:' in verbose
+    assert 'Details' in verbose and 'Known runs: 1' in verbose and 'Schedule times:' in verbose
     assert 'Record: people/alice.md' in verbose
     data = json.loads(invoke(tmp_path, '--json', 'status').output)
-    assert set(data) == {'ok', 'data', 'next'} and data['next'].endswith(' start')
+    assert set(data) == {'ok', 'data', 'next'} and data['next'].endswith(' investigate people')
     assert set(data['data']) == {'state', 'root', 'configured', 'date', 'timezone', 'schedule_times', 'next_run',
                                  'worker', 'batches_today', 'runner_attempts_today', 'usage_today',
                                  'usage_coverage', 'last_run', 'mailboxes', 'codex_week',
