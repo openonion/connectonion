@@ -27,3 +27,14 @@ def test_the_cli_silences_the_google_python_version_notice():
 
 def test_other_future_warnings_still_show():
     assert _warn("something of ours changes", "connectonion.something")
+
+
+def test_pypdf_parser_warnings_stay_out_of_the_terminal():
+    """Reading a mail's PDF attachment printed pypdf's parser notices above co rem's output."""
+    import logging
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("default")
+        cli_main._quiet_dependency_notices()
+        warnings.warn_explicit("Multiple definitions in dictionary", UserWarning, "x.py", 1, module="pypdf._reader")
+    assert not caught
+    assert logging.getLogger("pypdf").getEffectiveLevel() >= logging.ERROR

@@ -36,7 +36,7 @@ First time:   co rem init
 Example:      co rem search "term sheet" --in people
 Every page:   co rem <command> --help
 Advanced:     co rem advanced --help   (scan, map-skills, stub, reflect, reflections,
-              propose, review, abstract, capture)
+              propose, review, abstract, capture, projects)
 Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
               and usage still work until 1.9 and print their new name.
 ```
@@ -147,9 +147,14 @@ Options:
   --eval-dir DIR skills only: where the run records are
 
 Order within a category: pages still marked Unknown first, then those with the
-most mail or sessions. A page investigated in the last 7 days is skipped. People
-are ordered by their last mail instead, the last --recent-days first; a person
-investigated since their last mail waits for new mail, then reads only that.
+most mail or sessions. A page investigated in the last 7 days is skipped. Your
+own page comes first until it is investigated (investigate me). People: those you
+wrote to first, then those who wrote more than once, then one-mail contacts; in
+each, the last --recent-days first, then most mail for its age. Automated senders
+are left out. Mail counts are the map's, a floor for what is read. A person
+investigated since their last mail waits for new mail, then reads only that. A
+run that finds nothing about its subject stops before the model and leaves the
+page unmarked.
 
 Budget: with the Codex runner every investigation records your Codex week before
 and after, and counts toward investigation's weekly budget (limits.

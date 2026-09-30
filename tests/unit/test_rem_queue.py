@@ -15,7 +15,8 @@ def test_most_mail_first_and_never_the_owner_or_what_may_be_the_owner(tmp_path):
                          ("people/tamara.md", "Tamara")):
         notebook.stub_person(record, name, [])
     tamara = notebook.read("people/tamara.md").replace(
-        "Investigation: mapped", "Investigation: investigated 2026-09-22 (outlook) · mapped")
+        "Investigation: mapped", "Investigation: investigated 2026-09-22 (outlook) · mapped").replace(
+        "- (none yet)", "- [1] outlook:0123456789ab")
     notebook.write("people/tamara.md", tamara)
     write_json(state_path(tmp_path, "map.json"), {
         "owner": {"record": "people/me.md"},

@@ -504,3 +504,81 @@ def test_finished_tasks_lose_their_private_copies_and_running_ones_are_left_alon
 
     assert sorted(p.name for p in done.iterdir()) == ["candidate.md", "result.json"]
     assert (running / "material.json").is_file() and (running / "notebook/people/x.md").is_file()
+
+
+# ------------------------------------------------ #1974: private copies, one env
+
+
+def test_task_files_are_owner_only_even_those_the_model_writes(notebook, monkeypatch):
+    """.state/tasks held full mail bodies as 0644 files inside a 0700 folder."""
+    import os
+    import stat
+    seen = {}
+
+    def run(argv, **kw):
+        folder = max(Path(kw['cwd']).glob('abstract-*'), key=lambda path: path.stat().st_mtime_ns)
+        (folder / 'written-by-model.md').write_text('x')
+        seen.update({path.name: stat.S_IMODE(path.stat().st_mode) for path in folder.iterdir() if path.is_file()})
+        return SimpleNamespace(returncode=0, stdout=json.dumps({"outcome": "natural", "result": "done",
+                                                                "usage": None}), stderr="")
+    monkeypatch.setattr("connectonion.rem.runner.co_command", lambda: ["/opt/bin/co"])
+    monkeypatch.setattr("connectonion.rem.runner.subprocess.run", run)
+    before = os.umask(0o022)
+    try:
+        run_stage(notebook, [], default_config(), stage="abstract")
+        assert os.umask(0o022) == 0o022  # restored
+    finally:
+        os.umask(before)
+    assert seen and all(mode == 0o600 for mode in seen.values()), seen
+
+
+def test_an_interrupted_task_loses_its_copies_too(notebook, monkeypatch):
+    def run(argv, **kw):
+        raise KeyboardInterrupt
+    monkeypatch.setattr("connectonion.rem.runner.co_command", lambda: ["/opt/bin/co"])
+    monkeypatch.setattr("connectonion.rem.runner.subprocess.run", run)
+    with pytest.raises(KeyboardInterrupt):
+        run_stage(notebook, [{"source": "gmail:1", "text": "private"}], default_config(), stage="abstract")
+    folder = next((notebook.root / ".state" / "tasks").iterdir())
+    assert not (folder / "material.json").exists() and not (folder / "notebook").exists()
+
+
+def test_a_folder_a_killed_run_left_is_scrubbed_once_it_is_old(tmp_path):
+    import os
+    import stat
+    from connectonion.rem.runner import ABANDONED_TASK_SECONDS, scrub_finished_tasks
+    killed, working = tmp_path / "investigate-k", tmp_path / "investigate-w"
+    for folder in (killed, working):
+        folder.mkdir()
+        (folder / "material.json").write_text("[]")
+        (folder / "instructions.md").write_text("skill")
+        (folder / "instructions.md").chmod(0o644)
+    old = time.time() - ABANDONED_TASK_SECONDS - 60
+    os.utime(killed, (old, old))
+    scrub_finished_tasks(tmp_path)
+    assert sorted(p.name for p in killed.iterdir()) == ["instructions.md"]
+    assert stat.S_IMODE((killed / "instructions.md").stat().st_mode) == 0o600
+    assert (working / "material.json").is_file()
+
+
+def test_the_model_s_co_ai_gets_an_absolute_pythonpath(notebook, delegate, monkeypatch):
+    """PYTHONPATH=. resolved against .state/tasks imported an older connectonion."""
+    monkeypatch.setenv("PYTHONPATH", ".")
+    run_stage(notebook, [], default_config(), stage="abstract")
+    env = delegate[0][1]["env"]
+    assert env["PYTHONPATH"] == str(Path(".").resolve())
+
+
+def test_check_skill_fails_in_seconds_with_the_cause(tmp_path, monkeypatch):
+    from connectonion.rem import runner
+    from connectonion.rem.files import RemError
+    calls = []
+
+    def run(argv, **kw):
+        calls.append((argv, kw))
+        return SimpleNamespace(returncode=3, stdout="", stderr="")
+    monkeypatch.setattr("connectonion.rem.runner.subprocess.run", run)
+    with pytest.raises(RemError, match="rem-investigate"):
+        runner.check_skill(tmp_path, "investigate")
+    assert calls[0][1]["cwd"] == str(tmp_path / ".state" / "tasks")
+    assert calls[0][1]["timeout"] <= 60

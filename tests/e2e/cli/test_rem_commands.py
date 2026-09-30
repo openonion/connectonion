@@ -149,7 +149,9 @@ def test_config_set_model_checks_it_on_a_fixture_page_and_records_its_tier(tmp_p
     invoke(root, "config", "set", "model", "gpt-7-pico", "--no-check")
     shown = invoke(root, "config").output
     assert "last checked for codex gpt-7-nova" in shown
-    assert shown.rstrip().endswith(f"Next: co rem --root {root} config set model gpt-7-pico")
+    # The check is named in the tier's note; Next no longer reads as "set the model" (#1974).
+    assert f"co rem --root {root} config set model gpt-7-pico (one or two model calls)" in shown
+    assert shown.rstrip().endswith(f"Next: co rem --root {root} status")
 
 
 @pytest.mark.parametrize("schedule", [None, {}, {"times": ["17:00"], "timezone": "Not/AZone"}])
@@ -1054,3 +1056,28 @@ def test_a_batch_with_nothing_to_warn_about_prints_no_empty_warning_line():
     assert "Warning" not in quiet
     loud = render({"outcome": "completed", "warning": "codex: 3 messages in an unfamiliar format were not read"}, "sync")
     assert "Warning: codex: 3 messages" in loud
+
+
+# ---------------------------------------------------------- #1974: misleading lines
+
+
+def test_config_does_not_suggest_setting_the_model_that_is_already_set(tmp_path):
+    prepare(tmp_path)
+    result = invoke(tmp_path, "config")
+    assert result.exit_code == 0, result.output
+    assert result.output.strip().splitlines()[-1].endswith("status")
+    assert "same model" in result.output
+
+
+def test_doctor_says_a_connected_mailbox_the_round_does_not_read(tmp_path, monkeypatch):
+    prepare(tmp_path)
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: kind == 'gmail')
+    result = invoke(tmp_path, 'doctor')
+    line = next(line for line in result.output.splitlines() if 'mailbox gmail' in line)
+    assert line.startswith('NO') and 'not read by the daily round' in line and 'sources add gmail' in line
+
+
+def test_the_overview_help_names_projects_among_the_advanced_commands(tmp_path):
+    result = invoke(tmp_path, "--help")
+    advanced = result.output[result.output.index("Advanced:"):result.output.index("Old names:")]
+    assert "projects" in advanced

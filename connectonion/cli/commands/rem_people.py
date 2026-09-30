@@ -14,22 +14,62 @@ def _day(stamp: str) -> str:
     return stamp[:10] if stamp else "unknown"
 
 
+def counted(number: int, word: str, plural: str = "") -> str:
+    """"1 mail", "2 mails": 1.9.0a2 said "1 mails"."""
+    return f"{number:,} {word if number == 1 else plural or word + 's'}"
+
+
 def cost_line(estimate: dict, meter: dict) -> str:
+    """The cost before anything is read. The mail counts are the map's, and a floor.
+
+    The map lists one window (90 days by default) with a metadata listing; an
+    investigation reads `window_days` and searches the server for every
+    address, which found 617 mails for a person the map counted once (#1974).
+    """
     week = (f" The Codex week is at {meter['used_percent']}%." if "used_percent" in meter
             else f" Quota: {meter['unknown']}." if meter.get("unknown") else "")
     measured = estimate["measured"]
     known = (f" On this machine one {measured['mails']}-mail person took {measured['input_tokens'] / 1e6:.2f}M "
              f"input tokens and {measured['minutes']} minutes." if measured.get("input_tokens") else "")
-    return (f"Cost: {estimate['model_calls']} model call(s), one per person; {estimate['mails_mapped']:,} mails "
-            f"mapped for the full investigations, and {estimate['updates']} update(s) that read only mail since "
-            f"their last investigation.{known}{week}")
+    return (f"Cost: {counted(estimate['model_calls'], 'model call')}, one per person; at least "
+            f"{counted(estimate['mails_mapped'], 'mail')} for the full investigations (the map's count: they read "
+            f"{estimate.get('window_days', 150)} days and search the server, which finds more), and "
+            f"{counted(estimate['updates'], 'update')} that read only mail since their last "
+            f"investigation.{known}{week}")
 
 
 def order_lines(rows: list[dict]) -> list[str]:
     return [f"  {row['record']}  (last mail {_day(row['last_activity'])}, "
             + (f"update: mail since {row['last_investigated']}, {row['days']} days" if row["mode"] == "update"
-               else f"{row['mails']} mails mapped, {row['days']} days") + ")"
+               else f"at least {counted(row['mails'], 'mail')} in the map, reads {row['days']} days") + ")"
             for row in rows]
+
+
+def owner_first(ctx, root) -> list[str]:
+    """Your own page, and addresses that may be yours, before anyone else (#1943, #1974).
+
+    Empty when your page has been investigated and nothing is left to confirm.
+    """
+    from ...rem.files import Notebook, read_json, state_path
+    from ...rem.queue import last_investigated
+    from .rem_commands import _next
+    state = read_json(state_path(root, "map.json"), {})
+    record = (state.get("owner") or {}).get("record")
+    lines = []
+    notebook = Notebook(root)
+    if record and notebook.path(record).is_file():
+        status = next((line for line in notebook.read(record).splitlines() if line.startswith("Investigation:")), "")
+        if last_investigated(status) is None:
+            lines.append(f"First, your own page ({record}), not investigated yet: "
+                         + _next(ctx, ["investigate", "me", "--quick"]))
+    possible = [row for row in state.get("possible_own_addresses") or [] if row.get("address")][:6]
+    if possible:
+        # Spelled here, never read from the map: a 1.8 map stored `co wiki init --mine`.
+        lines.append("Possibly yours (you wrote, they never replied): "
+                     + ", ".join(f"{row['address']} ({row.get('sent', 0)} sent)" for row in possible)
+                     + ". Confirm the ones that are yours: "
+                     + _next(ctx, ["init", "--mine", ",".join(row["address"] for row in possible)]))
+    return lines
 
 
 def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool, gate, clients_for,
@@ -45,9 +85,12 @@ def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool
     config = read_config(root)
     if list_only:
         if ctx.obj["json"]:
-            return {"category": "people", "order": rows, "estimate": estimate(chosen)}, ["investigate", "people"], False
-        text = "\n".join([f"{len(rows)} people to investigate; {sum(r['recent'] for r in rows)} written to in the "
-                          f"last {recent_days} days come first:", *order_lines(rows), "",
+            return ({"category": "people", "order": rows, "estimate": estimate(chosen),
+                     "first": owner_first(ctx, root)}, ["investigate", "people"], False)
+        text = "\n".join([*owner_first(ctx, root),
+                          f"{counted(len(rows), 'person', 'people')} to investigate: people you wrote to first, "
+                          f"then people who wrote more than once, then one-mail contacts; the last {recent_days} "
+                          "days first in each:", *order_lines(rows), "",
                           f"The next {len(chosen)}: " + cost_line(estimate(chosen), quota.read(config)),
                           "Nothing was read or spent."])
         return text, ["investigate", "people"], False
@@ -70,7 +113,7 @@ def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool
     result["left"] = len(rows) - sum(1 for row in result["pages"] if row["outcome"] == "accepted")
     if result.get("stopped"):
         typer.echo(f"Stopped: {result['stopped']}", err=True)
-    typer.echo(f"{result['left']} people left to investigate.", err=True)
+    typer.echo(f"{counted(result['left'], 'person', 'people')} left to investigate.", err=True)
     accepted = [row["page"] for row in result["pages"] if row["outcome"] == "accepted"]
     return ({"category": "people", **result}, ["show", accepted[0]] if accepted else ["logs"],
             any(row["outcome"] != "accepted" for row in result["pages"]))

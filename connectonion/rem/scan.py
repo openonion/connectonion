@@ -38,7 +38,17 @@ PERSONAL_MAILBOX = frozenset({
 })
 
 
+# A display name that is a header word is not a name: the owner's test mail,
+# sent by a CLI, put "From gws" in the To line and a page was titled so (#1974).
+_HEADER_WORD = re.compile(r"^(?:from|to|cc|bcc|re|fwd?|via|sent)\b[\s:]", re.I)
+
+
 def _display_name(row: dict, address: str) -> str:
+    name = _raw_display_name(row, address)
+    return "" if _HEADER_WORD.match(name) else name
+
+
+def _raw_display_name(row: dict, address: str) -> str:
     """The other party's name -- from the side of the mail they are on.
 
     For mail the user sent, the correspondent is a recipient, so reading the

@@ -154,3 +154,12 @@ def test_the_job_runs_the_installation_that_installed_it_not_the_first_co_on_pat
     assert plist["ProgramArguments"] == ["/work/venv/bin/python", "-m", "connectonion.cli.main",
                                          "rem", "--root", str(root), "sync", "--scheduled"]
     assert plist["EnvironmentVariables"]["PATH"].startswith("/work/venv/bin:")
+
+
+def test_the_job_s_pythonpath_is_absolute(tmp_path, monkeypatch):
+    """The owner's job carried PYTHONPATH=".", which the model's co ai resolved
+    against .state/tasks: an older installed connectonion, "Skill 'rem-investigate' not found"."""
+    scheduler, _ = make(tmp_path, monkeypatch)
+    monkeypatch.setenv("PYTHONPATH", ".")
+    plist = plistlib.loads(scheduler.render(tmp_path / "rem", default_config()).encode())
+    assert plist["EnvironmentVariables"]["PYTHONPATH"] == str(Path(".").resolve())
