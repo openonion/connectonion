@@ -89,13 +89,16 @@ def scan_skills(directories: list[Path] | None = None, *, include_content: bool 
                     content = raw.decode("utf-8")
                     meta = parse_skill_frontmatter(content)
                     inline = lambda value: " ".join(str(value or "").split())
-                    name = inline(meta.get("name")) or (entry.name if entry.is_dir() else entry.stem)
+                    named = inline(meta.get("name"))
+                    name = named or (entry.name if entry.is_dir() else entry.stem)
                     tools = meta.get("allowed-tools") or meta.get("allowed_tools") or ""
                     found[canonical] = {"name": name, "description": inline(meta.get("description")),
                                         "path": canonical, "location": location,
                                         "sha256": hashlib.sha256(raw).hexdigest(),
                                         "allowed_tools": inline(", ".join(map(str, tools))
                                                                 if isinstance(tools, list) else tools)}
+                    if not named:
+                        found[canonical]["_folder_named"] = True
                     if include_content:
                         found[canonical]["_content"] = content
                 except (OSError, UnicodeError, ValueError) as error:
@@ -103,8 +106,34 @@ def scan_skills(directories: list[Path] | None = None, *, include_content: bool 
         except OSError as error:
             info["status"] = "unavailable"
             errors.append({"path": str(directory), "error": type(error).__name__})
+    _join_renamed(list(found.values()))
     return {"skills": sorted(found.values(), key=lambda row: (row["name"].casefold(), row["path"])),
             "roots": coverage, "errors": errors}
+
+
+def _join_renamed(rows: list[dict]) -> None:
+    """A copy named only by its folder takes the name of the skill it is a copy of (#2008).
+
+    A SKILL.md without `name:` is called what its folder is called, so the
+    owner's `~/.codex/skills/changxing-nonfiction-refine` (a prefixed copy) and
+    `~/.agents/skills/nonfiction-refine` were two skills with two pages, on
+    every fresh map. The copy joins the skill whose name its folder ends with,
+    when the two are the same file or carry the same description; a different
+    skill that merely shares a suffix keeps its own name.
+    """
+    names = {}
+    for row in rows:
+        names.setdefault(row["name"].casefold(), []).append(row)
+    for row in rows:
+        if not row.pop("_folder_named", False):
+            continue
+        own = row["name"].casefold()
+        for name, others in names.items():
+            if name != own and own.endswith("-" + name) and any(
+                    other["sha256"] == row["sha256"] or (other["description"] and other["description"] == row["description"])
+                    for other in others):
+                row["folder_name"], row["name"] = row["name"], others[0]["name"]
+                break
 
 
 def _slug(name: str) -> str:
@@ -212,6 +241,22 @@ def _existing(notebook: Notebook) -> dict:
     return pages
 
 
+def renamed_pages(notebook: Notebook, by_name: dict, existing: dict | None = None) -> dict:
+    """{page: the skill name it belongs to now} for pages an earlier map made under a
+    name no copy goes by any more, whose every listed file is a copy of one skill now."""
+    existing = _existing(notebook) if existing is None else existing
+    owner = {row["path"]: key for key, rows in by_name.items() for row in rows}
+    moved = {}
+    for key, pages in existing.items():
+        if key in by_name:
+            continue
+        for page in pages:
+            names = {owner.get(path) for path in _listed_files(notebook.read(page))}
+            if len(names) == 1 and None not in names:
+                moved[page] = names.pop()
+    return moved
+
+
 def _listed_files(page: str) -> list[str]:
     return re.findall(r"^- (?:File|Also installed at|No longer found): (/.+?)(?: \(.*\))?$", page, re.M)
 
@@ -238,6 +283,11 @@ def map_skills(notebook: Notebook, directories: list[Path] | None = None, *, loc
             subscriptions = saved(notebook.root)
         counted = usage(subscriptions, [rows[0]["name"] for rows in by_name.values()], root=notebook.root, days=days)
         existing = _existing(notebook)
+        # A page made under a folder name joins the page of the skill it is a copy of.
+        for page, key in renamed_pages(notebook, by_name, existing).items():
+            existing = {name: [other for other in pages if other != page] for name, pages in existing.items()}
+            existing.setdefault(key, []).append(page)
+        existing = {key: pages for key, pages in existing.items() if pages}
         links = []
         keys = sorted(set(by_name) | set(existing))
         for number, key in enumerate(keys, 1):
@@ -318,7 +368,7 @@ def map_skills(notebook: Notebook, directories: list[Path] | None = None, *, loc
             "index": "skills/catalog/index.md"}
 
 
-def _alias(notebook: Notebook, old: str, new: str) -> None:
+def _alias(notebook: Notebook, old: str, new: str, reason: str = "one page per skill name") -> None:
     """The base page moved to its name's record: the old record is an alias; nothing to merge."""
     from .files import read_json, state_path, write_json
     from .merge import ALIASES, _relink
@@ -327,7 +377,7 @@ def _alias(notebook: Notebook, old: str, new: str) -> None:
     for entry in table.values():
         if entry["into"] == old:
             entry["into"] = new
-    table[old] = {"into": new, "reason": "one page per skill name", "date": date.today().isoformat(),
+    table[old] = {"into": new, "reason": reason, "date": date.today().isoformat(),
                   "archived": f".state/archived/{old}"}
     write_json(state_path(notebook.root, ALIASES), table)
     _relink(notebook, old, new)

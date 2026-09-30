@@ -280,6 +280,17 @@ def _alive(pid: int) -> bool:
     return True
 
 
+def seen_outcome(record: dict) -> str:
+    """A run's outcome as it is now, without writing: "running" whose process on
+    this machine is gone reads "interrupted" at once (#2008). A Ctrl-C'd run
+    showed "running" in status until the next command that writes runs."""
+    outcome = record.get("outcome", "unknown")
+    if (outcome == "running" and record.get("pid") and record.get("host") == socket.gethostname()
+            and not _alive(int(record["pid"]))):
+        return "interrupted"
+    return outcome
+
+
 def abandon_stale_runs(root: Path) -> list[str]:
     """Mark "running" records whose run can no longer finish as abandoned, with why (#1974).
 
@@ -404,13 +415,22 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
     logs = run_logs(root)
     today, recent = runs_today(logs, zone)
     attempted = [record for record in recent if record.get("runner_attempts", 0)]
+    # Every run that called a model: an `investigate` records no runner
+    # attempts, and its tokens were missing from the day's total (#2008).
+    from .quota import INVESTIGATION_PHASES
+    model_runs = [record for record in recent if record.get("runner_attempts", 0)
+                  or record.get("phase") in INVESTIGATION_PHASES or record.get("usage")]
     usage = {}
     coverage = {}
     for key in ("input_tokens", "output_tokens", "cached_input_tokens"):
-        values = [(record.get("usage") or {}).get(key) for record in attempted]
+        values = [(record.get("usage") or {}).get(key) for record in model_runs]
         known = [value for value in values if type(value) is int and value >= 0]
+        # One run without usage no longer turns the day into "unknown": the
+        # known runs are summed and the rest counted (runs_without_usage).
         usage[key] = sum(known) if known else None
-        coverage[key] = {"known_attempts": len(known), "total_attempts": len(attempted)}
+        coverage[key] = {"known_runs": len(known), "model_runs": len(model_runs)}
+    usage["runs_without_usage"] = sum(type((record.get("usage") or {}).get("input_tokens")) is not int
+                                      for record in model_runs)
     return {"state": state,
             "root": str(root), "configured": (root / "config.yaml").exists(),
             "date": str(today), "timezone": saved_zone or "Unknown (UTC reporting fallback only)",
@@ -420,7 +440,7 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
             "batches_today": sum(record.get("outcome") != "refused" for record in recent),
             "runner_attempts_today": sum(record.get("runner_attempts", 0) for record in attempted),
             "usage_today": usage, "usage_coverage": coverage,
-            "last_run": logs[0] if logs else None,
+            "last_run": {**logs[0], "outcome": seen_outcome(logs[0])} if logs else None,
             "mailboxes": _mailbox_lines(root),
             **(_quota_status(config, logs) if live_quota else {})}
 
@@ -743,12 +763,16 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
     with maintenance_lock(root), _terminate_as_interrupt():
         config = validate(read_config(root))
         abandon_stale_runs(root)
+        # An upgraded notebook is tidied by its first sync, before anything reads it (#1999).
+        from .tidy import tidy
+        tidied = tidy(root, lock_held=True)
         selected = _selected_sources(root, source)
         progress = read_json(state_path(root, "progress.json"), {})
         if not isinstance(progress, dict):
             raise RemError("Invalid source progress; preserve it for diagnosis")
-        return _sync_locked(root, selected, progress, config, runner, extractor,
-                            with_person=with_person, include_local=not source)
+        record = _sync_locked(root, selected, progress, config, runner, extractor,
+                              with_person=with_person, include_local=not source)
+        return {**record, "tidied": tidied} if tidied and isinstance(record, dict) else record
 
 
 @contextmanager

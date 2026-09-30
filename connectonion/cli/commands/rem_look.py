@@ -69,9 +69,15 @@ def _literal(text: str, *, before_tag: bool) -> str:
     return escape(stem) + (tail * 2 if before_tag else tail)
 
 
+# The console a spinner is drawing on (rem_output.Turn), while one is. A line
+# printed on another console landed on the spinner's own row: "gmail: to
+# 2026-09-17, 40 mails" over "Writing your page… 0:41" (#2008).
+LIVE = None
+
+
 def say(markup: str, *, err: bool = False, plain: str = None, end: str = "\n") -> None:
     """Print markup in a terminal; elsewhere the same words, plain, through typer as before."""
-    out = style.console(stderr=err)
+    out = LIVE if err and LIVE is not None else style.console(stderr=err)
     if out.is_terminal:
         out.print(markup, emoji=False, end=end)
     else:

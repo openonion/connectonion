@@ -113,6 +113,38 @@ def _write_only(row: dict) -> bool:
                 or RELAY.search(address) or AGENT_ADDRESS.search(address))
 
 
+def owner_tokens(addresses, name: str) -> set[str]:
+    """Words of the owner's own: the local parts of addresses already theirs, and their name.
+
+    Four letters or more, so "Xie" or "Wu" alone never makes a stranger the owner.
+    """
+    generic = {'account', 'owner', 'mail', 'gmail', 'outlook'}
+    words = {part for address in addresses for part in re.split(r'[^a-z]+', address.split('@')[0].casefold())}
+    words |= set(re.split(r'[^a-z]+', (name or '').casefold()))
+    return {word for word in words if len(word) >= 4 and word not in generic}
+
+
+def looks_own(group: list[dict], tokens: set[str]) -> list[dict]:
+    """The rows of `group` worth asking "is this yours?" about (#2008).
+
+    Only write-only rows, and none when any address of the group ever replied:
+    a reply is someone else. When the map knows the owner (their addresses or
+    name), the address or its display name must also carry one of their words.
+    The owner's notebook offered seventeen, and fifteen were colleagues and
+    friends who answer on other channels, whom one `--mine` would have made
+    the owner. Knowing nothing of the owner, the
+    map still asks about every write-only address, as before.
+    """
+    if any(row.get('received') for row in group):
+        return []
+    rows = [row for row in group if _write_only(row)]
+    if not tokens:
+        return rows
+    return [row for row in rows if any(
+        token in row['address'].split('@')[0].casefold() or token in str(row.get('name') or '').casefold()
+        for token in tokens)]
+
+
 def _notice(row: dict) -> bool:
     """Only sends, never hears back, and looks like a system -- or is a relay.
 
@@ -145,7 +177,39 @@ def _service(group: list[dict]) -> bool:
         if not words or not domain or local == words[0] or organisation(domain).split('.')[0] != words[0]:
             return False
     received = sum(row.get('received', 0) for row in group)
-    return received >= 3 * max(sum(row.get('sent', 0) for row in group), 1)
+    sent = sum(row.get('sent', 0) for row in group)
+    # Never written to, one mail is enough: "Apple" <appleid@id.apple.com> and
+    # "Microsoft Clarity" <maccount@microsoft.com> each wrote once and stayed
+    # people pages on the owner's notebook (#2008).
+    return received >= (3 * sent if sent else 1)
+
+
+# Addresses that are a system by their shape alone, whatever the mail's direction.
+MACHINE = re.compile(r'no-?reply|do-?not-?reply|notification|newsletter|mailer|bounce|notify@|^unsub\+', re.I)
+
+
+def service_page(title: str, emails: list[str], row: dict | None, automated: set) -> bool:
+    """Is this people page a service or an automated sender, by today's rules (#1987, #2008)?
+
+    The map keeps such senders off the people map from now on; this answers the
+    same question for a page an older map already made. With the page's `row`
+    from the last map, the map's own rule decides, on the direction of its mail.
+    Without one, the page is judged on its address and title: listed by that map
+    as a notice sender (`automated`), shaped like a system, or named after its
+    own domain and only ever writing in.
+    """
+    addresses = [address.casefold() for address in emails]
+    if not addresses:
+        return False
+    if row:
+        group = [{'address': address, 'name': row.get('name') or title, 'sent': row.get('sent', 0),
+                  'received': row.get('received', 0),
+                  'one_way': row.get('one_way')}
+                 for address in addresses]
+        return all(_notice(one) for one in group) or _service(group)
+    if all(address in automated or MACHINE.search(address) or RELAY.search(address) for address in addresses):
+        return True
+    return _service([{'address': address, 'name': title, 'sent': 0, 'received': 1} for address in addresses])
 
 
 def _people_groups(rows: list[dict]) -> list[list[dict]]:
@@ -286,8 +350,7 @@ def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
     # carry the owner's own name. On the real map the write-only list also held
     # two colleagues who answer on other channels, and a page stating they were
     # "possibly the owner's" would mislead whoever reads it.
-    tokens = {part for address in owner['addresses'] for part in re.split(r'[^a-z]+', address.split('@')[0])
-              if len(part) >= 4} | {part for part in re.split(r'[^a-z]+', name.casefold()) if len(part) >= 4}
+    tokens = owner_tokens(owner['addresses'], name)
     asked = [f"- Possibly also the owner's: {row['address']} ({row['sent']} sent, none received). "
              f"If it is yours: {row['confirm']}" for row in report['possible_own_addresses']
              if any(token in row['address'].split('@')[0].casefold() for token in tokens)][:5]
@@ -587,9 +650,16 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
         inventory.snapshot_report = report
         report['source_inventory'] = inventory.save(report)
     state.parent.mkdir(parents=True, exist_ok=True)
+    # An upgraded notebook is tidied first, from the map before this one (#1999).
+    from .tidy import tidy
+    report['tidied'] = tidy(root, lock_held=True)
     # The owner's page from an earlier init, so a page made from --name alone
     # is the one a mailbox connected later fills, not a second owner.
     earlier = json.loads(state.read_text()).get('owner') if state.is_file() else None
+    # An address confirmed once (--mine, or folded into the owner's page by
+    # tidy) stays the owner's: without this the next map, run without --mine,
+    # made it a correspondent page again (#2008).
+    mine = sorted({*mine, *((earlier or {}).get('addresses') or [])})
     earlier = earlier['record'] if earlier and notebook.path(earlier['record']).is_file() else None
     def save():
         atomic_write(state, json.dumps(report, ensure_ascii=False, indent=2) + '\n')
@@ -634,6 +704,8 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
             report['created'].append(owner_record)
         report['owner'] = {'record': owner_record, 'addresses': []}
         report['people'].append({'record': owner_record, 'classification': 'account owner'})
+    owner = report.get('owner') or {}
+    tokens = owner_tokens(owner.get('addresses') or [], owner_name if owner else '')
     org_rows = []
     for group in _people_groups(people):
         addresses = [row['address'] for row in group]
@@ -674,7 +746,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
         report['possible_own_addresses'] += [
             {'address': row['address'], 'sent': row.get('sent', 0), 'record': record,
              'confirm': 'co rem init --mine ' + row['address']}
-            for row in group if _write_only(row)]
+            for row in looks_own(group, tokens)]
         if automated:
             page = notebook.read(record)
             marker = '- Correspondent classification: automated candidate; not verified as a person.'
@@ -746,7 +818,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
                            for name, sub in subscriptions.items() if sub.get('kind') in ('codex', 'claude-code')]
     if report.get('owner'):
         _fill_owner(notebook, report, owner_name)
-    report['archived'] = _archive_stale(notebook, report)
+    report['archived'] = (report['tidied'] or {}).get('archived service', []) + _archive_stale(notebook, report)
     if report['archived']:
         report['coverage'].append(f"{len(report['archived'])} pages an earlier map made and nobody investigated were "
                                   "duplicates or sandboxes; moved to .state/archived/")

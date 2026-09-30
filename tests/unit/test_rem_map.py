@@ -374,9 +374,11 @@ def test_the_owners_page_is_filled_from_the_map_and_named(tmp_path, monkeypatch)
     assert 'aaronplus1996@gmail.com (106' not in page.split('## Uncertainties')[0]   # not a correspondent
     assert 'Possibly also the owner\'s: aaronplus1996@gmail.com' in page
     assert 'co rem init --mine aaronplus1996@gmail.com' in page
-    # A colleague who answers on another channel is asked about by init, not named on the page.
-    assert 'larryleework7@gmail.com' in {row['address'] for row in result['possible_own_addresses']}
-    assert 'larryleework7' not in page
+    # A colleague who answers on another channel carries none of the owner's
+    # words: not named on the page, and not offered to --mine either (#2008).
+    assert 'larryleework7@gmail.com' not in {row['address'] for row in result['possible_own_addresses']}
+    assert 'larryleework7' not in page.split('## Uncertainties')[1]
+    assert 'larryleework7@gmail.com (14)' in page     # someone the owner writes to, like anyone else
     assert 'connectonion (40)' in page and '[1] Enumeration metadata' in page
     assert '- Role: Unknown' in page and '- Company: Unknown' in page
     # GitHub notifications, named after the owner, are a notice, not a person.
