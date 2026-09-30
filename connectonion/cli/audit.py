@@ -2,8 +2,8 @@
 Purpose: Judge whether a command-line tool is fit for an agent harness, by running it and reading only what it prints (#1643, #1735)
 LLM-Note:
   Dependencies: imports from [subprocess, concurrent.futures, pydantic, llm_do] | imported by [cli/commands/audit_commands.py, tests/unit/test_cli_help_contract.py, tests/unit/test_co_audit_rules.py, tests/e2e/real_api/test_cli_discovery_journeys.py]
-  Data flow: help_page(argv) runs `<argv> --help` (or -h) → pages() walks every subcommand a page lists → check() rules on each printed page → score() per rule | review() → a model judges one page
-  State/Effects: runs the program in a fresh empty HOME and cwd per page, stdin closed; review() calls a model
+  Data flow: help_page(argv) runs `<argv> --help` (or -h) → pages() walks every subcommand a page lists → check() rules on each printed page → look() compares it with the same page in a terminal → score() per rule | review() → a model judges one page
+  State/Effects: runs the program in a fresh empty HOME and cwd per page (as an agent, then as a person's terminal), stdin closed; review() calls a model
   Integration: one engine for `co audit <program>` and for CI | knows nothing of any source: an agent only ever sees output, and neither does this
   Errors: a finding names the rule and the fix; a page that hangs or fails to print is itself a finding
 
@@ -16,6 +16,8 @@ program, hard rules first and judgement last:
   waiting for input, writes nothing, has a usage line and an example of this
   command, every flag an example uses is documented, examples hold no private
   data, and every listed subcommand has its own page.
+- look: run again the way a person's terminal runs it, the page says the same
+  words, with colour only there (#1997).
 - review(): for pages that pass, a model judges what a rule cannot: clear,
   says what it reads or changes, a realistic example, simple, and whether a
   listed item has a short reference when the command acts on one.
@@ -26,6 +28,7 @@ same pages, not built into the tool.
 """
 
 import hashlib
+import io
 import os
 import re
 import shlex
@@ -34,6 +37,7 @@ import site
 import subprocess
 import sys
 import tempfile
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,9 +76,10 @@ FIXES = {
     "flags": "an example uses a flag this page does not document",
     "private": "an example contains a real home path or a full 0x address; use a placeholder",
     "params": "an option or argument has no description",
+    "look": "a terminal and a pipe must show the same words, in colour only in the terminal",
     "review": "a model reviewer flagged this page",
 }
-RULES = ("prints", "hangs", "writes", "usage", "example", "self_example", "flags", "private", "params")
+RULES = ("prints", "hangs", "writes", "usage", "example", "self_example", "flags", "private", "params", "look")
 
 
 @dataclass(frozen=True)
@@ -94,6 +99,7 @@ class Page:
     text: str
     wrote: str = ""      # the first file reading help created, if any
     hung: bool = False
+    err: str = ""        # stderr when `text` is stdout: where a command's Next line goes
 
 
 def program(name: str) -> list:
@@ -104,17 +110,33 @@ def program(name: str) -> list:
     return [shutil.which(name) or name]
 
 
-def run(argv: list) -> Page:
-    """Run a command as an agent would: empty HOME and cwd, no terminal, no input."""
+# How an agent runs a command, and how a person's terminal does. Output is
+# captured either way; FORCE_COLOR says what a terminal would have decided.
+AGENT = {"NO_COLOR": "1", "COLUMNS": "200", "TERM": "dumb"}
+PERSON = {"FORCE_COLOR": "1", "COLUMNS": "100", "TERM": "xterm-256color"}
+# A key in the environment is the user's as much as one in HOME. With one set
+# (CI sets OPENONION_API_KEY), `co doctor` in STATUS calls its backend, and a
+# network answer can differ between the two runs look compares.
+CREDENTIAL = re.compile(r"_(API_KEY|TOKEN|SECRET)$")
+
+
+def run(argv: list, terminal: bool = False) -> Page:
+    """Run a command as an agent would: empty HOME and cwd, no credentials, no terminal, no input.
+
+    `terminal=True` runs it as a person's terminal would instead: colour on,
+    100 columns, the same empty HOME and no input.
+    """
     home, work = Path(tempfile.mkdtemp()), Path(tempfile.mkdtemp())
-    env = {**os.environ, "HOME": str(home), "USERPROFILE": str(home), "NO_COLOR": "1",
-           "COLUMNS": "200", "TERM": "dumb", "PAGER": "cat", "GIT_PAGER": "cat", "MANPAGER": "cat"}
+    env = {**{k: v for k, v in os.environ.items() if not CREDENTIAL.search(k)},
+           "HOME": str(home), "USERPROFILE": str(home), **(PERSON if terminal else AGENT),
+           "PAGER": "cat", "GIT_PAGER": "cat", "MANPAGER": "cat"}
     # Python's user site is derived from HOME. Keep installed CLI code
     # importable while isolating the command's data/configuration in a fresh
     # HOME; otherwise a pip --user `co` script crashes before printing help.
     env.setdefault("PYTHONUSERBASE", site.getuserbase())
     env["PYTHONDONTWRITEBYTECODE"] = "1"
-    env.pop("FORCE_COLOR", None)
+    env.pop("NO_COLOR" if terminal else "FORCE_COLOR", None)
+    env.pop("TTY_COMPATIBLE", None)   # Rich obeys it before NO_COLOR and FORCE_COLOR
     env.pop("GITHUB_ACTIONS", None)
     try:
         done = subprocess.run([*program(argv[0]), *argv[1:]], cwd=work, env=env, stdin=subprocess.DEVNULL,
@@ -123,15 +145,15 @@ def run(argv: list) -> Page:
         return Page(code=-1, text="", hung=True)
     created = [f for root in (home, work) for f in root.rglob("*") if f.is_file()]
     wrote = str(created[0].relative_to(home if created[0].is_relative_to(home) else work)) if created else ""
-    return Page(done.returncode, done.stdout or done.stderr, wrote)
+    return Page(done.returncode, done.stdout or done.stderr, wrote, err=done.stderr if done.stdout else "")
 
 
-def help_page(argv: list) -> Page:
+def help_page(argv: list, terminal: bool = False) -> Page:
     """`<argv> --help`, or `-h` for tools that only know the short form."""
-    page = run([*argv, "--help"])
+    page = run([*argv, "--help"], terminal)
     if page.hung or (page.code == 0 and page.text.strip()):
         return page
-    short = run([*argv, "-h"])
+    short = run([*argv, "-h"], terminal)
     return short if short.code == 0 and short.text.strip() else page
 
 
@@ -296,17 +318,115 @@ def check(path: str, page: Page, found: dict) -> list:
     return out
 
 
-def audit(target: list, runner=help_page) -> tuple:
+# Colour and cursor codes: CSI (`ESC[1;36m`) and OSC (terminal links).
+ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
+SGR = re.compile(r"\x1b\[[0-9;]*m")
+# What a printout says is everything but whitespace and the box and block
+# characters drawn to the terminal's width (a panel's frame, a rule, a bar):
+# at 100 columns the same words wrap and frame differently than at 200.
+FRAME = re.compile(r"[\s─-▟]+")
+# Each run's own empty HOME and cwd, which a status command may print.
+SCRATCH = re.compile(re.escape(tempfile.gettempdir()) + r"/tmp\w+")
+# Read-only `co` commands a person runs to see where things stand: safe in an
+# empty HOME, fast, and offline there. Their output is held to the look rule
+# as every help page is. One line each.
+STATUS = (
+    "co status",
+    "co doctor",
+    "co commands",
+    "co rem status",
+)
+
+
+def _tokens(text: str) -> list:
+    return [t for t in FRAME.split(SCRATCH.sub("~", ANSI.sub("", text))) if t]
+
+
+def _difference(said: str, shown: str) -> str:
+    """The words only one side has, or "" when both say the same thing laid out differently.
+
+    Compared as the characters each prints, in any order. Order cannot be
+    held: in a table narrowed to 100 columns a long value folds onto the next
+    line (`read-only|…|danger` / `-full-access`) while the description beside
+    it carries on, so the same words interleave differently. What a narrower
+    terminal must not do is lose or change any: Rich's default for a long
+    path in a table is to cut it to `connec…`.
+    """
+    a, b = _tokens(said), _tokens(shown)
+    if Counter("".join(a)) == Counter("".join(b)):
+        return ""
+    extra, missing = Counter(b) - Counter(a), Counter(a) - Counter(b)
+    return f"it shows {' '.join(list(extra)[:4]) or '(nothing)'} where an agent reads {' '.join(list(missing)[:4]) or '(nothing)'}"
+
+
+def _unshaped_next(shown: str) -> list:
+    """`Next:` lines of a terminal printout not drawn the way style.next_line draws them."""
+    from rich.console import Console
+
+    from .style import THEME, next_line
+
+    buffer = io.StringIO()
+    Console(file=buffer, theme=THEME, force_terminal=True, color_system="256").print(next_line("co"))
+    # `Next:` in its style, then the command in its own; a few words may come
+    # between them (`Next: See every list:  co trust list`).
+    label, rest = buffer.getvalue().split(" ", 1)
+    opens = rest.split("co")[0]
+    return [line.strip() for line in shown.splitlines() if ANSI.sub("", line).lstrip().startswith("Next:")
+            and not (line.lstrip().startswith(label + " ") and opens in line)]
+
+
+def look(path: str, plain: Page, styled: Page, output: bool = False) -> list:
+    """The same page, or a status command's `output`, as an agent reads it and as a person's terminal shows it.
+
+    Colour in a pipe and different words in a terminal are faults in any
+    program. No colour in a terminal is a fault only in `co`: plenty of good
+    CLIs print plain help on purpose, and nothing about that stops an agent,
+    but `co` promises one look everywhere (#1997), so a plain co page is one
+    nobody moved onto connectonion/cli/style.py. The Next-line shape is co's
+    for the same reason.
+    """
+    what, ours = ("output" if output else "help"), path.split()[0] == "co"
+    if styled.hung or styled.code != plain.code:
+        return [Finding(path, "look", f"{what} in a terminal: exit {styled.code}{' (hung)' if styled.hung else ''}")]
+    said, shown = plain.text + plain.err, styled.text + styled.err
+    details = []
+    if ANSI.search(said):
+        details.append("has colour codes under NO_COLOR, TERM=dumb and a pipe")
+    if ours and not SGR.search(shown):
+        details.append("has no colour in a terminal; print it through connectonion/cli/style.py")
+    moved = _difference(said, shown)
+    if moved:
+        details.append(f"shows different words in a terminal: {moved}")
+    if output and ours:
+        details += [f"prints a Next: line without style.next_line's shape: {ANSI.sub('', line)}"
+                    for line in _unshaped_next(shown)]
+    return [Finding(path, "look", f"{what} {detail}") for detail in details]
+
+
+def looks(within: dict, findings: list, runner=help_page, output=run) -> list:
+    """The look rule on every page that printed, and on each STATUS command in reach, run the second way here."""
+    printed = [path for path in within if not any(f.path == path and f.check in ("prints", "hangs") for f in findings)]
+    status = [path for path in STATUS if path in within]
+    with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
+        shown = list(pool.map(lambda path: runner(path.split(), terminal=True), printed))
+        both = list(pool.map(lambda path: (output(path.split()), output(path.split(), terminal=True)), status))
+    return ([f for path, page in zip(printed, shown) for f in look(path, within[path], page)]
+            + [f for path, (plain, styled) in zip(status, both) for f in look(path, plain, styled, output=True)])
+
+
+def audit(target: list, runner=help_page, output=run) -> tuple:
     """(findings, pages checked) for a program, or one of its commands.
 
     The walk always starts at the program's top page, as an agent does, then
-    checks the pages at or under `target`.
+    checks the pages at or under `target`, and runs just those a second time
+    as a person's terminal would for the look rule.
     """
     target = list(target)
     found = pages(target[:1], runner)
     prefix = " ".join(target)
     within = {path: page for path, page in found.items() if path == prefix or path.startswith(prefix + " ")}
-    return [f for path, page in within.items() for f in check(path, page, found)], within
+    findings = [f for path, page in within.items() for f in check(path, page, found)]
+    return findings + looks(within, findings, runner, output), within
 
 
 def score(findings: list, checked: dict) -> list:

@@ -16,6 +16,8 @@ like `co gmail open 1` is a command you can run. It is the piece that has to
 be right for the sweep to mean anything, so it gets its own cases.
 """
 
+import re
+
 import pytest
 import typer.main
 from typer.testing import CliRunner
@@ -103,6 +105,13 @@ class TestCoCommands:
         # The audience is a pipe: `co commands | grep draft`.
         assert "\x1b[" not in output
         assert "[green]" not in output
+
+    def test_a_terminal_sees_the_same_lines_with_each_command_coloured(self, output):
+        # A person reading it wants the command column to stand out (#1997).
+        env = {"FORCE_COLOR": "1", "NO_COLOR": None, "TTY_COMPATIBLE": None}
+        shown = runner.invoke(cli_main.app, ["commands"], env=env).output
+        assert "\x1b[1;36mco gmail draft send\x1b[0m" in shown
+        assert re.sub(r"\x1b\[[0-9;]*m", "", shown) == output
 
     def test_it_names_the_two_surfaces_it_cannot_list(self, output):
         assert "co <command> --help" in output

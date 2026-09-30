@@ -52,8 +52,10 @@ co commands             # every command and subcommand, one per line — grep it
 co gmail --help         # the options and subcommands of one command
 ```
 
-`co commands` is plain text with no colour codes, so `co commands | grep draft`
-finds the draft commands without knowing which group holds them.
+`co commands` is plain text with no colour codes in a pipe, so
+`co commands | grep draft` finds the draft commands without knowing which group
+holds them. In a terminal the same lines have the command column coloured:
+every `co` command follows one look, written down in [audit.md](audit.md#look-the-standard-co-holds-itself-to-1997).
 
 ### Claude Code connector preview
 

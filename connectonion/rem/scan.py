@@ -354,8 +354,11 @@ def session_turns(path: Path, kind: str, limit: int = SHORT_SESSION_TURNS + 1) -
 
 
 def scan_projects(subscriptions: dict, days: int, rem_root: Path | None = None,
-                  on_session=None) -> list[dict]:
-    """Every `cwd` a coding session ran in, with how often and how recently."""
+                  on_session=None, progress=None) -> list[dict]:
+    """Every `cwd` a coding session ran in, with how often and how recently.
+
+    `progress(message, "i/N")` every 25 session files, so init can draw a bar.
+    """
     since = datetime.now(timezone.utc) - timedelta(days=days)
     projects = collections.defaultdict(lambda: {"sessions": 0, "first": "", "last": "", "tools": set(),
                                                 "files": []})
@@ -363,7 +366,10 @@ def scan_projects(subscriptions: dict, days: int, rem_root: Path | None = None,
         kind = sub.get("kind")
         if sub.get("enabled") is False or kind not in KINDS or not Path(sub.get("root", "")).is_dir():
             continue
-        for path in source_files(sub):
+        files = source_files(sub)
+        for number, path in enumerate(files, 1):
+            if progress and (number == 1 or number % 25 == 0 or number == len(files)):
+                progress(f"scanning local projects ({name} sessions)", f"{number}/{len(files)}")
             stamp = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
             if stamp < since:
                 continue

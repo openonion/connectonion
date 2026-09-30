@@ -413,16 +413,21 @@ def commands():
     # --help` the one below that. An agent looking for "the command that sends
     # a draft" has to guess which group to open, and a wrong guess is a round
     # trip — or an invented command. This is the whole tree in one call, in
-    # the order --help prints it, plain text so it can be grepped. No Rich:
-    # the audience is a pipe.
+    # the order --help prints it, plain text so it can be grepped: the usual
+    # audience is a pipe, where style.console() prints no colour. A person at
+    # a terminal gets the same lines with the command column coloured (#1997).
+    from rich.markup import escape
+
     from .discovery import command_tree
+    from .style import command, console as style_console
+    out = style_console()
     entries = command_tree(app)
     width = max(len(e.path) for e in entries)
     for entry in entries:
-        print(f"{entry.path.ljust(width)}  {entry.summary}")
-    print()
-    print("Options for one command: co <command> --help")
-    print("Functions inside the browser: co browser help")
+        out.print(f"{command(entry.path)}{' ' * (width - len(entry.path))}  {escape(entry.summary)}", emoji=False)
+    out.print()
+    out.print(f"Options for one command: {command('co <command> --help')}")
+    out.print(f"Functions inside the browser: {command('co browser help')}")
 
 
 claude_app = _typer_app(help="Experimental — run Claude Code in this terminal and follow the same session from a browser. "

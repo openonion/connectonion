@@ -399,12 +399,10 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
     call would only slow them."""
     config = read_config(root)
     saved_zone = config.get("schedule", {}).get("timezone", "")
-    zone = ZoneInfo(saved_zone) if saved_zone else timezone.utc
-    today = now().astimezone(zone).date()
+    zone = notebook_zone(config)
     state, slot = _state_line(root, config, zone)
     logs = run_logs(root)
-    recent = [record for record in logs
-              if datetime.fromisoformat(record["started_at"]).astimezone(zone).date() == today]
+    today, recent = runs_today(logs, zone)
     attempted = [record for record in recent if record.get("runner_attempts", 0)]
     usage = {}
     coverage = {}
@@ -427,6 +425,19 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
             **(_quota_status(config, logs) if live_quota else {})}
 
 
+def notebook_zone(config: dict):
+    """The notebook's own timezone (schedule.timezone), UTC until one is saved."""
+    saved_zone = config.get("schedule", {}).get("timezone", "")
+    return ZoneInfo(saved_zone) if saved_zone else timezone.utc
+
+
+def runs_today(logs: list[dict], zone) -> tuple:
+    """(today in the notebook's zone, the runs that started today): the day status and the daily cap count in."""
+    today = now().astimezone(zone).date()
+    return today, [record for record in logs
+                   if datetime.fromisoformat(record["started_at"]).astimezone(zone).date() == today]
+
+
 def _mailbox_lines(root: Path) -> dict:
     sources = subscriptions(root)
     lines = {}
@@ -446,8 +457,7 @@ def daily_cap(root: Path) -> dict:
     counts in, so the reset named here is the one the cap will actually honour.
     """
     config, state = read_config(root), status(root)
-    saved_zone = config.get("schedule", {}).get("timezone", "")
-    zone = ZoneInfo(saved_zone) if saved_zone else timezone.utc
+    zone = notebook_zone(config)
     midnight = datetime.fromisoformat(state["date"]).replace(tzinfo=zone) + timedelta(days=1)
     limit, used = config["limits"]["runner_calls_per_day"], state["runner_attempts_today"]
     resets = midnight.isoformat(timespec="minutes")

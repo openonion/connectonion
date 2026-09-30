@@ -400,7 +400,20 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a4
+## Current Version: 1.9.0a5
+
+1.9.0a5 gives every co command one look and makes the audit check it (#1997):
+a shared palette, a styled Next line, colour only in a terminal, and a
+`co audit` look rule that runs each page twice and fails a page that is plain
+in a terminal, coloured in a pipe, or worded differently. `co rem status` is a
+dashboard and `co rem init` shows progress (#1996). The first run now writes
+your whole page, the 3 people you wrote to most in the last 14 days, and your
+recent projects, stopping at 5 points of the Codex week. Stable is 1.8.9. See
+[1.9.0a5 notes](docs/releases/1.9.0a5.md).
+
+- 1.9.0a5 (#1996, #1997; the first run's page, people and budget; status ends on the step it names.)
+
+## Previous preview: 1.9.0a4
 
 1.9.0a4 fixes what running 1.9.0a2/a3 on the owner's real notebook found
 (#1974 and the acceptance run's #1981–#1987). Pages are no longer stamped

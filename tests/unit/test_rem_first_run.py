@@ -13,6 +13,7 @@ investigation. No network, no Codex.
 """
 
 import io
+import re
 import json
 
 import pytest
@@ -161,23 +162,42 @@ def test_a_90_day_scan_prints_a_handful_of_lines_and_logs_the_rest(first_run):
     assert log.count("listed gmail mail") >= 13  # every seven-day window is still recorded
 
 
-def test_a_terminal_sees_each_stage_updated_in_place():
+class Terminal(io.StringIO):
+    def isatty(self):
+        return True
+
+
+def test_a_terminal_sees_a_bar_per_stage_and_each_finished_stage_once():
+    """#1996: 90 days is thirteen seven-day windows, so listing mail is a bar that fills;
+    each stage's finished line stays, once, above the next stage's bar."""
     from connectonion.cli.commands.rem_output import StageProgress
 
-    class Terminal(io.StringIO):
-        def isatty(self):
-            return True
-
     screen = Terminal()
-    progress = StageProgress(stream=screen)
+    progress = StageProgress(stream=screen, days=90)
     for week in range(13):
         progress(f"listed gmail mail 2026-0{1 + week % 9}-01 to 2026-0{1 + week % 9}-08", 4)
     progress("scanned gmail mail metadata", 3)
     progress("scanning local projects")
+    progress("scanning local projects (codex sessions)", "50/80")
     progress("mapped projects", 2)
     progress.close()
-    assert "\r" in screen.getvalue()
-    assert screen.getvalue().count("\n") == 2  # one finished line per stage
+    shown = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", screen.getvalue())
+    assert "━" in shown and "13/13" in shown and "50/80" in shown
+    assert shown.count("co rem init: ") == 2
+    assert "co rem init: gmail: 52 messages listed, 3 correspondents" in shown
+
+
+def test_a_model_turn_is_a_spinner_with_its_time_in_a_terminal_and_lines_elsewhere(capsys):
+    from connectonion.cli.commands.rem_output import Turn
+
+    screen = Terminal()
+    with Turn("Writing your page…", stream=screen) as turn:
+        turn.stage("gathering sources")
+    shown = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", screen.getvalue())
+    assert "Writing your page… (gathering sources)" in shown and re.search(r"\d:\d\d:\d\d", shown)
+    with Turn("Writing your page…", stream=io.StringIO()) as turn:
+        turn.stage("gathering sources")
+    assert capsys.readouterr().err == "Investigation: gathering sources\n"
 
 
 # ---------------------------------------------------- investigating me
@@ -187,10 +207,11 @@ def test_runner_ok_investigates_me_once_with_inits_window(first_run):
     root, init, calls = first_run
     result = init("--days", "5")
     assert result.exit_code == 0, result.output
-    assert len(calls) == 1
+    assert [call["record"] for call in calls].count(owner_record(root)) == 1
     call = calls[0]
     assert call["record"] == owner_record(root)
-    assert call["days"] == 5 and call["quick"] is True and call["sent_only"] is True
+    # The whole page, not the pre-#1850 quick pass (owner, 2026-09-30).
+    assert call["days"] == 5 and call["quick"] is False and call["sent_only"] is True
     assert "me@example.org" in call["handles"]
     text = Text.from_ansi(result.output).plain
     assert "codex" in text and "gpt-6-luna" in text
@@ -199,10 +220,23 @@ def test_runner_ok_investigates_me_once_with_inits_window(first_run):
     assert f"--root {root} start" in text
 
 
+def test_init_ends_with_what_is_in_the_notebook_what_was_written_and_what_is_next(first_run):
+    """#1996: the map's counts scrolled away under the model turn; the last lines say them again, skills included."""
+    root, init, _ = first_run
+    result = init()
+    assert result.exit_code == 0, result.output
+    tail = result.output.rstrip().splitlines()[-5:]
+    assert tail[0] == "Your notebook: 4 people, 3 organizations, 0 projects and 0 skills."
+    assert tail[1] == "Written this run: your page and 1 person."
+    assert tail[2].startswith("Your page: ") and tail[2].endswith(".md")
+    assert tail[3].startswith(f"Then keep it current: co rem --root {root} start")
+    assert tail[4] == f"Next: co rem --root {root} open"
+
+
 def test_default_window_matches_the_old_next_command(first_run):
     _, init, calls = first_run
     assert init().exit_code == 0
-    assert calls[0]["days"] == 30  # `investigate me --quick` without --days
+    assert calls[0]["days"] == 30  # `investigate me` without --days
 
 
 def test_runner_missing_says_so_once_and_does_not_investigate(first_run, monkeypatch):
@@ -235,7 +269,7 @@ def test_not_a_terminal_means_not_by_default(first_run, monkeypatch):
     assert calls == []
     text = Text.from_ansi(result.output).plain
     assert "--investigate" in text
-    assert "investigate me --days 5 --quick" in text
+    assert "investigate me --days 5" in text and "--quick" not in text
 
 
 def test_json_with_investigate_runs_it_and_stays_machine_readable(first_run):
@@ -243,7 +277,7 @@ def test_json_with_investigate_runs_it_and_stays_machine_readable(first_run):
     result = init("--json", "--investigate")
     assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)
-    assert len(calls) == 1
+    assert calls[0]["record"] == owner_record(root)
     assert payload["data"]["investigation"] == "completed"
     assert payload["data"]["investigate_me"]["page"] == owner_record(root)
 
@@ -282,7 +316,7 @@ def test_a_failed_first_page_keeps_the_map_and_names_the_retry(first_run, monkey
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
     assert payload["data"]["investigation"] == "failed"
-    assert payload["next"].endswith("investigate me --days 5 --quick")
+    assert payload["next"].endswith("investigate me --days 5")
     assert (root / "notes/people-map.md").is_file()
 
 
@@ -337,7 +371,7 @@ def test_after_me_the_recent_projects_are_written_one_line_each(projects):
     (root, init, calls), written = projects
     result = init()
     assert result.exit_code == 0, result.output
-    assert len(calls) == 1  # me first
+    assert calls[0]["record"] == owner_record(root)  # me first, then the people
     assert written == ["projects/alpha.md", "projects/beta.md"]  # the old one waits
     text = Text.from_ansi(result.output).plain
     assert "~180k billed input tokens" in text and "Cost:" in text and "Ctrl-C" in text
@@ -375,3 +409,75 @@ def test_the_weekly_floor_stops_project_pages(projects, monkeypatch):
     assert result.exit_code == 0, result.output
     assert written == []
     assert "70% floor" in Text.from_ansi(result.output).plain
+
+
+# ------------------------------------------- the people you write to, after me
+
+
+@pytest.fixture
+def people(projects, monkeypatch):
+    """Five people in the queue, most-written-to first, and a spy where each person's turn would be."""
+    (root, init, calls), written = projects
+    rows = [{"record": f"people/p{n}.md", "mode": "full", "days": 150, "last_activity": "2026-09-29T00:00:00Z",
+             "recent": True, "mails": 10 - n, "sent": 3, "received": 3, "last_investigated": None}
+            for n in range(5)]
+    people_written = []
+    monkeypatch.setattr("connectonion.rem.people_pages.queue",
+                        lambda root, **kw: [row for row in rows if row["record"] not in people_written])
+
+    def investigate_person(root, row, **kw):
+        people_written.append(row["record"])
+        return {"record": row["record"], "changed": [row["record"]]}
+
+    monkeypatch.setattr("connectonion.rem.people_pages.investigate_person", investigate_person)
+    return root, init, calls, people_written, written
+
+
+def test_after_me_the_three_people_written_to_most_then_projects(people):
+    """Owner, 2026-09-30: the first run shows the people around you, not only you."""
+    root, init, calls, people_written, projects_written = people
+    result = init()
+    assert result.exit_code == 0, result.output
+    assert [call["record"] for call in calls] == [owner_record(root)]
+    assert people_written == ["people/p0.md", "people/p1.md", "people/p2.md"]
+    assert projects_written == ["projects/alpha.md", "projects/beta.md"]
+    text = Text.from_ansi(result.output).plain
+    assert "the 3 people you wrote to most in the last 14 days" in text
+    assert "it stops at 5 points of the Codex week" in text
+    assert "Written this run: your page, 3 people and 2 project pages." in text
+
+
+def test_the_first_run_stops_at_its_five_points_and_keeps_what_is_written(people, monkeypatch):
+    root, init, calls, people_written, projects_written = people
+    meter = {"used_percent": 10, "window_minutes": 10080, "resets_at": 4102444800, "plan": "plus"}
+    monkeypatch.setattr("connectonion.rem.quota.read", lambda config: dict(meter))
+
+    def one_person_costs_six_points(root, row, **kw):
+        people_written.append(row["record"])
+        meter["used_percent"] += 6
+        return {"record": row["record"], "changed": [row["record"]]}
+
+    monkeypatch.setattr("connectonion.rem.people_pages.investigate_person", one_person_costs_six_points)
+    result = init("--json", "--investigate")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert people_written == ["people/p0.md"]
+    assert "used 6 of its 5 points" in data["people_pages"]["stopped"]
+    assert projects_written == []
+    assert "used 6 of its 5 points" in data["project_pages"]["reason"]
+
+
+def test_ctrl_c_during_people_keeps_the_pages_and_names_the_rest(people, monkeypatch):
+    root, init, calls, people_written, _ = people
+
+    def interrupted(root, row, **kw):
+        if people_written:
+            raise KeyboardInterrupt
+        people_written.append(row["record"])
+        return {"record": row["record"], "changed": [row["record"]]}
+
+    monkeypatch.setattr("connectonion.rem.people_pages.investigate_person", interrupted)
+    result = init()
+    assert result.exit_code == 130
+    assert people_written == ["people/p0.md"]
+    assert f"--root {root} investigate people" in Text.from_ansi(result.output).plain

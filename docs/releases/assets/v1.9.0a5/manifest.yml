@@ -1,0 +1,16 @@
+version: v1.9.0a5
+images:
+  - file: rem-status-dashboard.png
+    alt: "Terminal: co rem status in colour; a header saying not started with co rem start in cyan, Notebook with written of mapped per category, Today, Mailboxes with a cross and the co auth command for each, Budget, Last run, and Next: co rem start"
+    caption: "co rem status is a small dashboard in the shared palette, ending on the step its first line names (issues 1996 and 1997)."
+    scenario: "CO_CAPTURE_CHROMIUM=<chromium> python scripts/capture_190a5_release_cli.py: a throwaway notebook with three pages in a disposable HOME, this checkout's co run with FORCE_COLOR=1, TERM=xterm-256color and COLUMNS=96, output unedited except the temporary HOME shown as ~"
+    viewport: "terminal, 96 columns"
+    commit: 550c41bf
+    source_run: "scripts/capture_190a5_release_cli.py"
+  - file: rem-help-in-colour.png
+    alt: "Terminal: co rem --help in colour; underlined section headings, the command column in cyan, and every co rem example command in cyan"
+    caption: "co rem help pages were plain in a terminal; the audit's second run found them and they now use the shared palette, word for word the same in a pipe (issue 1997)."
+    scenario: "Same run of scripts/capture_190a5_release_cli.py, co rem --help"
+    viewport: "terminal, 96 columns"
+    commit: 550c41bf
+    source_run: "scripts/capture_190a5_release_cli.py"

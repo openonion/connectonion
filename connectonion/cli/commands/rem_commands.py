@@ -8,7 +8,8 @@ from typing import List, Optional
 
 import typer
 
-from .rem_help import page, verbatim
+from . import rem_look
+from .rem_help import show, verbatim
 from .rem_output import render
 
 
@@ -44,7 +45,7 @@ def _carry_over(ctx):
     except (RemError, OSError) as error:
         _emit(ctx, str(error), ["status"], failed=True)
     for line in filter(None, lines):
-        typer.echo(line, err=True)
+        rem_look.line(line, err=True)
 
 
 def _absent_mail(selected, available, failed, sources, chosen_by_hand) -> dict:
@@ -76,23 +77,33 @@ def _absent_mail(selected, available, failed, sources, chosen_by_hand) -> dict:
     return reasons
 
 
-def _emit(ctx, value, arguments, *, failed=False):
+def _emit(ctx, value, arguments, *, failed=False, draw=None):
+    """Print a result and its Next line: styled in a terminal, the same words anywhere else.
+
+    `draw` turns a result into markup of its own (status's dashboard); any
+    other result is `render`'s text with commands, counts and errors marked.
+    """
+    from ..style import next_line
     command = _next(ctx, arguments)
     if ctx.obj["json"]:
         typer.echo(json.dumps({"ok": not failed, "data": value, "next": command}, ensure_ascii=False))
+    elif draw and not failed:
+        from .rem_output import printable
+        rem_look.say(printable(draw(value)))
+        rem_look.say(next_line(command))
     else:
         path, parent = [ctx.info_name or "status"], ctx.parent
         while parent is not None and parent.info_name not in (None, "rem") and parent.parent is not None:
             path.insert(0, parent.info_name)
             parent = parent.parent
         text = render(value, " ".join(path), failed=failed)
-        typer.echo(text, err=failed)
-        typer.echo(f"Next: {command}", err=failed)
+        rem_look.say(rem_look.result(text, titled=not isinstance(value, str)), err=failed, plain=text)
+        rem_look.say(next_line(command), err=failed)
     if failed:
         raise typer.Exit(1)
 
 
-def _handle(ctx, operation, recovery, *, retry=None):
+def _handle(ctx, operation, recovery, *, retry=None, draw=None):
     from ...rem.files import RemError
 
     try:
@@ -108,12 +119,18 @@ def _handle(ctx, operation, recovery, *, retry=None):
                      retry if retry and getattr(error, "_rem_retry_page", False) else recovery)
         _emit(ctx, message, next_step, failed=True)
         return
-    _emit(ctx, value, arguments, failed=failed)
+    _emit(ctx, value, arguments, failed=failed, draw=draw)
+
+
+def _dashboard(ctx, verbose=False):
+    """How status draws its result: a small dashboard, internals only with --verbose (#1996)."""
+    from .rem_status import dashboard
+    return lambda value: dashboard(ctx.obj["root"], value, lambda arguments: _next(ctx, arguments), verbose=verbose)
 
 
 def _moved(ctx, old: str, new: list):
     """An old name still works, and says what it is called now (#1656)."""
-    typer.echo(f"`co rem {old}` is now `{_next(ctx, new)}`; the old name works until 1.9.", err=True)
+    rem_look.line(f"`co rem {old}` is now `{_next(ctx, new)}`; the old name works until 1.9.0.", err=True)
 
 
 UNITS = {"people": "mails", "projects": "sessions", "orgs": "people"}
@@ -145,6 +162,9 @@ def _logged(root, record, phase, call):
            "quota": {"before": quota.read(config)}, **running_marker()}
     path = state_path(root, f"runs/{run['id']}.json")
     write_json(path, run)
+    from .rem_output import Turn
+    turn = Turn({"investigate me": "Writing your page…", "projects write": f"Writing {record}…"}
+                .get(phase, f"Investigating {record}…"))
 
     def update(stage, processed=None, total=None, usage=None):
         run["stage"] = stage
@@ -161,10 +181,11 @@ def _logged(root, record, phase, call):
             run["usage"] = usage
         write_json(path, run)
         detail = f" ({processed}/{total})" if processed is not None and total is not None else ""
-        typer.echo(f"Investigation: {stage}{detail}", err=True)
+        turn.stage(f"{stage}{detail}")
 
     try:
-        result = call(update)
+        with turn:
+            result = call(update)
         run.update(outcome="completed", usage=result.get("usage"), usage_by_stage=result.get("usage_by_stage") or {},
                    changed=result.get("changed") or [], items=result.get("items", 0),
                    chars_in=result.get("chars_gathered") or 0, coverage=result.get("coverage") or [],
@@ -250,7 +271,7 @@ def _mail_clients(root):
 
 
 def _mail_progress(kind, stop, count):
-    typer.echo(f"  {kind}: to {stop:%Y-%m-%d}, {count} mails", err=True)
+    rem_look.line(f"  {kind}: to {stop:%Y-%m-%d}, {count} mails", err=True)
 
 
 def _investigate_me(root, *, days, quick, handle=()):
@@ -325,7 +346,54 @@ def _spending_skipped(ctx, *, want, problem, fix) -> str:
     return ""
 
 
-def _first_projects(ctx, root, config, plan, say) -> dict:
+# The first run's spending (owner, 2026-09-30): your page from everything you
+# sent, the few people you write to most, then your recent projects -- enough
+# that the first minutes show something true about you and the people around
+# you, and never more than half of the notebook's weekly investigation budget.
+FIRST_RUN_PEOPLE = 3
+FIRST_RUN_POINTS = 5
+
+
+def _first_run_gate(root, config):
+    """Before each first-run page: why not to start it, or ''.
+
+    The weekly floor and budget as for any investigation (#1843), and this
+    run's own FIRST_RUN_POINTS of the Codex week. Without a meter (another
+    runner, or Codex not reporting) the page counts are the only bound.
+    """
+    from ...rem import quota
+    from ...rem.service import run_logs
+    start = quota.read(config)
+
+    def gate():
+        meter = quota.read(config)
+        stop = quota.blocks(meter, quota.points_spent(run_logs(root), meter), config["limits"])
+        if stop or "unknown" in meter or "unknown" in start:
+            return stop
+        used = meter["used_percent"] - start["used_percent"]
+        return (f"the first run has used {used} of its {FIRST_RUN_POINTS} points of the Codex week"
+                if used >= FIRST_RUN_POINTS else "")
+    return gate
+
+
+def _first_people(ctx, root, gate) -> dict:
+    """The people you wrote to most in the last 14 days, after your own page (owner, 2026-09-30).
+
+    The same queue, one-turn investigation and lines as `co rem investigate
+    people`, cut to FIRST_RUN_PEOPLE and to the first run's budget; the daily
+    round works through the rest.
+    """
+    from ...rem.service import subscriptions
+    from .rem_people import run_people
+    stopped = gate()
+    if stopped:
+        return {"started": False, "reason": f"People pages were not written: {stopped}."}
+    result, _, _ = run_people(ctx, root, limit=FIRST_RUN_PEOPLE, recent_days=14, days=None, list_only=False,
+                              gate=gate, clients_for=_mail_clients, subscriptions=subscriptions, logged=_logged)
+    return result if isinstance(result, dict) else {"started": False, "reason": result}
+
+
+def _first_projects(ctx, root, config, plan, say, gate=None) -> dict:
     """The project pages of projects active in the last 14 days, after your own page (#1943).
 
     The owner decided the first run should also leave the projects you are
@@ -345,16 +413,20 @@ def _first_projects(ctx, root, config, plan, say) -> dict:
     if not recent:
         return {"started": False, "reason": f"No project active in the last {RECENT_DAYS} days has messages "
                                             "to write from."}
+    def weekly():
+        reading = quota.read(config)
+        return quota.blocks(reading, quota.points_spent(run_logs(root), reading), config["limits"])
+    gate = gate or weekly
+    stopped = gate()
+    if stopped:   # said before the cost line, which would promise pages that will not be written
+        return {"started": False, "reason": f"Project pages were not written: {stopped}."}
     count = len(recent)
-    typer.echo(f"Writing the {count} project page{'s' if count > 1 else ''} active in the last {RECENT_DAYS} "
+    rem_look.line(f"Writing the {count} project page{'s' if count > 1 else ''} active in the last {RECENT_DAYS} "
                f"days from your own session messages, {plan}: about {count} minute{'s' if count > 1 else ''} "
                f"and ~{90 * count}k billed input tokens (one call each, ~90k measured on a real run). "
                + _cost_line(estimate(recent), quota.read(config)) + " Ctrl-C stops it; pages already written "
                "are kept.", err=ctx.obj["json"])
 
-    def gate():
-        reading = quota.read(config)
-        return quota.blocks(reading, quota.points_spent(run_logs(root), reading), config["limits"])
 
     def one(record):
         try:
@@ -368,6 +440,31 @@ def _first_projects(ctx, root, config, plan, say) -> dict:
     if done.get("stopped"):
         say(f"Stopped before the rest: {done['stopped']}. Write them later with {_next(ctx, ['projects', 'write'])}.")
     return {"started": True, **done}
+
+
+def _init_done(ctx, result) -> str:
+    """init's last word (#1996): what is in the notebook, skills included, what was written, what is next.
+
+    The map's summary is printed before anything is spent; by the end it has
+    scrolled away under the model turns, so the counts are said once more.
+    """
+    skills = result.get("skills") or {}
+    names = len({str(row.get("name", "")).casefold() for row in skills.get("skills") or []})
+    counts = [f"{len(result.get(kind) or [])} {label}" for kind, label in
+              (("people", "people"), ("orgs", "organizations"), ("projects", "projects"))]
+    written = (["your page"] if (result.get("investigate_me") or {}).get("outcome") == "completed" else [])
+    people = sum(page.get("outcome") == "accepted" for page in (result.get("people_pages") or {}).get("pages") or [])
+    written += [f"{people} {'person' if people == 1 else 'people'}"] if people else []
+    projects = sum(page.get("outcome") == "accepted" for page in (result.get("project_pages") or {}).get("pages") or [])
+    written += [f"{projects} project page{'s' if projects != 1 else ''}"] if projects else []
+    owner = (result.get("owner_page") or {}).get("path") or ""
+    return "\n".join([
+        "",
+        f"Your notebook: {', '.join(counts)} and {names} skill{'s' if names != 1 else ''}.",
+        "Written this run: " + (", ".join(written[:-1]) + " and " + written[-1] if len(written) > 1
+                                else written[0] if written else "nothing yet") + ".",
+        *([f"Your page: {owner}"] if owner else []),
+        "Then keep it current: " + _next(ctx, ["start"]) + " (it asks before anything is read in the background)."])
 
 
 def make_rem_app(factory):
@@ -397,15 +494,15 @@ def make_rem_app(factory):
             _carry_over(ctx)
         if ctx.invoked_subcommand is None:
             if ctx.obj["json"]:
-                inspect_status(ctx)
+                inspect_status(ctx, verbose=False)
             else:
                 from ...rem.service import status
-                typer.echo(page("co rem"))
+                show("co rem")
                 typer.echo()
                 def operation(root):
                     result = status(root)
                     return result, ["investigate"] if result["configured"] else ["init"]
-                _handle(ctx, operation, ["config"])
+                _handle(ctx, operation, ["config"], draw=_dashboard(ctx))
 
     V = verbatim
 
@@ -457,7 +554,7 @@ def make_rem_app(factory):
                     errors.append({"source": kind, "stage": "client", "error": type(error).__name__})
             failed = {row["source"]: row["error"] for row in errors}
             # One line per stage on the terminal; every step in the log (#1943).
-            progress = StageProgress(log=state_path(root, "init-progress.log"), quiet=ctx.obj["json"])
+            progress = StageProgress(log=state_path(root, "init-progress.log"), quiet=ctx.obj["json"], days=days)
             try:
                 result = build_map(root, sources, clients, days=days,
                                    skill_directories=skills_dir or None, mine=owned, source_errors=errors,
@@ -525,29 +622,32 @@ def make_rem_app(factory):
                 raise typer.Exit(1)
             result["runner"] = {"runner": config["runner"], "model": config["model"], "ready": not problem,
                                 **({"problem": problem, "fix": fix} if problem else {})}
-            retry_me = ["investigate", "me", *window, "--quick"]
+            retry_me = ["investigate", "me", *window]
             reason = _first_page_skipped(ctx, root, result, want=write_mine, problem=problem, fix=fix,
                                          retry=retry_me, init=["init", *window])
             if not ctx.obj["json"]:
                 # The map's summary and your page's facts first: value before any spending.
-                typer.echo(render(result, "init"))
+                text = render(result, "init")
+                rem_look.say(rem_look.result(text), plain=text)
                 typer.echo()
-            keep = ("Then keep it current: " + _next(ctx, ["start"])
-                    + " (it asks before anything is read in the background).")
-            say = (lambda text: None) if ctx.obj["json"] else typer.echo
+            say = ((lambda text: None) if ctx.obj["json"] else
+                   lambda text: rem_look.say(rem_look.highlight(text, counts=True), plain=text))
             plan = rem_runner.PLAN.get(config["runner"], "on the configured runner")
             from ...rem.files import RemError
             if reason:
                 result["investigate_me"] = {"started": False, "reason": reason}
                 say(reason)
             else:
-                me_days = days if window else 30  # what `investigate me --quick` reads without --days
-                typer.echo(f"Writing your own page now from what you sent and your coding sessions of the last "
-                           f"{me_days} days: one model turn with {config['runner']} ({config['model']}), "
-                           f"{plan}. Usually about 10 minutes. Ctrl-C stops it; the map is kept. "
-                           "(--no-investigate skips this.)", err=ctx.obj["json"])
+                me_days = days if window else 30  # what `investigate me` reads without --days
+                cost = (f"First run, {plan}, with {config['runner']} ({config['model']}): your own page from "
+                        f"everything you sent and your coding sessions of the last {me_days} days, then the "
+                        f"{FIRST_RUN_PEOPLE} people you wrote to most in the last 14 days, then the projects "
+                        f"you worked on in the last 14 days. One model turn each, about 15 minutes for your "
+                        f"page; it stops at {FIRST_RUN_POINTS} points of the Codex week. Ctrl-C stops it and "
+                        "keeps the map and every page written. (--no-investigate skips this.)")
+                rem_look.say(rem_look.highlight(cost, counts=True), err=ctx.obj["json"], plain=cost)
                 try:
-                    _investigate_me(root, days=days if window else None, quick=True)
+                    _investigate_me(root, days=days if window else None, quick=False)
                 except KeyboardInterrupt:
                     result.update(investigation="interrupted",
                                   investigate_me={"started": True, "outcome": "interrupted"})
@@ -562,24 +662,38 @@ def make_rem_app(factory):
                 record = summary["record"] if summary else result["owner"]["record"]
                 result.update(investigation="completed",
                               investigate_me={"started": True, "outcome": "completed", "page": record})
-                say("Your page is written (a first pass; it says what it did not cover): "
-                    + str(Notebook(root).path(record)))
-            # Then the projects you worked on in the last two weeks, by the same rules (#1943).
+                say("Your page is written: " + str(Notebook(root).path(record)))
+            # Then the people you write to most, and the projects you worked on,
+            # in the last two weeks, by the same rules and one budget (#1943).
             skipped = _spending_skipped(ctx, want=write_mine, problem=problem, fix=fix)
             if skipped:
+                result["people_pages"] = {"started": False, "reason": "People pages were not written: " + skipped}
                 result["project_pages"] = {"started": False, "reason": "Project pages were not written: " + skipped}
                 if skipped not in (reason or ""):  # said once: the owner-page line may already say why
                     say(result["project_pages"]["reason"])
             else:
+                gate = _first_run_gate(root, config)
                 try:
-                    result["project_pages"] = _first_projects(ctx, root, config, plan, say)
+                    result["people_pages"] = _first_people(ctx, root, gate)
+                except KeyboardInterrupt:
+                    result["people_pages"] = {"started": True, "outcome": "interrupted"}
+                    stopped = ("Stopped. The map and every page written so far are kept; write the rest with "
+                               + _next(ctx, ["investigate", "people"]) + ".")
+                    _emit(ctx, result if ctx.obj["json"] else stopped, ["investigate", "people"])
+                    raise typer.Exit(130)
+                if result["people_pages"].get("reason"):
+                    say(result["people_pages"]["reason"])
+                try:
+                    result["project_pages"] = _first_projects(ctx, root, config, plan, say, gate)
                 except KeyboardInterrupt:
                     result["project_pages"] = {"started": True, "outcome": "interrupted"}
                     stopped = ("Stopped. The map and every page written so far are kept; write the rest with "
                                + _next(ctx, ["projects", "write"]) + ".")
                     _emit(ctx, result if ctx.obj["json"] else stopped, ["projects", "write"])
                     raise typer.Exit(130)
-            return (result if ctx.obj["json"] else keep), ["open"]
+                if result["project_pages"].get("reason"):
+                    say(result["project_pages"]["reason"])
+            return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
         _handle(ctx, run, ["sources"])
 
     @rem.command("investigate", cls=V("co rem investigate"))
@@ -666,7 +780,7 @@ def make_rem_app(factory):
                 rows[category] = {"unfinished": len(queue),
                                   "next": [row["path"] for row in queue if not row["recent"]][:3]}
             first = next((c for c in CATEGORIES if rows[c]["next"]), None)
-            return rows, (["investigate", "me", "--quick"] if pending
+            return rows, (["investigate", "me"] if pending
                           else ["investigate", first] if first else ["list"])
 
         def by_category(root, category):
@@ -690,9 +804,9 @@ def make_rem_app(factory):
             for number, row in enumerate(chosen, 1):
                 stopped = gate()
                 if stopped:
-                    typer.echo(f"Stopped: {stopped}", err=True)
+                    rem_look.line(f"Stopped: {stopped}", err=True)
                     break
-                typer.echo(f"[{number}/{len(chosen)}] {row['path']}", err=True)
+                rem_look.line(f"[{number}/{len(chosen)}] {row['path']}", err=True)
                 try:
                     one(root, notebook, row["path"])
                     done.append({"page": row["path"], "outcome": "accepted"})
@@ -868,14 +982,14 @@ def make_rem_app(factory):
                 if any("if you approve" in str(source.get("state")) for source in summary["sources"].values()):
                     # --yes approves what was shown before; a mailbox offered for
                     # the first time is shown now, on stderr (#1974).
-                    typer.echo(text, err=True)
+                    rem_look.say(rem_look.result(text), err=True, plain=text)
                 return True
             if not sys.stdin.isatty():
-                typer.echo(text, err=True)
-                typer.echo("A noninteractive start cannot consent silently; read the summary above "
+                rem_look.say(rem_look.result(text), err=True, plain=text)
+                rem_look.line("A noninteractive start cannot consent silently; read the summary above "
                            "and run with --yes, or run `co rem start` in a terminal.", err=True)
                 return False
-            typer.echo(text)
+            rem_look.say(rem_look.result(text), plain=text)
             return typer.confirm("Read these sources with this model and schedule?", default=False)
 
         def operation(root):
@@ -905,9 +1019,15 @@ def make_rem_app(factory):
         _handle(ctx, lambda root: (stop(root, scheduler=rem_schedule.default_scheduler()), ["status"]), ["status"])
 
     @rem.command("status", cls=V("co rem status"))
-    def inspect_status(ctx: typer.Context):
+    def inspect_status(ctx: typer.Context, verbose: bool = typer.Option(False, "--verbose")):
         from ...rem.service import status
-        _handle(ctx, lambda root: (status(root, live_quota=True), ["logs"]), ["config"])
+        from .rem_status import status_next
+
+        def operation(root):
+            value = status(root, live_quota=True)
+            return value, status_next(value)
+        _handle(ctx, operation, ["config"],
+                draw=_dashboard(ctx, verbose))
 
     def _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days):
         from ...rem.files import RemError
@@ -919,7 +1039,7 @@ def make_rem_app(factory):
             # A backfill ran 37 minutes over five batches with no output at all
             # (#1957). One line per batch, on stderr so --json stays one document.
             finished.append(record)
-            typer.echo(f"Batch {number}: {record['items']} items, {len(record.get('changed') or [])} pages "
+            rem_look.line(f"Batch {number}: {record['items']} items, {len(record.get('changed') or [])} pages "
                        f"changed, {record.get('runner_attempts', 0)} model calls, {record.get('seconds')}s "
                        f"({record['outcome']})", err=True)
 
@@ -932,7 +1052,7 @@ def make_rem_app(factory):
                     # Ctrl-C exited 130 with nothing said; the finished batches are
                     # kept, and the interrupted one reads again next time.
                     pages = len({page for record in finished for page in record.get("changed") or []})
-                    typer.echo(f"Stopped: {len(finished)} batch{'es' if len(finished) != 1 else ''} finished "
+                    rem_look.line(f"Stopped: {len(finished)} batch{'es' if len(finished) != 1 else ''} finished "
                                f"({sum(r['items'] for r in finished)} items, {pages} pages changed); the "
                                f"interrupted batch reads again next time. See {_next(ctx, ['logs'])}.", err=True)
                     raise typer.Exit(130)
@@ -1075,7 +1195,7 @@ def make_rem_app(factory):
             # The tier is measured when the model changes, never read off its name (#1847).
             if {"model", "runner"} & set(values[::2]) and not no_check:
                 if not ctx.obj["json"]:
-                    typer.echo(f"Checking {config['model']} on a fixture page (one or two model calls)...",
+                    rem_look.line(f"Checking {config['model']} on a fixture page (one or two model calls)...",
                                err=True)
                 value["check"] = check_and_record(root, config)
             return value, ["config"]
@@ -1174,7 +1294,7 @@ def make_rem_app(factory):
 
     @rem.command("advanced", cls=V("co rem advanced"))
     def advanced(ctx: typer.Context):
-        typer.echo(page("co rem advanced"))
+        show("co rem advanced")
 
     @rem.command("scan", cls=V("co rem scan"))
     def scan_sources(ctx: typer.Context,
@@ -1309,9 +1429,9 @@ def make_rem_app(factory):
     from .rem_projects import add_projects_app
     add_projects_app(rem, factory, _handle, _logged)
 
-    # ------------------------------------------------ Old names (until 1.9)
+    # ------------------------------------------------ Old names (until 1.9.0)
 
-    @rem.command("unfinished", help="Old name for `co rem investigate`; works until 1.9.")
+    @rem.command("unfinished", help="Old name for `co rem investigate`; works until 1.9.0.")
     def list_unfinished(ctx: typer.Context, category: str = typer.Argument("")):
         _moved(ctx, "unfinished", ["investigate", *([category] if category and category != "all" else [])])
         from ...rem.files import Notebook
@@ -1320,13 +1440,13 @@ def make_rem_app(factory):
             return pages, ["investigate", pages[0]["path"]] if pages else ["list"]
         _handle(ctx, operation, ["status"])
 
-    @rem.command("people", help="Old name for `co rem list people --aliases`; works until 1.9.")
+    @rem.command("people", help="Old name for `co rem list people --aliases`; works until 1.9.0.")
     def list_people(ctx: typer.Context):
         _moved(ctx, "people", ["list", "people", "--aliases"])
         from ...rem.files import Notebook
         _handle(ctx, lambda root: (Notebook(root).people(), ["list", "people"]), ["list", "people"])
 
-    @rem.command("daily", help="Old name for `co rem sync`; works until 1.9.")
+    @rem.command("daily", help="Old name for `co rem sync`; works until 1.9.0.")
     def daily_round(ctx: typer.Context, days: int = typer.Option(30, "--days", min=1),
                     scheduled: bool = typer.Option(False, "--scheduled")):
         # Installed launchd jobs still call `daily --scheduled`; the notice goes
@@ -1334,13 +1454,13 @@ def make_rem_app(factory):
         _moved(ctx, "daily", ["sync"])
         _sync(ctx, "", "", False, scheduled, False, days)
 
-    @rem.command("subscriptions", help="Old name for `co rem sources`; works until 1.9.")
+    @rem.command("subscriptions", help="Old name for `co rem sources`; works until 1.9.0.")
     def inspect_subscriptions(ctx: typer.Context):
         _moved(ctx, "subscriptions", ["sources"])
         from ...rem.service import subscriptions
         _handle(ctx, lambda root: (subscriptions(root), ["sources"]), ["config"])
 
-    @rem.command("subscribe", help="Old name for `co rem sources add`; works until 1.9.")
+    @rem.command("subscribe", help="Old name for `co rem sources add`; works until 1.9.0.")
     def subscribe(ctx: typer.Context, name: str = typer.Argument(...),
                   chat: List[str] = typer.Option([], "--chat"),
                   project: str = typer.Option("", "--project"),
@@ -1351,13 +1471,13 @@ def make_rem_app(factory):
         _moved(ctx, "subscribe", ["sources", "add", name])
         _add_source(ctx, name, chat, project, about, since, only, force)
 
-    @rem.command("unsubscribe", help="Old name for `co rem sources remove`; works until 1.9.")
+    @rem.command("unsubscribe", help="Old name for `co rem sources remove`; works until 1.9.0.")
     def unsubscribe(ctx: typer.Context, name: str = typer.Argument(...),
                     chat: List[str] = typer.Option([], "--chat")):
         _moved(ctx, "unsubscribe", ["sources", "remove", name])
         _remove_source(ctx, name, chat)
 
-    @rem.command("route", help="Old name for `co rem config set route.<stage>`; works until 1.9.")
+    @rem.command("route", help="Old name for `co rem config set route.<stage>`; works until 1.9.0.")
     def route_stage(ctx: typer.Context, stage: str = typer.Argument(""),
                     runner: str = typer.Option("", "--runner"),
                     model: str = typer.Option("", "--model"),
@@ -1372,7 +1492,7 @@ def make_rem_app(factory):
             return value, ["config"]
         _handle(ctx, operation, ["config"])
 
-    @rem.command("usage", help="Old name for `co rem logs --usage`; works until 1.9.")
+    @rem.command("usage", help="Old name for `co rem logs --usage`; works until 1.9.0.")
     def usage(ctx: typer.Context, days: int = typer.Option(0, "--days")):
         _moved(ctx, "usage", ["logs", "--usage"])
         from ...rem.service import usage_report

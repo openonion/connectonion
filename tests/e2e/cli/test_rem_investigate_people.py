@@ -91,11 +91,11 @@ def test_the_owner_s_page_comes_first_until_it_is_investigated(root):
     result = invoke(root, "investigate")
     assert result.exit_code == 0, result.output
     assert result.output.index("people/me.md") < result.output.index("people/new.md")
-    assert "Next: co rem --root" in result.output and "investigate me --quick" in result.output
+    assert "Next: co rem --root" in result.output and "investigate me" in result.output and "--quick" not in result.output
     assert "init --mine me.personal@example.net,me.backup@example.com" in result.output
     assert "co wiki" not in result.output
     listing = invoke(root, "investigate", "people", "--list")
-    assert listing.output.index("investigate me --quick") < listing.output.index("people/new.md")
+    assert listing.output.index("investigate me") < listing.output.index("people/new.md")
 
 
 def test_an_investigated_owner_page_does_not_hold_the_next_line(root):
