@@ -596,3 +596,24 @@ def test_a_refused_owner_page_does_not_cost_the_rest_of_the_first_run(people, mo
     assert payload["next"].endswith("investigate me")
     assert sorted(people_written) == [f"people/p{n}.md" for n in range(5)]
     assert "projects/alpha.md" in projects_written
+
+
+def test_one_unreadable_mail_body_does_not_skip_the_first_run(first_run, monkeypatch):
+    """A real first run (2026-10-01): 1 of 1,880 bodies timed out, the map was
+    called partial, and init told the owner to check mailbox access and
+    investigated nothing. The archive is a cache; a missing body is a note."""
+    import requests
+    real = Mail.get_email_body
+
+    def one_times_out(self, message_id):
+        if message_id.endswith("-self2"):
+            raise requests.exceptions.ReadTimeout("read timed out")
+        return real(self, message_id)
+
+    monkeypatch.setattr(Mail, "get_email_body", one_times_out)
+    root, init, calls = first_run
+    result = init()
+    assert result.exit_code == 0, result.output
+    assert calls and calls[0]["record"] == owner_record(root)
+    text = Text.from_ansi(result.output).plain
+    assert "could not be saved" in text and "co auth status" not in text

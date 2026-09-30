@@ -691,16 +691,19 @@ def make_rem_app(factory):
                     else:
                         body_report = archive_init(root, result, clients, progress=progress)
                     result["mail_archive"] = body_report
-                    if body_report.get("failed"):
-                        result["errors"].append({"source": "mail-archive", "stage": "body",
-                                                 "error": f"{body_report['failed']} messages unavailable"})
-                        result["phase"] = "partial"
                     write_json(state_path(root, "map.json"), result)
             finally:
                 progress.close()
             unread = {row.get("source") for row in result.get("errors") or []}
             subscribe_read_mail(root, [kind for kind in clients if kind not in unread])
             tips = []
+            unsaved = (result.get("mail_archive") or {}).get("failed")
+            if unsaved:
+                # A cache miss, not a mailbox problem: a real first run lost every
+                # page to one body that timed out of 1,880 (2026-10-01).
+                tips.append(f"{unsaved} mail bod{'y' if unsaved == 1 else 'ies'} could not be saved; the "
+                            "rest of the first run goes on, and the next init retries "
+                            f"{'it' if unsaved == 1 else 'them'}.")
             for kind, provider in (("gmail", "google"), ("outlook", "microsoft")):
                 if kind not in available:
                     tips.append(f"Connect {provider.title()} for People: co auth {provider}; then run "
