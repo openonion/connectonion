@@ -34,6 +34,12 @@ Add what the new material says; leave the rest as it is, word for word. A value
 the new material moves on from: update it, and put the old state in `History`
 with its date. A value it contradicts: name both in `Uncertainties`.
 
+**A page stays readable in one sitting, about 15k characters.** When the new
+material would pass that, fold the oldest `History` into dated one-line
+summaries (keeping their citations); keep the lead and the current state. A
+candidate over 20,000 characters that is longer than the page it replaces is
+refused.
+
 ## Filling the page
 
 - `Unknown — not investigated yet`: find it in the material, or it stays

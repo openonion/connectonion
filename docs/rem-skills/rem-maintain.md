@@ -161,3 +161,17 @@ those now live only in `rem-page-person`, which is appended at runtime.
 ## Only what is open, and a page that stays readable (#1956)
 
 In the 1.9.0a1 acceptance run (2026-09-30), four `sync --all` batches grew `projects/connectonion` from 26.5k to 53.7k characters and from 69 to 175 sources. The growth was mostly week-old 1.8.5 items re-added as "Open threads". The last batch cost 1.73M input tokens for one page, because every turn re-reads the page it maintains. The rule gives open threads a date check and gives the page a size it folds its oldest history into.
+
+**The size is enforced, at every stage that writes a page (#2019).** The rule
+lived only in this Skill, and a daily update is an investigation, not upkeep:
+in the 1.9.0a5 acceptance run (2026-10-01) one daily-update pass took
+`projects/connectonion` from 13,421 to 25,255 characters and `ody-zhou` from
+18,910 to 21,690. The same rule is now in `rem-investigate`, and the runner's
+review refuses any page candidate -- investigation, daily update or upkeep --
+over **20,000 characters that is longer than the page it replaces**; the
+refused candidate is kept with the reason, as every refusal is. Why 20k: on a
+copy of the owner's notebook that day, 696 of 698 pages were under 15k and the
+largest page a person had grown by hand-read material was 18.9k; both growths
+above end over 20k. A page already over the limit is not stuck: a candidate
+that shrinks it is accepted, so it can come down across runs. Every run's
+outcome already carries `page_chars` (before, after) for the page it wrote.

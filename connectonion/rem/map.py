@@ -74,8 +74,10 @@ RELAY = re.compile(r'@(?:[\w-]+\.)*luma-mail\.com$', re.I)
 # wrote from their own company domain.
 BULK = re.compile(
     r'@(?:[\w-]+\.)*(?:substack\.com|beehiiv\.com|shopifyemail\.com|hs-send\.com|loops\.so|docusign\.net'
-    r'|mailchimpapp\.com|mcsv\.net|sendgrid\.net|klaviyomail\.com|convertkit-mail\d*\.com)$'
-    r'|@(?:mail|e|eg|email|emails|e-mails|news|newsletter|comms|edm|specials|communication|survey'
+    r'|mailchimpapp\.com|mcsv\.net|sendgrid\.net|klaviyomail\.com|convertkit-mail\d*\.com'
+    # Workday writes for an employer from its own domains (hub24management@myworkday.com, #2018).
+    r'|myworkday\.com|workday\.com)$'
+    r'|@(?:mail|e|eg|email|emails|e-mails|news|newsletter|comms|edm|specials|communication|survey|otp'
     r'|feedback|invoicing|service|team|marketing|info|updates)\.[\w-]+\.[\w.-]+$', re.I)
 # A sending subdomain sits *under* a company's domain: mail.aitinkerers.org,
 # news.ato.gov.au. Without the second label, anyone@mail.com -- a consumer
@@ -170,18 +172,40 @@ def _service(group: list[dict]) -> bool:
     domain named after them writes from their name (aaron@aaron.dev), and a desk
     the owner answers as often as it writes stays a correspondent.
     """
+    received = sum(row.get('received', 0) for row in group)
+    sent = sum(row.get('sent', 0) for row in group)
+    if not sent and all(_named_by_domain(row['address']) for row in group):
+        return received >= 1
     for row in group:
         words = re.sub(r'[^a-z0-9 ]', ' ', str(row.get('name') or '').casefold()).split()
         domain = _domain(row['address'])
         local = row['address'].partition('@')[0].casefold()
-        if not words or not domain or local == words[0] or organisation(domain).split('.')[0] != words[0]:
+        brand = organisation(domain).split('.')[0] if domain else ''
+        # Or last: "Team Telnyx" <discover@telnyx.com> made a page on the 1.9.0a5
+        # acceptance map (#2018). A person whose address carries one of their names
+        # ("Mia Acme" <mia.tan@acme.com>) stays a person.
+        own = {part for part in re.split(r'[^a-z0-9]+', local) if part}
+        first = words and local != words[0] and brand == words[0]
+        last = len(words) > 1 and brand == words[-1] and not own & set(words)
+        if not domain or not (first or last):
             return False
-    received = sum(row.get('received', 0) for row in group)
-    sent = sum(row.get('sent', 0) for row in group)
     # Never written to, one mail is enough: "Apple" <appleid@id.apple.com> and
     # "Microsoft Clarity" <maccount@microsoft.com> each wrote once and stayed
     # people pages on the owner's notebook (#2008).
     return received >= (3 * sent if sent else 1)
+
+
+def _named_by_domain(address: str) -> bool:
+    """The local part carries the domain's own name, and is more than it: mylebara@lebara.com.au (#2018).
+
+    A person writes from their own name; a service puts its brand on the
+    mailbox. Only for an address the owner never wrote to (`_service`), and
+    never the bare name (aaron@aaron.dev is a person on a domain named after them).
+    """
+    domain = _domain(address)
+    brand = organisation(domain).split('.')[0] if domain else ''
+    local = re.sub(r'[^a-z0-9]', '', address.partition('@')[0].casefold())
+    return len(brand) >= 4 and brand in local and local != brand
 
 
 # Addresses that are a system by their shape alone, whatever the mail's direction.
@@ -274,6 +298,53 @@ def _owner_name(clients: dict, given: str = '', sent_names=None) -> str:
 
 
 UNFILLED = '- Unknown — not investigated yet'
+POSSIBLY = "- Possibly also the owner's: "
+# The History lines the map itself writes on the owner's page, by how they begin.
+OWNER_HISTORY = ('- In the ', '- Most mail with: ', '- Coding sessions in the same window: ')
+ENUMERATION = re.compile(r'^- \[(\d+)\] Enumeration metadata, observed [^ ]+', re.M)
+
+
+def owner_possibly(page: str, lines: list[str]) -> str:
+    """Every "Possibly also the owner's" line replaced by `lines`, at the top of Uncertainties (#2017).
+
+    Each map used to add its list again when the counts had moved, and nothing
+    took back an address confirmed since: the owner's page on the 1.9.0a5
+    acceptance run carried nine such lines for three addresses, two of them
+    already the owner's. Uncertainties left empty takes its placeholder back.
+    """
+    kept = [line for line in page.split('\n') if not line.startswith(POSSIBLY)]
+    page = '\n'.join(kept)
+    if '## Uncertainties\n' not in page:
+        return page
+    if lines:
+        page = page.replace(f'## Uncertainties\n{UNFILLED}\n', '## Uncertainties\n', 1)
+        return page.replace('## Uncertainties\n', '## Uncertainties\n' + '\n'.join(lines) + '\n', 1)
+    if re.search(r'^## Uncertainties\n(?:\n|## |\Z)', page, re.M):
+        empty = UNFILLED if _mapped_only(page) else '- Unknown'
+        page = page.replace('## Uncertainties\n', f'## Uncertainties\n{empty}\n', 1)
+    return page
+
+
+def _refresh_owner_history(page: str, lines: list[str], started: str) -> str:
+    """The map's own History lines, replaced with today's where an earlier map wrote them (#2017).
+
+    After a re-map the owner's page still said "In the 90 days to 2026-09-25".
+    Only lines the map writes, cited to its enumeration source, are touched;
+    that source's observed time moves with them.
+    """
+    source = ENUMERATION.search(page)
+    head, found, rest = page.partition('## History\n')
+    if not source or not found:
+        return page
+    body, sep, tail = rest.partition('\n## ')
+    old = body.split('\n')
+    ours = [i for i, line in enumerate(old) if line.startswith(OWNER_HISTORY)]
+    if not ours:
+        return page
+    new = [line.replace('[1]', f'[{source[1]}]') for line in lines]
+    body = '\n'.join(old[:ours[0]] + new + [line for i, line in enumerate(old[ours[0]:], ours[0]) if i not in ours])
+    page = head + found + body + sep + tail
+    return ENUMERATION.sub(lambda match: f'- [{match[1]}] Enumeration metadata, observed {started}', page, count=1)
 
 
 def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
@@ -346,6 +417,7 @@ def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
         if not lines:
             continue
         page = page.replace(f'## {section}\n{UNFILLED}', f'## {section}\n' + '\n'.join(f'- {line}' for line in lines), 1)
+    page = _refresh_owner_history(page, [f'- {line}' for line in filled['History']], report['started'])
     # init asks about every write-only address; the page names only those that
     # carry the owner's own name. On the real map the write-only list also held
     # two colleagues who answer on other channels, and a page stating they were
@@ -354,9 +426,7 @@ def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
     asked = [f"- Possibly also the owner's: {row['address']} ({row['sent']} sent, none received). "
              f"If it is yours: {row['confirm']}" for row in report['possible_own_addresses']
              if any(token in row['address'].split('@')[0].casefold() for token in tokens)][:5]
-    if asked and '## Uncertainties\n' in page and asked[0] not in page:
-        page = page.replace(f'## Uncertainties\n{UNFILLED}\n', '## Uncertainties\n', 1)
-        page = page.replace('## Uncertainties\n', '## Uncertainties\n' + '\n'.join(asked) + '\n', 1)
+    page = owner_possibly(page, asked)
     if '[1]' in page and '\n## Sources\n- (none yet)' in page:
         page = page.replace('\n## Sources\n- (none yet)', '\n## Sources\n- [1] Enumeration metadata, observed '
                             + report['started'] + ' — .state/map.json; window-limited, not lifetime totals', 1)
@@ -739,7 +809,9 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
                                  'boxes': sorted({box for row in group for box in row.get('boxes', [])}),
                                  'classification': 'automated candidate' if automated else 'unassessed',
                                  'needs_review': _held(group, notebook.read(record))})
-        org_rows += [{'address': a, 'record': record} for a in addresses]
+        # A relay address is the platform's, not the person's employer: luma-mail.com
+        # became an organisation through one person's 253 event mails (#2018).
+        org_rows += [{'address': a, 'record': None if RELAY.search(a) else record} for a in addresses]
         # Asked about, not acted on: the page stays exactly as it is until the
         # owner answers with --mine, because only they can tell their own
         # mailbox from someone who never writes back.
@@ -818,7 +890,15 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
                            for name, sub in subscriptions.items() if sub.get('kind') in ('codex', 'claude-code')]
     if report.get('owner'):
         _fill_owner(notebook, report, owner_name)
-    report['archived'] = (report['tidied'] or {}).get('archived service', []) + _archive_stale(notebook, report)
+    # And tidied again after (#2018): the acceptance run's map made pages that
+    # tidy, run only before it, never saw. Tidy reads this map's rows. The
+    # owner's own addresses wait for the next run: this map has just asked
+    # about them, and init shows the question.
+    save()
+    for action, pages in tidy(root, lock_held=True, own_addresses=False).items():
+        report['tidied'][action] = sorted({*report['tidied'].get(action, []), *pages})
+    report['people'] = [row for row in report['people'] if notebook.path(row['record']).is_file()]
+    report['archived'] = report['tidied'].get('archived service', []) + _archive_stale(notebook, report)
     if report['archived']:
         report['coverage'].append(f"{len(report['archived'])} pages an earlier map made and nobody investigated were "
                                   "duplicates or sandboxes; moved to .state/archived/")
