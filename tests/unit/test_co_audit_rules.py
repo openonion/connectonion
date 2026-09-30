@@ -242,6 +242,18 @@ def test_a_status_next_line_must_have_the_shared_shape():
     assert look("Balance 3\nNext: Show them:  co keys\n", balance + why, path="co status", output=True) == []
 
 
+def test_a_run_lends_the_command_no_credential_from_the_environment(tmp_path, monkeypatch):
+    # With a key set, `co doctor` calls its backend, and the two runs look
+    # compares could get different answers.
+    script = tmp_path / "tool"
+    script.write_text("import os\nprint(os.environ.get('OPENONION_API_KEY'), os.environ.get('LANG_KEEP'))\n")
+    monkeypatch.setattr(audit, "program", lambda _: [sys.executable, str(script)])
+    monkeypatch.setenv("OPENONION_API_KEY", "test-key")
+    monkeypatch.setenv("LANG_KEEP", "kept")
+    assert audit.run(["tool"]).text.split() == ["None", "kept"]
+    assert audit.run(["tool"], terminal=True).text.split() == ["None", "kept"]
+
+
 def test_status_commands_are_read_only_and_leave_co_rem_status_to_its_rewrite():
     assert {"co status", "co doctor", "co commands"} <= set(audit.STATUS)
     assert "co rem status" not in audit.STATUS

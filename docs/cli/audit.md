@@ -18,7 +18,8 @@ co audit co --json
 
 It never reads source code. It runs `<command> --help` (or `-h`), opens every
 subcommand the page lists, and keeps going down, many at once, each in an
-empty HOME and working directory with no input. Then it judges each page from
+empty HOME and working directory with no input and no API keys or tokens from
+the environment. Then it judges each page from
 what it printed. Exit 0 means fit; exit 1 lists each problem and its fix, and
 a table scores every rule:
 

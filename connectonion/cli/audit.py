@@ -114,16 +114,21 @@ def program(name: str) -> list:
 # captured either way; FORCE_COLOR says what a terminal would have decided.
 AGENT = {"NO_COLOR": "1", "COLUMNS": "200", "TERM": "dumb"}
 PERSON = {"FORCE_COLOR": "1", "COLUMNS": "100", "TERM": "xterm-256color"}
+# A key in the environment is the user's as much as one in HOME. With one set
+# (CI sets OPENONION_API_KEY), `co doctor` in STATUS calls its backend, and a
+# network answer can differ between the two runs look compares.
+CREDENTIAL = re.compile(r"_(API_KEY|TOKEN|SECRET)$")
 
 
 def run(argv: list, terminal: bool = False) -> Page:
-    """Run a command as an agent would: empty HOME and cwd, no terminal, no input.
+    """Run a command as an agent would: empty HOME and cwd, no credentials, no terminal, no input.
 
     `terminal=True` runs it as a person's terminal would instead: colour on,
     100 columns, the same empty HOME and no input.
     """
     home, work = Path(tempfile.mkdtemp()), Path(tempfile.mkdtemp())
-    env = {**os.environ, "HOME": str(home), "USERPROFILE": str(home), **(PERSON if terminal else AGENT),
+    env = {**{k: v for k, v in os.environ.items() if not CREDENTIAL.search(k)},
+           "HOME": str(home), "USERPROFILE": str(home), **(PERSON if terminal else AGENT),
            "PAGER": "cat", "GIT_PAGER": "cat", "MANPAGER": "cat"}
     # Python's user site is derived from HOME. Keep installed CLI code
     # importable while isolating the command's data/configuration in a fresh
