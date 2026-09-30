@@ -98,6 +98,8 @@ class Page:
 
 def program(name: str) -> list:
     """The executable to run for a program name: our own `co` beside this Python, else PATH."""
+    if os.sep in name:
+        return [name]
     beside = Path(sys.executable).with_name(name)
     if name == "co" and beside.exists():
         return [str(beside)]
@@ -309,10 +311,10 @@ def audit(target: list, runner=help_page) -> tuple:
     return [f for path, page in within.items() for f in check(path, page, found)], within
 
 
-def score(findings: list, checked: dict) -> list:
+def score(findings: list, checked: dict, rules=RULES) -> list:
     """(rule, pages passing, pages checked) per rule: the benchmark table."""
-    failing = {rule: {f.path for f in findings if f.check == rule} for rule in RULES}
-    return [(rule, len(checked) - len(failing[rule]), len(checked)) for rule in RULES]
+    failing = {rule: {f.path for f in findings if f.check == rule} for rule in rules}
+    return [(rule, len(checked) - len(failing[rule]), len(checked)) for rule in rules]
 
 
 def inventory(found: dict) -> dict:
@@ -388,3 +390,247 @@ def review(path: str, text: str, model: str):
     if not failed:
         return None
     return Finding(path, "review", f"{', '.join(failed)}; {verdict.suggestion}")
+
+
+# ---------------------------------------------------------------------------
+# The visual standard (#1997): does the output look finished in a terminal and
+# stay plain everywhere else? Judged, like the rules above, only from what the
+# program prints, run twice in a fresh empty HOME and cwd: once under a
+# pseudo-terminal where colour is allowed, once into a pipe with NO_COLOR.
+
+STYLE_RULES = ("hangs", "styled", "command_colour", "plain", "same_words", "field_dump")
+FIXES.update({
+    "styled": "prints no colour or weight in a terminal; style the heading, status marks and commands",
+    "command_colour": "the command on a Next:, Example: or Back: line is not styled in a terminal",
+    "plain": "prints escape codes under NO_COLOR into a pipe; colour only a terminal",
+    "same_words": "the words differ between a terminal and a pipe; style the same words, do not change them",
+    "field_dump": "prints raw internal fields; say it in words, one line per item, details behind --verbose",
+})
+# Leaf commands the style audit also runs, not just reads the help of. Two
+# locks, both black-box: the last word is one of these verbs, and the
+# command's own help page says Read-only. Nothing else is ever run, so the
+# audit cannot send, delete or charge; a status-style command that wants to be
+# checked says Read-only on its page.
+SAFE_TO_RUN = ("status", "check", "ls", "doctor")
+RUN_MARK = " [run]"
+ESCAPE = re.compile(r"\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\))")
+SGR = re.compile(r"\x1b\[([0-9;]*)m")
+# `Next: co …`, `Example:  co …`, `Back: co --help`: the command a reader copies.
+LABELLED = re.compile(r"\b(?:Next|Examples?|Back|Try|Run):\s+")
+# `user_id: 42`, `lastSeen = 3`: an identifier with an underscore or an inner
+# capital before a colon or an equals sign is a field name, not words. More
+# than MAX_FIELDS of them in one output is an internal record printed as it is.
+# A Python or JSON literal on its own line (`{'id': 1}`) counts as one each.
+FIELD = re.compile(r"^\s*(?:[-*•]\s+)?([a-z][a-z0-9]*(?:_[a-z0-9]+)+|[a-z]+(?:[A-Z][a-z0-9]*)+)\s*[:=]\s*\S", re.M)
+REPR = re.compile(r"^\s*[\[{]\s*['\"]\w+['\"]\s*:", re.M)
+MAX_FIELDS = 2
+# Seconds a run may take, like --help. Nothing it runs may wait for input.
+RUN_TIMEOUT = 20
+
+
+@dataclass(frozen=True)
+class Output:
+    code: int
+    out: str
+    err: str
+    hung: bool = False
+
+
+def _style_env(home: Path, terminal: bool) -> dict:
+    """Both runs share width and HOME rules; only the colour signals differ."""
+    env = {**os.environ, "HOME": str(home), "USERPROFILE": str(home), "COLUMNS": "200", "LINES": "50",
+           "PAGER": "cat", "GIT_PAGER": "cat", "MANPAGER": "cat", "PYTHONDONTWRITEBYTECODE": "1"}
+    env.setdefault("PYTHONUSERBASE", site.getuserbase())
+    for name in ("FORCE_COLOR", "NO_COLOR", "GITHUB_ACTIONS", "CLICOLOR_FORCE", "PY_COLORS", "TERMINAL_WIDTH"):
+        env.pop(name, None)
+    env.update({"TERM": "xterm-256color"} if terminal else {"NO_COLOR": "1", "TERM": "dumb"})
+    return env
+
+
+def _scrub(text: str, home: Path, work: Path) -> str:
+    """Each run gets its own temporary HOME and cwd; name them the same way in
+    both, or a printed path makes the words differ when nothing else did."""
+    for real, name in ((home, "~"), (work, ".")):
+        for spelling in {str(real), str(real.resolve())}:
+            text = text.replace(spelling, name)
+    return text
+
+
+def run_plain(argv: list) -> Output:
+    """The run a pipe, a log file or launchd sees: NO_COLOR, no terminal, no input."""
+    home, work = Path(tempfile.mkdtemp()), Path(tempfile.mkdtemp())
+    try:
+        done = subprocess.run([*program(argv[0]), *argv[1:]], cwd=work, env=_style_env(home, False),
+                              stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=RUN_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return Output(-1, "", "", hung=True)
+    return Output(done.returncode, _scrub(done.stdout, home, work), _scrub(done.stderr, home, work))
+
+
+def _drain(fd: int, into: list) -> None:
+    """Read a pty until its far end closes, which a pty reports as EIO."""
+    while True:
+        try:
+            data = os.read(fd, 65536)
+        except OSError:
+            return
+        if not data:
+            return
+        into.append(data)
+
+
+def run_terminal(argv: list) -> Output:
+    """The run a person at a terminal sees: stdout and stderr each a 200-column pty.
+
+    Without pty (Windows) it falls back to FORCE_COLOR into a pipe, which Rich
+    and Typer honour; a program that only checks isatty() then looks plain.
+    """
+    home, work = Path(tempfile.mkdtemp()), Path(tempfile.mkdtemp())
+    env, command = _style_env(home, True), [*program(argv[0]), *argv[1:]]
+    try:
+        import fcntl
+        import pty
+        import struct
+        import termios
+    except ImportError:
+        try:
+            done = subprocess.run(command, cwd=work, env={**env, "FORCE_COLOR": "1"}, stdin=subprocess.DEVNULL,
+                                  capture_output=True, text=True, timeout=RUN_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            return Output(-1, "", "", hung=True)
+        return Output(done.returncode, _scrub(done.stdout, home, work), _scrub(done.stderr, home, work))
+    import signal
+    import threading
+
+    pairs = [pty.openpty() for _ in range(2)]
+    for _, follower in pairs:
+        fcntl.ioctl(follower, termios.TIOCSWINSZ, struct.pack("HHHH", 50, 200, 0, 0))
+    chunks = [[], []]
+    proc = subprocess.Popen(command, cwd=work, env=env, stdin=subprocess.DEVNULL,
+                            stdout=pairs[0][1], stderr=pairs[1][1], start_new_session=True)
+    for _, follower in pairs:
+        os.close(follower)
+    readers = [threading.Thread(target=_drain, args=(leader, into), daemon=True)
+               for (leader, _), into in zip(pairs, chunks)]
+    for reader in readers:
+        reader.start()
+    try:
+        code, hung = proc.wait(timeout=RUN_TIMEOUT), False
+    except subprocess.TimeoutExpired:
+        # Its own session, so the whole group goes: a child it started would
+        # otherwise keep the pty open and the run would never finish.
+        os.killpg(proc.pid, signal.SIGKILL)
+        code, hung = proc.wait(), True
+    # A child it left running may hold the pty open; stop waiting after a moment.
+    for reader in readers:
+        reader.join(timeout=5)
+    for leader, _ in pairs:
+        os.close(leader)
+    for reader in readers:
+        reader.join(timeout=5)
+    out, err = (_scrub(b"".join(c).decode("utf-8", "replace").replace("\r\n", "\n"), home, work) for c in chunks)
+    return Output(code, out, err, hung)
+
+
+def screen(raw: str) -> str:
+    """What stays on screen: a spinner redrawn with \\r, or a live display
+    erased with cursor-up and erase-line, leaves only what was last drawn."""
+    lines, here = [], ""
+    for piece in re.split(r"(\r|\n|\x1b\[\d*A|\x1b\[[0-2]?K)", raw):
+        if piece == "\n":
+            lines.append(here)
+            here = ""
+        elif piece == "\r" or re.fullmatch(r"\x1b\[[0-2]?K", piece):
+            here = ""
+        elif re.fullmatch(r"\x1b\[\d*A", piece):
+            up = min(int(piece[2:-1] or 1), len(lines))
+            here = lines[-up] if up else ""
+            del lines[len(lines) - up:]
+        else:
+            here += piece
+    return "\n".join(lines + [here])
+
+
+def _styled_at(line: str, index: int) -> bool:
+    """Whether the visible character at `index` of a raw line is inside a style."""
+    on, seen = False, 0
+    for part in re.split(r"(\x1b\[[0-9;?]*[A-Za-z])", line):
+        match = SGR.fullmatch(part)
+        if match:
+            on = any(code not in ("", "0") for code in match.group(1).split(";"))
+        elif not part.startswith("\x1b"):
+            if index < seen + len(part):
+                return on
+            seen += len(part)
+    return False
+
+
+def style_check(path: str, terminal: Output, plain: Output) -> list:
+    """The visual standard for one output: the terminal run against the plain run.
+
+    `path` ends in RUN_MARK for a command that was run rather than asked for
+    help; only those are checked for field dumps, since a help page's option
+    rows are meant to look like a list.
+    """
+    out, name = [], path.split()[0]
+
+    def add(rule, detail=""):
+        out.append(Finding(path, rule, detail))
+
+    if terminal.hung or plain.hung:
+        return [Finding(path, "hangs", "while running it")]
+    tty = screen(terminal.out) + "\n" + screen(terminal.err)
+    shown = ESCAPE.sub("", tty)
+    if shown.strip() and not SGR.search(tty):
+        add("styled")
+    for raw in tty.splitlines():
+        seen = ESCAPE.sub("", raw)
+        starts = [m.end() for m in LABELLED.finditer(seen) if seen.startswith(name + " ", m.end())]
+        if any(not _styled_at(raw, start) for start in starts):
+            add("command_colour", seen.strip()[:80])
+            break
+    piped = plain.out + "\n" + plain.err
+    escaped = [line for line in piped.splitlines() if "\x1b" in line]
+    if escaped:
+        add("plain", ESCAPE.sub("", escaped[0]).strip()[:80])
+    words = [shown.split(), ESCAPE.sub("", piped).split()]
+    if words[0] != words[1]:
+        at = next((i for i, (a, b) in enumerate(zip(*words)) if a != b), min(map(len, words)))
+        add("same_words", f"terminal {' '.join(words[0][at:at + 4])!r}, pipe {' '.join(words[1][at:at + 4])!r}")
+    if path.endswith(RUN_MARK):
+        fields = FIELD.findall(piped) + ["{…}"] * len(REPR.findall(piped))
+        if len(fields) > MAX_FIELDS:
+            add("field_dump", ", ".join(dict.fromkeys(fields))[:80])
+    return out
+
+
+def runnable(path: str, page: Page) -> bool:
+    """A leaf whose verb is safe to run and whose own help says Read-only."""
+    return (path.split()[-1] in SAFE_TO_RUN and page.code == 0 and "Read-only" in page.text
+            and not listed_commands(page.text))
+
+
+def style_audit(checked: dict, terminal=None, plain=None) -> tuple:
+    """(findings, outputs checked) under the visual standard: every help page
+    checked, plus one run of each read-only status-style command among them."""
+    terminal, plain = terminal or run_terminal, plain or run_plain
+    jobs = [(path, [*path.split(), "--help"]) for path, page in checked.items() if page.code == 0]
+    jobs += [(path + RUN_MARK, path.split()) for path, page in checked.items() if runnable(path, page)]
+
+    def one(job):
+        path, argv = job
+        return style_check(path, terminal(argv), plain(argv))
+
+    with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
+        results = list(pool.map(one, jobs))
+    return [f for found in results for f in found], {path: checked[path.removesuffix(RUN_MARK)] for path, _ in jobs}
+
+
+def by_group(findings: list, checked: dict) -> list:
+    """(group, outputs passing every rule, outputs checked), worst first: the fan-out table."""
+    groups = {}
+    for path in checked:
+        groups.setdefault(" ".join(path.removesuffix(RUN_MARK).split()[:2]), []).append(path)
+    failing = {f.path for f in findings}
+    rows = [(group, sum(p not in failing for p in paths), len(paths)) for group, paths in groups.items()]
+    return sorted(rows, key=lambda row: (row[1] / row[2], row[0]))
