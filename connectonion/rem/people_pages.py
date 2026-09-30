@@ -6,9 +6,12 @@ bodies and attachments) before any model starts, and since #1942 the one
 investigate turn searches that material as files instead of digesting it
 (#1850). What was missing is the order and the size of the work:
 
-- **Order.** The busiest person first never fit a day's calls (#1723). The
-  person the owner wrote to last is what is useful now, so people are ordered
-  by their last mail, the last `recent_days` first.
+- **Order.** The busiest person first never fit a day's calls (#1723), and
+  the last mail alone put vendors and one-mail strangers first (#1974). People
+  the owner wrote to come first, then people who wrote more than once, then
+  one-mail contacts; within each, the last `recent_days` first, then volume
+  decayed by age (`rank`). This is the one people queue: the overview, `people
+  --list` and the run read it.
 - **Only what is new.** A page investigated before is not read again from the
   start: when mail with the person arrived after the page was last
   investigated, the window is the days since then, so the gather and the turn
@@ -34,20 +37,24 @@ FIRST_WINDOW_DAYS = 150
 MEASURED = {"mails": 157, "input_tokens": 1_931_414, "minutes": 15}
 # A mail still arriving at the last listing carries a time before it.
 OVERLAP = timedelta(hours=1)
-_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 def _map(root: Path) -> dict:
     return read_json(state_path(root, "map.json"), {})
 
 
-def _excluded(state: dict) -> set:
-    """The same people the investigate queue leaves out (queue.order)."""
-    excluded = {(state.get("owner") or {}).get("record")}
-    excluded |= {row.get("record") for row in state.get("possible_own_addresses", [])}
-    excluded |= {row.get("record") for row in state.get("people", [])
-                 if row.get("classification") == "automated candidate"}
-    return excluded
+def rank(row: dict, now: datetime) -> tuple:
+    """Where a person stands in the queue; smaller first.
+
+    Tier: the owner wrote to them (a correspondent), else they wrote more than
+    once, else one mail. Within a tier the last `recent_days` first, then the
+    map's mail count decayed by the weeks since the last mail, so 600 mails
+    last week outrank one mail yesterday.
+    """
+    tier = 0 if row.get("sent") else 1 if row.get("mails", 0) > 1 else 2
+    last = _stamp(row.get("last_activity"))
+    weeks = max(0.0, (now - last).total_seconds() / 604_800) if last else 52.0
+    return tier, not row["recent"], -(row.get("mails", 0) / (1 + weeks)), row["record"]
 
 
 def _stamp(value) -> datetime | None:
@@ -81,15 +88,17 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
     investigated in the last week. `since` keeps only people whose last mail
     is after it: what the daily round's later runs follow.
     """
-    from .queue import last_investigated, order
+    from .queue import excluded_people, last_investigated, order
     now = now or datetime.now(timezone.utc)
     today = now.date()
     cutoff = (now - timedelta(days=recent_days)).isoformat()
     state, activity = _map(root), _activity(root)
     done = read_json(state_path(root, "people/investigated.json"), {})
-    excluded = _excluded(state)
+    excluded = excluded_people(state)
     unfinished = {row["path"]: row for row in order(root, "people")}
-    mails = {row.get("record"): row.get("mails") or 0 for row in state.get("people", [])}
+    from .merge import resolve
+    mapped = {resolve(root, row.get("record") or ""): row for row in state.get("people", [])}
+    excluded = {resolve(root, record) for record in excluded if record}
     notebook = Notebook(root)
     rows = []
     for record in notebook.list("people"):
@@ -102,7 +111,11 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
         # status line keeps only a date, and mail later that day is still new.
         at = _stamp(done.get(record)) or (datetime.combine(investigated, datetime.max.time(), timezone.utc)
                                           if investigated else None)
-        if at and last and _stamp(last) > at:
+        hollow = unfinished.get(record, {}).get("hollow")
+        if hollow:
+            # Stamped by a run that read nothing (#1974): read again in full.
+            mode, window, investigated = "full", FIRST_WINDOW_DAYS, None
+        elif at and last and _stamp(last) > at:
             mode, window = "update", max(1, (today - at.date()).days + 1)
         elif record in unfinished and not unfinished[record]["recent"]:
             mode, window = "full", FIRST_WINDOW_DAYS
@@ -110,11 +123,12 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
             continue
         if since and not last > since:
             continue
+        row = mapped.get(record, {})
         rows.append({"record": record, "mode": mode, "days": window, "last_activity": last,
-                     "recent": last >= cutoff, "mails": mails.get(record, 0),
+                     "recent": last >= cutoff, "mails": row.get("mails") or 0,
+                     "sent": row.get("sent") or 0, "received": row.get("received") or 0,
                      "last_investigated": investigated.isoformat() if investigated else None})
-    return sorted(rows, key=lambda r: (not r["recent"], -(_stamp(r["last_activity"]) or _EPOCH).timestamp(),
-                                       r["record"]))
+    return sorted(rows, key=lambda r: rank(r, now))
 
 
 def estimate(rows: list[dict]) -> dict:
@@ -126,7 +140,8 @@ def estimate(rows: list[dict]) -> dict:
     """
     return {"people": len(rows), "model_calls": len(rows), "recent": sum(1 for r in rows if r["recent"]),
             "updates": sum(1 for r in rows if r["mode"] == "update"),
-            "mails_mapped": sum(r["mails"] for r in rows if r["mode"] == "full"), "measured": MEASURED}
+            "mails_mapped": sum(r["mails"] for r in rows if r["mode"] == "full"), "measured": MEASURED,
+            "window_days": FIRST_WINDOW_DAYS}
 
 
 def handles(root: Path, record: str) -> tuple[str, list[str]]:

@@ -33,6 +33,13 @@ def _quiet_dependency_notices() -> None:
     silenced: every other warning, ours included, still shows.
     """
     warnings.filterwarnings("ignore", category=FutureWarning, module=r"google\.api_core\..*")
+    # pypdf reports a malformed attachment's recoveries ("Ignoring wrong pointing
+    # object", "Multiple definitions in dictionary") as warnings and log lines;
+    # co rem printed them between its own progress lines (#1974). The PDF is
+    # still read, or named as unreadable, by rem.attachments.
+    warnings.filterwarnings("ignore", module=r"pypdf(\..*)?")
+    import logging
+    logging.getLogger("pypdf").setLevel(logging.ERROR)
 
 
 _quiet_dependency_notices()

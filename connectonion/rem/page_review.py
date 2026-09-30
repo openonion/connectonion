@@ -217,6 +217,55 @@ def drop_owner_addresses(text: str, owner: set[str]) -> tuple[str, list[str]]:
     return IDENTITY_LINE.sub(clean, text), sorted(set(removed))
 
 
+# What an investigation hands the model about itself, not about the subject.
+# A page that cites only these was written from nothing (#1974).
+CONTEXT_SOURCES = ("investigation:page", "investigation:coverage", "investigation:quick-scope",
+                   "investigation:project-inventory", "investigation:original-evidence",
+                   "investigation:org-pages")
+
+
+def _known_sources(items: list[dict]) -> set:
+    known = {i['source'] for i in items if i.get('source') and i['source'] != 'investigation:page'}
+    derived = [source for i in items if i.get("role") in ("reflection-summary", "extract", "evidence-index")
+               for source in i.get("sources", [])]
+    known.update(derived)
+    # A coding session is one transcript file; citing the session rather than
+    # one line of it is coarse but traceable. Dora's page cited
+    # `claude-code:<session>` for an account digested from that session.
+    known.update(source.rsplit(":", 1)[0] for source in derived
+                 if source.startswith(("codex:", "claude-code:")) and source.count(":") >= 2)
+    return known
+
+
+def _identifiable(value: str, *, known, record, original, old_sources, items, pages) -> bool:
+    return bool(any(source in value for source in known) or value.strip() in old_sources
+                or re.search(r'https?://\S+', value) or _local_reference(value, original, items)
+                or prior_context_reference(value, record, items, original)
+                # The map's own record, when the page already cited it: a real
+                # pass reworded "Enumeration metadata ... .state/map.json".
+                or ('.state/map.json' in value and '.state/map.json' in original)
+                # "The page as it stood said so", named by the page item's own id.
+                or 'investigation:page' in value
+                # A citation carried over from the page before this run: every
+                # source id it names is already in that page's Sources, reworded.
+                or _carried_over(value, old_sources)
+                # Another page of this notebook, named as context -- never as
+                # corroboration: "Existing mapped page `people/…md`, inspected".
+                or (re.search(r'\b(existing|mapped|prior)\b', value, re.I)
+                    and any(page in value for page in pages if page != record)))
+
+
+def _material(value: str, *, known, record, original, old_sources, items) -> bool:
+    """Does this Sources entry name something about the subject, not the run's own context?"""
+    if '.state/map.json' in value or 'Enumeration metadata' in value:
+        return False
+    material = known - set(CONTEXT_SOURCES)
+    return bool(any(source in value for source in material) or re.search(r'https?://\S+', value)
+                or _local_reference(value, original, items) or _carried_over(value, old_sources)
+                or (value.strip() and value.strip() in old_sources
+                    and not any(source in value for source in CONTEXT_SOURCES)))
+
+
 def validate(record: str, candidate: str, original: str, items: list[dict], pages=frozenset()) -> list[str]:
     """Structural checks only; citation existence does not prove factual entailment."""
     body = prose(candidate)
@@ -233,15 +282,7 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     definitions = re.findall(r'^\s*(?:- )?\[(W?\d+)\]\s*:?(.*)$', sources, re.M)
     defined = Counter(key for key, _ in definitions)
     errors += [f'Missing or duplicate citation: {key}' for key in refs if defined[key] != 1]
-    known = {i['source'] for i in items if i.get('source') and i['source'] != 'investigation:page'}
-    derived = [source for i in items if i.get("role") in ("reflection-summary", "extract", "evidence-index")
-               for source in i.get("sources", [])]
-    known.update(derived)
-    # A coding session is one transcript file; citing the session rather than
-    # one line of it is coarse but traceable. Dora's page cited
-    # `claude-code:<session>` for an account digested from that session.
-    known.update(source.rsplit(":", 1)[0] for source in derived
-                 if source.startswith(("codex:", "claude-code:")) and source.count(":") >= 2)
+    known = _known_sources(items)
     if record.startswith('projects/'):
         errors += _project_overview_errors(candidate)
         for label in ('Sessions', 'First seen', 'Last seen'):
@@ -256,26 +297,97 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
             errors.append(f'Citation bundles multiple files: {key}')
         if key not in refs:
             errors.append(f'Unused citation: {key}')
-        if not (any(source in value for source in known) or value.strip() in old_sources
-                or re.search(r'https?://\S+', value) or _local_reference(value, original, items)
-                or prior_context_reference(value, record, items, original)
-                # The map's own record, when the page already cited it: a real
-                # pass reworded "Enumeration metadata ... .state/map.json".
-                or ('.state/map.json' in value and '.state/map.json' in original)
-                # "The page as it stood said so", named by the page item's own id.
-                or 'investigation:page' in value
-                # A citation carried over from the page before this run: every
-                # source id it names is already in that page's Sources, reworded.
-                or _carried_over(value, old_sources)
-                # Another page of this notebook, named as context -- never as
-                # corroboration: "Existing mapped page `people/…md`, inspected".
-                or (re.search(r'\b(existing|mapped|prior)\b', value, re.I)
-                    and any(page in value for page in pages if page != record))):
+        if not _identifiable(value, known=known, record=record, original=original, old_sources=old_sources,
+                             items=items, pages=pages):
             errors.append(f'Citation has no identifiable source: {key}')
     if candidate != original and not refs:
         errors.append('Changed page has no numbered evidence references')
+    investigation = any(item.get('role') == 'page' and item.get('record') == record for item in items)
+    if (investigation and candidate != original and definitions
+            and not any(_material(value, known=known, record=record, original=original,
+                                  old_sources=old_sources, items=items) for _, value in definitions)):
+        # founders@unsw (1.9.0a2): 919k tokens, stamped "investigated", written
+        # from the page and the coverage note -- nothing about the subject.
+        errors.append('Page cites only the page itself and the coverage note; nothing about the subject was read')
     if record.startswith('people/'):
         for label in Notebook.PERSON_CONTACT:
             if not re.search(r'^- ' + re.escape(label) + ':', content, re.M):
                 errors.append(f'Missing contact field: {label}')
     return errors
+
+
+CITATION = re.compile(r'\[(W?\d+)\](?!\()')
+CONTACT_LINE = re.compile(r'^- (' + '|'.join(re.escape(label) for label in Notebook.PERSON_CONTACT) + r'):')
+
+
+def drop_unresolved(record: str, text: str, original: str, items: list[dict],
+                    pages=frozenset()) -> tuple[str, dict]:
+    """Remove only what rests on a citation that cannot be traced, instead of refusing the page (#1974).
+
+    A project page was refused after 199 seconds and 16k output tokens for one
+    miscopied session id; everything else on it was cited correctly. The
+    validator already decides which citations resolve, so this acts on that
+    decision: a marker beside a good citation goes, a line resting on it alone
+    goes (a contact field keeps its label and says Unknown), its Sources entry
+    goes. What remains is validated as usual.
+    """
+    nothing = {'citations': [], 'lines': 0}
+    head, marker, tail = text.partition('\n## Sources\n')
+    if not headings(record) or not marker:
+        return text, nothing
+    after = re.search(r'^(?:## |Investigation:)', tail, re.M)
+    sources, rest = (tail[:after.start()], tail[after.start():]) if after else (tail, '')
+    definitions = re.findall(r'^\s*(?:- )?\[(W?\d+)\]\s*:?(.*)$', sources, re.M)
+    defined = Counter(key for key, _ in definitions)
+    old_sources = original.partition('\n## Sources\n')[2]
+    known = _known_sources(items)
+    bad = {key for key, value in definitions if defined[key] == 1 and not _identifiable(
+        value, known=known, record=record, original=original, old_sources=old_sources, items=items, pages=pages)}
+    bad |= {key for key in CITATION.findall(prose(head)) if not defined[key]}
+    if not bad:
+        return text, nothing
+    kept, dropped = [], 0
+    for line, visible in zip(head.split('\n'), prose(head).split('\n')):
+        cited = CITATION.findall(visible)
+        if not set(cited) & bad:
+            kept.append(line)
+            continue
+        dropped += 1 if set(cited) <= bad or CONTACT_LINE.match(line) else 0
+        if CONTACT_LINE.match(line) and set(cited) <= bad:
+            kept.append(CONTACT_LINE.match(line).group(0) + ' Unknown')
+        elif not set(cited) <= bad:
+            kept.append(re.sub(r'[ \t]*\[(?:' + '|'.join(sorted(bad)) + r')\](?!\()', '', line))
+    head = _fill_emptied_sections('\n'.join(kept))
+    sources = ''.join(line for line in sources.splitlines(keepends=True)
+                      if not ((match := re.match(r'^\s*(?:- )?\[(W?\d+)\]', line)) and match[1] in bad))
+    return head + marker + sources + rest, {'citations': sorted(bad), 'lines': dropped}
+
+
+def _fill_emptied_sections(head: str) -> str:
+    """A section whose every line went says Unknown, so the page keeps its shape."""
+    parts = re.split(r'(?m)^(## .+)$', head)
+    for index in range(1, len(parts), 2):
+        body = parts[index + 1] if index + 1 < len(parts) else ''
+        if not body.strip():
+            parts[index + 1] = '\n- Unknown\n\n' if index + 1 < len(parts) else ''
+    return ''.join(parts)
+
+
+def link_company(notebook, record: str, text: str) -> str:
+    """`Company:` naming an organisation the notebook has a page for links to it (#1974).
+
+    0 of 4 person pages whose company had an organisation page linked it; the
+    title match is exact, so nothing is guessed.
+    """
+    match = re.search(r'^- Company: (.*)$', text, re.M)
+    if not record.startswith('people/') or not match:
+        return text
+    name, cites = re.match(r'^(.*?)((?:\s*\[W?\d+\])*)\s*$', match.group(1)).groups()
+    name = name.strip()
+    if not name or name.startswith('[') or name.casefold().startswith('unknown'):
+        return text
+    for org in notebook.list('orgs'):
+        title = next((line[2:].strip() for line in notebook.read(org).splitlines() if line.startswith('# ')), '')
+        if title.casefold() == name.casefold():
+            return text[:match.start()] + f'- Company: [{name}](../{org}){cites}' + text[match.end():]
+    return text

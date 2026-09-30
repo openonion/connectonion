@@ -102,10 +102,13 @@ def _clients(sources: dict) -> dict:
 
 
 def _reserve(root: Path, phase: str, attempts: int, meter: dict) -> tuple[dict, Path]:
+    from .service import running_marker
+    # The model and the process, so logs --usage can name one (#1974) and a
+    # later run can tell this one died.
     record = {'id': 'run_' + uuid.uuid4().hex, 'started_at': now().isoformat(),
               'outcome': 'running', 'runner_attempts': attempts, 'usage': None,
               'sources': [], 'items': 0, 'changed': [], 'phase': phase,
-              'quota': {'before': meter}}
+              'model': read_config(root)['model'], 'quota': {'before': meter}, **running_marker()}
     path = state_path(root, f"runs/{record['id']}.json")
     write_json(path, record)
     return record, path

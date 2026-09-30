@@ -5,6 +5,7 @@ import json
 import os
 import re
 import signal
+import socket
 import threading
 import uuid
 from contextlib import contextmanager
@@ -264,6 +265,55 @@ def run_logs(root: Path, run_id: str = "") -> list[dict]:
     return sorted(records, key=lambda record: record["started_at"], reverse=True)
 
 
+def running_marker() -> dict:
+    """Which process a "running" record belongs to, so a later run can tell it died."""
+    return {"pid": os.getpid(), "host": socket.gethostname()}
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:  # another user's process: alive, not ours to judge
+        return True
+    return True
+
+
+def abandon_stale_runs(root: Path) -> list[str]:
+    """Mark "running" records whose run can no longer finish as abandoned, with why (#1974).
+
+    A run killed outright (SIGKILL, a sleep that never woke the process, a
+    closed laptop lid mid-turn) never closes its record, and the owner's
+    notebook showed two runs "running" for days. On this machine a record
+    names its process, so a dead one is certain; a record from before that, or
+    from another machine, is abandoned once it is older than the runner
+    timeout times its attempts, plus an hour for gathering. Called by the
+    commands that write runs; status and logs stay read-only.
+    """
+    timeout = read_config(root)["limits"]["timeout_seconds"]
+    host, moment, closed = socket.gethostname(), now(), []
+    for path in state_path(root, "runs").glob("run_*.json"):
+        record = read_json(path, {})
+        if not isinstance(record, dict) or record.get("outcome") != "running":
+            continue
+        if record.get("pid") and record.get("host") == host:
+            if _alive(int(record["pid"])):
+                continue
+            reason = f"its process ({record['pid']}) is no longer running; it was killed or the machine restarted"
+        else:
+            last = datetime.fromisoformat(record.get("stage_updated_at") or record["started_at"])
+            limit = timedelta(seconds=timeout * (max(int(record.get("runner_attempts") or 0), 1) + 1) + 3600)
+            if moment - last < limit:
+                continue
+            reason = (f"no progress for {int((moment - last).total_seconds() // 3600)} h, past its runner "
+                      f"timeout ({timeout} s a call); it was killed or the machine slept through it")
+        record.update(outcome="abandoned", reason=reason, finished_at=record.get("finished_at") or moment.isoformat())
+        write_json(path, record)
+        closed.append(record.get("id", path.stem))
+    return closed
+
+
 def worker_state(root: Path) -> dict:
     saved = read_json(state_path(root, "worker.json"), {})
     return saved if isinstance(saved, dict) else {}
@@ -323,6 +373,26 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
     return "Stopped — background maintenance is off; `co rem sync` works by hand, `co rem start` resumes", None
 
 
+def mailbox_state(kind: str, source: dict) -> tuple[str, str]:
+    """(what is true of this mailbox for the daily round, the command that changes it or '').
+
+    Notebooks made before init subscribed its mailboxes (#1946) had Gmail
+    connected but switched off, and doctor said "connected" while the round
+    read no mail at all (#1974). Connected, subscribed and approved are three
+    facts, each with its own fix.
+    """
+    provider = "google" if kind == "gmail" else "microsoft"
+    if not mail_available(kind):
+        return "not connected", f"co auth {provider}"
+    if source.get("unsubscribed"):
+        return "removed by you; investigate and the daily round leave it alone", ""
+    if not source.get("enabled"):
+        return "connected, but not read by the daily round (not subscribed)", f"co rem sources add {kind}"
+    if not source.get("consented"):
+        return "subscribed, waiting for your approval", "co rem start"
+    return "read by the daily round", ""
+
+
 def status(root: Path, *, live_quota: bool = False) -> dict:
     """`live_quota` reads the Codex meter now (#1843). Only `co rem status` asks:
     the round and sync call this inside the lock, where a Codex process per
@@ -353,7 +423,17 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
             "runner_attempts_today": sum(record.get("runner_attempts", 0) for record in attempted),
             "usage_today": usage, "usage_coverage": coverage,
             "last_run": logs[0] if logs else None,
+            "mailboxes": _mailbox_lines(root),
             **(_quota_status(config, logs) if live_quota else {})}
+
+
+def _mailbox_lines(root: Path) -> dict:
+    sources = subscriptions(root)
+    lines = {}
+    for kind in MAIL_KINDS:
+        state, fix = mailbox_state(kind, sources.get(kind, {}))
+        lines[kind] = f"{state}: {fix}" if fix else state
+    return lines
 
 
 CAP_LIMIT = "Daily runner-attempt limit reached"
@@ -407,14 +487,25 @@ MODEL_ROUTE = {
 }
 
 
+def offered_mailboxes(root: Path) -> list[str]:
+    """Connected mailboxes the round does not read and the owner never removed: `start` offers them (#1974)."""
+    sources = subscriptions(root)
+    return [kind for kind in MAIL_KINDS if mail_available(kind)
+            and not sources.get(kind, {}).get("enabled") and not sources.get(kind, {}).get("unsubscribed")]
+
+
 def consent_summary(root: Path) -> dict:
     """Everything `start` must show before a single source body is read."""
     from .runner import CONFINEMENT
     config = read_config(root)
     sources = {}
+    offered = offered_mailboxes(root)
     for name, source in subscriptions(root).items():
         if source.get("adapter") == "deferred":
             state = "not implemented yet"
+        elif name in offered:
+            state = ("connected; read from now on if you approve (automated senders skipped). "
+                     f"Keep it out with co rem sources remove {name}")
         elif not source.get("enabled"):
             state = "unsubscribed"
         elif source.get("kind") in KINDS:
@@ -459,6 +550,10 @@ def start(root: Path, *, confirm, scheduler, runner=None) -> dict:
     # read; asking again whenever one is waiting means it is read only once shown.
     waiting = [name for name, source in subscriptions(root).items()
                if source.get("enabled") and not source.get("consented") and source.get("kind") in READABLE]
+    # A connected mailbox init did not subscribe (notebooks before #1946) is
+    # offered, never switched on unasked: it is read only if this is approved.
+    offered = offered_mailboxes(root)
+    waiting += offered
     # The same holds for everything else the summary shows. A consent recorded
     # before the summary was, has no fingerprint and is asked for once more.
     agreed = read_json(state_path(root, "consent.json"), {}) if not first else {}
@@ -467,6 +562,7 @@ def start(root: Path, *, confirm, scheduler, runner=None) -> dict:
     if first or waiting or changed:
         if not confirm(consent_summary(root)):
             return {"started": False, "consented": False, "first_batch": None}
+        subscribe_read_mail(root, offered)
         approve_sources(root)
     # The first batch runs before the clock is installed: loading a launchd job
     # fires its run-at-load batch immediately, and two batches would race for the
@@ -636,6 +732,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         raise RemError("Source access is not authorized yet; run `co rem start` to review and confirm it")
     with maintenance_lock(root), _terminate_as_interrupt():
         config = validate(read_config(root))
+        abandon_stale_runs(root)
         selected = _selected_sources(root, source)
         progress = read_json(state_path(root, "progress.json"), {})
         if not isinstance(progress, dict):
@@ -800,7 +897,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
     getattr(runner, "preflight", lambda: None)()
     from . import quota
     # What this run cost in points of the owner's Codex week (#1843), measured.
-    record.update(outcome="running", runner_attempts=attempts, quota={"before": quota.read(config)})
+    record.update(outcome="running", runner_attempts=attempts, quota={"before": quota.read(config)},
+                  **running_marker())
     write_json(path, record)  # Reserve the attempts before starting a COAI process.
     usage = {}
     stage = "extract" if record["extracted"] and digested is None else "maintain"
@@ -911,14 +1009,20 @@ def usage_report(root: Path, days: int | None = None) -> dict:
                 target[key] = round(target.get(key, 0) + usage[key] * factor)
 
     total, by_stage, by_model, by_source = {}, {}, {}, {}
-    chars_by_model, items_by_source = {}, {}
+    chars_by_model, sized_by_model, items_by_source = {}, {}, {}
     for run in runs:
         add(total, run["usage"])
         for stage, usage in (run.get("usage_by_stage") or {}).items():
             add(by_stage.setdefault(stage, {}), usage)
-        model = run.get("model", "?")
+        # Records from before the model was stored are said to be that, not "?" (#1974).
+        model = run.get("model") or "unrecorded"
         add(by_model.setdefault(model, {}), run["usage"])
-        chars_by_model[model] = chars_by_model.get(model, 0) + (run.get("chars_in") or 0)
+        if run.get("chars_in"):
+            # Only runs that recorded their input size count towards the rate:
+            # tokens from runs with no size over the size of the others was a
+            # figure in the thousands per 1k characters.
+            chars_by_model[model] = chars_by_model.get(model, 0) + run["chars_in"]
+            add(sized_by_model.setdefault(model, {}), run["usage"])
         shares = run.get("items_by_source") or {}
         total_items = sum(shares.values()) or 1
         for source, count in shares.items():
@@ -928,8 +1032,10 @@ def usage_report(root: Path, days: int | None = None) -> dict:
         table["items"] = items_by_source[source]
         table["input_tokens_per_item"] = round(table.get("input_tokens", 0) / max(items_by_source[source], 1), 1)
     for model, table in by_model.items():
-        table["chars_in"] = chars_by_model[model]
-        table["input_tokens_per_1k_chars"] = round(table.get("input_tokens", 0) / max(chars_by_model[model] / 1000, 0.001), 1)
+        table["chars_in"] = chars_by_model.get(model, 0)
+        if chars_by_model.get(model):
+            table["input_tokens_per_1k_chars"] = round(
+                sized_by_model[model].get("input_tokens", 0) / (chars_by_model[model] / 1000), 1)
     # The fixed part of every turn: the composed Skill text, re-sent on each
     # tool round. #1851 set a 15k-character ceiling for a one-page turn; this
     # is where a regression shows up (older runs did not record it).
