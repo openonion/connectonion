@@ -341,7 +341,8 @@ def test_a_hollow_investigation_puts_the_page_back_in_the_queue(tmp_path):
 
 def test_a_run_that_read_no_body_is_hollow_whatever_it_matched(tmp_path):
     from connectonion.rem.queue import hollow_investigations
-    root = _people(tmp_path, [])
+    root = _people(tmp_path, [{"record": "people/listing.md", "addresses": ["l@x.example"], "mails": 33,
+                               "sent": 1, "received": 32, "last": ago(20)[:10]}])
     runs = state_path(root, "runs")
     runs.mkdir(parents=True, exist_ok=True)
     write_json(runs / "run_c.json", {"id": "run_c", "started_at": ago(0.1), "phase": "investigate",
@@ -374,3 +375,17 @@ def test_a_page_stamped_with_no_source_about_its_subject_is_hollow(tmp_path):
         "- (none yet)", "- [1] investigation:coverage — the collector record\n- [2] Enumeration metadata — "
                         ".state/map.json"))
     assert hollow_investigations(root) == {"people/founders.md"}
+
+
+def test_a_hollow_run_on_a_record_merged_since_is_judged_as_the_page_it_lives_in(tmp_path):
+    """#1976 merges pages and keeps old names as aliases; run records keep the old name."""
+    from connectonion.rem.queue import hollow_investigations
+    root = _people(tmp_path, [{"record": "people/kept.md", "addresses": ["k@x.example"], "mails": 5,
+                               "sent": 1, "received": 4, "last": ago(20)[:10]}])
+    write_json(state_path(root, "aliases.json"), {"people/old.md": {"into": "people/kept.md"}})
+    runs = state_path(root, "runs")
+    runs.mkdir(parents=True, exist_ok=True)
+    write_json(runs / "run_d.json", {"id": "run_d", "started_at": ago(0.1), "phase": "investigate",
+                                     "record": "people/old.md", "outcome": "completed",
+                                     "coverage": ["gmail (me@x): 0 matched, 0 bodies read, 0 attachments read"]})
+    assert hollow_investigations(root) == {"people/kept.md"}

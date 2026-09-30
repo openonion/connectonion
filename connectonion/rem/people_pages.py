@@ -96,7 +96,9 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
     done = read_json(state_path(root, "people/investigated.json"), {})
     excluded = excluded_people(state)
     unfinished = {row["path"]: row for row in order(root, "people")}
-    mapped = {row.get("record"): row for row in state.get("people", [])}
+    from .merge import resolve
+    mapped = {resolve(root, row.get("record") or ""): row for row in state.get("people", [])}
+    excluded = {resolve(root, record) for record in excluded if record}
     notebook = Notebook(root)
     rows = []
     for record in notebook.list("people"):

@@ -100,18 +100,20 @@ def hollow_investigations(root) -> set:
     notebook = Notebook(root)
     hollow = {record for category in ("people", "orgs") for record in notebook.list(category)
               if _stamped_from_nothing(notebook.read(record))}
+    from .merge import resolve
     latest = {}
     for path in state_path(root, "runs").glob("run_*.json"):
         run = read_json(path, {})
         if not isinstance(run, dict) or run.get("phase") not in ("investigate", "investigate me"):
             continue
-        record = run.get("record") or ""
+        # A record merged since (#1976) is judged as the page it now lives in.
+        record = resolve(root, run.get("record") or "")
         if record.startswith(("people/", "orgs/")) and run.get("outcome") == "completed" \
                 and run.get("started_at", "") > latest.get(record, {}).get("started_at", ""):
             latest[record] = run
-    return hollow | {record for record, run in latest.items()
-                     if _material_read(run.get("coverage") or []) == 0
-                     or any(re.search(r"summarised in 0 chunk", line) for line in run.get("coverage") or [])}
+    return hollow | {record for record, run in latest.items() if notebook.path(record).is_file()
+                     and (_material_read(run.get("coverage") or []) == 0
+                     or any(re.search(r"summarised in 0 chunk", line) for line in run.get("coverage") or []))}
 
 
 def _stamped_from_nothing(page: str) -> bool:
@@ -131,7 +133,9 @@ def order(root, category: str, today: date | None = None) -> list[dict]:
     prefix = CATEGORIES[category]
     state = read_json(state_path(root, "map.json"), {})
     weight = weights(state)
-    excluded = excluded_people(state) | needs_review(root)
+    from .merge import resolve
+    # The map may name a record a later merge aliased (#1976): exclude the page it lives in.
+    excluded = {resolve(root, record) for record in excluded_people(state) if record} | needs_review(root)
     hollow = hollow_investigations(root) if category in ("people", "orgs") else set()
     notebook = Notebook(root)
     entries = notebook.unfinished(prefix.split("/")[0])
