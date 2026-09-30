@@ -152,7 +152,33 @@ def test_project_and_skill_templates_match_created_skeletons(tmp_path):
         headings = re.findall(r'^## .+$', template, re.MULTILINE)
         assert headings == re.findall(r'^## .+$', notebook.read(record), re.MULTILINE)
         for stage in ('init', 'maintain', 'investigate'):
-            assert template in instructions(stage)
+            # The maintainers' pointer is stripped at composition (#2001).
+            assert re.sub(r'(?m)^Why these rules: .*\n+', '', template) in instructions(stage)
+
+
+@pytest.mark.parametrize("stage", ["investigate", "maintain", "extract", "abstract"])
+def test_no_turn_is_pointed_at_the_rationale_docs(stage):
+    """#2001: the a4 UNSW turn read docs/rem-skills/rem-investigate.md from the
+    installed wheel because every Skill said "Why these rules: docs/…"."""
+    for kind in ("", "codex", "whatsapp"):
+        assert "Why these rules" not in instructions(stage, kind)
+        assert "docs/rem-skills" not in instructions(stage, kind, page_kind="person")
+
+
+@pytest.mark.parametrize("source", ["codex", "whatsapp"])
+@pytest.mark.parametrize("kind", ["person", "project", "org", "skill"])
+def test_maintaining_extract_notes_stays_within_15k_whatever_the_source(tmp_path, source, kind):
+    """#2000: a one-page maintain turn was 17.5k with the codex or whatsapp Skill
+    appended, though it reads extraction notes, not the source."""
+    from connectonion.rem.runner import task_prompt
+
+    items = [{"role": "page", "record": f"{ {'person': 'people', 'project': 'projects', 'org': 'orgs', 'skill': 'skills/catalog'}[kind]}/x.md",
+              "text": "# X", "one_page": True},
+             {"role": "extract", "source": f"{source}:s +3", "text": "## Projects\n- **X** — note"}]
+    task_prompt(tmp_path, items, "maintain", source)
+    given = (tmp_path / "instructions.md").read_text(encoding="utf-8")
+    assert len(given) <= 15_000
+    assert f"rem-source-{source}" not in given and len(given) == len(instructions("maintain", page_kind=kind))
 
 
 def test_maintenance_is_told_what_is_still_open_and_how_large_a_page_may_grow():
