@@ -408,6 +408,73 @@ def test_sync_all_is_the_backfill(lifecycle):
     assert json.loads(result.stdout)["data"]["outcome"] == "caught_up"
 
 
+def _spend_the_day(root):
+    """A run record that used the whole day's cap, as a busy real day leaves."""
+    import uuid
+    from datetime import datetime, timezone
+
+    from connectonion.rem.files import state_path, write_json
+    record_id = "run_" + uuid.uuid4().hex
+    write_json(state_path(root, f"runs/{record_id}.json"),
+               {"id": record_id, "started_at": datetime.now(timezone.utc).isoformat(),
+                "runner_attempts": 30, "outcome": "completed", "items": 1})
+
+
+def test_a_sync_refused_by_the_cap_is_in_logs_and_says_when_it_resets(lifecycle):
+    """#1957: "Next: co rem logs" pointed at a listing with nothing in it."""
+    from tests.unit.test_rem_source import rollout
+    root, sessions, calls = lifecycle
+    assert invoke(root, "start", "--yes").exit_code == 0
+    _spend_the_day(root)
+    rollout(sessions / "rollout-a.jsonl", [("user", "one more thing")])
+    refused = invoke(root, "sync")
+    assert refused.exit_code == 1 and calls == []
+    assert "resets" in refused.output and "limits.runner_calls_per_day" in refused.output
+    assert refused.output.rstrip().endswith(" config")   # Next names where the cap is set
+    logs = json.loads(invoke(root, "--json", "logs").stdout)["data"]
+    assert logs[0]["outcome"] == "refused"
+    dry = json.loads(invoke(root, "--json", "sync", "--dry-run").stdout)["data"]
+    assert dry["daily_cap"]["remaining"] == 0 and dry["daily_cap"]["resets_at"]
+
+
+def _recording_runner(monkeypatch, calls, stop_after=None):
+    """The maintainer as sync calls it, one call per batch; no model."""
+    def run_stage(notebook, items, config, **options):
+        if stop_after is not None and len(calls) >= stop_after:
+            raise KeyboardInterrupt
+        calls.append(items)
+        return {"usage": None, "changed": []}
+    monkeypatch.setattr("connectonion.rem.runner.run_stage", run_stage)
+
+
+def test_sync_all_reports_each_batch_and_stops_at_the_cap(lifecycle, monkeypatch):
+    from connectonion.rem.config import set_config
+    from tests.unit.test_rem_source import rollout
+    root, sessions, calls = lifecycle
+    _recording_runner(monkeypatch, calls)
+    assert invoke(root, "start", "--yes").exit_code == 0
+    set_config(root, ["limits.items_per_batch", "2", "limits.extract_items_per_batch", "2",
+                      "limits.runner_calls_per_day", "2"])
+    rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)])
+    result = invoke(root, "sync", "--all")
+    assert len(calls) == 2 and result.exit_code == 1
+    assert "Batch 1:" in result.stderr and "Batch 2:" in result.stderr
+    assert "2 batches" in result.output and "resets" in result.output
+
+
+def test_ctrl_c_during_sync_all_says_what_finished(lifecycle, monkeypatch):
+    from connectonion.rem.config import set_config
+    from tests.unit.test_rem_source import rollout
+    root, sessions, calls = lifecycle
+    assert invoke(root, "start", "--yes").exit_code == 0
+    set_config(root, ["limits.items_per_batch", "2", "limits.extract_items_per_batch", "2"])
+    rollout(sessions / "rollout-a.jsonl", [("user", f"fact {n}") for n in range(7)])
+    _recording_runner(monkeypatch, calls, stop_after=1)
+    result = invoke(root, "sync", "--all")
+    assert result.exit_code == 130
+    assert "1 batch finished" in result.stderr
+
+
 def test_usage_command_shows_where_tokens_went(tmp_path):
     from connectonion.rem.files import state_path, write_json
     prepare(tmp_path)
