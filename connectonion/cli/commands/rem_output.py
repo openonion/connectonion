@@ -66,7 +66,9 @@ class StageProgress:
                               + (f" (to {end.group(1)})" if end else ""))
             if verb == "scanning":
                 return kind, f"{kind}: listing mail..."
-            return kind, f"{kind}: {self.listed.get(kind, 0):,} {"message" if self.listed.get(kind, 0) == 1 else "messages"} listed, {count or 0:,} {"correspondent" if count == 1 else "correspondents"}"
+            listed, count = self.listed.get(kind, 0), count or 0
+            return kind, (f"{kind}: {listed:,} message{'' if listed == 1 else 's'} listed, "
+                          f"{count:,} correspondent{'' if count == 1 else 's'}")
         stage = ("mail bodies" if message.startswith("saving mail bodies") else
                  "skills" if "skills" in message else "projects" if "project" in message else message)
         if count is None:
