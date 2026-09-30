@@ -23,9 +23,12 @@ from rich.markup import escape
 
 from ...inbox import ANSWERING, Inbox, ListenerStopped, provider, reactions_enabled
 from ...inbox.consumer import serve_with_listener
+from .. import style
 from .command_tips import print_tip
 
-console = Console()
+# The shared palette with Rich's auto-highlighting off (#2008): `co whatsapp
+# check` came out with a path in two magentas and dates in bold cyan pieces.
+console = style.console()
 # No markup on stderr. Everything printed here is a sentence from a platform,
 # a provider or a log, never our own formatting, and Rich read the `[whatsapp]`
 # in `pip install 'connectonion[whatsapp]'` as a style tag and printed
@@ -34,7 +37,7 @@ console = Console()
 # soft_wrap: a background listener's stderr is its log file, and Rich wrapped
 # every line there at 80 columns, so a path or a pip command arrived in three
 # pieces that no one can paste and no reader can match on.
-errors = Console(stderr=True, markup=False, soft_wrap=True)
+errors = Console(stderr=True, markup=False, soft_wrap=True, highlight=False, theme=style.THEME)
 
 EXIT_CONFIG = 3
 EXIT_TIMEOUT = 124
@@ -652,8 +655,17 @@ def handle_check(name: str) -> None:
     p = provider(name)
     problems = p.check()
     for problem in problems:
-        console.print(f"[red]✗[/red] {escape(problem)}")
+        # A problem that names its next step says so on the Next line every
+        # result ends with, not in the middle of the sentence before it.
+        said, _, then = problem.partition(" Next: ")
+        console.print(f"{style.error('✗')} {escape(said)}")
+        if then:
+            print_tip(f"Next: {then}")
     if problems:
+        # A fix outside co (`pip install 'connectonion[whatsapp]'`) names no
+        # co command; the step after it is to check again (#2008).
+        if not any(" Next: " in problem for problem in problems):
+            print_tip(f"Next: co {name} check")
         sys.exit(EXIT_CONFIG)
     inbox = Inbox(name)
     recovery_error = inbox.root / "recovery-error.txt"
@@ -689,8 +701,8 @@ def handle_check(name: str) -> None:
         sys.exit(1)
     pid = inbox.listener_pid()
     listener = f"listener pid {pid}" if pid else "no listener running (receive starts one)"
-    console.print(f"[green]✓[/green] {name} configured · {listener} · "
-                  f"{len(inbox.unread())} unread · {inbox.root}")
+    console.print(f"{style.ok('✓')} {escape(name)} configured · {escape(listener)} · "
+                  f"{style.count(len(inbox.unread()))} unread · {style.path(inbox.root)}")
     stale = version_line(name, inbox, pid, installed=installed_version()) if pid else ""
     if stale:
         errors.print(stale, style="yellow")
@@ -728,7 +740,7 @@ def _report_connection(name: str, inbox: Inbox, pid) -> None:
         return
     if state.get("state") == "connected":
         account = state.get("account") or "unknown"
-        console.print(f"[green]✓[/green] connected as {account} since {state.get('at', '?')}")
+        console.print(f"{style.ok('✓')} connected as {escape(account)} since {escape(str(state.get('at', '?')))}")
         print_tip(f"Next: co {name} receive")
         return
     errors.print(f"listener {pid} is running but {state.get('state', 'not connected')} "

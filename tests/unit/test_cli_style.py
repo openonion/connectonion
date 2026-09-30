@@ -67,3 +67,11 @@ def test_a_hand_written_page_colours_its_commands_titles_and_next_line_in_a_term
     assert "\x1b[1;4mOptions:\x1b[0m" in shown
     assert render(style.next_line("co proxy status"), terminal=True) in shown
     assert ANSI.sub("", shown) == PAGE + "\n"
+
+
+def test_a_parenthetical_after_a_command_is_not_part_of_it():
+    # `co auth status` ended on "Next: co status (balance and deployments; …)"
+    # with the whole parenthetical coloured as the command (#2008).
+    line = style.markup("Next: co status (balance and deployments; makes a signed request)")
+    assert style.command("co status") in line
+    assert "(balance and deployments; makes a signed request)" in line.split("[/co.command]")[1]

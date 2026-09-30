@@ -1,7 +1,7 @@
 """
 Purpose: Display redacted credential diagnostics, canonical account status, and deployments
 LLM-Note:
-  Dependencies: imports from [os, requests, pathlib, dotenv.dotenv_values, rich.console, rich.panel, rich.table, rich.text, credentials.account_in_token, project_identity, project_root, address] | imported by [cli/main.py via handle_status()] | calls the configured backend /api/v1/auth | tested by [tests/e2e/cli/test_cli_status.py]
+  Dependencies: imports from [os, requests, pathlib, dotenv.dotenv_values, cli.style, command_tips.print_tip, rich.table, rich.text, credentials.account_in_token, project_identity, project_root, address] | imported by [cli/main.py via handle_status()] | calls the configured backend /api/v1/auth | tested by [tests/e2e/cli/test_cli_status.py]
   Data flow: receives reveal=False by default → inspects supported provider variable names in process env and the selected env file (global by default) without loading values → compares OpenOnion sources by public account claim while keeping token values redacted → if reveal=True, displays full values in a separate warning-marked table → load_api_key() performs guarded resolution/recovery → project_identity() selects global identity or an explicitly selected project → creates and signs a fresh auth message → POST to /api/v1/auth → displays account and deployments
   State/Effects: discovery is non-mutating and makes no network call | account resolution may re-authenticate and repair a stored token only when the guarded CLI policy finds a different account | then makes account/deployment requests | default output contains no secret material; explicit --reveal writes full values to the terminal
   Integration: exposes handle_status(reveal=False) for CLI | credential discovery supports every provider in core/llm.py | OpenOnion auth still uses load_api_key() priority | source paths are privacy-safe (<project>/.env and ~/.co/keys.env)
@@ -15,18 +15,20 @@ from typing import Mapping
 
 import requests
 from dotenv import dotenv_values
-from rich.console import Console
 from rich.markup import escape
-from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
 from ...backend import backend_url
 from ...credentials import account_in_token
 from ...project import project_identity, project_root
+from .. import style
+from .command_tips import print_tip
 from .project_cmd_lib import load_api_key
 
-console = Console()
+# The shared palette, and no auto-highlighting (#2008): Rich's default coloured
+# any number or path it found, so a balance came out in random pieces.
+console = style.console()
 
 
 CREDENTIAL_ENV_VARS = (
@@ -355,15 +357,15 @@ def _oauth_rows(
 def _show_credentials(reveal: bool = False) -> None:
     """Print provider credential availability and optionally full values."""
     status_style = {
-        "configured": "green",
-        "discovered · not loaded": "yellow",
-        "conflict": "red",
-        "missing": "dim",
+        "configured": "co.ok",
+        "discovered · not loaded": "co.warn",
+        "conflict": "co.error",
+        "missing": "co.muted",
     }
     table = Table(
         title="Credential Sources",
         show_header=True,
-        header_style="bold cyan",
+        header_style="co.heading",
     )
     table.add_column("Provider")
     table.add_column("Credential")
@@ -371,11 +373,11 @@ def _show_credentials(reveal: bool = False) -> None:
     table.add_column("Source")
 
     for row in _credential_rows():
-        style = status_style[row["status"]]
+        shade = status_style[row["status"]]
         table.add_row(
             row["provider"],
             row["credential"],
-            f"[{style}]{row['status']}[/{style}]",
+            f"[{shade}]{row['status']}[/{shade}]",
             row["source"],
         )
 
@@ -384,24 +386,23 @@ def _show_credentials(reveal: bool = False) -> None:
 
     if not reveal:
         console.print(
-            "[dim]Values hidden. Use [bold]co status --reveal[/bold] "
-            "only when you intentionally need full credentials.[/dim]"
+            style.muted("Values hidden. Use ") + style.command("co status --reveal")
+            + style.muted(" only when you intentionally need full credentials.")
         )
         return
 
     revealed_rows = _revealed_credential_rows()
     if not revealed_rows:
-        console.print("[dim]No credential values are available to reveal.[/dim]")
+        console.print(style.muted("No credential values are available to reveal."))
         return
 
     console.print(
-        "\n[bold yellow]⚠ Secrets shown in full. "
-        "Do not share this output or paste it into logs.[/bold yellow]"
+        "\n" + style.warn("Secrets shown in full. Do not share this output or paste it into logs.")
     )
     revealed_table = Table(
         title="Revealed Credential Values",
         show_header=True,
-        header_style="bold yellow",
+        header_style="co.warn",
     )
     revealed_table.add_column("Provider")
     revealed_table.add_column("Credential")
@@ -427,7 +428,7 @@ def _fetch_deployments(api_key: str):
         timeout=30,
     )
     if response.status_code != 200:
-        console.print(f"\n[yellow]Could not load deployments: {response.status_code}[/yellow]")
+        console.print("\n" + style.warn(f"Could not load deployments: {response.status_code}"))
         return []
     return response.json().get("deployments", [])
 
@@ -440,11 +441,11 @@ def _show_deployments(deployments):
         # never in it. A bare "none" told an operator with four registered
         # servers and two running agents that they had nothing deployed —
         # answering the one question this command exists to answer, wrongly.
-        console.print("\n[cyan]Deployed Agents (cloud):[/cyan] none")
-        console.print("[dim]  agents on your own servers: co server ls[/dim]")
+        console.print("\n" + style.heading("Deployed Agents (cloud):") + " none")
+        console.print(style.muted("  agents on your own servers: ") + style.command("co server ls"))
         return
 
-    table = Table(title="Deployed Agents", show_header=True, header_style="bold cyan")
+    table = Table(title="Deployed Agents", show_header=True, header_style="co.heading")
     table.add_column("Project")
     table.add_column("Status")
     table.add_column("Active")
@@ -489,9 +490,8 @@ def handle_status(reveal: bool = False):
     # Load API key
     api_key = load_api_key()
     if not api_key:
-        console.print("\n❌ [bold red]No API key found[/bold red]")
-        console.print("\n[cyan]Authenticate first:[/cyan]")
-        console.print("  [bold]co auth[/bold]     Authenticate with OpenOnion\n")
+        console.print("\n" + style.error("No API key found") + ": authenticate with OpenOnion to see the account.")
+        print_tip("Next: co auth")
         return
 
     import time
@@ -502,8 +502,8 @@ def handle_status(reveal: bool = False):
     # project key first (including from nested directories), global fallback.
     addr_data = project_identity()
     if not addr_data:
-        console.print("\n❌ [bold red]No keys found[/bold red]")
-        console.print("[yellow]Run 'co auth' first.[/yellow]\n")
+        console.print("\n" + style.error("No keys found") + ": this machine has no agent identity yet.")
+        print_tip("Next: co auth")
         return
 
     # This key predates the SLIP-0010 switch, so the phrase saved beside it now
@@ -513,16 +513,16 @@ def handle_status(reveal: bool = False):
     # way back.
     if addr_data.get("legacy_derivation"):
         console.print(
-            "\n[yellow]⚠ This identity was created before ConnectOnion adopted "
-            "SLIP-0010 key derivation.[/yellow]"
+            "\n" + style.warn("This identity was created before ConnectOnion adopted "
+                              "SLIP-0010 key derivation.")
         )
         console.print(
-            "[dim]  It keeps working. But your recovery phrase now derives a "
+            "[co.muted]  It keeps working. But your recovery phrase now derives a "
             "different address,\n"
             "  so 'co auth recover' with those words gives you a new, empty "
             "agent — not this one.\n"
             "  Keep .co/keys/agent.key backed up; the phrase alone no longer "
-            "restores it.[/dim]"
+            "restores it.[/co.muted]"
         )
 
     public_key = addr_data["address"]
@@ -542,8 +542,9 @@ def handle_status(reveal: bool = False):
     )
 
     if response.status_code != 200:
-        console.print(f"\n❌ [bold red]Error {response.status_code}[/bold red]")
-        console.print(f"[yellow]{response.text}[/yellow]\n")
+        console.print("\n" + style.error(f"Error {response.status_code}") + " from the account service:")
+        console.print(style.warn(response.text))
+        print_tip("Next: co doctor")
         return
 
     data = response.json()
@@ -553,38 +554,36 @@ def handle_status(reveal: bool = False):
     # Compute short address from full address (first 6 chars + ... + last 4 chars)
     short_address = f"{public_key[:6]}...{public_key[-4:]}"
 
-    info_lines = [
-        f"[cyan]Agent Address:[/cyan] {public_key}",
-        f"[cyan]Agent ID:[/cyan] {short_address}",
-        f"[cyan]Email:[/cyan] {email_info.get('address') or os.getenv('AGENT_EMAIL', 'Not configured')}",
-        f"[cyan]Balance:[/cyan] ${user.get('balance_usd', 0.0):.4f}",
-        f"[cyan]Total Spent:[/cyan] ${user.get('total_cost_usd', 0.0):.4f}",
-        f"[cyan]Credits:[/cyan] ${user.get('credits_usd', 0.0):.4f}",
-    ]
-
-    console.print("\n")
-    console.print(Panel.fit(
-        "\n".join(info_lines),
-        title="📊 Account Status",
-        border_style="cyan"
-    ))
+    email = email_info.get('address') or os.getenv('AGENT_EMAIL', 'Not configured')
+    # A header line and one line per item (#2008), where a cyan panel titled
+    # "📊 Account Status" used to be: the standard has no emoji titles.
+    console.print("\n" + style.heading("Account"))
+    for label, value in (
+        ("Agent Address", escape(public_key)),
+        ("Agent ID", escape(short_address)),
+        ("Email", escape(email)),
+        ("Balance", style.count(f"${user.get('balance_usd', 0.0):.4f}")),
+        ("Total Spent", f"${user.get('total_cost_usd', 0.0):.4f}"),
+        ("Credits", f"${user.get('credits_usd', 0.0):.4f}"),
+    ):
+        console.print(f"  {label}: {value}")
 
     _show_deployments(_fetch_deployments(api_key))
 
     if user.get('balance_usd', 0) <= 0:
         # The default stays Gemini 3.8 (#1869); at zero the free ways to keep
         # going are named, not only the purchase page.
-        console.print("\n[yellow]⚠️  No credits left. Add credits at https://o.openonion.ai/purchase[/yellow]\n"
+        console.print("\n" + style.warn("No credits left. Add credits at https://o.openonion.ai/purchase") + "\n"
                       "   Or keep going for free:\n"
                       "   • model=\"co/gemma\"            Google's free Gemma on ConnectOnion's GPU (no credits needed)\n"
                       "   • model=\"ollama/<model>\"      a model on your own machine, e.g. ollama/llama3.2")
 
-    # One tip per run, and it names a command. The old block was three bullets,
+    # One tip per run, and it names a command, as the Next line every result
+    # ends with (#2008; it was a 💡 tip). The old block was three bullets,
     # two of them URLs — a reader with only this output could not act on it in
     # the shell. Rotation because status has no single next step; the useful
     # thing to teach here is the rest of the surface.
     from .command_tips import STATUS_TIPS, rotating_tip, tips_enabled
     if tips_enabled():
-        from .. import style
-        # The command in the tip is coloured like every co command (#1997).
-        style.console().print(f"\n💡 {style.markup(rotating_tip('status', STATUS_TIPS))}\n", emoji=False)
+        console.print()
+        print_tip(f"Next: {rotating_tip('status', STATUS_TIPS)}")
