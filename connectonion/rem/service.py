@@ -309,6 +309,14 @@ def _state_line(root: Path, config: dict, zone) -> tuple[str, str | None]:
     if not state_path(root, "consent.json").is_file():
         return "Not started — run `co rem start` to authorize sources and begin", None
     worker = worker_state(root)
+    if worker.get("enabled") and worker.get("scheduler") == "launchd":
+        # worker.json travels with a copied notebook; the job it describes runs
+        # the original's --root. A copy said "Running in background" and doctor
+        # said "ok schedule" for a schedule that never ran it (#1964).
+        from .schedule import Launchd
+        if not Launchd().installed(root):
+            return ("Not scheduled here — the saved schedule belongs to another notebook or was removed; "
+                    "`co rem start` schedules this one"), None
     if worker.get("enabled"):
         slot = next_slot(config, zone)
         return f"Running in background ({worker.get('scheduler', 'scheduler')}); next slot {slot or 'unknown'}", slot
@@ -519,7 +527,7 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
     """
     from .runner import RunFailed, run_stage
     notebook = Notebook(root)
-    usage, changed, refusals, reviews = {}, [], [], []
+    usage, changed, refusals, reviews, sizes = {}, [], [], [], []
     for record in leads:
         page_items = [{"role": "page", "record": record, "source": "investigation:page", "one_page": True,
                        "timestamp": now().isoformat(),
@@ -529,6 +537,7 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
             result = run_stage(notebook, page_items, config, kind=kind, stage="maintain", maintenance_lock_held=True)
             changed += result.get("changed", [])
             reviews += result.get("review_candidates", [])
+            sizes += [result["instructions_chars"]] if result.get("instructions_chars") else []
             part = result.get("usage")
         except RunFailed as error:
             refusals.append({"record": record, "errors": [str(error)[:400]]})
@@ -537,7 +546,9 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
             usage[key] = usage.get(key, 0) + value
     return {"usage": usage or None, "changed": sorted(set(changed)), "refused": len(refusals),
             "refusals": refusals, "report": f"{len(leads)} pages worked one at a time",
-            "review_candidates": reviews[:2]}
+            "review_candidates": reviews[:2],
+            # The largest one-page turn: the 15k ceiling is per turn (#1959).
+            "instructions_chars": max(sizes) if sizes else None}
 
 
 def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bool = False,
@@ -804,6 +815,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
                       run_extract(items, config, kind, root=root))
             usage = dict(digest.get("usage") or {})
             record["usage_by_stage"]["extract"] = digest.get("usage")
+            if digest.get("instructions_chars"):
+                record.setdefault("instructions_chars", {})["extract"] = digest["instructions_chars"]
             notes = digest["notes"].strip()
             # The digest is the only thing the maintainer sees. Keeping it is how
             # a thin page gets traced to the pass that lost the fact.

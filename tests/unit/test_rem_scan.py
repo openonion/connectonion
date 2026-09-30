@@ -155,10 +155,14 @@ def test_under_coai_the_page_is_read_back_from_disk(tmp_path, monkeypatch):
         def list_between(self, s, e, n): return []
         def get_email_body(self, i): return ""
 
+    handed = []
+
     def fake_co_ai(argv, cwd, capture_output, text, timeout):
         page = root / "people/vern.md"
         import re
         from pathlib import Path
+        # Read while the turn runs: a finished task keeps no copy of it (#1958).
+        handed.extend(__import__("json").loads(next(Path(cwd).glob("investigate-*/material.json")).read_text()))
         candidate = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
         candidate.write_text(page.read_text().replace("- Phone: Unknown", "- Phone: +61 2 9385 1000 [W1]").replace(
             '- (none yet)', '- [W1] https://example.org/contact — observed 2026-09-19'))
@@ -173,8 +177,7 @@ def test_under_coai_the_page_is_read_back_from_disk(tmp_path, monkeypatch):
     assert out["changed"] == ["people/vern.md"]
     status = [l for l in nb.read("people/vern.md").splitlines() if l.startswith("Investigation:")][0]
     assert "outlook" in status
-    material = next((root / ".state/tasks").glob("*/material.json"))
-    assert __import__("json").loads(material.read_text())[0]["role"] == "page"
+    assert handed[0]["role"] == "page"
 
 
 def test_an_organisation_is_only_proposed_where_two_people_share_a_work_domain():

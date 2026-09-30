@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import read_config
-from .files import Notebook, RemError, maintenance_lock
+from .files import Notebook, RemError, is_address, maintenance_lock
 from .mail import _address, _list_all, correspondent, strip_noise, strip_quoted
 from .source import KINDS, collect, timestamp
 
@@ -234,7 +234,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             # Each mailbox knows only its own login. The owner's other addresses
             # are the owner too, not correspondents to search the server for: a
             # first `investigate me` searched for them and found 6 of ~150 mails.
-            mine |= {h for h in handles if "@" in h}
+            mine |= {h for h in handles if is_address(h)}
         own_addresses.update(mine)
         local = [item for item in cached_by_provider.get(kind, [])
                  if start <= timestamp(item["timestamp"]) < end
@@ -282,7 +282,9 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             continue
         for item in local:
             add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""))
-        emails = sorted({h for h in handles if "@" in h and h not in mine})
+        # Only a whole address goes to the server: a page line with prose or a
+        # citation in it made Gmail match 677 unrelated mails (#1954).
+        emails = sorted({h.strip() for h in handles if is_address(h) and h not in mine})
         for begin, finish in intervals:
             if emails and hasattr(client, "list_with"):
                 # A verified address is server-searchable; the local archive
@@ -483,6 +485,20 @@ def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: P
     return digests, usage
 
 
+def searched_sources(coverage: list[str]) -> list[str]:
+    """The sources this code searched, for the page's status line.
+
+    Not every coverage line is a source: `evidence:` says how the material was
+    laid out, and the 1.9.0a1 run stamped `(…, evidence)` on real pages (#1962).
+    A source searched with nothing found stays: the daily round reads the line
+    to know which sources a page has already been checked against.
+    """
+    notes = ("budget", "digest", "evidence:", "Requested investigation window:", "Quick first pass:")
+    return list(dict.fromkeys(
+        line.split(" (")[0].split(":")[0] for line in coverage
+        if not line.startswith(notes) and "not searched" not in line and ": unreadable" not in line))
+
+
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
@@ -635,14 +651,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # The status line names the sources this code searched. Whether the web
     # was reached is the Skill's to report, on the page: a real run (2026-09-14)
     # had `co browser` fail inside the thread while this line still said "web".
-    searched = [c.split(" (")[0].split(":")[0] for c in coverage
-                if not c.startswith(("budget", "digest", "Requested investigation window:",
-                                     "Quick first pass:"))
-                and "not searched" not in c and ": unreadable" not in c]
+    searched = searched_sources(coverage)
     with maintenance_lock(root):
         from .reviews import ingest
         ingest(root, result.get("review_candidates", []))
-        notebook.note_investigation(record, ", ".join(dict.fromkeys(searched)))
+        notebook.note_investigation(record, ", ".join(searched))
     return {"record": record, "items": len(items), "items_available": available_items,
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,

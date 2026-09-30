@@ -15,6 +15,24 @@ from pathlib import Path, PurePosixPath
 # looking for the opening line: "Phone: Unknown" is not who somebody is.
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 ALIAS_LABELS = ("also known as:", "aka:", "别名:", "别名：")
+CITATION = re.compile(r"\s*\[W?\d+\]")
+
+
+def split_handles(value: str) -> list[str]:
+    """The names and addresses on one page line, without its citations.
+
+    A page line is written for a reader: `Tamara Berryman; tamara.berryman@unsw.edu.au [2]`.
+    Split on commas only, that came back as one handle with `[2]` in it, and
+    because it held an `@` it went to Gmail as an address: the query matched
+    677 unrelated mails and a re-investigation read them all (#1954).
+    """
+    parts = re.split(r"[,;、]", CITATION.sub("", value))
+    return [p.strip().strip("`").strip() for p in parts
+            if p.strip().strip("`").strip() and p.strip().casefold() != "unknown"]
+
+
+def is_address(handle: str) -> bool:
+    return bool(EMAIL.fullmatch(handle.strip()))
 EMAIL_LABELS = ("email:", "emails:", "邮箱:", "邮箱：")
 CONTACT_LABELS = ALIAS_LABELS + EMAIL_LABELS + (
     "phone:", "company:", "role:", "handles:", "language:", "signing entity:",
@@ -379,8 +397,7 @@ class Notebook:
                 stripped = line.strip().lstrip("-").strip()
                 low = stripped.casefold()
                 if low.startswith(ALIAS_LABELS):
-                    aliases += [a.strip() for a in stripped.split(":", 1)[1]
-                                .replace("、", ",").split(",") if a.strip()]
+                    aliases += split_handles(stripped.split(":", 1)[1])
                 elif low.startswith(EMAIL_LABELS):
                     # From the whole line by pattern, not by splitting on commas: a
                     # page writes "candidate `x@y` (case variant reported)", and

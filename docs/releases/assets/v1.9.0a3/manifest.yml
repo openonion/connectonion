@@ -1,2 +1,2 @@
 version: v1.9.0a3
-no_visual_change: "1.9.0a3 is 1.9.0a2 unchanged plus a test fix; the a2 capture shows the same output"
+no_visual_change: "1.9.0a3 is 1.9.0a2 plus fixes to what investigation reads and how sync reports its cap; the a2 capture shows the same first screen"

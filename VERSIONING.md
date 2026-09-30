@@ -405,12 +405,15 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 1.9.0a3 is 1.9.0a2 as it was meant to ship. The v1.9.0a2 tag was pushed but
 never published: its release run failed one test that assumed it was not near
 midnight UTC (it ran at 00:08 UTC), so nothing reached PyPI. 1.9.0a3 carries
-exactly a2's content, the co rem rename and the first-run work, plus that test
-pinned to a fixed noon. Stable is 1.8.9. See
+a2's content, the co rem rename and the first-run work, that test pinned to a
+fixed noon, and fixes from a real-notebook run: whole-address handles (#1954),
+instructions ~15k per turn (#1960), task folders scrubbed (#1958), the
+schedule checked against its notebook (#1964), worktree ordering (#1955), the
+daily cap named (#1957). Stable is 1.8.9. See
 [1.9.0a3 notes](docs/releases/1.9.0a3.md) and, for the content,
 [1.9.0a2 notes](docs/releases/1.9.0a2.md).
 
-- 1.9.0a3 (a2 unchanged, published; people-pages same-day test pinned to a fixed clock.)
+- 1.9.0a3 (a2 published; people-pages test pinned to a fixed clock; #1954 #1955 #1957 #1958 #1959 #1960 #1962 #1964.)
 
 ## Unpublished preview: 1.9.0a2
 

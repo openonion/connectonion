@@ -28,6 +28,11 @@ def delegate(monkeypatch):
     calls = []
 
     def run(argv, **kw):
+        # What the model was handed, read while it runs: a finished task keeps
+        # no copy of the material (#1958).
+        tasks = [p for p in Path(kw['cwd']).glob('*/material.json')]
+        newest = max(tasks, key=lambda path: path.stat().st_mtime_ns) if tasks else None
+        kw = {**kw, 'material': json.loads(newest.read_text()) if newest else None}
         calls.append((argv, kw))
         if argv[-1].startswith('/rem-investigate'):
             import re
@@ -152,8 +157,9 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
         assert argv[argv.index("--sandbox") + 1] == "workspace-write"
     else:
         assert "--sandbox" not in argv
-    material = next((notebook.root / ".state/tasks").glob("*/material.json"))
-    assert json.loads(material.read_text()) == [item]
+    assert options["material"] == [item]
+    assert not list((notebook.root / ".state/tasks").glob("*/material.json")), "no private copy is left"
+    assert list((notebook.root / ".state/tasks").glob("*/result.json"))
     assert result["usage"] == {"input_tokens": 13}
     assert result["changed"] == []
 
@@ -233,7 +239,8 @@ def test_extract_reads_written_notes_not_status_text(tmp_path, monkeypatch, dele
     monkeypatch.setattr("connectonion.rem.runner.subprocess.run", extract)
     result = run_extract([{"text": "source", "source": "gmail:1"}], default_config(), "gmail",
                          root=tmp_path / "rem")
-    assert result == {"notes": "## People\n- Alice agreed [mail:1]", "usage": {"input_tokens": 9}}
+    assert result["notes"] == "## People\n- Alice agreed [mail:1]" and result["usage"] == {"input_tokens": 9}
+    assert result["instructions_chars"] > 0   # #1959: every stage reports its instruction size
 
 
 def test_extract_without_output_fails_and_preserves_usage(tmp_path, delegate):
@@ -477,3 +484,23 @@ def test_a_sync_that_outlasts_the_wait_leaves_the_page_where_it_can_be_found(tmp
         runner._promote_candidate(notebook, "people/mia.md", candidate, original, [], tmp_path, None)
     thread.join()
     assert str(candidate) in str(error.value) and candidate.is_file()
+
+
+def test_finished_tasks_lose_their_private_copies_and_running_ones_are_left_alone(tmp_path):
+    """#1958: 98 task folders held 75 MB of the owner's mail. A folder is scrubbed
+    once its run wrote result.json; a run still working keeps its material."""
+    from connectonion.rem.runner import scrub_finished_tasks
+
+    done, running = tmp_path / "maintain-a", tmp_path / "investigate-b"
+    for folder in (done, running):
+        (folder / "notebook/people").mkdir(parents=True)
+        (folder / "material.json").write_text("[]")
+        (folder / "material.md").write_text("mail")
+        (folder / "notebook/people/x.md").write_text("# X")
+    (done / "result.json").write_text("{}")
+    (done / "candidate.md").write_text("# X")
+
+    scrub_finished_tasks(tmp_path)
+
+    assert sorted(p.name for p in done.iterdir()) == ["candidate.md", "result.json"]
+    assert (running / "material.json").is_file() and (running / "notebook/people/x.md").is_file()
