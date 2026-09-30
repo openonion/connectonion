@@ -24,11 +24,7 @@ OWN_PAGES = "co rem"
 # is #1996, and this set must shrink to empty when it lands. It can only
 # shrink: a page here that passes (or is gone) fails the test until it is taken
 # out, and nothing outside co rem may wait here.
-LOOK_PENDING = {
-    "co rem", "co rem config", "co rem doctor", "co rem init", "co rem investigate", "co rem list",
-    "co rem logs", "co rem open", "co rem search", "co rem show", "co rem sources", "co rem start",
-    "co rem status", "co rem stop", "co rem sync",
-}
+LOOK_PENDING: set = set()
 
 
 def look_problems(findings: list, pending: set = LOOK_PENDING) -> list:

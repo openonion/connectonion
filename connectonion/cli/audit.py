@@ -329,11 +329,12 @@ FRAME = re.compile(r"[\s─-▟]+")
 SCRATCH = re.compile(re.escape(tempfile.gettempdir()) + r"/tmp\w+")
 # Read-only `co` commands a person runs to see where things stand: safe in an
 # empty HOME, fast, and offline there. Their output is held to the look rule
-# as every help page is. One line each; `co rem status` joins when #1996 lands.
+# as every help page is. One line each.
 STATUS = (
     "co status",
     "co doctor",
     "co commands",
+    "co rem status",
 )
 
 
