@@ -16,8 +16,10 @@ program, hard rules first and judgement last:
   waiting for input, writes nothing, has a usage line and an example of this
   command, every flag an example uses is documented, examples hold no private
   data, and every listed subcommand has its own page.
-- look: run again the way a person's terminal runs it, the page says the same
-  words, with colour only there (#1997).
+- look: run again the way a person's terminal runs it (stdout and stderr each
+  a pty), the page says the same words, nothing repeated at the top, no word
+  coloured in pieces, no emoji panel title, a status command ends on Next,
+  with colour only there (#1997, #2008).
 - review(): for pages that pass, a model judges what a rule cannot: clear,
   says what it reads or changes, a realistic example, simple, and whether a
   listed item has a short reference when the command acts on one.
@@ -399,7 +401,15 @@ STATUS = (
     "co doctor",
     "co commands",
     "co rem status",
+    "co auth status",
+    "co whatsapp check",   # every inbox `check` prints through the same handler
 )
+# Lines of a printout searched for a repeat: startup noise comes first (#2008).
+TOP = 5
+# Emoji a panel title must not carry: pictographs and the miscellaneous
+# symbols (⚠ ☁), not the dingbats ✓ ✗ that mark a row.
+EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u26FF]")
+PANEL_TOP = re.compile(r"^\s*[╭┌┏]")
 
 
 def _tokens(text: str) -> list:
@@ -421,6 +431,46 @@ def _difference(said: str, shown: str) -> str:
         return ""
     extra, missing = Counter(b) - Counter(a), Counter(a) - Counter(b)
     return f"it shows {' '.join(list(extra)[:4]) or '(nothing)'} where an agent reads {' '.join(list(missing)[:4]) or '(nothing)'}"
+
+
+def _repeated_at_top(text: str) -> str:
+    """The first line printed twice among the first TOP lines, or "".
+
+    `[env] …/keys.env` opened every co command two or three times in a real
+    terminal (#2008); a blank line or a frame drawn twice is not a repeat.
+    """
+    seen = set()
+    for line in [ANSI.sub("", line).strip() for line in text.splitlines() if line.strip()][:TOP]:
+        if line in seen and FRAME.sub("", line):
+            return line
+        seen.add(line)
+    return ""
+
+
+def _pieces(shown: str) -> list:
+    """Words a terminal printout colours in pieces: letters or digits in two styles inside one word.
+
+    Rich's default highlighter does this to whatever looks like a number, date
+    or path (`co 1.9.0a5` with `1.9` alone in cyan, #2008). A word in one style
+    beside punctuation in another (`(co auth)`) is not pieces.
+    """
+    found = []
+    for line in shown.splitlines():
+        chars, state = [], ""
+        for part in re.split(r"(\x1b\[[0-9;]*m)", re.sub(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)", "", line)):
+            if SGR.fullmatch(part):
+                state = "" if part in ("\x1b[0m", "\x1b[m") else state + part
+            else:
+                chars += [(c, state) for c in ANSI.sub("", part)]
+        word = []
+        for c, style in chars + [(" ", "")]:
+            if not c.isspace():
+                word.append((c, style))
+                continue
+            if len({style for c, style in word if c.isalnum()}) > 1:
+                found.append("".join(c for c, _ in word))
+            word = []
+    return found
 
 
 def _unshaped_next(shown: str) -> list:
@@ -461,9 +511,23 @@ def look(path: str, plain: Page, styled: Page, output: bool = False) -> list:
     moved = _difference(said, shown)
     if moved:
         details.append(f"shows different words in a terminal: {moved}")
+    twice = _repeated_at_top(styled.err) or _repeated_at_top(styled.text) or _repeated_at_top(shown)
+    if twice:
+        details.append(f"prints `{twice}` twice at the top")
+    if ours:
+        pieces = _pieces(shown)
+        if pieces:
+            details.append(f"has words coloured in pieces (auto-highlighting; make the Console with "
+                           f"highlight=False): {' '.join(dict.fromkeys(pieces[:4]))}")
+        titles = [ANSI.sub("", line).strip() for line in shown.splitlines()
+                  if PANEL_TOP.match(ANSI.sub("", line)) and EMOJI.search(line)]
+        if titles:
+            details.append(f"has an emoji in a panel title: {titles[0][:60]}")
     if output and ours:
         details += [f"prints a Next: line without style.next_line's shape: {ANSI.sub('', line)}"
                     for line in _unshaped_next(shown)]
+        if not any(ANSI.sub("", line).lstrip().startswith("Next:") for line in shown.splitlines()):
+            details.append("has no Next: line; a status command ends on the step to take (style.next_line)")
     return [Finding(path, "look", f"{what} {detail}") for detail in details]
 
 
