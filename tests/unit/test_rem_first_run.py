@@ -443,29 +443,32 @@ def test_after_me_the_people_you_wrote_to_and_projects_four_at_a_time(people):
     assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
     text = Text.from_ansi(result.output).plain
     assert "the people you write to, your projects and the organisations you correspond with" in text
-    assert "4 at a time" in text and "it stops at 20 points of the Codex week" in text
+    assert "6 at a time" in text and "it stops at 30 points of the Codex week" in text
     assert "Written this run: your page, 5 people, 3 project pages and 3 organisation pages." in text
 
 
-def test_the_first_run_stops_starting_pages_at_its_twenty_points(people, monkeypatch):
-    """Pages in flight finish; nothing new starts once 20 points are used."""
+def test_the_first_run_stops_starting_pages_at_its_budget(people, monkeypatch):
+    """Pages in flight finish; nothing new starts once FIRST_RUN_POINTS are used."""
     import re as regex
+    from connectonion.cli.commands.rem_commands import FIRST_RUN_POINTS, FIRST_RUN_WORKERS
     root, init, calls, people_written, projects_written = people
     meter = {"used_percent": 10, "window_minutes": 10080, "resets_at": 4102444800, "plan": "plus"}
     monkeypatch.setattr("connectonion.rem.quota.read", lambda config: dict(meter))
 
-    def one_person_costs_twelve_points(root, row, **kw):
+    def one_person_costs_the_whole_budget(root, row, **kw):
         people_written.append(row["record"])
-        meter["used_percent"] += 12
+        meter["used_percent"] += FIRST_RUN_POINTS
         return {"record": row["record"], "changed": [row["record"]]}
 
-    monkeypatch.setattr("connectonion.rem.people_pages.investigate_person", one_person_costs_twelve_points)
+    monkeypatch.setattr("connectonion.rem.people_pages.investigate_person", one_person_costs_the_whole_budget)
     result = init("--json", "--investigate")
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)["data"]
-    assert 4 <= len(people_written) <= 5 and projects_written == []
-    assert regex.search(r"used \d+ of its 20 points", data["people_pages"]["stopped"])
-    assert regex.search(r"used \d+ of its 20 points", data["project_pages"]["reason"])
+    started = len(people_written) + len(projects_written) + len(calls) - 1  # less the owner's page
+    assert 1 <= started <= FIRST_RUN_WORKERS and "projects/old.md" not in projects_written
+    stop = rf"used \d+ of its {FIRST_RUN_POINTS} points|70% floor"  # pages finishing together can pass either
+    assert regex.search(stop, data["people_pages"]["stopped"])
+    assert regex.search(stop, data["org_pages"]["reason"])
 
 
 def test_ctrl_c_during_people_keeps_the_pages_and_names_the_rest(people, monkeypatch):
@@ -573,3 +576,23 @@ def test_the_first_run_goes_on_to_older_projects_and_organisations(people):
     assert result.exit_code == 0, result.output
     assert "projects/old.md" in projects_written
     assert any(call["record"].startswith("orgs/") for call in calls), [c["record"] for c in calls]
+
+
+def test_a_refused_owner_page_does_not_cost_the_rest_of_the_first_run(people, monkeypatch):
+    """A real first run (2026-10-01): the owner's page was refused after two
+    minutes and init stopped there, with 240 people, project and organisation
+    pages never started. The owner's page is one page among them."""
+    from connectonion.rem.runner import RunFailed
+    root, init, calls, people_written, projects_written = people
+
+    def refused(root, **kw):
+        raise RunFailed("Candidate rejected: page cites only the page itself")
+
+    monkeypatch.setattr("connectonion.cli.commands.rem_commands._investigate_me", refused)
+    result = init("--json", "--investigate")
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["data"]["investigation"] == "failed"
+    assert payload["next"].endswith("investigate me")
+    assert sorted(people_written) == [f"people/p{n}.md" for n in range(5)]
+    assert "projects/alpha.md" in projects_written

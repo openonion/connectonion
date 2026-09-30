@@ -390,8 +390,8 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
 # about 20M input tokens without moving the Codex week off 28%, so the owner
 # judged the cost small and the wait the real problem.
 FIRST_RUN_PEOPLE = 0   # 0: everyone in the people queue
-FIRST_RUN_POINTS = 20
-FIRST_RUN_WORKERS = 4
+FIRST_RUN_POINTS = 30
+FIRST_RUN_WORKERS = 6
 
 
 def _first_run_gate(root, config):
@@ -773,14 +773,16 @@ def make_rem_app(factory):
                     _emit(ctx, result if ctx.obj["json"] else stopped, retry_me)
                     raise typer.Exit(130)
                 except (RemError, rem_runner.RunFailed) as error:
+                    # One page among the first run's: the others still go on (2026-10-01).
                     result.update(investigation="failed",
                                   investigate_me={"started": True, "outcome": "failed", "why": str(error)})
-                    return (result if ctx.obj["json"] else
-                            f"Your page was not written: {error} The map is kept."), retry_me, True
-                record = summary["record"] if summary else result["owner"]["record"]
-                result.update(investigation="completed",
-                              investigate_me={"started": True, "outcome": "completed", "page": record})
-                say("Your page is written: " + str(Notebook(root).path(record)))
+                    say(f"Your page was not written: {error} The rest of the first run goes on; "
+                        f"retry your page with {_next(ctx, retry_me)}.")
+                else:
+                    record = summary["record"] if summary else result["owner"]["record"]
+                    result.update(investigation="completed",
+                                  investigate_me={"started": True, "outcome": "completed", "page": record})
+                    say("Your page is written: " + str(Notebook(root).path(record)))
             # Then the people you write to most, and the projects you worked on,
             # in the last two weeks, by the same rules and one budget (#1943).
             skipped = _spending_skipped(ctx, want=write_mine, problem=problem, fix=fix)
@@ -802,6 +804,8 @@ def make_rem_app(factory):
                 for kind in KEYS.values():
                     if result[kind].get("reason"):
                         say(result[kind]["reason"])
+            if result.get("investigation") == "failed":
+                return (result if ctx.obj["json"] else _init_done(ctx, result)), retry_me, True
             return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
         _handle(ctx, run, ["sources"])
 
