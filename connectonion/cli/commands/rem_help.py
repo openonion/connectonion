@@ -5,7 +5,8 @@ follows them. Generated help reflowed every page -- the Usage and Example
 columns ran together, and a flag with no help string printed nothing at all,
 which is how `reflect --basis` and `review --verdict` reached users with no
 explanation. So each command prints its page as written, and a test holds the
-page to the command's real options.
+page to the command's real options. A terminal sees the same words in the
+shared palette (#1996): headings, the command column and every `co rem ...`.
 """
 
 import re
@@ -49,10 +50,23 @@ def summary(name: str) -> str:
     return match.group(1) if match else first
 
 
+def show(name: str, end: str = "\n") -> None:
+    """Print one page: styled in a terminal, word for word as written anywhere else."""
+    from . import rem_look
+    text = page(name)
+    rem_look.say(rem_look.page(text), plain=text, end=end)
+
+
 def verbatim(name: str, base=typer.core.TyperCommand):
     """A command (or group) class whose --help is exactly one page."""
     def format_help(self, ctx, formatter):
-        formatter.write(page(name) + "\n")
+        from ..style import console
+        if not console().is_terminal:
+            formatter.write(page(name) + "\n")
+            return
+        # Click prints what the formatter holds and then a newline; a styled
+        # page is printed here instead, so the newline ends it the same way.
+        show(name, end="")
 
     def __init__(self, *args, **kwargs):
         base.__init__(self, *args, **kwargs)

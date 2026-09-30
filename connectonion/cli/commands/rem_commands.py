@@ -8,7 +8,7 @@ from typing import List, Optional
 
 import typer
 
-from .rem_help import page, verbatim
+from .rem_help import show, verbatim
 from .rem_output import render
 
 
@@ -400,7 +400,7 @@ def make_rem_app(factory):
                 inspect_status(ctx)
             else:
                 from ...rem.service import status
-                typer.echo(page("co rem"))
+                show("co rem")
                 typer.echo()
                 def operation(root):
                     result = status(root)
@@ -1174,7 +1174,7 @@ def make_rem_app(factory):
 
     @rem.command("advanced", cls=V("co rem advanced"))
     def advanced(ctx: typer.Context):
-        typer.echo(page("co rem advanced"))
+        show("co rem advanced")
 
     @rem.command("scan", cls=V("co rem scan"))
     def scan_sources(ctx: typer.Context,
