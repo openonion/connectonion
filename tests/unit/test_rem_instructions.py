@@ -153,3 +153,11 @@ def test_project_and_skill_templates_match_created_skeletons(tmp_path):
         assert headings == re.findall(r'^## .+$', notebook.read(record), re.MULTILINE)
         for stage in ('init', 'maintain', 'investigate'):
             assert template in instructions(stage)
+
+
+def test_maintenance_is_told_what_is_still_open_and_how_large_a_page_may_grow():
+    """#1956: four batches grew one page from 26.5k to 53.7k characters, re-adding
+    week-old items as open threads."""
+    text = instructions("maintain", page_kind="project")
+    assert "Only what is still open is an open thread" in text
+    assert "about 15k characters" in text

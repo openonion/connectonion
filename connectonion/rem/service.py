@@ -505,7 +505,7 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
     """
     from .runner import RunFailed, run_stage
     notebook = Notebook(root)
-    usage, changed, refusals, reviews, sizes = {}, [], [], [], []
+    usage, changed, refusals, reviews, sizes, growth = {}, [], [], [], [], {}
     for record in leads:
         page_items = [{"role": "page", "record": record, "source": "investigation:page", "one_page": True,
                        "timestamp": now().isoformat(),
@@ -516,6 +516,8 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
             changed += result.get("changed", [])
             reviews += result.get("review_candidates", [])
             sizes += [result["instructions_chars"]] if result.get("instructions_chars") else []
+            if result.get("page_chars"):
+                growth[record] = result["page_chars"]
             part = result.get("usage")
         except RunFailed as error:
             refusals.append({"record": record, "errors": [str(error)[:400]]})
@@ -526,7 +528,8 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
             "refusals": refusals, "report": f"{len(leads)} pages worked one at a time",
             "review_candidates": reviews[:2],
             # The largest one-page turn: the 15k ceiling is per turn (#1959).
-            "instructions_chars": max(sizes) if sizes else None}
+            "instructions_chars": max(sizes) if sizes else None,
+            "page_chars": growth}
 
 
 def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bool = False,
@@ -791,6 +794,8 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *, un
             record["usage_by_stage"]["maintain"] = result.get("usage")
             if result.get("instructions_chars"):
                 record.setdefault("instructions_chars", {})["maintain"] = result["instructions_chars"]
+            if result.get("page_chars"):
+                record["page_chars"] = result["page_chars"]
             for key, value in (result.get("usage") or {}).items():
                 usage[key] = usage.get(key, 0) + value
         else:

@@ -634,6 +634,9 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
                "instructions_chars": metrics["instructions_chars"],
                "report": str(result.get("result") or "")[:1000],
                "review_candidates": read_json(directory / "review-candidates.json", [])}
+    if record and record in before and notebook.path(record).is_file():
+        # Before and after, so a run that doubles a page shows it (#1956).
+        outcome["page_chars"] = [len(before[record]), len(notebook.read(record))]
     scrub_task(directory)
     return outcome
 
