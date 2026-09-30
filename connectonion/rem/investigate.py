@@ -745,6 +745,16 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     coverage.append(f"Requested investigation window: {days} days ending "
                     f"{datetime.now(timezone.utc).date().isoformat()}")
     last = last_investigated(notebook.read(record))
+    if last:
+        # The window is whole days, so an investigation straight after another
+        # re-gathers the mail the page already cites: 102k tokens to be told
+        # it was "already represented as source [21]" (#2015). What the page
+        # cites, it has read.
+        cited = notebook.read(record).partition("\n## Sources\n")[2]
+        fresh = [item for item in items if not item.get("source") or item["source"] not in cited]
+        if len(fresh) < len(items):
+            coverage.append(f"{len(items) - len(fresh)} gathered item(s) already cited on the page, not re-read")
+        items = fresh
     if last and not items:
         raise _nothing_new(record, subject, coverage, last)
     if last:

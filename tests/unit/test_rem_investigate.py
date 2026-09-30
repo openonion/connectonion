@@ -981,6 +981,20 @@ def test_a_since_window_that_gathered_nothing_calls_no_model_and_says_nothing_ne
     assert '--handle' not in message   # the handles found the subject before; nothing is wrong with them
 
 
+def test_mail_the_page_already_cites_is_not_new_material(tmp_path, monkeypatch):
+    """#2015: re-investigating Richard straight after re-read the same one mail
+    (the window is whole days) and spent 102k tokens to find it "already
+    represented as source [21]"."""
+    root = _notebook(tmp_path, 'codex')
+    _investigated(root, 'people/vern.md', 0)        # the page cites gmail:0123456789ab
+    cited = {'source': 'gmail:0123456789ab', 'timestamp': '2026-09-30T09:00:00+00:00', 'text': 'same mail'}
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([cited], ['gmail (me@x.y): 1 matched, 1 bodies read']))
+    with pytest.raises(inv.NothingNew) as caught:
+        inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], days=1, clients={}, subscriptions={},
+                        runner=lambda *a, **kw: pytest.fail('no model call for mail the page already cites'))
+    assert 'already cited on the page' in str(caught.value)
+
+
 def test_a_project_s_file_list_alone_is_not_new_material_for_a_page_investigated_before(tmp_path, monkeypatch):
     """A project page always has files to list; with no session or mail since
     its last investigation the turn would only re-read what the page reflects."""
