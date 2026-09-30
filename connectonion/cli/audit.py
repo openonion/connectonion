@@ -139,13 +139,77 @@ def run(argv: list, terminal: bool = False) -> Page:
     env.pop("TTY_COMPATIBLE", None)   # Rich obeys it before NO_COLOR and FORCE_COLOR
     env.pop("GITHUB_ACTIONS", None)
     try:
-        done = subprocess.run([*program(argv[0]), *argv[1:]], cwd=work, env=env, stdin=subprocess.DEVNULL,
-                              capture_output=True, text=True, timeout=20)
+        done = (_in_terminal if terminal else _in_pipe)([*program(argv[0]), *argv[1:]], work, env)
     except subprocess.TimeoutExpired:
         return Page(code=-1, text="", hung=True)
     created = [f for root in (home, work) for f in root.rglob("*") if f.is_file()]
     wrote = str(created[0].relative_to(home if created[0].is_relative_to(home) else work)) if created else ""
     return Page(done.returncode, done.stdout or done.stderr, wrote, err=done.stderr if done.stdout else "")
+
+
+RUN_TIMEOUT = 20   # seconds; nothing a page or a status command runs may wait for input
+
+
+def _in_pipe(command: list, work: Path, env: dict) -> subprocess.CompletedProcess:
+    return subprocess.run(command, cwd=work, env=env, stdin=subprocess.DEVNULL,
+                          capture_output=True, text=True, timeout=RUN_TIMEOUT)
+
+
+def _drain(fd: int, into: list) -> None:
+    """Read a pty until its far end closes, which a pty reports as EIO."""
+    while True:
+        try:
+            data = os.read(fd, 65536)
+        except OSError:
+            return
+        if not data:
+            return
+        into.append(data)
+
+
+def _in_terminal(command: list, work: Path, env: dict) -> subprocess.CompletedProcess:
+    """stdout and stderr each a 100-column pty, as in a person's terminal (#2008).
+
+    With stderr a pipe, whatever a program prints only when stderr is a
+    terminal never reached the audit: `[env] …/keys.env` opened every co
+    command 2-3 times in a real terminal while the look rule saw nothing.
+    Without pty (Windows) it falls back to pipes; FORCE_COLOR still colours.
+    """
+    try:
+        import fcntl
+        import pty
+        import termios
+    except ImportError:
+        return _in_pipe(command, work, env)
+    import signal
+    import struct
+    import threading
+
+    pairs = [pty.openpty() for _ in range(2)]
+    for _, follower in pairs:
+        fcntl.ioctl(follower, termios.TIOCSWINSZ, struct.pack("HHHH", 50, int(env.get("COLUMNS", 100)), 0, 0))
+    chunks = [[], []]
+    proc = subprocess.Popen(command, cwd=work, env=env, stdin=subprocess.DEVNULL,
+                            stdout=pairs[0][1], stderr=pairs[1][1], start_new_session=True)
+    for _, follower in pairs:
+        os.close(follower)
+    readers = [threading.Thread(target=_drain, args=(leader, into), daemon=True)
+               for (leader, _), into in zip(pairs, chunks)]
+    for reader in readers:
+        reader.start()
+    try:
+        code = proc.wait(timeout=RUN_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        os.killpg(proc.pid, signal.SIGKILL)   # its own session: a child would keep the pty open
+        proc.wait()
+        raise
+    finally:
+        for reader in readers:
+            reader.join(timeout=5)   # a child left running may hold the pty; stop waiting
+        for leader, _ in pairs:
+            os.close(leader)
+    out, err = (b"".join(c).decode("utf-8", "replace").replace("\r\n", "\n") for c in chunks)
+    return subprocess.CompletedProcess(command, code, out, err)
 
 
 def help_page(argv: list, terminal: bool = False) -> Page:
