@@ -10,7 +10,7 @@ from .files import Notebook, atomic_write, maintenance_lock, read_json, state_pa
 from .scan import (scan_people, scan_projects, canonical_origin, main_checkout, not_a_project,
                    AUTOMATED_HINT, SHORT_SESSION)
 from .skill_map import map_skills
-from .org_map import map_orgs
+from .org_map import _domain, map_orgs, organisation
 
 
 def _record(category: str, name: str, identity: str) -> str:
@@ -126,6 +126,25 @@ def _notice(row: dict) -> bool:
         return True
     return bool(row.get('one_way') and (AUTOMATED_HINT.search(address) or BULK.search(address)
                                          or AGENT_ADDRESS.search(address)))
+
+
+def _service(group: list[dict]) -> bool:
+    """A sender named after its own domain whose mail mostly comes in: a service, not a person (#1987).
+
+    "Airbnb" <discover@airbnb.com>, "Google Cloud" <googlecloud@google.com>,
+    "X" <notify@x.com>: no address says no-reply, so 1.9.0a3 made each a people
+    page. The display name's first word is the domain's own name. A person on a
+    domain named after them writes from their name (aaron@aaron.dev), and a desk
+    the owner answers as often as it writes stays a correspondent.
+    """
+    for row in group:
+        words = re.sub(r'[^a-z0-9 ]', ' ', str(row.get('name') or '').casefold()).split()
+        domain = _domain(row['address'])
+        local = row['address'].partition('@')[0].casefold()
+        if not words or not domain or local == words[0] or organisation(domain).split('.')[0] != words[0]:
+            return False
+    received = sum(row.get('received', 0) for row in group)
+    return received >= 3 * max(sum(row.get('sent', 0) for row in group), 1)
 
 
 def _people_groups(rows: list[dict]) -> list[list[dict]]:
@@ -316,9 +335,15 @@ def _held(group: list[dict], page: str) -> bool:
     name or a reply from the owner, or the owner investigates one. An address
     the owner has written to is a correspondent, the agent's own address
     included, so it is never held; an investigated page is someone's work.
+
+    Except one the owner only ever writes to (`_write_only`), with no name:
+    the shape of their own other mailbox, which 1.9.0a3 listed as a person
+    (aaron@openonion.ai, 10 sent, none received). It is still asked about with
+    `init --mine`, and held until that is answered or it replies (#1987).
     """
     title = page.split('\n', 1)[0]
-    return '@' in title and not any(row.get('sent') for row in group) and _mapped_only(page)
+    return '@' in title and _mapped_only(page) and (
+        not any(row.get('sent') for row in group) or all(_write_only(row) for row in group))
 
 
 def needs_review(root: Path) -> set[str]:
@@ -595,7 +620,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
         # an event platform's relay, is not a person the user deals with. On one
         # real mailbox this was 165 of 565 people pages (Neon Changelog, Airwallex,
         # event platforms). They stay in the map report; they get no page.
-        if all(_notice(row) for row in group):
+        if all(_notice(row) for row in group) or _service(group):
             report['automated_correspondents'].extend(group)
             org_rows += [{'address': a, 'record': None} for a in addresses]
             continue

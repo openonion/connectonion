@@ -256,7 +256,7 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem stub org "UNSW" --domain unsw.edu.au --person people/vern-chan.md` | Create an organisation skeleton; `People here` holds links, not copies. |
 | `co rem stub project "Aurora" --path /path/to/repo` | Create a project skeleton. |
 | `co rem list people --aliases` | Existing identity roster: page, title, aliases, addresses, relationship summary. |
-| `co rem list people --review` | Pages held for review: titled by an address the owner never wrote to. |
+| `co rem list people --review` | Pages held for review: titled by an address the owner never wrote to, or only ever wrote to. |
 | `co rem investigate people/alice.md` | Read the existing page, gather sources, digest oversized material, fill that same page through the Skill. |
 | `co rem investigate` | What is left to investigate, by category, most useful first. No model. |
 | `co rem investigate people --limit 3` | Investigate the next three people, the last 14 days' correspondents first (`--recent-days`): a person investigated before reads only the mail since then ([details](rem-people-pages.md)). `--list` prints the order and the cost and runs nothing. `projects`, `orgs`, `skills` take unfinished pages, most mail or sessions first. |
@@ -623,7 +623,15 @@ investigation queue, `co rem list` and the reader's contents. `co rem list
 people --review` shows them; a later init that finds a name or a reply from the
 owner, or investigating one by its path, brings it back. A nameless address the
 owner has written to, the agent's own included, stays an ordinary page, and an
-investigated page is never held. With `--mail`, only explicitly selected
+investigated page is never held -- except one the owner only ever writes to and
+never hears from, the shape of their own other mailbox: it is held too, and
+still asked about with `init --mine` (#1987). A sender whose display name is its
+own domain ("Airbnb" <discover@airbnb.com>, "Google Cloud" <googlecloud@google.com>,
+"X" <notify@x.com>) and who writes at least three times as often as the owner
+answers is a service: listed with the notice senders, no people page, and an
+older map's page for it that holds only map output is archived. Someone writing
+from their own name at a domain named after them (aaron@aaron.dev) stays a person.
+Skills and projects are one page per skill name and per repository (below). With `--mail`, only explicitly selected
 mailboxes are read. Missing or failed sources appear in the mapping coverage;
 without a selected mailbox the command explains why People is empty.
 The terminal shows one line per mapping stage, a short count of People,
