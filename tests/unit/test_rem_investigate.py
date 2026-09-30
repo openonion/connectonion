@@ -719,8 +719,18 @@ def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monk
 
     out = inv.investigate(root, "people/vern.md", "Vern", ["vern@x.y"], days=11, clients={}, subscriptions={},
                           runner=write)
-    assert f"Page last investigated {ten_days_ago}" in seen["coverage"]
+    assert f"Page last updated from its sources {ten_days_ago}" in seen["coverage"]
     assert not any(s.startswith("Page last") for s in inv.searched_sources(out["coverage"]))
+
+
+def test_a_page_written_from_its_sources_starts_the_next_window_too():
+    """#1983: `projects write` stamped `written <date>`, which the window did not
+    count, so the next investigation re-read 150 days (1.58M tokens)."""
+    from datetime import date, timedelta
+    written = (date.today() - timedelta(days=2)).isoformat()
+    page = f"# Proj\n\nInvestigation: mapped 2026-09-01 · written {written} (own messages: codex)\n"
+    assert inv.last_investigated(page) == date.fromisoformat(written)
+    assert 2 <= inv.window_since(page) <= 4
 
 
 def test_only_whole_addresses_are_searched_on_the_mail_server():
