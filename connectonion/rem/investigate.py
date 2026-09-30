@@ -271,7 +271,8 @@ def checkout_state(path: str, newest_session: str = "") -> str:
                      + (f"; version {version} there." if version else "."))
     newest = newest_session[:10]
     if newest and re.fullmatch(r"\d{4}-\d{2}-\d{2}", newest):
-        behind = (datetime.fromisoformat(newest).date() - datetime.fromisoformat(head).date()).days
+        # Dates only: git writes UTC as `Z`, which Python 3.10's fromisoformat refuses.
+        behind = (datetime.fromisoformat(newest).date() - datetime.fromisoformat(head[:10]).date()).days
         if behind > STALE_CHECKOUT_DAYS:
             lines.append(f"This checkout's HEAD is {behind} days older than the newest session ({newest}): its "
                          f"files are not the project's current state. Take the version and state from "
