@@ -64,8 +64,9 @@ never run the skill to document it; log names cannot establish the installed ver
 
 ## Supplement sources through their own tools
 
-Read [co rem CLI reference](../rem-init/CLI.md) relative to this Skill's
-directory first. Verify each `co ...` output; record failures. Never guess IDs, paths or flags.
+Only before running a `co ...` command, read [co rem CLI reference](../rem-init/CLI.md)
+relative to this Skill's directory; an offline run needs neither. Verify each
+`co ...` output; record failures. Never guess IDs, paths or flags.
 
 - **Never search mail** (Gmail, Outlook, `co email`): it is all in the
   material; self-searched citations are rejected. New address → `Handles` only.

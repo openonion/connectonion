@@ -93,6 +93,17 @@ def test_an_org_page_turn_carries_only_the_org_shape(tmp_path):
     assert len(given) < len(instructions("investigate")) - 10_000
 
 
+@pytest.mark.parametrize("kind", ["person", "project", "org", "skill"])
+def test_a_one_page_turn_is_not_told_to_read_the_cli_reference_up_front(kind):
+    """#1960: "read the CLI reference first" was obeyed on every run, a 12.6k
+    `cat` that made a 14.8k turn carry ~27k. Only a turn that runs `co` needs it."""
+    import re
+
+    text = instructions("investigate", page_kind=kind)
+    assert not re.search(r"CLI\.md\)\s+relative to this Skill's\s+directory first", text)
+    assert "Only before running a `co ...` command" in text
+
+
 @pytest.mark.parametrize("stage", ["investigate", "maintain"])
 @pytest.mark.parametrize("kind", ["person", "project", "org", "skill"])
 def test_a_one_page_turn_stays_within_15k_characters_of_instructions(stage, kind):

@@ -99,8 +99,8 @@ def test_new_mail_after_an_investigation_is_an_update_over_only_the_days_since(r
 
 
 def test_mail_later_the_same_day_is_new_when_the_run_time_is_known(root):
-    # Noon, so "three hours ago" is the same calendar day whenever the suite runs;
-    # at 00:00-03:00 UTC it fell on yesterday and the window was two days.
+    # Noon, not the real clock: within three hours after midnight UTC, "three
+    # hours ago" was yesterday and the window came out as two days.
     noon = NOW.replace(hour=12, minute=0, second=0, microsecond=0)
     investigated(root, "people/ada.md", noon.date().isoformat())
     people_pages.mark_investigated(root, "people/ada.md", noon - timedelta(hours=3))

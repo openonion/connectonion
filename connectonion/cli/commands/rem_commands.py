@@ -608,8 +608,8 @@ def make_rem_app(factory):
             for line in text.splitlines():
                 low = line.strip().lstrip("-").strip().casefold()
                 if low.startswith(("also known as:", "email:", "handles:")) and ":" in line:
-                    known += [h.strip() for h in line.split(":", 1)[1].replace("、", ",").split(",")
-                              if h.strip() and h.strip() != "Unknown"]
+                    from ...rem.files import split_handles
+                    known += split_handles(line.split(":", 1)[1])
             handles = list(dict.fromkeys([*handle, *known, title.split(" (")[0]]))
             clients = clients_for(root)
             if record.startswith("projects/"):
