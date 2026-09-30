@@ -30,8 +30,9 @@ ACTIVITY = re.compile(
     rf"\bLast contact:\s*{DAY}"                       # an investigated person's lead
     rf"|\blast:\s*{DAY}"                              # a mapped person's History
     rf"|^- Last seen:\s*{DAY}"                        # a project's last session
-    rf"|\blast on\s*{DAY}"                            # a skill's last invocation
-    rf"|^Investigation:.*?\b(?:investigated|written|updated)\s+{DAY}", re.I | re.M)
+    rf"|\blast on\s*{DAY}", re.I | re.M)               # a skill's last invocation
+# When the notebook last worked on the page: the date to show only when the page names no activity.
+WORKED = re.compile(rf"^Investigation:.*?\b(?:investigated|written|updated)\s+{DAY}", re.M)
 
 
 def written(page: str) -> bool:
@@ -41,9 +42,9 @@ def written(page: str) -> bool:
 
 
 def last_activity(page: str) -> str:
-    """The latest date the page itself gives for activity, or ''."""
+    """The latest date the page itself gives for activity, else its last investigation, or ''."""
     days = [day for match in ACTIVITY.finditer(page) for day in match.groups() if day]
-    return max(days, default="")
+    return max(days, default="") or max(WORKED.findall(page), default="")
 
 
 def _counted(record: str) -> bool:
