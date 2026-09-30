@@ -24,6 +24,33 @@ DOMAIN_HANDLE = re.compile(r"^@?([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})$")
 DOMAIN_RESULTS = 10_000
 
 
+class NothingFound(RemError):
+    """The gather found nothing about the subject, so no model turn runs and no page is stamped (#1974).
+
+    1.9.0a2 stamped a mailbox page "investigated" after a 919k-token turn whose
+    only material was the page and the coverage note. `usage` is what the digest
+    calls cost before it was known that nothing was there.
+    """
+
+    def __init__(self, message, usage=None):
+        super().__init__(message)
+        self.usage = usage
+
+
+def _nothing_found(record: str, subject: str, coverage: list[str], *, me: bool = False,
+                   digested: bool = False, usage=None) -> NothingFound:
+    searched = "; ".join(line for line in coverage
+                         if not line.startswith(("Requested investigation window", "Quick first pass")))
+    searched = searched if len(searched) <= 400 else searched[:400] + "…"
+    why = ("every digest of the material came back empty" if digested
+           else "no mail, attachment, session or chat message about them was found")
+    target = "me" if me else record
+    handle = "NAME" if record.startswith("projects/") else "ADDRESS"
+    return NothingFound(f"Not written: {why} for {subject} ({searched or 'no source searched'}). {record} "
+                        f"was not changed and is not marked investigated. Name another address or name with "
+                        f"`co rem investigate {target} --handle {handle}`.", usage)
+
+
 def quick_evidence(items: list[dict], *, max_items: int = 24,
                    chars_per_item: int = 2500) -> list[dict]:
     """A bounded first look, with source diversity and recent items.
@@ -552,6 +579,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     notebook = Notebook(root)
     if not notebook.path(record).is_file():
         raise RemError(f"{record} does not exist; create it with `co rem stub` first")
+    if runner is None:
+        # Seconds now, not after the gather: the model's co ai once could not
+        # find this Skill, and said so only after minutes of fetching mail.
+        from . import runner as runner_module
+        runner_module.check_skill(root, "investigate")
     if stage_progress:
         stage_progress("gathering sources")
     items, coverage = gather(subject, handles, days=days, clients=clients, subscriptions=subscriptions,
@@ -572,6 +604,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         coverage.append(f"Quick first pass: reviewed {len(items)} of {available_items} gathered items; "
                         "individual texts capped at 2,500 characters. Other material was not evaluated; "
                         "do not claim comprehensive coverage or resolve unsupported conflicts.")
+    gathered_items = len(items)
     leads = []
     if record.startswith("projects/"):
         # The model reads the page's Paths too; a worktree left there is the
@@ -585,6 +618,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                           "text": "Candidate local evidence files, not proof of their contents:\n" +
                                   "\n".join(leads),
                           "timestamp": datetime.now(timezone.utc).isoformat()})
+    if not gathered_items and not leads:
+        # Nothing about the subject, so nothing to write from: the page and the
+        # coverage note are not material (#1974).
+        raise _nothing_found(record, subject, coverage, me=sent_only)
     if stage_progress:
         stage_progress("preparing evidence", len(items))
     config = read_config(root)
@@ -629,6 +666,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             max_calls=None if max_calls is None else max_calls - synthesis_calls, progress=stage_progress)
         coverage.append(f"digest: {gathered_chars:,} chars gathered (~{gathered_chars // 4:,} tokens), over the "
                         f"{room:,}-char room for one summary-tier turn; summarised in {len(items)} chunk(s) first")
+        if not items:
+            # Every digest said there was nothing worth keeping: the page turn
+            # would have only the page and this note to write from.
+            raise _nothing_found(record, subject, coverage, me=sent_only, digested=True,
+                                 usage=usage_by_stage["extract"] or None)
     elif gathered_chars > room:
         if stage_progress:
             stage_progress("writing evidence files")
@@ -688,10 +730,13 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         result = runner(notebook, prompt_items, config, stage="investigate")
     finally:
         # Copies of private mail do not accumulate under .state, run after run;
-        # the report keeps which files were read.
+        # the report keeps which files were read. The routed run's uncompressed
+        # copy is one too, and was left behind every time.
         if evidence_dir is not None:
             import shutil
             shutil.rmtree(evidence_dir, ignore_errors=True)
+        if original_material is not None:
+            original_material.unlink(missing_ok=True)
     if stage_progress:
         stage_progress("recording result")
     usage_by_stage["investigate"] = result.get("usage")

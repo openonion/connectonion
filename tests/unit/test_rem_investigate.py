@@ -11,9 +11,17 @@ from connectonion.rem.config import prepare, read_config, set_config
 
 
 class Quiet:
+    """One mail from Vern: an investigation with nothing about its subject stops before the model (#1974)."""
     def my_addresses(self): return {"me@x.y"}
-    def list_between(self, s, e, n): return []
-    def get_email_body(self, i): return ""
+    def list_between(self, s, e, n):
+        return [{"id": "q1", "from": "vern.chan@unsw.edu.au", "to": ["me@x.y"], "subject": "Hello", "date": s}]
+    def get_email_body(self, i): return "Hi, Vern here."
+
+
+@pytest.fixture(autouse=True)
+def skill_found(monkeypatch):
+    """The real check spawns the interpreter; its own tests are in test_rem_runner."""
+    monkeypatch.setattr("connectonion.rem.runner.check_skill", lambda root, stage: None)
 
 
 def test_transient_connection_error_retries_body_fetch(monkeypatch):
@@ -140,7 +148,8 @@ def test_investigation_reports_privacy_safe_stages(tmp_path):
                     clients={"outlook": Quiet()}, subscriptions={}, runner=fake_runner,
                     stage_progress=lambda stage, *counts: stages.append((stage, counts)))
     assert [stage for stage, _ in stages] == [
-        "gathering sources", "preparing evidence", "writing investigation", "recording result"]
+        "gathering sources", "gathering outlook mail", "preparing evidence", "writing investigation",
+        "recording result"]
 
 
 def test_project_inventory_is_bounded_and_excludes_hidden_or_sensitive_files(tmp_path):
@@ -195,7 +204,8 @@ def test_an_investigation_the_user_starts_runs_confined(tmp_path, co_ai, runner)
 @pytest.mark.parametrize("runner", sorted(PINNED))
 def test_the_scheduled_daily_investigation_runs_confined(tmp_path, co_ai, monkeypatch, runner):
     from connectonion.rem.daily import run_daily
-    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "outlook")
+    monkeypatch.setattr("connectonion.rem.daily.mail_client", lambda kind, **kw: Quiet())
     root = _pinned_notebook(tmp_path, runner)
     result = run_daily(root, scheduled=True,
                        maintain=lambda root, scheduled: {"outcome": "no_change"})
@@ -228,7 +238,8 @@ def test_the_status_line_names_the_sources_searched_and_does_not_claim_the_web(t
 
 def test_investigation_status_excludes_sources_not_searched(tmp_path, monkeypatch):
     root = _notebook(tmp_path, "codex")
-    monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: ([], [
+    monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: ([
+        {"source": "codex:s:1", "role": "user", "timestamp": "2026-09-01", "text": "Vern's project"}], [
         "outlook: project mail not requested; not searched",
         "gmail: project mail not requested; not searched",
         "codex: 10 messages in window, 0 related to subject, 0 read",
@@ -432,7 +443,7 @@ def test_failed_command_never_marks_owner_investigated(tmp_path, monkeypatch, co
         stdout=stdout, stderr="command failed", returncode=returncode))
     with pytest.raises(inv.RemError, match="co ai"):
         inv.investigate(root, "people/vern.md", "Vern", ["vern"], days=7,
-                        clients={}, subscriptions={})
+                        clients={"outlook": Quiet()}, subscriptions={})
     assert inv.Notebook(root).read("people/vern.md") == before
 
 
@@ -447,7 +458,7 @@ def test_timeout_preserves_unfinished_page(tmp_path, monkeypatch, co_ai):
     monkeypatch.setattr("subprocess.run", timeout)
     with pytest.raises(inv.RemError, match="timed out"):
         inv.investigate(root, "people/vern.md", "Vern", ["vern"], days=7,
-                        clients={}, subscriptions={})
+                        clients={"outlook": Quiet()}, subscriptions={})
     assert inv.Notebook(root).read("people/vern.md") == before
 
 
@@ -554,7 +565,7 @@ def test_a_listed_source_nobody_cites_is_dropped_not_a_reason_to_refuse_the_page
     from pathlib import Path
     from connectonion.rem.files import Notebook
 
-    def fake_run(argv, cwd, capture_output, text, timeout):
+    def fake_run(argv, cwd, capture_output, text, timeout, env=None):
         import re
         path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
         page = next(Path(cwd).glob('investigate-*/notebook/people/vern.md')).read_text()
@@ -618,7 +629,7 @@ def test_the_owners_own_address_never_lands_on_someone_elses_page(tmp_path, monk
     from pathlib import Path
     from connectonion.rem.files import Notebook, state_path, write_json
 
-    def fake_run(argv, cwd, capture_output, text, timeout):
+    def fake_run(argv, cwd, capture_output, text, timeout, env=None):
         import re
         path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
         page = next(Path(cwd).glob('investigate-*/notebook/people/vern.md')).read_text()

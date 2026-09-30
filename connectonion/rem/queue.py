@@ -11,10 +11,12 @@ Left out on purpose:
 - addresses the map thinks may be the owner's -- investigated as a person, the
   owner's second Gmail (106 sent, 0 received) would top the list and pull the
   owner's own mail into a page about nobody;
-- automated candidates, which are not people;
+- automated candidates, which are not people, and senders a people queue
+  leaves out as vendors (`excluded_people`);
 - addresses held for review (#1844): no name, and the owner never wrote to them;
 - a page investigated in the last week, so a daily category run does not
-  spend the budget re-reading what it just read.
+  spend the budget re-reading what it just read -- unless that investigation
+  read nothing about its subject (`hollow_investigations`, #1974).
 """
 
 import re
@@ -49,6 +51,79 @@ def by_weight(root, records: list[str]) -> list[str]:
     return sorted(records, key=lambda record: (-weight.get(record, 0), record))
 
 
+def excluded_people(state: dict) -> set:
+    """People pages no queue investigates: the owner, what may be the owner's, and senders that are not people.
+
+    One definition for every people queue; `investigate --list` and
+    `investigate people --list` once disagreed by four pages (#1974). A sender
+    is left out when every address looks automated (no-reply, notifications,
+    billing ...), or when the owner never wrote to them and their domain also
+    sends the notices the map set aside -- `express@airbnb.com` beside
+    `automated@airbnb.com` -- the vendors that topped 1.9.0a2's queue.
+    """
+    from .scan import AUTOMATED_HINT
+    excluded = {(state.get("owner") or {}).get("record")}
+    excluded |= {row.get("record") for row in state.get("possible_own_addresses", [])}
+    notice_domains = {row.get("address", "").rpartition("@")[2].casefold()
+                      for row in state.get("automated_correspondents", []) if "@" in row.get("address", "")}
+    for row in state.get("people", []):
+        addresses = row.get("addresses") or ([row["address"]] if row.get("address") else [])
+        vendor = not row.get("sent") and addresses and all(
+            address.rpartition("@")[2].casefold() in notice_domains for address in addresses)
+        if (row.get("classification") == "automated candidate" or vendor
+                or (addresses and all(AUTOMATED_HINT.search(address) for address in addresses))):
+            excluded.add(row.get("record"))
+    return excluded
+
+
+def _material_read(coverage: list[str]) -> int:
+    """How many bodies, attachments and messages an investigation's coverage says it read."""
+    text = "\n".join(coverage)
+    counts = re.findall(r"(\d+) bodies read|(\d+) attachments read|, (\d+) read\b", text)
+    return sum(int(number) for row in counts for number in row if number)
+
+
+def hollow_investigations(root) -> set:
+    """People and organisation pages whose latest recorded investigation read nothing about them (#1974).
+
+    1.9.0a2 stamped such pages "investigated": 8 bodies matched and "summarised
+    in 0 chunk(s)", or 33 mails listed and none read. The run record keeps the
+    coverage, so the queue can take them back without anyone editing a page.
+    Project pages are read from their files too, which coverage does not count,
+    so they are not judged here.
+
+    The daily round records its pages without their coverage, so the page is
+    asked too: stamped investigated, with no Sources entry naming a message,
+    session, URL or file -- only the coverage note, the page, or the map. That
+    is the founders@ page on the owner's notebook.
+    """
+    notebook = Notebook(root)
+    hollow = {record for category in ("people", "orgs") for record in notebook.list(category)
+              if _stamped_from_nothing(notebook.read(record))}
+    latest = {}
+    for path in state_path(root, "runs").glob("run_*.json"):
+        run = read_json(path, {})
+        if not isinstance(run, dict) or run.get("phase") not in ("investigate", "investigate me"):
+            continue
+        record = run.get("record") or ""
+        if record.startswith(("people/", "orgs/")) and run.get("outcome") == "completed" \
+                and run.get("started_at", "") > latest.get(record, {}).get("started_at", ""):
+            latest[record] = run
+    return hollow | {record for record, run in latest.items()
+                     if _material_read(run.get("coverage") or []) == 0
+                     or any(re.search(r"summarised in 0 chunk", line) for line in run.get("coverage") or [])}
+
+
+def _stamped_from_nothing(page: str) -> bool:
+    from .page_review import SOURCE_ID
+    status = next((line for line in page.splitlines() if line.startswith("Investigation:")), "")
+    if last_investigated(status) is None:
+        return False
+    sources = page.partition("\n## Sources\n")[2].split("\nInvestigation:")[0]
+    return not any(SOURCE_ID.search(line) or re.search(r"https?://|`/[^`]+`", line)
+                   for line in sources.splitlines())
+
+
 def order(root, category: str, today: date | None = None) -> list[dict]:
     if category not in CATEGORIES:
         raise ValueError(category)
@@ -56,20 +131,25 @@ def order(root, category: str, today: date | None = None) -> list[dict]:
     prefix = CATEGORIES[category]
     state = read_json(state_path(root, "map.json"), {})
     weight = weights(state)
-    excluded = {(state.get("owner") or {}).get("record")}
-    excluded |= {row.get("record") for row in state.get("possible_own_addresses", [])}
-    excluded |= {row.get("record") for row in state.get("people", [])
-                 if row.get("classification") == "automated candidate"}
-    excluded |= needs_review(root)
+    excluded = excluded_people(state) | needs_review(root)
+    hollow = hollow_investigations(root) if category in ("people", "orgs") else set()
+    notebook = Notebook(root)
+    entries = notebook.unfinished(prefix.split("/")[0])
+    listed = {entry["path"] for entry in entries}
+    # A hollow page may have had its Unknowns written over with nothing; it is
+    # unfinished all the same.
+    entries += [{"path": path, "unknown": 0, "status": ""} for path in sorted(hollow - listed)
+                if path.startswith(prefix) and notebook.path(path).is_file()]
     rows = []
-    for entry in Notebook(root).unfinished(prefix.split("/")[0]):
+    for entry in entries:
         path = entry["path"]
         if not path.startswith(prefix) or path in excluded or path.endswith("/index.md"):
             continue
-        last = last_investigated(entry["status"])
+        last = None if path in hollow else last_investigated(entry["status"])
         rows.append({"path": path, "weight": weight.get(path, 0), "unknown": entry["unknown"],
                      "last_investigated": last.isoformat() if last else None,
-                     "recent": bool(last and (today - last).days < RECENT_DAYS)})
+                     "recent": bool(last and (today - last).days < RECENT_DAYS),
+                     **({"hollow": True} if path in hollow else {})})
     rows.sort(key=lambda row: (row["recent"], -row["weight"], -row["unknown"], row["path"]))
     return rows
 

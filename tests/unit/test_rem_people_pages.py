@@ -63,7 +63,8 @@ def root(tmp_path):
 def investigated(root, record, day):
     notebook = Notebook(root)
     text = notebook.read(record).replace("· not investigated yet", f"· investigated {day} (gmail)")
-    notebook.write(record, text)
+    # A real investigation cites what it read; one that cites nothing is hollow (#1974).
+    notebook.write(record, text.replace("- (none yet)", "- [1] gmail:0123456789ab"))
 
 
 # ---------------------------------------------------------------- order and windows
@@ -360,3 +361,16 @@ def test_the_cost_says_its_counts_are_the_maps_and_a_floor(root):
     assert "at least" in line
     text = cost_line(estimate(rows[:1]), {})
     assert "the map" in text and "1 mails" not in text
+
+
+def test_a_page_stamped_with_no_source_about_its_subject_is_hollow(tmp_path):
+    """The daily round keeps no per-page coverage; the page itself shows it was written from nothing."""
+    from connectonion.rem.queue import hollow_investigations
+    root = _people(tmp_path, [{"record": "people/founders.md", "addresses": ["founders@uni.example"], "mails": 8,
+                               "sent": 1, "received": 7, "last": ago(20)[:10]}])
+    notebook = Notebook(root)
+    page = notebook.read("people/founders.md").replace("· not investigated yet", "· investigated 2026-09-29 (gmail)")
+    notebook.write("people/founders.md", page.replace(
+        "- (none yet)", "- [1] investigation:coverage — the collector record\n- [2] Enumeration metadata — "
+                        ".state/map.json"))
+    assert hollow_investigations(root) == {"people/founders.md"}

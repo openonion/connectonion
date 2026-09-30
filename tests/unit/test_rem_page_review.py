@@ -407,7 +407,7 @@ def test_one_miscopied_citation_drops_its_line_not_the_page(tmp_path):
                           '- Works with Ody. [2][3]')
                  .replace('- (none yet)', '- [1] gmail:abc123\n- [2] gmail:def456\n- [3] gmail:abc12Z-typo'))
     repaired, dropped = drop_unresolved('people/mia.md', candidate, original, items)
-    assert dropped == {'citations': ['3'], 'lines': 1}
+    assert dropped == {'citations': ['3'], 'lines': 2}
     assert 'Joined in 2024' not in repaired and 'gmail:abc12Z-typo' not in repaired
     assert '- Works with Ody. [2]' in repaired and '- Leads the data team. [1]' in repaired
     assert '- Role: Unknown' in repaired

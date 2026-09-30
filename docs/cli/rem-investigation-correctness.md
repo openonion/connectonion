@@ -29,7 +29,11 @@ itself and the coverage note".
 
 **Pages already stamped wrongly.** A person or organisation page whose latest
 recorded investigation (`co rem logs`) read nothing — no bodies, attachments or
-messages, or "summarised in 0 chunk(s)" — is *hollow*. The queue treats it as
+messages, or "summarised in 0 chunk(s)" — is *hollow*. So is a page stamped
+investigated whose Sources name no message, session, URL or file, only the
+coverage note, the page or the map: the daily round keeps no per-page coverage,
+and on the owner's notebook this is the one page (of five investigated) that was
+written from nothing. The queue treats it as
 never investigated: it is listed again, over the full window, and not skipped
 as "investigated this week". No page is edited by hand; the next real
 investigation replaces the stamp.
@@ -153,7 +157,10 @@ directory.
   relative `PYTHONPATH=.` (a development checkout, or the schedule it wrote)
   resolved against `.state/tasks`, imported an older installed connectonion,
   and failed with "Skill 'rem-investigate' not found" after minutes of
-  gathering. Investigation now checks the skill is reachable from the task
-  folder before gathering.
+  gathering. A source checkout running co rem is also put on the child's
+  PYTHONPATH, since `python -m` found it by cwd alone. Investigation now checks
+  the skill is reachable from the task folder before gathering. An installed
+  schedule keeps the `PYTHONPATH` it was written with until `co rem start`
+  writes it again.
 - The launchd label was already `ai.openonion.co-rem.<hash>` since #1932, and a
   `co-wiki` job is replaced on the first `co rem` command; nothing to change.

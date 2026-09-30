@@ -152,12 +152,16 @@ def test_under_coai_the_page_is_read_back_from_disk(tmp_path, monkeypatch):
 
     class Quiet:
         def my_addresses(self): return {"me@x.y"}
-        def list_between(self, s, e, n): return []
-        def get_email_body(self, i): return ""
+        def list_between(self, s, e, n):
+            return [{"id": "q1", "from": "vern.chan@unsw.edu.au", "to": ["me@x.y"], "subject": "Hi", "date": s}]
+        def get_email_body(self, i): return "Hi, Vern here."
 
     handed = []
 
-    def fake_co_ai(argv, cwd, capture_output, text, timeout):
+    def fake_co_ai(argv, cwd, capture_output, text, timeout, env=None):
+        import types
+        if argv[1] == "-c":  # the Skill check before the gather (#1974)
+            return types.SimpleNamespace(stdout="", stderr="", returncode=0)
         page = root / "people/vern.md"
         import re
         from pathlib import Path

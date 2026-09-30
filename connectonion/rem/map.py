@@ -207,6 +207,8 @@ def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
     if name != 'Account owner' and (title == 'Account owner' or (
             mapped_only and title.casefold() in {a.casefold() for a in owner['addresses']})):
         page = f'# {name}\n' + page.split('\n', 1)[1]
+    # A 1.8 map wrote its confirm hint as `co wiki init --mine`; the command is co rem now (#1974).
+    page = page.replace('co wiki init --mine', 'co rem init --mine')
     if mapped_only:
         page = re.sub(r'(## History\n)- Observed mail count:[^\n]*\[1\]\n', rf'\1{UNFILLED}\n', page, count=1)
         page = page.replace('- Correspondent classification unassessed; mapping does not establish a person '
