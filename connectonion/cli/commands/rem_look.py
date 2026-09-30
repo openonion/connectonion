@@ -84,14 +84,20 @@ def result(text: str, *, titled: bool = True) -> str:
     if titled:
         head, attention, _ = lines.pop(0).partition(" — needs attention")
         marked.append(style.heading(head) + (" — " + style.error("needs attention") if attention else ""))
-    for line in lines:
-        label = re.match(r"(\s*)(Error|Warning|Stopped):( |$)", line)
-        if label:
-            paint = style.warn if label.group(2) != "Error" else style.error
-            marked.append(label.group(1) + paint(label.group(2) + ":") + highlight(line[label.end() - 1:], counts=True))
-        else:
-            marked.append(highlight(line, counts=True))
-    return "\n".join(marked)
+    return "\n".join([*marked, *(_result_line(line) for line in lines)])
+
+
+def line(text: str, *, err: bool = False) -> None:
+    """Print one plain line of progress or outcome (`[2/5] people/a.md`, `Stopped: ...`) in the palette."""
+    say(_result_line(text), err=err, plain=text)
+
+
+def _result_line(text: str) -> str:
+    label = re.match(r"(\s*)(Error|Warning|Stopped):(?= |$)", text)
+    if not label:
+        return highlight(text, counts=True)
+    paint = style.error if label.group(2) == "Error" else style.warn
+    return label.group(1) + paint(label.group(2) + ":") + highlight(text[label.end():], counts=True)
 
 
 def page(text: str) -> str:

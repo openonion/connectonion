@@ -7,7 +7,7 @@ adds is who comes next, over which window, and saying what it costs and what
 is left.
 """
 
-import typer
+from . import rem_look
 
 
 def _day(stamp: str) -> str:
@@ -97,12 +97,12 @@ def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool
     if not chosen:
         return "No people to investigate: every page is investigated and nothing new has arrived.", \
             ["list", "people"], False
-    typer.echo(f"Investigating {len(chosen)} of {len(rows)} people. "
+    rem_look.line(f"Investigating {len(chosen)} of {len(rows)} people. "
                + cost_line(estimate(chosen), quota.read(config)), err=True)
     clients, sources = clients_for(root), subscriptions(root)
 
     def on_page(number, total, row):
-        typer.echo(f"[{number}/{total}] {row['record']} (last mail {_day(row['last_activity'])}, "
+        rem_look.line(f"[{number}/{total}] {row['record']} (last mail {_day(row['last_activity'])}, "
                    f"{'update, ' if row['mode'] == 'update' else ''}{row['days']} days)", err=True)
 
     def one(row):
@@ -112,8 +112,8 @@ def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool
     result = write_pages(chosen, write=one, gate=gate, on_page=on_page)
     result["left"] = len(rows) - sum(1 for row in result["pages"] if row["outcome"] == "accepted")
     if result.get("stopped"):
-        typer.echo(f"Stopped: {result['stopped']}", err=True)
-    typer.echo(f"{counted(result['left'], 'person', 'people')} left to investigate.", err=True)
+        rem_look.line(f"Stopped: {result['stopped']}", err=True)
+    rem_look.line(f"{counted(result['left'], 'person', 'people')} left to investigate.", err=True)
     accepted = [row["page"] for row in result["pages"] if row["outcome"] == "accepted"]
     return ({"category": "people", **result}, ["show", accepted[0]] if accepted else ["logs"],
             any(row["outcome"] != "accepted" for row in result["pages"]))

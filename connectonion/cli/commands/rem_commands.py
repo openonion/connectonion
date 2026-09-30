@@ -8,6 +8,7 @@ from typing import List, Optional
 
 import typer
 
+from . import rem_look
 from .rem_help import show, verbatim
 from .rem_output import render
 
@@ -44,7 +45,7 @@ def _carry_over(ctx):
     except (RemError, OSError) as error:
         _emit(ctx, str(error), ["status"], failed=True)
     for line in filter(None, lines):
-        typer.echo(line, err=True)
+        rem_look.line(line, err=True)
 
 
 def _absent_mail(selected, available, failed, sources, chosen_by_hand) -> dict:
@@ -83,7 +84,6 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
     other result is `render`'s text with commands, counts and errors marked.
     """
     from ..style import next_line
-    from . import rem_look
     command = _next(ctx, arguments)
     if ctx.obj["json"]:
         typer.echo(json.dumps({"ok": not failed, "data": value, "next": command}, ensure_ascii=False))
@@ -130,7 +130,7 @@ def _dashboard(ctx, verbose=False):
 
 def _moved(ctx, old: str, new: list):
     """An old name still works, and says what it is called now (#1656)."""
-    typer.echo(f"`co rem {old}` is now `{_next(ctx, new)}`; the old name works until 1.9.", err=True)
+    rem_look.line(f"`co rem {old}` is now `{_next(ctx, new)}`; the old name works until 1.9.", err=True)
 
 
 UNITS = {"people": "mails", "projects": "sessions", "orgs": "people"}
@@ -271,7 +271,7 @@ def _mail_clients(root):
 
 
 def _mail_progress(kind, stop, count):
-    typer.echo(f"  {kind}: to {stop:%Y-%m-%d}, {count} mails", err=True)
+    rem_look.line(f"  {kind}: to {stop:%Y-%m-%d}, {count} mails", err=True)
 
 
 def _investigate_me(root, *, days, quick, handle=()):
@@ -367,7 +367,7 @@ def _first_projects(ctx, root, config, plan, say) -> dict:
         return {"started": False, "reason": f"No project active in the last {RECENT_DAYS} days has messages "
                                             "to write from."}
     count = len(recent)
-    typer.echo(f"Writing the {count} project page{'s' if count > 1 else ''} active in the last {RECENT_DAYS} "
+    rem_look.line(f"Writing the {count} project page{'s' if count > 1 else ''} active in the last {RECENT_DAYS} "
                f"days from your own session messages, {plan}: about {count} minute{'s' if count > 1 else ''} "
                f"and ~{90 * count}k billed input tokens (one call each, ~90k measured on a real run). "
                + _cost_line(estimate(recent), quota.read(config)) + " Ctrl-C stops it; pages already written "
@@ -571,7 +571,6 @@ def make_rem_app(factory):
             retry_me = ["investigate", "me", *window, "--quick"]
             reason = _first_page_skipped(ctx, root, result, want=write_mine, problem=problem, fix=fix,
                                          retry=retry_me, init=["init", *window])
-            from . import rem_look
             if not ctx.obj["json"]:
                 # The map's summary and your page's facts first: value before any spending.
                 text = render(result, "init")
@@ -735,9 +734,9 @@ def make_rem_app(factory):
             for number, row in enumerate(chosen, 1):
                 stopped = gate()
                 if stopped:
-                    typer.echo(f"Stopped: {stopped}", err=True)
+                    rem_look.line(f"Stopped: {stopped}", err=True)
                     break
-                typer.echo(f"[{number}/{len(chosen)}] {row['path']}", err=True)
+                rem_look.line(f"[{number}/{len(chosen)}] {row['path']}", err=True)
                 try:
                     one(root, notebook, row["path"])
                     done.append({"page": row["path"], "outcome": "accepted"})
@@ -913,14 +912,14 @@ def make_rem_app(factory):
                 if any("if you approve" in str(source.get("state")) for source in summary["sources"].values()):
                     # --yes approves what was shown before; a mailbox offered for
                     # the first time is shown now, on stderr (#1974).
-                    typer.echo(text, err=True)
+                    rem_look.say(rem_look.result(text), err=True, plain=text)
                 return True
             if not sys.stdin.isatty():
-                typer.echo(text, err=True)
-                typer.echo("A noninteractive start cannot consent silently; read the summary above "
+                rem_look.say(rem_look.result(text), err=True, plain=text)
+                rem_look.line("A noninteractive start cannot consent silently; read the summary above "
                            "and run with --yes, or run `co rem start` in a terminal.", err=True)
                 return False
-            typer.echo(text)
+            rem_look.say(rem_look.result(text), plain=text)
             return typer.confirm("Read these sources with this model and schedule?", default=False)
 
         def operation(root):
@@ -965,7 +964,7 @@ def make_rem_app(factory):
             # A backfill ran 37 minutes over five batches with no output at all
             # (#1957). One line per batch, on stderr so --json stays one document.
             finished.append(record)
-            typer.echo(f"Batch {number}: {record['items']} items, {len(record.get('changed') or [])} pages "
+            rem_look.line(f"Batch {number}: {record['items']} items, {len(record.get('changed') or [])} pages "
                        f"changed, {record.get('runner_attempts', 0)} model calls, {record.get('seconds')}s "
                        f"({record['outcome']})", err=True)
 
@@ -978,7 +977,7 @@ def make_rem_app(factory):
                     # Ctrl-C exited 130 with nothing said; the finished batches are
                     # kept, and the interrupted one reads again next time.
                     pages = len({page for record in finished for page in record.get("changed") or []})
-                    typer.echo(f"Stopped: {len(finished)} batch{'es' if len(finished) != 1 else ''} finished "
+                    rem_look.line(f"Stopped: {len(finished)} batch{'es' if len(finished) != 1 else ''} finished "
                                f"({sum(r['items'] for r in finished)} items, {pages} pages changed); the "
                                f"interrupted batch reads again next time. See {_next(ctx, ['logs'])}.", err=True)
                     raise typer.Exit(130)
@@ -1121,7 +1120,7 @@ def make_rem_app(factory):
             # The tier is measured when the model changes, never read off its name (#1847).
             if {"model", "runner"} & set(values[::2]) and not no_check:
                 if not ctx.obj["json"]:
-                    typer.echo(f"Checking {config['model']} on a fixture page (one or two model calls)...",
+                    rem_look.line(f"Checking {config['model']} on a fixture page (one or two model calls)...",
                                err=True)
                 value["check"] = check_and_record(root, config)
             return value, ["config"]

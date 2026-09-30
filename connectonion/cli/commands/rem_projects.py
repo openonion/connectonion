@@ -7,6 +7,7 @@ rem/project_pages.py.
 
 import typer
 
+from . import rem_look
 from .rem_help import verbatim
 
 
@@ -37,18 +38,18 @@ def _refresh(root, full: bool, recent_days: int) -> dict:
     """Step 1, no model: file the user's new messages under their project pages."""
     from ...rem.project_material import extract
     from ...rem.service import subscriptions
-    typer.echo("co rem projects: reading your own messages in Codex and Claude Code sessions", err=True)
+    rem_look.line("co rem projects: reading your own messages in Codex and Claude Code sessions", err=True)
     report = extract(root, subscriptions(root), full=full, recent_days=recent_days)
     excluded = sum(report["excluded"].values())
     workspace = report["workspace"]
-    typer.echo(f"co rem projects: {report['messages']} new messages from {report['files_read']} session files"
+    rem_look.line(f"co rem projects: {report['messages']} new messages from {report['files_read']} session files"
                + (f"; {excluded} typed in folders that are never projects" if excluded else ""), err=True)
     if workspace["attributed"] or workspace["stayed_out"]:
-        typer.echo(f"co rem projects: {workspace['attributed']} typed in a workspace were filed under the "
+        rem_look.line(f"co rem projects: {workspace['attributed']} typed in a workspace were filed under the "
                    f"repository they worked in ({workspace['folders']} folders); {workspace['stayed_out']} "
                    "stayed out, their sessions touched no repository", err=True)
     if report["created"]:
-        typer.echo(f"co rem projects: made {_count(len(report['created']), 'project page')} for folders active "
+        rem_look.line(f"co rem projects: made {_count(len(report['created']), 'project page')} for folders active "
                    f"in the last {recent_days} days: " + ", ".join(report["created"]), err=True)
     return report
 
@@ -123,7 +124,7 @@ def add_projects_app(rem, factory, handle, logged) -> None:
             if not chosen:
                 return NOTHING, ["list", "projects"]
             config = read_config(root)
-            typer.echo(f"Writing {len(chosen)} of {len(rows)} project pages. "
+            rem_look.line(f"Writing {len(chosen)} of {len(rows)} project pages. "
                        + _cost_line(estimate(chosen), quota.read(config)), err=True)
 
             def gate():
@@ -131,7 +132,7 @@ def add_projects_app(rem, factory, handle, logged) -> None:
                 return quota.blocks(reading, quota.points_spent(run_logs(root), reading), config["limits"])
 
             def on_page(number, total, row):
-                typer.echo(f"[{number}/{total}] {row['record']} ({_mode(row)}, "
+                rem_look.line(f"[{number}/{total}] {row['record']} ({_mode(row)}, "
                            f"last active {_day(row['last_activity'])})", err=True)
 
             def one(record):
@@ -140,7 +141,7 @@ def add_projects_app(rem, factory, handle, logged) -> None:
 
             result = write_pages(root, limit=limit, recent_days=recent_days, write=one, gate=gate, on_page=on_page)
             if result.get("stopped"):
-                typer.echo(f"Stopped: {result['stopped']}", err=True)
+                rem_look.line(f"Stopped: {result['stopped']}", err=True)
             accepted = [row["page"] for row in result["pages"] if row["outcome"] == "accepted"]
             return (result, ["show", accepted[0]] if accepted else ["logs"],
                     any(row["outcome"] != "accepted" for row in result["pages"]))
