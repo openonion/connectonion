@@ -409,11 +409,12 @@ a2's content, the co rem rename and the first-run work, that test pinned to a
 fixed noon, and fixes from a real-notebook run: whole-address handles (#1954),
 instructions ~15k per turn (#1960), task folders scrubbed (#1958), the
 schedule checked against its notebook (#1964), worktree ordering (#1955), the
-daily cap named (#1957). Stable is 1.8.9. See
+daily cap named (#1957), one prompt per subject reading only what is new with
+pages kept near 15k (#1956), and org pages searched by domain (#1963). Stable is 1.8.9. See
 [1.9.0a3 notes](docs/releases/1.9.0a3.md) and, for the content,
 [1.9.0a2 notes](docs/releases/1.9.0a2.md).
 
-- 1.9.0a3 (a2 published; people-pages test pinned to a fixed clock; #1954 #1955 #1957 #1958 #1959 #1960 #1962 #1964.)
+- 1.9.0a3 (a2 published; people-pages test pinned to a fixed clock; #1954 #1955 #1957 #1958 #1959 #1960 #1962 #1964 #1956 #1963.)
 
 ## Unpublished preview: 1.9.0a2
 
