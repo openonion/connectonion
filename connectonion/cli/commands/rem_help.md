@@ -55,20 +55,24 @@ contacts, and session metadata, then saves a private copy of each listed message
 body, once, so investigating a person later reads it from disk.
 
 Then, in a terminal, it writes your own page by itself from everything you sent
-and your coding sessions of the last 30 days: co rem investigate me, one model
-turn on your own plan, about 15 minutes. Then the 3 people you wrote to most in
-the last 14 days (co rem investigate people, one turn each), then the pages of
-projects active in the last 14 days from the messages you typed in their
-sessions (one call each, about a minute and ~90k billed input tokens). It names
-the runner, model and plan before it starts and stops at 5 points of the Codex
-week, or at the weekly budget or floor; Ctrl-C stops it and keeps the map and
-every page written. It is skipped, with the reason, when the runner is missing
+and your coding sessions of the last 30 days (co rem investigate me), then the 3
+people you wrote to most in the last 14 days, reading the run's --days of their
+mail (co rem investigate people), then your 3 most recently active projects from
+the messages you typed in their sessions. Before the first page it says one
+total: about how many pages, ~how many billed input tokens on your plan and ~how
+many minutes, an estimate from the median of this notebook's own runs (before
+there are any: 680k and ~6 minutes for your page, 425k and ~5 minutes a person,
+750k and ~4.5 minutes a project, measured on a real notebook). It names the
+runner and model, and stops at 5 points of the Codex week, or at the weekly
+budget or floor; Ctrl-C stops it, says which pages were written, and keeps the
+map and every page. It is skipped, with the reason, when the runner is missing
 or signed out, when no mailbox gave an address of yours, or when your page was
-already written. More people: co rem investigate people. Older projects: co rem
+already written. More people: co rem investigate people. More projects: co rem
 projects write.
 
 Usage:    co rem init [--days N] [--mine ADDRESS[,ADDRESS...]] [--name NAME] [--mail gmail|outlook]...
                        [--no-mail-archive] [--investigate | --no-investigate]
+                       [--first-people N] [--first-projects N]
 Example:  co rem init --days 90 --name "Aaron Xie" --mine aaron@mail.openonion.ai,aaron@openonion.ai
 
 Inputs:   Connected mailboxes (co auth google, co auth microsoft) and local Codex /
@@ -77,6 +81,8 @@ Inputs:   Connected mailboxes (co auth google, co auth microsoft) and local Code
           one command that confirms the ones you keep.
 Options:  --investigate     Write your page even without a terminal (scripts, --json).
           --no-investigate  Build the map only.
+          --first-people N    People the first run writes (default 3; 0 for none).
+          --first-projects N  Projects the first run writes (default 3; 0 for none).
 Output:   Your page's facts and where it is; one progress line per stage on stderr
           (every step in .state/init-progress.log); pages under ~/.co/rem (or
           --root); private files under .state/: source-inventory.md and .jsonl

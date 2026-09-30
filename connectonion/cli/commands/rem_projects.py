@@ -28,8 +28,9 @@ def _mode(row: dict) -> str:
 
 
 def _order_lines(rows: list[dict]) -> list[str]:
-    return [f"  {row['record']}  (last active {_day(row['last_activity'])}, {row['new_messages']} "
-            f"{'new ' if row['mode'] == 'update' else ''}messages, {_mode(row)}"
+    return [f"  {row['record']}  (last active {_day(row['last_activity'])}, "
+            + _count(row['new_messages'], ('new ' if row['mode'] == 'update' else '') + 'message')
+            + f", {_mode(row)}"
             + (f", {row['left_out']} older not sent" if row["left_out"] else "") + ")"
             for row in rows]
 
@@ -42,7 +43,8 @@ def _refresh(root, full: bool, recent_days: int) -> dict:
     report = extract(root, subscriptions(root), full=full, recent_days=recent_days)
     excluded = sum(report["excluded"].values())
     workspace = report["workspace"]
-    rem_look.line(f"co rem projects: {report['messages']} new messages from {report['files_read']} session files"
+    rem_look.line(f"co rem projects: "
+               + f"{_count(report['messages'], 'new message')} from {_count(report['files_read'], 'session file')}"
                + (f"; {excluded} typed in folders that are never projects" if excluded else ""), err=True)
     if workspace["attributed"] or workspace["stayed_out"]:
         rem_look.line(f"co rem projects: {workspace['attributed']} typed in a workspace were filed under the "
@@ -124,8 +126,12 @@ def add_projects_app(rem, factory, handle, logged) -> None:
             if not chosen:
                 return NOTHING, ["list", "projects"]
             config = read_config(root)
-            rem_look.line(f"Writing {len(chosen)} of {len(rows)} project pages. "
-                       + _cost_line(estimate(chosen), quota.read(config)), err=True)
+            from ...rem import first_run
+            from ...rem.runner import PLAN
+            total = first_run.plan(run_logs(root), owner=False, people=0, projects=len(chosen))
+            rem_look.line(f"Writing {len(chosen)} of {_count(len(rows), 'project page')}. "
+                          + first_run.announce(total, PLAN.get(config["runner"], "on the configured runner"))
+                          + " " + _cost_line(estimate(chosen), quota.read(config)), err=True)
 
             def gate():
                 reading = quota.read(config)
@@ -140,9 +146,23 @@ def add_projects_app(rem, factory, handle, logged) -> None:
                               lambda update: write_page(root, record, config=config, progress=update))
 
             result = write_pages(root, limit=limit, recent_days=recent_days, write=one, gate=gate, on_page=on_page)
-            if result.get("stopped"):
-                rem_look.line(f"Stopped: {result['stopped']}", err=True)
             accepted = [row["page"] for row in result["pages"] if row["outcome"] == "accepted"]
-            return (result, ["show", accepted[0]] if accepted else ["logs"],
+            return ((result if ctx.obj["json"] else written_summary(result)),
+                    ["show", accepted[0]] if accepted else ["logs"],
                     any(row["outcome"] != "accepted" for row in result["pages"]))
-        handle(ctx, operation, ["projects"])
+        handle(ctx, operation, ["projects"], resume=["projects", "write"])
+
+
+def written_summary(result: dict) -> str:
+    """`projects write`'s last word: a line per page and what is left (#2008).
+
+    1.9.0a5 ended with the result dict dumped as YAML (pages:, mode:, outcome:).
+    """
+    lines = [f"  {row['page']}: " + ("written" if row["outcome"] == "accepted" else
+                                     f"{row['outcome']} ({str(row.get('why', ''))[:160]})")
+             for row in result["pages"]]
+    accepted = sum(row["outcome"] == "accepted" for row in result["pages"])
+    head = f"Wrote {_count(accepted, 'project page')} of {len(result['pages'])}."
+    tail = [f"Stopped before the rest: {result['stopped']}."] if result.get("stopped") else []
+    left = [f"{_count(result['left'], 'project page')} left to write."] if result.get("left") else []
+    return "\n".join([head, *lines, *tail, *left])

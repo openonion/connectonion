@@ -73,8 +73,12 @@ def owner_first(ctx, root) -> list[str]:
 
 
 def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool, gate, clients_for,
-               subscriptions, logged):
-    """The people category: order, cost, then one person after another. Returns (result, next, failed)."""
+               subscriptions, logged, announce=True):
+    """The people category: order, cost, then one person after another. Returns (result, next, failed).
+
+    `announce=False` is init's first run, which has already said one total
+    for every page it will write (#2008).
+    """
     from ...rem import quota
     from ...rem.config import read_config
     from ...rem.people_pages import estimate, investigate_person, queue, write_pages
@@ -97,8 +101,9 @@ def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool
     if not chosen:
         return "No people to investigate: every page is investigated and nothing new has arrived.", \
             ["list", "people"], False
-    rem_look.line(f"Investigating {len(chosen)} of {len(rows)} people. "
-               + cost_line(estimate(chosen), quota.read(config)), err=True)
+    if announce:
+        rem_look.line(f"Investigating {len(chosen)} of {len(rows)} people. "
+                      + cost_line(estimate(chosen), quota.read(config)), err=True)
     clients, sources = clients_for(root), subscriptions(root)
 
     def on_page(number, total, row):
