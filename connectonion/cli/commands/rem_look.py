@@ -52,7 +52,7 @@ def highlight(line: str, *, counts: bool = False) -> str:
     if counts:
         spans += [(m.start(), m.end(), style.count) for m in re.finditer(COUNT, line)]
     out, at = [], 0
-    for start, end, paint in sorted(spans):
+    for start, end, paint in sorted(spans, key=lambda span: span[:2]):
         if start < at:
             continue  # inside a command already: `co rem show people/a.md` is one command, not a command and a path
         out += [_literal(line[at:start], before_tag=True), paint(line[start:end])]
