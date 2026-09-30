@@ -313,3 +313,39 @@ def test_inits_recent_projects_step_writes_a_workspace_attributed_project(ws, mo
     assert result["started"] and written == [beta]
     assert said == [f"  {beta}: written"]
     assert texts(ws.root, beta) == ["beta needs a release"]
+
+
+def as_codex_desktop(path: Path) -> None:
+    """Rewrite a codex_session file the way Codex Desktop writes it (#1978): the
+    originator, every user-slot message under the metadata passthrough, and the
+    client's AGENTS.md / environment block before the first typed message."""
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    rows[0]["payload"]["originator"] = "Codex Desktop"
+    out = [rows[0], {"timestamp": rows[1]["timestamp"], "type": "response_item", "payload": {
+        "type": "message", "role": "user", "id": "m-env",
+        "content": [{"type": "input_text", "text": "# AGENTS.md instructions for " + rows[0]["payload"]["cwd"]}],
+        "internal_chat_message_metadata_passthrough": {
+            "turn_id": "t0", "create_time": 1.0,
+            "content_item_kinds": ["agents_md.instructions", "environments.environment_context"]}}}]
+    for row in rows[1:]:
+        payload = row.get("payload", {})
+        if payload.get("type") == "message" and payload.get("role") == "user":
+            payload.update({"id": "m", "internal_chat_message_metadata_passthrough": {
+                "turn_id": "t", "create_time": 1.0, "content_item_kinds": ["user.text"]}})
+        out.append(row)
+    path.write_text("".join(json.dumps(row) + "\n" for row in out), encoding="utf-8")
+
+
+def test_a_codex_desktop_thread_typed_in_the_workspace_is_filed_by_its_tool_calls(ws):
+    """Desktop threads were read as all-injected, so their workspace messages never
+    reached attribution (#1978). They carry the same turn_context and exec calls."""
+    path = ws.codex / "2026/09/28/rollout-desk.jsonl"
+    codex_session(path, str(ws.projects), [
+        ("alpha 的 parser 要严格一点。", 2, [("exec", exec_command("pytest -q", workdir=ws.p("alpha")))]),
+        ("Now the beta README.", 1, [("exec", exec_command("sed -n 1,40p " + ws.p("beta/README.md")))]),
+    ])
+    as_codex_desktop(path)
+    report = extract(ws.root, ws.subs)
+    assert texts(ws.root, "projects/alpha.md") == ["alpha 的 parser 要严格一点。"]
+    assert report["workspace"]["attributed"] == 2 and report["workspace"]["stayed_out"] == 0
+    assert report["harness_blocks_skipped"] == 1  # the AGENTS.md block, never a page's material

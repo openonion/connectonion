@@ -36,16 +36,29 @@ INJECTED_BLOCK = re.compile(
     r"|This session is being continued from a previous conversation"
     r"|Follow these instructions exactly\. They are the skill `"
     r"|Base directory for this skill:)")
-# What a typed Codex message looks like, and nothing else is read. Over 30 real days
-# the `role: user` slot holds exactly two shapes: 688 typed messages with these three
-# keys (median 172 characters) and 9,103 injected ones carrying `id` and a metadata
-# passthrough as well (median 3,828). Recognising the injection would be a denylist,
-# and the day its marker is renamed we would silently go back to reading the agent's
-# own transcript; recognising the typed shape means an unfamiliar message is skipped
-# and counted instead. The marker below is still named, so a skip can be reported as
-# expected machinery rather than as a format that moved.
+# What a typed Codex CLI message looks like: over 30 real days the CLI's `role: user`
+# slot held 688 typed messages with exactly these three keys (median 172 characters)
+# and 9,103 injected ones carrying `id` and a metadata passthrough as well (median
+# 3,828). Recognising the typed shape, not the injection, means an unfamiliar message
+# is skipped and counted instead of read.
 TYPED_CODEX_KEYS = frozenset({"content", "role", "type"})
 CODEX_INJECTED_KEY = "internal_chat_message_metadata_passthrough"
+# Codex Desktop puts *every* user-slot message under that passthrough, typed or not, so
+# its presence says nothing (#1978: 12,285 of 13,065 user-slot messages over 90 days
+# were dropped for carrying it, every typed Desktop message among them). What does say
+# something is `content_item_kinds`, one kind per content part: a message the person
+# typed is all `user.*` (`user.text`, `user.image`); what the client adds names itself
+# (`agents_md.instructions`, `environments.environment_context`,
+# `plugins.recommendations`, `goal.internal_context`, `skills.selected_skill_instructions`,
+# `generic.turn_aborted`). A message with no kinds is the client's too: over the same
+# 90 days, 13% of those that open with no tag hold Chinese against 64% of the typed
+# ones -- the owner writes in Chinese, the harness does not.
+CODEX_TYPED_SHAPES = (TYPED_CODEX_KEYS, TYPED_CODEX_KEYS | {"id", CODEX_INJECTED_KEY})
+TYPED_KIND = "user."
+CODEX_DESKTOP = "Codex Desktop"
+# Desktop puts the page open in its in-app browser in front of what was typed, as one
+# block. The block goes and the typed words stay (122 messages in the 90 days).
+BROWSER_CONTEXT = re.compile(r"\s*<in-app-browser-context>.*?</in-app-browser-context>\s*", re.S)
 # Unfamiliar user-slot messages in one pass before the run says the format moved.
 UNRECOGNISED_ALARM = 20
 SKIPPED = object()     # a user-slot message not read: the client's own machinery, expected
@@ -99,10 +112,23 @@ def _codex_meta(first: dict) -> dict:
     payload = first["payload"]
     if payload.get("originator") == "co_rem" or payload.get("source") == "co_rem":
         return {"skip": True}
-    return {"id": payload.get("id"), "cwd": payload.get("cwd", "")}
+    # A subagent's thread (the approval reviewer, a spawned worker) is Codex's
+    # sidechain: its user slot is what the parent agent wrote or quoted back, and a
+    # forked worker starts with a copy of the parent's messages. Its tool calls are
+    # still the session's (a skill it loads was loaded), so only messages are refused.
+    source = payload.get("source")
+    return {"id": payload.get("id"), "cwd": payload.get("cwd", ""),
+            "subagent": isinstance(source, dict) and "subagent" in source,
+            "desktop": payload.get("originator") == CODEX_DESKTOP}
 
 
-def _codex_message(row: dict, since: datetime) -> dict | None:
+def _codex_message(row: dict, since: datetime, meta: dict | None = None) -> dict | None:
+    """What the person typed in one rollout row: SKIPPED for the client's own
+    machinery, UNFAMILIAR for a user-slot shape we do not know, None for any other row.
+
+    `meta` is the file's `_codex_meta`; without it a row is judged as the CLI's.
+    """
+    meta = meta or {}
     payload = row.get("payload", {})
     if row.get("type") != "response_item" or payload.get("type") != "message":
         return None
@@ -110,13 +136,31 @@ def _codex_message(row: dict, since: datetime) -> dict | None:
         return None
     if timestamp(row.get("timestamp")) < since:
         return None
-    if set(payload) != TYPED_CODEX_KEYS:
-        # Known machinery is expected and quiet; an unfamiliar shape is the alarm.
-        return SKIPPED if CODEX_INJECTED_KEY in payload else UNFAMILIAR
+    if set(payload) not in CODEX_TYPED_SHAPES:
+        # Every user-slot message in 90 days had one of the two shapes. A third is the
+        # alarm, passthrough or not: the day Desktop adds a field, typed messages
+        # skipped quietly would be this bug again.
+        return UNFAMILIAR
+    if meta.get("subagent"):
+        return SKIPPED
+    passthrough = payload.get(CODEX_INJECTED_KEY)
+    if passthrough is None and meta.get("desktop"):
+        # Desktop writes every message it takes under the passthrough. A bare one in its
+        # rollout is a Claude Code session it imported (all 780 in the owner's store
+        # were), which co rem already reads from Claude Code itself.
+        return SKIPPED
+    if passthrough is not None:
+        kinds = passthrough.get("content_item_kinds") if isinstance(passthrough, dict) else ()
+        if not isinstance(passthrough, dict) or not isinstance(kinds, (list, type(None))):
+            return UNFAMILIAR
+        if not kinds or not all(isinstance(kind, str) and kind.startswith(TYPED_KIND) for kind in kinds):
+            return SKIPPED
     content = payload.get("content", [])
     text = "\n".join(part["text"] for part in content if isinstance(part, dict)
                      and part.get("type") in ("input_text", "output_text")
                      and isinstance(part.get("text"), str))
+    if passthrough is not None and BROWSER_CONTEXT.match(text):
+        text = BROWSER_CONTEXT.sub("", text, count=1)
     return _spoken(payload["role"], text, row["timestamp"]) or SKIPPED
 
 
@@ -128,7 +172,7 @@ def _claude_meta(first: dict) -> dict:
     return {"id": first.get("sessionId"), "cwd": first.get("cwd", "")}
 
 
-def _claude_message(row: dict, since: datetime) -> dict | None:
+def _claude_message(row: dict, since: datetime, meta: dict | None = None) -> dict | None:
     role = row.get("type")
     if role not in CODING_SPEAKERS:
         return None
@@ -294,7 +338,7 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
                 if b"message" in line and b"role" in line:
                     try:
                         row = json.loads(line)
-                        item = parse(row, since) if isinstance(row, dict) else None
+                        item = parse(row, since, meta) if isinstance(row, dict) else None
                     except (ValueError, UnicodeError, AttributeError, TypeError) as error:
                         raise RemError("Invalid complete source line; progress was not advanced") from error
                 if item is SKIPPED or item is UNFAMILIAR:
