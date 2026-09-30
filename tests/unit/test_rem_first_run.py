@@ -443,7 +443,7 @@ def test_after_me_the_people_you_wrote_to_and_projects_four_at_a_time(people):
     assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
     text = Text.from_ansi(result.output).plain
     assert "the people you write to, your projects and the organisations you correspond with" in text
-    assert "6 at a time" in text and "it stops at 30 points of the Codex week" in text
+    assert "8 at a time" in text and "it stops at 40 points of the Codex week" in text
     assert "Written this run: your page, 5 people, 3 project pages and 3 organisation pages." in text
 
 

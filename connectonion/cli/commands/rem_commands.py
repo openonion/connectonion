@@ -390,8 +390,8 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
 # about 20M input tokens without moving the Codex week off 28%, so the owner
 # judged the cost small and the wait the real problem.
 FIRST_RUN_PEOPLE = 0   # 0: everyone in the people queue
-FIRST_RUN_POINTS = 30
-FIRST_RUN_WORKERS = 6
+FIRST_RUN_POINTS = 40
+FIRST_RUN_WORKERS = 8
 
 
 def _first_run_gate(root, config):
