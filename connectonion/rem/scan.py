@@ -121,8 +121,13 @@ def _contact_names(clients: dict) -> dict:
 
 
 def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
-                on_row=None, on_window=None) -> list[dict]:
-    """Every correspondent across every mailbox, with the signals a Skill ranks by."""
+                on_row=None, on_window=None, own_names=None) -> list[dict]:
+    """Every correspondent across every mailbox, with the signals a Skill ranks by.
+
+    `own_names`, a Counter, is given the From display name of each mail the
+    owner sent: what they call themselves, which a mailbox's configured name
+    ("Aaron x" on a real account, #2008) is not.
+    """
     mine = {a.lower() for a in own_addresses}
     for client in clients.values():
         mine |= {a.lower() for a in client.my_addresses()}
@@ -144,6 +149,10 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
                 if on_row:
                     on_row(kind, row)
                 own = _address(row.get("from", "")) in mine or "@" not in _address(row.get("from", ""))
+                if own and own_names is not None:
+                    sender = _display_name(row, _address(row.get("from", "")))
+                    if sender:
+                        own_names[sender] += 1
                 # One sent message can be relevant to several people. Map each
                 # recipient, while the body archive still stores it only once.
                 recipients = _addresses(row.get("to")) + _addresses(row.get("cc"))

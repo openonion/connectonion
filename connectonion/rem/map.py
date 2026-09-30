@@ -19,7 +19,7 @@ def _record(category: str, name: str, identity: str) -> str:
 
 
 def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None, progress=None,
-               inventory=None) -> tuple[list[dict], set]:
+               inventory=None, own_names=None) -> tuple[list[dict], set]:
     own, available, merged = set(mine), {}, {}
     for kind, client in clients.items():
         try:
@@ -34,7 +34,7 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None, prog
         try:
             rows = scan_people({kind: client}, days, own,
                                on_row=inventory.mail if inventory else None,
-                               on_window=inventory.window if inventory else None)
+                               on_window=inventory.window if inventory else None, own_names=own_names)
         except Exception as error:
             coverage.append(f'{kind}: metadata scan failed ({type(error).__name__}); incomplete')
             if errors is not None: errors.append({'source': kind, 'stage': 'metadata', 'error': type(error).__name__})
@@ -181,10 +181,17 @@ def _session_state(subscription: dict, projects: list) -> str:
     return 'scanned' if projects else 'scanned; no sessions in this window'
 
 
-def _owner_name(clients: dict, given: str = '') -> str:
-    """What the owner is called: what they said, else what a mailbox has on file."""
+def _owner_name(clients: dict, given: str = '', sent_names=None) -> str:
+    """What the owner is called: what they said, else what they sign their mail as, else a mailbox's name.
+
+    The most common From display name in the owner's own sent mail comes before
+    the name a mailbox has configured: a real account's configured name was
+    "Aaron x" while every mail he sent went out as "Aaron Xie" (#2008).
+    """
     if given.strip():
         return given.strip()
+    if sent_names:
+        return sent_names.most_common(1)[0][0].strip()
     for client in clients.values():
         try:
             name = client.my_name() if hasattr(client, 'my_name') else ''
@@ -587,17 +594,22 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
             inventory.skill(skill)
         inventory.save(report)
     save()
+    import collections
+    sent_names = collections.Counter()
     if inventory:
         people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress,
-                                 inventory=inventory)
+                                 inventory=inventory, own_names=sent_names)
     else:
-        people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress)
+        people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress,
+                                 own_names=sent_names)
     roster = notebook.people()
     if own:
         aliases = sorted({address.casefold() for address in own})
         existing = next((p['path'] for p in roster if set(aliases).intersection(p['emails'])), None)
-        owner_record = existing or earlier or _record('people', 'Account owner', aliases[0])
-        owner_name = _owner_name(clients, name)
+        owner_name = _owner_name(clients, name, sent_names)
+        # A new notebook's file is named after the owner, not "account-owner-…";
+        # an existing page keeps its path (links and runs point at it).
+        owner_record = existing or earlier or _record('people', owner_name, aliases[0])
         if notebook.stub_person(owner_record, 'Account owner', aliases, email=', '.join(aliases)):
             report['created'].append(owner_record)
         report['owner'] = {'record': owner_record, 'addresses': aliases}

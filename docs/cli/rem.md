@@ -66,6 +66,12 @@ already written, or when there is no terminal (scripts and `--json`) unless
 projects wait for `co rem projects write`; more people for
 `co rem investigate people`.
 
+Your page is titled with the name you sign your mail with: `--name` if given,
+else the most common From display name in the mail you sent, else the name a
+mailbox has configured (a real account's was "Aaron x" while every sent mail
+said "Aaron Xie", #2008). A new notebook names the file after you
+(`people/aaron-xie-….md`); an existing page keeps its path.
+
 Progress is one line per stage (updated in place in a terminal); every step is
 kept in `.state/init-progress.log`. Addresses that look like yours (you wrote,
 nobody replied) are listed on one line with one command that confirms the ones
