@@ -95,9 +95,11 @@ def next_line(cmd: str) -> str:
 
 # A `co …` command in text written as one string: at the start of a line,
 # after a label's `: `, a `| ` or a backtick, and up to two spaces, ` — `, a
-# closing backtick or bracket, or the end of the line. Prose that merely uses
-# the word is not found in the middle of a sentence, and `cobalt` never is.
-_COMMAND = re.compile(r"(^[ \t]*|(?<=: )|(?<=:  )|(?<=\| )|(?<=`))(co(?: (?!— )[^\s`)]+)*?)(?=  | — |[`)]|$)")
+# closing backtick or bracket, ` (` opening a parenthetical, or the end of the
+# line. Prose that merely uses the word is not found in the middle of a
+# sentence, and `cobalt` never is. Without ` (`, "Next: co status (balance and
+# deployments; …)" was coloured as one long command (#2008).
+_COMMAND = re.compile(r"(^[ \t]*|(?<=: )|(?<=:  )|(?<=\| )|(?<=`))(co(?: (?!— )[^\s`)]+)*?)(?=  | — | \(|[`)]|$)")
 _HEADING = re.compile(r"[A-Z][A-Za-z ]*:")
 _NEXT = re.compile(r"(\s*)Next: (.*)")
 
