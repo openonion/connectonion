@@ -1036,8 +1036,9 @@ Explicit API-key arguments remain caller-controlled; setup commands can prompt
 for missing credentials. No existing environment value is overwritten.
 
 Use `co status` or `co doctor` for redacted credential diagnostics. Set
-`CO_DEBUG_ENV=1` to show the dotenv file paths loaded at startup, even when
-output is piped. It does not print secret values.
+`CO_DEBUG_ENV=1` to show the dotenv file path loaded at startup, once, on
+stderr. Nothing else prints it, in a terminal or a pipe, so a command's first
+line is its own. It does not print secret values.
 
 ### Backend selection
 
