@@ -1,0 +1,37 @@
+version: v1.9.0a10
+images:
+  - file: home-desktop.png
+    alt: "REM home showing the last run, waiting on you and waiting on others"
+    caption: "The redesigned reader opens with changes and obligations."
+    scenario: "Invented notebook fixture, co rem reader home"
+    viewport: "1440x1000, light"
+    commit: 541a0486
+    source_run: "scripts/capture_rem_reader.py with tests/fixtures/rem_reader_notebook.py"
+  - file: people-before-phone.png
+    alt: "The earlier People view as a vertical feed of full person summaries"
+    caption: "Before: People required scrolling through long summaries."
+    scenario: "Same invented notebook fixture rendered by v1.9.0a8"
+    viewport: "390x844, light"
+    commit: be9275e6
+    source_run: "v1.9.0a8 reader rendered with tests/fixtures/rem_reader_notebook.py"
+  - file: people-desktop.png
+    alt: "The new People sheet with sortable columns and open work beside each name"
+    caption: "People is now a sortable, filterable sheet."
+    scenario: "Invented notebook fixture, People category"
+    viewport: "1440x1000, light"
+    commit: 541a0486
+    source_run: "scripts/capture_rem_reader.py with tests/fixtures/rem_reader_notebook.py"
+  - file: people-phone.png
+    alt: "The People sheet at phone width, with name and open work visible"
+    caption: "After: the sheet stays inside the phone viewport and scrolls by column."
+    scenario: "Invented notebook fixture, People category"
+    viewport: "390x844, light"
+    commit: 541a0486
+    source_run: "scripts/capture_rem_reader.py with tests/fixtures/rem_reader_notebook.py"
+  - file: person-phone.png
+    alt: "Person page at phone width with an owed action, cited facts and insight"
+    caption: "A person page begins with the balance and cited facts."
+    scenario: "Invented notebook fixture, Mara Ostrowski person page"
+    viewport: "390x844, light"
+    commit: 541a0486
+    source_run: "scripts/capture_rem_reader.py with tests/fixtures/rem_reader_notebook.py"
