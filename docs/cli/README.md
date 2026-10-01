@@ -471,6 +471,23 @@ command inventory, adapter sources and migration behavior.
 
 ---
 
+#### `co linear` - Linear issues
+
+Your Linear issues with a personal API key: list, read, search, and create,
+update or comment with a preview first. Issues are `ENG-123`; team, state,
+label and assignee names are looked up for you.
+
+```bash
+co env set LINEAR_API_KEY lin_api_... --secret
+co linear issues --mine
+co linear create "Login redirect loops" --team ENG --label bug --yes
+co linear update ENG-123 --state Done --yes
+```
+
+See [linear.md](linear.md).
+
+---
+
 #### `co onenote` - Browse OneNote by number
 
 After `co auth microsoft`, run `co onenote ls` to see numbered sections,
@@ -1396,6 +1413,7 @@ See [server.md](server.md).
 | `co call` | Run a command on a remote agent | No | ✅ Yes |
 | `co outlook` | Send/read Outlook email | No | ✅ Yes |
 | `co schedule` | See, check, run now, pause and resume `.co/schedule.yaml` entries — [schedule.md](schedule.md) | No | ✅ Yes (writes schedule state only) |
+| `co linear` | Linear issues: list, read, search, create, update, comment — [linear.md](linear.md) | No | ✅ Yes (writes only with `--yes`) |
 | `co audit` | Is a CLI (co or any other) fit for an agent harness? Scores its help pages — [audit.md](audit.md) | No | ✅ Yes (read-only) |
 
 ---

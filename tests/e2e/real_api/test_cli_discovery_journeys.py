@@ -32,6 +32,7 @@ JOURNEYS = [
     ("Give another agent permission to call my agent", ["co trust add"]),
     ("Set an API key that all my projects use", ["co env set"]),
     ("Install the skills that another person published at address 0xabc", ["co sub"]),
+    ("File this bug in Linear and tell me its id", ["co linear create"]),
     pytest.param("Find a published skill someone else wrote and add it to this project", ["co sub", "co skills copy"],
                  marks=pytest.mark.xfail(reason="two steps, co sub sync then co skills copy --to-project; "
                                                 "co sub sync --help names the second as its Next")),
