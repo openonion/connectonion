@@ -636,6 +636,11 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     # One page at a time: investigation, and maintenance handed a single page (#1656).
     one_page = stage == "maintain" and any(item.get("one_page") for item in items)
     candidate = directory / "candidate.md" if record and (stage == "investigate" or one_page) else None
+    if candidate is not None:
+        # The review refuses a page that ends over the limit; a person page
+        # learnt that only after a 643k-token turn (#2041).
+        from .page_review import size_note
+        prompt += size_note(len(notebook.read(record)))
     before = {r: notebook.read(r) for r in notebook.list()}
     task_root = notebook.root
     if candidate:

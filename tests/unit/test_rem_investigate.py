@@ -739,9 +739,24 @@ def test_the_status_line_never_names_the_evidence_layout_as_a_source():
         "whatsapp: no chats chosen, not searched",
         "evidence: 2,160,000 chars gathered, written to 303 files and searched, not summarised first",
         "Requested investigation window: 150 days ending 2026-09-30",
+        # #2045: any note, not only the ones listed by name, stays off the line.
+        "3 gathered item(s) already cited on the page, not re-read",
+        "Requested investigation window (people update): 4 days",
     ]
 
     assert inv.searched_sources(coverage) == ["outlook", "gmail", "codex", "claude-code"]
+
+
+def test_an_accepted_investigation_drops_the_map_s_mail_count_from_history():
+    """#2045: after reading 32 of Jiexuan Deng's mails the page still said
+    "Observed mail count: 2", the map's window-limited count."""
+    page = ("# Jiexuan\n\n## History\n- Observed mail count: 2; first: 2026-09-23; last: 2026-09-23 [1]\n"
+            "- 2026-09-29: agreed the pilot scope [2]\n\n## Sources\n- [1] map\n- [2] outlook:abc\n")
+    dropped = inv.drop_map_count(page)
+    assert "Observed mail count" not in dropped
+    assert "- 2026-09-29: agreed the pilot scope [2]\n\n## Sources\n" in dropped
+    only = "# J\n\n## History\n- Observed mail count: 2; first: x [1]\n\n## Sources\n- [1] map\n"
+    assert inv.drop_map_count(only) == only   # History's only entry stays
 
 
 def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monkeypatch):
@@ -1051,6 +1066,64 @@ def test_a_person_with_nothing_new_leaves_the_update_queue(tmp_path, monkeypatch
     with pytest.raises(inv.NothingNew):
         people_pages.investigate_person(root, row, clients={}, subscriptions={})
     assert 'people/vern.md' not in {r['record'] for r in people_pages.queue(root)}
+
+
+# ------------------------------------------------ #2041: a refused page waits for newer material
+
+
+def _refusing(*a, **kw):
+    from connectonion.rem.runner import RunFailed
+    raise RunFailed("Candidate rejected, kept at x: Page is 20,493 characters (was 18,730), over the 20,000 limit",
+                    {'input_tokens': 643_000})
+
+
+def test_a_refused_investigation_is_not_retried_on_the_same_material(tmp_path, monkeypatch):
+    """1.9.0a7: Ody Zhou's page was refused at 20,493 characters (643k tokens),
+    stayed first in the queue with the same window, and the next run re-read
+    the same mail for 933k more."""
+    from connectonion.rem.runner import RunFailed
+    root = _notebook(tmp_path, 'codex')
+    mail = {'source': 'gmail:aaa', 'timestamp': '2026-09-30T09:00:00+00:00', 'text': 'Ody wrote.'}
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([mail], ['gmail: 1 matched']))
+    args = dict(days=4, clients={}, subscriptions={})
+    with pytest.raises(RunFailed):
+        inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], runner=_refusing, **args)
+    with pytest.raises(inv.NothingNew) as caught:
+        inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], **args,
+                        runner=lambda *a, **kw: pytest.fail('no model call for material already refused'))
+    assert 'waits for newer material' in str(caught.value) and '20,000 limit' in str(caught.value)
+
+
+def test_newer_material_after_a_refusal_runs_again_and_clears_it(tmp_path, monkeypatch):
+    from connectonion.rem.runner import RunFailed
+    root = _notebook(tmp_path, 'codex')
+    old = {'source': 'gmail:aaa', 'timestamp': '2026-09-30T09:00:00+00:00', 'text': 'Ody wrote.'}
+    new = {'source': 'gmail:bbb', 'timestamp': '2026-10-01T09:00:00+00:00', 'text': 'Ody wrote again.'}
+    gathered = [[old]]
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (gathered[0], ['gmail']))
+    args = dict(days=4, clients={}, subscriptions={})
+    with pytest.raises(RunFailed):
+        inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], runner=_refusing, **args)
+    gathered[0] = [old, new]
+    called = []
+    inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], **args,
+                    runner=lambda *a, **kw: called.append(1) or {'changed': [], 'usage': None})
+    assert called == [1] and inv.refused_for(root, 'people/vern.md') == {}
+
+
+def test_a_failure_that_is_not_a_refusal_is_retried(tmp_path, monkeypatch):
+    """A timeout or a crashed harness says nothing about the material."""
+    from connectonion.rem.runner import RunFailed
+    root = _notebook(tmp_path, 'codex')
+    mail = {'source': 'gmail:aaa', 'timestamp': '2026-09-30T09:00:00+00:00', 'text': 'Ody wrote.'}
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([mail], ['gmail']))
+
+    def timing_out(*a, **kw):
+        raise RunFailed('Runner timed out after 1800 seconds', None)
+    with pytest.raises(RunFailed):
+        inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], days=4, clients={}, subscriptions={},
+                        runner=timing_out)
+    assert inv.refused_for(root, 'people/vern.md') == {}
 
 
 def test_a_quick_pass_reports_its_sampling_limit_in_the_reply_not_on_the_page(tmp_path, monkeypatch):

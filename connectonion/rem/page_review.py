@@ -309,6 +309,18 @@ def size_errors(candidate: str, original: str) -> list[str]:
             'citations, and keep the lead and the current state']
 
 
+def size_note(page_chars: int) -> str:
+    """The limit `size_errors` enforces, said in the prompt before the turn rather than after it.
+
+    Said only in the review, a page near the limit was written at full length,
+    refused, and retried: 20,493 characters, 643k tokens, then 933k more on
+    the same mail (#2026 for project pages, #2041 for the others)."""
+    if page_chars <= PAGE_LIMIT * 3 // 4:
+        return f"The page must stay under {PAGE_LIMIT:,} characters. "
+    return (f"The page is {page_chars:,} characters; it must end under {PAGE_LIMIT:,}, or at least not grow: "
+            "first fold the oldest History into dated one-line summaries with their citations, then add. ")
+
+
 def validate(record: str, candidate: str, original: str, items: list[dict], pages=frozenset(),
              owner: bool = False) -> list[str]:
     """Structural checks only; citation existence does not prove factual entailment."""

@@ -84,6 +84,27 @@ def test_project_investigation_bounds_local_file_search(notebook, monkeypatch):
     assert 'stop using tools and return a brief coverage summary' in prompts[0]
 
 
+def test_a_person_page_near_the_limit_is_told_its_size_before_the_turn(notebook, monkeypatch):
+    """#2041: Ody Zhou's 18,730-character page learnt about the 20,000 limit
+    only from the review, after a 643k-token turn."""
+    record = 'people/ody.md'
+    notebook.stub_person(record, 'Ody', ['ody@example.org'], email='ody@example.org')
+    notebook.write(record, notebook.read(record) + '\n' + 'x' * 18_000 + '\n')
+    prompts = []
+
+    def stop_after_capture(argv, **kwargs):
+        prompts.append(argv[-1])
+        raise OSError('synthetic stop')
+
+    monkeypatch.setattr('connectonion.rem.runner.subprocess.run', stop_after_capture)
+    with pytest.raises(RunFailed):
+        run_stage(notebook, [{'role': 'page', 'record': record, 'text': notebook.read(record),
+                              'source': 'investigation:page'}], default_config(), stage='investigate')
+    size = len(notebook.read(record))
+    assert f'The page is {size:,} characters; it must end under 20,000' in prompts[0]
+    assert 'fold the oldest History' in prompts[0]
+
+
 def test_quick_investigation_reads_complete_bounded_material_once(tmp_path):
     items = [{'role': 'quick-first-pass', 'source': 'investigation:quick-scope',
               'text': 'Only use the gathered items.'},
