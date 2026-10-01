@@ -34,6 +34,14 @@ def test_the_signature_block_is_handed_over_for_role_and_company():
     assert "Head of Data Platform | Harbour Analytics" in block and "Thanks" not in block
 
 
+def test_a_body_the_provider_flattened_to_one_line_still_gives_its_signature_and_phone():
+    flat = ("Hi Alex, " + "thanks for the notes on the pilot scope and the timeline we discussed. " * 4
+            + "Kind regards, Mia Chen Head of Data Platform Harbour Analytics Mobile: +61 400 555 019")
+    rows = extract([mail("outlook:g7", "2026-08-04T01:00:00+00:00", flat)], HANDLES)
+    assert [(r["value"], r["qualifier"]) for r in found(rows, "Phone")] == [("+61 400 555 019", "mobile")]
+    assert found(rows, "Signature")[0]["value"].startswith("Mia Chen Head of Data Platform")
+
+
 def test_a_company_only_in_the_domain_is_named_but_a_mailbox_provider_is_not():
     rows = extract([mail("outlook:b2", "2026-08-04T01:00:00+00:00", "Sure, Thursday.\nMia")], HANDLES)
     assert found(rows, "Company domain")[0]["value"] == "harbour.example"

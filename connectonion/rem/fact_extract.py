@@ -22,7 +22,7 @@ WEBMAIL = ("gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.co
            "me.com", "qq.com", "163.com", "126.com", "proton.me", "protonmail.com", "gmx.com", "foxmail.com")
 SIGN_OFF = re.compile(r"^(best|kind regards|regards|warm regards|thanks|thank you|cheers|sincerely|"
                       r"many thanks|all the best|谢谢|此致)\b", re.I)
-PHONE = re.compile(r"(?<![\w/])(\+?\(?\d[\d ().-]{6,20}\d)(?![\w/])")
+PHONE = re.compile(r"(?<![\d/])(\+?\(?\d[\d ().-]{6,20}\d)(?![\d/])")
 MOBILE = re.compile(r"\b(m|mob|mobile|cell|手机)\b\s*[:.]?", re.I)
 WORK = re.compile(r"\b(t|tel|ph|phone|p|w|work|office|direct|d|电话)\b\s*[:.]?", re.I)
 LINKEDIN = re.compile(r"(?:https?://)?(?:[\w-]+\.)?linkedin\.com/in/[\w%-]+/?", re.I)
@@ -52,6 +52,17 @@ def _body(item: dict) -> list[str]:
 def signature(lines: list[str], names: list[str]) -> list[str]:
     """The block under the sign-off: from the last line that is the sender's name
     (or follows a sign-off) in the last fifteen lines, at most eight lines."""
+    text = [line for line in lines if line]
+    if len(text) <= 2 and text and len(text[-1]) > 200:
+        # Outlook hands some bodies over as one line, the quoted thread glued
+        # on (the owner's real mail, 2026-10-02: every message from one
+        # correspondent, her mobile mid-line). A signature then starts at the
+        # sender's own full name after the greeting; another person's quoted
+        # signature starts at theirs, so it is not taken.
+        flat = text[-1]
+        full = [n for n in names if " " in n] or names
+        starts = sorted({m.start() for n in full for m in re.finditer(re.escape(n), flat, re.I) if m.start() > 40})
+        return [flat[at:at + 240].strip() for at in starts[:3]]
     tail = lines[-15:]
     start = None
     for index, line in enumerate(tail):
@@ -69,7 +80,7 @@ def _phones(block: list[str], item: dict) -> list[dict]:
         for match in PHONE.finditer(line):
             value = match[1].strip()
             digits = re.sub(r"\D", "", value)
-            before = line[:match.start()]
+            before = line[max(0, match.start() - 16):match.start()]   # the label sits just before
             labelled = MOBILE.search(before) or WORK.search(before)
             if not 8 <= len(digits) <= 15 or re.search(r"\d{4}-\d\d-\d\d", value):
                 continue
@@ -126,8 +137,9 @@ def extract(items: list[dict], handles: list[str], *, owner: bool = False) -> li
         if INVITE.search(item.get("subject", "") + "\n" + (item.get("text") or "")):
             for line in _body(item):
                 low = line.casefold()
-                if any(n in low for n in names) or any(a in low for a in addresses):
-                    add(_row("Calendar", line[:200], item))
+                at = min([low.find(n) for n in [*names, *addresses] if n in low], default=-1)
+                if at >= 0:   # a flattened invite is one long line: the window around the name
+                    add(_row("Calendar", line[max(0, at - 60):at + 140] if len(line) > 200 else line, item))
     if mail and not owner:
         add(_row("First contact", _date(mail[0]), mail[0]))
         add(_row("Last contact", _date(mail[-1]), mail[-1]))
