@@ -13,20 +13,23 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current release
 
-Stable **1.8.9** is the default production channel: chat turns fail closed,
-one Microsoft consent with OneNote, web search, watches in `co ai`, WhatsApp
-pictures and files, `co audit`, and Gemini 3.8 as the default model; the
-Personal Wiki, `co slack`, `co discord` and the Telegram inbox verbs ship
-labelled Experimental. See [1.8.9 release notes](releases/1.8.9.md).
+Stable **1.8.10** is the default production channel: 1.8.9 plus `co linear`,
+`co canny`, and `co slack` reading channels, history, threads and search,
+with `co auth slack` setting the app up from one link. A value saved with
+`co env set … --secret` now reaches the command that needs it. The Personal
+Wiki and the Slack, Discord and Telegram inbox verbs still ship labelled
+Experimental. See [1.8.10 release notes](releases/1.8.10.md) and, for what
+1.8.9 brought, [1.8.9 release notes](releases/1.8.9.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.9'
+python -m pip install --upgrade 'connectonion==1.8.10'
 ```
 
 ## Current preview
 
-None right now. Stable 1.8.9 supersedes every 1.8.9 preview (b1 through b23);
-the next previews will be 1.9.0, the personal Wiki's long-term release.
+The 1.9.0 previews (`1.9.0aN`) are built from `main`, not from this 1.8
+branch; 1.9.0 is the personal Wiki's long-term release. Stable 1.8.9 superseded
+every 1.8.9 preview (b1 through b23).
 
 <details>
 <summary>The preview line that became 1.8.5</summary>

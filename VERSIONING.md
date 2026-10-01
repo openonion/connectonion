@@ -43,7 +43,25 @@ The published stable line is 1.8.x. Maintenance fixes for `release/1.7`
 must still be forward-ported to `main`. Pre-releases are opt-in and must be
 marked as pre-releases on PyPI and GitHub.
 
-## Stable release: 1.8.9
+## Stable release: 1.8.10
+
+Three services the owner asked for, on their own APIs: `co linear` (Linear
+GraphQL), `co canny` (Canny REST) and new read verbs for `co slack` (channels,
+history, thread, search) with `co auth slack`, which sets the Slack app up from
+one manifest link. Writes preview by default and act only with `--yes`. A value
+saved with `co env set … --secret` now reaches the command that needs it
+(`environment.setting()`); before, only `co env get` could read it.
+
+Checked on real accounts created for this release: a Linear workspace, a Canny
+Free-plan company and a Slack workspace. The real_api tests (9) pass on the
+release branch with every key read from the encrypted store. Those runs found
+and fixed: Slack search naming people with a token that cannot, the `Next:`
+line printing before the results when piped, an empty Canny list pointing at
+itself, and the `--secret` store being unreadable by every command. The Slack
+inbox verbs (listen, reply) were not exercised on the new workspace and stay
+Experimental. Written against `main` first; forward-port ledger #2086.
+
+## Previous stable release: 1.8.9
 
 Checked on real accounts, released by the owner's decision. Twenty-three
 previews (1.8.9b1–b23) fed it. Unlike 1.8.8 there was no round of strangers
@@ -400,7 +418,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.8.9
+## Current Version: 1.8.10
+
+1.8.10 is a stable patch on `release/1.8`: 1.8.9 plus `co linear`, `co canny`,
+`co slack`'s read verbs and `co auth slack`, and `environment.setting()`. See
+[1.8.10 notes](docs/releases/1.8.10.md).
+
+- 1.8.10 (stable patch: Linear, Canny and Slack reads on their own APIs;
+  `--secret` values reach commands. Development Status Production/Stable.)
+
+## Previous stable: 1.8.9
 
 1.8.9 is the stable release of the 1.8.9 line: 1.8.9b23 unchanged, released as
 stable. The Personal Wiki and the other experimental commands ship labelled
