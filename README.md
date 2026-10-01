@@ -8,6 +8,8 @@
 
 One command line, `co`, gives your AI agent the accounts and tools it works with:
 Gmail and Outlook, a logged-in browser, your files, chat apps and other agents.
+Its `--help` pages are the agent's instructions, and the agent finds them itself:
+no MCP server, tool schema or skill file to set up.
 
 [![PyPI](https://img.shields.io/pypi/v/connectonion?style=flat-square)](https://pypi.org/project/connectonion/)
 [![Python](https://img.shields.io/pypi/pyversions/connectonion?style=flat-square)](https://pypi.org/project/connectonion/)
@@ -91,6 +93,45 @@ Gmail and Outlook, a logged-in browser, your files, chat apps and other agents.
 <p><a href="docs/cli/README.md">Every command</a> · <code>co commands</code> lists them all.</p>
 <!-- /connections -->
 
+## `--help` is the prompt
+
+An agent needs three things from a tool: what exists, how to call it, and what
+to do next. MCP servers, tool schemas and skill files are three ways of
+shipping those. Here they are one command line, and the agent finds its own way
+through it:
+
+```console
+$ co                       # every command group
+$ co linear --help         # what it does, what it changes, an example
+$ co linear issues -n 3
+3 open issues
+CON-3  Todo  No priority  -  2026-10-01  Import your data
+CON-1  Todo  No priority  -  2026-10-01  Get familiar with Linear
+CON-4  Todo  No priority  -  2026-10-01  Set up your teams
+Next: co linear issue CON-3
+```
+
+- **The help page is the skill.** Every `--help` is written for an agent to
+  read: what the command does, what it changes in one fixed word (Read-only,
+  Sends, Changes, Deletes…), and a real example. There is no separate skill
+  file or tool schema to keep in step, and CI fails any page that loses one of
+  those parts ([`co audit`](docs/cli/audit.md)).
+- **Discovery needs no setup.** Bare `co` lists every group and `co commands`
+  every subcommand, so an agent that has never seen ConnectOnion finds Gmail,
+  Linear or a logged-in browser on its own. Nothing to install into the agent,
+  no tools to register, no prompt to paste.
+- **Every answer names the next command.** A missing login ends with
+  `Next: co auth microsoft`; a typo ends with the command you meant; a list
+  ends with how to open the first item. An agent recovers without asking you.
+- **One shape for everything.** Mail, chat, a browser, issue trackers, the
+  agent's memory (`co wiki`) and its skills (`co skills`) are all commands. What
+  usually takes an MCP server, a skill file and a memory plugin is one thing to
+  learn, and the transcript shows the same commands you would type yourself.
+- **Credentials stay on your machine**, in `~/.co/keys.env` or encrypted with
+  `co env set … --secret`. **Writes are explicit**: each page says what it
+  changes; Calendar, Linear and Canny writes preview until `--yes`, and in
+  `co ai` a risky tool call waits for your approval.
+
 ## Install
 
 ConnectOnion needs Python 3.10 or newer.
@@ -119,20 +160,6 @@ alone; run `co init ./` to initialize a project. The
 [Quick start guide](docs/quickstart.md) covers Google, the browser, chat apps
 and project-specific settings.
 
-## Why a CLI
-
-- **Any agent that can run a shell can use it.** Claude Code, Codex, Cursor or
-  an agent you wrote: there is nothing to import, and the transcript shows the
-  same commands you would type yourself.
-- **Credentials stay on your machine.** Google and Microsoft tokens are saved
-  in `~/.co/keys.env`. The backend that refreshes them keeps none of them.
-- **Commands name the next step.** A missing login ends with
-  `Next: co auth microsoft`; a typo ends with the command you meant. An agent
-  can recover without asking you.
-- **Writes are explicit.** Each command's help says whether it is read-only or
-  what it changes. Calendar, YouTube and Linear writes show a preview until you
-  confirm, and in `co ai` a risky tool call waits for your approval.
-
 ## See it work
 
 <picture>
@@ -145,6 +172,42 @@ and project-specific settings.
 `co search ConnectOnion` answers from the web and cites its sources. The default
 engine uses your own search key, then ConnectOnion credits;
 `--engine ddg` is free.
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/demos/linear-mobile-poster.png">
+  <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/demos/linear-poster.png">
+  <source media="(max-width: 600px)" srcset="https://www.connectonion.com/demos/linear-mobile.gif">
+  <img alt="co linear issues listing three open issues, then co linear create previewing a new issue" src="https://www.connectonion.com/demos/linear.gif">
+</picture>
+
+List your Linear issues, then create one. The create shows a preview and changes nothing until `--yes`.
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/demos/slack-mobile-poster.png">
+  <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/demos/slack-poster.png">
+  <source media="(max-width: 600px)" srcset="https://www.connectonion.com/demos/slack-mobile.gif">
+  <img alt="co slack search finding a message, then co slack thread reading its replies" src="https://www.connectonion.com/demos/slack.gif">
+</picture>
+
+Search Slack, then read the whole thread. Each message carries the id that `co slack send --reply-to` takes.
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/demos/canny-mobile-poster.png">
+  <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/demos/canny-poster.png">
+  <source media="(max-width: 600px)" srcset="https://www.connectonion.com/demos/canny-mobile.gif">
+  <img alt="co canny posts ranked by votes, then co canny status previewing a move to planned" src="https://www.connectonion.com/demos/canny.gif">
+</picture>
+
+Your most-voted Canny requests, and a status change you preview before voters hear about it.
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/demos/audit-mobile-poster.png">
+  <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/demos/audit-poster.png">
+  <source media="(max-width: 600px)" srcset="https://www.connectonion.com/demos/audit-mobile.gif">
+  <img alt="co audit co linear scoring 13 help pages and reporting fit for an agent harness" src="https://www.connectonion.com/demos/audit.gif">
+</picture>
+
+`co audit` scores a CLI's help pages the way an agent reads them. CI runs it on every `co` page, and it works on any other CLI too.
 
 ## Use it from Claude Code, Codex or Cursor
 
