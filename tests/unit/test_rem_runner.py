@@ -80,7 +80,7 @@ def test_project_investigation_bounds_local_file_search(notebook, monkeypatch):
         run_stage(notebook, [{'role': 'page', 'record': 'projects/reader.md',
                               'text': notebook.read('projects/reader.md'),
                               'source': 'investigation:page'}], default_config(), stage='investigate')
-    assert 'at most twelve relevant text files' in prompts[0]
+    assert 'twelve relevant text files' in prompts[0]  # composed project Skill owns the limit
     assert 'stop using tools and return a brief coverage summary' in prompts[0]
 
 
@@ -774,4 +774,30 @@ def test_a_turn_may_ask_for_mail_searches_and_gets_one_more_turn_with_their_resu
                           'source': 'investigation:page'}], default_config(), stage='investigate', search=search)
     assert asked == [['First lab', 'from:x@y.z']]
     assert len(prompts) == 2 and 'search-results.md' in prompts[1] and 'search-requests.json' in prompts[0]
+    assert all(prompt.endswith('</co_rem_task>') for prompt in prompts)
     assert 'outlook:abc123abc123' in promoted[0]
+
+
+def test_quick_first_pass_never_offers_or_runs_extra_mail_search(notebook, monkeypatch):
+    """The live quick prompt contradicted its own sample-only instruction."""
+    import re
+    record = 'people/first.md'
+    notebook.stub_person(record, 'First', ['first@example.org'], email='first@example.org')
+    prompts, asked = [], []
+
+    def run_model(workdir, prompt, config, stage):
+        prompts.append(prompt)
+        candidate = Path(re.search(r'(/\S+/candidate\.md)', prompt).group(1))
+        candidate.write_text('# First\n')
+        (candidate.parent / 'search-requests.json').write_text('["extra mail"]')
+        return {'usage': {'input_tokens': 10}, 'result': 'done'}
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
+    monkeypatch.setattr('connectonion.rem.runner._promote_candidate', lambda *a, **kw: None)
+    run_stage(notebook, [
+        {'role': 'page', 'record': record, 'text': notebook.read(record), 'source': 'investigation:page'},
+        {'role': 'quick-first-pass', 'source': 'investigation:quick-scope', 'text': 'Use only the sample.'},
+    ], default_config(), stage='investigate', search=lambda queries: asked.append(queries) or [])
+    assert len(prompts) == 1 and not asked
+    assert 'Optional runner-mediated mail search' not in prompts[0]
+    assert prompts[0].endswith('</co_rem_task>')

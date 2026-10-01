@@ -123,6 +123,12 @@ first source and patching with the rest loses that.
   outlook` searches, cited as "Outlook message 39" and "listing rows 2, 4, 7",
   and all three were rejected whole. Listing row numbers also change between
   listings, so they identify nothing a week later.
+- **Runner-mediated follow-up.** Outside a quick first pass, the runner may
+  offer up to five extra mailbox queries for unresolved fields. The model
+  writes queries to a task file; the runner performs read-only searches and
+  returns messages with stable source IDs in one more turn. The model never
+  runs a mailbox command itself. The a13 prompt said both “no mail search” and
+  “write mail searches”; the distinction must remain explicit in the Skill.
 - **New address → `Handles`**: the next investigation searches it.
 - **`evidence-index`** means the material was too large for one turn and was
   written to files rather than summarised (#1850). Reading every file would
@@ -132,7 +138,21 @@ first source and patching with the rest loses that.
   `project-inventory` is a list, not evidence. Sessions show what the user
   asked for, not what the repository holds.
 - **`Quick first pass`**: only the sample was evaluated, so the page must not
-  read as a final profile.
+  read as a final profile. The runner must not append the optional mailbox
+  search instruction to this pass.
+
+## Keep the composed prompt coherent
+
+`co ai` expands the leading `/rem-investigate` Skill before handing the task
+to Codex or Claude Code; those harnesses do not know ConnectOnion's Skill
+catalogue. The page and source Skills are composed separately so only the
+subject's rules travel. In a live a13 run, the correspondent addendum said to
+put every thread in History oldest first while the person page required at
+most eight milestones newest first. The latter is the canonical page shape.
+The `Investigation:` footer is runner metadata: keep it unchanged even when it
+says `not investigated yet`; the placeholder check applies to body sections.
+The task-specific suffix uses named sections and a closed `<co_rem_task>`
+envelope so operational instructions are easier to audit.
 
 ## The open web
 

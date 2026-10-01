@@ -184,10 +184,10 @@ Effects:  Reads message bodies and files. Calls the model configured in co rem c
           run one after another, not in parallel. The mailbox servers throttle
           parallel reads.
 
-For the model writing a page: the Skill covers the common case. The material
-is the only source; a field it does not answer stays Unknown. Cite the source
-id in each evidence entry's heading. Offline runs use no web and no other
-command.
+For the model writing a page: the Skill covers the common case. Use supplied
+material and, for projects, bounded files under the page's Paths. Unsupported
+fields stay Unknown. Cite source IDs from evidence headings. Runs are offline;
+the runner may offer one read-only mail follow-up outside a quick first pass.
 Requires: co rem init.
 Output:   The updated pages, and one line per page: accepted, refused (and why), or skipped.
 

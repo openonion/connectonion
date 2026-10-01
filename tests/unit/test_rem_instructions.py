@@ -235,3 +235,13 @@ def test_the_owners_coding_agents_are_tools_and_the_lead_names_the_recent_projec
                  "never `Last contact`",
                  "`recent-projects`"):
         assert rule in owner, rule
+
+
+def test_person_investigation_has_one_history_and_source_contract():
+    """The live a13 prompt gave both oldest-first/every-thread and newest-first/eight."""
+    person = instructions("investigate", page_kind="person")
+    assert "at most eight milestones, newest first" in person
+    assert "covers every thread" not in person
+    assert "oldest first" not in person
+    assert "No direct mail or" in person
+    assert "runner-owned `Investigation:` footer stays unchanged" in person
