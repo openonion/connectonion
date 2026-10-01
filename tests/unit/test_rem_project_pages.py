@@ -295,3 +295,24 @@ def test_projects_shows_the_order_and_the_cost_and_spends_nothing(world, monkeyp
     assert "projects/tide.md  (last active" in result.stdout and "first write" in result.stdout
     assert "Cost: 1 model call(s)" in result.stdout and "Nothing was spent." in result.stdout
     assert f"Next: co rem --root {world.root} projects write" in result.stdout
+
+
+def test_a_project_turn_that_writes_no_candidate_gets_one_more_turn(world):
+    """iter9 (2026-10-01): docs-site was lost to 'did not write candidate.md'
+    after the investigation path had learned to ask again; project pages run
+    their own turn and had not."""
+    codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide", [("user", "Tide should warn surfers.", 1)])
+    extract(world.root, world.subs)
+    source = stored(world.root, "projects/tide.md")[0]["source"]
+    writes = _fake_runner(lambda prompt: _page_citing(source))
+    calls = []
+
+    def run(workdir, prompt, config, stage):
+        calls.append(prompt)
+        if len(calls) == 1:
+            return {"outcome": "natural", "result": "cannot write there", "usage": {"input_tokens": 100}}
+        return writes(workdir, prompt, config, stage)
+
+    write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
+    assert len(calls) == 2 and "writable" in calls[1]
+    assert "A swell warning tool for surfers. [1]" in world.notebook.read("projects/tide.md")

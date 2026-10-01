@@ -166,7 +166,7 @@ def prompt(directory: Path, items: list[dict], candidate: Path) -> str:
 def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
                now: datetime | None = None, progress=None) -> dict:
     """One call: write the page from its pending messages; save it only if it passes review."""
-    from .runner import RunFailed, _promote_candidate, run_task
+    from .runner import RunFailed, _one_more_turn, _promote_candidate, run_task
     config = config or read_config(root)
     run = run or run_task
     notebook = Notebook(root)
@@ -184,6 +184,8 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
                "input_items": len(items), "prompt_chars": len(text)}
     try:
         result = run(workdir, text, config, "investigate")
+        if not candidate.is_file():
+            result = _one_more_turn(workdir, text, config, "investigate", candidate, result, run)
         _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"))
     except (RemError, OSError) as error:
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")

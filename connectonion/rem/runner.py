@@ -432,14 +432,14 @@ def _project_window_notice(text: str, items: list[dict]) -> str:
     return head.rstrip() + "\n" + notice + marker + tail
 
 
-def _one_more_turn(workdir, prompt, config, stage, candidate, first):
+def _one_more_turn(workdir, prompt, config, stage, candidate, first, run=None):
     """The model stopped without writing the candidate: ask once more, saying where it may write.
 
     Real first runs (2026-10-01) lost one to five pages a run this way: the
     model decided the candidate path, inside its writable root, was not
     writable and ended its turn. Both turns are charged to the run.
     """
-    again = run_task(workdir, prompt + f" Your previous turn ended without writing {candidate}. That path is "
+    again = (run or run_task)(workdir, prompt + f" Your previous turn ended without writing {candidate}. That path is "
                                        f"inside your writable root {workdir}: write the complete page there now.",
                      config, stage)
     usage = [first.get("usage") or {}, again.get("usage") or {}]
