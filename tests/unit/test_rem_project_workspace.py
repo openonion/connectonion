@@ -290,13 +290,13 @@ def test_projects_says_what_was_attributed_created_and_left(ws, monkeypatch):
     assert body["created"] == [] and [row["path"] for row in body["unmapped"]] == [ws.p("gamma")]
 
 
-def test_inits_recent_projects_step_writes_a_workspace_attributed_project(ws, monkeypatch):
-    """The first run (#1946) writes the projects active this fortnight; a repository
-    worked in only from the workspace, with no page before, is one of them."""
+def test_init_only_writes_mapped_projects_and_keeps_unmapped_workspace_candidates(ws, monkeypatch):
+    """A later session scan must not add projects after init has shown its map."""
     from connectonion.cli.commands.rem_commands import _first_pages, _first_project_rows
     from connectonion.rem.config import read_config
     home = Path(os.environ["HOME"])
     codex_session(home / ".codex/sessions/2026/09/28/rollout-b.jsonl", str(ws.projects), [
+        ("alpha needs a release", 1, [("exec", exec_command("git status", workdir=ws.p("alpha")))]),
         ("beta needs a release", 1, [("exec", exec_command("git status", workdir=ws.p("beta")))])])
     written = []
 
@@ -308,12 +308,17 @@ def test_inits_recent_projects_step_writes_a_workspace_attributed_project(ws, mo
     monkeypatch.setattr("connectonion.rem.quota.read", lambda config: {"unknown": "no meter in tests"})
     ctx = types.SimpleNamespace(obj={"json": False, "root": ws.root})
     said = []
+    mapped = set(ws.notebook.list("projects"))
+    selected = _first_project_rows(ws.root, None)
+    assert [row["record"] for row in selected] == ["projects/alpha.md"]
+    assert set(ws.notebook.list("projects")) == mapped
+    index = json.loads((ws.root / ".state/projects/index.json").read_text())
+    assert [row["path"] for row in index["unmapped"]] == [ws.p("beta")]
     result = _first_pages(ctx, ws.root, read_config(ws.root), said.append, lambda: "", people=[],
-                          projects=_first_project_rows(ws.root, None), orgs=[])["project_pages"]
-    beta = next(r for r in ws.notebook.list("projects") if r.startswith("projects/beta"))
-    assert result["started"] and written[0] == beta  # the recent one first; older ones follow
-    assert f"  {beta}: written" in said
-    assert texts(ws.root, beta) == ["beta needs a release"]
+                          projects=selected, orgs=[])["project_pages"]
+    assert result["started"] and written == ["projects/alpha.md"]
+    assert "  projects/alpha.md: written" in said
+    assert texts(ws.root, "projects/alpha.md") == ["alpha needs a release"]
 
 
 def as_codex_desktop(path: Path) -> None:

@@ -466,11 +466,13 @@ def _first_people_rows(root, cap, recent_days: int) -> list[dict]:
 
 
 def _first_project_rows(root, cap) -> list[dict]:
-    """Recently active projects with unwritten messages, in the existing priority order."""
+    """Recently active mapped projects with unwritten messages, in priority order."""
     from ...rem.project_material import extract
     from ...rem.project_pages import queue
     from ...rem.service import subscriptions
-    extract(root, subscriptions(root))
+    # The map summary was already shown. Keep missed session folders as
+    # candidates instead of creating project pages during init.
+    extract(root, subscriptions(root), create_pages=False)
     rows = queue(root)
     return _capped([row for row in rows if row["recent"]], cap)
 

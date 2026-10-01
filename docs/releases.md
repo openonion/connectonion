@@ -23,6 +23,19 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a15**: REM's first run keeps its project list consistent with the
+map it just showed. A later session scan prepares evidence for mapped projects
+without silently adding project pages; unmatched folders remain private
+candidates. This is a focused trust fix, with the broader overnight memory
+review still open. See [1.9.0a15 notes](releases/1.9.0a15.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a15'
+co rem init --days 5
+```
+
+Earlier alpha previews remain available:
+
 Alpha **1.9.0a14**: `co rem init` now investigates the owner's page, recent
 important people, active projects and related organizations by default. Its
 roughly 20% weekly allowance target is advisory; selected work can finish
@@ -34,8 +47,6 @@ and a local reader toggle to the connected reader shipped in a13. See
 python -m pip install --upgrade 'connectonion==1.9.0a14'
 co rem init
 ```
-
-The previous alpha remains available:
 
 Alpha **1.9.0a13**: REM's local reader now leads each record with state,
 actions, facts and connected context. The home is shorter and task-first;

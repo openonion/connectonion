@@ -43,7 +43,10 @@ first minutes. Then it uses the configured model to write your own page: the who
 It writes a quick first pass of your page in about 4 minutes, then the whole
 page alongside the selected recent cohort. Next come people active in the last
 14 days, each investigated from up to two years of their mail; recently active
-projects; and organisations linked to those people: 12 pages at a time.
+projects already listed in the map; and organisations linked to those people:
+12 pages at a time. Session folders discovered after the map summary remain
+unmapped candidates during this first run. They do not silently add project
+pages or change the project count the owner just saw.
 An earlier whole-notebook experiment wrote 199 of 242 pages in about 30 minutes
 and moved the Codex week by one point. A person page
 read 150 days at the time; a real contact went back 15 months, so the window is
