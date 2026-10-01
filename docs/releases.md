@@ -25,15 +25,15 @@ python -m pip install --upgrade 'connectonion==1.8.9'
 
 ## Current preview
 
-Alpha **1.9.0a8**: co rem stops paying for the same refusal on any page, the
-weekly budget meter moves, investigations read mail init already saved, and
-sync ends on a short summary. It follows 1.9.0a7 (daily cap 50, your page names
-your projects) and 1.9.0a5 (a capped first run, one look across co). See
-[1.9.0a8 notes](releases/1.9.0a8.md).
+Alpha **1.9.0a9**: co rem, designed. The reader opens on the night and on
+what is owed, People, Organisations and Projects are sortable sheets, a person
+page opens on its balance, Insight and a cited Facts panel, the terminal has a
+designed layout, and the notebook keeps a SQLite index beside its pages. See
+[1.9.0a9 notes](releases/1.9.0a9.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.0a8'
-co rem status
+python -m pip install --upgrade 'connectonion==1.9.0a9'
+co rem open
 ```
 
 <details>
