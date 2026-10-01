@@ -185,6 +185,12 @@ def test_an_empty_list_names_a_command_too(linear, monkeypatch):
     assert last_line(result.stdout) == 'Next: co linear search "<words>"'
 
 
+def test_a_count_of_one_is_singular(linear):
+    assert "1 issue matching 'login'" in run("search", "login").stdout
+    assert "1 open issue assigned to you" not in run("issues", "--mine").stdout     # two in the fake
+    assert "2 open issues assigned to you" in run("issues", "--mine").stdout
+
+
 def test_issue_shows_details_and_comments_oldest_first(linear):
     result = run("issue", "ENG-2")
     assert result.exit_code == 0, result.output

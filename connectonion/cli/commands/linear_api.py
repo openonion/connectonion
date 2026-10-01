@@ -1,14 +1,12 @@
 """
 Purpose: Linear's GraphQL API for `co linear` — explicit field selection, and names resolved to ids
 LLM-Note:
-  Dependencies: imports from [httpx, environment.py, secret_store.py] | imported by [cli/commands/linear_commands.py] | tested by [tests/unit/test_linear_commands.py, tests/e2e/real_api/test_real_co_linear.py]
-  Data flow: api_key() (process env → selected env file → encrypted store) → graphql(query, variables) POSTs https://api.linear.app/graphql with `Authorization: <key>` → data dict | resolvers turn a team key, state, label, priority or "me"/email into the id a mutation takes
+  Dependencies: imports from [httpx, environment.py (setting: process, env file, then the --secret store)] | imported by [cli/commands/linear_commands.py] | tested by [tests/unit/test_linear_commands.py, tests/e2e/real_api/test_real_co_linear.py]
+  Data flow: api_key() = environment.setting(LINEAR_API_KEY) → graphql(query, variables) POSTs https://api.linear.app/graphql with `Authorization: <key>` → data dict | resolvers turn a team key, state, label, priority or "me"/email into the id a mutation takes
   State/Effects: reads LINEAR_API_KEY | network only; mutations are called by linear_commands.py after --yes
   Integration: fields are the ones an agent acts on (id, title, state, assignee, priority, updated); `row()` is the one shape lists print and --json returns
   Errors: LinearError(message, next_step) for a missing or rejected key, a GraphQL error and an unknown name; the CLI prints both and exits 1. Network failures and non-JSON responses raise as they are
 """
-
-import os
 
 import httpx
 
@@ -34,16 +32,11 @@ class LinearError(Exception):
 
 def api_key() -> str:
     """LINEAR_API_KEY from the process, the selected env file, then `co env set --secret`'s store."""
-    from ...environment import display_path, global_config_dir, load_environment, selected_env_file
+    from ...environment import display_path, load_environment, selected_env_file, setting
     load_environment()
-    if os.environ.get(KEY):
-        return os.environ[KEY]
-    from ...secret_store import SecretStoreError, get, stored_names
-    if KEY.lower() in stored_names(global_config_dir()):
-        try:
-            return get(global_config_dir(), KEY)
-        except SecretStoreError as error:
-            raise LinearError(f"{KEY} is stored encrypted but cannot be opened: {error}", SET_KEY) from None
+    key = setting(KEY)
+    if key:
+        return key
     raise LinearError(f"{KEY} is not set in {display_path(selected_env_file())}. "
                       f"Create a personal API key in {KEY_PAGE}, then save it", SET_KEY)
 

@@ -22,18 +22,21 @@ saved with `--secret` goes to an encrypted store, and the environment never
 sees it. Someone who followed our own instruction exactly would have been
 told, by the next command, that the key was not set. That command would have
 named the same instruction again, and they would have gone round in that loop.
-The key is now read in the order `co env get` uses: the shell, then the file,
-then the encrypted store. A test saves a key through the store and checks
-that it reaches the request header.
+The key is now read through `setting()`, the lookup `co env get` uses: the
+shell, then the file, then the encrypted store. A test saves a key through the
+store and checks that it reaches the request header.
 
 The other error we could check for real was a bad key. We sent one to Linear,
 and its reply (HTTP 401, `authentication error`, a message for users that
 ends in a full stop) became the fake that the unit test runs against. The
 first output read "operation.. Make a new key", with two full stops in a row.
 
-What has not run is a real workspace. Nobody on this change had a key. The
-queries are checked against Linear's published schema and against a fake
-that answers by root field, which proves the arguments are well-formed and
-says nothing about Linear's ranking, paging or which errors it calls "not
-found". An opt-in test creates one issue titled as a test, comments on it and
-closes it. It is the step before a stable release.
+The first run on a real workspace found the same loop one level down, in the
+test itself. With the key exported, the opt-in test passed and created CON-5.
+Then the key was moved to where our setup line puts it, the `--secret` store,
+and the test skipped: it checked `os.environ` before running. It now asks
+`setting()` too. Run again with nothing exported, it created CON-6, commented
+on it and closed it in eleven seconds. The guess about how Linear words a
+missing issue held: `issue CON-999` printed "No issue CON-999 in this
+workspace" and the search tip. The same run printed "1 issues matching", so a
+count of one is now singular.
