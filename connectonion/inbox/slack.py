@@ -10,13 +10,13 @@ LLM-Note:
 
 import asyncio
 import json
-import os
 import random
 import time
 from typing import Optional
 
 import requests
 
+from ..environment import setting
 from . import ListenerStopped
 from .store import Inbox, Message, iso_utc
 
@@ -74,7 +74,8 @@ INBOX_SCOPES = ("chat:write", "im:history", "app_mentions:read", "channels:histo
 READ_SCOPES = ("channels:read", "groups:read", "im:read", "channels:history", "groups:history",
                "im:history", "users:read")
 # `co slack search` runs as a person: search.messages takes only a user token.
-SEARCH_SCOPES = ("search:read", "users:read")
+# Names in its results are looked up with the bot token, so search:read is all it needs.
+SEARCH_SCOPES = ("search:read",)
 REINSTALL = (f"at {APPS} open your app → OAuth & Permissions → Bot Token Scopes, add them, then "
              "Reinstall to Workspace")
 
@@ -122,8 +123,9 @@ class Slack:
     }
 
     def __init__(self):
-        self.app_token = os.environ.get("SLACK_APP_TOKEN", "")
-        self.bot_token = os.environ.get("SLACK_BOT_TOKEN", "")
+        # setting(): a token saved with `co env set … --secret` counts too.
+        self.app_token = setting("SLACK_APP_TOKEN") or ""
+        self.bot_token = setting("SLACK_BOT_TOKEN") or ""
         # The bot token's scopes, from auth.test's x-oauth-scopes header; None
         # until me() has asked, or when Slack sent no header.
         self.scopes: Optional[set] = None
@@ -169,7 +171,7 @@ class Slack:
         if missing:
             lines.append(f"co slack channels, history and thread need the bot scopes {', '.join(missing)}: "
                          f"{REINSTALL}")
-        if not os.environ.get("SLACK_USER_TOKEN"):
+        if not setting("SLACK_USER_TOKEN"):
             lines.append("co slack search needs SLACK_USER_TOKEN (xoxp-, scope search:read); "
                          "co auth slack adds it")
         return lines

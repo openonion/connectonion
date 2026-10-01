@@ -32,7 +32,7 @@ USER = "xoxp-1-secret-user"
 ALL_BOT = ",".join(sorted(set(INBOX_SCOPES) | set(READ_SCOPES)))
 
 
-def slack(bot_scopes=ALL_BOT, user_scopes="search:read,users:read", errors=None):
+def slack(bot_scopes=ALL_BOT, user_scopes="search:read", errors=None):
     """A fake slack.com: auth.test per token, apps.connections.open for the app token."""
     errors = errors or {}
     seen = []
@@ -74,7 +74,7 @@ class TestTheManifest:
         assert manifest["settings"]["socket_mode_enabled"] is True
         assert {"app_mention", "message.im"} <= set(manifest["settings"]["event_subscriptions"]["bot_events"])
         assert set(INBOX_SCOPES) | set(READ_SCOPES) <= set(manifest["oauth_config"]["scopes"]["bot"])
-        assert "search:read" in manifest["oauth_config"]["scopes"]["user"]
+        assert manifest["oauth_config"]["scopes"]["user"] == ["search:read"]
         assert manifest["features"]["app_home"]["messages_tab_enabled"] is True
 
     def test_the_link_carries_it(self):
@@ -127,7 +127,7 @@ class TestSetup:
         assert "SLACK_APP_TOKEN" not in home.read_text()  # it was not pasted, so not rewritten
 
     def test_missing_scopes_are_named_and_the_tokens_still_saved(self, home, monkeypatch, capsys):
-        transport, _ = slack(bot_scopes="chat:write,im:history,app_mentions:read", user_scopes="users:read")
+        transport, _ = slack(bot_scopes="chat:write,im:history,app_mentions:read", user_scopes="identify")
         run(monkeypatch, f"{BOT} {APP} {USER}", transport)
         out = capsys.readouterr().out
         assert "Missing Bot Token Scopes:" in out and "channels:read" in out

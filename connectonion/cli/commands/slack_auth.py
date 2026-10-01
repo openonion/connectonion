@@ -17,12 +17,11 @@ make one app-level token (manifests cannot create that one).
 
 import getpass
 import json
-import os
 import sys
 from urllib.parse import quote
 
 from ...env_file import upsert_env
-from ...environment import display_path, selected_env_file
+from ...environment import display_path, selected_env_file, setting
 from ...inbox.slack import APPS, INBOX_SCOPES, READ_SCOPES, SEARCH_SCOPES
 from .command_tips import print_tip
 from .slack_commands import SlackWeb
@@ -82,7 +81,7 @@ def read_tokens() -> dict:
     else:
         given = {name: _ask(name, prefix, label, where) for name, prefix, label, where, _ in TOKENS}
     for name, prefix, label, where, required in TOKENS:
-        if required and not (given[name] or os.environ.get(name)):
+        if required and not (given[name] or setting(name)):
             print(f"No {label} ({prefix}…, from {where}); nothing was saved. Next: co auth slack",
                   file=sys.stderr)
             sys.exit(1)
@@ -90,7 +89,7 @@ def read_tokens() -> dict:
 
 
 def _ask(name: str, prefix: str, label: str, where: str) -> str:
-    keep = " (Enter keeps the one set now)" if os.environ.get(name) else ""
+    keep = " (Enter keeps the one set now)" if setting(name) else ""
     while True:
         token = getpass.getpass(f"{label} ({prefix}…, from {where}){keep}: ").strip()
         if not token or token.startswith(prefix):
@@ -142,7 +141,7 @@ def handle_slack_auth() -> None:
     print_steps()
     given = read_tokens()
     # What is checked is what the commands will read: pasted, else already set.
-    tokens = {name: given.get(name) or os.environ.get(name, "") for name, *_ in TOKENS}
+    tokens = {name: given.get(name) or setting(name) or "" for name, *_ in TOKENS}
     bot, scopes = verify_bot(tokens["SLACK_BOT_TOKEN"])
     lacking = [("Bot Token Scopes", scopes)]
     verify_app(tokens["SLACK_APP_TOKEN"])

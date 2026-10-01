@@ -2,14 +2,13 @@
 Purpose: `co slack channels | history | thread | search` — read a Slack workspace through Slack's Web API, trimmed for an agent
 LLM-Note:
   Dependencies: imports from [json, os, re, sys, time, datetime, itertools, urllib.parse, httpx, inbox/slack.py (API, APPS, scopes, token messages), inbox/store.py (iso_utc)] | imported by [cli/main.py (the slack group), cli/commands/slack_auth.py (SlackWeb, refuse)] | tested by [tests/unit/test_slack_read_commands.py]
-  Data flow: channels → conversations.list | history → conversations.history | thread → conversations.replies | search → search.messages (user token) → one record per message {id "<channel>:<ts>", chat, thread, at, sender, sender_name, text, replies} → lines for a person, or one JSON object per line with --json
-  State/Effects: Read-only: nothing is posted, nothing is written to disk | reads SLACK_BOT_TOKEN (xoxb-) for the first three and SLACK_USER_TOKEN (xoxp-) for search | users.info once per user id per run
+  Data flow: channels → conversations.list | history → conversations.history | thread → conversations.replies | search → search.messages (user token) → one record per message {id "<channel>:<ts>", chat, thread, at, sender, sender_name, text, replies} → lines for a person, or one JSON object per line with --json | the Next: line comes after the results: stdout, or stderr under --json
+  State/Effects: Read-only: nothing is posted, nothing is written to disk | reads SLACK_BOT_TOKEN (xoxb-) and, for search.messages only, SLACK_USER_TOKEN (xoxp-), each through environment.setting() so a --secret value counts | users.info with the bot token, once per user id per run
   Integration: ids are the inbox's own "<channel>:<ts>", so `co slack send <channel> --reply-to <id>` answers in the message's thread | the token is only ever in an Authorization header
   Errors: Slack's ok:false becomes one sentence and a next command, exit 1 (missing_scope names the scope Slack said it needed; not_in_channel the /invite step; channel_not_found `co slack channels`; a rejected token `co auth slack`) | a missing or misplaced token is named before any request | one HTTP 429 is waited out (Retry-After, at most 30s)
 """
 
 import json
-import os
 import re
 import sys
 import time
@@ -21,7 +20,10 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 
 from ...inbox.slack import API, APPS, WRONG_BOT_TOKEN
+from ...environment import setting
 from ...inbox.store import iso_utc
+from .. import style
+from .command_tips import mark_next_step_named, print_tip, selected_tip
 
 # Tests put an httpx.MockTransport here; None is the network.
 transport = None
@@ -34,9 +36,9 @@ _REJECTED = {"invalid_auth", "not_authed", "token_revoked", "token_expired", "ac
 NO_BOT_TOKEN = ("SLACK_BOT_TOKEN is not set. Reading channels needs your Slack app's Bot User OAuth "
                 "Token (xoxb-…). Next: co auth slack")
 NO_USER_TOKEN = (
-    "co slack search needs SLACK_USER_TOKEN, a user token (xoxp-…) with the scopes search:read and "
-    "users:read: Slack's search.messages runs as a person and refuses bot tokens. At "
-    f"{APPS} open your app → OAuth & Permissions → User Token Scopes, add both, Reinstall to "
+    "co slack search needs SLACK_USER_TOKEN, a user token (xoxp-…) with the scope search:read: "
+    "Slack's search.messages runs as a person and refuses bot tokens. At "
+    f"{APPS} open your app → OAuth & Permissions → User Token Scopes, add search:read, Reinstall to "
     "Workspace, and paste the User OAuth Token when asked. Next: co auth slack"
 )
 WRONG_USER_TOKEN = ("SLACK_USER_TOKEN does not start with xoxp-. It must be the User OAuth Token "
@@ -116,8 +118,18 @@ def _fail(text: str) -> None:
     sys.exit(1)
 
 
+def _next(command: str, json_output: bool) -> None:
+    """The Next: line, after the results: on stdout, so a pipe reads it last;
+    on stderr under --json, so stdout stays parseable."""
+    if not json_output:
+        print_tip(f"Next: {command}")
+        return
+    style.console(stderr=True).print(style.markup(f"Next: {selected_tip(command)}"))
+    mark_next_step_named()
+
+
 def bot() -> SlackWeb:
-    token = os.environ.get("SLACK_BOT_TOKEN", "")
+    token = setting("SLACK_BOT_TOKEN") or ""
     if not token:
         _fail(NO_BOT_TOKEN)
     if not token.startswith("xoxb-"):
@@ -126,7 +138,7 @@ def bot() -> SlackWeb:
 
 
 def user() -> SlackWeb:
-    token = os.environ.get("SLACK_USER_TOKEN", "")
+    token = setting("SLACK_USER_TOKEN") or ""
     if not token:
         _fail(NO_USER_TOKEN)
     if not token.startswith("xoxp-"):
@@ -165,7 +177,8 @@ def show(records: list, json_output: bool) -> None:
             continue
         when = datetime.fromtimestamp(float(item["id"].rpartition(":")[2])).strftime("%Y-%m-%d %H:%M")
         where = f"#{item['chat_name']}  " if item.get("chat_name") else ""
-        replies = f"  ({item['replies']} replies)" if item.get("replies") else ""
+        count = item.get("replies")
+        replies = f"  ({count} {'reply' if count == 1 else 'replies'})" if count else ""
         print(f"{when}  {where}{item['sender_name']}  {item['id']}{replies}")
         for line in item["text"].splitlines() or [""]:
             print(f"  {line}")
@@ -206,6 +219,7 @@ def handle_channels(json_output: bool) -> None:
     if not rows and not json_output:
         print("The bot is in no channel and has no direct messages. In Slack, type /invite @<your bot> "
               "in a channel.", file=sys.stderr)
+    _next("co slack history <channel> -n 50", json_output)
 
 
 def handle_history(channel: str, last: int, json_output: bool) -> None:
@@ -213,7 +227,11 @@ def handle_history(channel: str, last: int, json_output: bool) -> None:
     chat = channel_id(web, channel)
     newest_first = islice(web.each("conversations.history", "messages", channel=chat, limit=min(last, 200)),
                           last)
-    show([record(message, chat, web.name_of) for message in reversed(list(newest_first))], json_output)
+    records = [record(message, chat, web.name_of) for message in reversed(list(newest_first))]
+    show(records, json_output)
+    threaded = next((item["id"] for item in records if item["replies"]), None)
+    _next(f"co slack thread {threaded}" if threaded else
+          f'co slack send {chat} "<text>" --reply-to <message-id>', json_output)
 
 
 def handle_thread(message_id: str, json_output: bool) -> None:
@@ -229,7 +247,10 @@ def handle_thread(message_id: str, json_output: bool) -> None:
     if root and root != str(messages[0]["ts"]):
         # Slack answered with the reply alone; read the thread from its root.
         messages = list(web.each("conversations.replies", "messages", channel=chat, ts=root, limit=200))
-    show([record(message, chat, web.name_of) for message in messages], json_output)
+    records = [record(message, chat, web.name_of) for message in messages]
+    show(records, json_output)
+    root = records[0]["id"] if records else message_id
+    _next(f'co slack send {chat} "<text>" --reply-to {root}', json_output)
 
 
 def search_query(text: str, where: Optional[str], who: Optional[str]) -> str:
@@ -244,16 +265,20 @@ def search_query(text: str, where: Optional[str], who: Optional[str]) -> str:
 
 def handle_search(text: str, where: Optional[str], who: Optional[str], last: int, json_output: bool) -> None:
     web = user()
+    names = bot()  # users:read is a bot scope; the user token needs only search:read
     result = web.call("search.messages", query=search_query(text, where, who), count=last,
                       sort="timestamp", sort_dir="desc")
     records = []
     for match in (result.get("messages") or {}).get("matches") or []:
         found = match.get("channel") or {}
         thread = parse_qs(urlparse(match.get("permalink") or "").query).get("thread_ts", [None])[0]
-        item = record(match, found.get("id", ""), web.name_of, thread=thread)
+        item = record(match, found.get("id", ""), names.name_of, thread=thread)
         item["chat_name"] = found.get("name") if not found.get("is_im") else None
         del item["replies"]  # search does not say; 0 would be a guess
         records.append(item)
     show(records, json_output)
-    if not records and not json_output:
+    if not records:
         print(f"Slack found nothing for: {search_query(text, where, who)}", file=sys.stderr)
+        _next('co slack search "<other words>"', json_output)
+        return
+    _next(f"co slack thread {records[0]['id']}", json_output)

@@ -92,7 +92,7 @@ The manifest is the same app you would build by hand:
 |---|---|
 | Socket Mode | on, with an app-level token that has `connections:write` |
 | OAuth & Permissions → Bot Token Scopes | `chat:write`, `app_mentions:read`, `im:history`, `channels:history`, and for the read verbs `channels:read`, `groups:read`, `im:read`, `groups:history`, `users:read` |
-| OAuth & Permissions → User Token Scopes | `search:read`, `users:read` (only for `co slack search`) |
+| OAuth & Permissions → User Token Scopes | `search:read` (only for `co slack search`) |
 | Event Subscriptions → bot events | `message.im`, `app_mention`, and optionally `message.channels` |
 | App Home | Messages Tab on, with "Allow users to send … messages" ticked |
 
@@ -190,8 +190,16 @@ text indented beneath:
 ```
 
 - **Names, not ids.** Authors and `<@U…>` mentions are shown by display name,
-  looked up once per person per run (`users.info`, which is why `users:read`
-  is in the manifest).
+  looked up once per person per run with the bot token (`users.info`, which is
+  why `users:read` is among the bot scopes). Search resolves names the same
+  way, so it needs the bot token as well as the user token.
+- **Tokens saved as secrets count.** Every token is read the way `co env get`
+  reads it: the process, the env file, then the store `co env set NAME value
+  --secret` writes to.
+- **The next step comes last.** Each read verb ends with one `Next:` line
+  naming a real id from what it printed (a thread to open, or the
+  `send --reply-to` to answer in one). Under `--json` that line goes to stderr,
+  so stdout stays one JSON object per line.
 - **Channels by name.** `history` and `thread` take an id or a name: `ops`, or
   `'#ops'` in quotes, because an unquoted `#` starts a comment in bash.
 - **Answering what you read.** The ids are the inbox's own `<channel>:<ts>`.
@@ -202,8 +210,8 @@ text indented beneath:
   root. `history` shows a thread's first message with its reply count; the
   replies themselves are in `thread`.
 - **Search runs as you.** Slack's `search.messages` refuses bot tokens, so
-  `search` uses `SLACK_USER_TOKEN` (`xoxp-`, scopes `search:read` and
-  `users:read`) and sees what you can see, not just the bot's channels.
+  `search` uses `SLACK_USER_TOKEN` (`xoxp-`, scope `search:read`) for that one
+  call and sees what you can see, not just the bot's channels.
   Without that token it exits 1 and says how to add it. `--in` and `--from`
   become Slack's own `in:#ops` and `from:@alice`; other modifiers (`before:`,
   `has:link`) can go in the text.
