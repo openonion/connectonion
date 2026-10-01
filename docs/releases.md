@@ -23,14 +23,14 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
-Alpha **1.9.0a11**: REM's morning reader leads with the context it carried
-forward, an explicit link between pages, and an older memory to recall before
-revealing its answer. Open threads stay visible; run statistics move into a
-disclosure. This is a read-only preview, with a ranked product audit and
-remaining work tracked as issues. See [1.9.0a11 notes](releases/1.9.0a11.md).
+Alpha **1.9.0a12**: REM's morning reader leads with context from the latest
+pass, an explicit link between pages, and an older memory to recall. This
+revision also makes `co rem open` write its local snapshot safely on Windows.
+It remains a read-only preview with known limits. See
+[1.9.0a12 notes](releases/1.9.0a12.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.0a11'
+python -m pip install --upgrade 'connectonion==1.9.0a12'
 co rem open
 ```
 
