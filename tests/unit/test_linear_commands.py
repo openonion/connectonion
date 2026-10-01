@@ -10,6 +10,7 @@ import json
 import re
 from pathlib import Path
 
+import click
 import httpx
 import pytest
 from typer.main import get_command
@@ -375,7 +376,8 @@ def test_a_graphql_error_prints_linears_message_and_a_next_step(linear):
 
 def test_bare_co_linear_prints_its_help_without_calling_linear(linear):
     result = run()
-    assert result.exit_code == 0 and "co linear issues --mine" in result.stdout
+    page = click.unstyle(result.stdout)          # CI's GITHUB_ACTIONS turns Rich's colour on
+    assert result.exit_code == 0 and "Usage:" in page and "comment" in page
     assert linear.sent == []
 
 
