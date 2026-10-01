@@ -23,14 +23,15 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
-Alpha **1.9.0a12**: REM's morning reader leads with context from the latest
-pass, an explicit link between pages, and an older memory to recall. This
-revision also makes `co rem open` write its local snapshot safely on Windows.
-It remains a read-only preview with known limits. See
-[1.9.0a12 notes](releases/1.9.0a12.md).
+Alpha **1.9.0a13**: `co rem init` now investigates the owner's page, recent
+important people, active projects and related organizations by default. Its
+roughly 20% weekly allowance target is advisory; selected work can finish
+beyond it, subject to the configured safety floor. It also adds privacy labels
+and a local reader toggle. See [1.9.0a13 notes](releases/1.9.0a13.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.0a12'
+python -m pip install --upgrade 'connectonion==1.9.0a13'
+co rem init
 co rem open
 ```
 

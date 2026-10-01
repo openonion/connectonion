@@ -30,10 +30,20 @@ VIEWS = ["", "#c=people", "#c=orgs", "#c=projects", "#c=skills", "#r=people%2Fma
 def reader(tmp_path, monkeypatch):
     from patchright.sync_api import sync_playwright
     from rem_reader_notebook import build
-    from connectonion.rem.reader import render
+    from connectonion.rem import reader as rem_reader
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
     path = tmp_path / "reader.html"
-    path.write_text(render(build(tmp_path / "rem", datetime.now(timezone.utc))), encoding="utf-8")
+    # Freeze the invented notebook so an age near a timezone day boundary is stable.
+    frozen = datetime(2026, 10, 1, 12, tzinfo=timezone.utc)
+    snapshot = rem_reader.snapshot
+
+    def fixed_snapshot(root):
+        data = snapshot(root)
+        data["as_of"] = frozen.isoformat()
+        return data
+
+    monkeypatch.setattr(rem_reader, "snapshot", fixed_snapshot)
+    path.write_text(rem_reader.render(build(tmp_path / "rem", frozen)), encoding="utf-8")
     with sync_playwright() as api:
         browser = api.chromium.launch(channel="chrome", headless=True)
         page = browser.new_page(viewport={"width": 1440, "height": 1000})

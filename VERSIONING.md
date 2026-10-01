@@ -400,7 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a12
+## Current Version: 1.9.0a13
+
+1.9.0a13 makes REM's first run investigate the owner's page and a selected
+recent cohort of people, projects and related organizations by default. The
+20% weekly allowance target is advisory; the selected investigation can finish
+beyond it, subject to the configured safety floor. It carries parallel-run
+reliability fixes, two-year person searches and privacy labels in the reader.
+The first-run estimate now counts both owner turns and parallel tail latency.
+Stable remains 1.8.10. See [1.9.0a13 notes](docs/releases/1.9.0a13.md).
+
+- 1.9.0a13 (#1943, #1972, #2008, #2040; first-run investigation and privacy labels).
+
+## Previous preview: 1.9.0a12
 
 1.9.0a12 repairs local REM snapshot opening on Windows. The reader writes a
 private temporary file and replaces the predictable snapshot name without

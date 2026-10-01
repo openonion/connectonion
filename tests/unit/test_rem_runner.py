@@ -651,3 +651,127 @@ def test_maintenance_adds_to_a_page_it_was_not_asked_to_finish(tmp_path):
     runner._promote_candidate(notebook, "people/mia.md", candidate, original, [{"source": "gmail:m:1"}],
                               tmp_path, None, investigation=False)
     assert "Leads the data team." in notebook.read("people/mia.md")
+
+
+def test_a_turn_that_writes_no_candidate_gets_one_more_turn(notebook, monkeypatch):
+    """Real first runs lost 1-5 pages a run this way: the model decided the
+    candidate path, inside its writable root, was not writable and stopped."""
+    import re as regex
+    record = 'people/first.md'
+    notebook.stub_person(record, 'First', ['first@example.org'], email='first@example.org')
+    prompts, promoted = [], []
+
+    def run_model(workdir, prompt, config, stage):
+        prompts.append(prompt)
+        if len(prompts) == 2:
+            path = regex.search(r'(/\S+/candidate\.md)', prompt).group(1)
+            Path(path).write_text('# First\n')
+        return {'usage': {'input_tokens': 10, 'output_tokens': 1}, 'result': 'done'}
+
+    def promote(book, record, candidate, original, items, directory, usage, **options):
+        promoted.append((candidate.is_file(), usage))
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
+    monkeypatch.setattr('connectonion.rem.runner._promote_candidate', promote)
+    run_stage(notebook, [{'role': 'page', 'record': record, 'text': notebook.read(record),
+                          'source': 'investigation:page'}], default_config(), stage='investigate')
+    assert len(prompts) == 2 and 'writable' in prompts[1]
+    assert promoted == [(True, {'input_tokens': 20, 'output_tokens': 2})]
+
+
+def test_history_only_refusal_gets_one_repair_turn_with_usage_counted(notebook, monkeypatch):
+    """A ten-line History on a real first run was rejected after the model turn."""
+    import re as regex
+    from connectonion.rem.files import write_json
+
+    record = 'people/first.md'
+    notebook.stub_person(record, 'First', ['first@example.org'], email='first@example.org')
+    prompts, promotions = [], []
+
+    def run_model(workdir, prompt, config, stage):
+        prompts.append(prompt)
+        candidate = Path(regex.search(r'(/\S+/candidate\.md)', prompt).group(1))
+        candidate.write_text('# First\n## History\n- 2026: first milestone\n')
+        return {'usage': {'input_tokens': 10, 'output_tokens': 1}, 'result': 'done'}
+
+    def promote(book, record, candidate, original, items, directory, usage, **options):
+        promotions.append(usage)
+        if len(promotions) == 1:
+            write_json(directory / 'review.json', {'accepted': False,
+                        'errors': ['History has 10 lines (was 0); keep at most 8 dated milestones']})
+            raise RunFailed('Candidate rejected', usage)
+        book.write(record, candidate.read_text())
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
+    monkeypatch.setattr('connectonion.rem.runner._promote_candidate', promote)
+    result = run_stage(notebook, [{'role': 'page', 'record': record,
+                                   'text': notebook.read(record), 'source': 'investigation:page'}],
+                       default_config(), stage='investigate')
+    assert len(prompts) == 2 and 'at most eight dated bullets' in prompts[1]
+    assert promotions[1] == result['usage'] == {'input_tokens': 20, 'output_tokens': 2}
+
+
+def test_failed_history_repair_counts_both_model_turns(notebook, monkeypatch):
+    import re as regex
+    from connectonion.rem.files import write_json
+
+    record = 'people/first.md'
+    notebook.stub_person(record, 'First', ['first@example.org'], email='first@example.org')
+    calls = []
+
+    def run_model(workdir, prompt, config, stage):
+        calls.append(prompt)
+        if len(calls) == 2:
+            raise RunFailed('repair unavailable', {'input_tokens': 3})
+        Path(regex.search(r'(/\S+/candidate\.md)', prompt).group(1)).write_text('# First\n')
+        return {'usage': {'input_tokens': 10}, 'result': 'done'}
+
+    def promote(book, record, candidate, original, items, directory, usage, **options):
+        write_json(directory / 'review.json', {'accepted': False,
+                   'errors': ['History has 10 lines (was 0); keep at most 8 dated milestones']})
+        raise RunFailed('Candidate rejected', usage)
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
+    monkeypatch.setattr('connectonion.rem.runner._promote_candidate', promote)
+    with pytest.raises(RunFailed, match='repair unavailable') as caught:
+        run_stage(notebook, [{'role': 'page', 'record': record,
+                              'text': notebook.read(record), 'source': 'investigation:page'}],
+                  default_config(), stage='investigate')
+    assert len(calls) == 2
+    assert caught.value.usage == {'input_tokens': 13}
+
+
+def test_a_turn_may_ask_for_mail_searches_and_gets_one_more_turn_with_their_results(notebook, monkeypatch):
+    """The model has no network (its sandbox is the defence against mail that
+    carries instructions); it names searches, our code runs them read-only,
+    and the results come back as cited material for one more turn."""
+    import json as jsonlib
+    import re as regex
+    record = 'people/first.md'
+    notebook.stub_person(record, 'First', ['first@example.org'], email='first@example.org')
+    prompts, asked, promoted = [], [], []
+    found = [{'role': 'other', 'speaker': 'Second <second@example.org>', 'text': 'First runs the lab.',
+              'timestamp': '2025-08-06', 'subject': 'Intro', 'source': 'outlook:abc123abc123'}]
+
+    def search(queries):
+        asked.append(queries)
+        return found
+
+    def run_model(workdir, prompt, config, stage):
+        prompts.append(prompt)
+        candidate = Path(regex.search(r'(/\S+/candidate\.md)', prompt).group(1))
+        candidate.write_text('# First\n')
+        if len(prompts) == 1:
+            (candidate.parent / 'search-requests.json').write_text(jsonlib.dumps(['First lab', 'from:x@y.z']))
+        return {'usage': {'input_tokens': 10}, 'result': 'done'}
+
+    def promote(book, record, candidate, original, items, directory, usage, **options):
+        promoted.append([item['source'] for item in items])
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
+    monkeypatch.setattr('connectonion.rem.runner._promote_candidate', promote)
+    run_stage(notebook, [{'role': 'page', 'record': record, 'text': notebook.read(record),
+                          'source': 'investigation:page'}], default_config(), stage='investigate', search=search)
+    assert asked == [['First lab', 'from:x@y.z']]
+    assert len(prompts) == 2 and 'search-results.md' in prompts[1] and 'search-requests.json' in prompts[0]
+    assert 'outlook:abc123abc123' in promoted[0]

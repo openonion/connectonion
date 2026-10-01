@@ -765,7 +765,7 @@ def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monk
     from datetime import date, timedelta
     root = _notebook(tmp_path, "codex")
     notebook = inv.Notebook(root)
-    assert inv.window_since(notebook.read("people/vern.md")) == 150        # never investigated
+    assert inv.window_since(notebook.read("people/vern.md")) == 730        # never investigated: two years
     ten_days_ago = (date.today() - timedelta(days=10)).isoformat()
     page = notebook.read("people/vern.md").replace("· not investigated yet", f"· investigated {ten_days_ago} (gmail)")
     notebook.write("people/vern.md", page)
@@ -1256,3 +1256,28 @@ def test_a_daily_run_says_each_pages_outcome_and_records_its_stage_and_seconds(t
     assert refused.startswith("Refused people/y.md: Candidate rejected: over 20,000 characters")
     assert len(refused) < 200 and refused.endswith("…")
     assert outcome_line({"page": "people/z.md", "outcome": "nothing_new", "why": "long"}) == "Nothing new for people/z.md"
+
+def test_one_run_reads_the_sessions_once_for_every_subject(tmp_path, monkeypatch):
+    """A real first run (2026-10-01) re-read 1,300 session files for every
+    person; six threads under one GIL took 13 minutes a person. The window's
+    sessions are read once and each subject picks its own from them."""
+    from connectonion.rem.source import Batch
+    seen = []
+
+    def collect(sub, cursor, *limits):
+        seen.append(cursor)
+        if not cursor:
+            return Batch([{"text": "odi accepted the terms", "timestamp": "2026-09-01", "source": "codex:1"}],
+                         {"offset": 40})
+        if cursor == {"offset": 40}:
+            return Batch([{"text": "vern booked the room", "timestamp": "2026-09-02", "source": "codex:2"}],
+                         {"offset": 80})
+        return Batch([], cursor)
+
+    monkeypatch.setattr(inv, "collect", collect)
+    subs = {"codex": {"kind": "codex", "root": str(tmp_path)}}
+    ody, _ = inv.gather("Ody Zhou", ["odi"], days=30, clients={}, subscriptions=subs)
+    vern, coverage = inv.gather("Vern Chan", ["vern"], days=30, clients={}, subscriptions=subs)
+    assert [i["source"] for i in ody] == ["codex:1"] and [i["source"] for i in vern] == ["codex:2"]
+    assert seen == [{}, {"offset": 40}, {"offset": 80}]
+    assert "2 messages" in next(line for line in coverage if line.startswith("codex"))

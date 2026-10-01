@@ -308,3 +308,36 @@ def test_a_sync_that_resumes_the_archive_says_how_far_it_has_got(tmp_path):
     assert said[0] == "Saving mail bodies: 2 of 6 saved by init; resuming for at most 5 minutes"
     assert said[-1] == "Saving mail bodies: 6 of 6, done"
     assert len(said) <= 12
+
+def test_one_missing_body_does_not_take_the_whole_archive_away(tmp_path):
+    """A real first run (2026-10-01): 1 of 1,883 bodies timed out, the archive
+    was 'partial', and every person and organisation page skipped it for server
+    searches -- 62 pages found nothing under 16 parallel searches. Only a page
+    that needs the missing message falls back."""
+    from connectonion.rem.mail_archive import domain_material, person_material
+    prepare(tmp_path)
+    skills = tmp_path / "source-skills"
+    skills.mkdir()
+    when = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    rows = [{"id": "one", "date": when, "from": "Alice Alpha <a@alpha.example>", "to": ["me@example.org"], "subject": "Plan"},
+            {"id": "two", "date": when, "from": "Bob Beta <b@beta.example>", "to": ["me@example.org"], "subject": "Plan"},
+            {"id": "three", "date": when, "from": "me@example.org", "to": ["a@alpha.example"], "subject": "Re: Plan"},
+            {"id": "four", "date": when, "from": "me@example.org", "to": ["b@beta.example"], "subject": "Re: Plan"}]
+
+    class Mail:
+        def my_addresses(self): return {"me@example.org"}
+        def list_between(self, start, end, limit): return [r for r in rows if start <= r["date"] < end]
+        def get_email_body(self, message_id):
+            if message_id == "two":
+                raise TimeoutError("read timed out")
+            return f"body {message_id}"
+
+    report = build_map(tmp_path, {}, {"gmail": Mail()}, days=1, skill_directories=[skills], capture_sources=True)
+    archive = archive_init(tmp_path, report, {"gmail": Mail()})
+    assert archive["phase"] == "partial" and archive["failed"] == 1
+    by_address = {row.get("address"): row["record"] for row in report["people"]}
+    assert person_material(tmp_path, by_address["a@alpha.example"]) is not None
+    beta = person_material(tmp_path, by_address["b@beta.example"])
+    assert beta is not None  # the sent reply remains available despite one missing incoming body
+    assert "body four" in str(beta) and "body two" not in str(beta)
+    assert domain_material(tmp_path, ["alpha.example"]) is not None

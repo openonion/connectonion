@@ -91,7 +91,7 @@ def reader_page(tmp_path):
 
     literal = "Before\nSources: literal source\n\n\nRelated: literal relation\nAfter"
     diagram = "+------------" * 18 + "+\n" + "| stage      " * 18 + "|"
-    text = ("# Layout fixture\n\n## Overview\n\nSynthetic notes.\n\n"
+    text = ("# Layout fixture\n\n## Overview\n\nSynthetic notes. A family plan stays here. [personal] [1]\n\n"
             "```text\n" + literal + "\n```\n\n"
             "~~~python\ndef hello():\n    return '<safe>'\n~~~\n\n"
             "````text\n```\nSources: still code\n````\n\n"
@@ -158,6 +158,17 @@ def test_reader_preserves_code_and_nested_lists(reader_page):
     assert page.evaluate("window.wikiInjected === undefined")
     assert page.locator('.note a[href^="javascript:"]').count() == 0
     assert page.locator(".note script, .note img").count() == 0
+
+
+def test_private_sentences_can_be_hidden_and_restored(reader_page):
+    page, _, _ = reader_page
+    private = page.locator(".note .private")
+    assert private.count() == 1 and private.is_visible()
+    assert "family plan" in private.inner_text()
+    page.get_by_role("button", name="Hide private").click()
+    assert not private.is_visible()
+    page.get_by_role("button", name="Private hidden").click()
+    assert private.is_visible()
 
 
 @pytest.mark.parametrize("width,height", [(375, 812), (768, 1024), (1440, 1000)])
