@@ -174,37 +174,37 @@ engine uses your own search key, then ConnectOnion credits;
 `--engine ddg` is free.
 
 <picture>
-  <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/demos/linear-mobile-poster.png">
-  <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/demos/linear-poster.png">
-  <source media="(max-width: 600px)" srcset="https://www.connectonion.com/demos/linear-mobile.gif">
-  <img alt="co linear issues listing three open issues, then co linear create previewing a new issue" src="https://www.connectonion.com/demos/linear.gif">
+  <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/demos/linear-mobile-poster.png?v=2">
+  <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/demos/linear-poster.png?v=2">
+  <source media="(max-width: 600px)" srcset="https://www.connectonion.com/demos/linear-mobile.gif?v=2">
+  <img alt="co linear issues listing three open issues, then co linear create previewing a new issue" src="https://www.connectonion.com/demos/linear.gif?v=2">
 </picture>
 
 List your Linear issues, then create one. The create shows a preview and changes nothing until `--yes`.
 
 <picture>
-  <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/demos/slack-mobile-poster.png">
-  <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/demos/slack-poster.png">
-  <source media="(max-width: 600px)" srcset="https://www.connectonion.com/demos/slack-mobile.gif">
-  <img alt="co slack search finding a message, then co slack thread reading its replies" src="https://www.connectonion.com/demos/slack.gif">
+  <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/demos/slack-mobile-poster.png?v=2">
+  <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/demos/slack-poster.png?v=2">
+  <source media="(max-width: 600px)" srcset="https://www.connectonion.com/demos/slack-mobile.gif?v=2">
+  <img alt="co slack search finding a message, then co slack thread reading its replies" src="https://www.connectonion.com/demos/slack.gif?v=2">
 </picture>
 
 Search Slack, then read the whole thread. Each message carries the id that `co slack send --reply-to` takes.
 
 <picture>
-  <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/demos/canny-mobile-poster.png">
-  <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/demos/canny-poster.png">
-  <source media="(max-width: 600px)" srcset="https://www.connectonion.com/demos/canny-mobile.gif">
-  <img alt="co canny posts ranked by votes, then co canny status previewing a move to planned" src="https://www.connectonion.com/demos/canny.gif">
+  <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/demos/canny-mobile-poster.png?v=2">
+  <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/demos/canny-poster.png?v=2">
+  <source media="(max-width: 600px)" srcset="https://www.connectonion.com/demos/canny-mobile.gif?v=2">
+  <img alt="co canny posts ranked by votes, then co canny status previewing a move to planned" src="https://www.connectonion.com/demos/canny.gif?v=2">
 </picture>
 
 Your most-voted Canny requests, and a status change you preview before voters hear about it.
 
 <picture>
-  <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/demos/audit-mobile-poster.png">
-  <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/demos/audit-poster.png">
-  <source media="(max-width: 600px)" srcset="https://www.connectonion.com/demos/audit-mobile.gif">
-  <img alt="co audit co linear scoring 13 help pages and reporting fit for an agent harness" src="https://www.connectonion.com/demos/audit.gif">
+  <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/demos/audit-mobile-poster.png?v=2">
+  <source media="(prefers-reduced-motion: reduce)" srcset="https://www.connectonion.com/demos/audit-poster.png?v=2">
+  <source media="(max-width: 600px)" srcset="https://www.connectonion.com/demos/audit-mobile.gif?v=2">
+  <img alt="co audit co linear scoring 13 help pages and reporting fit for an agent harness" src="https://www.connectonion.com/demos/audit.gif?v=2">
 </picture>
 
 `co audit` scores a CLI's help pages the way an agent reads them. CI runs it on every `co` page, and it works on any other CLI too.
