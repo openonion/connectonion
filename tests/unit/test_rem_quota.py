@@ -124,3 +124,49 @@ def _mapped_notebook(tmp_path):
     prepare(root)
     Notebook(root).stub_person("people/vern.md", "Vern Chan", handles=["vern@example.com"])
     return root
+
+
+# ------------------------------------------- the 1.9.0a7 acceptance run (#1990)
+
+
+def test_runs_the_whole_percent_meter_cannot_see_are_counted_from_their_tokens():
+    """#1990: the week read 29% before and after every run, 3.4M input tokens in
+    all, and status said "0 of 10 investigation points" all week."""
+    now = {"used_percent": 29, "window_minutes": WEEK, "resets_at": RESETS}
+    unmoved = {**_run("2026-09-30T01:00:00+00:00", 29, 29, phase="investigate"),
+               "usage": {"input_tokens": 1_500_000, "cached_input_tokens": 1_000_000, "output_tokens": 100_000}}
+    unread = {"started_at": "2026-09-30T02:00:00+00:00", "phase": "projects write",
+              "quota": {"before": {"unknown": "x"}, "after": {"unknown": "x"}},
+              "usage": {"input_tokens": 900_000, "output_tokens": 0}}
+    measured = {**_run("2026-09-30T03:00:00+00:00", 29, 31, phase="daily-update"),
+                "usage": {"input_tokens": 100_000}}   # the meter moved: it, not the tokens, counts
+    maintenance = {**_run("2026-09-30T04:00:00+00:00", 29, 29, phase=None),
+                   "usage": {"input_tokens": 9_000_000}}
+    assert quota.points_spent([unmoved, unread, measured, maintenance], now) == 3.5
+
+
+def test_status_says_what_a_point_is(tmp_path, monkeypatch):
+    from connectonion.cli.commands import rem_status
+    for name in ("_notebook", "_today", "_mailboxes", "_archive"):
+        monkeypatch.setattr(rem_status, name, lambda *a, **k: [])
+    monkeypatch.setattr(rem_status, "_header", lambda *a: "co rem")
+    monkeypatch.setattr(rem_status, "notebook", lambda root: {})
+    monkeypatch.setattr(rem_status, "_last_run", lambda *a: "none")
+    monkeypatch.setattr(rem_status, "_zone", lambda root: None)
+    value = {"investigation_quota": {"spent_points": 0.6, "budget_points": 10}, "codex_week": "29% used on pro"}
+    from rich.text import Text
+    text = Text.from_markup(rem_status.dashboard(tmp_path, value, lambda arguments: "co rem " + " ".join(arguments))).plain
+    assert "0.6 of 10 investigation points" in text
+    assert "1% of your Codex week" in text and "1,000,000 tokens" in text
+
+
+def test_a_category_runs_own_budget_counts_its_runs_tokens_when_the_meter_stays_flat():
+    """#1990: `investigate all --budget 10` read the meter alone, which never moved."""
+    week = {"window_minutes": WEEK, "resets_at": RESETS}
+    start, now = {**week, "used_percent": 29}, {**week, "used_percent": 29}
+    began = "2026-09-30T00:00:00+00:00"
+    earlier = {**_run("2026-09-29T23:00:00+00:00", 29, 29, phase="investigate"), "usage": {"input_tokens": 9_000_000}}
+    mine = [{**_run(f"2026-09-30T0{n}:00:00+00:00", 29, 29, phase="investigate"),
+             "usage": {"input_tokens": 1_200_000, "cached_input_tokens": 200_000}} for n in (1, 2)]
+    assert quota.run_spent(start, now, [earlier, *mine], began) == 2
+    assert quota.run_spent(start, {**week, "used_percent": 34}, mine, began) == 5   # the meter, when it says more

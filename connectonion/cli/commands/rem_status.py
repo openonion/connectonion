@@ -36,6 +36,11 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
                      f"{_number(budget['budget_points'])} investigation points this week · "
                      f"Codex week {highlight(value.get('codex_week', 'unknown'))}")
         lines.append(f"  {style.muted('A point is 1% of your Codex week, counted for investigations only; daily maintenance is bounded by its call cap.')}")
+        # Codex reports whole percents: a run under one is counted from its
+        # tokens, and "0.6 points" with no unit read as made up (#1990).
+        from ...rem.quota import TOKENS_PER_POINT
+        lines.append("  " + style.muted("Codex reports whole percents, so a run too small to move it counts "
+                                        f"its fresh tokens: {TOKENS_PER_POINT:,} tokens a point."))
     lines.append(f"{style.heading('Last run')}   {_last_run(value.get('last_run'), _zone(root))}")
     if verbose:
         from .rem_output import _lines

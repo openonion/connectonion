@@ -130,7 +130,9 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     for 25 minutes and everything at the end (#2033)."""
     say = say or (lambda text: None)
     say("Reading new material…")
-    maintenance = (maintain or run_sync)(root, scheduled=True) if scheduled else (maintain or run_sync)(root)
+    # The archive a sync resumes says its progress through `say` too (#2042).
+    sync = maintain or (lambda root, **options: run_sync(root, say=say, **options))
+    maintenance = sync(root, scheduled=True) if scheduled else sync(root)
     if maintenance is not None:
         say(f"New material: {maintenance.get('items', 0)} items, "
             f"{len(maintenance.get('changed') or [])} pages changed ({maintenance['outcome']})")
@@ -202,8 +204,8 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
                     # A refused page keeps its items pending; the portion goes on.
                     # One stopped before any model call costs the portion nothing (#1984).
                     calls -= 0 if isinstance(error, NothingFound) and not error.usage else required
-                    done.append({'page': target, 'outcome': _outcome(error), 'why': str(error)[:300]})
-                    _add_usage(usage, getattr(error, 'usage', None))
+                    _page_done(record, done, usage, say, {'page': target, 'outcome': _outcome(error),
+                                                          'why': str(error)[:300]}, getattr(error, 'usage', None))
                     continue
                 calls -= required
             else:
@@ -223,16 +225,15 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
                                   clients=clients, subscriptions=sources, max_calls=calls)
                 except NothingFound as error:
                     # Nothing to write from is this page's answer, not the round's failure.
-                    done.append({'page': target, 'outcome': _outcome(error), 'why': str(error)[:300]})
-                    _add_usage(usage, error.usage)
+                    _page_done(record, done, usage, say, {'page': target, 'outcome': _outcome(error),
+                                                          'why': str(error)[:300]}, error.usage)
                     continue
                 except RemError as error:
                     if 'call budget' not in str(error):
                         raise
                     continue
                 calls = 0
-            done.append({'page': target, 'outcome': 'accepted'})
-            _add_usage(usage, result.get('usage'))
+            _page_done(record, done, usage, say, {'page': target, 'outcome': 'accepted'}, result.get('usage'))
             changed += result.get('changed', [])
         accepted = [row['page'] for row in done if row['outcome'] == 'accepted']
         left = len(unfinished_by_recency(root))
@@ -245,10 +246,39 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
     finally:
         record['finished_at'] = now().isoformat()
         record['quota']['after'] = quota.read(config)
+        # A daily record had no duration, and sync printed "Seconds: Unknown" (#2044).
+        record['seconds'] = round((datetime.fromisoformat(record['finished_at'])
+                                   - datetime.fromisoformat(record['started_at'])).total_seconds(), 1)
         write_json(path, record)
     investigation = None if failed or not done else {'pages': done, 'left': record.get('left')}
     return {'outcome': 'partial' if failed else 'completed',
             'maintenance': maintenance, 'investigation': investigation, 'run': record}
+
+
+def _page_done(record: dict, done: list, usage: dict, say, row: dict, page_usage, kind: str = 'person') -> None:
+    """One page finished: kept in the record, its tokens under its stage, and said now.
+
+    Outcomes appeared only in the record dumped at the end of a sync (#2044),
+    and a daily run's tokens had no stage in logs --usage (#2043).
+    """
+    done.append(row)
+    _add_usage(usage, page_usage)
+    if page_usage:
+        stage = 'projects' if kind == 'project' else 'investigate'
+        _add_usage(record.setdefault('usage_by_stage', {}).setdefault(stage, {}), page_usage)
+    say(outcome_line(row))
+
+
+def outcome_line(row: dict) -> str:
+    """`Updated people/x.md (accepted)` / `Refused people/y.md: over 20,000 characters`."""
+    page, outcome = row['page'], row['outcome']
+    why = ' '.join(str(row.get('why') or '').split())
+    why = why if len(why) <= 160 else why[:157].rsplit(' ', 1)[0] + '…'
+    if outcome == 'accepted':
+        return f"Updated {page} (accepted)"
+    words = {'refused': 'Refused', 'failed': 'Failed', 'nothing_new': 'Nothing new for',
+             'nothing_found': 'Nothing found for'}.get(outcome, outcome.capitalize())
+    return f"{words} {page}" + (f": {why}" if why and outcome in ('refused', 'failed') else "")
 
 
 def _outcome(error: RemError) -> str:
@@ -315,15 +345,14 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
                     result = (person_one or _person)(root, row, clients=clients, subscriptions=sources)
                 else:
                     result = (project_one or _project)(root, row['record'], config=config)
-                done.append({'page': row['record'], 'mode': row['mode'],
-                             'outcome': 'accepted'})
-                _add_usage(usage, result.get('usage'))
+                _page_done(record, done, usage, say, {'page': row['record'], 'mode': row['mode'],
+                                                      'outcome': 'accepted'}, result.get('usage'), row['kind'])
                 changed += result.get('changed', [])
             except RemError as error:
                 # One refused page does not stop the others; its material stays pending.
-                done.append({'page': row['record'], 'mode': row['mode'], 'outcome': _outcome(error),
-                             'why': str(error)[:300]})
-                _add_usage(usage, getattr(error, 'usage', None))
+                _page_done(record, done, usage, say, {'page': row['record'], 'mode': row['mode'],
+                                                      'outcome': _outcome(error), 'why': str(error)[:300]},
+                           getattr(error, 'usage', None), row['kind'])
         left = len(rows) - sum(1 for row in done if row['outcome'] == 'accepted')
         record.update(outcome='completed', usage=usage or None, changed=changed, pages=done, left=left,
                       since=since, listed=found['listed'])
@@ -334,6 +363,9 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
     finally:
         record['finished_at'] = now().isoformat()
         record['quota']['after'] = quota.read(config)
+        # A daily record had no duration, and sync printed "Seconds: Unknown" (#2044).
+        record['seconds'] = round((datetime.fromisoformat(record['finished_at'])
+                                   - datetime.fromisoformat(record['started_at'])).total_seconds(), 1)
         write_json(path, record)
     return {'outcome': 'partial' if failed else 'completed', 'maintenance': maintenance,
             'investigation': None if failed else {'pages': done, 'left': record.get('left')}, 'run': record}

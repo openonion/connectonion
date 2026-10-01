@@ -646,7 +646,8 @@ def _selected_sources(root: Path, selector: str) -> dict:
 PAGES_PER_BATCH = 5
 
 
-def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, leads: list[str]) -> dict:
+def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, leads: list[str],
+                    say=None) -> dict:
     """Update each page the material concerns in its own turn, and keep going when one fails.
 
     One turn over the whole notebook edited eight pages at once, spent twenty
@@ -657,6 +658,7 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
     from .runner import RunFailed, run_stage
     notebook = Notebook(root)
     usage, changed, refusals, reviews, sizes, growth = {}, [], [], [], [], {}
+    say = say or (lambda text: None)
     for record in leads:
         page_items = [{"role": "page", "record": record, "source": "investigation:page", "one_page": True,
                        "timestamp": now().isoformat(),
@@ -673,6 +675,11 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
         except RunFailed as error:
             refusals.append({"record": record, "errors": [str(error)[:400]]})
             part = getattr(error, "usage", None)
+        # Each page's outcome as it finishes; it was only in the dump at the end (#2044).
+        from .daily import outcome_line
+        say(outcome_line({"page": record, "outcome": "refused", "why": refusals[-1]["errors"][0]}
+                         if refusals and refusals[-1]["record"] == record else
+                         {"page": record, "outcome": "accepted" if record in changed else "nothing_new"}))
         for key, value in (part or {}).items():
             usage[key] = usage.get(key, 0) + value
     return {"usage": usage or None, "changed": sorted(set(changed)), "refused": len(refusals),
@@ -685,7 +692,7 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
 
 def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bool = False,
              scheduled: bool = False, all_pending: bool = False, runner=None, extractor=None,
-             on_batch=None) -> dict | None:
+             on_batch=None, say=None) -> dict | None:
     """One bounded batch; caller must have recorded explicit source consent.
 
     `scheduled` is what the background tick passes: run only if a saved time has
@@ -749,7 +756,8 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         if slot is None or (served and datetime.fromisoformat(served) >= slot):
             return None
         try:
-            record = run_sync(root, source=source, with_person=with_person, runner=runner, extractor=extractor)
+            record = run_sync(root, source=source, with_person=with_person, runner=runner, extractor=extractor,
+                              say=say)
         except RemError as error:
             if CAP_LIMIT not in str(error):
                 raise
@@ -774,13 +782,13 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         if not isinstance(progress, dict):
             raise RemError("Invalid source progress; preserve it for diagnosis")
         record = _sync_locked(root, selected, progress, config, runner, extractor,
-                              with_person=with_person, include_local=not source)
-        archive = _resume_archive(root) if isinstance(record, dict) else None
+                              with_person=with_person, include_local=not source, say=say)
+        archive = _resume_archive(root, say) if isinstance(record, dict) else None
         record = {**record, "mail_archive": archive} if archive else record
         return {**record, "tidied": tidied} if tidied and isinstance(record, dict) else record
 
 
-def _resume_archive(root: Path) -> dict | None:
+def _resume_archive(root: Path, say=None) -> dict | None:
     """A stalled init mail archive continues in the sync, for a bounded time (#2035).
 
     Only `init` ever resumed it, so on the 1.9.0a6 acceptance notebook every
@@ -797,7 +805,7 @@ def _resume_archive(root: Path) -> dict | None:
                 clients[kind] = mail_client(kind)
             except Exception:  # resume_stalled names the mailbox it could not open
                 clients[kind] = None
-    return resume_stalled(root, clients, now=lambda: now())
+    return resume_stalled(root, clients, now=lambda: now(), say=say)
 
 
 @contextmanager
@@ -825,7 +833,7 @@ def _terminate_as_interrupt():
 
 
 def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
-                 with_person="", include_local=True):
+                 with_person="", include_local=True, say=None):
     from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
     from .runner import maintenance_instructions, run_stage
 
@@ -1004,7 +1012,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
         if items:
             stage = "maintain"
             if leads:
-                result = _maintain_pages(root, items, config, kind, leads)
+                result = _maintain_pages(root, items, config, kind, leads, say=say)
             else:
                 options = {"maintenance_lock_held": True} if runner is run_stage else {}
                 result = runner(Notebook(root), items, config, kind=kind, **options)
@@ -1088,15 +1096,25 @@ def usage_report(root: Path, days: int | None = None) -> dict:
     chars_by_model, sized_by_model, items_by_source = {}, {}, {}
     for run in runs:
         add(total, run["usage"])
+        # Every run's tokens land under a stage, so the stages add up to the
+        # total: 2.35M investigation and project tokens had none (#2043). What
+        # a run did not split by stage goes under the stage its kind implies.
+        split = {}
         for stage, usage in (run.get("usage_by_stage") or {}).items():
             add(by_stage.setdefault(stage, {}), usage)
+            add(split, usage)
+        rest = {key: run["usage"][key] - split.get(key, 0) for key in keys
+                if isinstance(run["usage"].get(key), (int, float)) and run["usage"][key] > split.get(key, 0)}
+        if rest:
+            add(by_stage.setdefault(PHASE_STAGES.get(run.get("phase"), "maintain"), {}), rest)
         # Records from before the model was stored are said to be that, not "?" (#1974).
         model = run.get("model") or "unrecorded"
         add(by_model.setdefault(model, {}), run["usage"])
-        if run.get("chars_in"):
-            # Only runs that recorded their input size count towards the rate:
-            # tokens from runs with no size over the size of the others was a
-            # figure in the thousands per 1k characters.
+        if run.get("chars_in") and run.get("items_by_source"):
+            # Only sync batches, which put their recorded characters in the
+            # prompt, count towards the rate: tokens from runs with no size, or
+            # from an investigation whose material the model searched in files,
+            # over the size of the others read 28,556.9 per 1k characters (#2043).
             chars_by_model[model] = chars_by_model.get(model, 0) + run["chars_in"]
             add(sized_by_model.setdefault(model, {}), run["usage"])
         shares = run.get("items_by_source") or {}
@@ -1134,3 +1152,10 @@ def usage_report(root: Path, days: int | None = None) -> dict:
 
 
 INSTRUCTIONS_TARGET_CHARS = 15_000
+
+# The stage a run's unsplit tokens belong to, by the kind of run (#2043). A sync
+# batch has no phase and splits extract / maintain itself; a daily update that
+# predates its own split is mostly people, so investigate.
+PHASE_STAGES = {"investigate": "investigate", "investigate me": "investigate",
+                "daily-investigation": "investigate", "daily-update": "investigate",
+                "projects write": "projects"}

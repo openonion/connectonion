@@ -1108,7 +1108,8 @@ def test_usage_by_model_says_unrecorded_and_skips_per_1k_without_sizes(tmp_path)
     write_json(runs / "run_a.json", {"id": "run_a", "started_at": "2026-09-08T01:00:00+00:00",
                                      "outcome": "completed", "usage": {"input_tokens": 900000}})
     write_json(runs / "run_b.json", {"id": "run_b", "started_at": "2026-09-08T02:00:00+00:00", "model": "m",
-                                     "outcome": "completed", "usage": {"input_tokens": 1000}, "chars_in": 4000})
+                                     "outcome": "completed", "usage": {"input_tokens": 1000}, "chars_in": 4000,
+                                     "items_by_source": {"gmail": 1}})
     write_json(runs / "run_c.json", {"id": "run_c", "started_at": "2026-09-08T03:00:00+00:00", "model": "m",
                                      "outcome": "completed", "usage": {"input_tokens": 500000}})
     report = usage_report(tmp_path)
@@ -1133,3 +1134,53 @@ def test_a_sync_resumes_a_stalled_init_archive_and_status_stops_mentioning_it(re
     assert mail.calls == ["m2", "m3", "m4", "m5"]
     assert "mail_archive" not in status(root)
     assert "mail_archive" not in run_sync(root, runner=lambda *a, **kw: {"usage": {}})
+
+
+# ------------------------------------------- the 1.9.0a7 acceptance run (#2043)
+
+
+def test_every_kind_of_run_has_a_stage_and_the_stages_add_up_to_the_total(tmp_path):
+    """#2043: logs --usage said 5.23M tokens in total and listed only extract and
+    maintain; 2.35M of investigation and project-page tokens had no stage."""
+    from connectonion.rem.service import usage_report
+    prepare(tmp_path)
+    runs = state_path(tmp_path, "runs")
+    runs.mkdir(parents=True, exist_ok=True)
+    kinds = [  # (phase, usage, usage_by_stage as each kind records it)
+        (None, 100, {"extract": {"input_tokens": 60}, "maintain": {"input_tokens": 40}}),   # a sync batch
+        ("investigate", 200, {"extract": {"input_tokens": 50}, "investigate": {"input_tokens": 150}}),
+        ("investigate me", 300, None),                       # recorded before it split by stage
+        ("projects write", 400, None),
+        ("daily-investigation", 500, {"investigate": {"input_tokens": 500}}),
+        ("daily-update", 600, {"investigate": {"input_tokens": 250}, "projects": {"input_tokens": 350}}),
+        ("daily-update", 700, None),                         # an older daily record: no split
+    ]
+    for number, (phase, tokens, stages) in enumerate(kinds):
+        write_json(runs / f"run_{number}.json", {
+            "id": f"run_{number}", "started_at": f"2026-09-30T0{number}:00:00+00:00", "outcome": "completed",
+            "model": "m", **({"phase": phase} if phase else {"items_by_source": {"gmail": 3}}),
+            "usage": {"input_tokens": tokens}, **({"usage_by_stage": stages} if stages else {})})
+
+    report = usage_report(tmp_path)
+
+    stages = {stage: table.get("input_tokens", 0) for stage, table in report["by_stage"].items()}
+    assert stages == {"extract": 110, "maintain": 40, "investigate": 1900, "projects": 750}
+    assert sum(stages.values()) == report["total"]["input_tokens"] == 2800
+    # Only the sync batch read a source's items; an investigation is not split across sources.
+    assert report["by_source"]["gmail"]["input_tokens"] == 100
+
+
+def test_tokens_per_1k_characters_is_measured_on_sync_batches_only(tmp_path):
+    """#2043: 28,556.9 tokens per 1k characters: an investigation's material goes into
+    files the model searches, so its characters are not what it read."""
+    from connectonion.rem.service import usage_report
+    prepare(tmp_path)
+    runs = state_path(tmp_path, "runs")
+    runs.mkdir(parents=True, exist_ok=True)
+    write_json(runs / "run_a.json", {"id": "run_a", "started_at": "2026-09-30T01:00:00+00:00", "model": "m",
+                                     "outcome": "completed", "usage": {"input_tokens": 2000}, "chars_in": 4000,
+                                     "items_by_source": {"gmail": 2}})
+    write_json(runs / "run_b.json", {"id": "run_b", "started_at": "2026-09-30T02:00:00+00:00", "model": "m",
+                                     "phase": "investigate", "outcome": "completed",
+                                     "usage": {"input_tokens": 900_000}, "chars_in": 30})
+    assert usage_report(tmp_path)["by_model"]["m"]["input_tokens_per_1k_chars"] == 500.0

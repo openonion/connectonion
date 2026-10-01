@@ -60,27 +60,71 @@ def read(config: dict, request=None) -> dict:
         return {"unknown": f"Codex did not report its quota ({type(error).__name__}: {error})"}
 
 
-def points_spent(logs: list[dict], now: dict) -> int:
-    """Points this window's investigation runs moved the meter, summed per run.
+# What one point is taken to cost when the meter cannot see a run (#1990):
+# tokens the model read fresh or wrote. Cached input is left out; Codex
+# charges it at a small fraction. On the 1.9.0a7 acceptance notebook 3.4M
+# input tokens, mostly cached, left the whole-percent week at 29% before and
+# after; a million fresh tokens a point keeps that pass under one point, as
+# the meter measured it.
+TOKENS_PER_POINT = 1_000_000
+
+
+def _token_points(usage) -> float:
+    usage = usage if isinstance(usage, dict) else {}
+
+    def number(key):
+        value = usage.get(key)
+        return value if isinstance(value, (int, float)) else 0
+    fresh = max(0, number("input_tokens") - number("cached_input_tokens")) + number("output_tokens")
+    return fresh / TOKENS_PER_POINT
+
+
+def run_points(run: dict) -> float:
+    """What one run cost in points: the meter when it moved, its tokens when it did not.
+
+    Codex reports whole percents. Every run of the 1.9.0a7 acceptance pass read
+    29% before and after, so "after minus before" was 0 for each and the budget
+    never moved (#1990). A reading that moved is measured and wins. A reset
+    mid-run reads lower after than before; that run counts its tokens, never a refund.
+    """
+    quota = run.get("quota") or {}
+    before, after = quota.get("before") or {}, quota.get("after") or {}
+    if "used_percent" in before and "used_percent" in after and after["used_percent"] > before["used_percent"]:
+        return after["used_percent"] - before["used_percent"]
+    return _token_points(run.get("usage"))
+
+
+def points_spent(logs: list[dict], now: dict) -> float:
+    """Points this window's investigation runs cost, summed per run, to one decimal.
 
     Summed per run, not "now minus the first reading", because the owner's own
-    coding moves the same meter between runs. A run that straddles a reset
-    reads lower after than before; it counts as zero, never as a refund.
+    coding moves the same meter between runs.
     """
     if "unknown" in now:
         return 0
     window_start = now["resets_at"] - now["window_minutes"] * 60
-    spent = 0
+    spent = 0.0
     for run in logs:
         if run.get("phase") not in INVESTIGATION_PHASES:
             continue
-        before, after = (run.get("quota") or {}).get("before", {}), (run.get("quota") or {}).get("after", {})
-        if "used_percent" not in before or "used_percent" not in after:
-            continue
         if datetime.fromisoformat(run["started_at"]).timestamp() < window_start:
             continue
-        spent += max(0, after["used_percent"] - before["used_percent"])
-    return spent
+        spent += run_points(run)
+    spent = round(spent, 1)
+    return int(spent) if spent == int(spent) else spent
+
+
+def run_spent(start: dict, now: dict, logs: list[dict], began: str) -> float:
+    """What one CATEGORY or first run has spent: the meter's move, or its runs' points if more.
+
+    `began` is when the run started (ISO). The meter alone stayed flat over a
+    whole acceptance pass (#1990), so a `--budget 10` never stopped anything.
+    """
+    moved = now["used_percent"] - start["used_percent"] if "used_percent" in now and "used_percent" in start else 0
+    counted = sum(run_points(run) for run in logs if run.get("phase") in INVESTIGATION_PHASES
+                  and datetime.fromisoformat(run["started_at"]) >= datetime.fromisoformat(began))
+    spent = round(max(moved, counted), 1)
+    return int(spent) if spent == int(spent) else spent
 
 
 def blocks(reading: dict, spent: int, limits: dict) -> str:

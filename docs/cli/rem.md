@@ -501,6 +501,13 @@ below is good to about one point.
 - **Every run records the meter before and after** (`quota` in the run log,
   shown by `co rem logs`). The difference is what that run cost in points of
   your week, measured rather than estimated from tokens.
+- **A run the meter cannot see is counted from its tokens** (#1990). Codex
+  reports whole percents, and on the 1.9.0a7 acceptance notebook the week read
+  29% before and after every run, 3.4M input tokens in all, so the budget said
+  "0 of 10 points" all week. A run whose reading did not move (or could not be
+  read) now counts `(input − cached input + output) / 1,000,000` points, to one
+  decimal: about a million tokens the model had to read fresh or write is one
+  point. A run that did move the meter counts what the meter says.
 - **Investigation has a weekly budget**, `limits.investigation_quota_points`,
   default **10** points of the weekly window (owner, 2026-09-27). The
   scheduled round adds up the points its investigation runs used since the
@@ -519,7 +526,8 @@ below is good to about one point.
   of co rem's budget is left. co rem shares this quota with your real work.
 - `co rem status` reads the meter now and says it in two lines, for example
   `Codex week: 5% used on pro; resets Sun 04 Oct 09:49` and
-  `Investigation this week: 0 of 10 points; nothing starts once the week is at 70%`.
+  `Investigation this week: 0.7 of 10 points; nothing starts once the week is at 70%`.
+  The dashboard says what a point is under the line.
   `--json` gives the same numbers under `quota` and `investigation_quota`.
 - When the meter cannot be read (another runner, Codex not signed in, an older
   Codex), the run says `quota: unknown (<why>)` and the daily call cap
@@ -629,8 +637,14 @@ Pages never contain a raw body. A body that could not be fetched marks init
 `partial` with a nonzero exit; rerunning reuses every saved body and fetches
 only the rest. If a later init cannot list a mailbox, the earlier archive is kept
 rather than replaced. `--no-mail-archive` skips the body download and keeps the
-metadata-only map. Investigating a person reads the archive only when its last
-run completed; otherwise it asks the mailbox as before.
+metadata-only map. Investigating a person or an organisation reads whatever
+part of the archive is saved, even while it is still being saved (#2042): the
+mailbox is still listed for the window, but a message whose body is on disk is
+not fetched again, and coverage says how much of the archive there is
+(`12 loaded from private init archive (2,693 of 3,152 bodies saved so far)`).
+The per-person indexes are written whenever the archive pauses, not only when
+it finishes. A sync that resumes the archive says so, with its progress:
+`Saving mail bodies: 1,200 of 3,152`.
 
 A person is named, in this order, by the name they write under, the name in the
 owner's saved contacts (Google contacts and "other contacts", Outlook contacts;
@@ -718,6 +732,33 @@ reader and `co rem status` both ask it:
   and the line now says so.
 - `Next` is the first thing under "To write next" (`co rem investigate me` on a
   notebook whose own page is still mapped), then `start` or `logs` as before.
+
+## What `sync` prints, and where the tokens went (#2043, #2044)
+
+`co rem sync` says each page's outcome as it finishes, not in a dump at the end:
+
+```
+Updated people/ada-1f2e3d.md (accepted)
+Refused people/bob-4a5b6c.md: over 20,000 characters
+```
+
+and ends with a short summary instead of the whole run record: new material
+read, the pages updated / refused / with nothing new, how many are left, the
+mail archive if a sync is still saving it, the run's tokens, and the command
+that shows the full record (`co rem logs RUN`). Off a terminal the words are
+the same, without colour. A long investigation off a terminal prints a stage
+once when it starts (`Investigation: gathering codex sessions`), not once per
+40 files scanned.
+
+`co rem logs --usage` puts every model run under a stage, so the stage totals
+add up to the total: `extract` and `maintain` for sync batches,
+`investigate` for people, organisation and owner investigations (by hand or in
+the daily round), and `projects` for project pages. A run recorded before it
+split its usage by stage is counted under the stage its kind implies. Tokens are
+credited to a source only by a sync batch that read that source's items; an
+investigation reads many sources and is not split across them. Tokens per 1k
+characters is measured on sync batches only: an investigation's material goes
+into files the model searches, so its characters are not what it read.
 
 ## Tidying a notebook made by an older version (#1999, #2008)
 

@@ -1203,3 +1203,70 @@ def test_status_ends_on_the_step_its_first_line_names(tmp_path, monkeypatch):
     assert status_next({"configured": True, "state": "Not started — run `co rem start`"}) == ["start"]
     assert status_next({"configured": True, "state": "Stopped — background maintenance is off"}) == ["start"]
     assert status_next({"configured": True, "state": "Running in background (launchd); next slot 07:00"}) == ["logs"]
+
+
+# ------------------------------------------- the 1.9.0a7 acceptance run (#2044)
+
+SYNC_RESULT = {
+    "outcome": "completed",
+    "maintenance": {"id": "run_m", "outcome": "completed", "items": 42, "changed": ["projects/one-4b1ae91031.md"],
+                    "usage": {"input_tokens": 300_000, "output_tokens": 2_000},
+                    "report": "Updated the page. Still open: ", "seconds": 61.0,
+                    "refusals": [{"record": "people/onion-bf710a2371.md",
+                                  "errors": ["Candidate rejected: over 20,000 characters"]}],
+                    "mail_archive": {"phase": "paused", "target": 3152, "saved": 400, "reused": 2293}},
+    "investigation": {"pages": [{"page": "people/ada.md", "outcome": "accepted"},
+                                {"page": "people/bob.md", "outcome": "refused", "why": "too long"},
+                                {"page": "people/cy.md", "outcome": "nothing_new", "why": "x"}], "left": 12},
+    "run": {"id": "run_d", "phase": "daily-update", "usage": {"input_tokens": 700_000, "output_tokens": 8_000}},
+}
+
+
+def test_sync_ends_on_a_short_summary_not_the_run_record(lifecycle, monkeypatch):
+    """#2044: sync ended in a ~200-line dump with capitalised paths and cut-off reports."""
+    root, _, _ = lifecycle
+    monkeypatch.setattr("connectonion.rem.daily.run_daily", lambda root, **kw: SYNC_RESULT)
+    result = invoke(root, "sync")
+    assert result.exit_code == 0, result.output
+    out = result.stdout
+    assert "\x1b[" not in out                                   # plain off a terminal
+    assert "New material: 42 items, 1 page changed (completed)" in out
+    assert "Refused people/onion-bf710a2371.md: Candidate rejected: over 20,000 characters" in out
+    assert "Mail archive: 2,693 of 3,152 bodies saved (paused)" in out
+    assert "Pages: 1 updated, 1 refused, 1 nothing new; 12 left" in out
+    assert "Tokens: 1,000,000 in, 10,000 out" in out
+    assert "Full record: co rem" in out and "logs run_d" in out
+    assert "Projects/" not in out and "Report:" not in out and "Seconds:" not in out
+    assert out.rstrip().splitlines()[-1].startswith("Next:")
+    assert len(out.strip().splitlines()) <= 12
+
+
+def test_a_partial_sync_draws_the_same_summary_and_exits_1(lifecycle, monkeypatch):
+    root, _, _ = lifecycle
+    monkeypatch.setattr("connectonion.rem.daily.run_daily",
+                        lambda root, **kw: {**SYNC_RESULT, "outcome": "partial", "investigation": None})
+    result = invoke(root, "sync")
+    assert result.exit_code == 1
+    assert "co rem sync — needs attention" in result.stdout and "Projects/" not in result.stdout
+
+
+def test_an_investigation_off_a_terminal_says_each_stage_once():
+    """#2044: about 25 "gathering codex sessions: N scanned" lines with nothing new."""
+    import io
+
+    from connectonion.cli.commands.rem_output import Turn
+    turn = Turn("Investigating people/a.md…", stream=io.StringIO())
+    seen = []
+    import typer
+    original = typer.echo
+    typer.echo = lambda text, err=False: seen.append(text)
+    try:
+        for count in (40, 80, 120):
+            turn.stage(f"gathering codex sessions: {count} scanned")
+        turn.stage("gathering outlook mail (10/30)")
+        turn.stage("gathering outlook mail (20/30)")
+        turn.stage("writing investigation")
+    finally:
+        typer.echo = original
+    assert seen == ["Investigation: gathering codex sessions: 40 scanned",
+                    "Investigation: gathering outlook mail (10/30)", "Investigation: writing investigation"]

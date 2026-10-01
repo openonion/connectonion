@@ -79,7 +79,7 @@ def _utcnow() -> datetime:
 
 
 def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seconds: float | None = None,
-                 clock=time.monotonic, now=_utcnow) -> dict:
+                 clock=time.monotonic, now=_utcnow, on_saved=None) -> dict:
     """Fetch 90-day provider body snapshots once; keep files if interrupted.
 
     The inventory is the bounded enumeration. This pass uses its IDs, never a
@@ -90,6 +90,9 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seco
     spent the archive stops at `phase: paused`, and the next resume reuses
     every body saved so far. `updated` is stamped at every checkpoint, so a
     pass whose process died is told apart from one still running.
+
+    The indexes are written at a pause too, so an investigation can read the
+    part that is saved (#2042). `on_saved(on_disk, target)` hears the count.
     """
     inventory = state_path(root, "source-inventory.jsonl")
     rows = [json.loads(line) for line in inventory.read_text(encoding="utf-8").splitlines() if line]
@@ -127,6 +130,8 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seco
                     raise RemError("Existing mail snapshot does not match its source ID")
                 result["reused"] += 1
             elif deadline is not None and clock() >= deadline:
+                result["people_indexes"] = _person_indexes(root, report, messages)
+                result["project_indexes"] = _project_indexes(root, report, sessions)
                 result.update(phase="paused", updated=now().isoformat())
                 write_json(state, result)
                 return {key: value for key, value in result.items() if key not in ("failed_keys", "owner_addresses")}
@@ -150,6 +155,8 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seco
         if progress and (index == 1 or index % 25 == 0 or index == len(messages)):
             progress(f"saving mail bodies ({result['saved']} saved, {result['reused']} reused, "
                      f"{result['failed']} failed)", f"{index}/{len(messages)}")
+        if on_saved and (index % 25 == 0 or index == len(messages)):
+            on_saved(result["saved"] + result["reused"], len(messages))
         if index % 25 == 0:
             result["updated"] = now().isoformat()
             write_json(state, result)
@@ -196,16 +203,25 @@ def _material(manifest: dict, snapshots: list[dict]) -> tuple[dict[str, list[dic
             datetime.fromisoformat(manifest["range_end"]))
 
 
+# An archive with bodies on disk. A complete one covers its window; any other
+# is read for what it holds, and the mailbox is asked for the rest (#2042).
+READABLE = ("complete", "partial", "running", "paused")
+
+
 def person_material(root: Path, record: str) -> tuple[dict[str, list[dict]], datetime, datetime] | None:
-    """Read a complete local archive for one mapped page, without a provider query."""
+    """One mapped page's saved mail, without a provider query; while the archive
+    is unfinished, only the bodies saved so far."""
     manifest = read_json(state_path(root, "mail/archive.json"), {})
     index = person_index_path(root, record)
-    if manifest.get("phase") != "complete" or not index.is_file():
+    if manifest.get("phase") not in READABLE or not index.is_file():
         return None
     snapshots = []
     for line in index.read_text(encoding="utf-8").splitlines():
         ref = json.loads(line)
-        snapshot = read_json(state_path(root, ref["message"].removeprefix(".state/")), {})
+        path = state_path(root, ref["message"].removeprefix(".state/"))
+        if manifest["phase"] != "complete" and not path.is_file():
+            continue   # not saved yet: the investigation fetches it
+        snapshot = read_json(path, {})
         if (not isinstance(snapshot, dict) or snapshot.get("id") != ref["id"]
                 or snapshot.get("provider") != ref["provider"] or "body" not in snapshot):
             return None
@@ -223,7 +239,7 @@ def domain_material(root: Path, domains: list[str]) -> tuple[dict[str, list[dict
     at a time. `.sub.domain` counts too -- student.unsw.edu.au is UNSW.
     """
     manifest = read_json(state_path(root, "mail/archive.json"), {})
-    if manifest.get("phase") != "complete" or not domains:
+    if manifest.get("phase") not in READABLE or not domains:
         return None
     suffixes = tuple(f"{sep}{domain}" for domain in domains for sep in ("@", "."))
     snapshots = []
@@ -261,9 +277,7 @@ def archive_state(root: Path, now: datetime | None = None) -> dict | None:
     now = now or _utcnow()
     updated = manifest.get("updated") or datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
     stalled = (now - datetime.fromisoformat(updated)).total_seconds() > STALL_SECONDS
-    on_disk = sum(1 for provider in manifest.get("providers", []) if provider in ("gmail", "outlook")
-                  for _ in state_path(root, f"mail/messages/{provider}").glob("*.json"))
-    target = manifest.get("target", 0)
+    on_disk, target = saved_share(root, manifest)
     if stalled:
         summary = (f"Mail archive incomplete: {on_disk} of {target} bodies saved, no progress since "
                    f"{updated[:16]}; investigations ask the mail servers until it is done. The next "
@@ -274,8 +288,27 @@ def archive_state(root: Path, now: datetime | None = None) -> dict | None:
             "stalled": stalled, "summary": summary}
 
 
+def saved_share(root: Path, manifest: dict | None = None) -> tuple[int, int]:
+    """(bodies on disk, bodies the archive is for): what an unfinished archive holds."""
+    manifest = manifest if manifest is not None else read_json(state_path(root, "mail/archive.json"), {})
+    on_disk = sum(1 for provider in manifest.get("providers", []) if provider in ("gmail", "outlook")
+                  for _ in state_path(root, f"mail/messages/{provider}").glob("*.json"))
+    return on_disk, manifest.get("target", 0)
+
+
+def _announcer(say, start: int, target: int):
+    """A line each tenth of the way, not one per 25 bodies: 3,152 bodies would be 126 lines."""
+    step, last = max(25, target // 10), [start]
+
+    def on_saved(on_disk, total):
+        if on_disk - last[0] >= step and on_disk < total:
+            last[0] = on_disk
+            say(f"Saving mail bodies: {on_disk:,} of {total:,}")
+    return on_saved
+
+
 def resume_stalled(root: Path, clients: dict, *, seconds: float = RESUME_SECONDS, clock=time.monotonic,
-                   now=_utcnow) -> dict | None:
+                   now=_utcnow, say=None) -> dict | None:
     """Continue a stalled or paused init archive for at most `seconds`; None when there is nothing to do.
 
     It reuses every body already on disk (`archive_init` checks each one) and
@@ -292,5 +325,15 @@ def resume_stalled(root: Path, clients: dict, *, seconds: float = RESUME_SECONDS
     missing = [provider for provider in providers if clients.get(provider) is None]
     if missing:
         return {"phase": state["phase"], "resumed": False, "reason": f"{', '.join(missing)} unavailable"}
-    return archive_init(root, report, {provider: clients[provider] for provider in providers},
-                        seconds=seconds, clock=clock, now=now)
+    # Saving bodies took all five minutes of a sync with nothing said (#2042).
+    say = say or (lambda text: None)
+    say(f"Saving mail bodies: {state['on_disk']:,} of {state['target']:,} saved by init; "
+        f"resuming for at most {round(seconds / 60):g} minutes")
+    result = archive_init(root, report, {provider: clients[provider] for provider in providers},
+                          seconds=seconds, clock=clock, now=now,
+                          on_saved=_announcer(say, state["on_disk"], state["target"]))
+    on_disk, target = saved_share(root)
+    say(f"Saving mail bodies: {on_disk:,} of {target:,}, "
+        + ("done" if result["phase"] == "complete" else
+           f"{result['phase']}; the next sync continues" if result["phase"] == "paused" else result["phase"]))
+    return result

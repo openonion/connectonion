@@ -87,9 +87,11 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
     command = _next(ctx, arguments)
     if ctx.obj["json"]:
         typer.echo(json.dumps({"ok": not failed, "data": value, "next": command}, ensure_ascii=False))
-    elif draw and not failed:
+    elif draw and not isinstance(value, str) and (drawn := draw(value)) is not None:
+        # A drawing may decline a result of another shape (sync's dry run) by
+        # returning None; a failed result it draws ends on its Next line too.
         from .rem_output import printable
-        rem_look.say(printable(draw(value)))
+        rem_look.say(printable(drawn))
         rem_look.say(next_line(command))
     else:
         path, parent = [ctx.info_name or "status"], ctx.parent
@@ -239,6 +241,9 @@ def _logged(root, record, phase, call):
                    chars_in=result.get("chars_gathered") or 0, coverage=result.get("coverage") or [],
                    instructions_chars=result.get("instructions_chars") or {})
         _WRITTEN.append(record)
+        # Said, not left to the record: an accepted page had no outcome line (#2044).
+        rem_look.line(f"Outcome: {record} accepted, {len(run['changed'])} page"
+                      f"{'' if len(run['changed']) == 1 else 's'} changed", err=True)
         return result
     except BaseException as error:
         run.update(outcome=("refused" if isinstance(error, RunFailed) and "rejected" in str(error) else
@@ -413,15 +418,15 @@ def _first_run_gate(root, config):
     runner, or Codex not reporting) the page counts are the only bound.
     """
     from ...rem import quota
-    from ...rem.service import run_logs
-    start = quota.read(config)
+    from ...rem.service import now, run_logs
+    start, began = quota.read(config), now().isoformat()
 
     def gate():
-        meter = quota.read(config)
-        stop = quota.blocks(meter, quota.points_spent(run_logs(root), meter), config["limits"])
+        meter, logs = quota.read(config), run_logs(root)
+        stop = quota.blocks(meter, quota.points_spent(logs, meter), config["limits"])
         if stop or "unknown" in meter or "unknown" in start:
             return stop
-        used = meter["used_percent"] - start["used_percent"]
+        used = quota.run_spent(start, meter, logs, began)
         return (f"the first run has used {used} of its {FIRST_RUN_POINTS} points of the Codex week"
                 if used >= FIRST_RUN_POINTS else "")
     return gate
@@ -903,16 +908,16 @@ def make_rem_app(factory):
             (#1843): the weekly budget, this run's --budget, and the floor."""
             from ...rem import quota
             from ...rem.config import read_config
-            from ...rem.service import run_logs
+            from ...rem.service import now, run_logs
             config = read_config(root)
-            start = quota.read(config)
+            start, began = quota.read(config), now().isoformat()
 
             def gate():
-                meter = quota.read(config)
-                stop = quota.blocks(meter, quota.points_spent(run_logs(root), meter), config["limits"])
+                meter, logs = quota.read(config), run_logs(root)
+                stop = quota.blocks(meter, quota.points_spent(logs, meter), config["limits"])
                 if stop or not budget or "unknown" in meter or "unknown" in start:
                     return stop
-                used = meter["used_percent"] - start["used_percent"]
+                used = quota.run_spent(start, meter, logs, began)
                 return f"this run has used {used} of its {budget}-point budget" if used >= budget else ""
             return gate
 
@@ -1131,7 +1136,8 @@ def make_rem_app(factory):
             if dry_run or source or with_person or all_pending:
                 try:
                     record = run_sync(root, source=source, with_person=with_person, dry_run=dry_run,
-                                      scheduled=scheduled, all_pending=all_pending, on_batch=progress)
+                                      scheduled=scheduled, all_pending=all_pending, on_batch=progress,
+                                      say=lambda text: rem_look.line(text, err=True))
                 except KeyboardInterrupt:
                     # Ctrl-C exited 130 with nothing said; the finished batches are
                     # kept, and the interrupted one reads again next time.
@@ -1161,9 +1167,13 @@ def make_rem_app(factory):
             if result is None:
                 return {"due": False, "ran": False}, ["status"]
             if result["outcome"] == "partial":
-                _emit(ctx, result, ["logs"], failed=True)
+                _emit(ctx, result, ["logs"], failed=True, draw=draw)
             return result, ["logs"]
-        _handle(ctx, operation, ["logs"])
+        from .rem_output import sync_summary
+
+        def draw(value):
+            return sync_summary(value, lambda arguments: _next(ctx, arguments))
+        _handle(ctx, operation, ["logs"], draw=draw)
 
     @rem.command("sync", cls=V("co rem sync"))
     def sync_rem(ctx: typer.Context,

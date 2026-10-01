@@ -414,10 +414,19 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     cached_by_provider = {kind: rows for kind, rows in cached_by_provider.items()
                           if not subscriptions.get(kind, {}).get("unsubscribed")}
     covered_kinds = set()
+    # Only a finished archive covers its window. An unfinished one is read for
+    # the bodies it holds and the mailbox is still listed, but nothing saved is
+    # fetched again: 2,693 of 3,152 were saved and went unread (#2042).
+    complete, share = True, ""
     if archived and archive_root is not None:
         from .files import read_json, state_path
+        from .mail_archive import saved_share
         manifest = read_json(state_path(archive_root, "mail/archive.json"), {})
         own_addresses.update(address.casefold() for address in manifest.get("owner_addresses", []))
+        complete = manifest.get("phase") == "complete"
+        if not complete:
+            on_disk, target = saved_share(archive_root, manifest)
+            share = f" ({on_disk:,} of {target:,} bodies saved so far)"
     for kind in dict.fromkeys([*clients, *cached_by_provider]):
         client = clients.get(kind)
         mine = {a.lower() for a in client.my_addresses()} if client else set()
@@ -467,13 +476,14 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
 
         seen = {item["_mail_id"] for item in local}
         intervals = [(start, end)]
-        if archived and kind in cached_by_provider:
+        if archived and kind in cached_by_provider and complete:
             intervals = ([(start, min(end, cached_start))] if start < cached_start else [])
             intervals += ([(max(start, cached_end), end)] if cached_end < end else [])
             intervals = [(begin, finish) for begin, finish in intervals if begin < finish]
+        if archived and kind in cached_by_provider:
             covered_kinds.add(kind)
         hit, taken = [], set(seen)
-        searched = f"{len(local)} loaded from private init archive"
+        searched = f"{len(local)} loaded from private init archive{share}"
         if client is None:
             if intervals:
                 coverage.append(f"{kind}: {searched}; {len(intervals)} uncovered interval(s), provider unavailable")
