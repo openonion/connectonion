@@ -302,3 +302,28 @@ def test_an_older_maps_page_for_a_one_way_correspondent_is_archived_and_a_writte
     assert (tmp_path / ".state/archived/people/ola.md").is_file()          # moved, never deleted
     assert (tmp_path / ".state/archived/orgs/cold.md").is_file()
     assert tidy(tmp_path) == {}                                             # idempotent
+
+
+def test_the_maps_mail_count_moves_from_history_to_the_lead(tmp_path):
+    """#2059: an older map wrote "Observed mail count" into History; some of its pages had no lead."""
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    _person(notebook, "people/basem.md", "Basem Suleiman", "b@unsw.edu.au")
+    page = notebook.read("people/basem.md").replace(Notebook.PERSON_LEAD + "\n\n", "")
+    page = page.replace("## History\n- Unknown — not investigated yet\n",
+                        "## History\n- Observed mail count: 6; first: 2026-08-01; last: 2026-09-06; "
+                        "mailboxes: outlook. [1]\n")
+    page = page.replace("- (none yet)", "- [1] Enumeration metadata, observed 2026-09-20 — .state/map.json")
+    notebook.write("people/basem.md", page)
+
+    done = tidy(tmp_path)
+
+    text = notebook.read("people/basem.md")
+    assert done["moved the map's count to the lead"] == ["people/basem.md"]
+    assert text.startswith("# Basem Suleiman\n\nUnknown — not investigated yet. Last contact: 2026-09-06; "
+                           "6 mails (outlook).\n")
+    assert "Observed mail count" not in text and "Enumeration metadata" not in text
+    assert "## History\n- Unknown — not investigated yet" in text
+    from connectonion.rem.census import last_activity
+    assert last_activity(text) == "2026-09-06"                              # still dated for the lists
+    assert tidy(tmp_path) == {}

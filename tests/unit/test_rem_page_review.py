@@ -551,3 +551,22 @@ def test_a_line_the_page_already_had_is_left_to_tidy():
     from connectonion.rem.page_review import drop_tool_text
     page = '# T\n\n## History\n- The current collector reports 50 bodies read. [1]\n\n## Sources\n- [1] x\n'
     assert drop_tool_text('people/t.md', page, page) == (page, [])
+
+
+# ------------------------------------------- History is milestones (#2059)
+
+
+def _with_history(lines: int) -> str:
+    rows = ''.join(f'- 2026-09-{day:02d}: agreed step {day}. [1]\n' for day in range(1, lines + 1))
+    return f'# P\n\n## History\n{rows}\n## Sources\n- [1] outlook:aaa — 2026-09-01\n'
+
+
+def test_a_history_past_eight_milestones_may_not_grow_and_may_come_down():
+    """Ody Zhou's History held 17 bullets, five of them "sent report X"."""
+    from connectonion.rem.page_review import history_errors, history_note
+    assert history_errors(_with_history(9), _with_history(8))
+    assert 'at most 8' in history_errors(_with_history(9), _with_history(3))[0]
+    assert history_errors(_with_history(8), _with_history(3)) == []
+    assert history_errors(_with_history(12), _with_history(17)) == []          # coming down in steps
+    assert 'fold the oldest' in history_note(_with_history(17))
+    assert history_note('# P\n\n## History\n- Unknown — not investigated yet\n') == ''
