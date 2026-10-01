@@ -177,7 +177,21 @@
   .night code { font: 12px var(--mono); color: #fff; background: rgba(255,255,255,0.08); padding: 2px 7px; border-radius: 4px; }
   .night p { margin: 0; color: var(--night-2); font-size: 14px; }
 
+  /* ---- this week: what was rewritten ---- */
+  .week { list-style: none; padding: 0; margin: 10px 0 0; border-top: 1px solid var(--line); }
+  .week li { display: grid; grid-template-columns: 64px 14px minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid var(--line-2); }
+  .week .d { font-size: 11.5px; color: var(--ink-3); text-align: right; }
+  .week .w { display: flex; gap: 4px 10px; align-items: baseline; flex-wrap: wrap; min-width: 0; }
+  .week .w a { color: var(--ink); font-weight: 600; }
+  .week .meta { font-size: 12px; color: var(--ink-3); }
+  .week .s { flex-basis: 100%; font: 14px/1.45 var(--text); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* ---- open threads: who owes whom ---- */
+  .bands { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 28px; margin-top: 12px; }
+  .band h3 { display: flex; justify-content: space-between; align-items: baseline; font: 600 11px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 10px; padding-bottom: 7px; border-bottom: 1px solid var(--line); }
+  .band .threads .thread { grid-template-columns: 76px minmax(0, 1fr) auto; padding: 11px 14px; }
+  .band-none { color: var(--ink-3); font-size: 13.5px; margin: 8px 0 0; }
+  .thread .when.today { color: var(--sheet); background: var(--lamp); padding: 0 5px; border-radius: 3px; }
+  @media (max-width: 1100px) { .bands { grid-template-columns: minmax(0, 1fr); } }
   .threads { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
   .thread { display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; gap: 4px 16px; align-items: baseline; padding: 12px 16px; background: var(--sheet); border: 1px solid var(--line); border-left: 3px solid var(--lamp); border-radius: 4px 8px 8px 4px; }
   .thread.theirs { border-left-color: var(--blue); }
@@ -336,6 +350,15 @@
   .missing, .empty { max-width: 66ch; margin-top: 34px; padding: 16px 18px 16px 20px; border-radius: 8px; background: var(--sheet); border: 1px dashed var(--blue-line); color: var(--ink-2); font-size: 14px; line-height: 1.6; position: relative; }
   .empty { margin-top: 10px; }
   .missing .lead, .empty .lead { display: block; font: 600 10.5px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--blue); margin-bottom: 4px; }
+  .missing:not(.primary) { padding: 10px 14px; border-style: dashed; background: transparent; font-size: 13px; }
+  .missing:not(.primary) .names { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-3); }
+  .missing:not(.primary) .cmd { margin-top: 6px; }
+  .missing.primary { margin: 0 0 30px; border: 1px solid var(--blue-line); background: var(--blue-soft); padding: 20px 22px; }
+  .missing.primary .lead { font-size: 11px; }
+  .missing.primary .why { margin: 4px 0 8px; font: 16px/1.5 var(--text); color: var(--ink); }
+  .missing.primary .names { color: var(--ink-2); font-size: 13px; }
+  .btn-primary { font: 600 13px var(--ui); color: var(--sheet); background: var(--blue); border: 0; border-radius: 6px; padding: 7px 14px; cursor: pointer; }
+  .btn-primary:hover { filter: brightness(1.1); }
   .missing .cmd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
   .missing code, .empty code { font: 12.5px var(--mono); color: var(--ink); background: var(--well); border-radius: 4px; padding: 3px 8px; overflow-wrap: anywhere; }
   .aside { max-width: 66ch; margin-top: 34px; padding-top: 16px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px 18px; font-size: 14px; }
@@ -352,6 +375,23 @@
   details.copies { margin: 0 0 20px; font-size: 14px; }
   details.copies summary { cursor: pointer; color: var(--ink-2); }
   details.copies p { margin: 6px 0 0 16px; font: 12px var(--mono); }
+
+  /* search: the best match answers, the rest grouped */
+  .best { max-width: 80ch; background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin: 0 0 10px; box-shadow: var(--shadow); }
+  .best-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; margin-bottom: 12px; }
+  .best-head .lead { font: 600 10.5px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--blue); }
+  .best-head a { font: 500 21px var(--display); color: var(--ink); }
+  .best-facts { display: grid; grid-auto-flow: column; grid-template-rows: auto auto; gap: 3px 22px; margin: 0; justify-content: start; }
+  .best-facts dt { font: 600 10px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+  .best-facts dd { margin: 0; font: 13px var(--mono); overflow-wrap: anywhere; }
+  .best-facts dd.none { color: var(--ink-3); font-family: var(--ui); }
+  .best-open { margin-top: 12px; display: flex; gap: 8px; align-items: baseline; font: 14.5px var(--text); }
+  .best-open .dir { flex-shrink: 0; padding: 0 6px; border-radius: 3px; background: var(--lamp-soft); }
+  h2.section.group { font-size: 17px; margin: 28px 0 8px; }
+  nav a.you { margin-bottom: 10px; background: var(--sheet); box-shadow: inset 0 0 0 1px var(--line); font-weight: 600; color: var(--ink); }
+  nav a.you > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
+  nav a.you .n { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 11.5px var(--ui); }
+  @media (max-width: 820px) { .best-facts { grid-auto-flow: row; grid-template-rows: none; grid-template-columns: 96px minmax(0, 1fr); } }
 
   /* questions & connections */
   .review { max-width: 72ch; padding: 18px 0; border-bottom: 1px solid var(--line); }
@@ -441,12 +481,12 @@
 
   /* ---- facts: a definition list, empty fields visible (#2068) ---- */
   .panel .fill { margin: -6px 0 10px; font-size: 11px; color: var(--ink-3); }
-  .factlist { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 0; margin: 0; }
+  .factlist { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 0; margin: 0; }
   .factlist dt { font: 600 10px/1.5 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); padding: 7px 8px 7px 0; border-top: 1px solid var(--line-2); }
   .factlist dd { margin: 0; padding: 5px 0 6px; border-top: 1px solid var(--line-2); font-size: 13.5px; min-width: 0; overflow-wrap: anywhere; position: relative; display: flex; flex-direction: column; gap: 2px; }
   .factlist dt:first-of-type, .factlist dd:first-of-type { border-top: 0; }
   .factlist dd.none { color: var(--ink-3); opacity: 0.75; font-size: 12.5px; }
-  .factlist .val.mono > span:first-child { font: 12.5px var(--mono); }
+  .factlist .val.mono > span:first-child { font: 11.5px var(--mono); }
   .factlist .val.derived { color: var(--ink-2); }
   .factlist .qual { margin-left: 6px; font: 10px var(--mono); color: var(--ink-3); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
   .factlist .copy { position: absolute; right: 0; top: 5px; font: 10.5px var(--ui); color: var(--ink-3); background: var(--sheet); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; cursor: pointer; opacity: 0; }
@@ -465,7 +505,7 @@
   .fact.missing-fact .v { color: var(--ink-3); font: italic 13px var(--text); }
 
   @media (min-width: 1180px) {
-    .page-grid.has-side { grid-template-columns: minmax(0, 66ch) 300px; }
+    .page-grid.has-side { grid-template-columns: minmax(0, 66ch) 320px; }
     .page-grid.has-side > .side { order: 0; margin: 0; position: sticky; top: 24px; align-self: start; }
   }
   @media (min-width: 821px) and (max-width: 1179px) {
@@ -686,11 +726,13 @@ function inline(text, from) {
     return "\u0002" + (links.length - 1) + "\u0002";
   });
   // Three or more claim numbers in a row read as noise: one chip says how many, and names them on hover.
-  s = s.replace(/(?:\s*\[W?\d{1,3}\]){3,}/g, run => citeRun(run.match(/W?\d{1,3}/g), from));
+  const runs = [];
+  s = s.replace(/(?:\s*\[W?\d{1,3}\]){3,}/g, run => { runs.push(citeRun(run.match(/W?\d{1,3}/g), from)); return "\u0003" + (runs.length - 1) + "\u0003"; });
   s = s.replace(/\s*\[(W?\d{1,3})\]/g, (m, n) => citeChip(n, from));
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>");
   s = s.replace(/\u0002(\d+)\u0002/g, (m, i) => links[i]);
+  s = s.replace(/\u0003(\d+)\u0003/g, (m, i) => runs[i]);
   s = s.replace(/\u0001(\d+)\u0001/g, (m, i) => "<code>" + codes[i] + "</code>");
   return s;
 }
@@ -1170,6 +1212,19 @@ function lastPass() {
   const items = runs.reduce((n, run) => n + (Number(run.items) || 0), 0);
   return { latest, runs, changed: [...changed].map(byPath).sort(byActivity), sources, failed, items };
 }
+function weekChanges() {
+  const asOf = new Date(REM.as_of).getTime() || Date.now(), since = asOf - 7 * DAY_MS, seen = new Map();
+  for (const run of REM.logs || []) {
+    if (runTime(run) < since) continue;
+    const day = new Date(runTime(run)).toISOString().slice(0, 10);
+    for (const path of run.changed || []) { const r = byPath(path); if (r && (!seen.has(path) || seen.get(path).day < day)) seen.set(path, { r, day }); }
+  }
+  for (const r of listedRecords()) {
+    const m = /\b(?:investigated|updated|written)\s+(\d{4}-\d{2}-\d{2})/.exec((STAMP.exec(r.text) || [""])[0]);
+    if (m && new Date(m[1] + "T00:00:00").getTime() >= since && (!seen.has(r.path) || seen.get(r.path).day < m[1])) seen.set(r.path, { r, day: m[1] });
+  }
+  return [...seen.values()].filter(x => !x.r.catalog_parent && x.r.path !== "skills/catalog/index.md").sort((a, b) => b.day.localeCompare(a.day) || byActivity(a.r, b.r));
+}
 function listWords(words) {
   return words.length <= 1 ? words.join("") : words.slice(0, -1).join(", ") + " and " + words[words.length - 1];
 }
@@ -1253,6 +1308,9 @@ function railActive() {
 function renderRail(active) {
   const nav = document.getElementById("nav");
   nav.textContent = "";
+  const owner = REM.owner && byPath(REM.owner);
+  if (owner) nav.appendChild(el("a", { href: href(owner), class: "you" + (route().record === owner.path ? " active" : "") }, [
+    el("span", {}, [moon(known(owner).status), " You"]), el("span", { class: "n", text: owner.title })]));
   nav.appendChild(el("div", { class: "label", text: "Notebook" }));
   nav.appendChild(el("a", { href: "#", class: active === null ? "active" : "" }, [el("span", { text: "Contents" }), el("span", { class: "n", text: String(listedRecords().length) })]));
   for (const c of REM.categories) {
@@ -1304,7 +1362,7 @@ function threadRow(r, t, withPage) {
     el("span", { class: "dir", text: DIRECTION_LABEL[t.dir] }),
     el("div", {}, [el("div", { class: "what", html: inline(withPage ? t.text.replace(/\s*\[W?\d{1,3}\]/g, "") : t.text, r.path) }),
       withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: r.title }), " · " + singular(r.category)]) : null]),
-    el("span", { class: "when", text: t.since ? "since " + shortDate(t.since) : "" })]);
+    el("span", { class: "when" + (t.since && daysSince(t.since) === 0 ? " today" : ""), title: t.since ? "since " + fmtDate(t.since) : "", text: t.since ? age(t.since) : "" })]);
 }
 
 function sectionHead(title, note) {
@@ -1328,14 +1386,30 @@ function overview() {
     for (const t of threads(r).items) open.push({ r, t });
   open.sort((a, b) => ({ mine: 0, theirs: 1, plain: 2 })[a.t.dir] - ({ mine: 0, theirs: 1, plain: 2 })[b.t.dir] || byActivity(a.r, b.r));
   if (open.length) {
-    const mine = open.filter(o => o.t.dir === "mine").length;
-    main.appendChild(sectionHead("Open threads", open.length + " open" + (mine ? " · " + mine + " yours to answer" : "")));
-    main.appendChild(el("p", { class: "section-sub", text: "Who owes whom, from each page's Open threads. Yours first." }));
-    main.appendChild(el("ul", { class: "threads" }, open.slice(0, 8).map(o => threadRow(o.r, o.t, true))));
+    // Two bands: what you owe (oldest first), and what others owe you.
+    const oldest = (x, y) => (x.t.since || "9999").localeCompare(y.t.since || "9999") || byActivity(x.r, y.r);
+    const mine = open.filter(o => o.t.dir === "mine").sort(oldest);
+    const others = [...open.filter(o => o.t.dir === "theirs").sort(oldest), ...open.filter(o => o.t.dir === "plain")];
+    main.appendChild(sectionHead("Open threads", open.length + " open · " + mine.length + " waiting on you"));
+    const band = (title, note, rows) => el("section", { class: "band" }, [el("h3", {}, [el("span", { text: title }), el("span", { class: "mono", text: note })]),
+      rows.length ? el("ul", { class: "threads" }, rows.slice(0, 6).map(o => threadRow(o.r, o.t, true)))
+        : el("p", { class: "band-none", text: "Nothing here." }),
+      rows.length > 6 ? el("p", { class: "band-none", text: "+" + (rows.length - 6) + " more on their pages" }) : null]);
+    main.appendChild(el("div", { class: "bands" }, [band("Waiting on you", String(mine.length), mine), band("Waiting on others", String(others.length), others)]));
+  }
+
+  // This week: what the nightly passes rewrote, newest first, each with its one line.
+  const week = weekChanges();
+  if (week.length) {
+    main.appendChild(sectionHead("This week", week.length + (week.length === 1 ? " page" : " pages") + " rewritten in 7 days"));
+    main.appendChild(el("ol", { class: "week" }, week.slice(0, 8).map(({ r, day }) => el("li", {}, [
+      el("span", { class: "d mono", text: shortDate(day) }), moon(known(r).status),
+      el("span", { class: "w" }, [el("a", { href: href(r), text: r.title }), el("span", { class: "meta", text: singular(r.category) }),
+        known(r).summary ? el("span", { class: "s", text: known(r).summary }) : null])]))));
   }
 
   const recent = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category) && known(r).status !== "Mapped" && !/\(automated candidate\)$/.test(r.title))
-    .sort(byActivity).slice(0, 8);
+    .sort(byActivity).slice(0, 6);
   if (recent.length) {
     main.appendChild(sectionHead("Recently active", "last contact or change first"));
     main.appendChild(el("ul", { class: "hits cols" }, recent.map(r => row(r, { kind: true }))));
@@ -1680,12 +1754,17 @@ function record(path, heading) {
 
   if (k.missing.length) {
     const command = "co rem investigate '" + r.path.replace(/'/g, "'\\''") + "'";
-    const copyCmd = el("button", { class: "btn-action", type: "button", text: "Copy" });
-    copyCmd.onclick = () => copyToClipboard(command, copyCmd, "Copied");
-    column.appendChild(el("div", { class: "missing" }, [
-      el("span", { class: "lead", text: "Still to learn" }),
-      el("div", { text: "Not investigated yet: " + k.missing.join(", ") + "." }),
-      el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]));
+    const mapped = k.status === "Mapped";
+    const copyCmd = el("button", { class: mapped ? "btn-primary" : "btn-action", type: "button", text: mapped ? "Copy the command" : "Copy" });
+    copyCmd.onclick = () => copyToClipboard(command, copyCmd, "Copied — paste it in a terminal");
+    // A page only mapped from your sources gets one clear next step at the top;
+    // a written page names its remaining gaps in one quiet line at the foot.
+    const box = el("div", { class: "missing" + (mapped ? " primary" : "") }, [
+      el("span", { class: "lead", text: mapped ? "Only mapped so far" : k.missing.length + " sections still to learn" }),
+      mapped ? el("p", { class: "why", text: "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in." }) : null,
+      el("div", { class: "names", text: "Not investigated yet: " + k.missing.join(", ") + "." }),
+      el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]);
+    if (mapped) column.insertBefore(box, column.firstChild); else column.appendChild(box);
   }
 
   const foot = el("div", { class: "page-foot" });
@@ -1742,15 +1821,45 @@ function search(q) {
     main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "No match" }), "No page contains that. Try a related term, a person's first name, or a project name."]));
     return;
   }
-  const ul = el("ul", { class: "hits" });
-  for (const { r, lines } of hits) {
-    const li = el("li", {}, [
-      el("div", { class: "t" }, [el("span", {}, [el("a", { href: href(r), html: highlight(r.title, needle) }), el("span", { class: "meta", text: singular(r.category) }), statusPill(r)]),
-        el("span", { class: "when", text: shortDate(known(r).last) })])]);
-    for (const l of lines) li.appendChild(el("div", { class: "hit", html: highlight(l.trim().replace(/^#+\s*/, "").replace(/^[-+]\s+/, ""), needle) }));
-    ul.appendChild(li);
+  // The best match answers: a person's or organisation's name gets its facts right here.
+  const best = hits.find(h => FACT_LABELS[h.r.category] && h.r.title.toLowerCase().includes(needle));
+  if (best) main.appendChild(bestMatch(best.r));
+  // Grouped by kind, people first; one snippet a page, never a local path.
+  const ORDER = ["people", "orgs", "projects", "skills"];
+  const rank = c => ORDER.includes(c) ? ORDER.indexOf(c) : ORDER.length;
+  const groups = new Map();
+  for (const hit of hits.sort((a, b) => rank(a.r.category) - rank(b.r.category))) {
+    if (!groups.has(hit.r.category)) groups.set(hit.r.category, []);
+    groups.get(hit.r.category).push(hit);
   }
-  main.appendChild(ul);
+  const isPath = l => /^(?:\/|~\/|[A-Z]:\\)\S+/.test(l) || /^(?:File|Path):\s*[/~]/.test(l);
+  for (const [c, list] of groups) {
+    main.appendChild(el("h2", { class: "section group" }, [el("span", { text: label(c) }), el("span", { class: "n", text: String(list.length) })]));
+    const ul = el("ul", { class: "hits" });
+    for (const { r, lines } of list) {
+      const li = el("li", {}, [
+        el("div", { class: "t" }, [el("span", {}, [el("a", { href: href(r), html: highlight(r.title, needle) }), statusPill(r)]),
+          el("span", { class: "when", text: shortDate(known(r).last) })])]);
+      const line = lines.map(l => l.trim().replace(/^#+\s*/, "").replace(/^[-+]\s+/, "")).find(l => !isPath(l));
+      if (line) li.appendChild(el("div", { class: "hit", html: highlight(line.replace(/\s*\[W?\d{1,3}\]/g, ""), needle) }));
+      ul.appendChild(li);
+    }
+    main.appendChild(ul);
+  }
+}
+function bestMatch(r) {
+  const f = facts(r), k = known(r), parsed = parseFacts(r);
+  const first = l => ((parsed.get(l) || [])[0] || {}).value || "";
+  const cells = r.category === "people"
+    ? [["Email", plainValue(first("Email") || f.email)], ["Phone", plainValue(first("Phone"))], ["Company", plainValue(first("Company") || f.company)], ["Last contact", k.last ? fmtDate(k.last) : ""]]
+    : r.category === "orgs"
+      ? [["What they do", plainValue(first("What they do") || f.what)], ["Website", plainValue(first("Website") || f.domain)], ["Last contact", k.last ? fmtDate(k.last) : ""]]
+      : [["Repository", plainValue(first("Repository") || f.repo)], ["Status", plainValue(first("Status"))], ["Last activity", k.last ? fmtDate(k.last) : ""]];
+  const open = f.open[0];
+  return el("section", { class: "best" }, [
+    el("div", { class: "best-head" }, [el("span", { class: "lead", text: "Best match" }), el("a", { href: href(r), text: r.title }), statusPill(r)]),
+    el("dl", { class: "best-facts" }, cells.flatMap(([name, v]) => [el("dt", { text: name }), el("dd", { class: v ? "" : "none", text: v || "— not found" })])),
+    open ? el("div", { class: "best-open" }, [el("span", { class: "dir", text: DIRECTION_LABEL[open.dir] }), el("span", { text: plainLine(open.text) })]) : null]);
 }
 
 function reviewPage() {

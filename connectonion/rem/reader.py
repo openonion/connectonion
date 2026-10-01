@@ -91,7 +91,15 @@ def snapshot(root: Path) -> dict:
     return {"as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "categories": list(CATEGORIES), "records": records,
             "status": status(root), "subscriptions": subscriptions(root),
-            "logs": run_logs(root)[:20], "reviews": listing(root), "counts": counts(root, found)}
+            "logs": run_logs(root)[:20], "reviews": listing(root), "counts": counts(root, found),
+            "owner": owner_record(root)}
+
+
+def owner_record(root: Path) -> str:
+    """The owner's own page, pinned as "You" at the top of the reader's navigation."""
+    from .files import read_json, state_path
+    owner = read_json(state_path(root, "map.json"), {}).get("owner") or {}
+    return owner.get("record", "") if isinstance(owner, dict) else ""
 
 
 def render(root: Path) -> str:

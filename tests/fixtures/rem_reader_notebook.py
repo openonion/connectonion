@@ -131,7 +131,34 @@ Inès is the accountant who files the user's company returns [1]. Last contact: 
 
 Investigation: mapped {d(30)} · written {d(12)}
 """
-    return {"people/mara-ostrowski.md": mara, "people/tomas-reyes.md": tomas, "people/ines-halvorsen.md": ines}
+    owner = f"""# Avery Lin
+
+This is you: an independent engineer building agent tools, with one paying pilot and two talks this autumn [1]. Last contact: {d(0)} [1].
+
+## Facts
+- Email: avery@lin.example [1]
+- Phone: +64 21 555 0142 (mobile) [1]
+- Company: Unknown
+- Role: Independent engineer [1]
+- Location: Wellington, New Zealand [1]
+- Time zone: Pacific/Auckland [1]
+- Links: https://lin.example [1]
+- How we know them: Unknown
+- First contact: Unknown
+- Last contact: {d(0)} [1]
+
+## Insight
+- Now: this month you shipped Harbour's nightly read and wrote two talk abstracts [2].
+- At stake: two people are waiting on you, the oldest for twelve days [3].
+
+## Sources
+- [1] outlook:aa11bb22cc33 — signature; confidence high; observed {d(30)}.
+- [2] codex:dd44ee55ff66 — sessions this month; confidence high; observed {d(1)}.
+- [3] investigation:page — open threads across pages; confidence medium; observed {d(0)}.
+
+Investigation: mapped {d(60)} · investigated {d(0)} (outlook, codex)
+"""
+    return {"people/avery-lin.md": owner, "people/mara-ostrowski.md": mara, "people/tomas-reyes.md": tomas, "people/ines-halvorsen.md": ines}
 
 
 def _projects(now: datetime) -> dict:
@@ -286,7 +313,7 @@ def build(root: Path, now: datetime | None = None) -> Path:
              "first": _day(now, first), "last": _day(now, last), "one_way": False}
             for address, record, received, sent, first, last in mail]
     (root / ".state").mkdir(exist_ok=True)
-    (root / ".state" / "map.json").write_text(json.dumps({"people": rows}))
+    (root / ".state" / "map.json").write_text(json.dumps({"people": rows, "owner": {"record": "people/avery-lin.md"}}))
     runs = root / ".state" / "runs"
     runs.mkdir(parents=True, exist_ok=True)
     for i, run in enumerate(_runs(now)):

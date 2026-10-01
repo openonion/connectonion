@@ -23,7 +23,7 @@ pytestmark = pytest.mark.skipif(
 
 VIEWS = ["", "#c=people", "#c=orgs", "#c=projects", "#c=skills", "#r=people%2Fmara-ostrowski.md",
          "#r=people%2Fquinn-alder.md", "#r=projects%2Fharbour.md", "#r=orgs%2Ffernhill-labs.md",
-         "#r=skills%2Fcatalog%2Fweekly-brief.md", "#q=pilot", "#c=opportunities", "#reviews=1"]
+         "#r=skills%2Fcatalog%2Fweekly-brief.md", "#q=pilot", "#q=mara", "#r=people%2Favery-lin.md", "#c=opportunities", "#reviews=1"]
 
 
 @pytest.fixture
@@ -52,9 +52,9 @@ def reader(tmp_path, monkeypatch):
 def test_home_opens_on_the_night_and_what_is_owed(reader):
     page, _ = reader
     night = page.locator(".night")
-    assert "46 items" in night.inner_text() and "3 pages" in night.inner_text()
+    assert "46 items" in night.inner_text() and "4 pages" in night.inner_text()
     assert night.locator(".hypno .dot.woke").count() == 1  # the night that stopped early
-    assert set(night.locator(".changes a").all_inner_texts()) == {"Mara Ostrowski", "Harbour", "Fernhill Labs"}
+    assert set(night.locator(".changes a").all_inner_texts()) == {"Mara Ostrowski", "Harbour", "Fernhill Labs", "Avery Lin"}  # runs, and stamps of the night
     # Yours first, then what others owe you.
     directions = [d.upper() for d in page.locator("ul.threads .dir").all_inner_texts()]
     assert directions[0] == "YOU OWE" and "THEY OWE" in directions
@@ -65,7 +65,7 @@ def test_people_open_as_a_sheet_that_sorts_filters_and_opens_a_row(reader):
     page, _ = reader
     page.goto(page.url.split("#")[0] + "#c=people")
     sheet = page.locator("table.sheet")
-    assert sheet.locator("tbody tr").count() == 5
+    assert sheet.locator("tbody tr").count() == 6
     assert "mara@fernhill.example" in sheet.inner_text()
     page.get_by_role("button", name="Yours to answer").click()
     assert sheet.locator("tbody .name a").all_inner_texts() == ["Mara Ostrowski", "Inès Halvorsen"]

@@ -21,7 +21,7 @@ FIXTURE_VIEWS = {
     "home": "", "people": "#c=people", "person": "#r=people%2Fmara-ostrowski.md",
     "person-mapped": "#r=people%2Fquinn-alder.md", "project": "#r=projects%2Fharbour.md",
     "skill": "#r=skills%2Fcatalog%2Fweekly-brief.md", "skills": "#c=skills", "search": "#q=pilot",
-    "empty": "#c=opportunities"}
+    "empty": "#c=opportunities", "owner": "#r=people%2Favery-lin.md", "search-name": "#q=mara"}
 SIZES = {"desktop": (1440, 1000), "phone": (390, 844)}
 
 
