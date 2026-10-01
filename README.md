@@ -4,7 +4,7 @@
 
 **The agent CLI harness. CLI is all you need.**
 
-One command line, `co`, gives your AI agent the accounts and tools it works with:<br>
+One command line, `co`, gives your AI agent the accounts and tools it works with:
 Gmail and Outlook, a logged-in browser, your files, chat apps and other agents.
 
 [![PyPI](https://img.shields.io/pypi/v/connectonion?style=flat-square)](https://pypi.org/project/connectonion/)
@@ -31,14 +31,19 @@ pip install connectonion
 ## Quick start
 
 ```bash
-co init              # create your identity and ~/.co/keys.env
-co env               # show the settings commands will use; values stay hidden
-co auth microsoft    # connect Outlook once (co auth google for Gmail)
-co outlook           # read your inbox
-co commands          # list every command; add --help to any of them
+# your identity and ~/.co/keys.env
+co init
+# settings in use; values stay hidden
+co env
+# connect Outlook once
+co auth microsoft
+# read your inbox
+co outlook
+# every command; add --help to any
+co commands
 ```
 
-`co init` sets up your global configuration and leaves the current directory
+For Gmail, use `co auth google` and `co gmail`. `co init` sets up your global configuration and leaves the current directory
 alone; run `co init ./` to initialize a project. The
 [Quick start guide](docs/quickstart.md) covers Google, the browser, chat apps
 and project-specific settings.
@@ -78,10 +83,10 @@ acts.
 
 Two optional shortcuts:
 
-```bash
-co skills link       # link ConnectOnion's skills into ~/.claude/skills and ~/.codex/skills
-co skills discover   # find the skills Claude Code, Codex, Cursor and Kiro already have
-```
+- `co skills link` links ConnectOnion's skills into `~/.claude/skills` and
+  `~/.codex/skills`.
+- `co skills discover` lists the skills Claude Code, Codex, Cursor and Kiro
+  already have.
 
 See [`co skills`](docs/cli/skills.md) and the
 [Claude Code plugin](docs/claude-code-plugin.md).
@@ -94,12 +99,12 @@ hints and docstring become the schema the model sees.
 ```python
 from connectonion import Agent
 
-def get_weather(city: str) -> str:
-    """Return the current weather for a city."""
-    return f"Sunny and 22°C in {city}"
+def weather(city: str) -> str:
+    """Current weather for a city."""
+    return f"Sunny, 22°C in {city}"
 
-agent = Agent("weather", tools=[get_weather])
-print(agent.input("What's the weather in Sydney?"))
+agent = Agent("bot", tools=[weather])
+print(agent.input("Weather in Sydney?"))
 ```
 
 The default model is `co/gemini-3.8-flash` through ConnectOnion's managed keys,
