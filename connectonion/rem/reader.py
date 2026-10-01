@@ -29,6 +29,27 @@ def _title(record: str, text: str) -> str:
     return Path(record).stem.replace("-", " ")
 
 
+def mail_facts(root: Path) -> dict:
+    """{record: {mails, sent, received, first, last}} from the map's correspondent rows.
+
+    The People table's mail columns. One adapter on purpose: when the notebook
+    keeps its facts in an index (#2067) this reads that instead, and the page
+    does not change. A person seen under several addresses is summed.
+    """
+    from .files import read_json, state_path
+    facts = {}
+    for row in read_json(state_path(root, "map.json"), {}).get("people", []):
+        if not isinstance(row, dict) or not row.get("record") or not row.get("address"):
+            continue
+        fact = facts.setdefault(row["record"], {"mails": 0, "sent": 0, "received": 0, "first": "", "last": ""})
+        for key in ("mails", "sent", "received"):
+            fact[key] += row.get(key) if type(row.get(key)) is int else 0
+        first, last = str(row.get("first") or ""), str(row.get("last") or "")
+        fact["first"] = min(filter(None, (fact["first"], first)), default="")
+        fact["last"] = max(fact["last"], last)
+    return facts
+
+
 def snapshot(root: Path) -> dict:
     """Everything the page shows, read once; no model, no writes into the notebook."""
     from .map import needs_review
@@ -47,7 +68,10 @@ def snapshot(root: Path) -> dict:
     # place (`census`), the same that `co rem status` counts with (#2008).
     from .census import counts, pages
     found = pages(root)
+    mail = mail_facts(root)
     for record in records:
+        if record["path"] in mail:
+            record["mail"] = mail[record["path"]]
         record["needs_review"] = record["path"] in held
         entry = found.get(record["path"])
         if entry:

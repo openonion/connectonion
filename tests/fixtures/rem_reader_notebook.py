@@ -266,6 +266,15 @@ def build(root: Path, now: datetime | None = None) -> Path:
         notebook.write(record, text)
     notebook.stub_person("people/quinn-alder.md", "Quinn Alder", handles=["quinn@alder.example"])
     notebook.stub_person("people/noor-bakhtiar.md", "Noor Bakhtiar", handles=["noor@bakhtiar.example"])
+    # The map's correspondent rows: where the People table's mail columns come from.
+    mail = [("mara@fernhill.example", "people/mara-ostrowski.md", 38, 21, 41, 1), ("tomas.reyes@mailbox.example", "people/tomas-reyes.md", 6, 4, 60, 3),
+            ("ines@ledgerline.example", "people/ines-halvorsen.md", 9, 2, 30, 12), ("quinn@alder.example", "people/quinn-alder.md", 3, 2, 20, 15),
+            ("noor@bakhtiar.example", "people/noor-bakhtiar.md", 2, 1, 50, 44)]
+    rows = [{"address": address, "record": record, "name": record, "mails": sent + received, "sent": sent, "received": received,
+             "first": _day(now, first), "last": _day(now, last), "one_way": False}
+            for address, record, received, sent, first, last in mail]
+    (root / ".state").mkdir(exist_ok=True)
+    (root / ".state" / "map.json").write_text(json.dumps({"people": rows}))
     runs = root / ".state" / "runs"
     runs.mkdir(parents=True, exist_ok=True)
     for i, run in enumerate(_runs(now)):

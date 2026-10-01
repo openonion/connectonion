@@ -368,6 +368,59 @@
   .mobile-back { display: none; margin-bottom: 14px; }
   .mobile-back a { font-size: 13.5px; color: var(--ink-2); }
 
+  /* ---- the sheet: a page per row, facts in columns ---- */
+  main.wide { max-width: none; }
+  .sheet-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 0 0 12px; }
+  .sheet-find { flex: 0 1 260px; min-width: 0; padding: 7px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet); color: var(--ink); font: 13.5px var(--ui); }
+  .sheet-find:focus { border-color: var(--blue); outline: none; box-shadow: 0 0 0 3px var(--blue-soft); }
+  .seg { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+  .seg button { font: 12.5px var(--ui); color: var(--ink-2); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px; cursor: pointer; display: inline-flex; gap: 6px; align-items: baseline; }
+  .seg button .n { font: 11px var(--mono); color: var(--ink-3); }
+  .seg button:hover { border-color: var(--blue-line); color: var(--ink); }
+  .seg button.on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+  .seg button.on .n { color: var(--paper); opacity: 0.7; }
+  .sheet-count { margin-left: auto; font-size: 11.5px; color: var(--ink-3); }
+  .sheet-scroll { overflow: auto; max-height: calc(100vh - 150px); border: 1px solid var(--line); border-radius: 8px; background: var(--sheet); }
+  table.sheet { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13.5px; }
+  .sheet th { position: sticky; top: 0; z-index: 2; background: var(--well); text-align: left; padding: 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .sheet th button { all: unset; box-sizing: border-box; display: flex; gap: 6px; align-items: center; width: 100%; padding: 9px 12px; font: 600 10.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); cursor: pointer; }
+  .sheet th button:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+  .sheet th .arrow { color: var(--ink-3); opacity: 0.6; font-size: 11px; }
+  .sheet th[aria-sort="ascending"] .arrow, .sheet th[aria-sort="descending"] .arrow { color: var(--blue); opacity: 1; }
+  .sheet th.num button { justify-content: flex-end; }
+  .sheet td { padding: 9px 12px; border-bottom: 1px solid var(--line-2); vertical-align: top; color: var(--ink); max-width: 260px; min-width: 120px; overflow-wrap: normal; word-break: normal; }
+  .sheet td.num { min-width: 0; }
+  .sheet tbody tr { cursor: pointer; }
+  .sheet tbody tr:hover td { background: var(--blue-soft); }
+  .sheet tbody tr:last-child td { border-bottom: 0; }
+  .sheet td.num { text-align: right; white-space: nowrap; }
+  .sheet td.mono-col { white-space: nowrap; font-size: 12px; }
+  .sheet td.wide { min-width: 240px; max-width: 380px; color: var(--ink-2); }
+  .sheet .name { position: sticky; left: 0; z-index: 1; background: var(--sheet); min-width: 220px; max-width: 300px; box-shadow: inset -1px 0 0 var(--line-2); }
+  .sheet th.name { z-index: 3; background: var(--well); }
+  .name-cell { display: flex; flex-direction: column; gap: 2px; }
+  .name-cell .nm { display: flex; align-items: center; gap: 7px; font-weight: 600; }
+  .name-cell .nm a { color: var(--ink); }
+  .name-cell .sum { font-size: 12.5px; color: var(--ink-3); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .sheet .open-col { min-width: 220px; max-width: 320px; }
+  .open-cell { display: flex; gap: 7px; align-items: baseline; }
+  .open-cell .dir { font-size: 9.5px; padding: 0 5px; border-radius: 3px; background: var(--lamp-soft); }
+  .open-cell.theirs .dir { background: var(--blue-soft); }
+  .open-cell.plain .dir { background: var(--well); }
+  .open-cell .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+  .open-cell .more { font: 11px var(--mono); color: var(--ink-3); }
+  .sheet td.none { text-align: center; color: var(--ink-3); padding: 28px; cursor: default; }
+
+  /* ---- the fact card: what you came for, at a glance (#2068) ---- */
+  .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0; background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin: 18px 0 26px; max-width: 980px; box-shadow: var(--shadow); }
+  .fact { background: var(--sheet); padding: 11px 14px 12px; min-width: 0; box-shadow: 1px 1px 0 var(--line); }
+  .fact .k { font: 600 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 4px; }
+  .fact .v { font-size: 14.5px; color: var(--ink); overflow-wrap: anywhere; line-height: 1.4; }
+  .fact .v.mono { font-size: 13px; }
+  .fact.wide { grid-column: span 2; }
+  .fact.missing-fact { background: repeating-linear-gradient(135deg, var(--sheet) 0 7px, var(--paper) 7px 8px); }
+  .fact.missing-fact .v { color: var(--ink-3); font: italic 13px var(--text); }
+
   @media (min-width: 1180px) {
     .page-grid.has-side { grid-template-columns: minmax(0, 66ch) 256px; }
     .page-grid.has-side > .side { order: 0; margin: 0; position: sticky; top: 24px; align-self: start; }
@@ -409,6 +462,11 @@
     .mobile-back { display: block; }
     .note { font-size: 16px; }
     .maint > summary .n { display: none; }
+    .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .fact { padding: 9px 11px 10px; }
+    .sheet-find { flex: 1 1 100%; font-size: 16px; }
+    .sheet-count { margin-left: 0; }
+    .sheet .name { min-width: 170px; }
   }
   @media (prefers-reduced-motion: no-preference) {
     a, button, nav a, .cite, .thread { transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease; }
@@ -870,6 +928,149 @@ function company(r) {
   return c && c.value ? plainLine(c.value) : "";
 }
 
+// ---------- facts: a page as fields (#2064, #2068) ----------
+// One adapter turns a page into the facts the tables and fact cards show. Today
+// it reads the page's own fields (Contact, Paths, Domains) and the map's mail
+// counts (reader.py mail_facts); when the notebook keeps facts in an index
+// (#2067) only this function changes.
+const FACTS = new Map();
+function facts(r) {
+  if (FACTS.has(r.path)) return FACTS.get(r.path);
+  const k = known(r), contact = {};
+  for (const f of contactFields(r)) contact[f.label.toLowerCase()] = f.value;
+  const text = r.text.replace(COMMENT, "");
+  const lineOf = name => { const s = section(r, name); return s ? plainLine(s.text) : ""; };
+  const history = historyItems((section(r, "history") || { text: "" }).text).filter(i => i.day).map(i => i.day).sort();
+  const observed = /Observed mail count:\s*(\d+);\s*first:\s*(\d{4}-\d{2}-\d{2})/.exec(text);
+  const paths = listItems(rawSection(r, "Paths"));
+  const field = re => (paths.map(p => re.exec(p)).find(Boolean) || [])[1] || "";
+  const t = threads(r);
+  const f = {
+    email: contact.email || ((text.match(/[\w.+-]+@[\w-]+\.[\w.-]+/) || [])[0] || ""),
+    company: contact.company || "", role: contact.role || "", phone: contact.phone || "",
+    location: contact.location || contact["time zone"] || contact.timezone || "",
+    links: [...new Set((rawSection(r, "Contact").match(/https?:\/\/[^\s)\]]+/g) || []))].join(", "),
+    language: contact.language || "",
+    how: lineOf("why they are here") || lineOf("our relationship"),
+    first: (r.mail && r.mail.first) || (observed && observed[2]) || history[0] || field(/^First seen:\s*(\S+)/),
+    last: k.last || (r.mail && r.mail.last) || "", mails: r.mail ? r.mail.mails : observed ? Number(observed[1]) : null,
+    sent: r.mail ? r.mail.sent : null, received: r.mail ? r.mail.received : null,
+    open: t.items, calm: t.calm,
+    what: lineOf("what it is") || lineOf("who they are") || lineOf("what it does"),
+    domain: plainLine(rawSection(r, "Domains")).replace(/\s*\[\d+\]/g, ""),
+    people: listItems((section(r, "people here") || section(r, "people and ownership") || { text: "" }).text).length,
+    repo: (paths.find(p => /^\/|^~|^[A-Z]:\\/.test(p)) || "").replace(/\s*\[\d+\].*$/, ""),
+    sessions: Number(field(/^Sessions:\s*(\d+)/)) || null
+  };
+  FACTS.set(r.path, f);
+  return f;
+}
+function plainValue(v) { return plainLine(v || ""); }
+
+// ---------- the sheet: People, Organisations, Projects as a table (#2064) ----------
+const OPEN_RANK = { mine: 0, theirs: 1, plain: 2 };
+function openCell(f) {
+  if (!f.open.length) return f.calm ? el("span", { class: "unk", text: "nothing open" }) : el("span", { class: "unk", text: "—" });
+  const t = f.open[0];
+  return el("span", { class: "open-cell " + t.dir, title: plainLine(t.text) }, [el("span", { class: "dir", text: DIRECTION_LABEL[t.dir] }),
+    el("span", { class: "txt", text: plainLine(t.text) }), f.open.length > 1 ? el("span", { class: "more", text: "+" + (f.open.length - 1) }) : null]);
+}
+function dateCell(day) { return day ? el("span", { class: "mono", text: shortDate(day) }) : el("span", { class: "unk", text: "—" }); }
+function textCell(v) { return v ? el("span", { html: inline(v.replace(/\s*\[\d{1,3}\]/g, ""), "") }) : el("span", { class: "unk", text: "—" }); }
+function nameCell(r, f, withSummary) {
+  const k = known(r);
+  return el("div", { class: "name-cell" }, [el("span", { class: "nm" }, [moon(k.status), el("a", { href: href(r), text: r.title })]),
+    withSummary && k.summary ? el("span", { class: "sum", text: k.summary }) : null]);
+}
+const COLUMNS = {
+  people: [
+    { key: "name", label: "Name", cls: "name", sort: (r) => r.title.toLowerCase(), cell: (r, f) => nameCell(r, f, true) },
+    { key: "company", label: "Company", sort: (r, f) => plainValue(f.company).toLowerCase() || "￿", cell: (r, f) => textCell(f.company) },
+    { key: "role", label: "Role", sort: (r, f) => plainValue(f.role).toLowerCase() || "￿", cell: (r, f) => textCell(f.role) },
+    { key: "email", label: "Email", cls: "mono-col", sort: (r, f) => f.email.toLowerCase() || "￿", cell: (r, f) => f.email ? el("a", { href: "mailto:" + plainValue(f.email).split(/[,\s]/)[0], class: "mono", text: plainValue(f.email) }) : textCell("") },
+    { key: "phone", label: "Phone", cls: "mono-col", sort: (r, f) => f.phone || "￿", cell: (r, f) => f.phone ? el("span", { class: "mono", text: plainValue(f.phone) }) : textCell("") },
+    { key: "last", label: "Last contact", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last), desc: true },
+    { key: "mails", label: "Mails", num: true, sort: (r, f) => f.mails ?? -1, cell: (r, f) => f.mails == null ? textCell("") : el("span", { class: "mono", title: f.sent != null ? f.received + " from them, " + f.sent + " from you" : "", text: String(f.mails) }), desc: true },
+    { key: "open", label: "What's open", cls: "open-col", sort: (r, f) => f.open.length ? OPEN_RANK[f.open[0].dir] : 9, cell: (r, f) => openCell(f) },
+    { key: "status", label: "Status", sort: r => ({ "Investigated": 0, "Some findings": 1 })[known(r).status] ?? 2, cell: r => statusPill(r) }],
+  orgs: [
+    { key: "name", label: "Name", cls: "name", sort: r => r.title.toLowerCase(), cell: (r, f) => nameCell(r, f, false) },
+    { key: "domain", label: "Domain", cls: "mono-col", sort: (r, f) => f.domain || "￿", cell: (r, f) => f.domain ? el("span", { class: "mono", text: f.domain }) : textCell("") },
+    { key: "what", label: "What they do", cls: "wide", sort: (r, f) => f.what || "￿", cell: (r, f) => textCell(f.what) },
+    { key: "people", label: "People", num: true, sort: (r, f) => f.people, cell: (r, f) => el("span", { class: "mono", text: f.people ? String(f.people) : "—" }), desc: true },
+    { key: "last", label: "Last contact", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last), desc: true },
+    { key: "open", label: "What's open", cls: "open-col", sort: (r, f) => f.open.length ? OPEN_RANK[f.open[0].dir] : 9, cell: (r, f) => openCell(f) },
+    { key: "status", label: "Status", sort: r => ({ "Investigated": 0, "Some findings": 1 })[known(r).status] ?? 2, cell: r => statusPill(r) }],
+  projects: [
+    { key: "name", label: "Name", cls: "name", sort: r => r.title.toLowerCase(), cell: (r, f) => nameCell(r, f, false) },
+    { key: "what", label: "What it is", cls: "wide", sort: (r, f) => f.what || "￿", cell: (r, f) => textCell(f.what) },
+    { key: "last", label: "Last active", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last), desc: true },
+    { key: "sessions", label: "Sessions", num: true, sort: (r, f) => f.sessions ?? -1, cell: (r, f) => el("span", { class: "mono", text: f.sessions ? String(f.sessions) : "—" }), desc: true },
+    { key: "open", label: "What's open", cls: "open-col", sort: (r, f) => f.open.length ? OPEN_RANK[f.open[0].dir] : 9, cell: (r, f) => openCell(f) },
+    { key: "status", label: "Status", sort: r => ({ "Investigated": 0, "Some findings": 1 })[known(r).status] ?? 2, cell: r => statusPill(r) }]
+};
+const FILTERS = [
+  ["all", "All", () => true], ["open", "Something open", (r, f) => f.open.length > 0],
+  ["mine", "Yours to answer", (r, f) => f.open.some(t => t.dir === "mine")],
+  ["written", "Written", r => known(r).status !== "Mapped"], ["mapped", "Mapped only", r => known(r).status === "Mapped"]];
+const SHEET = {};
+function sheet(c, items) {
+  const cols = COLUMNS[c];
+  const state = SHEET[c] = SHEET[c] || { sort: null, desc: false, filter: "all", text: "" };
+  const wrap = el("div", { class: "sheet-box" });
+  const bar = el("div", { class: "sheet-bar" });
+  const find = el("input", { type: "search", class: "sheet-find", placeholder: "Filter " + label(c).toLowerCase() + "…", "aria-label": "Filter " + label(c).toLowerCase(), value: state.text });
+  const chips = el("div", { class: "seg", role: "group", "aria-label": "Show" });
+  const count = el("span", { class: "sheet-count mono" });
+  bar.append(find, chips, count);
+  const table = el("table", { class: "sheet" });
+  const thead = el("thead"), tbody = el("tbody");
+  table.append(thead, tbody);
+  const scroller = el("div", { class: "sheet-scroll", tabindex: "0", role: "region", "aria-label": label(c) + " table" }, [table]);
+  wrap.append(bar, scroller);
+  const draw = () => {
+    thead.textContent = "";
+    const tr = el("tr");
+    for (const col of cols) {
+      const sorted = state.sort === col.key;
+      const th = el("th", { class: (col.cls || "") + (col.num ? " num" : ""), scope: "col", "aria-sort": sorted ? (state.desc ? "descending" : "ascending") : "none" });
+      const btn = el("button", { type: "button" }, [col.label, el("span", { class: "arrow", "aria-hidden": "true", text: sorted ? (state.desc ? "↓" : "↑") : "↕" })]);
+      btn.onclick = () => { if (state.sort === col.key) state.desc = !state.desc; else { state.sort = col.key; state.desc = !!col.desc; } draw(); };
+      th.appendChild(btn); tr.appendChild(th);
+    }
+    thead.appendChild(tr);
+    chips.textContent = "";
+    for (const [key, name, test] of FILTERS) {
+      const n = items.filter(r => test(r, facts(r))).length;
+      if (key !== "all" && !n) continue;
+      const b = el("button", { type: "button", class: state.filter === key ? "on" : "", "aria-pressed": String(state.filter === key) }, [name, el("span", { class: "n", text: String(n) })]);
+      b.onclick = () => { state.filter = key; draw(); };
+      chips.appendChild(b);
+    }
+    const test = (FILTERS.find(f => f[0] === state.filter) || FILTERS[0])[2];
+    const needle = state.text.trim().toLowerCase();
+    let rows = items.filter(r => test(r, facts(r)) && (!needle || (r.title + " " + Object.values(facts(r)).filter(v => typeof v === "string").join(" ")).toLowerCase().includes(needle)));
+    const col = cols.find(x => x.key === state.sort);
+    rows = col ? rows.sort((a, b) => { const x = col.sort(a, facts(a)), y = col.sort(b, facts(b)); return (x < y ? -1 : x > y ? 1 : byActivity(a, b)) * (state.desc ? -1 : 1); }) : rows.sort(byActivity);
+    tbody.textContent = "";
+    for (const r of rows) {
+      const row = el("tr", { "data-href": href(r) });
+      for (const c2 of cols) row.appendChild(el("td", { class: (c2.cls || "") + (c2.num ? " num" : "") }, [c2.cell(r, facts(r))]));
+      tbody.appendChild(row);
+    }
+    if (!rows.length) tbody.appendChild(el("tr", {}, [el("td", { colspan: String(cols.length), class: "none", text: "Nothing matches. Clear the filter to see every page." })]));
+    count.textContent = rows.length + " of " + items.length;
+  };
+  find.addEventListener("input", () => { state.text = find.value; draw(); });
+  tbody.addEventListener("click", e => {
+    if (e.target.closest("a")) return;
+    const tr = e.target.closest("tr[data-href]");
+    if (tr && !String(window.getSelection())) location.hash = tr.dataset.href;
+  });
+  draw();
+  return wrap;
+}
+
 // ---------- the night: what the last pass did ----------
 const HOUR = 3600e3, DAY_MS = 24 * HOUR;
 const FAILED = /^(failed|abandoned|error|refused|timeout)/i;
@@ -1148,14 +1349,15 @@ function category(c) {
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: "Contents" }), el("span", { class: "sep", text: "/" }), el("span", { text: "Category" })]));
   main.appendChild(el("h1", { text: label(c) }));
   const lede = (CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
-  main.appendChild(el("p", { class: "lede" }, [lede + (items.length ? ". " : ""), items.length ? el("span", { class: "mono", text: counts ? counts.written + " written of " + counts.mapped : items.length + " pages" }) : null]));
+  main.appendChild(el("p", { class: "lede" }, [lede + (items.length ? (/[?.]$/.test(lede) ? " " : ". ") : ""), items.length ? el("span", { class: "mono", text: counts ? counts.written + " written of " + counts.mapped : items.length + " pages" }) : null]));
   if (!items.length) {
     main.appendChild(c === "people"
       ? el("div", { class: "empty" }, [el("span", { class: "lead", text: "Not mapped yet" }), "No people mapped yet. Run ", el("code", { text: initCommand() }), " (or select gmail) to read correspondent metadata. No background schedule is started."])
       : el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing here yet" }), "Nothing here yet. The notebook fills what the sources support."]));
     return;
   }
-  main.appendChild(el("ul", { class: "hits" }, items.sort(byActivity).map(r => row(r))));
+  if (COLUMNS[c]) main.appendChild(sheet(c, items));
+  else main.appendChild(el("ul", { class: "hits" }, items.sort(byActivity).map(r => row(r))));
 }
 
 // ---------- a page ----------
@@ -1178,6 +1380,7 @@ function sectionBody(r, s) {
     if (t.items.length) box.appendChild(el("ul", { class: "threads" }, t.items.map(item => threadRow(r, item, false))));
     return box.childNodes.length ? box : el("div", { html: markdown(s.text, r.path) });
   }
+  // History as a dated spine. Conversations shown as chat history (#2066) will hook in here.
   if (name === "history") {
     const items = historyItems(s.text);
     if (items.some(i => i.day)) {
@@ -1198,6 +1401,32 @@ function sectionBody(r, s) {
   }
   const html = markdown(s.text, r.path);
   return el("div", { class: /^(where it stands|current status)$/.test(name) ? "block-standing" : "block", html });
+}
+// The facts a reader came for, each cited where the page cites it; a missing one is visibly empty.
+function factCard(r) {
+  const f = facts(r), k = known(r);
+  const cells = [];
+  const put = (label, value, opts) => cells.push({ label, value, ...(opts || {}) });
+  const cited = v => v ? inline(v, r.path) : "";
+  if (r.category === "people") {
+    put("Role", cited(f.role)); put("Company", cited(f.company));
+    put("Email", f.email ? plainValue(f.email).split(/\s*,\s*/).map(a => /@/.test(a) ? '<a href="mailto:' + esc(a) + '">' + esc(a) + "</a>" : esc(a)).join(", ") + (cited(f.email).match(/<a class="cite"[\s\S]*$/) || [""])[0] : "", { mono: true });
+    put("Phone", cited(f.phone), { mono: true }); put("Location", cited(f.location)); put("Language", cited(f.language));
+    put("Links", f.links ? f.links.split(", ").map(u => '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + esc(u.replace(/^https?:\/\/(www\.)?/, "")) + "</a>").join(", ") : "");
+    put("How you know them", f.how ? esc(f.how) : "", { wide: true });
+    put("First contact", f.first ? esc(fmtDate(f.first)) : "", { mono: true }); put("Last contact", k.last ? esc(fmtDate(k.last)) : "", { mono: true });
+    put("Mail", f.mails != null ? esc(f.mails + (f.sent != null ? " · " + f.received + " in, " + f.sent + " out" : "")) : "", { mono: true });
+  } else if (r.category === "orgs") {
+    put("Domain", f.domain ? esc(f.domain) : "", { mono: true }); put("What they do", f.what ? esc(f.what) : "", { wide: true });
+    put("Your contacts", f.people ? esc(String(f.people)) : ""); put("Last contact", k.last ? esc(fmtDate(k.last)) : "", { mono: true });
+  } else if (r.category === "projects") {
+    put("Repository", f.repo ? esc(f.repo) : "", { mono: true, wide: true }); put("Sessions", f.sessions ? esc(String(f.sessions)) : "", { mono: true });
+    put("First seen", f.first ? esc(fmtDate(f.first)) : "", { mono: true }); put("Last active", k.last ? esc(fmtDate(k.last)) : "", { mono: true });
+    const owners = section(r, "people and ownership");
+    put("People", owners ? esc(plainLine(owners.text)) : "", { wide: true });
+  } else return null;
+  return el("section", { class: "facts", "aria-label": "Facts" }, cells.map(c => el("div", { class: "fact" + (c.value ? "" : " missing-fact") + (c.wide ? " wide" : "") }, [
+    el("div", { class: "k", text: c.label }), el("div", { class: "v" + (c.mono && c.value ? " mono" : ""), html: c.value || "not found yet" })])));
 }
 function panel(title, children) { return el("section", { class: "panel" }, [el("h3", { text: title }), ...children]); }
 function fieldValue(value, from) {
@@ -1229,15 +1458,8 @@ function sidePanels(r, k) {
       panels.push(panel("Source", [file]));
     }
   }
-  panels.unshift(panel("At a glance", [glance]));
-  if (r.category === "people") {
-    const fields = contactFields(r);
-    if (fields.length) {
-      const dl = el("dl", {});
-      for (const f of fields) dl.append(el("dt", { text: f.label === "Signing entity" ? "Signs as" : f.label === "Also known as" ? "Also" : f.label }), el("dd", {}, [fieldValue(f.value, r.path)]));
-      panels.splice(1, 0, panel("Contact", [dl]));
-    }
-  }
+  // People, organisations and projects open on their fact card instead.
+  if (!["people", "orgs", "projects"].includes(r.category)) panels.unshift(panel("At a glance", [glance]));
   return panels;
 }
 
@@ -1254,8 +1476,10 @@ function record(path, heading) {
   CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#c=" + r.category }, ["← " + label(r.category)])]));
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#c=" + r.category, text: label(r.category) }), el("span", { class: "sep", text: "/" }),
-    el("span", { class: "when", text: "file updated " + fmtDate(r.updated) })]));
+    statusPill(r), el("span", { class: "when", text: (k.last ? "last activity " + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })]));
   const head = el("header", { class: "page-head" }, [el("h1", { text: r.title })]);
+  const card = factCard(r);
+  if (card) head.appendChild(card);
   // A relationship's lead is its standfirst: who they are, what is open, last contact.
   let intro = k.intro;
   if (intro && ["people", "orgs"].includes(r.category)) {
@@ -1299,7 +1523,7 @@ function record(path, heading) {
   const panels = sidePanels(r, k);
   if (toc.length >= 4) panels.push(panel("On this page", [el("ul", { class: "toc" }, toc.map(t =>
     el("li", {}, [el("a", { href: "#r=" + encodeURIComponent(r.path) + "&h=" + encodeURIComponent(t.id), text: t.title })])))]));
-  const grid = el("div", { class: "page-grid has-side" }, [el("div", { class: "body" }, [note]), el("aside", { class: "side", "aria-label": "About this page" }, panels)]);
+  const grid = el("div", { class: "page-grid" + (panels.length ? " has-side" : "") }, [el("div", { class: "body" }, [note]), el("aside", { class: "side", "aria-label": "About this page" }, panels)]);
   main.appendChild(grid);
   const column = grid.firstChild;
 
@@ -1438,6 +1662,8 @@ function render() {
   const box = document.getElementById("q");
   if (box.value !== (query || "")) box.value = query || "";
   window.scrollTo(0, 0);
+  // The sheet views use the full width; reading views keep a measure.
+  document.getElementById("main").classList.toggle("wide", !!(c && !r && !query && !reviews && COLUMNS[c] && inCategory(c).length));
   if (reviews) reviewPage();
   else if (query) search(query);
   else if (r) record(r, heading);
