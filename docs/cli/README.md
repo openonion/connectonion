@@ -1414,6 +1414,7 @@ See [server.md](server.md).
 | `co outlook` | Send/read Outlook email | No | ✅ Yes |
 | `co schedule` | See, check, run now, pause and resume `.co/schedule.yaml` entries — [schedule.md](schedule.md) | No | ✅ Yes (writes schedule state only) |
 | `co linear` | Linear issues: list, read, search, create, update, comment — [linear.md](linear.md) | No | ✅ Yes (writes only with `--yes`) |
+| `co canny` | Canny feedback: boards, posts and votes, search, one post's comments; change a status, comment, changelog — [canny.md](canny.md) | No | ✅ Yes (writes only with `--yes`) |
 | `co audit` | Is a CLI (co or any other) fit for an agent harness? Scores its help pages — [audit.md](audit.md) | No | ✅ Yes (read-only) |
 
 ---

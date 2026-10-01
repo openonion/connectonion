@@ -2458,6 +2458,9 @@ app.add_typer(syno_app, name="syno")
 # Linear (#2049): our own commands on Linear's GraphQL API, with LINEAR_API_KEY.
 from .commands.linear_commands import linear_app
 app.add_typer(linear_app, name="linear")
+# Canny feedback boards (#2050): our own commands on Canny's REST API.
+from .commands.canny_commands import canny_app
+app.add_typer(canny_app, name="canny")
 
 
 # OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.
