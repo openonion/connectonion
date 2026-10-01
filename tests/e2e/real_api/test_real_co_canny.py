@@ -1,26 +1,31 @@
 """co canny against a real Canny account (#2050). Opt-in.
 
-    CANNY_API_KEY=... pytest -m real_api tests/e2e/real_api/test_real_co_canny.py
+    pytest -m real_api tests/e2e/real_api/test_real_co_canny.py
 
-Reads only, unless CANNY_TEST_BOARD names a board (id or exact name) that may
-be written to; then it also needs CANNY_USER_ID (an admin's Canny user id, from
-`co canny check --email`). The writes are: a comment marked internal, and a
+Every value is found the way `co canny` finds it, through environment.setting():
+the shell, ~/.co/keys.env, then `co env set --secret`'s store. Nothing has to
+be exported. Reads only, unless CANNY_TEST_BOARD names a board (id or exact
+name) that may be written to; then it also needs CANNY_USER_ID (an admin's
+Canny user id, from `co canny check --email`). The writes are: a comment marked internal, and a
 status change of that board's newest post to the status it already has, which
 Canny records as nothing and emails no one. It creates no changelog entry,
-because Canny has no API to delete one.
+because Canny has no API to delete one. On a plan without internal comments
+(Free), the internal comment is refused and the test checks the refusal
+offers the public comment instead of posting it.
 """
 
 import json
-import os
 
 import pytest
 from typer.testing import CliRunner
 
 from connectonion.cli.main import app
+from connectonion.environment import load_environment, setting
 
+load_environment()
 pytestmark = [pytest.mark.real_api,
-              pytest.mark.skipif(not os.environ.get("CANNY_API_KEY"), reason="CANNY_API_KEY not set")]
-writes = pytest.mark.skipif(not (os.environ.get("CANNY_TEST_BOARD") and os.environ.get("CANNY_USER_ID")),
+              pytest.mark.skipif(not setting("CANNY_API_KEY"), reason="CANNY_API_KEY is set nowhere")]
+writes = pytest.mark.skipif(not (setting("CANNY_TEST_BOARD") and setting("CANNY_USER_ID")),
                             reason="CANNY_TEST_BOARD and CANNY_USER_ID not both set")
 
 
@@ -54,17 +59,24 @@ def test_search_and_changelog_read():
 
 
 def _newest_post_on_test_board():
-    posts = json.loads(canny("posts", "--board", os.environ["CANNY_TEST_BOARD"], "-n", "1", "--json").stdout)["posts"]
+    posts = json.loads(canny("posts", "--board", setting("CANNY_TEST_BOARD"), "-n", "1", "--json").stdout)["posts"]
     if not posts:
         pytest.skip("CANNY_TEST_BOARD has no posts to write to")
     return posts[0]
 
 
 @writes
-def test_internal_comment_on_the_test_board():
+def test_internal_comment_or_the_plan_says_it_has_none():
+    """Free plans have no internal comments; then the refusal must offer the public comment."""
     post = _newest_post_on_test_board()
-    assert "Nothing changed" in canny("comment", post["id"], "co canny real_api test", "--internal").output
-    assert "Commented on" in canny("comment", post["id"], "co canny real_api test", "--internal", "--yes").output
+    text = "co canny real_api test"
+    assert "Nothing changed" in canny("comment", post["id"], text, "--internal").output
+    result = CliRunner().invoke(app, ["canny", "comment", post["id"], text, "--internal", "--yes"])
+    if result.exit_code == 0:
+        assert "Commented on" in result.output
+        return
+    assert "plan does not support internal comments" in result.output
+    assert f"Next: co canny comment {post['id']} '{text}'" in result.output
 
 
 @writes
