@@ -483,6 +483,59 @@ def _fill_emptied_sections(head: str) -> str:
     return ''.join(parts)
 
 
+def person_names(notebook, owner: str = '') -> dict:
+    """{full name: record} for people pages a sentence can safely link: two words or more, one page each."""
+    seen, first_names = {}, {}
+    for person in notebook.list('people'):
+        page = notebook.read(person)
+        title = next((line[2:].strip() for line in page.splitlines() if line.startswith('# ')), '')
+        if person == owner or '@' in title:
+            continue
+        if len(title.split()) >= 2 and len(title) >= 5:
+            seen.setdefault(title, []).append(person)
+        elif re.fullmatch(r'[A-Z][a-z]{2,}', title):
+            email = (re.search(r'^- Email: (.*)$', page, re.M) or [None, ''])[1]
+            first_names.setdefault(title, []).append((person, email.split('@')[0].casefold()))
+    names = {name: records[0] for name, records in seen.items() if len(records) == 1}
+    # A page titled by a first name, as the mail's display name gave it ("Ivan"): a
+    # full name in a sentence ("Ivan Zhu") is that page when it is the only "Ivan"
+    # and its address carries the surname (ivanxzhu@). Two Harrys link neither.
+    names.update({f'{first} *': pages[0] for first, pages in first_names.items() if len(pages) == 1})
+    return names
+
+
+def link_people(record: str, text: str, names: dict) -> str:
+    """The first mention of a person the notebook has a page for links to it (#2060).
+
+    Ody Zhou's page named Harry Cao, Ivan Zhu and James Guo, who all had pages,
+    and linked none; 2 of the owner's 381 people pages had any link at all.
+    Exact full names only, outside Contact fields and Sources, so nothing is guessed."""
+    head, marker, tail = text.partition('\n## Sources\n')
+    lines = head.split('\n')
+    for name, target in sorted(names.items(), key=lambda item: -len(str(item[0]))):
+        if isinstance(target, tuple):        # a first-name page: (record, address local part)
+            target, local = target
+            pattern = re.compile(r'(?<![\w\[/])' + re.escape(name[:-2]) + r' ([A-Z][a-z]+)(?![\w\]])')
+            hits = {m[0] for line in lines for m in pattern.finditer(line) if m[1].casefold() in local}
+            if len(hits) != 1:
+                continue
+            name = hits.pop()
+        if target == record or f'[{name}](' in head:
+            continue
+        pattern = re.compile(r'(?<![\w\[/])' + re.escape(name) + r'(?![\w\]])')
+        for i, line in enumerate(lines):
+            if line.startswith(('#', 'Investigation:')) or CONTACT_LINE.match(line):
+                continue
+            # Not inside an existing link's label or target.
+            spans = [m.span() for m in re.finditer(r'\[[^\]]*\]\([^)]*\)', line)]
+            found = next((m for m in pattern.finditer(line)
+                          if not any(a <= m.start() < b for a, b in spans)), None)
+            if found:
+                lines[i] = line[:found.start()] + f'[{name}](../{target})' + line[found.end():]
+                break
+    return '\n'.join(lines) + marker + tail
+
+
 def link_company(notebook, record: str, text: str) -> str:
     """`Company:` naming an organisation the notebook has a page for links to it (#1974).
 

@@ -570,3 +570,26 @@ def test_a_history_past_eight_milestones_may_not_grow_and_may_come_down():
     assert history_errors(_with_history(12), _with_history(17)) == []          # coming down in steps
     assert 'fold the oldest' in history_note(_with_history(17))
     assert history_note('# P\n\n## History\n- Unknown — not investigated yet\n') == ''
+
+
+# ------------------------------------------- a name the notebook has a page for is a link (#2060)
+
+
+def test_the_first_mention_of_a_person_with_a_page_links_to_it(tmp_path):
+    """Ody Zhou's page named Ivan Zhu and Harry Cao, who had pages, and linked neither."""
+    from connectonion.rem.page_review import link_people, person_names
+    prepare(tmp_path)
+    nb = Notebook(tmp_path)
+    nb.stub_person('people/jiexuan.md', 'Jiexuan Deng', ['j@unsw.edu.au'], email='j@unsw.edu.au')
+    nb.stub_person('people/ivan.md', 'Ivan', ['ivanxzhu@gmail.com'], email='ivanxzhu@gmail.com')
+    nb.stub_person('people/harry-a.md', 'Harry', ['amazingharry1@gmail.com'], email='amazingharry1@gmail.com')
+    nb.stub_person('people/harry-b.md', 'Harry', ['hai@gmail.com'], email='hai@gmail.com')
+    page = ('# Richard Lai\n\nWorks with Jiexuan Deng. [1]\n\n## Contact\n- Also known as: Jiexuan Deng\n\n'
+            '## History\n- 2026-09-25: met Ivan Zhu and Harry Cao; Jiexuan Deng joined. [1]\n\n'
+            '## Sources\n- [1] outlook:aaa — Jiexuan Deng, 2026-09-25\n')
+    linked = link_people('people/richard.md', page, person_names(nb))
+    assert 'Works with [Jiexuan Deng](../people/jiexuan.md).' in linked          # first mention only
+    assert '; Jiexuan Deng joined' in linked and '- Also known as: Jiexuan Deng' in linked
+    assert 'met [Ivan Zhu](../people/ivan.md) and Harry Cao' in linked           # the only Ivan, ivanxzhu@
+    assert '- [1] outlook:aaa — Jiexuan Deng, 2026-09-25' in linked               # Sources untouched
+    assert link_people('people/richard.md', linked, person_names(nb)) == linked  # idempotent

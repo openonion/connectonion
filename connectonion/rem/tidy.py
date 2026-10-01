@@ -45,6 +45,7 @@ def tidy(root: Path, *, lock_held: bool = False, own_addresses: bool = True) -> 
         actions += _lines(notebook)
         actions += _map_history(notebook)
         actions += _dead_links(notebook)
+        actions += _link_people(notebook, state)
         if not actions:
             return {}
         log = read_json(state_path(root, LOG), [])
@@ -91,6 +92,25 @@ def _dead_links(notebook: Notebook) -> list[dict]:
         updated = LINK.sub(unlink, text)
         if updated != text:
             notebook.write(page, updated)
+    return actions
+
+
+def _link_people(notebook: Notebook, state: dict) -> list[dict]:
+    """Written pages link the first mention of each person the notebook has a page for (#2060)."""
+    from .census import written
+    from .page_review import link_people, person_names
+    names = person_names(notebook, (state.get("owner") or {}).get("record", ""))
+    actions = []
+    for page in notebook.list():
+        if not page.startswith(("people/", "orgs/", "projects/", "decisions/", "notes/", "agenda/")):
+            continue
+        text = notebook.read(page)
+        if not written(text):
+            continue
+        linked = link_people(page, text, names)
+        if linked != text:
+            notebook.write(page, linked)
+            actions.append({"action": "linked people named on the page", "page": page})
     return actions
 
 
