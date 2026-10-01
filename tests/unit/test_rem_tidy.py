@@ -295,7 +295,8 @@ def test_an_older_maps_page_for_a_one_way_correspondent_is_archived_and_a_writte
     done = tidy(tmp_path)
 
     assert done == {"archived one-way correspondent": ["people/kai.md", "people/ola.md"],
-                    "archived organisation": ["orgs/cold.md"]}
+                    "archived organisation": ["orgs/cold.md"],
+                    "unlinked archived page": ["orgs/warm.md"]}                  # its link to Kai (#2054)
     assert notebook.list("people") == ["people/pat.md"]                    # written: stays, same counts
     assert notebook.list("orgs") == ["orgs/warm.md"]                       # Pat still has a page there
     assert (tmp_path / ".state/archived/people/ola.md").is_file()          # moved, never deleted
