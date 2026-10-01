@@ -1595,7 +1595,7 @@ const COPYABLE = new Set(["Email", "Phone", "Links", "Website", "Repository"]);
 function legacyFact(r, label) {
   const f = facts(r), k = known(r);
   const v = {
-    "How we know them": f.how, "First contact": f.first, "Last contact": r.category !== "projects" ? k.last : "",
+    "How we know them": f.how, "First contact": f.first, "Last contact": r.category !== "projects" ? f.last : "", "Email": f.email,
     "Last activity": r.category === "projects" ? k.last : "", "Started": r.category === "projects" ? f.first : "",
     "Repository": f.repo, "What they do": r.category === "orgs" ? f.what : "", "Website": r.category === "orgs" ? f.domain : "",
     "Your contacts": f.people ? f.people + (f.people === 1 ? " person" : " people") : "", "Links": f.links
@@ -1792,7 +1792,7 @@ function record(path, heading) {
       mapped ? el("p", { class: "why", text: "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in." }) : null,
       el("div", { class: "names", text: "Not investigated yet: " + k.missing.join(", ") + "." }),
       el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]);
-    if (mapped) column.insertBefore(box, column.firstChild); else column.appendChild(box);
+    if (mapped) grid.parentNode.insertBefore(box, grid); else column.appendChild(box);
   }
 
   const foot = el("div", { class: "page-foot" });
