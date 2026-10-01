@@ -1,0 +1,23 @@
+version: v1.8.10
+images:
+  - file: linear-help.png
+    alt: "Terminal co linear --help: list, read, search, create, update and comment on Linear issues"
+    caption: "co linear, new in 1.8.10, from its own help."
+    scenario: "scripts/capture_1810_release_cli.py runs co linear --help from this checkout in a disposable HOME"
+    viewport: "96-column dark terminal capture"
+    commit: 84249a41
+    source_run: "scripts/capture_1810_release_cli.py"
+  - file: canny-help.png
+    alt: "Terminal co canny --help: boards, posts, search, status, comment and changelog"
+    caption: "co canny, new in 1.8.10, from its own help."
+    scenario: "scripts/capture_1810_release_cli.py runs co canny --help from this checkout in a disposable HOME"
+    viewport: "96-column dark terminal capture"
+    commit: 84249a41
+    source_run: "scripts/capture_1810_release_cli.py"
+  - file: slack-help.png
+    alt: "Terminal co slack --help: the inbox verbs plus a Read the workspace panel with channels, history, thread and search"
+    caption: "co slack gains channels, history, thread and search in 1.8.10; the inbox verbs stay Experimental."
+    scenario: "scripts/capture_1810_release_cli.py runs co slack --help from this checkout in a disposable HOME"
+    viewport: "96-column dark terminal capture"
+    commit: 84249a41
+    source_run: "scripts/capture_1810_release_cli.py"
