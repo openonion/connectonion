@@ -190,6 +190,11 @@
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip { font: 12px var(--mono); color: var(--ink-2); background: var(--paper-2); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   .chip .d { color: var(--ink-3); margin-left: 6px; }
+  a.cite { font-size: 0.78em; vertical-align: super; line-height: 0; text-decoration: none; color: var(--ink-3); padding: 0 1px; }
+  a.cite:hover { color: var(--ink); text-decoration: underline; }
+  .cite-n { color: var(--ink-3); font-variant-numeric: tabular-nums; margin-right: 4px; }
+  .dead-link { color: var(--ink-3); text-decoration: line-through dotted; cursor: help; }
+  li.flash { background: var(--moss-soft); border-radius: 4px; transition: background 1.5s; }
 
   /* lists of pages, search */
   .hits { list-style: none; margin: 0; padding: 0; max-width: 72ch; }
@@ -373,10 +378,14 @@ function inline(text, from) {
   s = s.replace(/`([^`]+)`/g, (m, c) => { codes.push(c); return "\u0001" + (codes.length - 1) + "\u0001"; });
   s = s.replace(/\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, (m, lbl, url) => {
     const link = safeHref(from, url.replace(/&amp;/g, "&"));
-    if (!link) return lbl;
+    // A page that is not in the notebook: say so, rather than look like a link that does nothing (#2054).
+    if (!link) return /\.md(#.*)?$/i.test(url) ? '<span class="dead-link" title="This page is no longer in the notebook">' + lbl + "</span>" : lbl;
     const attrs = link.external ? ' target="_blank" rel="noopener noreferrer"' : "";
     return '<a href="' + esc(link.href) + '"' + attrs + ">" + lbl + "</a>";
   });
+  // A citation looks like a link; it is one now: to its entry under Sources (#2054).
+  s = s.replace(/\[(W?\d+)\](?![(\w])/g, (m, n) =>
+    '<a class="cite" href="#r=' + encodeURIComponent(from) + "&h=src-" + n.toLowerCase() + '">[' + n + "]</a>");
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>");
   s = s.replace(/\u0001(\d+)\u0001/g, (m, i) => "<code>" + codes[i] + "</code>");
@@ -812,6 +821,20 @@ function record(path, heading) {
     }
   }
 
+  // Each Sources entry is the target its citations jump to.
+  // Page sections render one level down (## → h3), so match the level, not h2.
+  const sourcesHeading = headings.find(h => /^sources\b/i.test(h.textContent.trim()));
+  for (let node = sourcesHeading && sourcesHeading.nextElementSibling;
+       node && node.tagName !== sourcesHeading.tagName; node = node.nextElementSibling) {
+    for (const li of node.querySelectorAll("li")) {
+      const n = /^\s*\[(W?\d+)\]/i.exec(li.textContent);
+      if (!n) continue;
+      li.id = "src-" + n[1].toLowerCase();
+      const self = li.querySelector("a.cite");
+      if (self) self.replaceWith(el("span", { class: "cite-n", text: "[" + n[1] + "]" }));
+    }
+  }
+
   // In-page TOC jump bar if 3 or more h2 headings
   if (tocHeadings.length >= 3) {
     const jumpNav = el("nav", { class: "jump-nav", "aria-label": "In-page jump navigation" });
@@ -879,8 +902,12 @@ function record(path, heading) {
   main.appendChild(foot);
 
   if (heading) {
-    const target = headings.find(h => h.id === heading.toLowerCase());
-    if (target) target.scrollIntoView();
+    const target = headings.find(h => h.id === heading.toLowerCase())
+      || [...noteDiv.querySelectorAll("li[id]")].find(li => li.id === heading.toLowerCase());
+    if (target) {
+      target.scrollIntoView({ block: "center" });
+      if (target.tagName === "LI") target.classList.add("flash");
+    }
   }
 }
 
