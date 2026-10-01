@@ -110,8 +110,8 @@ def test_a_mapped_page_leads_with_what_is_known(tmp_path, monkeypatch):
 
             page.goto(link + "#c=people")
             page.get_by_role("heading", name="People", exact=True).wait_for()
-            titles = page.locator(".hits .t a").all_inner_texts()
+            titles = page.locator(".sheet tbody .name a").all_inner_texts()
             assert titles.index("Known Person") < titles.index("Recent Person") < titles.index("Quiet Person")
-            assert "Runs the Aurora pilot with us." in page.locator(".hits").inner_text()
+            assert "Runs the Aurora pilot with us." in page.locator(".sheet").inner_text()
         finally:
             browser.close()
