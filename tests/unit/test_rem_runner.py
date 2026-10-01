@@ -418,6 +418,25 @@ def test_an_investigation_that_fits_is_given_its_material(tmp_path):
     assert "<material>" in prompt and "Mia leads the data platform team." in prompt
 
 
+def test_native_skill_is_expanded_once_with_page_rules(tmp_path):
+    """The REM prompt used to send the core Skill once as a slash command and
+    again inside its composed instructions, doubling it in Codex (#1972)."""
+    from connectonion.cli.co_ai.harness import expand_skill
+    from connectonion.rem.runner import task_prompt
+
+    items = [{"role": "page", "record": "people/mia.md", "text": "# Mia\n"}]
+    prompt = task_prompt(tmp_path, items, "investigate")
+    expanded = expand_skill(prompt)
+    assert expanded.count("# Investigate one subject") == 1
+    assert expanded.count("# Investigating a person") == 1
+    assert expanded.count("# A person's page") == 1
+    big = [{**items[0], "text": "x" * 110_000}]
+    fallback = task_prompt(tmp_path, big, "investigate")
+    assert "Read the additional source and page instructions" in fallback
+    assert "# Investigate one subject" not in (tmp_path / "additional-instructions.md").read_text()
+    assert expand_skill(fallback).count("# Investigate one subject") == 1
+
+
 def test_material_too_big_to_give_is_plain_text_to_read(tmp_path):
     """The fallback cut every string into 64-character pieces; a real extraction
     then spent 22 turns and 1.2M tokens writing Python to glue them back and

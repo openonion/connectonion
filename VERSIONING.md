@@ -400,7 +400,20 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a9
+## Current Version: 1.9.0a10
+
+1.9.0a10 is the first published preview of the redesigned REM reader. It
+includes the a9 reader, terminal and SQLite work, plus cited Facts and Insight
+written by investigation (#2068), the owner's identity and project fixes
+(#2078, #2079), and the 1.8.10 features forward-ported to main (#2086).
+The REM runner now loads each stage Skill once rather than repeating its core
+inside the task arguments (#1972). Desktop and 390px phone screenshots of the
+reader were reviewed. Stable is 1.8.10. See
+[1.9.0a10 notes](docs/releases/1.9.0a10.md).
+
+- 1.9.0a10 (#1972, #2068, #2078, #2079, #2086; includes a9's unpublished changes.)
+
+## Unpublished preview tag: 1.9.0a9
 
 1.9.0a9 is the redesign the owner asked for: the reader opens on the night
 (what the last pass read and rewrote) and on what is owed; People, Orgs and

@@ -28,3 +28,9 @@ after, and were easier, because the content already knew what it was for.
 
 The lesson: a tool that writes for you is judged at the moment you read, and
 the first question a returning reader asks is the one to put first.
+
+The first public preview of this redesign is 1.9.0a10. The a9 tag was held by
+the stable-patch forward-port gate; by the time that work reached main, the
+page writer could also produce the cited Facts and Insight the reader was
+designed to show. The runner now loads each stage Skill once, leaving the
+page-specific rules as additions instead of repeating the whole Skill.
