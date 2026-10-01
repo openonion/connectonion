@@ -31,9 +31,9 @@ def _pages(root):
     notebook.stub_person("people/ody.md", "Ody Zhou", ["ody@acme.test"], email="ody@acme.test")
     page = notebook.read("people/ody.md").replace("- Company: Unknown", "- Company: Acme [2]").replace(
         "- Phone: Unknown", "- Phone: +61 400 000 000 [3]").replace(
-        "not investigated yet", "investigated 2026-09-27")
-    page = page.replace("## Open threads\n- Unknown — not investigated yet",
-                        "## Open threads\n- Ody owes the contract [4]\n- We owe the invoice [5]")
+        "## Open threads\n- Unknown — not investigated yet",
+        "## Open threads\n- Ody owes the contract [4]\n- We owe the invoice [5]")
+    page = page.replace("not investigated yet", "investigated 2026-09-27")
     page = page.replace("## Who they are\n", "## Who they are\nPartner on [Atlas](../projects/atlas.md). "
                         "Last contact: 2026-09-21. [1]\n")
     notebook.write("people/ody.md", page)
