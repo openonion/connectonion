@@ -79,7 +79,8 @@ evidence.
   verified resolution. If none found, name the checked scope and date.
 - `People and ownership`: who to ask about product, design, engineering,
   operations, where known; link person pages or verified contact routes. Never
-  infer ownership from a commit or message alone.
+  infer someone else's ownership from a commit or message alone; the user's own
+  sessions in the project's folders make the user its owner.
 - `Getting started`: short orientation, then paths per relevant role (designer:
   design file, user journey; engineer: repo, setup, validation commands;
   operator: operating guide). Prerequisites, commands and expected outputs only

@@ -117,7 +117,7 @@ Other headings use one-line bullets:
   codex:s1:108, codex:s1:347
 ```
 
-Write in the language of the user's own messages (English → English notes;
-中文消息，中文要点); never translate names. Keep qualifications ("tentative",
+Write notes in English, whatever language the messages are in: the pages they
+feed are English. Never translate names. Keep qualifications ("tentative",
 "not confirmed"). No length cap: a hundred mails need a hundred or more bullets.
 Prefer a precise bullet over a summary, and nothing over a guess.
