@@ -389,3 +389,29 @@ def test_the_material_carries_the_readme_beside_the_messages(world, monkeypatch)
     monkeypatch.setattr(project_pages, "_readme", lambda page, stamp: [readme])
     items, _ = project_pages.material(world.root, "projects/tide.md")
     assert readme in items and sum(1 for item in items if item["role"] == "user") == 1
+
+
+def test_the_busiest_project_comes_first_and_recency_only_breaks_ties(world):
+    """#2079: by recency alone a fresh init wrote the owner's private journal
+    before LayeredVisions (28 sessions) and browser (17)."""
+    codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide/docs", [("user", "one docs note", 1)])
+    codex(world.codex / "2026/08/01/rollout-c.jsonl", "/work/old-bot",
+          [("user", f"bot work {n}", 30 + n) for n in range(6)])
+    extract(world.root, world.subs)
+    assert [r["record"] for r in queue(world.root, now=NOW)][:2] == ["projects/old-bot.md", "projects/tide-docs.md"]
+
+
+def test_a_private_folder_is_mapped_but_never_queued(world):
+    """#2079: the first run wrote up a diary repository's requests about family names."""
+    world.notebook.stub_project("projects/journal.md", "journal", ["/Users/me/journal"])
+    codex(world.codex / "2026/09/29/rollout-j.jsonl", "/Users/me/journal",
+          [("user", f"diary entry {n}", 1) for n in range(9)])
+    codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide", [("user", "tide work", 2)])
+    extract(world.root, world.subs)
+    assert "projects/journal.md" not in [r["record"] for r in queue(world.root, now=NOW)]
+    assert project_pages.private("projects/journal.md", world.notebook.read("projects/journal.md"))
+    assert not project_pages.private("projects/tide.md", world.notebook.read("projects/tide.md"))
+    world.notebook.stub_project("projects/beta.md", "beta", ["/private/var/folders/x/beta"])
+    assert not project_pages.private("projects/beta.md", world.notebook.read("projects/beta.md"))  # macOS temp
+    from connectonion.rem.queue import order
+    assert "projects/journal.md" not in [r["path"] for r in order(world.root, "projects")]

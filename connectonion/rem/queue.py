@@ -165,6 +165,10 @@ def order(root, category: str, today: date | None = None) -> list[dict]:
         path = entry["path"]
         if not path.startswith(prefix) or path in excluded or path.endswith("/index.md"):
             continue
+        if category == "projects":
+            from .project_pages import private
+            if private(path, notebook.read(path)):
+                continue   # the owner's journal is investigated only when they name it (#2079)
         last = None if path in hollow else last_investigated(entry["status"])
         rows.append({"path": path, "weight": weight.get(path, 0), "unknown": entry["unknown"],
                      "last_investigated": last.isoformat() if last else None,

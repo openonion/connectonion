@@ -1057,3 +1057,19 @@ def test_a_new_person_page_states_the_last_contact_in_its_lead_and_leaves_histor
     assert 'Observed mail count' not in page and 'Enumeration metadata' not in page
     assert 'classification unassessed' not in page
     assert '## History\n- Unknown — not investigated yet' in page
+
+
+def test_a_one_off_codex_task_folder_is_not_a_project_and_returning_work_is():
+    """#2079: `Documents/Codex/2026-08-17/install-github-cli-gh-on-this`, 2 sessions,
+    became a project page; realtime-voice-chat's dated folders held 23."""
+    from connectonion.rem.map import ONE_OFF_TASK, project_groups
+
+    def row(path, sessions):
+        return {'path': path, 'sessions': sessions, 'turns': sessions * 5, 'first': '2026-08-01',
+                'last': '2026-09-01', 'repo': '', 'origin': ''}
+    dropped = []
+    groups = project_groups([row('/Users/me/Documents/Codex/2026-08-17/install-github-cli-gh-on-this', 2),
+                             row('/Users/me/Documents/Codex/2026-08-22/realtime-voice-chat', 12),
+                             row('/Users/me/Documents/Codex/2026-08-26/realtime-voice-chat', 11)], dropped)
+    assert [group['name'] for group in groups.values()] == ['realtime-voice-chat']
+    assert [entry['reason'] for entry in dropped] == [ONE_OFF_TASK]

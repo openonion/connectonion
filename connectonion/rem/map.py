@@ -479,6 +479,10 @@ def owner_summary(notebook: Notebook, report: dict) -> dict | None:
 
 
 SCRATCH = re.compile(r'/Documents/Codex/\d{4}-\d{2}-\d{2}/([^/]+?)(?:-\d+)?$')
+# A scratch folder is a project once its work has come back to it: realtime-voice-chat
+# had 23 sessions across dated folders, a one-off request has one or two.
+SCRATCH_MIN_SESSIONS = 2
+ONE_OFF_TASK = 'a one-off Codex task folder (two sessions or fewer)'
 
 
 def _scratch_identity(path: str) -> str:
@@ -622,6 +626,12 @@ def project_groups(rows: list[dict], dropped: list | None = None) -> dict:
         members = [row for row in kept if row['path'] in group['members']]
         if group['sessions'] <= 1 and all(row['path'] in short for row in members):
             out += [{'path': row['path'], 'sessions': row['sessions'], 'reason': SHORT_SESSION} for row in members]
+            del groups[key]
+            continue
+        if str(key).startswith('codex-scratch:') and group['sessions'] <= SCRATCH_MIN_SESSIONS:
+            # A Codex scratch folder named after one request: "install-github-cli-gh-on-this",
+            # 2 sessions, became a project page on a fresh init (#2079).
+            out += [{'path': row['path'], 'sessions': row['sessions'], 'reason': ONE_OFF_TASK} for row in members]
             del groups[key]
             continue
         group['worktrees'] = len(group['worktrees'])

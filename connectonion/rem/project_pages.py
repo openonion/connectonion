@@ -10,6 +10,7 @@ an investigated page before it replaces the old one.
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import time
 from datetime import datetime, timedelta, timezone
@@ -52,6 +53,8 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
     cutoff = (now - timedelta(days=recent_days)).isoformat()
     rows = []
     for record in Notebook(root).list("projects"):
+        if private(record, Notebook(root).read(record)):
+            continue   # written only when the owner names it: `co rem investigate <page>` (#2079)
         messages, mode = pending(root, record)
         if not messages:
             continue
@@ -67,7 +70,23 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
         chars = len(readable_material(_message_items(sent))) + len(Notebook(root).read(record))
         rows.append({"record": record, "mode": mode, "last_activity": last, "recent": last >= cutoff,
                      "new_messages": len(messages), "chars": chars, "left_out": left_out})
-    return sorted(rows, key=lambda r: (not r["recent"], _negated(r["last_activity"]), r["record"]))
+    # Busiest first, recency only to break ties: by recency alone the owner's
+    # private journal came before LayeredVisions (28 sessions) (#2079).
+    return sorted(rows, key=lambda r: (-r["new_messages"], not r["recent"], _negated(r["last_activity"]),
+                                       r["record"]))
+
+
+# A folder that holds the owner's own life rather than their work. Its
+# sessions are still read for the map; its page is never written unasked:
+# the first run wrote up a diary repository's requests about family names.
+PRIVATE = re.compile(r"(?:^|[_ -])(?:journal|diary|private|personal|日记|私人)(?:$|[_ .-])", re.IGNORECASE)
+
+
+def private(record: str, page: str) -> bool:
+    """The folder's own name says so, never a parent's: macOS keeps temporary folders under /private."""
+    from .investigate import project_paths
+    names = [Path(record).stem.rsplit("-", 1)[0], *(Path(path).name for path in project_paths(page))]
+    return any(PRIVATE.search(name) for name in names)
 
 
 def _negated(stamp: str) -> float:
