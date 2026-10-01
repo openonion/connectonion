@@ -14,11 +14,6 @@ Why these rules: docs/rem-skills/rem-investigate.md
 - Every handle you were given, wrong spellings too, goes in `Also known as:`;
   add the ones you discover (signature, second address, other script). Company
   names go in their own field.
-- **A page titled by an address is renamed** once the material names the
-  person (signature, or the user's greeting): `# mei.l1990@outlook.com` →
-  `# 李梅`, the address kept in `Also known as:`.
-- **Not a person** (a service, bot, shared or test inbox, an account the user
-  runs): the lead says what it is and `Role:` reads `Not a person: <what>`.
 - The subject is the owner of a coverage mailbox → the user's own page: follow
   `rem-owner-page`.
 - **A role in a list the user writes about someone else is that person's, not
@@ -28,12 +23,6 @@ Why these rules: docs/rem-skills/rem-investigate.md
 
 ## Reading the mail
 
-- **`History` covers every thread in the material**: one dated line for each
-  distinct subject, meeting, introduction or request, oldest first.
-- **`How the user writes to them`** comes from the user's own messages to them
-  (language, tone, length, how they open, what they ask); **`Cadence`** from the
-  dates (`about weekly, July–September`). Each is `Unknown` only when there is
-  no such message, or a single one.
 - **Signature block first**: into `Contact` field by field (title, org,
   department, office, direct line, booking link, language). A changed signature
   is a dated move or promotion.

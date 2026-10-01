@@ -65,6 +65,11 @@ def instructions(stage: str, kind: str = "", *, page_kind: str = "", owner: bool
         pattern = f"rem-page-{page_kind}/SKILL.md" if page_kind else "rem-page-*/SKILL.md"
         for page in sorted(directory.glob(pattern)):
             text += "\n\n---\n\n" + page.read_text(encoding="utf-8")
+    if stage == "investigate" and page_kind == "person" and not owner:
+        # Rules about someone else (their title, whether they are a person,
+        # every thread with them) that the owner's turn has no use for and
+        # whose 15k it would push over (2026-10-01).
+        text += "\n\n---\n\n" + (directory / "rem-correspondent/SKILL.md").read_text(encoding="utf-8")
     if owner and stage == "investigate":
         # The owner's page is a person's page with its own lead and rules
         # (#2008): it took the roles the owner listed for a partner as his own.
