@@ -41,6 +41,7 @@ def tidy(root: Path, *, lock_held: bool = False, own_addresses: bool = True) -> 
         actions += _skills(notebook)
         actions += _orgs(notebook)
         actions += _lines(notebook)
+        actions += _dead_links(notebook)
         if not actions:
             return {}
         log = read_json(state_path(root, LOG), [])
@@ -51,11 +52,53 @@ def tidy(root: Path, *, lock_held: bool = False, own_addresses: bool = True) -> 
         return {key: sorted(set(pages)) for key, pages in summary.items()}
 
 
-def _archive(notebook: Notebook, record: str) -> str:
+def _archive(notebook: Notebook, record: str, into: str = "") -> str:
+    """Move the page out, and leave no link to it behind.
+
+    Org pages kept `[Airbnb](../people/airbnb-….md)` to a service page tidy had
+    archived; the reader showed the name and the click went nowhere (#2054).
+    A page folded into another is relinked there, as `merge` does; an archived
+    one keeps its name as text."""
     target = notebook.root / ".state" / "archived" / record
     target.parent.mkdir(parents=True, exist_ok=True)
     notebook.path(record).replace(target)
+    if into:
+        from .merge import _relink
+        _relink(notebook, record, into)
     return f".state/archived/{record}"
+
+
+LINK = re.compile(r"\[([^\]]+)\]\(((?:\.\./|\./)*)([\w./-]+\.md)\)")
+
+
+def _dead_links(notebook: Notebook) -> list[dict]:
+    """Links to a page this tidy (or an earlier one) archived keep their name as text."""
+    archived = notebook.root / ".state" / "archived"
+    actions = []
+    for page in notebook.list():
+        text = notebook.read(page)
+
+        def unlink(match):
+            # A Markdown link is relative to the page's own folder.
+            target = _normal(f"{Path(page).parent.as_posix()}/{match[2]}{match[3]}")
+            if (notebook.root / target).is_file() or not (archived / target).is_file():
+                return match[0]
+            actions.append({"action": "unlinked archived page", "page": page, "target": target})
+            return match[1]
+        updated = LINK.sub(unlink, text)
+        if updated != text:
+            notebook.write(page, updated)
+    return actions
+
+
+def _normal(path: str) -> str:
+    parts = []
+    for part in path.split("/"):
+        if part == "..":
+            parts = parts[:-1]
+        elif part not in ("", "."):
+            parts.append(part)
+    return "/".join(parts)
 
 
 def _services(notebook: Notebook, state: dict) -> list[dict]:
@@ -227,7 +270,7 @@ def _fold_owner(notebook: Notebook, owner: str, page: str, emails: list[str], ev
         line = match[1] + ", ".join([*known, *(f"{email} [{number}]" for email in new)])
         text = re.sub(rf"^- {label}: .*$", lambda _: line, text, count=1, flags=re.M)
     notebook.write(owner, text)
-    _archive(notebook, page)
+    _archive(notebook, page, into=owner)
     _alias(notebook, page, owner, "the owner's own address")
 
 
@@ -272,19 +315,31 @@ def _same_skill(one: str, other: str) -> bool:
 
 
 def _lines(notebook: Notebook) -> list[dict]:
-    """Old `web: not searched` lines and model-written coverage citations, removed line by line."""
+    """Lines about the run rather than the subject, and model-written coverage citations, removed line by line.
+
+    `web: not searched` at first; then any bullet `page_review.TOOL_TEXT`
+    recognises above Sources, such as Tamara's "The current collector reports
+    50 matching Outlook messages" (#2058). A contact field keeps its label."""
+    from .page_review import CONTACT_LINE, TOOL_TEXT
     removed = []
     for record in notebook.list():
         text = notebook.read(record)
-        if "web: not searched" not in text and "investigation:coverage" not in text:
+        head = text.partition("\n## Sources\n")[0]
+        if "investigation:coverage" not in text and not any(
+                TOOL_TEXT.search(line) for line in head.split("\n") if line.lstrip().startswith("- ")):
             continue
         keys = [match[1] for match in map(COVERAGE.match, text.split("\n"))
                 if match and RUNNER_COVERAGE not in match[0]]
-        kept, gone = [], []
+        kept, gone, above = [], [], True
         for line in text.split("\n"):
+            above = above and line != "## Sources"
             match = COVERAGE.match(line)
-            if WEB_LINE.match(line) or (match and match[1] in keys):
+            run_text = above and line.lstrip().startswith("- ") and TOOL_TEXT.search(line)
+            if WEB_LINE.match(line) or (match and match[1] in keys) or run_text:
                 gone.append(line)
+                contact = CONTACT_LINE.match(line) if run_text and record.startswith("people/") else None
+                if contact:
+                    kept.append(f"- {contact[1]}: Unknown")
                 continue
             for key in keys:
                 line = re.sub(rf" ?\[{key}\](?!\()", "", line)

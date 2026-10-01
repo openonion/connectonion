@@ -328,7 +328,8 @@
   /* sources: a compact footnote list */
   .block-sources ol { list-style: none; padding: 0; margin: 0 0 1em; font: 13px/1.5 var(--ui); color: var(--ink-2); }
   .block-sources li { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line-2); margin: 0; }
-  .block-sources li:target { background: var(--blue-soft); }
+  .block-sources li:target, .block-sources li.flash { background: var(--blue-soft); }
+  .dead-link { color: var(--ink-3); text-decoration: line-through dotted; cursor: help; }
   .block-sources .n { font: 600 11px/1.9 var(--mono); color: var(--blue); }
   .block-sources .id { font: 11.5px var(--mono); color: var(--ink); }
 
@@ -707,12 +708,12 @@ function moon(status) {
 let CITES = { from: "", sources: {} };
 function citeRun(ns, from) {
   const tips = ns.map(n => "[" + n + "] " + ((from === CITES.from && CITES.sources[n]) || "source " + n));
-  return '<a class="cite run" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + ns[0] + '" data-tip="' + esc(tips.join("\n")) +
+  return '<a class="cite run" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + ns[0].toLowerCase() + '" data-tip="' + esc(tips.join("\n")) +
     '" aria-label="' + ns.length + " sources: " + esc(tips.join("; ")) + '">' + ns.length + " sources</a>";
 }
 function citeChip(n, from) {
   const tip = from === CITES.from ? CITES.sources[n] : "";
-  return '<a class="cite" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + n + '"' +
+  return '<a class="cite" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + n.toLowerCase() + '"' +
     (tip ? ' data-tip="' + esc(tip) + '"' : "") + ' aria-label="Source ' + n + (tip ? ": " + esc(tip) : "") + '">' + n + "</a>";
 }
 function inline(text, from) {
@@ -722,7 +723,8 @@ function inline(text, from) {
   const links = [];
   s = s.replace(/\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, (m, lbl, url) => {
     const link = safeHref(from, url.replace(/&amp;/g, "&"));
-    if (!link) return lbl;
+    // A page that is not in the notebook: say so, rather than look like a link that does nothing (#2054).
+    if (!link) return /\.md(#.*)?$/i.test(url) ? '<span class="dead-link" title="This page is no longer in the notebook">' + lbl + "</span>" : lbl;
     const attrs = link.external ? ' target="_blank" rel="noopener noreferrer"' : "";
     links.push('<a href="' + esc(link.href) + '"' + attrs + ">" + lbl + "</a>");
     return "\u0002" + (links.length - 1) + "\u0002";
@@ -1575,7 +1577,7 @@ function sectionBody(r, s) {
       return el("div", { class: "block-sources" }, [el("ol", {}, list.map(src => {
         const id = /\b([a-z][a-z-]*:[\w./-]{4,})/i.exec(src.text);
         const rest = id ? src.text.replace(id[1], "").replace(/^\s*[—–-]\s*/, "") : src.text;
-        return el("li", { id: "src-" + src.n }, [el("span", { class: "n", text: "[" + src.n + "]" }),
+        return el("li", { id: "src-" + src.n.toLowerCase() }, [el("span", { class: "n", text: "[" + src.n + "]" }),
           el("span", {}, [id ? el("span", { class: "id", text: id[1] }) : null, id ? " " : "", rest])]);
       }))]);
     }
@@ -1804,8 +1806,12 @@ function record(path, heading) {
   column.appendChild(foot);
 
   if (heading) {
-    const target = document.getElementById(heading) || headings.find(h => h.id === heading.toLowerCase());
-    if (target) target.scrollIntoView();
+    const target = document.getElementById(heading) || document.getElementById(heading.toLowerCase()) || headings.find(h => h.id === heading.toLowerCase());
+    if (target && target.tagName === "LI") {
+      // A citation's source: centred and briefly lit, so the eye finds the line (#2054).
+      target.scrollIntoView({ block: "center" });
+      target.classList.add("flash");
+    } else if (target) target.scrollIntoView();
   }
 }
 

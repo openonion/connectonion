@@ -75,11 +75,13 @@ def _literal(text: str, *, before_tag: bool) -> str:
 LIVE = None
 
 
-def say(markup: str, *, err: bool = False, plain: str = None, end: str = "\n") -> None:
-    """Print markup in a terminal; elsewhere the same words, plain, through typer as before."""
+def say(markup: str, *, err: bool = False, plain: str = None, end: str = "\n", hanging: bool = False) -> None:
+    """Print markup in a terminal; elsewhere the same words, plain, through typer as before.
+
+    `hanging` wraps a long line of a laid-out result under its value column (`hang`)."""
     out = LIVE if err and LIVE is not None else style.console(stderr=err)
     if out.is_terminal:
-        out.print(markup, emoji=False, end=end)
+        out.print(hang(markup, out.width) if hanging else markup, emoji=False, end=end)
     else:
         typer.echo(Text.from_markup(markup, emoji=False).plain if plain is None else plain, err=err, nl=end == "\n")
 
@@ -90,7 +92,15 @@ def result(text: str, *, titled: bool = True) -> str:
     if titled:
         head, attention, _ = lines.pop(0).partition(" — needs attention")
         marked.append(style.heading(head) + (" — " + style.error("needs attention") if attention else ""))
-    return "\n".join([*marked, *(_result_line(line) for line in lines)])
+    return "\n".join([*marked, *(_labelled(line) for line in lines)])
+
+
+def _labelled(text: str) -> str:
+    """A line in the margin-label layout (`People           312`): the label bold, the rest as a result line."""
+    found = re.fullmatch(r"([A-Z][\w ]*?\w)( {2,})(\S.*)", text)
+    if not found:
+        return _result_line(text)
+    return style.label(found.group(1)) + found.group(2) + _result_line(found.group(3))
 
 
 def line(text: str, *, err: bool = False) -> None:
@@ -132,3 +142,96 @@ def _page_rest(text: str) -> str:
     if option and not _commands().match(text.lstrip()):
         return option.group(1) + style.command(option.group(2)) + highlight(text[option.end():])
     return highlight(text)
+
+
+# ------------------------------------------------- the shapes results share
+#
+# co rem's results are small dashboards: status, doctor, sync and init end on
+# one. They share one layout so the eye learns it once (1.9.0a9): a title line,
+# section labels in the left margin, every value starting at the same column,
+# one item per line, and a fix on the line under the thing it fixes. A few
+# glyphs carry meaning and nothing else does -- they are words too, printed
+# the same in a pipe, so a log reads like the terminal:
+#   ● written  ○ mapped, not yet written  ✓ fine  ✗ needs a fix
+#   ↻ unfinished, picks up where it stopped  → the command that fixes the line above
+
+COLUMN = 17            # where every value starts: "  Organizations" and two spaces
+WRITTEN, MAPPED, FINE, BROKEN, RESUMES, FIX = "●", "○", "✓", "✗", "↻", "→"
+
+
+def compact(number) -> str:
+    """Tokens as a person reads them: 812, 91k, 1.7M. Exact counts stay in --json and logs."""
+    number = int(number)
+    if number < 1000:
+        return f"{number:,}"
+    return f"{round(number / 1000)}k" if number < 999_500 else f"{number / 1_000_000:.1f}M"
+
+
+def meter(done: int, total: int, cells: int = 10) -> str:
+    """●●●○○○○○○○: how much of something is done, in tenths; full only when all of it is."""
+    # Six pages of 330 is one dot, not none: anything written shows.
+    filled = (0 if not total or done <= 0 else cells if done >= total
+              else min(cells - 1, max(1, round(cells * done / total))))
+    return (style.ok(WRITTEN * filled) if filled else "") + (style.muted(MAPPED * (cells - filled)) if filled < cells else "")
+
+
+def section(name: str, value: str = "") -> str:
+    """A section's first line: its label in the margin, its value at COLUMN."""
+    return style.label(name) + (" " * max(1, COLUMN - len(name)) + value if value else "")
+
+
+def row(name: str, value: str, mark: str = "") -> str:
+    """One item under a section, its value at COLUMN; `mark` is a glyph already styled."""
+    lead = "  " + (mark + " " if mark else "")
+    width = 2 + (2 if mark else 0) + len(name)
+    return lead + name + " " * max(1, COLUMN - width) + value
+
+
+def follow(markup: str, glyph: str = FIX) -> str:
+    """A line under an item, at COLUMN: `→ co rem start`, or a note in muted words."""
+    return " " * COLUMN + (style.muted(glyph) + " " if glyph else "") + markup
+
+
+# A page's outcome as a sync says it (rem.daily.outcome_line), and the glyph it hangs in the margin.
+OUTCOMES = ((re.compile(r"Updated "), FINE, style.ok), (re.compile(r"(Refused|Failed) "), BROKEN, style.warn),
+            (re.compile(r"Nothing (new|found) for "), MAPPED, style.muted))
+
+
+def step(text: str, *, err: bool = True) -> None:
+    """One line of a run as it goes: an outcome hangs ✓ ✗ or ○ in the margin, a step under way is muted.
+
+    A sync said "Investigating people/a.md…" and "Updated people/a.md
+    (accepted)" in the same weight, so the outcomes did not stand out of the
+    steps (1.9.0a9). The glyph is a word: a log gets it too.
+    """
+    for pattern, glyph, paint in OUTCOMES:
+        if pattern.match(text):
+            return say(paint(glyph) + " " + _result_line(text), err=err)
+    if text.endswith("…"):
+        return say("  " + style.muted(text), err=err)
+    say("  " + _result_line(text), err=err)
+
+
+def hang(markup: str, width: int) -> str:
+    """Lines too wide for the terminal, wrapped under their own value column, not at the margin.
+
+    A long value in the layout above ("connected, but not read by the daily
+    round (not subscribed)") wrapped to column 0 and broke the column it sat
+    in (1.9.0a9). Only a terminal comes here, and only the line breaks move:
+    every word is where it was.
+    """
+    from rich.console import Console
+    measure = Console(width=width, theme=style.THEME, force_terminal=True, color_system=None)
+    out = []
+    for line in markup.split("\n"):
+        text = Text.from_markup(line, emoji=False)
+        if text.cell_len <= width:
+            out.append(line)
+            continue
+        found = re.match(r"( *)(?:\S.*?  +)?(?=\S)", text.plain)
+        indent = len(found.group(0)) if found and len(found.group(0)) <= 30 else 0
+        head, body = text[:indent], text[indent:]
+        rows = body.wrap(measure, width - indent) if indent else [text]
+        out.append(head.markup + rows[0].markup)
+        out += [" " * indent + row.markup for row in list(rows)[1:]]
+    return "\n".join(out)
