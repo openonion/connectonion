@@ -1088,15 +1088,25 @@ def usage_report(root: Path, days: int | None = None) -> dict:
     chars_by_model, sized_by_model, items_by_source = {}, {}, {}
     for run in runs:
         add(total, run["usage"])
+        # Every run's tokens land under a stage, so the stages add up to the
+        # total: 2.35M investigation and project tokens had none (#2043). What
+        # a run did not split by stage goes under the stage its kind implies.
+        split = {}
         for stage, usage in (run.get("usage_by_stage") or {}).items():
             add(by_stage.setdefault(stage, {}), usage)
+            add(split, usage)
+        rest = {key: run["usage"][key] - split.get(key, 0) for key in keys
+                if isinstance(run["usage"].get(key), (int, float)) and run["usage"][key] > split.get(key, 0)}
+        if rest:
+            add(by_stage.setdefault(PHASE_STAGES.get(run.get("phase"), "maintain"), {}), rest)
         # Records from before the model was stored are said to be that, not "?" (#1974).
         model = run.get("model") or "unrecorded"
         add(by_model.setdefault(model, {}), run["usage"])
-        if run.get("chars_in"):
-            # Only runs that recorded their input size count towards the rate:
-            # tokens from runs with no size over the size of the others was a
-            # figure in the thousands per 1k characters.
+        if run.get("chars_in") and run.get("items_by_source"):
+            # Only sync batches, which put their recorded characters in the
+            # prompt, count towards the rate: tokens from runs with no size, or
+            # from an investigation whose material the model searched in files,
+            # over the size of the others read 28,556.9 per 1k characters (#2043).
             chars_by_model[model] = chars_by_model.get(model, 0) + run["chars_in"]
             add(sized_by_model.setdefault(model, {}), run["usage"])
         shares = run.get("items_by_source") or {}
@@ -1134,3 +1144,10 @@ def usage_report(root: Path, days: int | None = None) -> dict:
 
 
 INSTRUCTIONS_TARGET_CHARS = 15_000
+
+# The stage a run's unsplit tokens belong to, by the kind of run (#2043). A sync
+# batch has no phase and splits extract / maintain itself; a daily update that
+# predates its own split is mostly people, so investigate.
+PHASE_STAGES = {"investigate": "investigate", "investigate me": "investigate",
+                "daily-investigation": "investigate", "daily-update": "investigate",
+                "projects write": "projects"}

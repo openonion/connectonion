@@ -1159,3 +1159,27 @@ def test_the_owners_turn_is_handed_the_recent_projects_dated_and_a_persons_is_no
     inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=5, clients={}, subscriptions={},
                     runner=runner)
     assert not any(item["role"] == "recent-projects" for item in seen)
+
+
+def test_a_daily_run_says_each_pages_outcome_and_records_its_stage_and_seconds(tmp_path, co_ai, monkeypatch):
+    """#2044: outcomes appeared only in a 200-line dump at the end, and "Seconds: Unknown".
+    #2043: a daily run's tokens had no stage in logs --usage."""
+    from connectonion.rem.daily import outcome_line, run_daily
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "outlook")
+    monkeypatch.setattr("connectonion.rem.daily.mail_client", lambda kind, **kw: Quiet())
+    root = _pinned_notebook(tmp_path, "codex")
+    said = []
+
+    def person(root, page, **kw):
+        return {"usage": {"input_tokens": 1200}, "changed": [page["path"]]}
+    result = run_daily(root, scheduled=True, say=said.append, person_one=person,
+                       maintain=lambda root, scheduled: {"outcome": "no_change", "items": 0, "changed": []})
+    run = result["run"]
+    assert any(line.startswith("Updated people/") and line.endswith("(accepted)") for line in said), said
+    assert run["usage_by_stage"] == {"investigate": {"input_tokens": 1200}}
+    assert isinstance(run["seconds"], float)
+    refused = outcome_line({"page": "people/y.md", "outcome": "refused",
+                            "why": "Candidate rejected: over 20,000 characters " + "x " * 200})
+    assert refused.startswith("Refused people/y.md: Candidate rejected: over 20,000 characters")
+    assert len(refused) < 200 and refused.endswith("…")
+    assert outcome_line({"page": "people/z.md", "outcome": "nothing_new", "why": "long"}) == "Nothing new for people/z.md"
