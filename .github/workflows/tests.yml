@@ -206,6 +206,9 @@ jobs:
           co --version || exit /b 1
           python -m connectonion.cli.main --version || exit /b 1
 
+      - name: REM reader opens its private snapshot on Windows
+        run: python scripts/check_rem_reader_snapshot.py
+
       - name: First run OFFLINE is graceful — no traceback, scaffold still created
         env:
           # A dead proxy makes every backend call fail fast, deterministically —

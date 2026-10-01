@@ -48,7 +48,8 @@ def test_write_reader_lands_outside_the_notebook_and_leaves_notes_untouched(tmp_
     page = write_reader(tmp_path)
     assert page.is_file()
     assert tmp_path not in page.parents  # rendered output is not inside the collected tree
-    assert oct(page.stat().st_mode & 0o777) == "0o600"
+    if os.name != "nt":
+        assert oct(page.stat().st_mode & 0o777) == "0o600"
     after = sorted((p.relative_to(tmp_path).as_posix(), p.stat().st_mtime_ns)
                    for p in tmp_path.rglob("*") if p.is_file())
     assert before == after
@@ -61,10 +62,27 @@ def test_write_reader_refuses_to_follow_a_planted_symlink(tmp_path, monkeypatch)
     monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path))
     victim = tmp_path / "victim.txt"
     victim.write_text("keep")
-    os.symlink(victim, reader_path(tmp_path / "rem"))
+    try:
+        os.symlink(victim, reader_path(tmp_path / "rem"))
+    except OSError as error:
+        if os.name == "nt" and getattr(error, "winerror", None) == 1314:
+            pytest.skip("symlinks require Windows Developer Mode or elevation")
+        raise
     with pytest.raises(OSError):
         write_reader(tmp_path / "rem")
     assert victim.read_text() == "keep"
+
+
+def test_write_reader_replaces_its_snapshot_without_posix_only_flags(tmp_path, monkeypatch):
+    monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path))
+    monkeypatch.delattr(os, "O_NOFOLLOW", raising=False)
+    root = tmp_path / "rem"
+    first = write_reader(root)
+    first.write_text("old snapshot")
+    second = write_reader(root)
+    assert second == first
+    assert "old snapshot" not in second.read_text()
+    assert list(tmp_path.glob("co-rem-*.html")) == [second]
 
 
 def test_open_reader_launches_the_file_uri_only_when_asked(tmp_path, monkeypatch):
