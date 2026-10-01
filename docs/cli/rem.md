@@ -754,7 +754,11 @@ the block as a card.
 - Dates (`First contact`, `Last contact`, `Started`, `Last activity`) are
   `YYYY-MM-DD`.
 - Every value carries a citation, except `Email`, `Handles` and
-  `Also known as`, which the map fills from the addresses it found.
+  `Also known as`, which the map fills from the addresses it found. A citation
+  at the end of a line covers the uncited values before it
+  (`UNSW Founders; [UNSW](../orgs/unsw.md) [12]`); a full stop after it is
+  ignored. A new value with no citation is taken off the page when it is
+  saved (`review.json`: `facts_uncited_dropped`) rather than refusing the page.
 
 `facts.parse(page)` returns `{"Phone": [{"value": "+61 2 5550 0142",
 "qualifier": "work", "citations": ["1"]}, …], "Location": [], …}` (an empty
@@ -809,8 +813,19 @@ many mails matched) goes nowhere in the body — that is the run's record.
 
 `facts.coverage(page)` is the share of a page's fields that are filled; an
 investigation's result carries `facts` — fields filled before and after, the
-facts the extractor found and how many of them the page kept. Measured on the
-owner's real pages: see the PR for #2068.
+facts the extractor found and how many of them the page kept.
+
+Measured on a copy of the owner's notebook (2026-10-02), fields filled of 14:
+Ody 6, Tamara 7, Richard 6, the owner's own page 3. The material held more
+than each page had: Ody's phone (in a signature), every page's first and last
+contact, and on the owner's page a phone, links, company and role. After
+re-investigating with these skills, Ody went to 8 (9 with the restore step over
+the full window; the run was a quick pass of the newest mail) and Tamara to 11,
+her mobile among them, each with three labelled Insight lines.
+
+When an investigation finds nothing new, the restore step still runs: a page
+whose cited mail carries a phone the page lacks gets it back with no model call.
+In a quick pass (`--quick`), the extractor sees only the sampled mail.
 
 ## co rem status (#1996, #2008)
 

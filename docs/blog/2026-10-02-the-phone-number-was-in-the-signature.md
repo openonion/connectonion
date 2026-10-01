@@ -60,7 +60,23 @@ says nothing the inbox had not already shown.
 
 ## What it bought
 
-RESULTS
+We re-ran two of the pages on the copy, using the owner's Codex plan. Ody's
+page went from 6 of 14 fields filled to 8. It also gained three Insight lines,
+each tied to a specific date or commitment. That run used a bounded quick pass,
+which reads only the newest dozen mails per mailbox, so the extractor never saw
+the signature. The step that restores facts after the turn would have put the
+number back from the full window; on its own it raises the page to 9.
+
+Tamara's page cost the most to learn from. The first two candidates were
+refused, one for a single line each time. One wrote a company as two values
+followed by one citation. The other put a full stop after its citation. The
+model was right both times, and our grammar was too strict. We changed two
+rules: a citation at the end of a line now covers the values before it, and an
+uncited new value is removed from the page instead of causing the whole page to
+be refused. With those rules the third candidate passes and moves Tamara from 7
+to 11 of 14 fields, including her mobile number. It also has three Insight
+lines of 16 to 28 words each. The three runs used 725 thousand input tokens.
+Two of them were refusals we should not have issued.
 
 ## The lesson
 

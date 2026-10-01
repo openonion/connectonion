@@ -97,7 +97,7 @@ GENERIC = re.compile(r"key (?:stakeholder|contact|partner)|valuable (?:relations
                      r"important (?:contact|relationship|initiative)|maintains? (?:regular|ongoing) "
                      r"communication|strong (?:relationship|working relationship)|plays? a (?:key|crucial|vital) "
                      r"role|promising project|continues to (?:be|engage)", re.I)
-INSIGHT_LINE = re.compile(r"^- (?:(?:Now|Changed|At stake|Pattern): .*\[W?\d+\]|Unknown)\s*$")
+INSIGHT_LINE = re.compile(r"^- (?:(?:Now|Changed|At stake|Pattern): .*\[W?\d+\]\.?|Unknown)\s*$")
 
 
 def insight_problems(page: str) -> list[str]:
