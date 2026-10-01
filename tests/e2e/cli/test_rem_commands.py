@@ -601,13 +601,15 @@ def test_init_reports_failed_body_without_claiming_complete_archive(tmp_path, mo
     skills = tmp_path / 'empty-skills'
     skills.mkdir()
     result = invoke(tmp_path, '--json', 'init', '--days', '1', '--skills-dir', str(skills))
-    assert result.exit_code == 1
+    # A missing body is a cache miss, not a mapping error: a real first run
+    # (2026-10-01) lost every page to 1 of 1,880 bodies timing out.
+    assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)['data']
-    assert data['phase'] == 'partial'
     assert data['mail_archive']['phase'] == 'partial'
     assert data['mail_archive']['failed'] == 1
     assert (tmp_path / '.state/mail/archive.json').exists()
-    assert any(row['source'] == 'mail-archive' for row in data['errors'])
+    assert not any(row['source'] == 'mail-archive' for row in data['errors'])
+    assert any('could not be saved' in tip for tip in data['tips'])
 
 
 def test_init_human_output_summarizes_map_instead_of_dumping_contacts():

@@ -50,7 +50,7 @@ def test_a_run_states_the_cost_before_the_first_call_and_says_what_is_left(root,
     monkeypatch.setattr("connectonion.rem.investigate.investigate", investigate)
     result = invoke(root, "--json", "investigate", "people", "--limit", "1", "--recent-days", "7")
     assert result.exit_code == 0, result.output
-    assert order == [("people/new.md", 150)]
+    assert order == [("people/new.md", 730)]  # two years on a first investigation
     assert result.stderr.index("Cost:") < result.stderr.index("\n[1/1] people/new.md")
     assert "1 person left to investigate." in result.stderr
     assert json.loads(result.stdout)["data"]["left"] == 1
