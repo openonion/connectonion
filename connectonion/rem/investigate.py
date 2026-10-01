@@ -723,6 +723,36 @@ def window_since(page: str, default: int = 150) -> int:
     return max(1, (datetime.now(timezone.utc).date() - last).days + 1)
 
 
+RECENT_PROJECT_DAYS = 28
+RECENT_PROJECT_LIMIT = 8
+
+
+def recent_projects(root: Path) -> str:
+    """The owner's projects of the last four weeks, from the map, for the owner's turn (#2027).
+
+    The owner page named no project of the last weeks although its Skill asks
+    for them: the turn had 1,477 session messages and cited 3. The map already
+    holds each project's sessions and dates; the window ends at the map's own
+    date, so the list does not move with the clock. Newest first.
+    """
+    from datetime import date
+    from .files import read_json, state_path
+    state = read_json(state_path(root, "map.json"), {})
+    rows = [row for row in state.get("projects") or [] if row.get("last") and row.get("record")]
+    if not rows:
+        return ""
+    end = str(state.get("started") or max(row["last"] for row in rows))[:10]
+    since = (date.fromisoformat(end) - timedelta(days=RECENT_PROJECT_DAYS)).isoformat()
+    rows = sorted((row for row in rows if row["last"][:10] >= since),
+                  key=lambda row: (row["last"], row.get("sessions") or 0), reverse=True)[:RECENT_PROJECT_LIMIT]
+    lines = [f"- {row.get('name') or row['record']} ({row['record']}): {row.get('sessions') or 0} sessions, "
+             f"{str(row.get('first') or '?')[:10]} to {row['last'][:10]}" for row in rows]
+    return ("The owner's coding projects from " + since + " to " + end + ", from the map's sessions, newest "
+            "first. The lead's \"working on now\" and `Who they are` name the busiest of these, dated, with what "
+            "the user did there from the session messages; cite those messages. Context, not evidence:\n"
+            + ("\n".join(lines) if lines else "- none in these four weeks"))
+
+
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
@@ -890,6 +920,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                      "Organisation on a project page) as a link, [Name](../orgs/<file>.md). Context, not "
                      "evidence:\n" + "\n".join(f"- {line}" for line in linkable)}]
          if (linkable := org_pages(notebook, record, handles)) else []) + (
+        [{"role": "recent-projects", "source": "investigation:recent-projects", "timestamp": now, "text": recent}]
+         if sent_only and (recent := recent_projects(root)) else []) + (
         [{"role": "quick-first-pass", "source": "investigation:quick-scope",
            "timestamp": now, "text": "This is a bounded, partial first pass. Use only the supplied sample; "
                                      "state the sampling limit in your final reply, not on the page."}]

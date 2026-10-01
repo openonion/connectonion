@@ -18,9 +18,20 @@ Under the title, before `Contact`, 2–4 cited sentences:
   sessions: the projects they worked in and what they were doing there, dated
   ("since 2026-09-20 building the reader for co rem; 2026-09-28 fixing the
   Outlook import [4][7]"). Mail says who they work with; sessions say what they
-  are doing.
+  are doing. The `recent-projects` item lists the projects of the last four
+  weeks with their dates: name each of the busiest there, dated, here and in
+  `Who they are`.
 - What is open: the threads the user owes, and the ones owed to them.
-- `Last contact:` is the newest message they sent, with its channel.
+- `Last contact:` is the newest message they sent to a person, with its channel.
+
+## Coding agents are the user's tools, not people
+
+Claude Code, Codex and any other coding agent in the sessions are tools the
+user works with. A session prompt is the user's own work: what they asked for
+is what they were doing ("2026-09-29 asked for a message-volume check on co
+rem [5]"), and it goes in the lead, `Who they are` or `History`. An agent is
+never a counterparty in `Open threads` (it owes the user nothing, and the user
+owes it nothing), never `Last contact`, and never a correspondent in `Cadence`.
 
 ## Roles are stated, not collected
 

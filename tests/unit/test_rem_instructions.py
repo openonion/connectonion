@@ -223,3 +223,15 @@ def test_an_investigation_or_daily_update_is_told_how_large_a_page_may_grow():
         text = instructions("investigate", page_kind=kind)
         assert "about 15k characters" in text and "20,000" in text
     assert "20,000" in instructions("maintain", page_kind="project")
+
+
+def test_the_owners_coding_agents_are_tools_and_the_lead_names_the_recent_projects():
+    """#2027: the owner page said "Claude Code owes the user a message-volume check" and
+    "Codex owes the user a status", and its Last contact was a Claude Code session."""
+    owner = instructions("investigate", page_kind="person", owner=True)
+    assert len(owner) <= 15_000
+    for rule in ("Coding agents are the user's tools, not people",
+                 "never a counterparty in `Open threads`",
+                 "never `Last contact`",
+                 "`recent-projects`"):
+        assert rule in owner, rule
