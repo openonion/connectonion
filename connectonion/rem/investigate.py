@@ -857,6 +857,13 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         coverage.append(f"Page last updated from its sources {last.isoformat()}: it already reflects "
                         "material before that date; add only what this material says that is new.")
     available_items = len(items)
+    # Read before anything is laid out in files or sampled: the turn searches
+    # files for what it thinks to look for, and Ody's phone sat in a signature
+    # it never opened (#2068).
+    from . import facts
+    from .fact_extract import extract, facts_item
+    fact_rows = extract(items, handles, owner=sent_only) if not record.startswith("projects/") else []
+    facts_before = facts.coverage(notebook.read(record), record)
     if quick:
         items = quick_evidence(items)
         coverage.append(f"Quick first pass: reviewed {len(items)} of {available_items} gathered items; "
@@ -989,7 +996,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         [{"role": "quick-first-pass", "source": "investigation:quick-scope",
            "timestamp": now, "text": "This is a bounded, partial first pass. Use only the supplied sample; "
                                      "state the sampling limit in your final reply, not on the page."}]
-         if quick else []) + items
+         if quick else []) + ([facts_item(fact_rows)] if fact_rows else []) + items
     if original_material:
         prompt_items.append({"role": "original_evidence", "source": "investigation:original-evidence",
                              "text": f"Original uncompressed evidence is retained at {original_material}. Read it to check summaries and counterevidence.",
@@ -1042,4 +1049,6 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,
             "usage_by_stage": usage_by_stage, "report": result.get("report", ""),
+            "facts": {"before": facts_before, "after": facts.coverage(notebook.read(record), record),
+                      "extracted": sum(1 for row in fact_rows if row["field"] in facts.fields(record))},
             "instructions_chars": {"investigate": result.get("instructions_chars")}}

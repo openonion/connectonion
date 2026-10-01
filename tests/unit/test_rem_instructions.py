@@ -48,7 +48,7 @@ def test_a_page_shape_is_defined_once_and_reaches_every_stage_that_writes_one():
     for stage in ("maintain", "investigate"):
         text = instructions(stage)
         assert "\n# A person's page\n" in text
-        for heading in ("## Contact", "## Open threads", "## Uncertainties"):
+        for heading in ("## Facts", "## Insight", "## Open threads", "## Uncertainties"):
             assert heading in text, (stage, heading)
         for label in ("Email:", "Also known as:", "Signing entity:"):
             assert label in text, (stage, label)

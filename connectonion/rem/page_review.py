@@ -5,6 +5,7 @@ from collections import Counter
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+from . import facts
 from .files import Notebook, RemError
 
 
@@ -15,12 +16,12 @@ NOT_ON_OWNER_PAGE = 'How the user writes to them'
 
 def headings(record: str, owner: bool = False) -> tuple[str, ...]:
     if record.startswith('people/'):
-        return ('Contact', *(h for h in Notebook.PERSON_SECTIONS if not (owner and h == NOT_ON_OWNER_PAGE)),
-                'Sources')
+        return ('Facts', 'Insight',
+                *(h for h in Notebook.PERSON_SECTIONS if not (owner and h == NOT_ON_OWNER_PAGE)), 'Sources')
     if record.startswith('projects/'):
-        return (*Notebook.PROJECT_SECTIONS, 'Sources')
+        return ('Facts', 'Insight', *Notebook.PROJECT_SECTIONS, 'Sources')
     if record.startswith('orgs/'):
-        return ('Domains', *Notebook.ORG_SECTIONS, 'Sources')
+        return ('Domains', 'Facts', *Notebook.ORG_SECTIONS, 'Sources')
     return ()
 
 
@@ -46,6 +47,9 @@ def normalize(record: str, text: str, owner: bool = False) -> str:
     required = headings(record, owner)
     if not required:
         return text
+    # A page from before #2068: `## Contact` becomes `## Facts`, and the turn is
+    # handed an Insight it must fill, not a bare Unknown it may leave.
+    text = facts.upgrade(record, text, insight=f'- {PLACEHOLDER}')
     matches = list(re.finditer(r'^## (.+)$', prose(text), re.M))
     found = [m[1] for m in matches]
     if len(found) != len(set(found)):
@@ -227,7 +231,7 @@ def drop_owner_addresses(text: str, owner: set[str]) -> tuple[str, list[str]]:
 # A page that cites only these was written from nothing (#1974).
 CONTEXT_SOURCES = ("investigation:page", "investigation:coverage", "investigation:quick-scope",
                    "investigation:project-inventory", "investigation:original-evidence",
-                   "investigation:org-pages")
+                   "investigation:org-pages", "investigation:facts")
 
 
 def _known_sources(items: list[dict]) -> set:
@@ -365,15 +369,33 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
         # founders@unsw (1.9.0a2): 919k tokens, stamped "investigated", written
         # from the page and the coverage note -- nothing about the subject.
         errors.append('Page cites only the page itself and the coverage note; nothing about the subject was read')
-    if record.startswith('people/'):
-        for label in Notebook.PERSON_CONTACT:
-            if not re.search(r'^- ' + re.escape(label) + ':', content, re.M):
-                errors.append(f'Missing contact field: {label}')
+    errors += fact_errors(record, candidate, original)
+    return errors
+
+
+def fact_errors(record: str, candidate: str, original: str) -> list[str]:
+    """Every Facts label present; every value cited unless the page already carried it (#2068).
+
+    An uncited value carried over from the page before is the page's history,
+    not this turn's claim; the map's own addresses need no citation at all.
+    """
+    labels = facts.fields(record)
+    span = re.search(r'(?ms)^## Facts[ \t]*\n(.*?)(?=^## |\Z)', prose(candidate))
+    if not labels or not span:
+        return []
+    errors = [f'Missing fact field: {label}' for label in labels
+              if not re.search(r'^- ' + re.escape(label) + ':', span[1], re.M)]
+    before = facts.parse(original, record) if original else {}
+    for label, found in facts.parse(candidate, record).items():
+        carried = {v['value'] for v in before.get(label, [])}
+        if label not in facts.UNCITED and any(not v['citations'] and v['value'] not in carried for v in found):
+            errors.append(f'Fact without a citation: {label}; cite the message it came from, or write Unknown')
     return errors
 
 
 CITATION = re.compile(r'\[(W?\d+)\](?!\()')
-CONTACT_LINE = re.compile(r'^- (' + '|'.join(re.escape(label) for label in Notebook.PERSON_CONTACT) + r'):')
+CONTACT_LINE = re.compile(r'^- (' + '|'.join(re.escape(label) for labels in facts.FIELDS.values()
+                                             for label in labels) + r'):')
 
 
 def drop_unresolved(record: str, text: str, original: str, items: list[dict],

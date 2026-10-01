@@ -785,8 +785,8 @@ judgement.
 
 ### Insight
 
-A short section after `Facts` on person and project pages (not the owner's own
-page): two to four cited bullets of what the inbox does not say outright, each
+A short section after `Facts` on person and project pages (the owner's own page
+too, where it is the owner's month: what shipped, who is waiting): two to four cited bullets of what the inbox does not say outright, each
 starting with its kind, which the reader shows as a badge —
 
 - `- Now:` what this person or project is to the user's work today;

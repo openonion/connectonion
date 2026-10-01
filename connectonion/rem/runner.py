@@ -455,7 +455,10 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                               normalize_numbered_sources, placeholder_errors, restore_runner_fields, validate)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
-    text = restore_runner_fields(record, candidate.read_text(encoding="utf-8"), original)
+    from . import facts
+    # A candidate built on a page from before #2068 keeps `## Contact`; the
+    # shape is code's to settle, not a reason to refuse a paid-for page.
+    text = facts.upgrade(record, restore_runner_fields(record, candidate.read_text(encoding="utf-8"), original))
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {})
     removed = []
     if record.startswith("people/") and record != owner.get("record"):
@@ -463,6 +466,10 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # One miscopied id drops what rests on it, not the page (#1974).
     text, dropped = drop_unresolved(record, normalize_numbered_sources(text), original, items)
     text = link_company(notebook, record, drop_uncited_sources(text))
+    # A phone, address, link or contact date our code read from the material
+    # is not lost because the turn did not copy it (#2068).
+    extracted = next((item.get("facts") or [] for item in items if item.get("role") == "facts"), [])
+    text, restored = facts.keep_extracted(record, text, extracted)
     if record.startswith("projects/"):
         text = _project_window_notice(text, items)
     errors = validate(record, text, original, items, owner=record == owner.get("record"))
@@ -486,6 +493,9 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,
                    "owner_addresses_removed": removed, "citations_dropped": dropped["citations"],
                    "lines_dropped": dropped["lines"],
+                   "facts_restored": [{k: r[k] for k in ("field", "source")} for r in restored],
+                   "facts": {"before": facts.coverage(original, record), "after": facts.coverage(text, record),
+                             "extracted": sum(1 for r in extracted if r["field"] in facts.fields(record))},
                    "factual_quality": "not automatically assessed"})
         if errors:
             # The run is paid for; the page it wrote is kept where the reader can see
@@ -513,8 +523,9 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         if record not in after:
             refusals.append({"record": record, "errors": ["Maintenance must preserve existing page"]})
             continue
-        text, _ = drop_unresolved(record, normalize_numbered_sources(
-            restore_runner_fields(record, after[record], before.get(record, ''))), before.get(record, ''), items,
+        from . import facts
+        text, _ = drop_unresolved(record, normalize_numbered_sources(facts.upgrade(record,
+            restore_runner_fields(record, after[record], before.get(record, '')))), before.get(record, ''), items,
             pages=set(before))
         text = drop_uncited_sources(text)
         working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.

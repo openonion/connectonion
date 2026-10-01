@@ -11,6 +11,8 @@ import time
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 
+from .facts import FIELDS
+
 # Person-page labels the roster reads back. Contact lines are skipped when
 # looking for the opening line: "Phone: Unknown" is not who somebody is.
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -36,6 +38,7 @@ def is_address(handle: str) -> bool:
 EMAIL_LABELS = ("email:", "emails:", "邮箱:", "邮箱：")
 CONTACT_LABELS = ALIAS_LABELS + EMAIL_LABELS + (
     "phone:", "company:", "role:", "handles:", "language:", "signing entity:",
+    "location:", "time zone:", "links:", "how we know them:", "first contact:", "last contact:",
     "电话:", "电话：", "公司:", "公司：")
 
 CATEGORIES = ("people", "orgs", "projects", "skills", "knowledge", "opportunities",
@@ -220,8 +223,8 @@ class Notebook:
     PERSON_SECTIONS = ("Who they are", "Why they are here", "Our relationship",
                        "History", "Open threads", "How they communicate",
                        "How the user writes to them", "Cadence", "Uncertainties")
-    PERSON_CONTACT = ("Email", "Phone", "Company", "Role", "Signing entity",
-                      "Handles", "Language", "Also known as")
+    # The Facts block's labels (#2068); facts.FIELDS is the one definition.
+    PERSON_CONTACT = FIELDS["people"]
     # The lead under the title, before `Contact` (#1974, #1580): who they are to
     # the user, what is open, last contact. A real page opened on eight contact
     # fields with its one open thread at line 33. No heading, so the roster's
@@ -248,9 +251,9 @@ class Notebook:
         # stage had, and sends the paid stage looking for it.
         seeded = {"Handles": ", ".join(handles), "Also known as": ", ".join(handles)}
         seeded.update({k.replace("_", " ").capitalize(): v for k, v in known.items() if v})
-        lines = [f"# {name}", "", self.PERSON_LEAD, "", "## Contact"]
+        lines = [f"# {name}", "", self.PERSON_LEAD, "", "## Facts"]
         lines += [f"- {label}: {seeded.get(label) or 'Unknown'}" for label in self.PERSON_CONTACT]
-        for section in self.PERSON_SECTIONS:
+        for section in ("Insight", *self.PERSON_SECTIONS):
             lines += ["", f"## {section}", "- Unknown — not investigated yet"]
         lines += ["", "## Sources", "- (none yet)", "",
                   f"Investigation: mapped {_today()} · not investigated yet", ""]
@@ -274,6 +277,7 @@ class Notebook:
         for label, value in known.items():
             if value:
                 lines.append(f"- {label.replace('_', ' ').capitalize()}: {value}")
+        lines += ["", "## Facts", *(f"- {label}: Unknown" for label in FIELDS["orgs"])]
         for section in self.ORG_SECTIONS:
             lines += ["", f"## {section}"]
             if section == "People here" and people:
@@ -299,8 +303,8 @@ class Notebook:
         """
         if self.path(record).is_file():
             return False
-        lines = [f"# {name}"]
-        for section in self.PROJECT_SECTIONS:
+        lines = [f"# {name}", "", "## Facts", *(f"- {label}: Unknown" for label in FIELDS["projects"])]
+        for section in ("Insight", *self.PROJECT_SECTIONS):
             lines += ["", f"## {section}"]
             if section == "Paths":
                 lines += [f"- {path}" for path in paths] or ["- Unknown"]

@@ -52,7 +52,15 @@ not support says `Unknown`. **Every factual sentence carries a claim number**
 ## Domains
 - unsw.edu.au [1]
 - student.unsw.edu.au — the student body, not staff [4]
+
+## Facts
+- What they do: public research university [1]
+- Website: Unknown
+- Location: Sydney [1]
 - Legal entity: The University of New South Wales, ABN 57 195 873 179 [7]
+- Your contacts: [Vern Chan](../people/vern-chan.md) [2]
+- First contact: 2026-07-10 [1]
+- Last contact: Unknown
 
 ## Who they are
 Public research university in Sydney. The user deals with two parts of it that
@@ -99,6 +107,8 @@ Helena. [5][6]
 
 ## Rules
 
+- **`Facts` is data**: those seven labels, one line each, every one present,
+  a missing value exactly `Unknown`, every value cited, dates `YYYY-MM-DD`.
 - **`People here` is links, never copies.** A sentence true of the person and
   not the employer belongs on their page. A named person with no page yet is an
   unlinked line.

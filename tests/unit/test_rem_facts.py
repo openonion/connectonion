@@ -1,0 +1,93 @@
+"""Facts as data on every page (#2068): the shape, the upgrade, the review, the coverage."""
+
+import pytest
+
+from connectonion.rem import facts
+from connectonion.rem.files import Notebook
+from connectonion.rem.page_review import headings, normalize, validate
+
+PERSON = """# Mia Chen
+
+You owe Mia the revised SOW, 12 days. Last contact: 2026-09-10 [2].
+
+## Facts
+- Email: mia.chen@harbour.example
+- Phone: +61 2 5550 0142 (work) [1]; +61 400 555 019 (mobile) [2]
+- Company: [Harbour Analytics](../orgs/harbour.md) [1]
+- Role: Head of Data Platform [1]
+- Location: Unknown
+"""
+
+
+def test_a_value_its_qualifier_and_its_citations_are_read_apart():
+    parsed = facts.parse(PERSON)
+    assert parsed["Phone"] == [{"value": "+61 2 5550 0142", "qualifier": "work", "citations": ["1"]},
+                               {"value": "+61 400 555 019", "qualifier": "mobile", "citations": ["2"]}]
+    assert parsed["Email"] == [{"value": "mia.chen@harbour.example", "qualifier": "", "citations": []}]
+    assert parsed["Company"][0]["value"] == "[Harbour Analytics](../orgs/harbour.md)"
+    assert parsed["Location"] == []                      # Unknown is an empty list, not a value
+    assert parsed["Time zone"] == []                     # a label the page lacks reads as Unknown
+    assert list(parsed)[:4] == ["Email", "Phone", "Company", "Role"]
+
+
+def test_a_page_written_before_facts_is_read_from_its_contact_section():
+    legacy = PERSON.replace("## Facts", "## Contact")
+    assert facts.parse(legacy)["Role"][0]["value"] == "Head of Data Platform"
+
+
+def test_a_project_and_an_org_have_their_own_fields():
+    assert facts.fields("projects/x.md")[0] == "Repository"
+    assert "Last activity" in facts.fields("projects/x.md")
+    assert facts.fields("orgs/x.md")[0] == "What they do"
+    assert facts.fields("notes/x.md") == ()
+
+
+def test_a_mapped_person_page_opens_on_its_facts_and_insight(tmp_path):
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/mia.md", "Mia Chen", handles=["mia@harbour.example"])
+    text = notebook.read("people/mia.md")
+    order = [line[3:] for line in text.splitlines() if line.startswith("## ")]
+    assert order[:3] == ["Facts", "Insight", "Who they are"]
+    assert "## Contact" not in text
+    for label in facts.fields("people/mia.md"):
+        assert f"\n- {label}: " in text
+    assert facts.parse(text)["Handles"][0]["value"] == "mia@harbour.example"
+
+
+def test_mapped_project_and_org_pages_carry_their_facts(tmp_path):
+    notebook = Notebook(tmp_path)
+    notebook.stub_project("projects/p.md", "P", paths=["/src/p"])
+    notebook.stub_org("orgs/o.md", "O", domains=["o.example"])
+    project, org = notebook.read("projects/p.md"), notebook.read("orgs/o.md")
+    assert [l for l in project.splitlines() if l.startswith("## ")][:2] == ["## Facts", "## Insight"]
+    assert [l for l in org.splitlines() if l.startswith("## ")][:2] == ["## Domains", "## Facts"]
+    assert "- Repository: Unknown" in project and "- What they do: Unknown" in org
+
+
+def test_an_old_page_is_upgraded_without_losing_a_word():
+    old = PERSON.replace("## Facts", "## Contact") + "\n## Who they are\n- Leads data [1]\n"
+    new = facts.upgrade("people/mia.md", old)
+    assert "## Contact" not in new and new.count("## Facts") == 1
+    assert "- Phone: +61 2 5550 0142 (work) [1]; +61 400 555 019 (mobile) [2]" in new
+    assert "- Time zone: Unknown" in new and "- Also known as: Unknown" in new
+    assert new.index("- Location:") < new.index("- Time zone:") < new.index("## Who they are")
+    assert facts.upgrade("people/mia.md", new) == new
+
+
+def test_normalize_puts_facts_and_insight_where_the_reader_expects_them():
+    old = PERSON.replace("## Facts", "## Contact") + "\n## Who they are\n- Leads data [1]\n\n## Sources\n- [1] x\n"
+    page = normalize("people/mia.md", old)
+    found = [line[3:] for line in page.splitlines() if line.startswith("## ")]
+    assert found == list(headings("people/mia.md"))
+    assert found[:2] == ["Facts", "Insight"]
+    assert page.index("You owe Mia") < page.index("## Facts")
+
+
+def test_the_owners_page_has_facts_and_insight_too():
+    """Its Insight is the owner's own month: what shipped, who is waiting (#2065)."""
+    assert headings("people/me.md", owner=True)[:2] == ("Facts", "Insight")
+
+
+def test_coverage_counts_filled_fields():
+    got = facts.coverage(PERSON, "people/mia.md")
+    assert got == {"filled": 4, "fields": len(facts.fields("people/mia.md"))}
