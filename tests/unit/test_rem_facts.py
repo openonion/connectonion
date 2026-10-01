@@ -144,3 +144,10 @@ def test_a_page_written_with_the_facts_block_fills_the_people_table_columns(tmp_
     assert mia["linkedin"] == "https://www.linkedin.com/in/mia-chen" and mia["website"] == "https://harbour.example"
     assert mia["how_known"] == "introduced by Priya Nair"
     assert (mia["first_contact"], mia["last_contact"]) == ("2026-08-04", "2026-09-10")
+
+
+def test_a_link_is_linkedin_by_its_host_not_by_a_substring():
+    from connectonion.rem.store_build import columns
+    row = columns({"Links": "https://evil.example/?u=linkedin.com; https://www.linkedin.com/in/mia"})
+    assert row["linkedin"] == "https://www.linkedin.com/in/mia"
+    assert row["website"] == "https://evil.example/?u=linkedin.com"

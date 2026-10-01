@@ -110,6 +110,14 @@ def facts(text: str) -> dict:
     return found
 
 
+def _linkedin(link: str) -> bool:
+    """By host, not by substring: `evil.example/?u=linkedin.com` is a website."""
+    from urllib.parse import urlparse
+    url = link.split()[0] if link.split() else ""
+    host = (urlparse(url if "://" in url else "https://" + url).hostname or "").casefold()
+    return host == "linkedin.com" or host.endswith(".linkedin.com")
+
+
 def columns(found: dict) -> dict:
     by_label = {label.casefold(): value for label, value in found.items()}
     row = {column: next((by_label[label] for label in labels if label in by_label), "")
@@ -118,8 +126,8 @@ def columns(found: dict) -> dict:
     row["emails"] = sorted({address.casefold() for address in EMAIL.findall(emails)})
     # #2068's `Links` holds both, `; `-separated: a LinkedIn URL is linkedin, the rest website.
     links = [part.strip() for part in by_label.get("links", "").split(";") if part.strip()]
-    row["linkedin"] = row["linkedin"] or next((l for l in links if "linkedin.com" in l.casefold()), "")
-    row["website"] = row["website"] or "; ".join(l for l in links if "linkedin.com" not in l.casefold())
+    row["linkedin"] = row["linkedin"] or next((l for l in links if _linkedin(l)), "")
+    row["website"] = row["website"] or "; ".join(l for l in links if not _linkedin(l))
     for column in ("first_contact", "last_contact"):
         row[column] = (DAY.search(row[column]) or [""])[0] if row[column] else ""
     return row
