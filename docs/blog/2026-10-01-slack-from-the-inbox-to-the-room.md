@@ -41,7 +41,18 @@ passed as an argument, so it never sits in shell history. Each is checked with
 Slack before anything is saved, and the scopes it lacks are read from the
 `x-oauth-scopes` header Slack returns.
 
-All of this has been tested only against a fake Slack. The fake returns the
-documented shapes, but nobody has yet run these verbs against a real
-workspace, and that run is the next step before the "Experimental" label
-comes off.
+Every test passed against a fake Slack, and the first run on a real
+workspace still found three things the fake could not. Search failed on an
+ordinary user token: it asked for `users:read` to name the authors, a scope
+the user token had no reason to hold. The bot token already has that scope,
+so names now come from the bot, and the user token needs nothing beyond
+`search:read`. In a pipe, which is how every agent reads a command, the
+`Next:` line printed before the results. It went to stderr while the rows
+were still waiting in stdout's buffer. The handler now prints it after the
+results. And one reply was shown as "(1 replies)".
+
+The same run settled the manifest question. The link really does open
+Slack's "Create from a manifest" dialog already filled in, though the form has
+two steps, Next and then Create, where the first draft of the instructions
+said one. The inbox's own listen-and-reply gates have still not run on a real
+workspace, so the "Experimental" label stays.
