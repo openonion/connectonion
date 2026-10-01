@@ -1,5 +1,7 @@
 """Facts read from the material with no model, and kept when the model drops them (#2068)."""
 
+import pytest
+
 from connectonion.rem import facts
 from connectonion.rem.fact_extract import extract, facts_item
 from connectonion.rem.page_review import validate
@@ -168,6 +170,30 @@ def test_the_turn_is_handed_the_facts_and_the_dropped_phone_comes_back(tmp_path,
     assert "- Phone: +61 412 000 111 (mobile) [1]" in page        # same message, same number
     assert result["facts"]["after"]["filled"] > result["facts"]["before"]["filled"]
     assert result["facts"]["extracted"] >= 3                        # email, phone, first and last contact
+
+
+def test_a_page_that_already_cites_the_mail_gets_its_lost_phone_without_a_model_call(tmp_path, monkeypatch):
+    """Ody's case: the signature mail was cited, so nothing was new, and the phone stayed Unknown."""
+    from connectonion.rem import investigate as inv
+    from connectonion.rem.config import prepare
+    monkeypatch.setattr("connectonion.rem.runner.check_skill", lambda root, stage: None)
+    root = tmp_path / "rem"
+    prepare(root)
+    notebook = inv.Notebook(root)
+    notebook.stub_person("people/vern.md", "Vern Chan", ["vern"], email="vern.chan@unsw.edu.au")
+    source = "outlook:" + __import__("hashlib").sha256(b"s1").hexdigest()[:12]
+    page = (notebook.read("people/vern.md").replace("- Unknown — not investigated yet", "- Unknown")
+            .replace("- (none yet)", f"- [1] {source} — 2026-09-30, high")
+            .replace("- Role: Unknown", "- Role: Global Program Manager [1]")
+            .replace("· not investigated yet", "· investigated 2026-09-29 (outlook)"))
+    notebook.write("people/vern.md", page)
+    with pytest.raises(inv.NothingNew):
+        inv.investigate(root, "people/vern.md", "Vern Chan", ["vern", "vern.chan@unsw.edu.au"], days=5,
+                        clients={"outlook": Signed()}, subscriptions={},
+                        runner=lambda *a, **k: pytest.fail("no model call"))
+    kept = notebook.read("people/vern.md")
+    assert "- Phone: +61 412 000 111 (mobile) [1]" in kept
+    assert "- First contact: Unknown" in kept          # an update's window is not the whole history
 
 
 def test_a_new_fact_without_a_citation_is_refused_but_a_mapped_address_is_not():
