@@ -454,6 +454,26 @@
   .open-cell .more { font: 11px var(--mono); color: var(--ink-3); }
   .sheet td.none { text-align: center; color: var(--ink-3); padding: 28px; cursor: default; }
 
+  /* People at 1440: every column fits (main 1136px); narrower, the sheet scrolls inside itself. */
+  @media (min-width: 821px) { main.wide { padding-left: 28px; padding-right: 28px; } }
+  .sheet th button { padding: 9px 9px; }
+  .sheet td { padding: 8px 9px; min-width: 0; font-size: 13px; }
+  .sheet .name { min-width: 180px; max-width: 200px; width: 190px; }
+  .sheet .c-open { min-width: 220px; max-width: 250px; width: 240px; }
+  .sheet .c-company, .sheet .c-role { min-width: 92px; max-width: 112px; }
+  .sheet .c-company .clamp, .sheet .c-role .clamp { max-width: 112px; }
+  .sheet .c-email { max-width: 140px; }
+  .sheet .trunc { display: block; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sheet .c-phone { min-width: 128px; }
+  .sheet .c-phone .mono { white-space: nowrap; }
+  .open-cell { flex-wrap: wrap; row-gap: 2px; }
+  .open-cell .txt { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; flex-basis: 100%; }
+  .name-cell .st { display: inline-flex; }
+  /* A cut edge says so: a shadow where more columns wait to the right. */
+  .sheet-box { position: relative; }
+  .sheet-box::after { content: ""; position: absolute; right: 1px; bottom: 1px; top: var(--sheet-top, 0); width: 28px; pointer-events: none; border-radius: 0 8px 8px 0; background: linear-gradient(to right, transparent, rgba(23, 27, 43, 0.12)); opacity: 0; transition: opacity 150ms; }
+  .sheet-box.clip-right::after { opacity: 1; }
+
   /* ---- under the title: what is open, how long, when you last spoke ---- */
   .leadrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 16px 0 0; }
   .leadrow:empty { display: none; }
@@ -716,6 +736,30 @@ function citeChip(n, from) {
   return '<a class="cite" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + n.toLowerCase() + '"' +
     (tip ? ' data-tip="' + esc(tip) + '"' : "") + ' aria-label="Source ' + n + (tip ? ": " + esc(tip) : "") + '">' + n + "</a>";
 }
+// Pages are written about "the user"; the reader is read by them. At render time
+// only (the Markdown keeps its wording, and Copy Markdown copies it as written)
+// "the user" becomes "you", with the verb that follows agreeing: "the user has
+// not signed" reads "you have not signed", "the user's" reads "your".
+const YOU_VERBS = { has: "have", is: "are", was: "were", does: "do", "hasn't": "haven't", "isn't": "aren't", "wasn't": "weren't", "doesn't": "don't" };
+// Words after "the user" that end in s and are not verbs: "owes the user its proposal".
+const NOT_VERBS = new Set(["its", "as", "was", "has", "yes", "plus", "thus", "less", "unless", "always", "perhaps", "sometimes", "whereas", "towards", "afterwards", "nevertheless", "regardless", "across", "besides"]);
+function plural(verb) {
+  if (YOU_VERBS[verb.toLowerCase()]) return YOU_VERBS[verb.toLowerCase()];
+  if (/(?:ss|us|is)$/i.test(verb) || !/s$/i.test(verb) || NOT_VERBS.has(verb.toLowerCase())) return null;  // not a third-person verb
+  if (/[^aeiou]ies$/i.test(verb)) return verb.slice(0, -3) + "y";
+  if (/(?:sh|ch|x|z|o)es$/i.test(verb)) return verb.slice(0, -2);
+  return verb.slice(0, -1);
+}
+function youify(text) {
+  const cap = (t, s) => t === "T" ? s[0].toUpperCase() + s.slice(1) : s;
+  return String(text)
+    .replace(/\b([Tt])he user(?:'s|’s)/g, (m, t) => cap(t, "your"))
+    .replace(/\b([Tt])he user (?:(still|also|now|then|already|never|often|usually) )?([a-z]+(?:['’]t)?)\b/g, (m, t, adverb, word) => {
+      const verb = plural(word.replace("’", "'"));
+      return cap(t, "you") + " " + (adverb ? adverb + " " : "") + (verb || word);
+    })
+    .replace(/\b([Tt])he user\b/g, (m, t) => cap(t, "you"));
+}
 function inline(text, from) {
   let s = esc(text);
   const codes = [];
@@ -730,6 +774,7 @@ function inline(text, from) {
     return "\u0002" + (links.length - 1) + "\u0002";
   });
   // Three or more claim numbers in a row read as noise: one chip says how many, and names them on hover.
+  s = youify(s);
   const runs = [];
   s = s.replace(/(?:\s*\[W?\d{1,3}\]){3,}/g, run => { runs.push(citeRun(run.match(/W?\d{1,3}/g), from)); return "\u0003" + (runs.length - 1) + "\u0003"; });
   s = s.replace(/\s*\[(W?\d{1,3})\]/g, (m, n) => citeChip(n, from));
@@ -911,7 +956,8 @@ function known(r) {
   let intro = "";
   for (const part of body.split(/^(?=## )/m)) {
     const head = /^## ([^\n]*)\n?/.exec(part);
-    if (!head) { intro = UNFILLED_LEAD.test(part.trim()) ? "" : part.trim(); continue; }
+    // A mapped lead now carries the last contact (#2059): show that, not the placeholder before it.
+    if (!head) { intro = UNFILLED_LEAD.test(part.trim()) ? "" : part.trim().replace(/^Unknown\s*—\s*not investigated yet\.\s*/i, ""); continue; }
     const text = part.slice(head[0].length).split("\n").filter(l => !UNKNOWN_LINE.test(l) && !PLACEHOLDER.test(l) && !repeatsTitle(l)).join("\n").trim();
     if (text) kept.push({ title: head[1].trim(), text });
     else if (!MECHANICAL.has(head[1].trim().toLowerCase())) missing.push(head[1].trim());
@@ -936,8 +982,9 @@ function known(r) {
 }
 // The first readable line of some Markdown, without its markup or claim numbers.
 function plainLine(text) {
-  return String(text).split("\n").map(l => l.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/\s*\[W?\d{1,3}\]/g, "").replace(/[#*`>]/g, "").trim()).find(Boolean) || "";
+  const line = String(text).split("\n").map(l => l.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/\s*\[W?\d{1,3}\]/g, "").replace(/[#*`>]/g, "").trim()).find(Boolean);
+  return line ? youify(line) : "";
 }
 function section(r, name) { return known(r).kept.find(s => s.title.toLowerCase() === name); }
 function byActivity(a, b) {
@@ -964,7 +1011,7 @@ function owing() {
   const me = "(?:the user|you" + (first ? "|" + first : "") + ")";
   OWING = {
     mine: new RegExp("\\b" + me + "(?:['’]s)?\\s+(?:has |have |had |still )?(?:owes?|owed|promised|offered|agreed|needs? to|must|should|said (?:he|she|they) would|to (?:send|reply|sign|confirm|pay|review|decide)|has not|have not|hasn't|haven't)\\b" +
-      "|\\b(?:requested|asked for|awaits?|awaiting|waiting (?:on|for))\\s+(?:" + me + "(?:['’]s)?|your)\\b|\\brequested (?:confirmation|approval|a reply|an answer)\\b|\\byou owe\\b", "i"),
+      "|^\\s*" + me + "\\s*:|\\b(?:requested|asked for|awaits?|awaiting|waiting (?:on|for))\\s+(?:" + me + "(?:['’]s)?|your)\\b|\\brequested (?:confirmation|approval|a reply|an answer)\\b|\\byou owe\\b", "i"),
     theirs: /\b(?:owes?|owed) (?:the user|you)\b|\bwaiting (?:on|for) (?:them|him|her|their)\b|\bunanswered\b|\b(?:he|she|they) (?:has|have) not (?:replied|answered|sent|confirmed)\b|\bno reply\b|\b[A-Z][\w-]+(?:['’]s)? (?:promised|is expected to|agreed to|owes|said (?:he|she|they) would)\b|\bpromised\b/
   };
   return OWING;
@@ -999,7 +1046,8 @@ function threads(r) {
 }
 function historyItems(text) {
   return listItems(text).map(t => {
-    const m = /^(?:\*\*)?(\d{4}-\d{2}(?:-\d{2})?)(?:\*\*)?\s*[:—–-]\s*(?:\*\*)?\s*(.*)$/.exec(t);
+    // A range is one date: Ody's page has "2026-07-05–17 —" and "2026-07-29–08-04 —" (#2059).
+    const m = /^(?:\*\*)?(\d{4}-\d{2}(?:-\d{2})?(?:\s*[–-]\s*(?:\d{2}-)?\d{2})?)(?:\*\*)?\s*(?::|[—–]|\s-\s)\s*(?:\*\*)?\s*(.*)$/.exec(t);
     return m ? { day: m[1], text: m[2] } : { day: "", text: t };
   });
 }
@@ -1131,20 +1179,22 @@ function dateCell(day) { return day ? el("span", { class: "mono", text: shortDat
 function textCell(v) { return v ? el("span", { class: "clamp", title: plainLine(v), html: inline(v.replace(/\s*\[W?\d{1,3}\]/g, ""), "") }) : el("span", { class: "unk", text: "—" }); }
 function nameCell(r, f, withSummary) {
   const k = known(r);
-  return el("div", { class: "name-cell" }, [el("span", { class: "nm" }, [moon(k.status), el("a", { href: href(r), text: r.title })]),
+  return el("div", { class: "name-cell" }, [el("span", { class: "nm" }, [el("span", { class: "st", title: k.status, "aria-label": k.status }, [moon(k.status)]), el("a", { href: href(r), text: r.title })]),
     withSummary && k.summary ? el("span", { class: "sum", text: k.summary }) : null]);
 }
 const COLUMNS = {
   people: [
+    // What's open sits next to the name: it is why the sheet is opened, and it must never be the column cut off.
+    // Status is the moon beside the name and the Written / Mapped filters, not a column.
     { key: "name", label: "Name", cls: "name", sort: (r) => r.title.toLowerCase(), cell: (r, f) => nameCell(r, f, true) },
+    { key: "open", label: "What's open", cls: "open-col", sort: (r, f) => f.open.length ? OPEN_RANK[f.open[0].dir] : 9, cell: (r, f) => openCell(f) },
     { key: "company", label: "Company", sort: (r, f) => plainValue(f.company).toLowerCase() || "￿", cell: (r, f) => textCell(f.company) },
     { key: "role", label: "Role", sort: (r, f) => plainValue(f.role).toLowerCase() || "￿", cell: (r, f) => textCell(f.role) },
-    { key: "email", label: "Email", cls: "mono-col", sort: (r, f) => f.email.toLowerCase() || "￿", cell: (r, f) => f.email ? el("a", { href: "mailto:" + plainValue(f.email).split(/[,\s]/)[0], class: "mono", text: plainValue(f.email) }) : textCell("") },
+    { key: "email", label: "Email", cls: "mono-col", sort: (r, f) => f.email.toLowerCase() || "￿", cell: (r, f) => f.email ? el("a", { href: "mailto:" + plainValue(f.email).split(/[,;\s]/)[0], class: "mono trunc", title: plainValue(f.email), text: plainValue(f.email) }) : textCell("") },
     { key: "phone", label: "Phone", cls: "mono-col", sort: (r, f) => f.phone || "￿", cell: (r, f) => f.phone ? el("span", { class: "mono", text: plainValue(f.phone) }) : textCell("") },
     { key: "last", label: "Last contact", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last), desc: true },
     { key: "mails", label: "Mails", num: true, sort: (r, f) => f.mails ?? -1, cell: (r, f) => f.mails == null ? textCell("") : el("span", { class: "mono", title: f.sent != null ? f.received + " from them, " + f.sent + " from you" : "", text: String(f.mails) }), desc: true },
-    { key: "open", label: "What's open", cls: "open-col", sort: (r, f) => f.open.length ? OPEN_RANK[f.open[0].dir] : 9, cell: (r, f) => openCell(f) },
-    { key: "status", label: "Status", sort: r => ({ "Investigated": 0, "Some findings": 1 })[known(r).status] ?? 2, cell: r => statusPill(r) }],
+  ],
   orgs: [
     { key: "name", label: "Name", cls: "name", sort: r => r.title.toLowerCase(), cell: (r, f) => nameCell(r, f, false) },
     { key: "domain", label: "Domain", cls: "mono-col", sort: (r, f) => f.domain || "￿", cell: (r, f) => f.domain ? el("span", { class: "mono", text: f.domain }) : textCell("") },
@@ -1185,7 +1235,7 @@ function sheet(c, items) {
     const tr = el("tr");
     for (const col of cols) {
       const sorted = state.sort === col.key;
-      const th = el("th", { class: (col.cls || "") + (col.num ? " num" : ""), scope: "col", "aria-sort": sorted ? (state.desc ? "descending" : "ascending") : "none" });
+      const th = el("th", { class: "c-" + col.key + " " + (col.cls || "") + (col.num ? " num" : ""), scope: "col", "aria-sort": sorted ? (state.desc ? "descending" : "ascending") : "none" });
       const btn = el("button", { type: "button" }, [col.label, el("span", { class: "arrow", "aria-hidden": "true", text: sorted ? (state.desc ? "↓" : "↑") : "↕" })]);
       btn.onclick = () => { if (state.sort === col.key) state.desc = !state.desc; else { state.sort = col.key; state.desc = !!col.desc; } draw(); };
       th.appendChild(btn); tr.appendChild(th);
@@ -1207,7 +1257,7 @@ function sheet(c, items) {
     tbody.textContent = "";
     for (const r of rows) {
       const row = el("tr", { "data-href": href(r) });
-      for (const c2 of cols) row.appendChild(el("td", { class: (c2.cls || "") + (c2.num ? " num" : "") }, [c2.cell(r, facts(r))]));
+      for (const c2 of cols) row.appendChild(el("td", { class: "c-" + c2.key + " " + (c2.cls || "") + (c2.num ? " num" : "") }, [c2.cell(r, facts(r))]));
       tbody.appendChild(row);
     }
     if (!rows.length) tbody.appendChild(el("tr", {}, [el("td", { colspan: String(cols.length), class: "none", text: "Nothing matches. Clear the filter to see every page." })]));
@@ -1220,6 +1270,14 @@ function sheet(c, items) {
     if (tr && !String(window.getSelection())) location.hash = tr.dataset.href;
   });
   draw();
+  // The fade shows only while columns are hidden to the right.
+  const edge = () => {
+    wrap.classList.toggle("clip-right", scroller.scrollLeft + scroller.clientWidth < scroller.scrollWidth - 2);
+    wrap.style.setProperty("--sheet-top", scroller.offsetTop + "px");
+  };
+  scroller.addEventListener("scroll", edge, { passive: true });
+  if (window.ResizeObserver) { const watch = new ResizeObserver(edge); watch.observe(scroller); watch.observe(table); }
+  requestAnimationFrame(edge);
   return wrap;
 }
 
@@ -1804,7 +1862,7 @@ function record(path, heading) {
     const box = el("div", { class: "missing" + (mapped ? " primary" : "") }, [
       el("span", { class: "lead", text: mapped ? "Only mapped so far" : k.missing.length + (k.missing.length === 1 ? " section" : " sections") + " still to learn" }),
       mapped ? el("p", { class: "why", text: "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in." }) : null,
-      el("div", { class: "names", text: "Not investigated yet: " + k.missing.join(", ") + "." }),
+      el("div", { class: "names", text: "Not investigated yet: " + youify(k.missing.join(", ")) + "." }),
       el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]);
     if (mapped) grid.parentNode.insertBefore(box, grid); else column.appendChild(box);
   }

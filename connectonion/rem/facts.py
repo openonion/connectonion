@@ -188,7 +188,7 @@ def _cite(text: str, row: dict) -> tuple[str, str]:
     if found:
         return text, found[1]
     number = str(max([int(n) for n in re.findall(r"\[(\d+)\]", text)] or [0]) + 1)
-    entry = f"- [{number}] {row['source']} — {row['date']}, high; read by co rem from the message\n"
+    entry = f"- [{number}] {row['source']} — {row['date']}\n"
     if not marker:
         return text.rstrip("\n") + "\n\n## Sources\n" + entry, number
     after = re.search(r"(?m)^(?:## |Investigation:)", tail)

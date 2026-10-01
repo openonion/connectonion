@@ -655,8 +655,8 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     if candidate is not None:
         # The review refuses a page that ends over the limit; a person page
         # learnt that only after a 643k-token turn (#2041).
-        from .page_review import size_note
-        prompt += size_note(len(notebook.read(record)))
+        from .page_review import history_note, size_note
+        prompt += size_note(len(notebook.read(record))) + history_note(notebook.read(record))
     before = {r: notebook.read(r) for r in notebook.list()}
     task_root = notebook.root
     if candidate:

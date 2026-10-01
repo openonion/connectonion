@@ -331,6 +331,33 @@ def drop_tool_text(record: str, text: str, original: str) -> tuple[str, list[str
     return '\n'.join(kept) + marker + tail, removed
 
 
+# History is milestones (#2059): Ody Zhou's held 17 bullets, five of them "sent report X".
+HISTORY_LIMIT = 8
+
+
+def _history(text: str) -> list[str]:
+    section = prose(text).partition('\n## History\n')[2].split('\n## ', 1)[0]
+    return [line for line in section.splitlines() if line.startswith('- ') and 'not investigated yet' not in line]
+
+
+def history_note(page: str) -> str:
+    """The History limit, said before the turn, for a page that already has a History."""
+    lines = len(_history(page))
+    if not lines:
+        return ""
+    return (f"History holds at most {HISTORY_LIMIT} dated milestones; it has {lines}"
+            + (": fold the oldest into one line per year. " if lines > HISTORY_LIMIT else ". "))
+
+
+def history_errors(candidate: str, original: str) -> list[str]:
+    """A History past 8 lines may not grow; one already past may come down in steps."""
+    lines, before = len(_history(candidate)), len(_history(original))
+    if lines <= HISTORY_LIMIT or lines <= before:
+        return []
+    return [f'History has {lines} lines (was {before}); keep at most {HISTORY_LIMIT} dated milestones: '
+            'fold the oldest into one line per year, and drop sends, reminders and newsletters']
+
+
 def size_errors(candidate: str, original: str) -> list[str]:
     """A page over the limit may not grow; one already over may come down in steps."""
     if len(candidate) <= PAGE_LIMIT or len(candidate) <= len(original):
@@ -356,7 +383,7 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
              owner: bool = False) -> list[str]:
     """Structural checks only; citation existence does not prove factual entailment."""
     body = prose(candidate)
-    errors = size_errors(candidate, original)
+    errors = size_errors(candidate, original) + history_errors(candidate, original)
     if len(re.findall(r'^# .+', body, re.M)) != 1:
         errors.append('Expected exactly one page title')
     counts = Counter(re.findall(r'^## (.+)$', body, re.M))

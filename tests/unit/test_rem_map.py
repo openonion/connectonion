@@ -1038,3 +1038,22 @@ def test_a_page_is_for_someone_the_owner_corresponds_with(tmp_path, monkeypatch)
     assert {row['domain'] for row in result['orgs']} == {'both.example', 'twice.example'}
     assert notebook.list('orgs') == sorted(row['record'] for row in result['orgs'])
     assert any('2 correspondents with mail one way only' in line for line in result['coverage'])
+
+
+def test_a_new_person_page_states_the_last_contact_in_its_lead_and_leaves_history_empty(tmp_path, monkeypatch):
+    """#2059: 379 of 424 History bullets on the owner's people pages were the map's
+    "Observed mail count: N; first: …; last: …", cited to .state/map.json."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (
+        [{'name': 'Basem Suleiman', 'address': 'b@unsw.edu.au', 'mails': 6, 'sent': 2, 'received': 4,
+          'first': '2026-08-01', 'last': '2026-09-06', 'boxes': ['outlook']}], set()))
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    record = next(row['record'] for row in result['people'] if row.get('address') == 'b@unsw.edu.au')
+    page = Notebook(tmp_path).read(record)
+    assert 'Last contact: 2026-09-06; 6 mails (outlook).' in page
+    assert 'Observed mail count' not in page and 'Enumeration metadata' not in page
+    assert 'classification unassessed' not in page
+    assert '## History\n- Unknown — not investigated yet' in page

@@ -59,8 +59,8 @@ refused.
 
 ## Evidence format
 
-Cite `[1]`, `[2]`; under `Sources` define each number once: the source id, the
-observation date, confidence. Only citable, or the page is rejected: a source id
+Cite `[1]`, `[2]`; under `Sources` define each number once, `- [n] <source id> —
+<date>`, nothing more. Only citable, or the page is rejected: a source id
 from the material (the `###` heading of an evidence entry: `outlook:…`,
 `gmail:…`, `codex:…:81499`), `investigation:page` for what the page already said,
 or a file you read inside the page's `Paths`. Commands, queries and "the Outlook

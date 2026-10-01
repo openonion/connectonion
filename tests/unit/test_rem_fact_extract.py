@@ -108,7 +108,7 @@ def test_a_phone_the_model_dropped_is_put_back_with_its_source():
     rows = extract([mail("gmail:a1", "2026-08-04T01:00:00+00:00", SIGNED)], HANDLES)
     kept, restored = facts.keep_extracted("people/mia.md", PAGE, rows)
     assert "- Phone: +61 2 5550 0142 (work) [2]; 0400 555 019 (mobile) [2]" in kept
-    assert "- [2] gmail:a1 — 2026-08-04, high; read by co rem from the message" in kept
+    assert "- [2] gmail:a1 — 2026-08-04\n" in kept
     assert {r["field"] for r in restored} == {"Phone"}           # no Links line: nothing to fill
     assert facts.keep_extracted("people/mia.md", kept, rows)[1] == []
     upgraded, restored = facts.keep_extracted("people/mia.md", facts.upgrade("people/mia.md", PAGE), rows)

@@ -80,7 +80,10 @@ Rules:
 - **`Why they are here` is not `Who they are`**: how they entered the user's
   world, who approached whom, what each side wants.
 - **`Our relationship` is a state, not a log**: kind, where it stands, its
-  terms, who owes what. The dated log goes in `History`.
+  terms, who owes what.
+- **`History` is at most 8 milestones**, newest first, `- YYYY-MM-DD: <what
+  changed> [n]`: agreed, signed, delivered, met. Not a send or a newsletter.
+  Past 8, fold the oldest into one line per year.
 - **An open thread names who owes whom what, and since when.** Nothing open:
   `Nothing open as of <date>`, plus the next expected contact.
 - **Say a thing once, in one clause.** Doubt goes once in `Uncertainties`,
@@ -94,10 +97,9 @@ Rules:
   left out and named in `Uncertainties`.
 - **`Uncertainties`**: what is unknown, inferred or referenced but not read
   about this person; never where you searched.
-- **Numbered claims.** Each entry: the claim, confidence (high / medium / low),
-  date observed, source id. One number per claim.
-- A person with one message and no identity gets no page; a second message
-  extends the page, never rewrites it.
+- **Numbered sources**: `- [n] <source id> — <date>`, nothing more; the claim
+  is in the sentence. Reuse a number for a repeated source; list only what a
+  sentence cites.
 
 ## The headings are copied exactly
 

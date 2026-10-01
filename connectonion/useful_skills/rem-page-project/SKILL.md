@@ -106,7 +106,7 @@ An unknown flow stays Unknown; a plausible diagram is not evidence.
 - `Open threads`: next action, owner when known, date.
 - `Uncertainties`: missing, unread, stale or conflicting evidence, said once
   here rather than as a tail on every bullet elsewhere.
-- `Sources`: numbered: source id, observation date, confidence; each inspected
+- `Sources`: numbered, `- [n] <source id> — <date>`, nothing more; each inspected
   file its own entry. Mark inference; never copy facts from examples.
 
 State a claim in one clause. How the page was made (the mapper, the collector,
