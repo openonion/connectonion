@@ -33,7 +33,7 @@ pip install connectonion
 ```bash
 # your identity and ~/.co/keys.env
 co init
-# settings in use; values stay hidden
+# settings in use, values hidden
 co env
 # connect Outlook once
 co auth microsoft
