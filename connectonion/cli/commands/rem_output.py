@@ -362,3 +362,35 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
     title = style.heading('co rem sync') + (' — ' + style.error('needs attention')
                                             if value.get('outcome') in ('partial', 'failed') else '')
     return "\n".join([title, "", *(highlight(printable(line), counts=True) for line in lines if line)])
+
+
+# What a check is called on doctor's page, where its JSON name is too long for the column.
+DOCTOR_NAMES = {'spreadsheet support (co rem extra)': 'spreadsheet support'}
+
+
+def doctor_board(checks: list) -> str:
+    """`co rem doctor` as one check a line: ✓ or ✗, the check, what is true, and a fix under a failure.
+
+    It printed `ok  co CLI: /Users/…` and `NO  schedule: not installed -> co rem
+    start`: a fix at the end of a line that an 80-column terminal had already
+    wrapped. Now the title counts what needs fixing and each fix is on the line
+    under its check, where the eye already is (1.9.0a9).
+    """
+    from pathlib import Path
+
+    from . import rem_look
+    from .rem_look import highlight
+    home = str(Path.home())
+    names = [DOCTOR_NAMES.get(row['check'], row['check']) for row in checks]
+    width = min(26, 4 + max((len(name) for name in names), default=0) + 2)
+    failed = [row for row in checks if not row['ok']]
+    verdict = (style.ok('every check passes') if not failed else
+               style.warn(f"{len(failed)} of {len(checks)} checks need a fix"))
+    lines = [style.heading('co rem doctor') + ' · ' + verdict, '']
+    for name, row in zip(names, checks):
+        mark = style.ok(rem_look.FINE) if row['ok'] else style.warn(rem_look.BROKEN)
+        detail = printable(str(row['detail'])).replace(home, '~')
+        lines.append(f"  {mark} {name}" + ' ' * max(1, width - 4 - len(name)) + highlight(detail))
+        if not row['ok'] and row.get('fix'):
+            lines.append(' ' * width + style.muted(rem_look.FIX) + ' ' + style.command(row['fix']))
+    return '\n'.join([*lines, ''])

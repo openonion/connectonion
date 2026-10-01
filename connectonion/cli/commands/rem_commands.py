@@ -1385,11 +1385,9 @@ def make_rem_app(factory):
                 slot = status(root).get("next_run")
                 check("schedule", slot is not None, f"next run {slot}" if slot else "not installed",
                       rem_fix=["start"])
-            if not ctx.obj["json"]:
-                checks = [f"{'ok ' if row['ok'] else 'NO '} {row['check']}: {row['detail']}"
-                          + ("" if row["ok"] else f" -> {row['fix']}") for row in checks]
             return checks, (rem_fixes[0] if rem_fixes else ["status"])
-        _handle(ctx, operation, ["config"])
+        from .rem_output import doctor_board
+        _handle(ctx, operation, ["config"], draw=doctor_board)
 
     # --------------------------------------------------------------- Advanced
 

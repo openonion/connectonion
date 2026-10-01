@@ -1150,8 +1150,10 @@ def test_doctor_says_whether_spreadsheet_support_is_installed(tmp_path, monkeypa
     monkeypatch.setattr(importlib.util, 'find_spec',
                         lambda name, *a: None if name == 'openpyxl' else real(name, *a))
     result = invoke(tmp_path, 'doctor')
-    line = next(line for line in result.output.splitlines() if 'spreadsheet' in line)
-    assert line.startswith('NO') and "connectonion[rem]" in line
+    lines = result.output.splitlines()
+    at = next(n for n, line in enumerate(lines) if 'spreadsheet' in line)
+    # 1.9.0a9: ✗ and the check on its line, the fix on the line under it.
+    assert lines[at].startswith('  ✗ spreadsheet support') and "connectonion[rem]" in lines[at + 1]
 
 
 def test_a_batch_with_nothing_to_warn_about_prints_no_empty_warning_line():
@@ -1177,8 +1179,11 @@ def test_doctor_says_a_connected_mailbox_the_round_does_not_read(tmp_path, monke
     prepare(tmp_path)
     monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: kind == 'gmail')
     result = invoke(tmp_path, 'doctor')
-    line = next(line for line in result.output.splitlines() if 'mailbox gmail' in line)
-    assert line.startswith('NO') and 'not read by the daily round' in line and 'sources add gmail' in line
+    lines = result.output.splitlines()
+    at = next(n for n, line in enumerate(lines) if 'mailbox gmail' in line)
+    assert lines[at].startswith('  ✗') and 'not read by the daily round' in lines[at]
+    assert lines[at + 1].lstrip().startswith('→ co rem') and lines[at + 1].endswith('sources add gmail')
+    assert lines[0].startswith('co rem doctor · ') and 'need a fix' in lines[0]
 
 
 def test_doctor_and_status_name_a_stalled_init_archive_and_the_command_that_resumes_it(tmp_path, monkeypatch):
@@ -1193,8 +1198,9 @@ def test_doctor_and_status_name_a_stalled_init_archive_and_the_command_that_resu
     write_json(state_path(tmp_path, "mail/archive.json"), {**manifest, "phase": "running"})
     monkeypatch.setattr('connectonion.rem.service.now', lambda: T0 + timedelta(hours=20))
     doctor = invoke(tmp_path, 'doctor')
-    line = next(line for line in doctor.output.splitlines() if 'init mail archive' in line)
-    assert line.startswith('NO') and '2 of 6 bodies saved' in line and line.rstrip().endswith('sync')
+    lines = doctor.output.splitlines()
+    at = next(n for n, line in enumerate(lines) if 'init mail archive' in line)
+    assert lines[at].startswith('  ✗') and '2 of 6 bodies saved' in lines[at] and lines[at + 1].endswith(' sync')
     status = invoke(tmp_path, 'status')
     assert '  ↻ Archive      2 of 6 mail bodies saved · stalled since ' in status.output
     assert 'sync resumes it from the saved bodies' in status.output
