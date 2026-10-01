@@ -28,41 +28,48 @@ current CI blockers and remaining work.
 ## Start here
 
 ```bash
-co rem init                 # Build the map (no model), show your own page, then write it (one model turn)
+co rem init                 # Map sources, then investigate your recent important people and work
 co rem open                 # Read your page
 co rem start                # Keep it current: approve sources, turn on the daily round
 ```
 
-The first run is one command (#1943). `init` is a script: it maps 90 days of
+The first run is one command (#1943). `init` first maps 90 days of
 mail and your local Codex / Claude Code sessions, saves the private mail
 material, and prints your own page's facts — who you write to most, how much
 mail, which projects you have been coding in — with the page's path, within the
-first minutes. Then, in a terminal, it writes your own page by itself: the whole
+first minutes. Then it uses the configured model to write your own page: the whole
 `investigate me`, from everything you sent and your coding sessions of the last
 30 days (or `--days`), one model turn over evidence files, about 15 minutes.
-Next come the 3 people you wrote to most in the last 14 days, one turn each,
-reading the run's own `--days` of their mail (not the 150 days a full
-investigation reads), and then your 3 most recently active projects, from the
-messages you typed in their Codex and Claude Code sessions (the
-`co rem projects write` pass, #1947). `--first-people N` and
-`--first-projects N` change the counts (0 for none).
+It writes a quick first pass of your page in about 4 minutes, then the whole
+page alongside the selected recent cohort. Next come people active in the last
+14 days, each investigated from up to two years of their mail; recently active
+projects; and organisations linked to those people: 12 pages at a time.
+An earlier whole-notebook experiment wrote 199 of 242 pages in about 30 minutes
+and moved the Codex week by one point. A person page
+read 150 days at the time; a real contact went back 15 months, so the window is
+now two years. The mail is searched, not pasted: a wider window widens what the
+model can find, not what every turn reads. `--first-people N`,
+`--first-projects N` and `--first-orgs N` cap a kind (0 for none).
 
 Before it spends anything it says one total (#2008): which runner and model,
 that it runs on your own plan, and "About N pages (...), ~X billed input tokens,
 ~Y minutes (an estimate ...)". Per page it is the median of this notebook's own
-completed runs of that kind (`.state/runs/`); before there are any, the
-defaults measured on the owner's real notebook on 2026-10-01: your page 680k and
-~6 minutes (measured 678k, 6m17s), a person 425k and ~5 minutes (150k–700k), a
-project 750k and ~4.5 minutes (614k and 922k, 4–5 minutes). 1.9.0a5 said "~90k
-and about a minute" per project and wrote every project active in the window.
-The whole first run stops starting pages once it has used 5 points of the Codex
-week (half the notebook's weekly 10), or at the weekly floor. Ctrl-C stops it,
-says which pages were written, keeps the map and every page, and names the
-command that continues. It skips the model steps, with a one-line reason, when
+completed runs of that kind (`.state/runs/`); before there are any, defaults
+measured on a real 7-day first run on 2026-10-02: each owner turn 768k and
+~4.5 minutes (quick and full are both counted), a person 304k and ~2 minutes
+with up to two years of evidence, a project 69k and ~1 minute, an organisation
+129k and ~2 minutes. Minutes are wall clock: after the quick owner turn, the
+full turn and selected pages share up to 12 workers. The estimate simulates
+that queue so a slow last page is not hidden by an average. Roughly 20% of a weekly runner
+allowance is a target, not a hard stop. The selected investigation finishes
+even if it uses more, unless the configured weekly safety floor is reached;
+pages already in flight finish. Ctrl-C stops it, says which pages
+were written, keeps the map and every page, and names the command that
+continues. It skips the model steps, with a one-line reason, when
 the runner is not installed or not signed in (checked before the map starts,
 without a model), when no mailbox gave an address of yours, when your page was
-already written, or when there is no terminal (scripts and `--json`) unless
-`--investigate` is given. `--no-investigate` builds the map only. Older
+already written. `--json` and non-terminal runs investigate by default too.
+`--no-investigate` explicitly builds the map only. Older
 projects wait for `co rem projects write`; more people for
 `co rem investigate people`.
 
@@ -270,7 +277,7 @@ Every command returns a next command, including in JSON and through a pipe.
 
 | Command | Behavior |
 |---|---|
-| `co rem init` | Discover accounts and local sources, build People/Organizations/Projects/Skills pages with no model, print your own page's facts, then (in a terminal) write your own page with one model turn. `--no-investigate` stops after the map. |
+| `co rem init` | Discover sources and map pages, then use the configured model to investigate your page, recent people, active projects and related organizations. `--no-investigate` explicitly stops after the map. |
 | `co rem scan people --days 150 --min-mails 1` | Enumerate correspondent signals from Gmail/Outlook; no model. Repeat `--mine <address>` for own addresses. |
 | `co rem scan orgs --days 180 --min-people 2` | List work domains that two or more people write from — where an organisation page earns its place. No model. |
 | `co rem scan projects --days 150` | Enumerate session working directories and local Git repository identities; no model. |
@@ -569,25 +576,31 @@ below is good to about one point.
   read) now counts `(input − cached input + output) / 1,000,000` points, to one
   decimal: about a million tokens the model had to read fresh or write is one
   point. A run that did move the meter counts what the meter says.
-- **Investigation has a weekly budget**, `limits.investigation_quota_points`,
-  default **10** points of the weekly window (owner, 2026-09-27). The
+- **Scheduled and manual investigation has a weekly budget**, `limits.investigation_quota_points`,
+  default **20** points of the weekly window. The
   scheduled round adds up the points its investigation runs used since the
   window last reset, and starts no new page once that reaches the budget.
+- **The initial investigation uses a soft 20% target.** It finishes the
+  selected recent cohort beyond that target and the normal investigation
+  budget. The configured safety floor still protects the rest of the week.
+  Claude Code and other runners without a readable weekly meter show an
+  estimate and finish the selected cohort; the CLI cannot claim to have
+  measured 20% of their plan.
 - **Manual investigation counts too** (#1842). `co rem investigate PAGE`,
   `me` and CATEGORY runs record the meter like the round does, and their
   points count toward the same weekly budget. A CATEGORY run stops starting
   pages when the weekly budget is spent, when its own `--budget N` is spent, or
   at the floor, and says which; the page in flight finishes.
-- **The first pass after init** is `co rem investigate all --budget 10`: one
-  queue over people, projects and organisations by weight (the same order the
-  round uses), until 10 points of the week are spent. `--list` shows that
+- **After init**, `co rem investigate all --budget 10` works whatever init left:
+  one queue over people, projects and organisations by weight (the same order
+  the round uses), until 10 points of the week are spent. `--list` shows that
   order without running a model.
 - **A floor protects your own coding.** No investigation page starts once the
   week is at `limits.quota_floor_percent` or more, default **70%**, however much
   of co rem's budget is left. co rem shares this quota with your real work.
 - `co rem status` reads the meter now and says it in two lines, for example
   `Codex week: 5% used on pro; resets Sun 04 Oct 09:49` and
-  `Investigation this week: 0.7 of 10 points; nothing starts once the week is at 70%`.
+  `Investigation this week: 0 of 20 points; nothing starts once the week is at 70%`.
   The dashboard says what a point is under the line.
   `--json` gives the same numbers under `quota` and `investigation_quota`.
 - When the meter cannot be read (another runner, Codex not signed in, an older
@@ -604,7 +617,7 @@ investigates unfinished pages, most recent activity first, within a reserved
 share of the daily attempt cap (8 calls; a person is one investigation); every later run
 updates only the people with new mail and the projects with new messages since
 the run before, at most 5 pages. Both stop at the weekly budget or the floor and
-record how many pages are left ([details](rem-people-pages.md#the-daily-round-four-runs-two-jobs-1723)). Initialization currently builds the map without a model call; manual
+record how many pages are left ([details](rem-people-pages.md#the-daily-round-four-runs-two-jobs-1723)). Initialization maps sources first, then runs a model investigation of the selected recent cohort; manual
 investigation remains outside the scheduled cap.
 
 The UI is a static snapshot of the notebook as it is now; run `open` again to see later changes (`--no-launch` says so and ends on `co rem open`). No merge,
@@ -637,14 +650,14 @@ verified changes stay unassessed until actual artifacts are checked.
 
 ### 1.8.7 integration update
 
-`co rem --root '<root>' init --days 150` now builds people, projects and installed
-skill maps deterministically. The map invokes no model. (Since #1943 init then
-writes your own page in a terminal; see Start here.)
+`co rem --root '<root>' init --days 150` first builds people, projects and installed
+skill maps deterministically. That map phase invokes no model. Current init then
+investigates the owner and selected recent cohort; see Start here.
 Only enabled mail sources are read. Use `subscriptions` and explicit `subscribe`
 commands to select sources first. The map records counts, dates and coverage in
 `.state/map.json` and writes people/project indexes under `notes/`; it leaves
-classification unassessed. The `rem-init` Skill can subsequently rank that map.
-Run `investigate <record>` explicitly for one page.
+classification unassessed. The `rem-init` Skill runs init and checks its result.
+Use `investigate <record>` to revisit or retry one page.
 
 Investigation reads a normalized skeleton and writes a new candidate under
 `.state/tasks/`. Only a candidate with valid structure and reference definitions
@@ -653,9 +666,9 @@ establish factual correctness. Full source JSON is retained; a readable copy use
 reversible text chunks so line-limited tools can read all of it.
 
 The requirement-to-code/test checklist and remaining decisions are in
-[rem-187-checklist.md](rem-187-checklist.md). This update supersedes earlier
-references to init launching a model or investigating the owner in the same run;
-#1943 later brought back that one step, for the owner's page only, by the owner's decision.
+[rem-187-checklist.md](rem-187-checklist.md). This historical note covered the
+map stage; the current first run also investigates the owner, recent important
+people, projects and related organizations.
 
 ### First-run People and installed Skills
 

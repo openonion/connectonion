@@ -23,6 +23,20 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a14**: `co rem init` now investigates the owner's page, recent
+important people, active projects and related organizations by default. Its
+roughly 20% weekly allowance target is advisory; selected work can finish
+beyond it, subject to the configured safety floor. It also adds privacy labels
+and a local reader toggle to the connected reader shipped in a13. See
+[1.9.0a14 notes](releases/1.9.0a14.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a14'
+co rem init
+```
+
+The previous alpha remains available:
+
 Alpha **1.9.0a13**: REM's local reader now leads each record with state,
 actions, facts and connected context. The home is shorter and task-first;
 source-backed field changes are separate from page rewrites. Archived citations

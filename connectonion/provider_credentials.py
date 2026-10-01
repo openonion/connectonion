@@ -101,6 +101,24 @@ def _fresh(record: ProviderCredentials) -> bool:
     return bool(record.get("ACCESS_TOKEN") and expiry and expiry > datetime.now(timezone.utc) + timedelta(minutes=5))
 
 
+# Refresh tokens this process rotated, old -> new. A grant that rotates its
+# refresh token on every refresh (Microsoft) leaves every other client of the
+# same record holding the old one; with no EMAIL to compare, that looked like
+# an account change to twelve co rem threads (2026-10-01).
+_ROTATED: dict[str, str] = {}
+
+
+def _rotated_here(old: str | None, new: str | None) -> bool:
+    """`new` descends from `old` through refreshes this process made."""
+    seen = set()
+    while old and old not in seen:
+        if old == new:
+            return True
+        seen.add(old)
+        old = _ROTATED.get(old)
+    return False
+
+
 def _latest(record: ProviderCredentials) -> ProviderCredentials:
     if record.path is None:
         return record
@@ -110,7 +128,7 @@ def _latest(record: ProviderCredentials) -> ProviderCredentials:
         return current
     old_email, new_email = record.get("EMAIL"), current.get("EMAIL")
     same_account = (old_email and new_email and old_email.casefold() == new_email.casefold())
-    same_grant = record.get("REFRESH_TOKEN") and record.get("REFRESH_TOKEN") == current.get("REFRESH_TOKEN")
+    same_grant = _rotated_here(record.get("REFRESH_TOKEN"), current.get("REFRESH_TOKEN"))
     if (old_email and new_email and not same_account) or not (same_account or same_grant):
         raise ProviderCredentialError("record_changed", "The selected credential record changed during this operation.", "co status")
     return current
@@ -183,6 +201,9 @@ def refresh_credentials(record: ProviderCredentials, *, backend: str, api_key: s
             except ValueError:
                 data = None
             values = _validated_values(latest, data)
+            rotated = values.get(f"{record.provider.upper()}_REFRESH_TOKEN")
+            if rotated and rotated != refresh_token:
+                _ROTATED[refresh_token] = rotated
             if record.path:
                 write_env_unlocked(record.path, values)
             record.values = values
