@@ -646,7 +646,8 @@ def _selected_sources(root: Path, selector: str) -> dict:
 PAGES_PER_BATCH = 5
 
 
-def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, leads: list[str]) -> dict:
+def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, leads: list[str],
+                    say=None) -> dict:
     """Update each page the material concerns in its own turn, and keep going when one fails.
 
     One turn over the whole notebook edited eight pages at once, spent twenty
@@ -657,6 +658,7 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
     from .runner import RunFailed, run_stage
     notebook = Notebook(root)
     usage, changed, refusals, reviews, sizes, growth = {}, [], [], [], [], {}
+    say = say or (lambda text: None)
     for record in leads:
         page_items = [{"role": "page", "record": record, "source": "investigation:page", "one_page": True,
                        "timestamp": now().isoformat(),
@@ -673,6 +675,11 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
         except RunFailed as error:
             refusals.append({"record": record, "errors": [str(error)[:400]]})
             part = getattr(error, "usage", None)
+        # Each page's outcome as it finishes; it was only in the dump at the end (#2044).
+        from .daily import outcome_line
+        say(outcome_line({"page": record, "outcome": "refused", "why": refusals[-1]["errors"][0]}
+                         if refusals and refusals[-1]["record"] == record else
+                         {"page": record, "outcome": "accepted" if record in changed else "nothing_new"}))
         for key, value in (part or {}).items():
             usage[key] = usage.get(key, 0) + value
     return {"usage": usage or None, "changed": sorted(set(changed)), "refused": len(refusals),
@@ -775,7 +782,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         if not isinstance(progress, dict):
             raise RemError("Invalid source progress; preserve it for diagnosis")
         record = _sync_locked(root, selected, progress, config, runner, extractor,
-                              with_person=with_person, include_local=not source)
+                              with_person=with_person, include_local=not source, say=say)
         archive = _resume_archive(root, say) if isinstance(record, dict) else None
         record = {**record, "mail_archive": archive} if archive else record
         return {**record, "tidied": tidied} if tidied and isinstance(record, dict) else record
@@ -826,7 +833,7 @@ def _terminate_as_interrupt():
 
 
 def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
-                 with_person="", include_local=True):
+                 with_person="", include_local=True, say=None):
     from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
     from .runner import maintenance_instructions, run_stage
 
@@ -1005,7 +1012,7 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
         if items:
             stage = "maintain"
             if leads:
-                result = _maintain_pages(root, items, config, kind, leads)
+                result = _maintain_pages(root, items, config, kind, leads, say=say)
             else:
                 options = {"maintenance_lock_held": True} if runner is run_stage else {}
                 result = runner(Notebook(root), items, config, kind=kind, **options)

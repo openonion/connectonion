@@ -135,7 +135,12 @@ class Turn:
 
     def stage(self, text):
         if self.bar is None:
-            typer.echo(f"Investigation: {text}", err=True)
+            # A stage once, not once per count: "gathering codex sessions: 40
+            # scanned" printed about 25 times with nothing new (#2044).
+            name = re.sub(r"[:(]\s*[\d,/]+.*$", "", text).strip()
+            if name != getattr(self, "said", None):
+                self.said = name
+                typer.echo(f"Investigation: {text}", err=True)
         else:
             self.bar.update(self.task, description=f"{self.label} {style.muted('(' + text + ')')}")
 
@@ -285,3 +290,75 @@ def guide(next_command) -> str:
         "Append --help to any command to learn its workflow and options; --help displays instructions and never executes the task.",
     ]
     return "\n\n".join(paragraphs) + "\n"
+
+
+# Why a daily round started no page, in words (the record keeps the code).
+NO_PAGE = {'nothing_unfinished': 'every page is written', 'nothing_new': 'nothing new since the last run',
+           'no_page_fits_budget': 'no page fit what was left of the day\'s calls'}
+
+
+def _tokens(*usages) -> str:
+    total = {}
+    for usage in usages:
+        for key in ('input_tokens', 'output_tokens'):
+            if isinstance((usage or {}).get(key), (int, float)):
+                total[key] = total.get(key, 0) + usage[key]
+    if not total:
+        return ''
+    return f"Tokens: {total.get('input_tokens', 0):,} in, {total.get('output_tokens', 0):,} out"
+
+
+def _archive_line(archive) -> str:
+    if not isinstance(archive, dict) or 'target' not in archive:
+        return ''
+    have = archive.get('saved', 0) + archive.get('reused', 0)
+    return f"Mail archive: {have:,} of {archive['target']:,} bodies saved ({archive.get('phase', 'unknown')})"
+
+
+def _pages_line(pages: list, left) -> str:
+    counts = {}
+    for row in pages:
+        counts[row.get('outcome')] = counts.get(row.get('outcome'), 0) + 1
+    words = [f"{counts.pop('accepted', 0)} updated"]
+    words += [f"{number} {name.replace('_', ' ')}" for name, number in counts.items()]
+    return "Pages: " + ", ".join(words) + (f"; {left} left" if left is not None else "")
+
+
+def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments)):
+    """What `co rem sync` ends on (#2044): a few lines, not the run record.
+
+    It ended in a ~200-line dump: page paths as capitalised keys, the model's
+    report cut mid-sentence, "Seconds: Unknown". Each page's outcome is said as
+    it finishes; this is the total and where the full record is. `spell`
+    writes a command as this user types it. Returns None
+    for a result of another shape (a dry run, a slot not due), which `render` prints.
+    """
+    if not isinstance(value, dict) or not isinstance(value.get('maintenance', value), dict):
+        return None
+    if 'maintenance' not in value and 'items' not in value:
+        return None
+    from .rem_look import highlight
+    batch = value.get('maintenance') if 'maintenance' in value else value
+    run = value.get('run') or {}
+    changed = len(batch.get('changed') or [])
+    lines = [f"New material: {batch.get('items', 0)} items, {changed} page{'' if changed == 1 else 's'} changed "
+             f"({str(batch.get('outcome', 'unknown')).replace('_', ' ')})"]
+    lines += [f"  Refused {row.get('record')}: {(row.get('errors') or ['rejected'])[0]}"[:200]
+              for row in batch.get('refusals') or [] if isinstance(row, dict)]
+    lines.append(_archive_line(batch.get('mail_archive')))
+    if 'maintenance' in value:
+        investigation = value.get('investigation')
+        if investigation:
+            lines.append(_pages_line(investigation.get('pages') or [], investigation.get('left')))
+        elif value.get('outcome') == 'budget_exhausted':
+            lines.append("Pages: none started; today's calls are spent")
+        else:
+            why = value.get('reason') or run.get('reason') or ''
+            lines.append(f"Pages: none started; {NO_PAGE.get(why, why or 'see the log')}")
+    lines.append(_tokens(batch.get('usage'), run.get('usage')))
+    record = run.get('id') or batch.get('id')
+    if record:
+        lines.append(f"Full record: {spell(['logs', record])}")
+    title = style.heading('co rem sync') + (' — ' + style.error('needs attention')
+                                            if value.get('outcome') in ('partial', 'failed') else '')
+    return "\n".join([title, "", *(highlight(printable(line), counts=True) for line in lines if line)])
