@@ -14,16 +14,11 @@ Why these rules: docs/rem-skills/rem-investigate.md
 - Every handle you were given, wrong spellings too, goes in `Also known as:`;
   add the ones you discover (signature, second address, other script). Company
   names go in their own field.
-- **A page titled by an address or handle is renamed** the moment the material
-  names the person: their signature, or what the user calls them in a greeting
-  (`# mei.l1990@outlook.com` → `# 李梅`; `# vern.chan` → `# Vern Chan`). The old
-  title stays in `Also known as:`. Leaving the address as the title when the
-  name is in the material is wrong.
-- **Not a person** (a service, a bot, a shared or test inbox, a calendar or
-  agent account the user runs): the lead's first sentence says what it is and
-  `Role:` reads `Not a person: <what it is>`; every section still present, the
-  rest describing what it sends. A real notebook wrote the user's own agent
-  inbox up as a correspondent whose identity was "not established".
+- **A page titled by an address is renamed** once the material names the
+  person (signature, or the user's greeting): `# mei.l1990@outlook.com` →
+  `# 李梅`, the address kept in `Also known as:`.
+- **Not a person** (a service, bot, shared or test inbox, an account the user
+  runs): the lead says what it is and `Role:` reads `Not a person: <what>`.
 - The subject is the owner of a coverage mailbox → the user's own page: follow
   `rem-owner-page`.
 - **A role in a list the user writes about someone else is that person's, not
@@ -33,6 +28,8 @@ Why these rules: docs/rem-skills/rem-investigate.md
 
 ## Reading the mail
 
+- **`History` covers every thread in the material**: one dated line for each
+  distinct subject, meeting, introduction or request, oldest first.
 - **`How the user writes to them`** comes from the user's own messages to them
   (language, tone, length, how they open, what they ask); **`Cadence`** from the
   dates (`about weekly, July–September`). Each is `Unknown` only when there is

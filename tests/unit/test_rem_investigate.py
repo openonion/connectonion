@@ -750,7 +750,7 @@ def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monk
     from datetime import date, timedelta
     root = _notebook(tmp_path, "codex")
     notebook = inv.Notebook(root)
-    assert inv.window_since(notebook.read("people/vern.md")) == 150        # never investigated
+    assert inv.window_since(notebook.read("people/vern.md")) == 730        # never investigated: two years
     ten_days_ago = (date.today() - timedelta(days=10)).isoformat()
     page = notebook.read("people/vern.md").replace("· not investigated yet", f"· investigated {ten_days_ago} (gmail)")
     notebook.write("people/vern.md", page)

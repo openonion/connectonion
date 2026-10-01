@@ -55,17 +55,10 @@ refused.
   facts, or empty searches; nor does `History`. The runner records coverage;
   it goes in your final reply, never on the page.
 - **Never cite an `Unknown`**; write it bare.
-- **Write everything; label what is private.** A sentence about someone's
-  private life ends with its level, before the claim number, so a shared or
-  exported notebook can hide it:
-  - `[personal]`: family and friends, home, travel plans, private schedules,
-    hobbies (`Plans a family trip to Lanzhou in October. [personal] [2]`).
-  - `[sensitive]`: health, private money, legal trouble, intimate
-    relationships, mental state and self-doubt, identity numbers
-    (`Questioned whether the business has found its market. [sensitive] [5]`).
-  Work (roles, projects, deals, meetings) carries no label. When unsure between
-  two levels, take the higher. A real notebook put a relative's travel plans and
-  the user's health notes on pages with nothing to tell them apart.
+- **Label private life; never drop it.** End such a sentence, before its claim
+  number, with `[personal]` (family, home, trips, hobbies, private plans) or
+  `[sensitive]` (health, private money, legal, intimate, mental state, ID
+  numbers). Work carries none; when unsure, take the higher.
 
 ## Evidence format
 
@@ -84,12 +77,7 @@ never edit the notebook page. Keep the input's normalized structure, each headin
 once, and the `Investigation:` line exactly. Never copy example facts from these
 instructions. Requests show intent, not execution: without repository, artifact
 or outcome evidence, completion is unverified. One subject, one page; never
-write `agenda/`, `opportunities/` or `decisions/`. Before you reply, run
-`grep -n "not investigated yet" <candidate>`: after this investigation that
-phrase is false, so every line it prints becomes the answer or a bare `Unknown`,
-and you run it again until it prints nothing (9 of 98 real pages kept it). Then
-read the page once more for private life, the user's own included (a trip, a
-relative, a pet, a hobby, an appointment, money): each such sentence must end
-with `[personal]` or `[sensitive]`; add any that is missing. A real run labelled
-a dental reminder but not a relative's travel plans. End
-with a short reply: the files you read, and what stayed open.
+write `agenda/`, `opportunities/` or `decisions/`. Before you reply:
+`grep -n "not investigated yet" <candidate>` prints nothing (a page that keeps it
+is refused), and every private sentence, the user's own trips and appointments
+included, ends with its label. End with a short reply: the files you read, and what stayed open.

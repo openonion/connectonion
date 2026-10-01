@@ -460,6 +460,33 @@ def _one_more_turn(workdir, prompt, config, stage, candidate, first, run=None):
     return again
 
 
+SEARCH_QUERIES = 5
+
+
+def _searched_turn(workdir, prompt, config, stage, directory, search, items, first):
+    """Run the mail searches the model asked for, read-only, and give it one more turn with the results.
+
+    The model has no network: its sandbox is the defence against mail that
+    carries instructions. So it names searches and our code runs them; what
+    they find joins `items`, so citing it passes validation like any source.
+    """
+    asked = json.loads((directory / "search-requests.json").read_text(encoding="utf-8"))
+    queries = [query.strip()[:200] for query in asked if isinstance(query, str) and query.strip()][:SEARCH_QUERIES]
+    known = {item.get("source") for item in items}
+    found = [item for item in search(queries) if item["source"] not in known]
+    items.extend(found)
+    results = directory / "search-results.md"
+    results.write_text("\n\n".join(
+        f"### {item['source']}\nFrom: {item['speaker']}\nDate: {item['timestamp']}\nSubject: {item['subject']}\n"
+        f"Query: {item.get('query', '')}\n\n{item['text']}" for item in found) or "No mail matched.", encoding="utf-8")
+    again = run_task(workdir, prompt + f" Your searches {json.dumps(queries, ensure_ascii=False)} found "
+                                       f"{len(found)} new message(s), in {results}. Update the candidate with what "
+                                       "they show and cite their ids; keep everything else.", config, stage)
+    usage = [first.get("usage") or {}, again.get("usage") or {}]
+    again["usage"] = {key: sum(part.get(key) or 0 for part in usage) for key in usage[0].keys() | usage[1].keys()} or None
+    return again
+
+
 # Longer than a scheduled sync batch holds the notebook (five one-page turns).
 PROMOTE_WAIT_SECONDS = 1800
 
@@ -598,7 +625,7 @@ def scrub_finished_tasks(workdir: Path) -> None:
 
 
 def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "",
-              *, stage: str = "maintain", maintenance_lock_held: bool = False) -> dict:
+              *, stage: str = "maintain", maintenance_lock_held: bool = False, search=None) -> dict:
     """Run investigation and maintenance on disposable page copies before promotion."""
     workdir = notebook.root / ".state" / "tasks"
     workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -609,14 +636,14 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
     # of them 0644 (#1974). The mask is the process's, so it is put back.
     previous_mask = os.umask(0o077)
     try:
-        return _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory)
+        return _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory, search)
     finally:
         # Ctrl-C and anything else unexpected too, not only a RemError.
         scrub_task(directory)
         os.umask(previous_mask)
 
 
-def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory):
+def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory, search=None):
     from .reflections import POLICY
     from .reflections import context as reflections
     from .reviews import context as reviews
@@ -712,6 +739,12 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                "material_chars": len((directory / "material.json").read_text()),
                "readable_material_chars": len((directory / "material.md").read_text()),
                "prompt_chars": len(prompt), "input_items": len(items)}
+    if candidate and search:
+        prompt += (f" If a section stays Unknown and the user's mailbox may hold the answer (a role, a phone, "
+                   f"how they met), also write up to {SEARCH_QUERIES} mail searches as a JSON list of strings "
+                   f"to {directory / 'search-requests.json'}: plain words, or from:, to:, participants: an "
+                   "address. You get one more turn with what they find. Never ask for what the material "
+                   "already answers.")
     started = time.monotonic()
     result = {}
     inquiry_usage = {}
@@ -729,6 +762,8 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         result = run_task(workdir, prompt, selected_config, stage)
         if candidate and not summary and not candidate.is_file():
             result = _one_more_turn(workdir, prompt, selected_config, stage, candidate, result)
+        if candidate and search and (directory / "search-requests.json").is_file():
+            result = _searched_turn(workdir, prompt, selected_config, stage, directory, search, items, result)
         if summary:
             from .tier import page_from_reply
             candidate.write_text(page_from_reply(result.get("result")), encoding="utf-8")

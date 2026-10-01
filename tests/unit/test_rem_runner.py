@@ -637,3 +637,39 @@ def test_a_turn_that_writes_no_candidate_gets_one_more_turn(notebook, monkeypatc
                           'source': 'investigation:page'}], default_config(), stage='investigate')
     assert len(prompts) == 2 and 'writable' in prompts[1]
     assert promoted == [(True, {'input_tokens': 20, 'output_tokens': 2})]
+
+
+def test_a_turn_may_ask_for_mail_searches_and_gets_one_more_turn_with_their_results(notebook, monkeypatch):
+    """The model has no network (its sandbox is the defence against mail that
+    carries instructions); it names searches, our code runs them read-only,
+    and the results come back as cited material for one more turn."""
+    import json as jsonlib
+    import re as regex
+    record = 'people/first.md'
+    notebook.stub_person(record, 'First', ['first@example.org'], email='first@example.org')
+    prompts, asked, promoted = [], [], []
+    found = [{'role': 'other', 'speaker': 'Second <second@example.org>', 'text': 'First runs the lab.',
+              'timestamp': '2025-08-06', 'subject': 'Intro', 'source': 'outlook:abc123abc123'}]
+
+    def search(queries):
+        asked.append(queries)
+        return found
+
+    def run_model(workdir, prompt, config, stage):
+        prompts.append(prompt)
+        candidate = Path(regex.search(r'(/\S+/candidate\.md)', prompt).group(1))
+        candidate.write_text('# First\n')
+        if len(prompts) == 1:
+            (candidate.parent / 'search-requests.json').write_text(jsonlib.dumps(['First lab', 'from:x@y.z']))
+        return {'usage': {'input_tokens': 10}, 'result': 'done'}
+
+    def promote(book, record, candidate, original, items, directory, usage, **options):
+        promoted.append([item['source'] for item in items])
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
+    monkeypatch.setattr('connectonion.rem.runner._promote_candidate', promote)
+    run_stage(notebook, [{'role': 'page', 'record': record, 'text': notebook.read(record),
+                          'source': 'investigation:page'}], default_config(), stage='investigate', search=search)
+    assert asked == [['First lab', 'from:x@y.z']]
+    assert len(prompts) == 2 and 'search-results.md' in prompts[1] and 'search-requests.json' in prompts[0]
+    assert 'outlook:abc123abc123' in promoted[0]

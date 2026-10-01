@@ -621,6 +621,37 @@ def _window_items(read, scoped: dict, label: str, stage_progress=None) -> list[d
         return items
 
 
+SEARCH_RESULTS = 20
+
+
+def mail_search(clients: dict):
+    """Read-only mail searches the model may ask for after its first turn (2026-10-01).
+
+    The owner asked that a gap the gathered mail leaves (how two people met, a
+    role) can be searched for. The model has no network; this runs its queries
+    with `list_search`, reads up to SEARCH_RESULTS bodies, and returns them in
+    the gathered mail's shape and source ids, so they cite like the rest.
+    """
+    def search(queries: list[str]) -> list[dict]:
+        found, seen = [], set()
+        for query in queries:
+            for kind, client in clients.items():
+                mine = {a.lower() for a in client.my_addresses()}
+                for row in _patient(client.list_search, query, 10) or []:
+                    if row["id"] in seen or len(found) >= SEARCH_RESULTS:
+                        continue
+                    seen.add(row["id"])
+                    body = _patient(client.get_email_body, row["id"])
+                    head, _, rest = body.partition("--- Email Body ---")
+                    body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
+                    own = _address(row["from"]) in mine or "@" not in _address(row["from"])
+                    found.append({"role": "user" if own else "other", "speaker": row["from"], "text": body,
+                                  "timestamp": str(row["date"]), "subject": row.get("subject", ""), "query": query,
+                                  "source": f"{kind}:{hashlib.sha256(row['id'].encode()).hexdigest()[:12]}"})
+        return found
+    return search
+
+
 def _split_item(item: dict, limit_chars: int, measure=None):
     """Split a long document without losing its text, source or date.
 
@@ -957,7 +988,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # only picks which harness answers the Skill -- our own loop, or Codex
     # delegated through `co ai --harness codex`. Either one can reach the web.
     if runner is None:
-        runner = run_stage
+        runner = partial(run_stage, search=mail_search(clients)) if clients else run_stage
     if stage_progress:
         stage_progress("writing investigation")
     try:
