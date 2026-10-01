@@ -11,7 +11,7 @@ Why a manifest and a paste: Slack has no flow that hands a CLI a bot token
 without a redirect URL to receive it, and a local OAuth server would need the
 app's client secret first. A manifest is the documented way to create an app
 already configured — Socket Mode on, events subscribed, every scope listed — so
-the seven manual steps become: open a link, click Create, click Install, and
+the seven manual steps become: open a link, pick the workspace, Next, Create, Install, and
 make one app-level token (manifests cannot create that one).
 """
 
@@ -60,7 +60,8 @@ def manifest_link() -> str:
 
 def print_steps() -> None:
     print("Slack setup: one app of your own, made from a manifest.\n")
-    print("1. Open this link, pick your workspace, and click Create:")
+    print("1. Open this link. Slack shows Create from a manifest, already filled in; pick your")
+    print("   workspace, click Next, then Create (its 3rd-party and Socket Mode notes are expected):")
     print(f"   {manifest_link()}")
     print("   (If the form is empty: Create New App → From a manifest → JSON, and paste:)")
     print(f"   {json.dumps(MANIFEST, separators=(',', ':'))}")
