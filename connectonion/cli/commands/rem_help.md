@@ -56,8 +56,8 @@ body, once, so investigating a person later reads it from disk.
 
 Then, in a terminal, it writes your own page by itself from everything you sent
 and your coding sessions of the last 30 days: co rem investigate me, one model
-turn on your own plan, about 15 minutes (refused, it writes the quick first
-pass instead). Then everyone in the people queue, every project with session
+turn on your own plan: a quick first pass in about 2 minutes, then the whole
+page alongside the rest. Then everyone in the people queue, every project with session
 messages and the organisations you correspond with, 12 pages at a time, one
 turn each; on a real 1,880-mail notebook that was 198 of 242 pages in about 25
 minutes. It names the runner, model and plan before it starts and stops starting

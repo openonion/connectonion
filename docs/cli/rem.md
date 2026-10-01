@@ -40,7 +40,8 @@ mail, which projects you have been coding in — with the page's path, within th
 first minutes. Then, in a terminal, it writes your own page by itself: the whole
 `investigate me`, from everything you sent and your coding sessions of the last
 30 days (or `--days`), one model turn over evidence files, about 15 minutes.
-If the model's page is refused, it writes the quick first pass instead. Next
+It writes a quick first pass of your page in about 2 minutes, then the whole
+page alongside everything else. Next
 come everyone in the people queue, every project with session messages and the
 organisations you correspond with, 12 pages at a time; on the owner's real
 notebook (1,880 mails, 1,300 coding sessions) that wrote 198 of 242 pages in

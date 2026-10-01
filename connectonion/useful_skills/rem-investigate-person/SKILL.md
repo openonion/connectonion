@@ -14,8 +14,16 @@ Why these rules: docs/rem-skills/rem-investigate.md
 - Every handle you were given, wrong spellings too, goes in `Also known as:`;
   add the ones you discover (signature, second address, other script). Company
   names go in their own field.
-- A page titled by a handle gets the person's name once known (`# vern.chan` →
-  `# Vern Chan`, handle kept in aliases).
+- **A page titled by an address or handle is renamed** the moment the material
+  names the person: their signature, or what the user calls them in a greeting
+  (`# mei.l1990@outlook.com` → `# 李梅`; `# vern.chan` → `# Vern Chan`). The old
+  title stays in `Also known as:`. Leaving the address as the title when the
+  name is in the material is wrong.
+- **Not a person** (a service, a bot, a shared or test inbox, a calendar or
+  agent account the user runs): the lead's first sentence says what it is and
+  `Role:` reads `Not a person: <what it is>`; every section still present, the
+  rest describing what it sends. A real notebook wrote the user's own agent
+  inbox up as a correspondent whose identity was "not established".
 - The subject is the owner of a coverage mailbox → the user's own profile: work
   from what they wrote; `Our relationship` = account owner; `How the user
   writes to them` = not applicable.

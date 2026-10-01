@@ -207,12 +207,14 @@ def test_runner_ok_investigates_me_once_with_inits_window(first_run):
     root, init, calls = first_run
     result = init("--days", "5")
     assert result.exit_code == 0, result.output
-    assert [call["record"] for call in calls].count(owner_record(root)) == 1
-    call = calls[0]
-    assert call["record"] == owner_record(root)
-    # The whole page, not the pre-#1850 quick pass (owner, 2026-09-30).
-    assert call["days"] == 5 and call["quick"] is False and call["sent_only"] is True
-    assert "me@example.org" in call["handles"]
+    mine = [call for call in calls if call["record"] == owner_record(root)]
+    # Quick first, so a page is there in minutes; then the whole page alongside
+    # the others (owner, 2026-10-01: the full pass alone was refused in two of
+    # seven real first runs and nearly empty in a third).
+    assert [call["quick"] for call in mine] == [True, False]
+    assert calls[0]["record"] == owner_record(root)
+    assert all(call["days"] == 5 and call["sent_only"] is True for call in mine)
+    assert "me@example.org" in mine[0]["handles"]
     text = Text.from_ansi(result.output).plain
     assert "codex" in text and "gpt-6-luna" in text
     assert "your own" in text and "Ctrl-C" in text
@@ -619,10 +621,8 @@ def test_one_unreadable_mail_body_does_not_skip_the_first_run(first_run, monkeyp
     assert "could not be saved" in text and "co auth status" not in text
 
 
-def test_a_refused_full_owner_page_falls_back_to_the_quick_first_pass(first_run, monkeypatch):
-    """Two of three real first runs (2026-10-01) had the full owner page refused
-    for citing nothing from a 139k-character evidence file; the bounded quick
-    pass, with its sample in the prompt, wrote the page on the same mailbox."""
+def test_a_refused_full_owner_page_keeps_the_quick_first_pass(first_run, monkeypatch):
+    """The full pass runs after the quick one; refused, the quick page stays."""
     from connectonion.rem.runner import RunFailed
     tried = []
 
@@ -636,5 +636,7 @@ def test_a_refused_full_owner_page_falls_back_to_the_quick_first_pass(first_run,
     root, init, _ = first_run
     result = init("--json", "--investigate")
     assert result.exit_code == 0, result.output
-    assert tried == [False, True]
-    assert json.loads(result.stdout)["data"]["investigate_me"]["outcome"] == "completed"
+    assert tried == [True, False]
+    data = json.loads(result.stdout)["data"]
+    assert data["investigate_me"]["outcome"] == "completed"
+    assert data["owner_full"]["pages"][0]["outcome"] == "refused"

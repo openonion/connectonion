@@ -45,6 +45,11 @@ with its date. A value it contradicts: name both in `Uncertainties`.
   facts, or empty searches; nor does `History`. The runner records coverage;
   it goes in your final reply, never on the page.
 - **Never cite an `Unknown`**; write it bare.
+- **Personal life stays off the page.** Health, family, partners, travel plans
+  and private money are written only when they are why the subject is in the
+  notebook, and then as their kind ("a family member", "a health matter"),
+  never the details. A real notebook carried a relative's travel plans and the
+  user's own health notes on pages anyone they share the notebook with can read.
 
 ## Evidence format
 
@@ -63,5 +68,8 @@ never edit the notebook page. Keep the input's normalized structure, each headin
 once, and the `Investigation:` line exactly. Never copy example facts from these
 instructions. Requests show intent, not execution: without repository, artifact
 or outcome evidence, completion is unverified. One subject, one page; never
-write `agenda/`, `opportunities/` or `decisions/`. End with a short reply: the
-files you read, and what stayed open.
+write `agenda/`, `opportunities/` or `decisions/`. Before you reply, run
+`grep -n "not investigated yet" <candidate>`: after this investigation that
+phrase is false, so every line it prints becomes the answer or a bare `Unknown`,
+and you run it again until it prints nothing (9 of 98 real pages kept it). End
+with a short reply: the files you read, and what stayed open.

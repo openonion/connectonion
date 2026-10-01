@@ -274,7 +274,7 @@ def _mail_progress(kind, stop, count):
     rem_look.line(f"  {kind}: to {stop:%Y-%m-%d}, {count} mails", err=True)
 
 
-def _investigate_me(root, *, days, quick, handle=()):
+def _investigate_me(root, *, days, quick, handle=(), quiet=False):
     """The owner's page from what they sent: `investigate me`, and init's last step (#1943)."""
     from ...rem.files import Notebook, RemError, read_json, state_path
     from ...rem.investigate import investigate
@@ -296,7 +296,7 @@ def _investigate_me(root, *, days, quick, handle=()):
     result = _logged(root, record, "investigate me", lambda update: investigate(
         root, record, title, [*owner.get("addresses", []), *handle], days=days or 30,
         clients=_mail_clients(root), subscriptions=subscriptions(root), progress=_mail_progress,
-        sent_only=True, stage_progress=update, quick=quick))
+        sent_only=True, stage_progress=update, quick=quick), quiet=quiet)
     return result, record
 
 
@@ -382,24 +382,6 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
         root, record, title, handles, days=days or rem_investigate.window_since(text), clients=clients,
         subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped,
         stage_progress=update), quiet=quiet)
-
-
-def _write_my_page(root, days, say):
-    """Your page in full; refused, the bounded quick pass instead (2026-10-01).
-
-    Two of three real first runs had the full page refused for citing nothing
-    from a 139k-character evidence file; the quick pass, its sample in the
-    prompt, wrote the page on the same mailbox. The first page is the one the
-    owner reads first, so it falls back rather than stays empty.
-    """
-    from ...rem.runner import RunFailed
-    try:
-        return _investigate_me(root, days=days, quick=False)
-    except RunFailed as error:
-        if "rejected" not in str(error):
-            raise
-        say(f"Your full page was refused ({str(error)[:100]}); writing the quick first pass instead.")
-        return _investigate_me(root, days=days, quick=True)
 
 
 # The first run's spending (owner, 2026-09-30, raised 2026-10-01): your page
@@ -528,7 +510,7 @@ def _first_cost(people, projects, orgs, plan, config) -> str:
     return " ".join(parts + ["Ctrl-C stops it; pages already written are kept."])
 
 
-def _first_pages(ctx, root, config, plan, say, gate) -> dict:
+def _first_pages(ctx, root, config, plan, say, gate, me_days=None, owner_full=False) -> dict:
     """After your own page: people, projects and organisations, FIRST_RUN_WORKERS at a time (owner, 2026-10-01).
 
     The owner wants most pages written by the first run. One line per page as
@@ -537,7 +519,8 @@ def _first_pages(ctx, root, config, plan, say, gate) -> dict:
     """
     people = _people_jobs(root)
     projects, orgs = _project_jobs(root, config), _org_jobs(root)
-    kinds = {"people": people, "projects": projects, "orgs": orgs}
+    me = [_owner_full_job(root, me_days)] if owner_full else []
+    kinds = {"me": me, "people": people, "projects": projects, "orgs": orgs}
     stopped = gate()
     if stopped:
         return {KEYS[kind]: {"started": False, "reason": f"{LABELS[kind]} pages were not written: {stopped}."}
@@ -549,18 +532,28 @@ def _first_pages(ctx, root, config, plan, say, gate) -> dict:
         why = f" ({outcome['why'][:120]})" if outcome["outcome"] != "accepted" else ""
         say(f"  {job['record']}: {'written' if not why else 'not written' + why}")
 
-    outcomes, stopped = _in_parallel(people + projects + orgs, workers=FIRST_RUN_WORKERS, gate=gate, done=done)
+    outcomes, stopped = _in_parallel(me + people + projects + orgs, workers=FIRST_RUN_WORKERS, gate=gate,
+                                     done=done)
     if stopped:
         say(f"Stopped before the rest: {stopped}. Write them later with "
             f"{_next(ctx, ['investigate', 'people'])} and {_next(ctx, ['projects', 'write'])}.")
-    empty = {"people": "No one is left to investigate.",
+    empty = {"me": "Your page had no quick pass to deepen.",
+             "people": "No one is left to investigate.",
              "projects": "No project has messages to write from.",
              "orgs": "No organisation is left to investigate."}
     return {KEYS[kind]: _kind_result(kind, jobs, outcomes, stopped, empty[kind]) for kind, jobs in kinds.items()}
 
 
-KEYS = {"people": "people_pages", "projects": "project_pages", "orgs": "org_pages"}
-LABELS = {"people": "People", "projects": "Project", "orgs": "Organisation"}
+KEYS = {"me": "owner_full", "people": "people_pages", "projects": "project_pages", "orgs": "org_pages"}
+LABELS = {"me": "Your full", "people": "People", "projects": "Project", "orgs": "Organisation"}
+
+
+def _owner_full_job(root, days) -> dict:
+    """Your whole page, from everything you sent, after the quick pass wrote the first one."""
+    from ...rem.files import read_json, state_path
+    record = read_json(state_path(root, "map.json"), {})["owner"]["record"]
+    return {"kind": "me", "record": record, "mode": "full",
+            "run": lambda: _investigate_me(root, days=days, quick=False, quiet=True)}
 
 
 def _kind_result(kind, jobs, outcomes, stopped, empty) -> dict:
@@ -778,15 +771,18 @@ def make_rem_app(factory):
                 say(reason)
             else:
                 me_days = days if window else 30  # what `investigate me` reads without --days
-                cost = (f"First run, {plan}, with {config['runner']} ({config['model']}): your own page from "
-                        f"everything you sent and your coding sessions of the last {me_days} days, then the "
-                        f"people you write to, your projects and the organisations you correspond with, most "
-                        f"recent first, {FIRST_RUN_WORKERS} at a time. One model turn each, "
-                        f"about 15 minutes for your page; it stops at {FIRST_RUN_POINTS} points of the Codex week. Ctrl-C stops it and "
+                cost = (f"First run, {plan}, with {config['runner']} ({config['model']}): a first pass of "
+                        f"your own page from what you sent and your coding sessions of the last {me_days} days, "
+                        f"about 2 minutes; then your whole page, the people you write to, your projects and the "
+                        f"organisations you correspond with, {FIRST_RUN_WORKERS} at a time. One model turn "
+                        f"each; it stops at {FIRST_RUN_POINTS} points of the Codex week. Ctrl-C stops it and "
                         "keeps the map and every page written. (--no-investigate skips this.)")
                 rem_look.say(rem_look.highlight(cost, counts=True), err=ctx.obj["json"], plain=cost)
                 try:
-                    _write_my_page(root, days if window else None, say)
+                    # Quick first, so your page is there in minutes; the whole page runs
+                    # with the others (2026-10-01: the full pass alone was refused in two
+                    # of seven real first runs and nearly empty in a third).
+                    _investigate_me(root, days=days if window else None, quick=True)
                 except KeyboardInterrupt:
                     result.update(investigation="interrupted",
                                   investigate_me={"started": True, "outcome": "interrupted"})
@@ -814,7 +810,9 @@ def make_rem_app(factory):
                     say(result["project_pages"]["reason"])
             else:
                 try:
-                    result.update(_first_pages(ctx, root, config, plan, say, _first_run_gate(root, config)))
+                    result.update(_first_pages(ctx, root, config, plan, say, _first_run_gate(root, config),
+                                               me_days=days if window else None,
+                                               owner_full=result.get("investigation") == "completed"))
                 except KeyboardInterrupt:
                     result.update({key: {"started": True, "outcome": "interrupted"} for key in KEYS.values()})
                     stopped = ("Stopped. The map and every page written so far are kept; write the rest with "
