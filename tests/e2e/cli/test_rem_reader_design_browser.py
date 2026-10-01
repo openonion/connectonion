@@ -98,6 +98,28 @@ def test_a_person_opens_on_a_fact_card_with_cited_values(reader):
     assert page.locator("#src-6").count() == 1
 
 
+def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reader):
+    page, _ = reader
+    cases = {
+        "The user has not signed it; with the user since 2026-09-22.": "You have not signed it; with you since 2026-09-22.",
+        "the user's main contact": "your main contact",
+        "Richard owes the user its P115 proposal": "Richard owes you its P115 proposal",
+        "How the user writes to them": "How you write to them",
+        "the user still owes Mara an answer": "you still owe Mara an answer",
+        "the user is waiting; the user doesn't know": "you are waiting; you don't know",
+        "the user should send a proposal": "you should send a proposal",
+        "the user replies within a day": "you reply within a day",
+    }
+    assert page.evaluate("cases => Object.keys(cases).map(youify)", cases, isolated_context=False) == list(cases.values())
+    home_threads = page.locator("ul.threads").first.inner_text()
+    assert "you have owed them" in home_threads and "the user" not in home_threads.lower()
+    page.goto(page.url.split("#")[0] + "#r=people%2Fmara-ostrowski.md")
+    main = page.locator("#main").inner_text()
+    assert "the user" not in main.lower() and "you have not signed it" in main
+    assert page.get_by_role("heading", name="How you write to them").count() == 1
+    assert page.evaluate("REM.records.find(r => r.path === 'people/mara-ostrowski.md').text.includes('the user has not signed it')", isolated_context=False)
+
+
 @pytest.mark.parametrize("theme", ["light", "dark"])
 def test_every_view_fits_a_phone(reader, theme):
     page, uri = reader

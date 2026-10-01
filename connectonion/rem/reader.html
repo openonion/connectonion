@@ -716,6 +716,30 @@ function citeChip(n, from) {
   return '<a class="cite" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + n.toLowerCase() + '"' +
     (tip ? ' data-tip="' + esc(tip) + '"' : "") + ' aria-label="Source ' + n + (tip ? ": " + esc(tip) : "") + '">' + n + "</a>";
 }
+// Pages are written about "the user"; the reader is read by them. At render time
+// only (the Markdown keeps its wording, and Copy Markdown copies it as written)
+// "the user" becomes "you", with the verb that follows agreeing: "the user has
+// not signed" reads "you have not signed", "the user's" reads "your".
+const YOU_VERBS = { has: "have", is: "are", was: "were", does: "do", "hasn't": "haven't", "isn't": "aren't", "wasn't": "weren't", "doesn't": "don't" };
+// Words after "the user" that end in s and are not verbs: "owes the user its proposal".
+const NOT_VERBS = new Set(["its", "as", "was", "has", "yes", "plus", "thus", "less", "unless", "always", "perhaps", "sometimes", "whereas", "towards", "afterwards", "nevertheless", "regardless", "across", "besides"]);
+function plural(verb) {
+  if (YOU_VERBS[verb.toLowerCase()]) return YOU_VERBS[verb.toLowerCase()];
+  if (/(?:ss|us|is)$/i.test(verb) || !/s$/i.test(verb) || NOT_VERBS.has(verb.toLowerCase())) return null;  // not a third-person verb
+  if (/[^aeiou]ies$/i.test(verb)) return verb.slice(0, -3) + "y";
+  if (/(?:sh|ch|x|z|o)es$/i.test(verb)) return verb.slice(0, -2);
+  return verb.slice(0, -1);
+}
+function youify(text) {
+  const cap = (t, s) => t === "T" ? s[0].toUpperCase() + s.slice(1) : s;
+  return String(text)
+    .replace(/\b([Tt])he user(?:'s|’s)/g, (m, t) => cap(t, "your"))
+    .replace(/\b([Tt])he user (?:(still|also|now|then|already|never|often|usually) )?([a-z]+(?:['’]t)?)\b/g, (m, t, adverb, word) => {
+      const verb = plural(word.replace("’", "'"));
+      return cap(t, "you") + " " + (adverb ? adverb + " " : "") + (verb || word);
+    })
+    .replace(/\b([Tt])he user\b/g, (m, t) => cap(t, "you"));
+}
 function inline(text, from) {
   let s = esc(text);
   const codes = [];
@@ -730,6 +754,7 @@ function inline(text, from) {
     return "\u0002" + (links.length - 1) + "\u0002";
   });
   // Three or more claim numbers in a row read as noise: one chip says how many, and names them on hover.
+  s = youify(s);
   const runs = [];
   s = s.replace(/(?:\s*\[W?\d{1,3}\]){3,}/g, run => { runs.push(citeRun(run.match(/W?\d{1,3}/g), from)); return "\u0003" + (runs.length - 1) + "\u0003"; });
   s = s.replace(/\s*\[(W?\d{1,3})\]/g, (m, n) => citeChip(n, from));
@@ -936,8 +961,9 @@ function known(r) {
 }
 // The first readable line of some Markdown, without its markup or claim numbers.
 function plainLine(text) {
-  return String(text).split("\n").map(l => l.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/\s*\[W?\d{1,3}\]/g, "").replace(/[#*`>]/g, "").trim()).find(Boolean) || "";
+  const line = String(text).split("\n").map(l => l.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/\s*\[W?\d{1,3}\]/g, "").replace(/[#*`>]/g, "").trim()).find(Boolean);
+  return line ? youify(line) : "";
 }
 function section(r, name) { return known(r).kept.find(s => s.title.toLowerCase() === name); }
 function byActivity(a, b) {
@@ -1804,7 +1830,7 @@ function record(path, heading) {
     const box = el("div", { class: "missing" + (mapped ? " primary" : "") }, [
       el("span", { class: "lead", text: mapped ? "Only mapped so far" : k.missing.length + (k.missing.length === 1 ? " section" : " sections") + " still to learn" }),
       mapped ? el("p", { class: "why", text: "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in." }) : null,
-      el("div", { class: "names", text: "Not investigated yet: " + k.missing.join(", ") + "." }),
+      el("div", { class: "names", text: "Not investigated yet: " + youify(k.missing.join(", ")) + "." }),
       el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]);
     if (mapped) grid.parentNode.insertBefore(box, grid); else column.appendChild(box);
   }
