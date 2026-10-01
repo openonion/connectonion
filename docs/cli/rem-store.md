@@ -1,6 +1,6 @@
 # co rem store: one SQLite index beside the pages (#2067, step 1)
 
-Status: step 1 shipped in 1.9.0a9 — the index is built after every map and
+Status: step 1, proposed for 1.9.0a9 — the index is built after every map and
 sync, `co rem list people --table` reads it, and the JSON files stay
 authoritative. Nothing else reads the index yet.
 
@@ -32,7 +32,7 @@ an id a page can cite.
   hands a model files, and a file is what a model reads well.
 - **Mail bodies** (`.state/mail/messages/<provider>/<sha256>.json`) and
   **session messages** (`.state/projects/<page>/messages.jsonl`). The store
-  holds where each body is (`body_path`, `body_line`), not the body. The
+  holds where each body is (`body_path`, relative to `.state`, and `body_line` for a JSONL), not the body. The
   thread view loads bodies on demand, so the index stays small and a body is
   never copied into a second place.
 - **All the JSON** (`map.json`, `source-inventory.jsonl`, `runs/*.json`,
@@ -130,7 +130,7 @@ people_table(root, *, company="", query="", open_only=False, recent_days=0,
 person(root, record) -> dict | None   # the row plus its edges
 thread(root, thread_id, *, bodies=False) -> list[dict]   # in time order
 edges(root, record) -> list[dict]
-threads(root, record) -> list[dict]   # a person's threads, newest first
+threads(root, record) -> list[dict]   # a person's mail threads or a project's sessions, newest first
 ```
 
 Rows are plain dicts; JSON columns come back decoded. The reader (#2064) and
@@ -138,11 +138,25 @@ the facts work (#2068) read through these, not through SQL.
 
 ## Measured
 
-On a copy of a real notebook (381 person pages, 142 orgs, 21 projects,
-3,152 mails in the inventory with 574 bodies, 905 session messages, 60 runs):
-see the PR for the numbers; they are filled in below at release.
+On a copy of a real notebook (2026-10-01; 381 person pages, 142 orgs, 21
+projects, 3,152 mails in the inventory of which 574 have archived bodies, 905
+typed session messages, 60 runs; 220 MB of `.state`), Python 3.14 on an
+M-series Mac:
 
-<!-- MEASURED -->
+| | |
+|---|---|
+| full build from nothing | 0.64 s |
+| nothing changed | 0.02 s, nothing written |
+| one page touched (the `pages` group) | 0.34 s |
+| one run touched (the `runs` group) | 0.02 s |
+| `rem.db` | 2.6 MB, mode 0600 |
+| rows | 381 people, 142 orgs, 21 projects, 4,057 messages, 200 edges, 60 runs |
+| `people_table()` | 330 rows in 0.02 s — the census's 330 people |
+
+Most of a `pages` rebuild is the census reading every page; the database
+work is a small part. The `pages` group is all or nothing: one changed page
+rebuilds every person row. At this size that is cheaper than tracking pages
+one by one.
 
 ## Not in this step
 
