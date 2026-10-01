@@ -1,6 +1,6 @@
 # It told me it had read 46 things
 
-I opened the REM reader in the morning with a question about Mara. The first
+I opened REM's invented test notebook with a question about Mara. The first
 thing it told me was that the night pass had read 46 items and rewritten four
 pages. The answer about Mara was there, but I had to go looking for it. The
 reader was proud of its workload; I wanted to know what I should carry into
