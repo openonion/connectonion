@@ -25,16 +25,15 @@ python -m pip install --upgrade 'connectonion==1.8.9'
 
 ## Current preview
 
-Alpha **1.9.0a4**: co rem, fixed from running it on a real notebook. Pages
-are no longer stamped investigated without material, one bad citation drops one
-line instead of the page, a person page opens on who they are to you and the
-last contact, a skill is one page with its use counted, a repository is one
-project, and what you typed in Codex Desktop is read at last. It follows
-**1.9.0a3**, the co rem rename with a first run you can read. See
-[1.9.0a4 notes](releases/1.9.0a4.md).
+Alpha **1.9.0a6**: co rem's first run is capped and says what it will cost,
+your own page has its own shape and your name, an upgraded notebook is tidied,
+status and the reader count from one census, and every co command has one look
+that `co audit` checks (1.9.0a5). 1.9.0a6 fixes `co rem investigate me`
+stopping on one Gmail date and maintenance that refused unwritten pages. See
+[1.9.0a6 notes](releases/1.9.0a6.md) and [1.9.0a5 notes](releases/1.9.0a5.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.0a4'
+python -m pip install --upgrade 'connectonion==1.9.0a6'
 co rem status
 ```
 

@@ -400,7 +400,22 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a5
+## Current Version: 1.9.0a6
+
+1.9.0a6 fixes the two things 1.9.0a5's acceptance run on a copy of the owner's
+notebook found broken: a Gmail date with no timezone stopped `co rem
+investigate me` and the first run's first page, because one bad item ended the
+whole gather (#2013); and daily maintenance refused every page not yet
+investigated, spending 290k tokens to change nothing, because the "no
+placeholder left" rule from #2011 applied to it (#2014). Also: a same-day
+re-investigation of already-cited mail calls no model (#2015), the owner page is
+rewritten rather than appended (#2017), services and mail providers make no
+pages (#2018), and a page cannot grow past 20k characters (#2019). Stable is 1.8.9. See
+[1.9.0a6 notes](docs/releases/1.9.0a6.md).
+
+- 1.9.0a6 (#2013 naive Gmail dates read as UTC, one unreadable date skips its mail; #2014 the placeholder rule applies only to a page's own investigation; #2015 already-cited mail is not new; #2016 per-stage seconds; #2017 owner page rewritten not appended; #2018 tidy after the map, wider service rule, mail providers never orgs; #2019 20k growth refused.)
+
+## Previous preview: 1.9.0a5
 
 1.9.0a5 gives every co command one look and makes the audit check it (#1997):
 a shared palette, a styled Next line, colour only in a terminal, and a
