@@ -55,17 +55,19 @@ contacts, and session metadata, then saves a private copy of each listed message
 body, once, so investigating a person later reads it from disk.
 
 Then, in a terminal, it writes your own page by itself from everything you sent
-and your coding sessions of the last 30 days (co rem investigate me), then the 3
-people you wrote to most in the last 14 days, reading the run's --days of their
-mail (co rem investigate people), then your 3 most recently active projects from
-the messages you typed in their sessions. Before the first page it says one
-total: about how many pages, ~how many billed input tokens on your plan and ~how
-many minutes, an estimate from the median of this notebook's own runs (before
-there are any: 680k and ~6 minutes for your page, 425k and ~5 minutes a person,
-750k and ~4.5 minutes a project, measured on a real notebook). It names the
-runner and model, and stops at 5 points of the Codex week, or at the weekly
-budget or floor; Ctrl-C stops it, says which pages were written, and keeps the
-map and every page. It is skipped, with the reason, when the runner is missing
+and your coding sessions of the last 30 days (co rem investigate me): a quick
+first pass in about 4 minutes, then the whole page alongside the rest. Then every
+person in the people queue (the ones you wrote to in the last 14 days first,
+each from up to two years of their mail), every project with session messages
+and the organisations you correspond with, 12 pages at a time; on a real
+1,880-mail notebook that was 199 of 242 pages in about 30 minutes.
+--first-people, --first-projects and --first-orgs cap a kind (0 for none).
+Before the first page it says one total: about how many pages, ~how many billed
+input tokens on your plan and ~how many minutes, an estimate from the median of
+this notebook's own runs (before there are any, measured defaults). It names the
+runner and model, and stops starting pages at 20 points of the Codex week, or at
+the weekly budget or floor; Ctrl-C stops it, says which pages were written, and
+keeps the map and every page. It is skipped, with the reason, when the runner is missing
 or signed out, when no mailbox gave an address of yours, or when your page was
 already written. More people: co rem investigate people. More projects: co rem
 projects write.
@@ -167,7 +169,7 @@ page unmarked.
 
 Budget: with the Codex runner every investigation records your Codex week before
 and after, and counts toward investigation's weekly budget (limits.
-investigation_quota_points, default 10). A CATEGORY run stops starting pages when
+investigation_quota_points, default 20). A CATEGORY run stops starting pages when
 that budget is spent, when --budget is spent, or once the week is at
 limits.quota_floor_percent (default 70%), and says which. The page in flight
 finishes. Without a meter (another runner, Codex signed out) --limit is the bound.

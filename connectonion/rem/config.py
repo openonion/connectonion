@@ -68,7 +68,7 @@ def default_config() -> dict:
                        # Points of the Codex weekly window (#1843): investigation's
                        # budget, and the level past which it starts nothing so the
                        # owner's own coding keeps the rest of the week.
-                       "investigation_quota_points": 10, "quota_floor_percent": 70}}
+                       "investigation_quota_points": 20, "quota_floor_percent": 70}}
 
 
 def validate(config: dict) -> dict:

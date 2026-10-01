@@ -97,6 +97,10 @@
   .theme-btn { background: none; border: none; padding: 2px 8px; font: 11px var(--body); color: var(--ink-3); border-radius: 4px; cursor: pointer; }
   .theme-btn:hover { color: var(--ink); }
   .theme-btn.active { background: var(--moss-soft); color: var(--moss-ink); font-weight: 500; }
+  /* privacy labels: [personal] / [sensitive] at the end of a sentence */
+  .privacy-tag { font: 10px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; padding: 0 5px; margin: 0 2px; border-radius: 4px; border: 1px solid var(--line); color: var(--ink-3); background: var(--paper-2); white-space: nowrap; }
+  .privacy-tag.sensitive { border-color: var(--ink-3); color: var(--ink); font-weight: 600; }
+  :root.hide-private .private, :root.hide-private li.private-item { display: none; }
 
   /* ---- main ---- */
   main { min-width: 0; width: 100%; overflow-wrap: anywhere; padding: 44px 56px 96px; max-width: 920px; }
@@ -260,6 +264,18 @@
 const REM = /*__REM_DATA__*/null;
 window.REM = REM;
 
+// Private sentences shown or hidden, remembered like the theme
+(function() {
+  if (location.protocol === "file:" && localStorage.getItem("co-rem-private") === "hidden")
+    document.documentElement.classList.add("hide-private");
+})();
+
+function togglePrivate() {
+  const hidden = document.documentElement.classList.toggle("hide-private");
+  if (location.protocol === "file:") localStorage.setItem("co-rem-private", hidden ? "hidden" : "shown");
+  renderRail(route().category || (route().record ? route().record.split("/")[0] : (route().query ? "search" : null)));
+}
+
 // Theme setup
 (function() {
   const saved = location.protocol === "file:" ? localStorage.getItem("co-rem-theme") : null;
@@ -369,6 +385,10 @@ function copyToClipboard(text, btn, successMsg) {
 // ---------- markdown (small, escape-first) ----------
 function inline(text, from) {
   let s = esc(text);
+  // A sentence ending in [personal] or [sensitive] (and its claim numbers) can be hidden as one.
+  s = s.replace(/(^|[.!?。](?:\s*\[\d+\])*\s+)([^.!?。]*?[.!?。]?)\s*\[(personal|sensitive)\]((?:\s*\[\d+\])*)/g,
+    (m, lead, sentence, level, cites) => lead + '<span class="private" data-level="' + level + '">' + sentence +
+      ' <span class="privacy-tag ' + level + '">' + level + '</span>' + cites + '</span>');
   const codes = [];
   s = s.replace(/`([^`]+)`/g, (m, c) => { codes.push(c); return "\u0001" + (codes.length - 1) + "\u0001"; });
   s = s.replace(/\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, (m, lbl, url) => {
@@ -613,6 +633,12 @@ function renderRail(active) {
     themeSwitch.appendChild(btn);
   });
   foot.appendChild(themeSwitch);
+  const hidden = document.documentElement.classList.contains("hide-private");
+  const privacy = el("button", { class: "theme-btn" + (hidden ? " active" : ""), type: "button",
+    text: hidden ? "Private hidden" : "Hide private",
+    title: "Hide sentences labelled personal or sensitive, before sharing your screen" });
+  privacy.onclick = togglePrivate;
+  foot.appendChild(privacy);
 
   foot.appendChild(el("div", { text: "Snapshot " + fmtTime(REM.as_of) }));
   foot.appendChild(el("div", { text: s.next_run ? "Next pass " + fmtTime(s.next_run) : (s.state || "") }));
@@ -792,6 +818,12 @@ function record(path, heading) {
 
   // Render body markdown
   const noteDiv = el("div", { class: "note", html: markdown(body, r.path) });
+  // A list item that is nothing but private sentences disappears whole when hidden.
+  noteDiv.querySelectorAll("li").forEach(li => {
+    const rest = li.cloneNode(true);
+    rest.querySelectorAll(".private").forEach(span => span.remove());
+    if (li.querySelector(".private") && !rest.textContent.trim()) li.classList.add("private-item");
+  });
 
   // Generate IDs and Anchor links for headings
   const headings = [...noteDiv.querySelectorAll("h2, h3, h4, h5, h6")];

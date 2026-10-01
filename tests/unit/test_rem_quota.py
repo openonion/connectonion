@@ -91,7 +91,7 @@ def test_old_notebooks_get_the_new_limits_without_rewriting_config(tmp_path):
                          if "investigation_quota_points" not in line and "quota_floor_percent" not in line)
     (root / "config.yaml").write_text(stripped + "\n")
     limits = read_config(root)["limits"]
-    assert limits["investigation_quota_points"] == 10 and limits["quota_floor_percent"] == 70
+    assert limits["investigation_quota_points"] == 20 and limits["quota_floor_percent"] == 70
 
 
 def test_the_daily_round_stops_at_the_floor_and_records_why(tmp_path, monkeypatch):

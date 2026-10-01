@@ -149,9 +149,9 @@ those pages, so it picks up where you left off instead of asking again.
 - **Your plan, not our credits.** By default it runs on your own Codex plan
   and spends no OpenOnion credits. It starts no new page once your Codex week
   is 70% used, so your own coding comes first.
-- **What it costs, measured.** Your own page takes about 15 minutes, a person
-  about 15 minutes and a project about a minute in our runs; the first run
-  stops at 5 points of your Codex week. Investigating a very large subject can still cost
+- **What it costs, measured.** The first run writes 12 pages at a time; on a
+  real notebook it wrote 198 of 242 people, project and organisation pages in
+  about 25 minutes, and stops starting pages at 60 points of your Codex week. Investigating a very large subject can still cost
   millions of tokens; searching instead of summarising is
   [#1850](https://github.com/openonion/connectonion/issues/1850).
 
@@ -166,7 +166,7 @@ co rem open       # read the notebook in your browser
 co rem start      # approve what it reads, then turn on the daily update (macOS)
 ```
 
-`co rem init` writes your own page, the 3 people you write to most and your recent projects. See
+`co rem init` writes your own page, then the people, projects and organisations in your notebook, 12 at a time. See
 [co rem](https://docs.connectonion.com/rem) and the
 [command reference](docs/cli/rem.md).
 

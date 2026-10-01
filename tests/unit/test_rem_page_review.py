@@ -138,7 +138,8 @@ def test_investigation_cannot_overwrite_live_page_on_failure(tmp_path, monkeypat
     def run(directory, prompt, config, stage):
         assert directory != nb.root
         working = next(directory.glob('investigate-*/notebook'))
-        assert (working / record).read_text() == original
+        first_turn = 'Your previous turn ended without writing' not in prompt
+        assert not first_turn or (working / record).read_text() == original
         assert 'Write notebook Markdown pages directly' not in prompt
         if action == 'wrong_target':
             (working / record).write_text('# Accidental direct edit')
@@ -151,7 +152,8 @@ def test_investigation_cannot_overwrite_live_page_on_failure(tmp_path, monkeypat
         run_stage(nb, [{'role': 'page', 'record': record, 'text': original}], default_config(), stage='investigate')
     assert nb.read(record) == original + ('\nConcurrent user correction.\n' if action == 'concurrent_update' else '')
     result = json.loads(next((tmp_path / '.state/tasks').glob('*/result.json')).read_text())
-    assert result['status'] == 'failed' and result['usage']['input_tokens'] == 5
+    turns = 2 if action == 'wrong_target' else 1  # no candidate: one more turn, both charged
+    assert result['status'] == 'failed' and result['usage']['input_tokens'] == 5 * turns
     assert result['duration_seconds'] >= 0
     assert result['instructions_chars'] > 0 and result['material_chars'] > 0
 

@@ -25,13 +25,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .files import Notebook, RemError, read_json, state_path, write_json
+from .files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .source import timestamp
 
 # Correspondents of the last two weeks are investigated before anyone older (owner, 2026-09-30).
 RECENT_DAYS = 14
 # The window a page is read over when it has not been investigated from new mail.
-FIRST_WINDOW_DAYS = 150
+FIRST_WINDOW_DAYS = 730  # two years: a real contact went back to July 2025, 38 mails; 150 days read 13 (2026-10-01)
 # Measured on the owner's machine, 2026-09-30 (docs/cli/rem-people-pages.md):
 # one full investigation of a 157-mail person, the #1850 baseline subject.
 MEASURED = {"mails": 157, "input_tokens": 1_931_414, "minutes": 15}
@@ -178,9 +178,10 @@ def mark_investigated(root: Path, record: str, when: datetime) -> None:
     """When the gather for this page started: mail after it is new for the next run."""
     folder = state_path(root, "people")
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
-    done = read_json(folder / "investigated.json", {})
-    done[record] = when.isoformat()
-    write_json(folder / "investigated.json", done)
+    with maintenance_lock(root, wait=60):  # people finishing together each rewrite this file
+        done = read_json(folder / "investigated.json", {})
+        done[record] = when.isoformat()
+        write_json(folder / "investigated.json", done)
 
 
 def correspondents_since(root: Path, clients: dict, *, since: datetime, now: datetime | None = None) -> dict:

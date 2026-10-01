@@ -40,25 +40,30 @@ mail, which projects you have been coding in — with the page's path, within th
 first minutes. Then, in a terminal, it writes your own page by itself: the whole
 `investigate me`, from everything you sent and your coding sessions of the last
 30 days (or `--days`), one model turn over evidence files, about 15 minutes.
-Next come the 3 people you wrote to most in the last 14 days, one turn each,
-reading the run's own `--days` of their mail (not the 150 days a full
-investigation reads), and then your 3 most recently active projects, from the
-messages you typed in their Codex and Claude Code sessions (the
-`co rem projects write` pass, #1947). `--first-people N` and
-`--first-projects N` change the counts (0 for none).
+It writes a quick first pass of your page in about 4 minutes, then the whole
+page alongside everything else. Next come every person in the people queue
+(the ones you wrote to in the last 14 days first), each investigated from up
+to two years of their mail; every project with session messages; and the
+organisations you correspond with: 12 pages at a time. On the owner's real
+notebook (1,880 mails, ~4,000 coding-session messages) that wrote 199 of 242
+pages in about 30 minutes and moved the Codex week by one point. A person page
+read 150 days at the time; a real contact went back 15 months, so the window is
+now two years. The mail is searched, not pasted: a wider window widens what the
+model can find, not what every turn reads. `--first-people N`,
+`--first-projects N` and `--first-orgs N` cap a kind (0 for none).
 
 Before it spends anything it says one total (#2008): which runner and model,
 that it runs on your own plan, and "About N pages (...), ~X billed input tokens,
 ~Y minutes (an estimate ...)". Per page it is the median of this notebook's own
-completed runs of that kind (`.state/runs/`); before there are any, the
-defaults measured on the owner's real notebook on 2026-10-01: your page 680k and
-~6 minutes (measured 678k, 6m17s), a person 425k and ~5 minutes (150k–700k), a
-project 750k and ~4.5 minutes (614k and 922k, 4–5 minutes). 1.9.0a5 said "~90k
-and about a minute" per project and wrote every project active in the window.
-The whole first run stops starting pages once it has used 5 points of the Codex
-week (half the notebook's weekly 10), or at the weekly floor. Ctrl-C stops it,
-says which pages were written, keeps the map and every page, and names the
-command that continues. It skips the model steps, with a one-line reason, when
+completed runs of that kind (`.state/runs/`); before there are any, defaults
+measured on the owner's notebook on 2026-10-01 at 12 at a time: your page 215k
+and ~4 minutes, a person 105k and ~50 seconds (150 days), a project 100k and
+~65 seconds, an organisation 95k and ~45 seconds. Minutes are wall clock: the
+pages after yours share 12 workers. The whole first run stops starting pages
+once it has used 20 points of the Codex week (the owner's ceiling), or at the
+weekly floor; pages already in flight finish. Ctrl-C stops it, says which pages
+were written, keeps the map and every page, and names the command that
+continues. It skips the model steps, with a one-line reason, when
 the runner is not installed or not signed in (checked before the map starts,
 without a model), when no mailbox gave an address of yours, when your page was
 already written, or when there is no terminal (scripts and `--json`) unless
@@ -510,16 +515,16 @@ below is good to about one point.
   points count toward the same weekly budget. A CATEGORY run stops starting
   pages when the weekly budget is spent, when its own `--budget N` is spent, or
   at the floor, and says which; the page in flight finishes.
-- **The first pass after init** is `co rem investigate all --budget 10`: one
-  queue over people, projects and organisations by weight (the same order the
-  round uses), until 10 points of the week are spent. `--list` shows that
+- **After init**, `co rem investigate all --budget 10` works whatever init left:
+  one queue over people, projects and organisations by weight (the same order
+  the round uses), until 10 points of the week are spent. `--list` shows that
   order without running a model.
 - **A floor protects your own coding.** No investigation page starts once the
   week is at `limits.quota_floor_percent` or more, default **70%**, however much
   of co rem's budget is left. co rem shares this quota with your real work.
 - `co rem status` reads the meter now and says it in two lines, for example
   `Codex week: 5% used on pro; resets Sun 04 Oct 09:49` and
-  `Investigation this week: 0 of 10 points; nothing starts once the week is at 70%`.
+  `Investigation this week: 0 of 20 points; nothing starts once the week is at 70%`.
   `--json` gives the same numbers under `quota` and `investigation_quota`.
 - When the meter cannot be read (another runner, Codex not signed in, an older
   Codex), the run says `quota: unknown (<why>)` and the daily call cap

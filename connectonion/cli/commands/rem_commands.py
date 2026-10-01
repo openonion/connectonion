@@ -167,7 +167,7 @@ UNITS = {"people": "mails", "projects": "sessions", "orgs": "people"}
 UNITS_ONE = {"mails": ("mail",), "sessions": ("session",), "people": ("person", "people"), "": ("", "")}
 
 
-def _logged(root, record, phase, call):
+def _logged(root, record, phase, call, quiet=False):
     """Run one investigation and keep a run record of it, whatever happens.
 
     Investigations are co rem's most expensive calls and `co rem logs` did
@@ -194,7 +194,7 @@ def _logged(root, record, phase, call):
     write_json(path, run)
     from .rem_output import Turn
     turn = Turn({"investigate me": "Writing your page…", "projects write": f"Writing {record}…"}
-                .get(phase, f"Investigating {record}…"))
+                .get(phase, f"Investigating {record}…"), quiet=quiet)
 
     # Where the time went, stage by stage: a one-day investigation took 8
     # minutes and the record could not say whether it was gathering, the
@@ -325,7 +325,7 @@ def _mail_progress(kind, stop, count):
     rem_look.line(f"  {kind}: to {stop:%Y-%m-%d}, {count} mails", err=True)
 
 
-def _investigate_me(root, *, days, quick, handle=()):
+def _investigate_me(root, *, days, quick, handle=(), quiet=False):
     """The owner's page from what they sent: `investigate me`, and init's last step (#1943)."""
     from ...rem.files import Notebook, RemError, read_json, state_path
     from ...rem.investigate import investigate
@@ -347,7 +347,7 @@ def _investigate_me(root, *, days, quick, handle=()):
     result = _logged(root, record, "investigate me", lambda update: investigate(
         root, record, title, [*owner.get("addresses", []), *handle], days=days or 30,
         clients=_mail_clients(root), subscriptions=subscriptions(root), progress=_mail_progress,
-        sent_only=True, stage_progress=update, quick=quick))
+        sent_only=True, stage_progress=update, quick=quick), quiet=quiet)
     return result, record
 
 
@@ -397,12 +397,52 @@ def _spending_skipped(ctx, *, want, problem, fix) -> str:
     return ""
 
 
-# The first run's spending (owner, 2026-09-30; capped in #2008): your page from
-# everything you sent, the few people you write to most, then your few most
-# recent projects -- enough that the first minutes show something true about you
-# and the people around you, never more than half of the notebook's weekly
-# investigation budget, and one total said before the first page.
-FIRST_RUN_POINTS = 5
+def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=(), progress=None, quiet=False):
+    """One page of `co rem investigate PAGE|CATEGORY`, and of the first run's organisations."""
+    from ...rem import investigate as rem_investigate
+    from ...rem.files import RemError, split_handles
+    from ...rem.service import subscriptions
+    if record.startswith("skills/"):
+        from ...rem.skill_runs import investigate_skill_runs
+        return investigate_skill_runs(root, record, eval_dir or [Path.home() / ".co/evals"])
+    if eval_dir:
+        raise RemError("--eval-dir applies only to skills pages")
+    text = notebook.read(record)
+    title = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), record)
+    known = []
+    if record.startswith("people/"):
+        person = next((p for p in notebook.people() if p["path"] == record), {})
+        known += person.get("emails", []) + person.get("aliases", [])
+    for line in text.splitlines():
+        low = line.strip().lstrip("-").strip().casefold()
+        if low.startswith(("also known as:", "email:", "handles:")) and ":" in line:
+            known += split_handles(line.split(":", 1)[1])
+    handles = list(dict.fromkeys([*handle, *known, title.split(" (")[0]]))
+    clients = _mail_clients(root)
+    if record.startswith("projects/"):
+        # A project is read from where it lives: the sessions run in its
+        # folders. Matching mail on its name pulled in every notification
+        # and signature that mentioned it -- 3,500 mails scanned for one
+        # project on a real mailbox, then a turn that timed out. Mail about
+        # a project comes in through --handle, named on purpose.
+        handles = list(dict.fromkeys([*handle, *rem_investigate.project_paths(text), title]))
+        clients = {kind: client for kind, client in clients.items() if handle}
+    skipped = "" if clients or not record.startswith("projects/") else \
+        "not read for a project page; name its mail with --handle"
+    return _logged(root, record, "investigate", lambda update: rem_investigate.investigate(
+        root, record, title, handles, days=days or rem_investigate.window_since(text), clients=clients,
+        subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped,
+        stage_progress=update), quiet=quiet)
+
+
+# The first run's spending (owner, 2026-09-30; capped in #2008; widened
+# 2026-10-01): your page, then every person, project and organisation in the
+# notebook, FIRST_RUN_WORKERS at a time, one total said before the first page.
+# Nine real first runs on the owner's notebook wrote 199 of 242 pages in about
+# 30 minutes and moved the Codex week by one point; the owner set the ceiling
+# at 20. --first-people, --first-projects and --first-orgs cap a kind.
+FIRST_RUN_POINTS = 20
+FIRST_RUN_WORKERS = 12
 
 
 def _first_run_gate(root, config):
@@ -410,7 +450,9 @@ def _first_run_gate(root, config):
 
     The weekly floor and budget as for any investigation (#1843), and this
     run's own FIRST_RUN_POINTS of the Codex week. Without a meter (another
-    runner, or Codex not reporting) the page counts are the only bound.
+    runner, or Codex not reporting) the page counts are the only bound. Pages
+    already in flight finish, so a run can pass the budget by up to
+    FIRST_RUN_WORKERS - 1 pages.
     """
     from ...rem import quota
     from ...rem.service import run_logs
@@ -427,80 +469,142 @@ def _first_run_gate(root, config):
     return gate
 
 
-def _first_people_rows(root, cap: int, recent_days: int) -> list[dict]:
-    """The people the first run will write: the `investigate people` queue's first `cap`."""
+def _capped(rows: list, cap) -> list:
+    return rows if cap is None else rows[:cap]
+
+
+def _first_people_rows(root, cap, recent_days: int) -> list[dict]:
+    """The people the first run will write: the `investigate people` queue, the last fortnight first."""
     from ...rem.people_pages import queue
-    return queue(root, recent_days=recent_days)[:cap]
+    return _capped(queue(root, recent_days=recent_days), cap)
 
 
-def _first_project_rows(root, cap: int) -> list[dict]:
-    """The projects the first run will write: the `cap` most recently active (no model)."""
+def _first_project_rows(root, cap) -> list[dict]:
+    """The projects the first run will write: every project with messages, the recent ones first."""
     from ...rem.project_material import extract
     from ...rem.project_pages import queue
     from ...rem.service import subscriptions
     extract(root, subscriptions(root))
-    return [row for row in queue(root) if row["recent"]][:cap]
+    rows = queue(root)
+    return _capped([row for row in rows if row["recent"]] + [row for row in rows if not row["recent"]], cap)
 
 
-def _first_people(ctx, root, gate, *, cap: int, days: int, recent_days: int = 14) -> dict:
-    """The people you wrote to most recently, after your own page (owner, 2026-09-30).
+def _first_org_rows(root, cap) -> list[dict]:
+    """The organisations you correspond with, most mail first, as `co rem investigate orgs` orders them."""
+    from ...rem.queue import order
+    return _capped([row for row in order(root, "orgs") if not row["recent"]], cap)
 
-    The same queue, one-turn investigation and lines as `co rem investigate
-    people`, cut to `cap` and to the first run's budget, and reading the run's
-    own `--days` window rather than the 150 days a full investigation reads
-    (#2008). The daily round works through the rest.
+
+def _in_parallel(jobs, *, workers, gate, done):
+    """Run `jobs` with up to `workers` at once; `gate()` says why not to start the next, or ''.
+
+    A refused or failed page does not stop the others. `done(job, outcome)` is
+    called in this thread as each one finishes. Returns (outcomes, stopped).
     """
-    from ...rem.service import subscriptions
-    from .rem_people import run_people
-    if cap <= 0:
-        return {"started": False, "reason": ""}
-    stopped = gate()
-    if stopped:
-        return {"started": False, "reason": f"People pages were not written: {stopped}."}
-    result, _, _ = run_people(ctx, root, limit=cap, recent_days=recent_days, days=days, list_only=False,
-                              gate=gate, clients_for=_mail_clients, subscriptions=subscriptions, logged=_logged,
-                              announce=False)
-    return result if isinstance(result, dict) else {"started": False, "reason": result}
+    from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
-
-def _first_projects(ctx, root, config, plan, say, gate=None, *, cap: int = 3) -> dict:
-    """The pages of your `cap` most recently active projects, after your own page (#1943, #2008).
-
-    The owner decided the first run should also leave the projects you are
-    working on now written, from the messages you typed in their Codex and
-    Claude Code sessions (#1947's `co rem projects write`). The cost was said
-    once, before the first page; stopped by the weekly budget and floor like any
-    investigation, one line per page. The rest wait for `co rem projects write`.
-    """
-    from ...rem import quota
     from ...rem.files import RemError
-    from ...rem.project_pages import RECENT_DAYS, write_page, write_pages
-    from ...rem.service import run_logs
-    recent = _first_project_rows(root, cap) if cap > 0 else []
-    if not recent:
-        return {"started": False, "reason": "" if cap <= 0 else
-                f"No project active in the last {RECENT_DAYS} days has messages to write from."}
+    pending, running, outcomes, stopped = list(jobs), {}, [], ""
+    pool = ThreadPoolExecutor(max_workers=workers)
+    try:
+        while pending or running:
+            while pending and len(running) < workers and not stopped:
+                stopped = gate()
+                if not stopped:
+                    job = pending.pop(0)
+                    running[pool.submit(job["run"])] = job
+            if not running:
+                break
+            finished, _ = wait(running, return_when=FIRST_COMPLETED)
+            for future in finished:
+                job, error = running.pop(future), future.exception()
+                if error is not None and not isinstance(error, RemError):
+                    raise error
+                outcome = {"page": job["record"], "mode": job["mode"], "outcome": "accepted"} if error is None else {
+                    "page": job["record"], "mode": job["mode"], "why": str(error)[:300],
+                    "outcome": "refused" if "rejected" in str(error) else "failed"}
+                outcomes.append((job, outcome))
+                done(job, outcome)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+    return outcomes, stopped
 
-    def weekly():
-        reading = quota.read(config)
-        return quota.blocks(reading, quota.points_spent(run_logs(root), reading), config["limits"])
-    gate = gate or weekly
-    stopped = gate()
+
+def _people_jobs(root, rows) -> list[dict]:
+    from ...rem import people_pages
+    from ...rem.service import subscriptions
+
+    def job(row):
+        investigate = lambda update: people_pages.investigate_person(  # noqa: E731
+            root, row, clients=_mail_clients(root), subscriptions=subscriptions(root), stage_progress=update)
+        return {"kind": "people", "record": row["record"], "mode": row["mode"], "row": row,
+                "run": lambda: _logged(root, row["record"], "investigate", investigate, quiet=True)}
+    return [job(row) for row in rows]
+
+
+def _project_jobs(root, config, rows) -> list[dict]:
+    from ...rem import project_pages
+
+    def job(row):
+        write = lambda update: project_pages.write_page(root, row["record"], config=config)  # noqa: E731
+        return {"kind": "projects", "record": row["record"], "mode": row["mode"], "row": row,
+                "run": lambda: _logged(root, row["record"], "projects write", write, quiet=True)}
+    return [job(row) for row in rows]
+
+
+def _org_jobs(root, rows) -> list[dict]:
+    from ...rem.files import Notebook
+
+    def job(row):
+        return {"kind": "orgs", "record": row["path"], "mode": "full", "row": row,
+                "run": lambda: _investigate_page(root, Notebook(root), row["path"], quiet=True)}
+    return [job(row) for row in rows]
+
+
+def _owner_full_job(root, days) -> dict:
+    """Your whole page, from everything you sent, after the quick pass wrote the first one."""
+    from ...rem.files import read_json, state_path
+    record = read_json(state_path(root, "map.json"), {})["owner"]["record"]
+    return {"kind": "me", "record": record, "mode": "full",
+            "run": lambda: _investigate_me(root, days=days, quick=False, quiet=True)}
+
+
+KEYS = {"me": "owner_full", "people": "people_pages", "projects": "project_pages", "orgs": "org_pages"}
+LABELS = {"me": "Your full", "people": "People", "projects": "Project", "orgs": "Organisation"}
+
+
+def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, me_days=None, owner_full=False) -> dict:
+    """After your own page: your whole page, people, projects and organisations, FIRST_RUN_WORKERS at a time.
+
+    One line per page as it finishes. Returns owner_full, people_pages,
+    project_pages and org_pages, each in the shape its own command reports.
+    """
+    kinds = {"me": [_owner_full_job(root, me_days)] if owner_full else [],
+             "people": _people_jobs(root, people), "projects": _project_jobs(root, config, projects),
+             "orgs": _org_jobs(root, orgs)}
+
+    def done(job, outcome):
+        why = f" ({outcome['why'][:120]})" if outcome["outcome"] != "accepted" else ""
+        say(f"  {job['record']}: {'written' if not why else 'not written' + why}")
+
+    jobs = [job for kind in kinds.values() for job in kind]
+    outcomes, stopped = _in_parallel(jobs, workers=FIRST_RUN_WORKERS, gate=gate, done=done)
     if stopped:
-        return {"started": False, "reason": f"Project pages were not written: {stopped}."}
+        say(f"Stopped before the rest: {stopped}. Write them later with "
+            f"{_next(ctx, ['investigate', 'all'])} and {_next(ctx, ['projects', 'write'])}.")
+    return {KEYS[kind]: _kind_result(kind, jobs, outcomes, stopped) for kind, jobs in kinds.items()}
 
-    def one(record):
-        try:
-            _logged(root, record, "projects write", lambda update: write_page(root, record, config=config))
-        except RemError as error:
-            say(f"  {record}: not written ({str(error)[:120]})")
-            raise
-        say(f"  {record}: written")
 
-    done = write_pages(root, limit=len(recent), write=one, gate=gate)
-    if done.get("stopped"):
-        say(f"Stopped before the rest: {done['stopped']}. Write them later with {_next(ctx, ['projects', 'write'])}.")
-    return {"started": True, **done}
+def _kind_result(kind, jobs, outcomes, stopped) -> dict:
+    """One kind's share of the first run, in the shape its own command reports."""
+    pages = [outcome for job, outcome in outcomes if job["kind"] == kind]
+    if not jobs:
+        return {"started": False, "reason": ""}
+    if not pages:
+        return {"started": False, "reason": f"{LABELS[kind]} pages were not written: {stopped}."}
+    return {"started": True, "category": kind, "pages": pages,
+            "left": len(jobs) - sum(page["outcome"] == "accepted" for page in pages),
+            **({"stopped": stopped} if stopped else {})}
 
 
 def _init_done(ctx, result) -> str:
@@ -518,6 +622,8 @@ def _init_done(ctx, result) -> str:
     written += [f"{people} {'person' if people == 1 else 'people'}"] if people else []
     projects = sum(page.get("outcome") == "accepted" for page in (result.get("project_pages") or {}).get("pages") or [])
     written += [f"{projects} project page{'s' if projects != 1 else ''}"] if projects else []
+    orgs = sum(page.get("outcome") == "accepted" for page in (result.get("org_pages") or {}).get("pages") or [])
+    written += [f"{orgs} organisation page{'s' if orgs != 1 else ''}"] if orgs else []
     owner = (result.get("owner_page") or {}).get("path") or ""
     return "\n".join([
         "",
@@ -578,8 +684,9 @@ def make_rem_app(factory):
                   name: str = typer.Option("", "--name"),
                   archive_mail: bool = typer.Option(True, "--archive-mail/--no-mail-archive"),
                   write_mine: Optional[bool] = typer.Option(None, "--investigate/--no-investigate"),
-                  first_people: int = typer.Option(3, "--first-people", min=0),
-                  first_projects: int = typer.Option(3, "--first-projects", min=0)):
+                  first_people: Optional[int] = typer.Option(None, "--first-people", min=0),
+                  first_projects: Optional[int] = typer.Option(None, "--first-projects", min=0),
+                  first_orgs: Optional[int] = typer.Option(None, "--first-orgs", min=0)):
         from ...rem.config import prepare, read_config
         from ...rem.files import Notebook, state_path
         from ...rem.map import build_map, owner_summary
@@ -636,16 +743,19 @@ def make_rem_app(factory):
                     else:
                         body_report = archive_init(root, result, clients, progress=progress)
                     result["mail_archive"] = body_report
-                    if body_report.get("failed"):
-                        result["errors"].append({"source": "mail-archive", "stage": "body",
-                                                 "error": f"{body_report['failed']} message{'' if body_report['failed'] == 1 else 's'} unavailable"})
-                        result["phase"] = "partial"
                     write_json(state_path(root, "map.json"), result)
             finally:
                 progress.close()
             unread = {row.get("source") for row in result.get("errors") or []}
             subscribe_read_mail(root, [kind for kind in clients if kind not in unread])
             tips = []
+            unsaved = (result.get("mail_archive") or {}).get("failed")
+            if unsaved:
+                # A cache miss, not a mailbox problem: a real first run lost every
+                # page to one body that timed out of 1,880 (2026-10-01).
+                tips.append(f"{unsaved} mail bod{'y' if unsaved == 1 else 'ies'} could not be saved; the "
+                            "rest of the first run goes on, and the next init retries "
+                            f"{'it' if unsaved == 1 else 'them'}.")
             for kind, provider in (("gmail", "google"), ("outlook", "microsoft")):
                 if kind not in available:
                     tips.append(f"Connect {provider.title()} for People: co auth {provider}; then run "
@@ -715,59 +825,63 @@ def make_rem_app(factory):
             from ...rem.service import run_logs
             recent = min(14, days)
             people_rows = _first_people_rows(root, first_people, recent)
-            project_rows = _first_project_rows(root, first_projects) if first_projects > 0 else []
+            project_rows = _first_project_rows(root, first_projects) if first_projects != 0 else []
+            org_rows = _first_org_rows(root, first_orgs)
             total = first_run.plan(run_logs(root), owner=not reason, people=len(people_rows),
-                                   projects=len(project_rows))
+                                   projects=len(project_rows), orgs=len(org_rows), workers=FIRST_RUN_WORKERS)
             result["first_run"] = {**total, "people": [row["record"] for row in people_rows],
-                                   "projects": [row["record"] for row in project_rows]}
+                                   "projects": [row["record"] for row in project_rows],
+                                   "orgs": [row["path"] for row in org_rows]}
             me_days = days if window else 30  # what `investigate me` reads without --days
-            steps = ([f"your own page from everything you sent and your coding sessions of the last {me_days} days"]
-                     if not reason else [])
-            steps += ([f"the {counted(len(people_rows), 'person', 'people')} you wrote to most in the last {recent} days, from the "
-                       f"last {days} days of their mail"] if people_rows else [])
-            steps += ([f"the {counted(len(project_rows), 'project')} you worked on most recently"] if project_rows else [])
+            steps = ([f"a first pass of your own page from what you sent and your coding sessions of the last "
+                      f"{me_days} days, then the whole page"] if not reason else [])
+            steps += ([f"{counted(len(people_rows), 'person', 'people')}, the ones you wrote to in the last "
+                       f"{recent} days first, each from up to two years of their mail"] if people_rows else [])
+            steps += ([f"{counted(len(project_rows), 'project')}"] if project_rows else [])
+            steps += ([f"{counted(len(org_rows), 'organisation')}"] if org_rows else [])
             if not steps:
                 return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
-            cost = (f"First run with {config['runner']} ({config['model']}): " + ", then ".join(steps) + ". "
-                    + first_run.announce(total, plan) + f" It stops at {FIRST_RUN_POINTS} points of the Codex "
-                    "week; --first-people and --first-projects change the counts. Ctrl-C stops it and keeps the "
-                    "map and every page written. (--no-investigate skips this.)")
+            cost = (f"First run with {config['runner']} ({config['model']}): " + ", then ".join(steps)
+                    + f", {FIRST_RUN_WORKERS} at a time. " + first_run.announce(total, plan)
+                    + f" It stops at {FIRST_RUN_POINTS} points of the Codex week; --first-people, "
+                    "--first-projects and --first-orgs cap a kind. Ctrl-C stops it and keeps the map and every "
+                    "page written. (--no-investigate skips this.)")
             rem_look.say(rem_look.highlight(cost, counts=True), err=ctx.obj["json"], plain=cost)
             gate = _first_run_gate(root, config)
             if not reason:
                 try:
-                    _investigate_me(root, days=days if window else None, quick=False)
+                    # Quick first, so your page is there in minutes; the whole page runs
+                    # with the others (2026-10-01: the full pass alone was refused in two
+                    # of seven real first runs and nearly empty in a third).
+                    _investigate_me(root, days=days if window else None, quick=True)
                 except KeyboardInterrupt:
                     result.update(investigation="interrupted",
                                   investigate_me={"started": True, "outcome": "interrupted"})
                     _interrupted(ctx, retry_me, result)
                 except (RemError, rem_runner.RunFailed) as error:
+                    # One page among the first run's: the others still go on (2026-10-01).
                     result.update(investigation="failed",
                                   investigate_me={"started": True, "outcome": "failed", "why": str(error)})
-                    return (result if ctx.obj["json"] else
-                            f"Your page was not written: {error} The map is kept."), retry_me, True
-                record = summary["record"] if summary else result["owner"]["record"]
-                result.update(investigation="completed",
-                              investigate_me={"started": True, "outcome": "completed", "page": record})
-                say("Your page is written: " + str(Notebook(root).path(record)))
-            # Then the people you write to most, and the projects you worked on,
-            # by the same rules and one budget (#1943).
+                    say(f"Your page was not written: {error} The rest of the first run goes on; "
+                        f"retry your page with {_next(ctx, retry_me)}.")
+                else:
+                    record = summary["record"] if summary else result["owner"]["record"]
+                    result.update(investigation="completed",
+                                  investigate_me={"started": True, "outcome": "completed", "page": record})
+                    say("Your page is written: " + str(Notebook(root).path(record)))
             try:
-                result["people_pages"] = _first_people(ctx, root, gate, cap=len(people_rows), days=days,
-                                                       recent_days=recent)
+                result.update(_first_pages(ctx, root, config, say, gate, people=people_rows,
+                                           projects=project_rows, orgs=org_rows,
+                                           me_days=days if window else None,
+                                           owner_full=result.get("investigation") == "completed"))
             except KeyboardInterrupt:
-                result["people_pages"] = {"started": True, "outcome": "interrupted"}
-                _interrupted(ctx, ["investigate", "people"], result)
-            if result["people_pages"].get("reason"):
-                say(result["people_pages"]["reason"])
-            try:
-                result["project_pages"] = _first_projects(ctx, root, config, plan, say, gate,
-                                                          cap=len(project_rows))
-            except KeyboardInterrupt:
-                result["project_pages"] = {"started": True, "outcome": "interrupted"}
-                _interrupted(ctx, ["projects", "write"], result)
-            if result["project_pages"].get("reason"):
-                say(result["project_pages"]["reason"])
+                result.update({key: {"started": True, "outcome": "interrupted"} for key in KEYS.values()})
+                _interrupted(ctx, ["investigate", "all"], result)
+            for key in KEYS.values():
+                if result[key].get("reason"):
+                    say(result[key]["reason"])
+            if result.get("investigation") == "failed":
+                return (result if ctx.obj["json"] else _init_done(ctx, result)), retry_me, True
             return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
         _handle(ctx, run, ["sources"])
 
@@ -783,7 +897,6 @@ def make_rem_app(factory):
                          recent_days: Optional[int] = typer.Option(None, "--recent-days", min=1),
                          eval_dir: List[Path] = typer.Option([], "--eval-dir")):
         from ...rem.files import Notebook, RemError, read_json, state_path
-        from ...rem.investigate import investigate
         from ...rem import queue as rem_queue
         from ...rem.queue import CATEGORIES, order
         # With a budget the budget is the bound; otherwise five pages, as before.
@@ -794,40 +907,8 @@ def make_rem_app(factory):
         clients_for, progress = _mail_clients, _mail_progress
 
         def one(root, notebook, record):
-            if record.startswith("skills/"):
-                from ...rem.skill_runs import investigate_skill_runs
-                return investigate_skill_runs(root, record, eval_dir or [Path.home() / ".co/evals"])
-            if eval_dir:
-                raise RemError("--eval-dir applies only to skills pages")
-            text = notebook.read(record)
-            title = next((l[2:].strip() for l in text.splitlines() if l.startswith("# ")), record)
-            known = []
-            if record.startswith("people/"):
-                person = next((p for p in notebook.people() if p["path"] == record), {})
-                known += person.get("emails", []) + person.get("aliases", [])
-            for line in text.splitlines():
-                low = line.strip().lstrip("-").strip().casefold()
-                if low.startswith(("also known as:", "email:", "handles:")) and ":" in line:
-                    from ...rem.files import split_handles
-                    known += split_handles(line.split(":", 1)[1])
-            handles = list(dict.fromkeys([*handle, *known, title.split(" (")[0]]))
-            clients = clients_for(root)
-            if record.startswith("projects/"):
-                # A project is read from where it lives: the sessions run in its
-                # folders. Matching mail on its name pulled in every notification
-                # and signature that mentioned it -- 3,500 mails scanned for one
-                # project on a real mailbox, then a turn that timed out. Mail about
-                # a project comes in through --handle, named on purpose.
-                from ...rem.investigate import project_paths
-                handles = list(dict.fromkeys([*handle, *project_paths(text), title]))
-                clients = {kind: client for kind, client in clients.items() if handle}
-            skipped = "" if clients or not record.startswith("projects/") else \
-                "not read for a project page; name its mail with --handle"
-            from ...rem.investigate import window_since
-            return _logged(root, record, "investigate", lambda update: investigate(
-                root, record, title, handles, days=days or window_since(text), clients=clients,
-                subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped,
-                stage_progress=update))
+            return _investigate_page(root, notebook, record, handle=handle, days=days, eval_dir=eval_dir,
+                                     progress=progress)
 
         def overview(root):
             from ...rem.people_pages import queue as people_queue

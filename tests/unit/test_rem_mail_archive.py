@@ -243,3 +243,33 @@ def test_status_shows_an_incomplete_archive(tmp_path):
     archive_init(tmp_path, _inventory(tmp_path), {"gmail": Bodies()}, seconds=25, clock=Clock(), now=lambda: T0)
     shown = status(tmp_path)["mail_archive"]
     assert shown["phase"] == "paused" and (shown["on_disk"], shown["target"]) == (2, 6)
+
+
+def test_one_missing_body_does_not_take_the_whole_archive_away(tmp_path):
+    """A real first run (2026-10-01): 1 of 1,883 bodies timed out, the archive
+    was 'partial', and every person and organisation page skipped it for server
+    searches -- 62 pages found nothing under 16 parallel searches. Only a page
+    that needs the missing message falls back."""
+    from connectonion.rem.mail_archive import domain_material, person_material
+    prepare(tmp_path)
+    skills = tmp_path / "source-skills"
+    skills.mkdir()
+    when = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    rows = [{"id": "one", "date": when, "from": "a@alpha.example", "to": ["me@example.org"], "subject": "Plan"},
+            {"id": "two", "date": when, "from": "b@beta.example", "to": ["me@example.org"], "subject": "Plan"}]
+
+    class Mail:
+        def my_addresses(self): return {"me@example.org"}
+        def list_between(self, start, end, limit): return [r for r in rows if start <= r["date"] < end]
+        def get_email_body(self, message_id):
+            if message_id == "two":
+                raise TimeoutError("read timed out")
+            return f"body {message_id}"
+
+    report = build_map(tmp_path, {}, {"gmail": Mail()}, days=1, skill_directories=[skills], capture_sources=True)
+    archive = archive_init(tmp_path, report, {"gmail": Mail()})
+    assert archive["phase"] == "partial" and archive["failed"] == 1
+    by_address = {row.get("address"): row["record"] for row in report["people"]}
+    assert person_material(tmp_path, by_address["a@alpha.example"]) is not None
+    assert person_material(tmp_path, by_address["b@beta.example"]) is None  # its one message is missing
+    assert domain_material(tmp_path, ["alpha.example"]) is not None

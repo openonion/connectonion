@@ -73,7 +73,7 @@ Unknown — not investigated yet. Last contact: Unknown.
 Rules:
 
 - **The lead comes first**: under the title, before `Contact`, 2–3 cited
-  sentences: who they are to the user; what is open, who owes whom what (or
+  sentences, always all three parts: who they are to the user; what is open, who owes whom what (or
   `Nothing open as of <date>`); `Last contact: <date>` (newest message either
   way, with its channel). A summary of the sections below; no contact details,
   no heading.

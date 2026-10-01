@@ -1159,3 +1159,29 @@ def test_the_owners_turn_is_handed_the_recent_projects_dated_and_a_persons_is_no
     inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=5, clients={}, subscriptions={},
                     runner=runner)
     assert not any(item["role"] == "recent-projects" for item in seen)
+
+
+def test_one_run_reads_the_sessions_once_for_every_subject(tmp_path, monkeypatch):
+    """A real first run (2026-10-01) re-read 1,300 session files for every
+    person; six threads under one GIL took 13 minutes a person. The window's
+    sessions are read once and each subject picks its own from them."""
+    from connectonion.rem.source import Batch
+    seen = []
+
+    def collect(sub, cursor, *limits):
+        seen.append(cursor)
+        if not cursor:
+            return Batch([{"text": "odi accepted the terms", "timestamp": "2026-09-01", "source": "codex:1"}],
+                         {"offset": 40})
+        if cursor == {"offset": 40}:
+            return Batch([{"text": "vern booked the room", "timestamp": "2026-09-02", "source": "codex:2"}],
+                         {"offset": 80})
+        return Batch([], cursor)
+
+    monkeypatch.setattr(inv, "collect", collect)
+    subs = {"codex": {"kind": "codex", "root": str(tmp_path)}}
+    ody, _ = inv.gather("Ody Zhou", ["odi"], days=30, clients={}, subscriptions=subs)
+    vern, coverage = inv.gather("Vern Chan", ["vern"], days=30, clients={}, subscriptions=subs)
+    assert [i["source"] for i in ody] == ["codex:1"] and [i["source"] for i in vern] == ["codex:2"]
+    assert seen == [{}, {"offset": 40}, {"offset": 80}]
+    assert "2 messages" in next(line for line in coverage if line.startswith("codex"))

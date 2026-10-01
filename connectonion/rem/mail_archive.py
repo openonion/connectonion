@@ -159,6 +159,7 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seco
                         if error.get("source") in ("gmail", "outlook")]
     result["phase"] = ("partial" if result["failed"] or mail_scan_errors else
                        "unavailable" if not clients else "complete")
+    result["listed_all"] = bool(clients) and not mail_scan_errors
     result["finished"] = result["updated"] = now().isoformat()
     write_json(state, result)
     summary = state_path(root, "mail/summary.md")
@@ -196,11 +197,20 @@ def _material(manifest: dict, snapshots: list[dict]) -> tuple[dict[str, list[dic
             datetime.fromisoformat(manifest["range_end"]))
 
 
+def _usable(manifest: dict) -> bool:
+    """Every message was listed; a body that could not be saved leaves only its own pages to the provider.
+
+    A real first run (2026-10-01) lost the archive to 1 of 1,883 bodies timing
+    out: every page searched the server instead, and 62 of them found nothing.
+    """
+    return manifest.get("phase") == "complete" or (manifest.get("phase") == "partial" and manifest.get("listed_all"))
+
+
 def person_material(root: Path, record: str) -> tuple[dict[str, list[dict]], datetime, datetime] | None:
     """Read a complete local archive for one mapped page, without a provider query."""
     manifest = read_json(state_path(root, "mail/archive.json"), {})
     index = person_index_path(root, record)
-    if manifest.get("phase") != "complete" or not index.is_file():
+    if not _usable(manifest) or not index.is_file():
         return None
     snapshots = []
     for line in index.read_text(encoding="utf-8").splitlines():
@@ -223,7 +233,7 @@ def domain_material(root: Path, domains: list[str]) -> tuple[dict[str, list[dict
     at a time. `.sub.domain` counts too -- student.unsw.edu.au is UNSW.
     """
     manifest = read_json(state_path(root, "mail/archive.json"), {})
-    if manifest.get("phase") != "complete" or not domains:
+    if not _usable(manifest) or not domains:
         return None
     suffixes = tuple(f"{sep}{domain}" for domain in domains for sep in ("@", "."))
     snapshots = []

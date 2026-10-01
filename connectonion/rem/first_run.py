@@ -11,19 +11,26 @@ defaults below. Either way it is an estimate, and the line says so.
 
 from statistics import median
 
-FIRST_PEOPLE = 3
-FIRST_PROJECTS = 3
+FIRST_PEOPLE = None    # None: every page of the kind in its queue; init's flags cap it
+FIRST_PROJECTS = None
+FIRST_ORGS = None
+WORKERS = 12           # pages investigated at once after the owner's page (2026-10-01)
 
 # Measured on the owner's real notebook, 2026-10-01 (#2008): your page 678k
 # billed input in 6m17s; project pages 614k and 922k, 4-5 minutes each;
 # people 150k-700k (one stopped by hand at 1.93M). The middle of each range.
-DEFAULTS = {"owner": {"input_tokens": 680_000, "seconds": 380},
-            "person": {"input_tokens": 425_000, "seconds": 300},
-            "project": {"input_tokens": 750_000, "seconds": 270}}
+# Re-measured 2026-10-01 after the session window was read once per run: nine
+# real first runs on the same notebook, the last (iter 9) at the medians below,
+# people reading 150 days. A person reading two years costs more; once this
+# notebook has runs of its own, their medians replace these.
+DEFAULTS = {"owner": {"input_tokens": 215_000, "seconds": 230},
+            "person": {"input_tokens": 105_000, "seconds": 50},
+            "project": {"input_tokens": 100_000, "seconds": 65},
+            "org": {"input_tokens": 95_000, "seconds": 45}}
 
 # Which run records are which kind of page: `_logged`'s phase, and the record's folder.
 _PHASES = {"owner": ("investigate me", ""), "person": ("investigate", "people/"),
-           "project": ("projects write", "projects/")}
+           "project": ("projects write", "projects/"), "org": ("investigate", "orgs/")}
 
 
 def per_page(runs: list[dict], kind: str) -> dict:
@@ -45,13 +52,19 @@ def per_page(runs: list[dict], kind: str) -> dict:
             "measured": len(done)}
 
 
-def plan(runs: list[dict], *, owner: bool, people: int, projects: int) -> dict:
-    """The whole first run's pages, billed input and minutes, from `per_page`."""
-    counts = {"owner": int(owner), "person": people, "project": projects}
+def plan(runs: list[dict], *, owner: bool, people: int, projects: int, orgs: int = 0,
+         workers: int = WORKERS) -> dict:
+    """The whole first run's pages, billed input and wall-clock minutes, from `per_page`.
+
+    The owner's quick page runs alone first; every other page shares `workers`.
+    """
+    counts = {"owner": int(owner), "person": people, "project": projects, "org": orgs}
     rates = {kind: per_page(runs, kind) for kind in counts}
+    alone = counts["owner"] * rates["owner"]["seconds"]
+    shared = sum(counts[k] * rates[k]["seconds"] for k in counts if k != "owner") / max(workers, 1)
     return {"pages": sum(counts.values()), "counts": counts,
             "input_tokens": sum(counts[k] * rates[k]["input_tokens"] for k in counts),
-            "minutes": round(sum(counts[k] * rates[k]["seconds"] for k in counts) / 60),
+            "minutes": round((alone + shared) / 60),
             "measured": {k: rates[k]["measured"] for k in counts if counts[k]}}
 
 
@@ -62,7 +75,8 @@ def tokens(number: int) -> str:
 def _pages(counts: dict) -> str:
     parts = (["your page"] if counts["owner"] else []) + [
         f"{counts[kind]} {word if counts[kind] == 1 else plural}"
-        for kind, word, plural in (("person", "person", "people"), ("project", "project", "projects"))
+        for kind, word, plural in (("person", "person", "people"), ("project", "project", "projects"),
+                                   ("org", "organisation", "organisations"))
         if counts[kind]]
     return ", ".join(parts[:-1]) + " and " + parts[-1] if len(parts) > 1 else parts[0] if parts else "nothing"
 

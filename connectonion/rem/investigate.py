@@ -10,6 +10,8 @@ import hashlib
 import json
 import os
 import re
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
@@ -551,7 +553,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             coverage.append(f"{name}: source directory unavailable, not searched")
             continue
         scoped = {**sub, "enabled": True, "consented": True, "since": start.isoformat()}
-        cursor, scanned, picked = {}, 0, []
+        scanned, picked = 0, []
         is_owner = bool(own_addresses.intersection(handles))
         read = collect_chat if chat else collect
 
@@ -566,21 +568,9 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             if chat:
                 said += " " + item.get("speaker", "") + " " + item.get("correspondent", "")
             return any(h in said.lower() for h in handles)
-        told = 0
         try:
-            while True:
-                batch = read(scoped, cursor, 40, 200_000)
-                scanned += len(batch.items)
-                picked.extend(i for i in batch.items if related(i))
-                if batch.progress == cursor:
-                    break
-                cursor = batch.progress
-                # The count goes in the line itself: the CLI prints a count only
-                # beside a total, and sessions have none, so a real run printed
-                # 24 identical lines. A batch that added nothing is not news.
-                if stage_progress and scanned > told:
-                    told = scanned
-                    stage_progress(f"gathering {name} {'chats' if chat else 'sessions'}: {scanned:,} scanned", scanned)
+            window = _window_items(read, scoped, f"{name} {'chats' if chat else 'sessions'}", stage_progress)
+            scanned, picked = len(window), [i for i in window if related(i)]
         except RemError as error:
             coverage.append(f"{name}: unreadable ({error})")
         related = len(picked)
@@ -596,6 +586,39 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     for item in items:
         item.pop("_mail_id", None)
     return items, coverage
+
+
+# Every item of a session source's window, read once and shared by the
+# subjects investigated after it (2026-10-01). A real first run re-read 1,300
+# session files for every person, and six threads under one GIL took 13 minutes
+# a person. Kept for SESSION_REUSE_SECONDS: a long-lived host sees new sessions.
+_WINDOWS: dict = {}
+_WINDOWS_LOCK = threading.Lock()
+SESSION_REUSE_SECONDS = 600
+
+
+def _window_items(read, scoped: dict, label: str, stage_progress=None) -> list[dict]:
+    """All items `read` returns for `scoped`; one thread reads, the others wait for it."""
+    key = (read, json.dumps({**scoped, "since": scoped["since"][:10]}, sort_keys=True, default=str))
+    with _WINDOWS_LOCK:
+        kept = _WINDOWS.get(key)
+        if kept and time.monotonic() - kept[0] < SESSION_REUSE_SECONDS:
+            return kept[1]
+        items, cursor, told = [], {}, 0
+        while True:
+            batch = read(scoped, cursor, 40, 200_000)
+            items.extend(batch.items)
+            if batch.progress == cursor:
+                break
+            cursor = batch.progress
+            # The count goes in the line itself: the CLI prints a count only
+            # beside a total, and sessions have none, so a real run printed
+            # 24 identical lines. A batch that added nothing is not news.
+            if stage_progress and len(items) > told:
+                told = len(items)
+                stage_progress(f"gathering {label}: {told:,} scanned", told)
+        _WINDOWS[key] = (time.monotonic(), items)
+        return items
 
 
 def _split_item(item: dict, limit_chars: int, measure=None):
@@ -712,7 +735,7 @@ def last_investigated(page: str):
     return max(date.fromisoformat(d) for d in days) if days else None
 
 
-def window_since(page: str, default: int = 150) -> int:
+def window_since(page: str, default: int = 730) -> int:
     """Days to gather for a page: since its last investigation, else `default`.
 
     The script already read everything before that date into the page; asking
@@ -958,14 +981,22 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # The status line names the sources this code searched. Whether the web
     # was reached is the Skill's to report, on the page: a real run (2026-09-14)
     # had `co browser` fail inside the thread while this line still said "web".
-    searched = searched_sources(coverage)
-    with maintenance_lock(root):
-        from .reviews import ingest
-        ingest(root, result.get("review_candidates", []))
-        notebook.note_investigation(record, ", ".join(searched))
+    record_result(root, notebook, record, result.get("review_candidates", []), searched_sources(coverage))
     return {"record": record, "items": len(items), "items_available": available_items,
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,
             "usage_by_stage": usage_by_stage, "report": result.get("report", ""),
             "instructions_chars": {"investigate": result.get("instructions_chars")}}
+
+
+def record_result(root, notebook, record: str, review_candidates: list, searched: list[str]) -> None:
+    """Keep what a finished investigation proposed and mark its page investigated.
+
+    It waits for the lock: the model turn is already paid for, and with several
+    pages in flight (the first run writes four at once) two finish together.
+    """
+    with maintenance_lock(root, wait=60):
+        from .reviews import ingest
+        ingest(root, review_candidates)
+        notebook.note_investigation(record, ", ".join(searched))

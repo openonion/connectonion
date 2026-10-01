@@ -207,12 +207,14 @@ def test_runner_ok_investigates_me_once_with_inits_window(first_run):
     root, init, calls = first_run
     result = init("--days", "5")
     assert result.exit_code == 0, result.output
-    assert [call["record"] for call in calls].count(owner_record(root)) == 1
-    call = calls[0]
-    assert call["record"] == owner_record(root)
-    # The whole page, not the pre-#1850 quick pass (owner, 2026-09-30).
-    assert call["days"] == 5 and call["quick"] is False and call["sent_only"] is True
-    assert "me@example.org" in call["handles"]
+    mine = [call for call in calls if call["record"] == owner_record(root)]
+    # Quick first, so a page is there in minutes; then the whole page alongside
+    # the others (owner, 2026-10-01: the full pass alone was refused in two of
+    # seven real first runs and nearly empty in a third).
+    assert [call["quick"] for call in mine] == [True, False]
+    assert calls[0]["record"] == owner_record(root)
+    assert all(call["days"] == 5 and call["sent_only"] is True for call in mine)
+    assert "me@example.org" in mine[0]["handles"]
     text = Text.from_ansi(result.output).plain
     assert "codex" in text and "gpt-6-luna" in text
     assert "your own" in text and "Ctrl-C" in text
@@ -227,7 +229,7 @@ def test_init_ends_with_what_is_in_the_notebook_what_was_written_and_what_is_nex
     assert result.exit_code == 0, result.output
     tail = result.output.rstrip().splitlines()[-5:]
     assert tail[0] == "Your notebook: 4 people, 3 organizations, 0 projects and 0 skills."
-    assert tail[1] == "Written this run: your page and 1 person."
+    assert tail[1] == "Written this run: your page, 1 person and 3 organisation pages."
     assert tail[2].startswith("Your page: ") and tail[2].endswith(".md")
     assert tail[3].startswith(f"Then keep it current: co rem --root {root} start")
     assert tail[4] == f"Next: co rem --root {root} open"
@@ -372,14 +374,11 @@ def test_after_me_the_recent_projects_are_written_one_line_each(projects):
     result = init()
     assert result.exit_code == 0, result.output
     assert calls[0]["record"] == owner_record(root)  # me first, then the people
-    assert written == ["projects/alpha.md", "projects/beta.md"]  # the old one waits
+    assert sorted(written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
     text = Text.from_ansi(result.output).plain
-    # One total before the first page (#2008), from measured defaults on a notebook with no runs yet.
-    assert "About 4 pages (your page, 1 person and 2 projects), ~2.6M billed input tokens" in text
-    assert "an estimate from runs measured on a real notebook" in text and "Ctrl-C" in text
-    assert text.count("billed input tokens") == 1
-    assert text.count(": written") == 2
-    assert "projects/old.md" not in text
+    # One total before the first page (#2008), now with every page of every kind.
+    assert text.count("billed input tokens") == 1 and "Ctrl-C" in text
+    assert "projects/old.md: written" in text
 
 
 def test_projects_follow_the_same_skip_rules(projects, monkeypatch):
@@ -400,8 +399,8 @@ def test_json_with_investigate_writes_projects_and_reports_them(projects):
     result = init("--json", "--investigate")
     assert result.exit_code == 0, result.output
     pages = json.loads(result.stdout)["data"]["project_pages"]
-    assert pages["started"] and [row["page"] for row in pages["pages"]] == written == [
-        "projects/alpha.md", "projects/beta.md"]
+    assert pages["started"] and sorted(row["page"] for row in pages["pages"]) == sorted(written) == [
+        "projects/alpha.md", "projects/beta.md", "projects/old.md"]
 
 
 def test_the_weekly_floor_stops_project_pages(projects, monkeypatch):
@@ -436,46 +435,50 @@ def people(projects, monkeypatch):
     return root, init, calls, people_written, written
 
 
-def test_after_me_the_three_people_written_to_most_then_projects(people):
-    """Owner, 2026-09-30: the first run shows the people around you, not only you."""
+def test_after_me_the_people_you_wrote_to_and_projects_four_at_a_time(people):
+    """Owner, 2026-09-30: the first run shows the people around you, not only
+    you; 2026-10-01: all of the last fortnight's, several at once."""
     root, init, calls, people_written, projects_written = people
     result = init()
     assert result.exit_code == 0, result.output
-    assert [call["record"] for call in calls] == [owner_record(root)]
-    assert people_written == ["people/p0.md", "people/p1.md", "people/p2.md"]
-    assert projects_written == ["projects/alpha.md", "projects/beta.md"]
+    assert calls[0]["record"] == owner_record(root)  # then the organisations, alongside
+    assert sorted(people_written) == [f"people/p{n}.md" for n in range(5)]
+    assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
     text = Text.from_ansi(result.output).plain
-    assert "the 3 people you wrote to most in the last 14 days, from the last 90 days of their mail" in text
-    assert "About 6 pages (your page, 3 people and 2 projects)" in text and "Investigating" not in text
-    assert "It stops at 5 points of the Codex week" in text
-    assert "Written this run: your page, 3 people and 2 project pages." in text
+    assert "each from up to two years of their mail" in text
+    assert "12 at a time" in text and "It stops at 20 points of the Codex week" in text
+    assert "Written this run: your page, 5 people, 3 project pages and 3 organisation pages." in text
 
 
-def test_the_first_run_stops_at_its_five_points_and_keeps_what_is_written(people, monkeypatch):
+def test_the_first_run_stops_starting_pages_at_its_budget(people, monkeypatch):
+    """Pages in flight finish; nothing new starts once FIRST_RUN_POINTS are used."""
+    import re as regex
+    from connectonion.cli.commands.rem_commands import FIRST_RUN_POINTS, FIRST_RUN_WORKERS
     root, init, calls, people_written, projects_written = people
     meter = {"used_percent": 10, "window_minutes": 10080, "resets_at": 4102444800, "plan": "plus"}
     monkeypatch.setattr("connectonion.rem.quota.read", lambda config: dict(meter))
 
-    def one_person_costs_six_points(root, row, **kw):
+    def one_person_costs_the_whole_budget(root, row, **kw):
         people_written.append(row["record"])
-        meter["used_percent"] += 6
+        meter["used_percent"] += FIRST_RUN_POINTS
         return {"record": row["record"], "changed": [row["record"]]}
 
-    monkeypatch.setattr("connectonion.rem.people_pages.investigate_person", one_person_costs_six_points)
+    monkeypatch.setattr("connectonion.rem.people_pages.investigate_person", one_person_costs_the_whole_budget)
     result = init("--json", "--investigate")
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)["data"]
-    assert people_written == ["people/p0.md"]
-    assert "used 6 of its 5 points" in data["people_pages"]["stopped"]
-    assert projects_written == []
-    assert "used 6 of its 5 points" in data["project_pages"]["reason"]
+    started = len(people_written) + len(projects_written) + len(calls) - 1  # less the owner's page
+    assert 1 <= started <= min(FIRST_RUN_WORKERS, 10)  # 11 pages queued: 5 people, 3 projects, 3 orgs
+    stop = rf"used \d+ of its {FIRST_RUN_POINTS} points|70% floor"  # pages finishing together can pass either
+    assert regex.search(stop, data["people_pages"]["stopped"])
+    assert regex.search(stop, data["org_pages"]["reason"])
 
 
 def test_ctrl_c_during_people_keeps_the_pages_and_names_the_rest(people, monkeypatch):
     root, init, calls, people_written, _ = people
 
     def interrupted(root, row, **kw):
-        if people_written:
+        if row["record"] == "people/p2.md":
             raise KeyboardInterrupt
         people_written.append(row["record"])
         return {"record": row["record"], "changed": [row["record"]]}
@@ -483,46 +486,32 @@ def test_ctrl_c_during_people_keeps_the_pages_and_names_the_rest(people, monkeyp
     monkeypatch.setattr("connectonion.rem.people_pages.investigate_person", interrupted)
     result = init()
     assert result.exit_code == 130
-    assert people_written == ["people/p0.md"]
-    assert f"--root {root} investigate people" in Text.from_ansi(result.output).plain
+    assert "people/p2.md" not in people_written
+    text = Text.from_ansi(result.output).plain
+    assert f"--root {root} investigate all" in text
+
+
 
 
 # ------------------------------------------- what the first run spends (#2008)
 
 
-def test_the_first_run_is_capped_and_a_flag_raises_the_cap(people, monkeypatch):
-    """1.9.0a5 queued every project active in the window: 13 on a real notebook."""
+def test_the_first_run_writes_every_page_and_a_flag_caps_a_kind(people, monkeypatch):
+    """2026-10-01: every page by default, 12 at a time; --first-* caps one kind (0 for none)."""
     root, init, calls, people_written, projects_written = people
     rows = [{"record": f"projects/p{n}.md", "mode": "first", "last_activity": "2026-09-29T00:00:00Z",
              "recent": True, "new_messages": 1, "chars": 100, "left_out": 0} for n in range(5)]
     monkeypatch.setattr("connectonion.rem.project_pages.queue",
                         lambda root, **kw: [row for row in rows if row["record"] not in projects_written])
     assert init().exit_code == 0
-    assert projects_written == ["projects/p0.md", "projects/p1.md", "projects/p2.md"]
-    assert len(people_written) == 3
+    assert len(projects_written) == 5 and len(people_written) == 5
     projects_written.clear()
     people_written.clear()
-    result = init("--first-projects", "5", "--first-people", "1", "--json", "--investigate")
+    result = init("--first-projects", "3", "--first-people", "1", "--first-orgs", "0", "--json", "--investigate")
     assert result.exit_code == 0, result.output
-    assert len(projects_written) == 5 and people_written == ["people/p0.md"]
+    assert len(projects_written) == 3 and people_written == ["people/p0.md"]
     plan = json.loads(result.stdout)["data"]["first_run"]
-    assert plan["counts"] == {"owner": 1, "person": 1, "project": 5}
-
-
-def test_first_run_people_read_the_runs_own_window_not_150_days(people, monkeypatch):
-    root, init, calls, people_written, _ = people
-    seen = []
-
-    def investigate_person(root, row, **kw):
-        seen.append(row["days"])
-        people_written.append(row["record"])
-        return {"record": row["record"], "changed": [row["record"]]}
-
-    monkeypatch.setattr("connectonion.rem.people_pages.investigate_person", investigate_person)
-    result = init("--days", "7")
-    assert result.exit_code == 0, result.output
-    assert seen == [7, 7, 7]
-    assert "the last 7 days, from the last 7 days of their mail" in Text.from_ansi(result.output).plain
+    assert plan["counts"] == {"owner": 1, "person": 1, "project": 3, "org": 0}
 
 
 def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
@@ -538,8 +527,9 @@ def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
             run("investigate", "orgs/x.md", 5_000_000, 999)]
     assert fr.per_page(runs, "project") == {"input_tokens": 700_000, "seconds": 270, "measured": 3}
     assert fr.per_page(runs, "person") == {**fr.DEFAULTS["person"], "measured": 0}
-    total = fr.plan(runs, owner=False, people=0, projects=2)
+    total = fr.plan(runs, owner=False, people=0, projects=2, workers=1)
     assert total["input_tokens"] == 1_400_000 and total["minutes"] == 9
+    assert fr.plan(runs, owner=False, people=0, projects=24, workers=12)["minutes"] == 9  # wall clock, shared
     line = fr.announce(total, "on your Codex plan")
     assert line == ("About 2 pages (2 projects), ~1.4M billed input tokens on your Codex plan, ~9 minutes "
                     "(an estimate from this notebook's own runs).")
@@ -560,6 +550,157 @@ def test_ctrl_c_says_what_was_written_and_what_continues(people, monkeypatch):
     result = init()
     assert result.exit_code == 130
     text = Text.from_ansi(result.output).plain
-    assert "Stopped: 5 pages written before the stop" in text
-    assert "projects/alpha.md), and kept." in text
-    assert f"Next: co rem --root {root} projects write" in text
+    assert "pages written before the stop" in text and "and kept." in text
+    assert f"Next: co rem --root {root} investigate all" in text
+
+
+# ------------------------------------------- several pages at once (owner, 2026-10-01)
+
+
+def test_the_first_run_writes_people_and_projects_several_at_once(people, monkeypatch):
+    """A person takes minutes, most of it waiting on the mailbox and the model,
+    and the owner judged the cost small: the first run writes four at a time."""
+    import threading
+    root, init, calls, people_written, projects_written = people
+    together = threading.Barrier(4, timeout=5)
+
+    def slow_person(root, row, **kw):
+        together.wait()  # only returns once four pages are in flight together
+        people_written.append(row["record"])
+        return {"record": row["record"], "changed": [row["record"]]}
+
+    monkeypatch.setattr("connectonion.rem.people_pages.investigate_person", slow_person)
+    result = init("--json", "--investigate")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert [row["outcome"] for row in data["people_pages"]["pages"]][:4] == ["accepted"] * 4
+
+
+def test_the_first_run_covers_every_recent_correspondent_not_three(people):
+    root, init, calls, people_written, projects_written = people
+    result = init()
+    assert result.exit_code == 0, result.output
+    assert sorted(people_written) == [f"people/p{n}.md" for n in range(5)]
+    assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
+
+
+def test_marking_people_investigated_at_once_loses_none(tmp_path, monkeypatch):
+    """Four people finishing together each read investigated.json, add
+    themselves and write it back; without the lock the last write wins."""
+    import threading
+    import time
+    from datetime import datetime, timezone
+    from connectonion.rem import people_pages
+    real = people_pages.read_json
+
+    def slow_read(path, default):
+        value = real(path, default)
+        time.sleep(0.05)  # the gap another thread writes into
+        return value
+
+    monkeypatch.setattr(people_pages, "read_json", slow_read)
+    when = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    threads = [threading.Thread(target=people_pages.mark_investigated, args=(tmp_path, f"people/p{n}.md", when))
+               for n in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    done = json.loads((tmp_path / ".state/people/investigated.json").read_text())
+    assert sorted(done) == [f"people/p{n}.md" for n in range(4)]
+
+
+def test_a_finished_investigation_waits_for_the_lock_instead_of_losing_the_page(tmp_path):
+    """Two pages finishing a second apart: the second used to raise "co rem is
+    busy" after its model turn had been paid for."""
+    import threading
+    from connectonion.rem.files import Notebook, maintenance_lock
+    from connectonion.rem.investigate import record_result
+    notebook = Notebook(tmp_path)
+    notebook.write("people/p0.md", "# P0\n\nInvestigation: mapped 2026-09-30 · not investigated yet\n")
+    held, release = threading.Event(), threading.Event()
+
+    def hold():
+        with maintenance_lock(tmp_path):
+            held.set()
+            release.wait(5)
+
+    holder = threading.Thread(target=hold)
+    holder.start()
+    held.wait(5)
+    threading.Timer(0.5, release.set).start()
+    record_result(tmp_path, notebook, "people/p0.md", [], ["outlook"])
+    holder.join()
+    assert "investigated" in notebook.read("people/p0.md")
+
+
+def test_the_first_run_goes_on_to_older_projects_and_organisations(people):
+    """Most pages written on the first run (owner, 2026-10-01): after the recent
+    ones, the older projects and the organisations you correspond with."""
+    root, init, calls, people_written, projects_written = people
+    result = init()
+    assert result.exit_code == 0, result.output
+    assert "projects/old.md" in projects_written
+    assert any(call["record"].startswith("orgs/") for call in calls), [c["record"] for c in calls]
+
+
+def test_a_refused_owner_page_does_not_cost_the_rest_of_the_first_run(people, monkeypatch):
+    """A real first run (2026-10-01): the owner's page was refused after two
+    minutes and init stopped there, with 240 people, project and organisation
+    pages never started. The owner's page is one page among them."""
+    from connectonion.rem.runner import RunFailed
+    root, init, calls, people_written, projects_written = people
+
+    def refused(root, **kw):
+        raise RunFailed("Candidate rejected: page cites only the page itself")
+
+    monkeypatch.setattr("connectonion.cli.commands.rem_commands._investigate_me", refused)
+    result = init("--json", "--investigate")
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["data"]["investigation"] == "failed"
+    assert payload["next"].endswith("investigate me")
+    assert sorted(people_written) == [f"people/p{n}.md" for n in range(5)]
+    assert "projects/alpha.md" in projects_written
+
+
+def test_one_unreadable_mail_body_does_not_skip_the_first_run(first_run, monkeypatch):
+    """A real first run (2026-10-01): 1 of 1,880 bodies timed out, the map was
+    called partial, and init told the owner to check mailbox access and
+    investigated nothing. The archive is a cache; a missing body is a note."""
+    import requests
+    real = Mail.get_email_body
+
+    def one_times_out(self, message_id):
+        if message_id.endswith("-self2"):
+            raise requests.exceptions.ReadTimeout("read timed out")
+        return real(self, message_id)
+
+    monkeypatch.setattr(Mail, "get_email_body", one_times_out)
+    root, init, calls = first_run
+    result = init()
+    assert result.exit_code == 0, result.output
+    assert calls and calls[0]["record"] == owner_record(root)
+    text = Text.from_ansi(result.output).plain
+    assert "could not be saved" in text and "co auth status" not in text
+
+
+def test_a_refused_full_owner_page_keeps_the_quick_first_pass(first_run, monkeypatch):
+    """The full pass runs after the quick one; refused, the quick page stays."""
+    from connectonion.rem.runner import RunFailed
+    tried = []
+
+    def full_refused(root, days=None, quick=False, **kw):
+        tried.append(quick)
+        if not quick:
+            raise RunFailed("Candidate rejected: page cites only the page itself")
+        return {"record": "people/me.md"}, "people/me.md"
+
+    monkeypatch.setattr("connectonion.cli.commands.rem_commands._investigate_me", full_refused)
+    root, init, _ = first_run
+    result = init("--json", "--investigate")
+    assert result.exit_code == 0, result.output
+    assert tried == [True, False]
+    data = json.loads(result.stdout)["data"]
+    assert data["investigate_me"]["outcome"] == "completed"
+    assert data["owner_full"]["pages"][0]["outcome"] == "refused"
