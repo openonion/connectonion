@@ -844,6 +844,25 @@ def test_investigate_resolves_observed_name_email_or_path(tmp_path, monkeypatch,
     assert result.output.rstrip().endswith('show people/ody-123.md')
 
 
+def test_nothing_new_is_a_finished_run_not_an_error(tmp_path, monkeypatch):
+    """#2034: it printed "Error:", exited 1 and named the same command as Next."""
+    from connectonion.rem.investigate import NothingNew
+    prepare(tmp_path)
+    Notebook(tmp_path).stub_person('people/ody-123.md', 'Ody', ['ody@example.org'], email='ody@example.org')
+    monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
+
+    def quiet(*a, **kw):
+        raise NothingNew("Nothing new since 2026-10-01 for Ody (gmail: 0 matched). No model was called; "
+                         "people/ody-123.md is unchanged and keeps its status line.")
+    monkeypatch.setattr('connectonion.rem.investigate.investigate', quiet)
+
+    result = invoke(tmp_path, 'investigate', 'people/ody-123.md')
+
+    assert result.exit_code == 0, result.output
+    assert 'Error' not in result.output and 'Nothing new since 2026-10-01' in result.output
+    assert result.output.rstrip().endswith('show people/ody-123.md')
+
+
 def test_ambiguous_investigation_shows_choices_without_starting(tmp_path, monkeypatch):
     prepare(tmp_path)
     for suffix in ('one', 'two'):
@@ -985,7 +1004,11 @@ def test_a_run_record_says_how_long_each_stage_took(tmp_path, monkeypatch):
 
     def run(update):
         update('gathering sources')
-        clock['t'] += timedelta(seconds=40)
+        clock['t'] += timedelta(seconds=30)
+        update('gathering codex sessions: 40 scanned')
+        clock['t'] += timedelta(seconds=5)
+        update('gathering codex sessions: 1,200 scanned')     # #2030: one stage, not two
+        clock['t'] += timedelta(seconds=5)
         update('gathering gmail mail', 3, 10)
         clock['t'] += timedelta(seconds=5)
         update('gathering gmail mail', 10, 10)       # same stage: counts, not a new one
@@ -996,8 +1019,8 @@ def test_a_run_record_says_how_long_each_stage_took(tmp_path, monkeypatch):
 
     _logged(tmp_path, 'people/owner.md', 'investigate me', run)
     record = json.loads(next((tmp_path / '.state/runs').glob('*.json')).read_text())
-    assert record['stage_seconds'] == {'gathering sources': 40.0, 'gathering gmail mail': 10.0,
-                                       'writing investigation': 290.0}
+    assert record['stage_seconds'] == {'gathering sources': 30.0, 'gathering codex sessions': 10.0,
+                                       'gathering gmail mail': 10.0, 'writing investigation': 290.0}
 
 
 def test_category_run_reports_partial_failure_nonzero(tmp_path, monkeypatch):

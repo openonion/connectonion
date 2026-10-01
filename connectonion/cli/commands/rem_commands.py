@@ -209,9 +209,12 @@ def _logged(root, record, phase, call):
 
     def update(stage, processed=None, total=None, usage=None):
         moment = now()
-        if stage != open_stage["name"]:
+        # "gathering codex sessions: 40 scanned" is one stage at a count, not a
+        # stage of its own: keyed on the full text, a record had 47–51 (#2030).
+        name = re.sub(r":\s*[\d,]+\b.*$", "", stage)
+        if name != open_stage["name"]:
             close_stage(moment)
-            open_stage.update(name=stage, at=moment)
+            open_stage.update(name=name, at=moment)
         run["stage"] = stage
         run["stage_updated_at"] = moment.isoformat()
         if processed is not None:
@@ -885,7 +888,9 @@ def make_rem_app(factory):
                 except RunFailed as error:
                     done.append({"page": row["path"], "outcome": "refused", "why": str(error)})
                 except RemError as error:
-                    done.append({"page": row["path"], "outcome": "failed", "why": str(error)})
+                    from ...rem.investigate import NothingNew
+                    outcome = "nothing_new" if isinstance(error, NothingNew) else "failed"
+                    done.append({"page": row["path"], "outcome": outcome, "why": str(error)})
             skipped = [row["path"] for row in ranked() if row["recent"]]
             accepted = [row["page"] for row in done if row["outcome"] == "accepted"]
             return ({"category": category, "pages": done, "skipped_recent": skipped,
@@ -939,7 +944,14 @@ def make_rem_app(factory):
                 return by_category(root, target)
             notebook = Notebook(root)
             record = _resolve_page(notebook, target)
-            result = one(root, notebook, record)
+            from ...rem.investigate import NothingNew
+            try:
+                result = one(root, notebook, record)
+            except NothingNew as quiet:
+                # Nothing new is a finished run, not a failure: it read every
+                # source and made no model call. It printed "Error:", exited 1
+                # and told the user to run the same command again (#2034).
+                return str(quiet), ["show", record]
             return result, ["show", result["report"] if record.startswith("skills/") else record]
         retry = ["investigate", *([target] if target else []),
                  *(["--days", str(days)] if days is not None else []),
@@ -1144,7 +1156,8 @@ def make_rem_app(factory):
                 return record, ["logs", record["id"]]
             # The whole update: new material first, then at most one unfinished page.
             from ...rem.daily import run_daily
-            result = run_daily(root, days=days, scheduled=scheduled)
+            result = run_daily(root, days=days, scheduled=scheduled,
+                               say=lambda text: rem_look.line(text, err=True))
             if result is None:
                 return {"due": False, "ran": False}, ["status"]
             if result["outcome"] == "partial":

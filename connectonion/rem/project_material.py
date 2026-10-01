@@ -429,6 +429,18 @@ def mark_written(root: Path, record: str, through: str, *, now: datetime | None 
     write_json(folder / "state.json", state)
 
 
+def mark_refused(root: Path, record: str, through: str, why: str, *, now: datetime | None = None) -> None:
+    """The page was refused for the messages up to `through`: wait for newer ones (#2026).
+
+    Retried with the same material, an over-limit page was refused on every
+    sync: about 260k tokens and no change in two a6 runs."""
+    folder = _private_dir(_folder(root, record))
+    state = page_state(root, record)
+    state.update(refused_through=through, refused_at=(now or datetime.now(timezone.utc)).isoformat(),
+                 refused_why=why[:300])
+    write_json(folder / "state.json", state)
+
+
 def adopt(root: Path, old: str, new: str) -> int:
     """Page `old` was merged into `new` (#1974): its messages go with it.
 
