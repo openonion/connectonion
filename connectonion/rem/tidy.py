@@ -43,6 +43,7 @@ def tidy(root: Path, *, lock_held: bool = False, own_addresses: bool = True) -> 
         actions += _skills(notebook)
         actions += _orgs(notebook)
         actions += _lines(notebook)
+        actions += _map_history(notebook)
         actions += _dead_links(notebook)
         if not actions:
             return {}
@@ -353,6 +354,43 @@ def _same_skill(one: str, other: str) -> bool:
     def contents(text):
         return {Path(path).read_bytes() for path in _listed_files(text) if Path(path).is_file()}
     return bool(_described(one) and _described(one) == _described(other)) or bool(contents(one) & contents(other))
+
+
+MAP_COUNT = re.compile(r"^- Observed mail count: (\d+); first: [^;]*; last: ([^;]*); mailboxes: ([^.]*)\. \[1\]\n",
+                       re.M)
+MAP_SOURCE = re.compile(r"^- \[1\] Enumeration metadata, observed [^\n]*\n", re.M)
+UNASSESSED = "- Correspondent classification unassessed; mapping does not establish a person or employer.\n"
+
+
+def _map_history(notebook: Notebook) -> list[dict]:
+    """A map-only person page's mail count moves from History to the lead (#2059).
+
+    379 of 424 History bullets on the owner's people pages were the map's
+    "Observed mail count: N; first: …; last: …" line, cited to `.state/map.json`.
+    The lead keeps the date (the census dates the page by it) and the count."""
+    from .census import written
+    from .files import Notebook as Book
+    changed = []
+    for record in notebook.list("people"):
+        page = notebook.read(record)
+        match = MAP_COUNT.search(page)
+        if not match or written(page):
+            continue
+        mails, last, boxes = int(match[1]), match[2].strip(), match[3].strip()
+        lead = (f"Unknown — not investigated yet. Last contact: {last if last != 'unknown' else 'Unknown'}; "
+                f"{mails} mail{'' if mails == 1 else 's'} ({boxes if boxes != 'unknown' else 'mail'}).")
+        page = MAP_COUNT.sub("- Unknown — not investigated yet\n", page, count=1).replace(UNASSESSED, "")
+        if Book.PERSON_LEAD in page:
+            page = page.replace(Book.PERSON_LEAD, lead, 1)
+        else:
+            # Older maps wrote no lead: the date would otherwise leave the page.
+            title, _, rest = page.partition("\n")
+            page = f"{title}\n\n{lead}\n{rest if rest.startswith(chr(10)) else chr(10) + rest}"
+        if not re.search(r"\[1\](?!\()", page.partition("\n## Sources\n")[0]):
+            page = MAP_SOURCE.sub("- (none yet)\n", page, count=1)
+        notebook.write(record, page)
+        changed.append({"action": "moved the map's count to the lead", "page": record})
+    return changed
 
 
 def _lines(notebook: Notebook) -> list[dict]:

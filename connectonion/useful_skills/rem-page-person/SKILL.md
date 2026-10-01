@@ -93,7 +93,10 @@ Rules:
   wants.
 - **`Our relationship` is a state, not a log**: what kind of relationship, where
   it stands today, its concrete shape (numbers, terms, who owes what), and how
-  the person plays it. The dated log goes in `History`.
+  the person plays it.
+- **`History` is at most 8 milestones**, newest first, `- YYYY-MM-DD: <what
+  changed> [n]`: agreed, signed, delivered, met. Not a send or a newsletter.
+  Past 8, fold the oldest into one line per year.
 - **An open thread names who owes whom what, and since when** ("the user has
   owed a reply for twelve days"). "Status is not recorded" is a gap, not a
   thread. If nothing is open: `Nothing open as of <date>`, plus the next
@@ -109,11 +112,9 @@ Rules:
   empties this person's fields.
 - **`Uncertainties`** lists what is unknown about this person, inferred but
   unconfirmed, or referenced but not read; never where you searched.
-- **Numbered claims.** Each entry: the claim, confidence (high / medium / low),
-  date observed, source id. Reuse a number for a repeated claim; never list one
-  claim under two numbers. List only claims a sentence cites.
-- A person with one message and no identity gets no page. A person with a
-  second message gets their page extended, not rewritten.
+- **Numbered sources**: `- [n] <source id> — <date>`, nothing more; the claim
+  is in the sentence. Reuse a number for a repeated source; list only what a
+  sentence cites.
 
 
 ## The headings are copied exactly

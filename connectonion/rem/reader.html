@@ -956,7 +956,8 @@ function known(r) {
   let intro = "";
   for (const part of body.split(/^(?=## )/m)) {
     const head = /^## ([^\n]*)\n?/.exec(part);
-    if (!head) { intro = UNFILLED_LEAD.test(part.trim()) ? "" : part.trim(); continue; }
+    // A mapped lead now carries the last contact (#2059): show that, not the placeholder before it.
+    if (!head) { intro = UNFILLED_LEAD.test(part.trim()) ? "" : part.trim().replace(/^Unknown\s*—\s*not investigated yet\.\s*/i, ""); continue; }
     const text = part.slice(head[0].length).split("\n").filter(l => !UNKNOWN_LINE.test(l) && !PLACEHOLDER.test(l) && !repeatsTitle(l)).join("\n").trim();
     if (text) kept.push({ title: head[1].trim(), text });
     else if (!MECHANICAL.has(head[1].trim().toLowerCase())) missing.push(head[1].trim());
@@ -1045,7 +1046,8 @@ function threads(r) {
 }
 function historyItems(text) {
   return listItems(text).map(t => {
-    const m = /^(?:\*\*)?(\d{4}-\d{2}(?:-\d{2})?)(?:\*\*)?\s*[:—–-]\s*(?:\*\*)?\s*(.*)$/.exec(t);
+    // A range is one date: Ody's page has "2026-07-05–17 —" and "2026-07-29–08-04 —" (#2059).
+    const m = /^(?:\*\*)?(\d{4}-\d{2}(?:-\d{2})?(?:\s*[–-]\s*(?:\d{2}-)?\d{2})?)(?:\*\*)?\s*(?::|[—–]|\s-\s)\s*(?:\*\*)?\s*(.*)$/.exec(t);
     return m ? { day: m[1], text: m[2] } : { day: "", text: t };
   });
 }

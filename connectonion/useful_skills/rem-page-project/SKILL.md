@@ -106,7 +106,7 @@ evidence.
   rather than repeating them.
 - `Uncertainties`: missing, unread, stale or conflicting evidence; what to
   check next.
-- `Sources`: numbered references: source id, observation date, confidence.
+- `Sources`: numbered references, `- [n] <source id> — <date>`, nothing more.
   Cite every investigated claim; each inspected file (sample inputs and outputs
   too) is its own entry. Mark inference; never copy facts from examples.
 

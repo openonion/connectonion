@@ -859,7 +859,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
             if marker not in page:
                 notebook.write(record, page.replace('## Uncertainties\n', '## Uncertainties\n' + marker + '\n'))
         if made:
-            notes = '- Correspondent classification unassessed; mapping does not establish a person or employer.\n'
+            notes = ''
             if len(addresses) > 1:
                 # One person, several addresses: the same display name on a work and a
                 # personal address split one relationship across pages that each knew half.
@@ -869,10 +869,13 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
             page = notebook.read(record)
             dates = [row.get('first') for row in group if row.get('first')], [row.get('last') for row in group if row.get('last')]
             boxes = sorted({box for row in group for box in row.get('boxes', [])})
-            details = (f"Observed mail count: {mails}; first: {min(dates[0]) if dates[0] else 'unknown'}; "
-                       f"last: {max(dates[1]) if dates[1] else 'unknown'}; mailboxes: {', '.join(boxes) or 'unknown'}. [1]")
-            page = page.replace('## History\n- Unknown — not investigated yet', '## History\n- ' + details)
-            page = page.replace('- (none yet)', '- [1] Enumeration metadata, observed ' + report['started'] + ' — .state/map.json; window-limited, not lifetime totals')
+            # The count is the map's, not the person's history: 379 of 424 History
+            # bullets on the owner's people pages were this line (#2059). It goes in
+            # the lead, where the reader shows it and the census dates the page.
+            last = max(dates[1]) if dates[1] else 'Unknown'
+            plural = '' if mails == 1 else 's'
+            page = page.replace(Notebook.PERSON_LEAD, f"Unknown — not investigated yet. Last contact: {last}; "
+                                f"{mails} mail{plural} ({', '.join(boxes) or 'mail'}).", 1)
             notebook.write(record, page)
             report['created'].append(record)
     report['possible_own_addresses'].sort(key=lambda row: (-row['sent'], row['address']))
