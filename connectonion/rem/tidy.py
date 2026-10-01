@@ -41,6 +41,7 @@ def tidy(root: Path, *, lock_held: bool = False, own_addresses: bool = True) -> 
         actions += _skills(notebook)
         actions += _orgs(notebook)
         actions += _lines(notebook)
+        actions += _dead_links(notebook)
         if not actions:
             return {}
         log = read_json(state_path(root, LOG), [])
@@ -51,11 +52,53 @@ def tidy(root: Path, *, lock_held: bool = False, own_addresses: bool = True) -> 
         return {key: sorted(set(pages)) for key, pages in summary.items()}
 
 
-def _archive(notebook: Notebook, record: str) -> str:
+def _archive(notebook: Notebook, record: str, into: str = "") -> str:
+    """Move the page out, and leave no link to it behind.
+
+    Org pages kept `[Airbnb](../people/airbnb-….md)` to a service page tidy had
+    archived; the reader showed the name and the click went nowhere (#2054).
+    A page folded into another is relinked there, as `merge` does; an archived
+    one keeps its name as text."""
     target = notebook.root / ".state" / "archived" / record
     target.parent.mkdir(parents=True, exist_ok=True)
     notebook.path(record).replace(target)
+    if into:
+        from .merge import _relink
+        _relink(notebook, record, into)
     return f".state/archived/{record}"
+
+
+LINK = re.compile(r"\[([^\]]+)\]\(((?:\.\./|\./)*)([\w./-]+\.md)\)")
+
+
+def _dead_links(notebook: Notebook) -> list[dict]:
+    """Links to a page this tidy (or an earlier one) archived keep their name as text."""
+    archived = notebook.root / ".state" / "archived"
+    actions = []
+    for page in notebook.list():
+        text = notebook.read(page)
+
+        def unlink(match):
+            # A Markdown link is relative to the page's own folder.
+            target = _normal(f"{Path(page).parent.as_posix()}/{match[2]}{match[3]}")
+            if (notebook.root / target).is_file() or not (archived / target).is_file():
+                return match[0]
+            actions.append({"action": "unlinked archived page", "page": page, "target": target})
+            return match[1]
+        updated = LINK.sub(unlink, text)
+        if updated != text:
+            notebook.write(page, updated)
+    return actions
+
+
+def _normal(path: str) -> str:
+    parts = []
+    for part in path.split("/"):
+        if part == "..":
+            parts = parts[:-1]
+        elif part not in ("", "."):
+            parts.append(part)
+    return "/".join(parts)
 
 
 def _services(notebook: Notebook, state: dict) -> list[dict]:
@@ -227,7 +270,7 @@ def _fold_owner(notebook: Notebook, owner: str, page: str, emails: list[str], ev
         line = match[1] + ", ".join([*known, *(f"{email} [{number}]" for email in new)])
         text = re.sub(rf"^- {label}: .*$", lambda _: line, text, count=1, flags=re.M)
     notebook.write(owner, text)
-    _archive(notebook, page)
+    _archive(notebook, page, into=owner)
     _alias(notebook, page, owner, "the owner's own address")
 
 

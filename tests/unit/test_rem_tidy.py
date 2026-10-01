@@ -41,6 +41,26 @@ def test_services_an_older_map_made_people_are_archived_and_investigated_pages_s
     assert len(read_json(state_path(tmp_path, "tidy.json"), [])) == len(log)
 
 
+def test_a_link_to_an_archived_page_keeps_its_name_and_loses_the_dead_link(tmp_path):
+    """#2054: orgs/airbnb kept `[Airbnb](../people/airbnb-….md)` after tidy archived
+    the service page; the reader showed the name and the click went nowhere."""
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    _person(notebook, "people/apple.md", "Apple", "appleid@id.apple.com")
+    _person(notebook, "people/mia.md", "Mia Tan", "mia@acme.example")
+    notebook.stub_org("orgs/apple.md", "Apple", ["apple.com"])
+    org = notebook.read("orgs/apple.md")
+    notebook.write("orgs/apple.md", org + "\n- [Apple Support](../people/apple.md); [Mia Tan](../people/mia.md)\n")
+
+    done = tidy(tmp_path)
+
+    assert "people/apple.md" in done["archived service"]
+    text = notebook.read("orgs/apple.md")
+    assert "- Apple Support; [Mia Tan](../people/mia.md)" in text      # the live link stays
+    assert done["unlinked archived page"] == ["orgs/apple.md"]
+    assert tidy(tmp_path) == {}
+
+
 def test_the_owners_own_addresses_fold_into_their_page_and_real_people_never_do(tmp_path):
     """The owner's run offered sixteen addresses to --mine; four were friends who
     answer on other channels. Only addresses carrying the owner's words fold."""
