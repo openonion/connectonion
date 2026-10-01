@@ -13,26 +13,24 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current release
 
-Stable **1.8.9** is the default production channel: chat turns fail closed,
-one Microsoft consent with OneNote, web search, watches in `co ai`, WhatsApp
-pictures and files, `co audit`, and Gemini 3.8 as the default model; the
-Personal Wiki, `co slack`, `co discord` and the Telegram inbox verbs ship
-labelled Experimental. See [1.8.9 release notes](releases/1.8.9.md).
+Stable **1.8.10** is the default production channel. It adds `co linear`,
+`co canny`, Slack reads, and `environment.setting()` to 1.8.9. See the
+[1.8.10 GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.8.10).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.9'
+python -m pip install --upgrade 'connectonion==1.8.10'
 ```
 
 ## Current preview
 
-Alpha **1.9.0a9**: co rem, designed. The reader opens on the night and on
-what is owed, People, Organisations and Projects are sortable sheets, a person
-page opens on its balance, Insight and a cited Facts panel, the terminal has a
-designed layout, and the notebook keeps a SQLite index beside its pages. See
-[1.9.0a9 notes](releases/1.9.0a9.md).
+Alpha **1.9.0a10**: co rem's redesigned reader and terminal, with sortable
+People, Organisations and Projects sheets, cited Facts and Insight, and a
+SQLite index beside the pages. Investigation now writes those Facts and Insight
+blocks. The preview also includes the fixes and features merged since the a9
+tag. See [1.9.0a10 notes](releases/1.9.0a10.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.0a9'
+python -m pip install --upgrade 'connectonion==1.9.0a10'
 co rem open
 ```
 
