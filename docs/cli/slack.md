@@ -41,10 +41,14 @@ co auth slack
 
 It prints a link that creates the app from a manifest already filled in:
 Socket Mode on, the events subscribed, the Messages tab on, and every scope the
-inbox and the read verbs need. Then three clicks and three pastes:
+inbox and the read verbs need. Then a few clicks and three pastes:
 
-1. Open the link, pick your workspace, click **Create**. (If the form opens
-   empty, choose **From a manifest** → JSON and paste the manifest it printed.)
+1. Open the link. Slack shows **Create from a manifest** with the manifest
+   already in it (checked on a real workspace). Pick your workspace, click
+   **Next**, then **Create**. Slack's two warnings, "This manifest was created
+   by a 3rd party" and "Socket Mode … requires additional setup", are expected;
+   step 3 is that setup. (If the form opens empty, choose **From a manifest** →
+   JSON and paste the manifest it printed.)
 2. **Install App** → **Install to Workspace** → **Allow**. Copy the **Bot User
    OAuth Token** (`xoxb-…`) and, for `co slack search`, the **User OAuth Token**
    (`xoxp-…`).
