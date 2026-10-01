@@ -414,14 +414,15 @@ def _first_run_gate(root, config):
     """
     from ...rem import quota
     from ...rem.service import run_logs
-    start = quota.read(config)
+    from ...rem.service import now
+    start, began = quota.read(config), now().isoformat()
 
     def gate():
-        meter = quota.read(config)
-        stop = quota.blocks(meter, quota.points_spent(run_logs(root), meter), config["limits"])
+        meter, logs = quota.read(config), run_logs(root)
+        stop = quota.blocks(meter, quota.points_spent(logs, meter), config["limits"])
         if stop or "unknown" in meter or "unknown" in start:
             return stop
-        used = meter["used_percent"] - start["used_percent"]
+        used = quota.run_spent(start, meter, logs, began)
         return (f"the first run has used {used} of its {FIRST_RUN_POINTS} points of the Codex week"
                 if used >= FIRST_RUN_POINTS else "")
     return gate
@@ -904,15 +905,16 @@ def make_rem_app(factory):
             from ...rem import quota
             from ...rem.config import read_config
             from ...rem.service import run_logs
+            from ...rem.service import now
             config = read_config(root)
-            start = quota.read(config)
+            start, began = quota.read(config), now().isoformat()
 
             def gate():
-                meter = quota.read(config)
-                stop = quota.blocks(meter, quota.points_spent(run_logs(root), meter), config["limits"])
+                meter, logs = quota.read(config), run_logs(root)
+                stop = quota.blocks(meter, quota.points_spent(logs, meter), config["limits"])
                 if stop or not budget or "unknown" in meter or "unknown" in start:
                     return stop
-                used = meter["used_percent"] - start["used_percent"]
+                used = quota.run_spent(start, meter, logs, began)
                 return f"this run has used {used} of its {budget}-point budget" if used >= budget else ""
             return gate
 
