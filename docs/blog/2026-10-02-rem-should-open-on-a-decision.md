@@ -1,0 +1,13 @@
+# A memory page should open where the decision is
+
+The first REM reader made a familiar mistake. It took a good Markdown notebook and displayed each record like a long article. A person page might contain the answer to “What do I owe her?” and a project page might record the decision that stopped a team. Both answers were buried in sections a reader had to scan. The pages were readable; the product did not help someone return to work.
+
+We considered three directions. Polishing the typography would make the articles nicer but leave the hunt intact. Turning every record into a generic dashboard would erase the difference between a relationship, a project and a reusable skill. Replacing the notebook with a new database would change the storage promise before the reading problem was understood.
+
+The 1.9.0a13 preview keeps Markdown as the source and gives each record a focused first screen. A person opens on where things stand, the next exchanges, essential facts and connected people or projects. A project adds its purpose and a recorded decision. Dated history becomes an activity view. The complete note stays one disclosure away, including its source list. Home stops reproducing the directory and instead offers the morning brief, obligations and clear entry points.
+
+The difficult design choice was how much certainty the interface could imply. A direct page link is different from a name mentioned in a paragraph; the new cards say which one they have. A page rewritten during the night is different from a fact that changed; the new run log compares only cited keyed Facts and Contact values. A citation’s generated description is different from an archived original message; the reader separates them, and says when the body is absent. Those labels are part of the visual system, not fine print.
+
+We checked the result with an invented notebook in desktop and phone browsers, then with the owner’s real notebook in private. The tested long person page fell from about 9,000 to under 2,000 pixels on desktop without losing its original note, and no tested view gained sideways scrolling. The real notebook also showed a limitation: archived conversation views need the local derived index. Rebuilding it from existing archives made the cited conversations available, but the reader still bounds each thread to twelve recent messages.
+
+We will revisit this composition when quiet and conflicted records have been tested, when relationship hints can be corrected by the owner, and when REM can compare more than keyed fields without presenting inference as memory. The purpose of a memory interface is to help someone act with context they can inspect.
