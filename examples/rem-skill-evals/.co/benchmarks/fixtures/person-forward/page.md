@@ -2,15 +2,24 @@
 
 Unknown — not investigated yet. Last contact: Unknown.
 
-## Contact
+## Facts
 - Email: tom@brightpath.example
 - Phone: Unknown
 - Company: Unknown
 - Role: Unknown
+- Location: Unknown
+- Time zone: Unknown
+- Links: Unknown
+- How we know them: Unknown
+- First contact: Unknown
+- Last contact: Unknown
 - Signing entity: Unknown
 - Handles: tom@brightpath.example
 - Language: Unknown
 - Also known as: tom@brightpath.example
+
+## Insight
+- Unknown — not investigated yet
 
 ## Who they are
 - Unknown — not investigated yet

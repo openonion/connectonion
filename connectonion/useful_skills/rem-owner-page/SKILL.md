@@ -7,12 +7,12 @@ description: How the notebook owner's own page differs from a person's page — 
 
 This page is the user's, written for the user: "who am I, and what am I doing
 now", from what they sent and typed. It keeps the person page's headings and
-`Contact` labels, except `How the user writes to them`, which this page does not
+`Facts` labels, except `How the user writes to them`, which this page does not
 have: leave it out.
 
 ## The lead
 
-Under the title, before `Contact`, 2–4 cited sentences:
+Under the title, before `Facts`, 2–4 cited sentences:
 
 - **Who the user is and what they are working on now.** From the coding
   sessions: the projects they worked in and what they were doing there, dated
@@ -48,6 +48,8 @@ owes it nothing), never `Last contact`, and never a correspondent in `Cadence`.
 
 - `Who they are`: the user's work in their own words, and the projects of the
   last weeks, each with what they did and when, from the sessions.
+- `Insight`: the user's month — `Now:` what shipped across how many projects;
+  `At stake:` who is waiting on the user, for what, since when.
 - `Why they are here`: this is the owner's page; one line, cited to the map.
 - `Our relationship`: `Account owner`.
 - `History`: dated events, newest first (a launch, a hire, a move, a release,

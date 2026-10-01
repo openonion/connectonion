@@ -25,9 +25,12 @@ Why these rules: docs/rem-skills/rem-investigate.md
 
 ## Reading the mail
 
-- **Signature block first**: into `Contact` field by field (title, org,
-  department, office, direct line, booking link, language). A changed signature
-  is a dated move or promotion.
+- **The `investigation:facts` item first**: addresses, phones, links and
+  contact dates our code read, each with its source id; every one goes in its
+  `Facts` field, cited to that id. Its `Signature` and `Calendar` lines give
+  role, company, office, location and time zone. Then each signature block
+  you read, field by field. A changed signature is a dated move or promotion.
+  Two phones are two values with their qualifiers.
 - **Address domain = employer** (`@unsw.edu.au` → UNSW), never a role;
   gmail/outlook/qq/163 → `Company: Unknown`. An org page for the domain (listed
   in the `investigation:org-pages` item) → `Company:` is that link,
@@ -39,6 +42,11 @@ Why these rules: docs/rem-skills/rem-investigate.md
 
 ## What to produce
 
-Follow `rem-page-person` exactly, the lead above `Contact` included:
+Follow `rem-page-person` exactly, the lead above `Facts` included:
 `co rem list people --aliases` reads its headings and `Contact` labels. **`Open threads` is mandatory**: who owes what,
 since when.
+
+**Insight, three shapes** (never copy these facts):
+- `At stake: the user has owed Mia the revised SOW for 12 days; her signing date is 3 October [5]`
+- `Changed: replies went from same-day to none since 2026-08-20, after the price went to A$15k [6][8]`
+- `Pattern: every thread since June is invoices; she chases, the user answers in 2–4 days [2][7]`

@@ -813,6 +813,17 @@ def recent_projects(root: Path) -> str:
             + ("\n".join(lines) if lines else "- none in these four weeks"))
 
 
+def _keep_facts(notebook: Notebook, root: Path, record: str, rows: list[dict]) -> None:
+    """Nothing new to read, but a fact the material holds is missing from the page:
+    put it in its field with its source, no model needed (#2068)."""
+    from . import facts
+    with maintenance_lock(root):
+        page = notebook.read(record)
+        kept, restored = facts.keep_extracted(record, facts.upgrade(record, page), rows)
+        if restored:
+            notebook.write(record, kept)
+
+
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
@@ -835,6 +846,17 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     coverage.append(f"Requested investigation window: {days} days ending "
                     f"{datetime.now(timezone.utc).date().isoformat()}")
     last = last_investigated(notebook.read(record))
+    # Read from everything gathered, before anything is filtered, laid out in
+    # files or sampled: the turn searches files for what it thinks to look for,
+    # and Ody's phone sat in a signature it never opened (#2068). A mail the
+    # page already cites still has its signature. On a page investigated
+    # before, the window is not the whole history, so its first date is not
+    # the first contact.
+    from . import facts
+    from .fact_extract import extract, facts_item
+    fact_rows = [] if record.startswith("projects/") else [
+        row for row in extract(items, handles, owner=sent_only) if not (last and row["field"] == "First contact")]
+    facts_before = facts.coverage(notebook.read(record), record)
     if last:
         # The window is whole days, so an investigation straight after another
         # re-gathers the mail the page already cites: 102k tokens to be told
@@ -846,6 +868,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             coverage.append(f"{len(items) - len(fresh)} gathered item(s) already cited on the page, not re-read")
         items = fresh
     if last and not items:
+        _keep_facts(notebook, root, record, fact_rows)
         raise _nothing_new(record, subject, coverage, last)
     gathered_sources = {item["source"] for item in items if item.get("source")}
     refusal = refused_for(root, record)
@@ -990,7 +1013,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         [{"role": "quick-first-pass", "source": "investigation:quick-scope",
            "timestamp": now, "text": "This is a bounded, partial first pass. Use only the supplied sample; "
                                      "state the sampling limit in your final reply, not on the page."}]
-         if quick else []) + items
+         if quick else []) + ([facts_item(fact_rows)] if fact_rows else []) + items
     if original_material:
         prompt_items.append({"role": "original_evidence", "source": "investigation:original-evidence",
                              "text": f"Original uncompressed evidence is retained at {original_material}. Read it to check summaries and counterevidence.",
@@ -1043,4 +1066,6 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,
             "usage_by_stage": usage_by_stage, "report": result.get("report", ""),
+            "facts": {"before": facts_before, "after": facts.coverage(notebook.read(record), record),
+                      "extracted": sum(1 for row in fact_rows if row["field"] in facts.fields(record))},
             "instructions_chars": {"investigate": result.get("instructions_chars")}}

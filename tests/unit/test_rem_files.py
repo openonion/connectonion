@@ -190,7 +190,7 @@ def test_map_creates_the_page_with_its_structure_already_settled(tmp_path):
                                 ["emma", "艾玛", "szh526"]) is True
     page = notebook.read("people/emma.md")
 
-    for section in ("Contact", "Open threads", "Uncertainties", "Sources",
+    for section in ("Facts", "Insight", "Open threads", "Uncertainties", "Sources",
                     *Notebook.PERSON_SECTIONS):
         assert f"## {section}" in page, section
     for label in Notebook.PERSON_CONTACT:
@@ -199,7 +199,7 @@ def test_map_creates_the_page_with_its_structure_already_settled(tmp_path):
     assert "- Handles: emma, 艾茅, szh526" not in page
     assert "- Also known as: emma, 艾玛, szh526" in page
     # Every section, plus the lead under the title.
-    assert page.count("Unknown — not investigated yet") == len(Notebook.PERSON_SECTIONS) + 1
+    assert page.count("Unknown — not investigated yet") == len(Notebook.PERSON_SECTIONS) + 2  # + Insight
 
 
 def test_a_person_page_opens_on_its_lead_before_the_contact_fields(tmp_path):
@@ -213,7 +213,7 @@ def test_a_person_page_opens_on_its_lead_before_the_contact_fields(tmp_path):
 
     lines = notebook.read("people/mia.md").splitlines()
 
-    assert lines[:5] == ["# Mia Chen", "", Notebook.PERSON_LEAD, "", "## Contact"]
+    assert lines[:5] == ["# Mia Chen", "", Notebook.PERSON_LEAD, "", "## Facts"]   # #2068
     assert "Last contact:" in Notebook.PERSON_LEAD
 
 

@@ -15,6 +15,8 @@ import re
 import sys
 from pathlib import Path
 
+from connectonion.rem import facts
+from connectonion.rem.fact_extract import extract
 from connectonion.rem.page_review import normalize_numbered_sources, restore_runner_fields, validate
 
 HERE = Path(__file__).parents[2]  # .co/benchmarks/ -> the eval workspace
@@ -41,8 +43,37 @@ def problems(case: Path, page: str) -> list[str]:
     # sees only the first 4,000 characters, so it cannot say.
     forbidden = fixture / "forbidden.txt"
     leaked = [s for s in (forbidden.read_text().split("\n") if forbidden.is_file() else []) if s and s in page]
+    lost = lost_facts(record, page, material_items(fixture / "material.md"), original)
     return (found + [f"lost mapped line: {line}" for line in kept]
-            + [f"forbidden text on the page: {s[:12]}…" for s in leaked] + shape(record, page))
+            + [f"forbidden text on the page: {s[:12]}…" for s in leaked] + shape(record, page)
+            + [f"extracted fact not on the page: {r['field']} {r['value']}" for r in lost])
+
+
+def material_items(path: Path) -> list[dict]:
+    """A fixture's `### id · date — subject` entries as the items gather would hand over."""
+    items = []
+    for block in re.split(r"(?m)^### ", path.read_text())[1:]:
+        head, _, body = block.partition("\n")
+        source, _, rest = head.partition(" · ")
+        date, _, subject = rest.partition(" — ")
+        sender = re.search(r"(?m)^From: (.*)$", body)
+        own = bool(sender and "alex@riveralabs.example" in sender[1])
+        items.append({"source": source.strip(), "timestamp": date.strip() + "T00:00:00+00:00", "subject": subject,
+                      "speaker": sender[1] if sender else "", "role": "user" if own else "other",
+                      "text": re.sub(r"(?m)^(From|To): .*\n", "", body)})
+    return items
+
+
+def lost_facts(record: str, page: str, items: list[dict], original: str) -> list[dict]:
+    """What production's extractor reads from this material that the page left out (#2068).
+
+    Production puts these back after the turn; here the turn is measured, so a
+    loss is reported, not repaired."""
+    if not record.startswith("people/"):
+        return []
+    handles = [v["value"] for v in facts.parse(original, record)["Email"]]
+    handles += [re.sub(r"^# ", "", original.splitlines()[0])]
+    return facts.keep_extracted(record, facts.upgrade(record, page), extract(items, handles))[1]
 
 
 def section(page: str, heading: str) -> str:
@@ -61,19 +92,42 @@ QUOTED = re.compile(r"“[^”]*”|\"[^\"\n]*\"|「[^」]*」|‘[^’]*’|`[^
 CJK = re.compile(r"[㐀-鿿]")
 
 
+# #2068: insight is what the inbox does not say outright; these say nothing.
+GENERIC = re.compile(r"key (?:stakeholder|contact|partner)|valuable (?:relationship|contact|partner)|"
+                     r"important (?:contact|relationship|initiative)|maintains? (?:regular|ongoing) "
+                     r"communication|strong (?:relationship|working relationship)|plays? a (?:key|crucial|vital) "
+                     r"role|promising project|continues to (?:be|engage)", re.I)
+INSIGHT_LINE = re.compile(r"^- (?:(?:Now|Changed|At stake|Pattern): .*\[W?\d+\]\.?|Unknown)\s*$")
+
+
+def insight_problems(page: str) -> list[str]:
+    lines = [l for l in section(page, "Insight").splitlines() if l.strip()]
+    if not lines:
+        return ["no Insight section"]
+    found = [f"Insight line not labelled Now/Changed/At stake/Pattern with a citation: {l[:60]!r}"
+             for l in lines if l.startswith("- ") and not INSIGHT_LINE.match(l)]
+    if len([l for l in lines if l.startswith("- ")]) > 4:
+        found.append("Insight has more than 4 lines")
+    # The skill says 30 words; a real Ody page wrote a 58-word "Now:" (2026-10-02).
+    found += [f"Insight line of {len(l.split())} words (at most 40): {l[:40]!r}" for l in lines
+              if len(re.sub(r"\[W?\d+\]", "", l).split()) > 40]
+    return found + [f"generic filler in Insight: {m[0]!r}" for m in GENERIC.finditer("\n".join(lines))]
+
+
 def shape(record: str, page: str) -> list[str]:
     """The page-shape rules of #1974 that a count can check without a judge."""
     found = [f"coverage filler on the page: {m[0]!r}" for m in COVERAGE.finditer(page)]
     if record.startswith("people/"):
-        # The lead: prose between the title and `## Contact`, 2–3 sentences, ending in a last-contact date.
-        lead = re.search(r"(?ms)\A# [^\n]*\n(.*?)^## Contact", page)
+        # The lead: prose between the title and `## Facts`, 2–3 sentences, ending in a last-contact date.
+        lead = re.search(r"(?ms)\A# [^\n]*\n(.*?)^## Facts", page)
         text = lead.group(1).strip() if lead else ""
         if not text or text.startswith("Unknown — not investigated yet"):
-            found.append("no lead before Contact")
+            found.append("no lead before Facts")
         elif not re.search(r"Last contact:\s*(?:\d{4}-\d{2}-\d{2}|Unknown)", text):
             found.append("the lead gives no 'Last contact: <date>'")
         elif len([l for l in text.splitlines() if l.strip()]) > 3 or len(text) > 700:
             found.append(f"the lead is not short: {len(text)} characters")
+    found += insight_problems(page)
     if record.startswith("projects/"):
         stands = [l for l in section(page, "Where it stands").splitlines() if re.match(r"\s*[-*] ", l)]
         if len(stands) > MAX_STANDS:

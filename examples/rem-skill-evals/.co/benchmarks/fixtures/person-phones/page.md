@@ -1,9 +1,9 @@
-# Sam Ortiz
+# Priya Raman
 
 Unknown — not investigated yet. Last contact: Unknown.
 
 ## Facts
-- Email: sam@ortiz-consulting.example
+- Email: priya.raman@lumenops.example
 - Phone: Unknown
 - Company: Unknown
 - Role: Unknown
@@ -14,9 +14,9 @@ Unknown — not investigated yet. Last contact: Unknown.
 - First contact: Unknown
 - Last contact: Unknown
 - Signing entity: Unknown
-- Handles: sam@ortiz-consulting.example
+- Handles: priya.raman@lumenops.example
 - Language: Unknown
-- Also known as: sam@ortiz-consulting.example
+- Also known as: priya.raman@lumenops.example
 
 ## Insight
 - Unknown — not investigated yet

@@ -21,7 +21,7 @@ reason: polishing it line by line spends the turns the page needed.
 This is the page the user will open most, and the one most likely to come out
 thin. It is the memory of a relationship, not a summary of one.
 
-## The lead, before `Contact`
+## The lead, before `Facts`
 
 The first screen of a real page (#1974, 1.9.0a2) was eight contact fields; the
 one open thread was at line 33 and the page had no last-contact date at all.
@@ -39,10 +39,25 @@ An empty slot is information: it tells the user what to go find out. A page
 that omits a section hides the gap instead, and the one-line person page is
 exactly what dropping sections produces.
 
-## `Contact` is fields
+## `Facts` is data (#2068)
 
 A phone number inside a sentence cannot be found, and `Unknown` is the only way
-the user learns that the mailbox never carried one.
+the user learns that the mailbox never carried one. Ody's real page said "no
+phone number appears in the material" while his signature carried one: the
+turn searched evidence files for what it thought to look for. So the section
+that was `Contact` is now `Facts`, with the fields a reader scans for
+(location, time zone, links, how we know them, first and last contact), each
+value cited, written first and rendered as a card; code reads the certain ones
+(addresses, phones, links, dates) from the material before the turn and puts
+back any the turn leaves off. The grammar is in `connectonion/rem/facts.py`.
+
+## `Insight` is labelled
+
+Two to four lines starting `Now:`, `Changed:`, `At stake:` or `Pattern:`. A
+label makes the line say something of that kind; without one, a real page
+filled the slot with "a key stakeholder who maintains regular communication",
+which the inbox already said. The lead's first sentence is the balance (#2065):
+who owes whom what, and for how many days.
 
 ## `Language` is observed
 

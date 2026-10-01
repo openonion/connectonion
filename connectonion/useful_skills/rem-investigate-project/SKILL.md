@@ -20,6 +20,12 @@ Why these rules: docs/rem-skills/rem-investigate.md
 
 ## What to produce
 
+`Facts` first (the repository remote, the stack from manifests, the first and
+last session dates), then `Insight`. Three shapes, never their facts:
+- `Now: stopped 2026-09-28 with the import half-merged; next the retry; blocked on review [3]`
+- `Changed: moved from SQLite to files on 2026-09-02 after the lock bug [5][7]`
+- `At stake: the 1 October demo needs the login, still failing [8]`
+
 Follow `rem-page-project`, skeleton headings exact. **`Overview` is required
 when the material shows the architecture** (its parts and how work moves between
 them): a closed `text` fence with arrows. Otherwise write

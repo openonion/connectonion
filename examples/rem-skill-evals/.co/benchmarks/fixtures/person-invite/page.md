@@ -1,9 +1,9 @@
-# Sam Ortiz
+# Sam Okafor
 
 Unknown — not investigated yet. Last contact: Unknown.
 
 ## Facts
-- Email: sam@ortiz-consulting.example
+- Email: sam@corellafoods.example
 - Phone: Unknown
 - Company: Unknown
 - Role: Unknown
@@ -14,9 +14,9 @@ Unknown — not investigated yet. Last contact: Unknown.
 - First contact: Unknown
 - Last contact: Unknown
 - Signing entity: Unknown
-- Handles: sam@ortiz-consulting.example
+- Handles: sam@corellafoods.example
 - Language: Unknown
-- Also known as: sam@ortiz-consulting.example
+- Also known as: sam@corellafoods.example
 
 ## Insight
 - Unknown — not investigated yet

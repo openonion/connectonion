@@ -771,6 +771,118 @@ reader and `co rem status` both ask it:
   file's modification time, which is when the last map rewrote it. "Recently
   active" in the reader lists written pages by it and shows it.
 
+## Facts and Insight on every page (#2068)
+
+The owner, many times: an investigation finds too few facts and too little
+insight, and on Ody's page the phone number could not be found at a glance. A
+page now opens on a **Facts** block — one field a line, each value cited, a
+missing value visibly `Unknown` — and a short **Insight** section; the prose
+sections follow. `connectonion/rem/facts.py` owns the shape; the reader renders
+the block as a card.
+
+### The data shape (what the reader reads)
+
+```markdown
+## Facts
+- Email: mia.chen@harbour.example
+- Phone: +61 2 5550 0142 (work) [1]; +61 400 555 019 (mobile) [3]
+- Company: [Harbour Analytics](../orgs/harbour-analytics.md) [1]
+- Location: Unknown
+```
+
+- The section is `## Facts`. On a person page it comes straight after the lead;
+  on a project page it is the first section; on an organisation page it follows
+  `Domains`.
+- One line a field: `- <Label>: <value>`. Every label of the page's kind is
+  always present, in this order, spelled exactly:
+  - **person**: Email, Phone, Company, Role, Location, Time zone, Links,
+    How we know them, First contact, Last contact, Signing entity, Handles,
+    Language, Also known as
+  - **project**: Repository, Stack, Status, People, Organisation, Started,
+    Last activity
+  - **organisation**: What they do, Website, Location, Legal entity,
+    Your contacts, First contact, Last contact
+- An empty field is exactly `Unknown`.
+- A field with several values separates them with `; `. Each value may end in
+  a `(qualifier)` (`work`, `mobile`, `personal`) and then its citations
+  `[n]`, which are numbers defined under `## Sources` like every other claim.
+  A value may be a Markdown link.
+- Dates (`First contact`, `Last contact`, `Started`, `Last activity`) are
+  `YYYY-MM-DD`.
+- Every value carries a citation, except `Email`, `Handles` and
+  `Also known as`, which the map fills from the addresses it found. A citation
+  at the end of a line covers the uncited values before it
+  (`UNSW Founders; [UNSW](../orgs/unsw.md) [12]`); a full stop after it is
+  ignored. A new value with no citation is taken off the page when it is
+  saved (`review.json`: `facts_uncited_dropped`) rather than refusing the page.
+
+`facts.parse(page)` returns `{"Phone": [{"value": "+61 2 5550 0142",
+"qualifier": "work", "citations": ["1"]}, …], "Location": [], …}` (an empty
+list is `Unknown`), so the reader, the People table and a later database
+(#2067) read the same thing. A page written before 1.9.0a9 has `## Contact`
+instead: `facts.upgrade` renames it and adds the missing labels as `Unknown`
+the next time an investigation or maintenance writes the page; `facts.parse`
+reads either.
+
+### Extracted before prose
+
+Before the model turn, `connectonion/rem/fact_extract.py` reads the gathered
+material with no model: the subject's own addresses, phone numbers in their
+signature blocks (with `work` / `mobile` from the line's label), LinkedIn
+links, the dates of the first and last message, the signature block itself,
+the lines of calendar invitations that name the subject, and the company domain
+when it is not a mailbox provider. They go to the turn as the
+`investigation:facts` item, each with its source id, even when the rest of the
+material is in files to search — the turn confirms them, extends them and
+cites the source id, not the item.
+
+The model may correct a fact the material contradicts; it may not lose one.
+After the turn, a phone, address, LinkedIn link or contact date the extractor
+found that appears nowhere on the page is put back into its field with its
+source (`review.json` lists it under `facts_restored`). Company and role from a
+signature are context, not restored: reading a title off a signature is a
+judgement.
+
+### Insight
+
+A short section after `Facts` on person and project pages (the owner's own page
+too, where it is the owner's month: what shipped, who is waiting): two to four cited bullets of what the inbox does not say outright, each
+starting with its kind, which the reader shows as a badge —
+
+- `- Now:` what this person or project is to the user's work today;
+- `- Changed:` what moved recently (a new role, a stalled thread, a price);
+- `- At stake:` what is at risk or owed, by whom, since when;
+- `- Pattern:` something over time (replies within a day until August, then
+  nothing; every mail is about invoices).
+
+Generic lines ("a key stakeholder", "a valuable relationship") are not insight;
+the benchmark refuses them. Thin material says `- Unknown`.
+
+The lead above `Facts` carries the one line a reader opens the page for (#2065):
+a person's states the balance — who owes whom what, and for how many days, or
+`Nothing open as of <date>`; a project's says where the user stopped, what is
+next and what blocks it. A claim is stated once in one clause; doubt goes once
+in `Uncertainties`, and how the page was made (the mapper, the collector, how
+many mails matched) goes nowhere in the body — that is the run's record.
+
+### Fact coverage
+
+`facts.coverage(page)` is the share of a page's fields that are filled; an
+investigation's result carries `facts` — fields filled before and after, the
+facts the extractor found and how many of them the page kept.
+
+Measured on a copy of the owner's notebook (2026-10-02), fields filled of 14:
+Ody 6, Tamara 7, Richard 6, the owner's own page 3. The material held more
+than each page had: Ody's phone (in a signature), every page's first and last
+contact, and on the owner's page a phone, links, company and role. After
+re-investigating with these skills, Ody went to 8 (9 with the restore step over
+the full window; the run was a quick pass of the newest mail) and Tamara to 11,
+her mobile among them, each with three labelled Insight lines.
+
+When an investigation finds nothing new, the restore step still runs: a page
+whose cited mail carries a phone the page lacks gets it back with no model call.
+In a quick pass (`--quick`), the extractor sees only the sampled mail.
+
 ## co rem status (#1996, #2008)
 
 - Every time is in the notebook's timezone (`schedule.timezone`), the last run
