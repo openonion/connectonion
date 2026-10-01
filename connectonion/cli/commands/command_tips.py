@@ -221,6 +221,19 @@ NEXT = {
     "co gcalendar *": HANDLER,
     "co gdrive *": HANDLER,
     "co gmail *": HANDLER,
+    # Each co linear handler names the next command from what it found (#2049).
+    "co linear issues": HANDLER,
+    "co linear issue": HANDLER,
+    "co linear search": HANDLER,
+    "co linear teams": HANDLER,
+    "co linear projects": HANDLER,
+    "co linear states": HANDLER,
+    "co linear labels": HANDLER,
+    "co linear users": HANDLER,
+    "co linear check": HANDLER,
+    "co linear create": HANDLER,
+    "co linear update": HANDLER,
+    "co linear comment": HANDLER,
     # Every wiki command already ends by naming one next command, chosen from what
     # it found: `list` points at the first page, `search` at the first hit, a failed
     # `show` back at the category. A static line here would contradict that.

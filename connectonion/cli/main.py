@@ -2370,6 +2370,10 @@ app.add_typer(gcalendar_app, name="gcalendar")
 from .commands.synology_cli import syno_app
 app.add_typer(syno_app, name="syno")
 
+# Linear (#2049): our own commands on Linear's GraphQL API, with LINEAR_API_KEY.
+from .commands.linear_commands import linear_app
+app.add_typer(linear_app, name="linear")
+
 
 # OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.
 onenote_app = _typer_app(
