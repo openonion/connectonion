@@ -106,6 +106,11 @@ def values(raw: str) -> list[dict]:
         result.append({"value": body[:qualifier.start()].strip() if qualifier else body,
                        "qualifier": qualifier[1].strip() if qualifier else "",
                        "citations": re.findall(r"\[(W?\d+)\]", cites[1])})
+    # A citation covers the uncited values before it: `UNSW Founders; [UNSW](…) [12]`
+    # is one claim cited once, how a real Tamara candidate wrote it (2026-10-02).
+    for index in range(len(result) - 2, -1, -1):
+        if not result[index]["citations"]:
+            result[index]["citations"] = list(result[index + 1]["citations"])
     return result
 
 

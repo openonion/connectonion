@@ -30,6 +30,14 @@ def test_a_value_its_qualifier_and_its_citations_are_read_apart():
     assert list(parsed)[:4] == ["Email", "Phone", "Company", "Role"]
 
 
+def test_a_citation_covers_the_uncited_values_before_it():
+    """A real candidate wrote `Company: UNSW Founders; [UNSW](…) [12]` and was refused for it."""
+    parsed = facts.parse("## Facts\n- Company: UNSW Founders; [UNSW](../orgs/unsw.md) [12]\n", "people/t.md")
+    assert [v["citations"] for v in parsed["Company"]] == [["12"], ["12"]]
+    trailing = facts.parse("## Facts\n- Phone: +61 2 5550 0142 [1]; +61 400 555 019\n", "people/t.md")
+    assert trailing["Phone"][1]["citations"] == []          # nothing after it to cover it
+
+
 def test_a_page_written_before_facts_is_read_from_its_contact_section():
     legacy = PERSON.replace("## Facts", "## Contact")
     assert facts.parse(legacy)["Role"][0]["value"] == "Head of Data Platform"
