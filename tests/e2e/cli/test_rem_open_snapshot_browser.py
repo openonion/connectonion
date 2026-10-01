@@ -105,7 +105,7 @@ def test_a_mapped_page_leads_with_what_is_known(tmp_path, monkeypatch):
             text = page.locator("#main").inner_text()
             assert "Unknown" not in text
             assert "Mapped" in text
-            assert "Not investigated yet: Who they are" in text
+            assert "Not investigated yet: Insight, Who they are" in text   # #2068
             assert "co rem investigate 'people/quiet.md'" in text
 
             page.goto(link + "#c=people")
