@@ -45,11 +45,17 @@ with its date. A value it contradicts: name both in `Uncertainties`.
   facts, or empty searches; nor does `History`. The runner records coverage;
   it goes in your final reply, never on the page.
 - **Never cite an `Unknown`**; write it bare.
-- **Personal life stays off the page.** Health, family, partners, travel plans
-  and private money are written only when they are why the subject is in the
-  notebook, and then as their kind ("a family member", "a health matter"),
-  never the details. A real notebook carried a relative's travel plans and the
-  user's own health notes on pages anyone they share the notebook with can read.
+- **Write everything; label what is private.** A sentence about someone's
+  private life ends with its level, before the claim number, so a shared or
+  exported notebook can hide it:
+  - `[personal]`: family and friends, home, travel plans, private schedules,
+    hobbies (`Plans a family trip to Lanzhou in October. [personal] [2]`).
+  - `[sensitive]`: health, private money, legal trouble, intimate
+    relationships, mental state and self-doubt, identity numbers
+    (`Questioned whether the business has found its market. [sensitive] [5]`).
+  Work (roles, projects, deals, meetings) carries no label. When unsure between
+  two levels, take the higher. A real notebook put a relative's travel plans and
+  the user's health notes on pages with nothing to tell them apart.
 
 ## Evidence format
 
