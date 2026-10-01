@@ -844,6 +844,25 @@ def test_investigate_resolves_observed_name_email_or_path(tmp_path, monkeypatch,
     assert result.output.rstrip().endswith('show people/ody-123.md')
 
 
+def test_nothing_new_is_a_finished_run_not_an_error(tmp_path, monkeypatch):
+    """#2034: it printed "Error:", exited 1 and named the same command as Next."""
+    from connectonion.rem.investigate import NothingNew
+    prepare(tmp_path)
+    Notebook(tmp_path).stub_person('people/ody-123.md', 'Ody', ['ody@example.org'], email='ody@example.org')
+    monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
+
+    def quiet(*a, **kw):
+        raise NothingNew("Nothing new since 2026-10-01 for Ody (gmail: 0 matched). No model was called; "
+                         "people/ody-123.md is unchanged and keeps its status line.")
+    monkeypatch.setattr('connectonion.rem.investigate.investigate', quiet)
+
+    result = invoke(tmp_path, 'investigate', 'people/ody-123.md')
+
+    assert result.exit_code == 0, result.output
+    assert 'Error' not in result.output and 'Nothing new since 2026-10-01' in result.output
+    assert result.output.rstrip().endswith('show people/ody-123.md')
+
+
 def test_ambiguous_investigation_shows_choices_without_starting(tmp_path, monkeypatch):
     prepare(tmp_path)
     for suffix in ('one', 'two'):
