@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a14
+## Current Version: 1.9.0a15
+
+1.9.0a15 keeps REM's first-run project count consistent with the map shown
+before model work. Session folders discovered afterward remain candidates;
+only mapped projects enter the first-run writing queue. The larger project
+eligibility and overnight-memory issues remain open. Stable remains 1.8.10.
+See [1.9.0a15 notes](docs/releases/1.9.0a15.md).
+
+- 1.9.0a15 (#2079; first-run project map consistency).
+
+## Previous preview: 1.9.0a14
 
 1.9.0a14 makes REM's first run investigate the owner's page and a selected
 recent cohort of people, projects and related organizations by default. The

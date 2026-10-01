@@ -310,14 +310,16 @@ def _keep_newest(messages: list[dict], cap: int) -> tuple[list[dict], int]:
 
 def extract(root: Path, subscriptions: dict, *, since: datetime | None = None, full: bool = False,
             days: int = LOOKBACK_DAYS, now: datetime | None = None, recent_days: int = RECENT_DAYS,
-            lock_held: bool = False) -> dict:
+            lock_held: bool = False, create_pages: bool = True) -> dict:
     """Refresh every project page's material; return counts, never message text.
 
     With no `since`, the first extraction reads `days` back and every later one
     reads from the previous extraction (less OVERLAP). `full` reads the whole
     window again. New messages are merged by id, so a re-read adds nothing twice.
     A folder with messages and no page gets the map's page if its newest message
-    is within `recent_days`; older ones stay listed as `unmapped`. `lock_held`
+    is within `recent_days`; older ones stay listed as `unmapped`. Init passes
+    `create_pages=False` after showing its map so unmatched folders remain
+    candidates instead of silently changing the project count. `lock_held`
     says the caller already holds the maintenance lock the new pages need.
     """
     now = now or datetime.now(timezone.utc)
@@ -329,7 +331,8 @@ def extract(root: Path, subscriptions: dict, *, since: datetime | None = None, f
         since = (timestamp(previous) - OVERLAP) if previous and not full else now - timedelta(days=days)
     folders = page_folders(notebook)
     messages, counts = session_messages(subscriptions, since=since, rem_root=root, folders=folders)
-    created = _new_pages(root, _unmapped(messages, folders), now - timedelta(days=recent_days), lock_held)
+    created = (_new_pages(root, _unmapped(messages, folders), now - timedelta(days=recent_days), lock_held)
+               if create_pages else [])
     if created:
         folders = page_folders(notebook)
     by_page = {}
