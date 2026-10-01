@@ -30,19 +30,27 @@ RECENT_DAYS = 7
 
 
 def last_investigated(status_line: str) -> date | None:
-    days = [d for d in re.findall(r"(?<!not )investigated (\d{4}-\d{2}-\d{2})", status_line)]
+    # `written <date>` is a pass that read the page's sources too (#1983):
+    # counted only as "investigated", a project page sync had just written
+    # topped the queue as "not investigated" (#2046).
+    days = [d for d in re.findall(r"(?<!not )(?:investigated|written) (\d{4}-\d{2}-\d{2})", status_line)]
     return max(date.fromisoformat(d) for d in days) if days else None
 
 
-def weights(state: dict) -> dict:
+def weights(state: dict, excluded: frozenset | set = frozenset()) -> dict:
     """How much of the owner's work each page stands for, from the last map:
     mail for a person, sessions for a project, people for an org. The one
     order the queue and `list` share; `list` sorted by file name put agent
     addresses like 0x3c3ae74550@mail.openonion.ai above the owner's
-    colleagues (#1670)."""
+    colleagues (#1670).
+
+    An org counts only the people a queue would investigate: github.com led
+    the 1.9.0a7 orgs queue with "6 people", all of them unsubscribe addresses
+    (#2046)."""
     weight = {row.get("record"): row.get("mails") or 0 for row in state.get("people", [])}
     weight.update({row.get("record"): row.get("sessions") or 0 for row in state.get("projects", [])})
-    weight.update({row.get("record"): len(row.get("people") or []) for row in state.get("orgs", [])})
+    weight.update({row.get("record"): len([p for p in row.get("people") or [] if p not in excluded])
+                   for row in state.get("orgs", [])})
     return weight
 
 
@@ -136,10 +144,14 @@ def order(root, category: str, today: date | None = None) -> list[dict]:
     today = today or datetime.now(timezone.utc).date()
     prefix = CATEGORIES[category]
     state = read_json(state_path(root, "map.json"), {})
-    weight = weights(state)
     from .merge import resolve
     # The map may name a record a later merge aliased (#1976): exclude the page it lives in.
     excluded = {resolve(root, record) for record in excluded_people(state) if record} | needs_review(root)
+    weight = weights(state, excluded)
+    # An org whose every mapped person is left out is a sender, not an
+    # organisation the owner deals with: nothing about it is worth a turn (#2046).
+    excluded |= {row.get("record") for row in state.get("orgs", [])
+                 if row.get("people") and not weight.get(row.get("record"))}
     hollow = hollow_investigations(root) if category in ("people", "orgs") else set()
     notebook = Notebook(root)
     entries = notebook.unfinished(prefix.split("/")[0])

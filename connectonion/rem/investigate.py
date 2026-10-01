@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .config import read_config
 from ..provider_credentials import ProviderCredentialError
-from .files import Notebook, RemError, is_address, maintenance_lock
+from .files import Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
 from .mail import _address, _list_all, correspondent, strip_noise, strip_quoted
 from .source import KINDS, collect, timestamp
 
@@ -57,6 +57,37 @@ def _searched(coverage: list[str]) -> str:
 def _nothing_new(record: str, subject: str, coverage: list[str], last) -> NothingNew:
     return NothingNew(f"Nothing new since {last.isoformat()} for {subject} ({_searched(coverage) or 'no source searched'}). "
                       f"No model was called; {record} is unchanged and keeps its status line.")
+
+
+# A refused turn's material, by source id, per page (#2041). Without it the
+# page stayed first in the queue with the same window, and the next run
+# re-read the same mail: 643k tokens refused, then 933k on the same 113k chars.
+REFUSED = "refused-investigations.json"
+
+
+def refused_for(root: Path, record: str) -> dict:
+    return read_json(state_path(root, REFUSED), {}).get(record) or {}
+
+
+def _remember_refusal(root: Path, record: str, sources: list[str], why: str) -> None:
+    path = state_path(root, REFUSED)
+    refused = read_json(path, {})
+    refused[record] = {"sources": sorted(set(sources)), "at": datetime.now(timezone.utc).isoformat(),
+                       "why": why[:300]}
+    write_json(path, refused)
+
+
+def _forget_refusal(root: Path, record: str) -> None:
+    path = state_path(root, REFUSED)
+    refused = read_json(path, {})
+    if refused.pop(record, None) is not None:
+        write_json(path, refused)
+
+
+def _refused_again(record: str, subject: str, refusal: dict) -> NothingNew:
+    return NothingNew(f"Nothing new since this material was refused on {refusal['at'][:10]} for {subject} "
+                      f"({refusal.get('why', '')}). No model was called; {record} is unchanged and waits for "
+                      "newer material.")
 
 
 def _nothing_found(record: str, subject: str, coverage: list[str], *, me: bool = False,
@@ -693,11 +724,30 @@ def searched_sources(coverage: list[str]) -> list[str]:
     A source searched with nothing found stays: the daily round reads the line
     to know which sources a page has already been checked against.
     """
-    notes = ("budget", "digest", "evidence:", "Requested investigation window:", "Quick first pass:",
-             "Page last updated from its sources")
-    return list(dict.fromkeys(
-        line.split(" (")[0].split(":")[0] for line in coverage
-        if not line.startswith(notes) and "not searched" not in line and ": unreadable" not in line))
+    notes = ("budget", "digest", "evidence:")
+    labels = (line.split(" (")[0].split(":")[0] for line in coverage
+              if not line.startswith(notes) and "not searched" not in line and ": unreadable" not in line)
+    # A source is one word (outlook, gmail, claude-code); every note is a
+    # phrase. Ody Zhou's line read "(outlook, gmail, codex, claude-code,
+    # Requested investigation window)" (#2045).
+    return list(dict.fromkeys(label for label in labels if re.fullmatch(r"[a-z][a-z0-9-]*", label)))
+
+
+def drop_map_count(page: str) -> str:
+    """The map's "Observed mail count" History bullet, once the mail itself was read.
+
+    The map writes it from a window-limited count; after an investigation read
+    32 of Jiexuan Deng's mails the page still said "Observed mail count: 2"
+    (#2045). Kept while it is History's only entry."""
+    head, marker, rest = page.partition("\n## History\n")
+    if not marker:
+        return page
+    section, sep, tail = rest.partition("\n## ")
+    bullets = [line for line in section.splitlines() if line.startswith("- ")]
+    kept = [line for line in section.splitlines() if not line.startswith("- Observed mail count:")]
+    if len(bullets) < 2 or len(kept) == len(section.splitlines()):
+        return page
+    return head + marker + "\n".join(kept) + ("\n" if section.endswith("\n") else "") + sep + tail
 
 
 def last_investigated(page: str):
@@ -787,6 +837,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         items = fresh
     if last and not items:
         raise _nothing_new(record, subject, coverage, last)
+    gathered_sources = {item["source"] for item in items if item.get("source")}
+    refusal = refused_for(root, record)
+    if refusal and gathered_sources and gathered_sources <= set(refusal["sources"]):
+        raise _refused_again(record, subject, refusal)
     if last:
         # The page already reflects what came before; say so where the turn
         # reads it, so it adds the new material instead of rewriting the page.
@@ -939,6 +993,12 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         stage_progress("writing investigation")
     try:
         result = runner(notebook, prompt_items, config, stage="investigate")
+    except RemError as error:
+        if "rejected" in str(error):
+            _remember_refusal(root, record, list(gathered_sources), str(error))
+        raise
+    else:
+        _forget_refusal(root, record)
     finally:
         # Copies of private mail do not accumulate under .state, run after run;
         # the report keeps which files were read. The routed run's uncompressed
@@ -962,6 +1022,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     with maintenance_lock(root):
         from .reviews import ingest
         ingest(root, result.get("review_candidates", []))
+        if record in result.get("changed", []):
+            page = notebook.read(record)
+            if drop_map_count(page) != page:
+                notebook.write(record, drop_map_count(page))
         notebook.note_investigation(record, ", ".join(searched))
     return {"record": record, "items": len(items), "items_available": available_items,
             "quick": quick, "chars_gathered": gathered_chars,
