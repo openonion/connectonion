@@ -180,3 +180,23 @@ def row(name: str, value: str, mark: str = "") -> str:
 def follow(markup: str, glyph: str = FIX) -> str:
     """A line under an item, at COLUMN: `→ co rem start`, or a note in muted words."""
     return " " * COLUMN + (style.muted(glyph) + " " if glyph else "") + markup
+
+
+# A page's outcome as a sync says it (rem.daily.outcome_line), and the glyph it hangs in the margin.
+OUTCOMES = ((re.compile(r"Updated "), FINE, style.ok), (re.compile(r"(Refused|Failed) "), BROKEN, style.warn),
+            (re.compile(r"Nothing (new|found) for "), MAPPED, style.muted))
+
+
+def step(text: str, *, err: bool = True) -> None:
+    """One line of a run as it goes: an outcome hangs ✓ ✗ or ○ in the margin, a step under way is muted.
+
+    A sync said "Investigating people/a.md…" and "Updated people/a.md
+    (accepted)" in the same weight, so the outcomes did not stand out of the
+    steps (1.9.0a9). The glyph is a word: a log gets it too.
+    """
+    for pattern, glyph, paint in OUTCOMES:
+        if pattern.match(text):
+            return say(paint(glyph) + " " + _result_line(text), err=err)
+    if text.endswith("…"):
+        return say("  " + style.muted(text), err=err)
+    say("  " + _result_line(text), err=err)

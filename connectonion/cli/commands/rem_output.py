@@ -305,14 +305,15 @@ def _tokens(*usages) -> str:
                 total[key] = total.get(key, 0) + usage[key]
     if not total:
         return ''
-    return f"Tokens: {total.get('input_tokens', 0):,} in, {total.get('output_tokens', 0):,} out"
+    from .rem_look import compact
+    return f"{compact(total.get('input_tokens', 0))} in · {compact(total.get('output_tokens', 0))} out"
 
 
 def _archive_line(archive) -> str:
     if not isinstance(archive, dict) or 'target' not in archive:
         return ''
     have = archive.get('saved', 0) + archive.get('reused', 0)
-    return f"Mail archive: {have:,} of {archive['target']:,} bodies saved ({archive.get('phase', 'unknown')})"
+    return f"{have:,} of {archive['target']:,} mail bodies saved · {archive.get('phase', 'unknown')}"
 
 
 def _pages_line(pages: list, left) -> str:
@@ -321,7 +322,7 @@ def _pages_line(pages: list, left) -> str:
         counts[row.get('outcome')] = counts.get(row.get('outcome'), 0) + 1
     words = [f"{counts.pop('accepted', 0)} updated"]
     words += [f"{number} {name.replace('_', ' ')}" for name, number in counts.items()]
-    return "Pages: " + ", ".join(words) + (f"; {left} left" if left is not None else "")
+    return " · ".join(words) + (f" · {left} left" if left is not None else "")
 
 
 def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments)):
@@ -329,39 +330,55 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
 
     It ended in a ~200-line dump: page paths as capitalised keys, the model's
     report cut mid-sentence, "Seconds: Unknown". Each page's outcome is said as
-    it finishes; this is the total and where the full record is. `spell`
-    writes a command as this user types it. Returns None
-    for a result of another shape (a dry run, a slot not due), which `render` prints.
+    it finishes; this is the total and where the full record is, in status's
+    layout (1.9.0a9): a label in the margin, the value at one column, a refusal
+    marked ✗ under the material it refused. `spell` writes a command as this
+    user types it. Returns None for a result of another shape (a dry run, a
+    slot not due), which `render` prints.
     """
     if not isinstance(value, dict) or not isinstance(value.get('maintenance', value), dict):
         return None
     if 'maintenance' not in value and 'items' not in value:
         return None
+    from . import rem_look
     from .rem_look import highlight
+
+    def said(text):
+        return highlight(printable(text), counts=True)
     batch = value.get('maintenance') if 'maintenance' in value else value
     run = value.get('run') or {}
     changed = len(batch.get('changed') or [])
-    lines = [f"New material: {batch.get('items', 0)} items, {changed} page{'' if changed == 1 else 's'} changed "
-             f"({str(batch.get('outcome', 'unknown')).replace('_', ' ')})"]
-    lines += [f"  Refused {row.get('record')}: {(row.get('errors') or ['rejected'])[0]}"[:200]
+    material = f"{batch.get('items', 0)} items · {changed} page{'' if changed == 1 else 's'} changed"
+    if batch.get('outcome') not in ('completed', None):
+        material += f" · {str(batch.get('outcome')).replace('_', ' ')}"
+    lines = [rem_look.section('New material', said(material))]
+    lines += [rem_look.row('Refused', said(f"{row.get('record')}: {(row.get('errors') or ['rejected'])[0]}"[:160]),
+                           style.warn(rem_look.BROKEN))
               for row in batch.get('refusals') or [] if isinstance(row, dict)]
-    lines.append(_archive_line(batch.get('mail_archive')))
     if 'maintenance' in value:
         investigation = value.get('investigation')
         if investigation:
-            lines.append(_pages_line(investigation.get('pages') or [], investigation.get('left')))
+            pages = _pages_line(investigation.get('pages') or [], investigation.get('left'))
         elif value.get('outcome') == 'budget_exhausted':
-            lines.append("Pages: none started; today's calls are spent")
+            pages = "none started; today's calls are spent"
         else:
             why = value.get('reason') or run.get('reason') or ''
-            lines.append(f"Pages: none started; {NO_PAGE.get(why, why or 'see the log')}")
-    lines.append(_tokens(batch.get('usage'), run.get('usage')))
+            pages = f"none started; {NO_PAGE.get(why, why or 'see the log')}"
+        lines.append(rem_look.section('Pages', said(pages)))
+    archive = _archive_line(batch.get('mail_archive'))
+    if archive:
+        lines.append(rem_look.section('Mail archive', said(archive) + ' ' + style.muted(rem_look.RESUMES)))
+    tokens = _tokens(batch.get('usage'), run.get('usage'))
+    if tokens:
+        lines.append(rem_look.section('Tokens', said(tokens)))
     record = run.get('id') or batch.get('id')
     if record:
-        lines.append(f"Full record: {spell(['logs', record])}")
+        lines.append(rem_look.section('Full record', style.command(spell(['logs', record]))))
+    outcome = str(value.get('outcome') or batch.get('outcome') or 'unknown').replace('_', ' ')
     title = style.heading('co rem sync') + (' — ' + style.error('needs attention')
-                                            if value.get('outcome') in ('partial', 'failed') else '')
-    return "\n".join([title, "", *(highlight(printable(line), counts=True) for line in lines if line)])
+                                            if value.get('outcome') in ('partial', 'failed') else
+                                            ' · ' + highlight(outcome))
+    return "\n".join([title, "", *lines, ""])
 
 
 # What a check is called on doctor's page, where its JSON name is too long for the column.

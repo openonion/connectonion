@@ -1137,7 +1137,7 @@ def make_rem_app(factory):
                 try:
                     record = run_sync(root, source=source, with_person=with_person, dry_run=dry_run,
                                       scheduled=scheduled, all_pending=all_pending, on_batch=progress,
-                                      say=lambda text: rem_look.line(text, err=True))
+                                      say=lambda text: rem_look.step(text))
                 except KeyboardInterrupt:
                     # Ctrl-C exited 130 with nothing said; the finished batches are
                     # kept, and the interrupted one reads again next time.
@@ -1163,7 +1163,7 @@ def make_rem_app(factory):
             # The whole update: new material first, then at most one unfinished page.
             from ...rem.daily import run_daily
             result = run_daily(root, days=days, scheduled=scheduled,
-                               say=lambda text: rem_look.line(text, err=True))
+                               say=lambda text: rem_look.step(text))
             if result is None:
                 return {"due": False, "ran": False}, ["status"]
             if result["outcome"] == "partial":

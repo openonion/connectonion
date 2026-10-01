@@ -1246,12 +1246,15 @@ def test_sync_ends_on_a_short_summary_not_the_run_record(lifecycle, monkeypatch)
     assert result.exit_code == 0, result.output
     out = result.stdout
     assert "\x1b[" not in out                                   # plain off a terminal
-    assert "New material: 42 items, 1 page changed (completed)" in out
-    assert "Refused people/onion-bf710a2371.md: Candidate rejected: over 20,000 characters" in out
-    assert "Mail archive: 2,693 of 3,152 bodies saved (paused)" in out
-    assert "Pages: 1 updated, 1 refused, 1 nothing new; 12 left" in out
-    assert "Tokens: 1,000,000 in, 10,000 out" in out
-    assert "Full record: co rem" in out and "logs run_d" in out
+    # 1.9.0a9: status's layout -- a label in the margin, every value at one column.
+    lines = out.splitlines()
+    assert lines[0] == "co rem sync · completed"
+    assert "New material     42 items · 1 page changed" in lines
+    assert "  ✗ Refused      people/onion-bf710a2371.md: Candidate rejected: over 20,000 characters" in lines
+    assert "Mail archive     2,693 of 3,152 mail bodies saved · paused ↻" in lines
+    assert "Pages            1 updated · 1 refused · 1 nothing new · 12 left" in lines
+    assert "Tokens           1.0M in · 10k out" in lines
+    assert any(line.startswith("Full record      co rem") and line.endswith("logs run_d") for line in lines)
     assert "Projects/" not in out and "Report:" not in out and "Seconds:" not in out
     assert out.rstrip().splitlines()[-1].startswith("Next:")
     assert len(out.strip().splitlines()) <= 12
