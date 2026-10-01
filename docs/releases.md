@@ -25,14 +25,14 @@ python -m pip install --upgrade 'connectonion==1.8.9'
 
 ## Current preview
 
-Alpha **1.9.0a7**: co rem spends less for nothing (a refused page waits for new
-material; the daily cap is 50), your own page names what you are working on and
-never treats your coding agents as people, and a stalled init resumes. It
-follows 1.9.0a5's capped first run, own-page shape and one look across co. See
-[1.9.0a7 notes](releases/1.9.0a7.md).
+Alpha **1.9.0a8**: co rem stops paying for the same refusal on any page, the
+weekly budget meter moves, investigations read mail init already saved, and
+sync ends on a short summary. It follows 1.9.0a7 (daily cap 50, your page names
+your projects) and 1.9.0a5 (a capped first run, one look across co). See
+[1.9.0a8 notes](releases/1.9.0a8.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.0a7'
+python -m pip install --upgrade 'connectonion==1.9.0a8'
 co rem status
 ```
 

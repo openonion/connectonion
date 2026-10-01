@@ -400,7 +400,22 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a7
+## Current Version: 1.9.0a8
+
+1.9.0a8 fixes what 1.9.0a7's acceptance run on a copy of the owner's notebook
+found. Every one-page turn is told the page's size and the 20k limit, and a
+refused investigation waits for new mail instead of being retried on the same
+mail (643k and 933k tokens in a7) (#2041); the queue counts a page written by
+sync as read (#2046); investigations read the mail an unfinished init archive
+already saved (#2042); every run's tokens land in a usage stage (#2043); sync
+ends on a short summary, not a field dump (#2044); and the weekly investigation
+budget moves: a point is a million fresh tokens when Codex's whole-percent
+meter does not (#1990). Stable is 1.8.9. See
+[1.9.0a8 notes](docs/releases/1.9.0a8.md).
+
+- 1.9.0a8 (#2041, #2042, #2043, #2044, #2045 in part, #2046, #1990.)
+
+## Previous preview: 1.9.0a7
 
 1.9.0a7 fixes what 1.9.0a6's acceptance run on a copy of the owner's notebook
 found. A project page refused for its size waits for newer messages instead of
