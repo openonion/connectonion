@@ -13,7 +13,10 @@ def main() -> None:
         command = [sys.executable, "-m", "connectonion.cli.main", "rem",
                    "--root", str(root), "--json", "open", "--no-launch"]
         for _ in range(2):
-            result = subprocess.run(command, check=True, capture_output=True, text=True)
+            # Run outside the checkout so Python imports the installed wheel,
+            # rather than the source tree that built it.
+            result = subprocess.run(command, cwd=directory, check=True,
+                                    capture_output=True, text=True)
             output = json.loads(result.stdout)
             assert output["ok"] is True, output
             page = Path(output["data"]["page"])
