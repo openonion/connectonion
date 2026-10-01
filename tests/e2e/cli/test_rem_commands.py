@@ -415,11 +415,13 @@ def _spend_the_day(root):
     import uuid
     from datetime import datetime, timezone
 
+    from connectonion.rem.config import read_config
     from connectonion.rem.files import state_path, write_json
     record_id = "run_" + uuid.uuid4().hex
+    cap = read_config(root)["limits"]["runner_calls_per_day"]   # the cap itself moved (#2032)
     write_json(state_path(root, f"runs/{record_id}.json"),
                {"id": record_id, "started_at": datetime.now(timezone.utc).isoformat(),
-                "runner_attempts": 30, "outcome": "completed", "items": 1})
+                "runner_attempts": cap, "outcome": "completed", "items": 1})
 
 
 def test_a_sync_refused_by_the_cap_is_in_logs_and_says_when_it_resets(lifecycle):
