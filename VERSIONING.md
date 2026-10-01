@@ -400,7 +400,21 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a6
+## Current Version: 1.9.0a7
+
+1.9.0a7 fixes what 1.9.0a6's acceptance run on a copy of the owner's notebook
+found. A project page refused for its size waits for newer messages instead of
+spending ~260k tokens on the same refusal every sync, and its prompt states the
+size and the 20k limit (#2026); the owner's page names the owner's recent
+projects and never treats Claude Code or Codex as a person (#2027); tidy cites
+what it folds (#2028); a company writing as itself is a service (#2031); a
+stalled init mail archive is reported and resumed by the next sync (#2035); the
+daily cap is 50 calls, the owner's choice (#2032). Stable is 1.8.9. See
+[1.9.0a7 notes](docs/releases/1.9.0a7.md).
+
+- 1.9.0a7 (#2026, #2027, #2028, #2029, #2030, #2031, #2032, #2033, #2034, #2035.)
+
+## Previous preview: 1.9.0a6
 
 1.9.0a6 fixes the two things 1.9.0a5's acceptance run on a copy of the owner's
 notebook found broken: a Gmail date with no timezone stopped `co rem
