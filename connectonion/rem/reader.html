@@ -430,6 +430,8 @@
   .sheet th.num button { justify-content: flex-end; }
   .sheet td { padding: 9px 12px; border-bottom: 1px solid var(--line-2); vertical-align: top; color: var(--ink); max-width: 260px; min-width: 120px; overflow-wrap: normal; word-break: normal; }
   .sheet td.num { min-width: 0; }
+  .sheet .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 200px; }
+  .sheet td.wide .clamp { max-width: 360px; }
   .sheet tbody tr { cursor: pointer; }
   .sheet tbody tr:hover td { background: var(--blue-soft); }
   .sheet tbody tr:last-child td { border-bottom: 0; }
@@ -950,9 +952,26 @@ function statusPill(r) {
 
 // ---------- reading a page's parts ----------
 // Open threads name who owes whom (rem-page-person): the reader shows the direction.
-const YOU_OWE = /\bthe user (?:has |still )?(?:owes?|owed|has owed|needs to|must|should|to (?:send|reply|sign|confirm|pay|review|decide)|has not (?:replied|signed|sent|answered|paid|decided|confirmed))\b|\byou owe\b/i;
-const THEY_OWE = /\b(?:owes?|owed) the user\b|\bwaiting (?:on|for) (?:them|him|her|their)\b|\bunanswered\b|\b(?:he|she|they) (?:has|have) not (?:replied|answered|sent|confirmed)\b|\bno reply\b|\bpromised\b/i;
-function direction(text) { return YOU_OWE.test(text) ? "mine" : THEY_OWE.test(text) ? "theirs" : "plain"; }
+// Pages name the owner as "the user", "you" or by first name ("Aaron promised…").
+// The earliest phrase that says who must act decides the thread's direction.
+let OWING = null;
+function owing() {
+  if (OWING) return OWING;
+  const owner = REM.owner && byPath(REM.owner);
+  const first = owner ? owner.title.trim().split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "";
+  const me = "(?:the user|you" + (first ? "|" + first : "") + ")";
+  OWING = {
+    mine: new RegExp("\\b" + me + "(?:'s)?\\s+(?:has |have |had |still )?(?:owes?|owed|promised|offered|agreed|needs? to|must|should|said (?:he|she|they) would|to (?:send|reply|sign|confirm|pay|review|decide)|has not|have not|hasn't|haven't)\\b" +
+      "|\\b(?:requested|asked for|awaits?|awaiting|waiting (?:on|for))\\s+(?:" + me + "(?:'s)?|your)\\b|\\brequested (?:confirmation|approval|a reply|an answer)\\b|\\byou owe\\b", "i"),
+    theirs: /\b(?:owes?|owed) (?:the user|you)\b|\bwaiting (?:on|for) (?:them|him|her|their)\b|\bunanswered\b|\b(?:he|she|they) (?:has|have) not (?:replied|answered|sent|confirmed)\b|\bno reply\b|\b[A-Z][\w-]+(?:'s)? (?:promised|is expected to|agreed to|owes|said (?:he|she|they) would)\b|\bpromised\b/
+  };
+  return OWING;
+}
+function direction(text) {
+  const { mine, theirs } = owing();
+  const a = text.search(mine), b = text.search(theirs);
+  return a < 0 && b < 0 ? "plain" : a < 0 ? "theirs" : b < 0 ? "mine" : a <= b ? "mine" : "theirs";
+}
 const DIRECTION_LABEL = { mine: "You owe", theirs: "They owe", plain: "Open" };
 function listItems(text) {
   const items = [];
@@ -968,7 +987,12 @@ function threads(r) {
   if (!s) return { items: [], calm: "" };
   const all = listItems(s.text);
   const calm = all.find(t => /^nothing open\b/i.test(t.replace(/\*/g, ""))) || "";
-  const items = all.filter(t => t !== calm).map(text => ({ text, dir: direction(text), since: (/(\d{4}-\d{2}-\d{2})/.exec(text) || [])[1] || "" }));
+  // A past date is when the thread opened; a future one is when it is due.
+  const today = String(REM.as_of || "").slice(0, 10);
+  const items = all.filter(t => t !== calm).map(text => {
+    const days = text.match(/\d{4}-\d{2}-\d{2}/g) || [];
+    return { text, dir: direction(text), since: days.find(d => !today || d <= today) || "", due: days.find(d => today && d > today) || "" };
+  });
   return { items, calm };
 }
 function historyItems(text) {
@@ -1050,7 +1074,8 @@ const FACTS = new Map();
 function facts(r) {
   if (FACTS.has(r.path)) return FACTS.get(r.path);
   const k = known(r), contact = {};
-  for (const f of contactFields(r)) contact[f.label.toLowerCase()] = f.value;
+  // A cell holds the values alone: qualifiers and claim numbers stay on the page.
+  for (const [label, items] of parseFacts(r)) contact[label.toLowerCase()] = items.map(i => i.value).join("; ");
   const text = r.text.replace(COMMENT, "");
   const lineOf = name => { const s = section(r, name); return s ? plainLine(s.text) : ""; };
   const history = historyItems((section(r, "history") || { text: "" }).text).filter(i => i.day).map(i => i.day).sort();
@@ -1089,7 +1114,7 @@ function openCell(f) {
     el("span", { class: "txt", text: plainLine(t.text) }), f.open.length > 1 ? el("span", { class: "more", text: "+" + (f.open.length - 1) }) : null]);
 }
 function dateCell(day) { return day ? el("span", { class: "mono", text: shortDate(day) }) : el("span", { class: "unk", text: "—" }); }
-function textCell(v) { return v ? el("span", { html: inline(v.replace(/\s*\[W?\d{1,3}\]/g, ""), "") }) : el("span", { class: "unk", text: "—" }); }
+function textCell(v) { return v ? el("span", { class: "clamp", title: plainLine(v), html: inline(v.replace(/\s*\[W?\d{1,3}\]/g, ""), "") }) : el("span", { class: "unk", text: "—" }); }
 function nameCell(r, f, withSummary) {
   const k = known(r);
   return el("div", { class: "name-cell" }, [el("span", { class: "nm" }, [moon(k.status), el("a", { href: href(r), text: r.title })]),
@@ -1362,7 +1387,7 @@ function threadRow(r, t, withPage) {
     el("span", { class: "dir", text: DIRECTION_LABEL[t.dir] }),
     el("div", {}, [el("div", { class: "what", html: inline(withPage ? t.text.replace(/\s*\[W?\d{1,3}\]/g, "") : t.text, r.path) }),
       withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: r.title }), " · " + singular(r.category)]) : null]),
-    el("span", { class: "when" + (t.since && daysSince(t.since) === 0 ? " today" : ""), title: t.since ? "since " + fmtDate(t.since) : "", text: t.since ? age(t.since) : "" })]);
+    el("span", { class: "when" + (t.since && daysSince(t.since) === 0 ? " today" : ""), title: (t.since ? "since " + fmtDate(t.since) : "") + (t.due ? " · due " + fmtDate(t.due) : ""), text: threadAge(t) })]);
 }
 
 function sectionHead(title, note) {
@@ -1410,7 +1435,8 @@ function overview() {
 
   const recent = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category) && known(r).status !== "Mapped" && !/\(automated candidate\)$/.test(r.title))
     .sort(byActivity).slice(0, 6);
-  if (recent.length) {
+  // Recently active only when no pass rewrote anything this week: the two lists name the same pages.
+  if (recent.length && !week.length) {
     main.appendChild(sectionHead("Recently active", "last contact or change first"));
     main.appendChild(el("ul", { class: "hits cols" }, recent.map(r => row(r, { kind: true }))));
   }
@@ -1619,6 +1645,8 @@ function age(day) {
   const n = daysSince(day);
   return n == null ? "" : n === 0 ? "today" : n === 1 ? "1 day" : n + " days";
 }
+// How long a thread has been open, or when it falls due if the page gives only that.
+function threadAge(t) { return t.since ? age(t.since) : t.due ? "due " + shortDate(t.due) : ""; }
 // Under the title: what is open and how long, when you last spoke, how sure the page is.
 function leadRow(r) {
   const k = known(r), t = threads(r), row = el("div", { class: "leadrow" });
@@ -1626,7 +1654,7 @@ function leadRow(r) {
     const first = t.items[0];
     row.appendChild(el("a", { class: "lead-open " + first.dir, href: "#r=" + encodeURIComponent(r.path) + "&h=open-threads" }, [
       el("span", { class: "dir", text: DIRECTION_LABEL[first.dir] }), el("span", { class: "txt", text: plainLine(first.text).replace(/\s*[—–-]\s.*$/, "") }),
-      first.since ? el("span", { class: "age mono" + (daysSince(first.since) === 0 ? " today" : ""), text: age(first.since) }) : null,
+      threadAge(first) ? el("span", { class: "age mono" + (first.since && daysSince(first.since) === 0 ? " today" : ""), text: threadAge(first) }) : null,
       t.items.length > 1 ? el("span", { class: "more mono", text: "+" + (t.items.length - 1) + " more" }) : null]));
   } else if (t.calm) row.appendChild(el("span", { class: "lead-calm", text: "Nothing open" }));
   if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "people" ? "Last contact " : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
@@ -1760,7 +1788,7 @@ function record(path, heading) {
     // A page only mapped from your sources gets one clear next step at the top;
     // a written page names its remaining gaps in one quiet line at the foot.
     const box = el("div", { class: "missing" + (mapped ? " primary" : "") }, [
-      el("span", { class: "lead", text: mapped ? "Only mapped so far" : k.missing.length + " sections still to learn" }),
+      el("span", { class: "lead", text: mapped ? "Only mapped so far" : k.missing.length + (k.missing.length === 1 ? " section" : " sections") + " still to learn" }),
       mapped ? el("p", { class: "why", text: "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in." }) : null,
       el("div", { class: "names", text: "Not investigated yet: " + k.missing.join(", ") + "." }),
       el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]);
