@@ -100,6 +100,7 @@ def values(raw: str) -> list[dict]:
         return []
     result = []
     for part in _split(raw):
+        part = part.rstrip(" .")   # `… [9].`: a sentence's full stop after its citation
         cites = CITES.search(part)
         body = part[:cites.start()].strip()
         qualifier = QUALIFIER.search(body)
@@ -194,6 +195,32 @@ def _cite(text: str, row: dict) -> tuple[str, str]:
     sources, rest = (tail[:after.start()], tail[after.start():]) if after else (tail, "")
     sources = re.sub(r"(?m)^- \(none yet\)\n?", "", sources).rstrip("\n")
     return head + marker + (sources + "\n" if sources else "") + entry + ("\n" + rest if rest else ""), number
+
+
+def drop_uncited(record: str, text: str, original: str = "") -> tuple[str, list[str]]:
+    """A new fact value with no citation goes, instead of refusing the page for it.
+
+    "A sentence you cannot number is not kept" applies to a field too. Refused
+    whole, a real Tamara investigation was paid for twice (217k, then 144k input
+    tokens) for one uncited line. A value the page already carried, and the
+    map's own identity fields, stay as they are. Returns the page and the labels touched.
+    """
+    before = parse(original, record) if original else {}
+    touched = []
+    for label in fields(record):
+        if label in UNCITED:
+            continue
+        line = re.search(rf"(?m)^- {re.escape(label)}:[ \t]*(.*)$", text)
+        if not line:
+            continue
+        carried = {v["value"] for v in before.get(label, [])}
+        parts, found = _split(line[1]), values(line[1])
+        if len(parts) != len(found) or all(v["citations"] or v["value"] in carried for v in found):
+            continue
+        kept = [part for part, v in zip(parts, found) if v["citations"] or v["value"] in carried]
+        text = text[:line.start()] + f"- {label}: {'; '.join(kept) or 'Unknown'}" + text[line.end():]
+        touched.append(label)
+    return text, touched
 
 
 def keep_extracted(record: str, text: str, rows: list[dict]) -> tuple[str, list[dict]]:

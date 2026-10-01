@@ -459,6 +459,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # A candidate built on a page from before #2068 keeps `## Contact`; the
     # shape is code's to settle, not a reason to refuse a paid-for page.
     text = facts.upgrade(record, restore_runner_fields(record, candidate.read_text(encoding="utf-8"), original))
+    text, uncited = facts.drop_uncited(record, text, original)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {})
     removed = []
     if record.startswith("people/") and record != owner.get("record"):
@@ -493,6 +494,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,
                    "owner_addresses_removed": removed, "citations_dropped": dropped["citations"],
                    "lines_dropped": dropped["lines"],
+                   "facts_uncited_dropped": uncited,
                    "facts_restored": [{k: r[k] for k in ("field", "source")} for r in restored],
                    "facts": {"before": facts.coverage(original, record), "after": facts.coverage(text, record),
                              "extracted": sum(1 for r in extracted if r["field"] in facts.fields(record))},
@@ -527,7 +529,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         text, _ = drop_unresolved(record, normalize_numbered_sources(facts.upgrade(record,
             restore_runner_fields(record, after[record], before.get(record, '')))), before.get(record, ''), items,
             pages=set(before))
-        text = drop_uncited_sources(text)
+        text = facts.drop_uncited(record, drop_uncited_sources(text), before.get(record, ''))[0]
         working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
         errors = validate(record, text, before.get(record, ''), items, pages=set(before)) if headings(record) else []
         if errors:

@@ -38,6 +38,23 @@ def test_a_citation_covers_the_uncited_values_before_it():
     assert trailing["Phone"][1]["citations"] == []          # nothing after it to cover it
 
 
+def test_a_full_stop_after_the_citation_is_still_a_citation():
+    parsed = facts.parse("## Facts\n- How we know them: met at the Sydney meetup [9].\n", "people/t.md")
+    assert parsed["How we know them"] == [{"value": "met at the Sydney meetup", "qualifier": "", "citations": ["9"]}]
+
+
+def test_an_uncited_new_value_is_taken_off_instead_of_refusing_the_page():
+    original = "## Facts\n- Role: Lecturer\n- Location: Unknown\n- Email: a@b.example\n"
+    candidate = ("## Facts\n- Role: Lecturer\n- Location: Sydney\n- Email: a@b.example\n"
+                 "- Phone: +61 2 5550 0142 [1]; +61 400 555 019 (mobile)\n- Time zone: Unknown\n")
+    kept, touched = facts.drop_uncited("people/t.md", candidate, original)
+    assert "- Location: Unknown" in kept                       # new and uncited: gone
+    assert "- Role: Lecturer" in kept                          # carried from the page before: stays
+    assert "- Phone: +61 2 5550 0142 [1]\n" in kept            # the cited value stays, the other goes
+    assert "- Email: a@b.example" in kept and touched == ["Phone", "Location"]
+    assert not any(e.startswith("Fact without") for e in validate("people/t.md", kept, original, []))
+
+
 def test_a_page_written_before_facts_is_read_from_its_contact_section():
     legacy = PERSON.replace("## Facts", "## Contact")
     assert facts.parse(legacy)["Role"][0]["value"] == "Head of Data Platform"
