@@ -1,0 +1,30 @@
+version: v1.9.0a9
+images:
+  - file: reader-home.png
+    alt: "co rem reader home: a dark Last night band with a week of runs as a hypnogram and the pages changed, then Waiting on you and Waiting on others with ages, This week, and the notebook by kind"
+    caption: "The reader opens on the night: what the last pass read and rewrote, then what is owed, oldest first."
+    scenario: "python scripts/capture_rem_reader.py OUT renders the invented fixture notebook (tests/fixtures/rem_reader_notebook.py); light, 1440 wide"
+    viewport: "1440 wide, light theme"
+    commit: 993ec213
+    source_run: "scripts/capture_rem_reader.py"
+  - file: reader-people.png
+    alt: "co rem People as a sheet: name, what's open with YOU OWE badges, company, role, email, phone, last contact and mails, with filters for something open, yours to answer, written and mapped only"
+    caption: "People is a table you can sort and filter; a row opens the person."
+    scenario: "python scripts/capture_rem_reader.py OUT, the invented fixture notebook; light, 1440 wide"
+    viewport: "1440 wide, light theme"
+    commit: 993ec213
+    source_run: "scripts/capture_rem_reader.py"
+  - file: reader-person-dark.png
+    alt: "A co rem person page in the dark theme: the lead says what you owe and for how long, Insight with Now, At stake, Changed and Pattern badges, open threads as cards, a Facts panel with Phone not found, a dated history and footnote sources"
+    caption: "A person page opens on what is owed and its cited facts; a fact that was not found says so."
+    scenario: "python scripts/capture_rem_reader.py OUT, the invented fixture notebook; dark, 1440 wide"
+    viewport: "1440 wide, dark theme"
+    commit: 993ec213
+    source_run: "scripts/capture_rem_reader.py"
+  - file: status.png
+    alt: "Terminal co rem status: Today first, then the notebook with written-of-mapped meters, mailboxes with ticks, the budget as a meter, the last run and a Next line"
+    caption: "co rem status leads with today and lines every value up in one column."
+    scenario: "co rem status on a fixture notebook, rendered through scripts/capture_186a2_release_cli.py's terminal capture (#2070)"
+    viewport: "120-column dark terminal capture"
+    commit: fad97e79
+    source_run: "#2070 terminal capture"

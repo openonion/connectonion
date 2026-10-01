@@ -400,7 +400,22 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a8
+## Current Version: 1.9.0a9
+
+1.9.0a9 is the redesign the owner asked for: the reader opens on the night
+(what the last pass read and rewrote) and on what is owed; People, Orgs and
+Projects are sortable sheets (#2064); a person page opens on its lead, Insight
+and a cited Facts panel (#2065 critique); `co rem status` and the other results
+have a designed terminal layout; and the notebook keeps a SQLite index beside
+its pages (#2067). Pages got leaner: person pages only for people the owner
+corresponds with (381 → 85 on the owner's notebook, #2057), History as eight
+dated milestones (#2059), no lines about the tool itself (#2058), names linked,
+pages in English (#2060), and evidence a month per file (Ody 2.77M → 1.48M
+input tokens, #2080). Stable is 1.8.9. See [1.9.0a9 notes](docs/releases/1.9.0a9.md).
+
+- 1.9.0a9 (#2064, #2065, #2067, #2054, #2057, #2058, #2059, #2060, #2080; terminal design #2070.)
+
+## Previous preview: 1.9.0a8
 
 1.9.0a8 fixes what 1.9.0a7's acceptance run on a copy of the owner's notebook
 found. Every one-page turn is told the page's size and the 20k limit, and a
