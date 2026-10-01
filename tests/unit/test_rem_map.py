@@ -968,14 +968,18 @@ def test_a_remap_rewrites_the_owners_map_lines_instead_of_adding_more(tmp_path, 
 
     monkeypatch.setattr('connectonion.rem.map._mail_rows', mail_rows)
     monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
-    first = build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=90)
     notebook = Notebook(tmp_path)
+    # Someone investigated the address's page, so tidy leaves it and the map keeps
+    # asking. A map makes no page for a possible own address (#2078); this one
+    # was written before.
+    mine = 'people/aaronplus1996.md'
+    notebook.stub_person(mine, 'aaronplus1996@gmail.com', ['aaronplus1996@gmail.com'],
+                         email='aaronplus1996@gmail.com')
+    notebook.write(mine, notebook.read(mine).replace('not investigated yet', 'investigated 2026-09-28'))
+    first = build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=90)
     record = first['owner']['record']
     stale = notebook.read(record).replace(f"to {first['started'][:10]}:", 'to 2026-09-25:')
     notebook.write(record, stale.replace('observed ' + first['started'], 'observed 2026-09-25T10:00:00+00:00'))
-    # Someone investigated the address's page, so tidy leaves it and the map keeps asking.
-    mine = first['possible_own_addresses'][0]['record']
-    notebook.write(mine, notebook.read(mine).replace('not investigated yet', 'investigated 2026-09-28'))
     build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=90)
     last = build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=90)
     page = notebook.read(record)
@@ -1073,3 +1077,40 @@ def test_a_one_off_codex_task_folder_is_not_a_project_and_returning_work_is():
                              row('/Users/me/Documents/Codex/2026-08-26/realtime-voice-chat', 11)], dropped)
     assert [group['name'] for group in groups.values()] == ['realtime-voice-chat']
     assert [entry['reason'] for entry in dropped] == [ONE_OFF_TASK]
+
+
+def test_the_owners_possible_addresses_are_asked_about_without_pages_of_their_own(tmp_path, monkeypatch):
+    """#2078: a fresh init made person pages for aaronplus1996@ (108 sent, none
+    back), aaron@openonion.ai and aaron.xie@mail.openonion.ai, while asking
+    whether the first two were the owner's."""
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+
+    class Mail:
+        def my_addresses(self): return {'xietianle@outlook.com'}
+        def my_name(self): return 'Aaron Xie'
+
+    rows = [_row('常兴', 'aaronplus1996@gmail.com', 108, 0), _row('', 'aaron.xie@mail.openonion.ai', 5, 2),
+            _row('Ody Zhou', 'ody@x.example', 30, 25), _row('Ken', 'ken@y.example', 3, 0)]
+    monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (rows, {'xietianle@outlook.com'}))
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {'outlook': Mail()}, skill_directories=[skills], days=90)
+    paged = {address for row in result['people'] for address in row.get('addresses', [])}
+    asked = {row['address'] for row in result['possible_own_addresses']}
+    assert asked == {'aaronplus1996@gmail.com', 'aaron.xie@mail.openonion.ai'}
+    assert not asked & paged                                        # asked about, no page of their own
+    assert {'ody@x.example', 'ken@y.example'} <= paged               # a friend written to is still a person
+    owner_page = Notebook(tmp_path).read(result['owner']['record'])
+    assert 'co rem init --mine aaronplus1996@gmail.com' in owner_page
+
+
+def test_knowing_nothing_of_the_owner_a_write_only_correspondent_still_gets_a_page(tmp_path, monkeypatch):
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (
+        [_row('Ken', 'ken@y.example', 3, 0)], set()))
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills], days=90)
+    assert {address for row in result['people'] for address in row.get('addresses', [])} == {'ken@y.example'}
