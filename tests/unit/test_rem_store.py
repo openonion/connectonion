@@ -125,8 +125,10 @@ def test_a_facts_block_wins_and_every_labelled_fact_is_kept(tmp_path):
     from connectonion.rem import store
     root = notebook(tmp_path)
     pages = Notebook(root)
-    pages.write("people/tam.md", pages.read("people/tam.md").replace(
-        "## Contact", "## Facts\n- Role: Lecturer [1]\n- Location: Sydney [2]\n- Pronouns: she/her [3]\n\n## Contact"))
+    # A stub opens on `## Facts` since #2068; a legacy `## Contact` below it loses to it.
+    pages.write("people/tam.md", pages.read("people/tam.md").replace("- Role: Unknown", "- Role: Lecturer [1]")
+                .replace("- Location: Unknown", "- Location: Sydney [2]\n- Pronouns: she/her [3]")
+                .replace("## Insight", "## Contact\n- Role: Tutor [4]\n\n## Insight"))
     store.refresh(root)
     tam = store.person(root, "people/tam.md")
     assert tam["role"] == "Lecturer" and tam["location"] == "Sydney"

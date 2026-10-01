@@ -78,7 +78,7 @@ LINK = re.compile(r"\]\(\.\./((?:people|orgs|projects)/[^)\s]+\.md)\)")
 COLUMNS = {"phone": ("phone", "电话"), "company": ("company", "公司"), "role": ("role", "title"),
            "location": ("location", "based in"), "timezone": ("time zone", "timezone"),
            "linkedin": ("linkedin",), "website": ("website", "site"),
-           "how_known": ("how you know them", "how known", "how the user knows them"),
+           "how_known": ("how we know them", "how you know them", "how known", "how the user knows them"),
            "language": ("language",), "first_contact": ("first contact",),
            "last_contact": ("last contact",)}
 
@@ -116,6 +116,10 @@ def columns(found: dict) -> dict:
            for column, labels in COLUMNS.items()}
     emails = by_label.get("email", "") + " " + by_label.get("emails", "") + " " + by_label.get("邮箱", "")
     row["emails"] = sorted({address.casefold() for address in EMAIL.findall(emails)})
+    # #2068's `Links` holds both, `; `-separated: a LinkedIn URL is linkedin, the rest website.
+    links = [part.strip() for part in by_label.get("links", "").split(";") if part.strip()]
+    row["linkedin"] = row["linkedin"] or next((l for l in links if "linkedin.com" in l.casefold()), "")
+    row["website"] = row["website"] or "; ".join(l for l in links if "linkedin.com" not in l.casefold())
     for column in ("first_contact", "last_contact"):
         row[column] = (DAY.search(row[column]) or [""])[0] if row[column] else ""
     return row

@@ -116,3 +116,31 @@ def test_the_owners_page_has_facts_and_insight_too():
 def test_coverage_counts_filled_fields():
     got = facts.coverage(PERSON, "people/mia.md")
     assert got == {"filled": 4, "fields": len(facts.fields("people/mia.md"))}
+
+
+def test_a_page_written_with_the_facts_block_fills_the_people_table_columns(tmp_path):
+    """#2073's index reads this block: every #2068 label lands in its column."""
+    from connectonion.rem import store
+    from connectonion.rem.config import prepare
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/mia.md", "Mia Chen", handles=["mia.chen@harbour.example"],
+                         email="mia.chen@harbour.example")
+    page = notebook.read("people/mia.md")
+    for label, value in (("Phone", "+61 2 5550 0142 (work) [1]; +61 400 555 019 (mobile) [1]"),
+                         ("Company", "Harbour Analytics [1]"), ("Role", "Head of Data Platform [1]"),
+                         ("Location", "Sydney [1]"), ("Time zone", "AEST (UTC+10) [1]"),
+                         ("Links", "https://www.linkedin.com/in/mia-chen [1]; https://harbour.example [1]"),
+                         ("How we know them", "introduced by Priya Nair [1]"), ("Language", "English [1]"),
+                         ("First contact", "2026-08-04 [1]"), ("Last contact", "2026-09-10 [1]")):
+        page = page.replace(f"- {label}: Unknown", f"- {label}: {value}", 1)
+    notebook.write("people/mia.md", page.replace("- (none yet)", "- [1] gmail:a1 — 2026-08-04, high"))
+    store.refresh(tmp_path)
+    mia = store.person(tmp_path, "people/mia.md")
+    assert mia["emails"] == ["mia.chen@harbour.example"]
+    assert mia["phone"].startswith("+61 2 5550 0142 (work)") and "+61 400 555 019" in mia["phone"]
+    assert (mia["company"], mia["role"], mia["location"]) == ("Harbour Analytics", "Head of Data Platform", "Sydney")
+    assert mia["timezone"] == "AEST (UTC+10)" and mia["language"] == "English"
+    assert mia["linkedin"] == "https://www.linkedin.com/in/mia-chen" and mia["website"] == "https://harbour.example"
+    assert mia["how_known"] == "introduced by Priya Nair"
+    assert (mia["first_contact"], mia["last_contact"]) == ("2026-08-04", "2026-09-10")

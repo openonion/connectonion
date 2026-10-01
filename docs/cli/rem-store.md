@@ -65,10 +65,11 @@ Indexes: `messages(thread, time)`, `messages(sender)`, `people(company)`,
 
 Where each column comes from:
 
-- **people**: the page's `## Contact` lines and, when #2068 lands, a
-  `## Facts` block in the same `- Label: value` shape (Facts wins; citations
-  stripped; `Unknown` is empty). Every labelled line also lands in `facts`, so
-  a field #2068 adds is readable before it has a column. Counts and dates come
+- **people**: the page's `## Facts` block (#2068), or on an older page its
+  `## Contact` lines, in the same `- Label: value` shape (Facts wins; citations
+  stripped; `Unknown` is empty). `How we know them` is `how_known`; `Links`
+  splits into `linkedin` (a linkedin.com URL) and `website` (the rest). Every
+  labelled line also lands in `facts`, so a field without a column is readable. Counts and dates come
   from the map row; `last_contact` is the later of the map's and the page's
   own "Last contact:". `written`, `held`, `service` and `listed` are the
   census's, so the table's row count is the census's people count.
