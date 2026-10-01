@@ -451,8 +451,9 @@ PROMOTE_WAIT_SECONDS = 1800
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True):
-    from .page_review import (drop_owner_addresses, drop_uncited_sources, drop_unresolved, link_company,
-                              normalize_numbered_sources, placeholder_errors, restore_runner_fields, validate)
+    from .page_review import (drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
+                              link_company, normalize_numbered_sources, placeholder_errors, restore_runner_fields,
+                              validate)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     text = restore_runner_fields(record, candidate.read_text(encoding="utf-8"), original)
@@ -460,6 +461,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     removed = []
     if record.startswith("people/") and record != owner.get("record"):
         text, removed = drop_owner_addresses(text, {a.casefold() for a in owner.get("addresses", [])})
+    # "web: not searched; Wiki runs are offline" is about the run, not the subject (#2058).
+    text, tool_lines = drop_tool_text(record, text, original)
     # One miscopied id drops what rests on it, not the page (#1974).
     text, dropped = drop_unresolved(record, normalize_numbered_sources(text), original, items)
     text = link_company(notebook, record, drop_uncited_sources(text))
@@ -485,7 +488,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             errors.append("Page changed during investigation; preserve current page and retry")
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,
                    "owner_addresses_removed": removed, "citations_dropped": dropped["citations"],
-                   "lines_dropped": dropped["lines"],
+                   "lines_dropped": dropped["lines"], "tool_lines_dropped": tool_lines,
                    "factual_quality": "not automatically assessed"})
         if errors:
             # The run is paid for; the page it wrote is kept where the reader can see

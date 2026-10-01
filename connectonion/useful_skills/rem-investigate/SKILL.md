@@ -52,8 +52,9 @@ refused.
 - Thin material: say so in `Uncertainties`.
 - `Uncertainties` holds open questions about the subject only: never coverage
   (what was or was not searched, the web, counts), unread attachments, notebook
-  facts, or empty searches; nor does `History`. The runner records coverage;
-  it goes in your final reply, never on the page.
+  facts, or empty searches; nor does `History`, nor any field (`- Phone:
+  Unknown`, not where you looked). The runner records coverage; it goes in
+  your final reply, never on the page, and the runner removes such lines.
 - **Never cite an `Unknown`**; write it bare.
 
 ## Evidence format
