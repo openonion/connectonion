@@ -460,12 +460,12 @@
   .sheet td { padding: 8px 9px; min-width: 0; font-size: 13px; }
   .sheet .name { min-width: 180px; max-width: 200px; width: 190px; }
   .sheet .c-open { min-width: 220px; max-width: 250px; width: 240px; }
-  .sheet .c-company, .sheet .c-role { min-width: 96px; max-width: 120px; }
-  .sheet .c-company .clamp, .sheet .c-role .clamp { max-width: 120px; }
-  .sheet .c-email { max-width: 150px; }
-  .sheet .trunc { display: block; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sheet .c-phone { max-width: 112px; }
-  .sheet .c-phone .mono { display: block; overflow: hidden; text-overflow: ellipsis; }
+  .sheet .c-company, .sheet .c-role { min-width: 92px; max-width: 112px; }
+  .sheet .c-company .clamp, .sheet .c-role .clamp { max-width: 112px; }
+  .sheet .c-email { max-width: 140px; }
+  .sheet .trunc { display: block; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sheet .c-phone { min-width: 128px; }
+  .sheet .c-phone .mono { white-space: nowrap; }
   .open-cell { flex-wrap: wrap; row-gap: 2px; }
   .open-cell .txt { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; flex-basis: 100%; }
   .name-cell .st { display: inline-flex; }
@@ -1010,7 +1010,7 @@ function owing() {
   const me = "(?:the user|you" + (first ? "|" + first : "") + ")";
   OWING = {
     mine: new RegExp("\\b" + me + "(?:['’]s)?\\s+(?:has |have |had |still )?(?:owes?|owed|promised|offered|agreed|needs? to|must|should|said (?:he|she|they) would|to (?:send|reply|sign|confirm|pay|review|decide)|has not|have not|hasn't|haven't)\\b" +
-      "|\\b(?:requested|asked for|awaits?|awaiting|waiting (?:on|for))\\s+(?:" + me + "(?:['’]s)?|your)\\b|\\brequested (?:confirmation|approval|a reply|an answer)\\b|\\byou owe\\b", "i"),
+      "|^\\s*" + me + "\\s*:|\\b(?:requested|asked for|awaits?|awaiting|waiting (?:on|for))\\s+(?:" + me + "(?:['’]s)?|your)\\b|\\brequested (?:confirmation|approval|a reply|an answer)\\b|\\byou owe\\b", "i"),
     theirs: /\b(?:owes?|owed) (?:the user|you)\b|\bwaiting (?:on|for) (?:them|him|her|their)\b|\bunanswered\b|\b(?:he|she|they) (?:has|have) not (?:replied|answered|sent|confirmed)\b|\bno reply\b|\b[A-Z][\w-]+(?:['’]s)? (?:promised|is expected to|agreed to|owes|said (?:he|she|they) would)\b|\bpromised\b/
   };
   return OWING;
