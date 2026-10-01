@@ -93,12 +93,14 @@ def _print_rows(rows: list) -> None:
         out.print(f"{style.command(cell[0])}{escape(line[len(cell[0]):])}  {escape(r['title'])}")
 
 
-def _show_list(nodes: list, heading: str, as_json: bool, empty_next: str) -> None:
+def _show_list(nodes: list, kind: str, scope: str, as_json: bool, empty_next: str) -> None:
+    """`3 open issues assigned to you`, `1 issue matching 'x'`: kind before the noun, scope after it."""
     rows = [api.row(node) for node in nodes]
     if as_json:
         _dump(rows)
     else:
-        style.console().print(f"{style.count(len(rows))} {escape(heading)}")
+        noun = " ".join(filter(None, [kind, "issue" if len(rows) == 1 else "issues", scope]))
+        style.console().print(f"{style.count(len(rows))} {escape(noun)}")
         _print_rows(rows)
     _tip(f"co linear issue {rows[0]['id']}" if rows else empty_next, as_json)
 
@@ -148,10 +150,9 @@ def issues(mine: bool = typer.Option(False, "--mine", help="Only issues assigned
         where["state"] = {"type": {"nin": ["completed", "canceled"]}}
     if project:
         where["project"] = {"name": {"eq": api.project_name(project)}}
-    heading = " ".join(filter(None, ["issues" if state else "open issues", "assigned to you" if mine else "",
-                                     f"in {found_team['key']}" if found_team else "", f"in state {state}" if state else "",
-                                     f"in project {project}" if project else ""]))
-    _show_list(api.issues(where, last), heading, as_json, "co linear search \"<words>\"")
+    scope = " ".join(filter(None, ["assigned to you" if mine else "", f"in {found_team['key']}" if found_team else "",
+                                   f"in state {state}" if state else "", f"in project {project}" if project else ""]))
+    _show_list(api.issues(where, last), "" if state else "open", scope, as_json, "co linear search \"<words>\"")
 
 
 @linear_app.command("issue", epilog="Example:  co linear issue ENG-123  |  co linear issue ENG-123 --json")
@@ -201,7 +202,7 @@ def search(text: str = typer.Argument(..., help="Words to look for in issue titl
            last: int = typer.Option(20, "--last", "-n", min=1, max=250, help="At most this many results"),
            as_json: bool = typer.Option(False, "--json", help=JSON_HELP)):
     """Search issues by text, Linear's best match first, open or closed. Read-only."""
-    _show_list(api.search(text, last), f"issues matching {text!r}", as_json, "co linear issues")
+    _show_list(api.search(text, last), "", f"matching {text!r}", as_json, "co linear issues")
 
 
 @linear_app.command("teams", epilog="Example:  co linear teams  |  co linear teams --json")

@@ -7,9 +7,9 @@ terminal, as yourself. Built on Linear's GraphQL API
 Every read is read-only. `create`, `update` and `comment` print a preview and
 change nothing until you add `--yes`.
 
-> Status: tested against a fake Linear in `tests/unit/test_linear_commands.py`
-> and against Linear's published schema. A run on a real workspace is the
-> acceptance step before a stable release; see [Testing](#testing).
+> Status: run against a real workspace on 2026-10-01 (every read, an unknown
+> issue and state, and create → comment → update through the real_api test),
+> and against a fake Linear in the unit tests; see [Testing](#testing).
 
 ## Setup
 
@@ -139,8 +139,11 @@ Every failure exits 1 and prints the cause and one `Next:` command on stderr.
 
 ```bash
 pytest tests/unit/test_linear_commands.py                 # fake Linear, no network
-LINEAR_API_KEY=lin_api_... pytest -m real_api tests/e2e/real_api/test_real_co_linear.py -s
+pytest -m real_api tests/e2e/real_api/test_real_co_linear.py -s
 ```
+
+The real test finds the key the way the commands do (shell, `~/.co/keys.env`,
+then the `--secret` store), and skips when it is set nowhere.
 
 The real test reads every listing, then creates one issue titled
 `[co linear real_api test] safe to close …` in the first team (or
