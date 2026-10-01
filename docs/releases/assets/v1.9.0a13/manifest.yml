@@ -1,0 +1,9 @@
+version: v1.9.0a13
+images:
+  - file: first-run-cli.png
+    alt: "Terminal preview of REM first run announcing investigation scope, estimated cost and budget controls"
+    caption: "REM announces its recent memory investigation before running the model, then reports accepted pages. The visible mailbox and model results are synthetic."
+    scenario: "new owner runs co rem init --days 7 against a fake mailbox and model fixture"
+    viewport: "1540x737 terminal capture"
+    commit: 7abf0410
+    source_run: "local synthetic CLI fixture, 2026-10-02; no private source data"
