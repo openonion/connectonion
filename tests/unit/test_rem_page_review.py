@@ -526,3 +526,28 @@ def test_a_candidate_over_the_limit_that_grew_the_page_is_refused(tmp_path):
     assert size_errors(_grown(old, 18_000), old) == []               # growth under the limit: fine
     oversized = _grown(old, 26_000)
     assert size_errors(_grown(old, 22_000), oversized) == []         # an oversized page may come down in steps
+
+
+# ------------------------------------------- the page is about the subject, not the run (#2058)
+
+
+def test_lines_about_the_run_are_removed_and_a_contact_field_keeps_its_label():
+    """Five of the owner's seven investigated person pages said "web: not
+    searched; Wiki runs are offline"; Ody's Phone line said it too."""
+    from connectonion.rem.page_review import drop_tool_text
+    original = '# Ody\n\n## Contact\n- Phone: Unknown\n\n## Sources\n- [1] outlook:aaa — 2026-09-01\n'
+    candidate = ('# Ody\n\n## Contact\n- Phone: no phone number appears; the web was not searched in this '
+                 'offline Wiki run.\n\n## Uncertainties\n- web: not searched; Wiki runs are offline. [2]\n'
+                 '- Whether the 30/70 split was signed. [1]\n- Ody collects art; a serious collector. [1]\n'
+                 '\n## Sources\n- [1] outlook:aaa — 2026-09-01\n- [2] investigation:coverage — offline run\n')
+    text, removed = drop_tool_text('people/ody.md', candidate, original)
+    assert '- Phone: Unknown' in text
+    assert 'Wiki runs are offline. [2]' not in text and len(removed) == 2
+    assert 'Whether the 30/70 split was signed. [1]' in text and 'a serious collector' in text
+    assert '- [2] investigation:coverage — offline run' in text      # Sources are left to drop_uncited_sources
+
+
+def test_a_line_the_page_already_had_is_left_to_tidy():
+    from connectonion.rem.page_review import drop_tool_text
+    page = '# T\n\n## History\n- The current collector reports 50 bodies read. [1]\n\n## Sources\n- [1] x\n'
+    assert drop_tool_text('people/t.md', page, page) == (page, [])

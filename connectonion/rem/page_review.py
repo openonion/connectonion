@@ -300,6 +300,33 @@ def placeholder_errors(candidate: str) -> list[str]:
 PAGE_LIMIT = 20_000
 
 
+# How the tool ran, said on a page about someone else (#2058): "web: not
+# searched; Wiki runs are offline" sat in 5 of the owner's 7 investigated
+# person pages, and Tamara's History opened with "The current collector
+# reports 50 matching Outlook messages with 50 bodies read".
+TOOL_TEXT = re.compile(r"\bnot searched\b|\boffline\b.{0,20}\b(?:wiki|rem|run)\b|\b(?:wiki|rem) runs?\b.{0,12}\boffline\b"
+                       r"|\bcollector (?:reports|found|read)\b|\bbodies read\b", re.IGNORECASE)
+
+
+def drop_tool_text(record: str, text: str, original: str) -> tuple[str, list[str]]:
+    """Remove lines a candidate adds about the run rather than the subject; above Sources only.
+
+    Removed, not refused: a refusal re-runs a turn that cost 600k tokens over
+    a sentence. A contact field keeps its label and says Unknown, as
+    `drop_unresolved` does. Lines the page already had are tidy's (#2058)."""
+    head, marker, tail = text.partition('\n## Sources\n')
+    before, kept, removed = set(original.splitlines()), [], []
+    for line in head.split('\n'):
+        if line in before or not TOOL_TEXT.search(line):
+            kept.append(line)
+            continue
+        removed.append(line.strip())
+        contact = CONTACT_LINE.match(line) if record.startswith('people/') else None
+        if contact:
+            kept.append(f'- {contact[1]}: Unknown')
+    return '\n'.join(kept) + marker + tail, removed
+
+
 def size_errors(candidate: str, original: str) -> list[str]:
     """A page over the limit may not grow; one already over may come down in steps."""
     if len(candidate) <= PAGE_LIMIT or len(candidate) <= len(original):
