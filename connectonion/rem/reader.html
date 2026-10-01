@@ -5,8 +5,20 @@
   everything after that is a client of the REM object and nothing else, so the
   same client can be served by a local server or a site later without changes.
   Note text is data: it reaches the DOM only through esc() or textContent.
-  Fonts are system faces on purpose: a page of someone's private notes must not
-  phone a font host on open.
+
+  Design. co rem is named for REM sleep: overnight it consolidates the day's
+  mail and coding sessions into pages. The reader is a notebook you come back
+  to, so it is quiet everywhere except one place: the home opens on the night
+  (what the last pass read, which pages changed, a hypnogram of the week's
+  runs), and every page opens on what is still open.
+  - Palette: cool, blue-biased neutrals ("pillow" paper, "midnight" ink), one
+    night blue for links and knowledge, one lamp amber kept for what is owed
+    or open. Dark is its own palette, not an inversion.
+  - Type: Optima for display only (titles, the night's sentence), Charter for
+    page prose, the system UI face for chrome, and the mono face for every
+    date, count and id, with tabular numerals.
+  - Fonts are local faces on purpose: a page of someone's private notes must
+    not phone a font host on open.
 -->
 <html lang="en">
 <head>
@@ -16,238 +28,407 @@
 <style>
   :root {
     color-scheme: light dark;
-    --paper: #ffffff;
-    --paper-2: #f6f8f6;
-    --paper-3: #edf2ee;
-    --ink: #131a15;
-    --ink-2: #46554c;
-    --ink-3: #75857b;
-    --line: #e0e8e2;
-    --line-subtle: #edf3ee;
-    --moss: #1e6b45;
-    --moss-hover: #165636;
-    --moss-ink: #144e33;
-    --moss-soft: #e8f4ec;
-    --moss-line: #bdd9c7;
-    --mark: #d5ecd9;
-    --mark-ink: #11422b;
-    --display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
-    --body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    --mono: "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    /* light: pillow paper, midnight ink, night blue, lamp amber */
+    --paper: #f3f4f7;
+    --sheet: #ffffff;
+    --well: #e9ebf1;
+    --ink: #171b2b;
+    --ink-2: #585e75;
+    --ink-3: #686e86;
+    --line: #dcdfe8;
+    --line-2: #e8eaf0;
+    --blue: #2c3e9e;
+    --blue-soft: #e6e9f8;
+    --blue-line: #c3caee;
+    --lamp: #9a5800;
+    --lamp-soft: #fbf0de;
+    --lamp-line: #ebcb94;
+    --night: #18203f;
+    --night-ink: #e7eaf6;
+    --night-2: #9fa9d6;
+    --night-line: #2c3663;
+    --night-lamp: #f2b65e;
+    --mark: #fce7b8;
+    --mark-ink: #3e2a00;
+    --shadow: 0 1px 2px rgba(23, 27, 43, 0.06), 0 6px 24px -12px rgba(23, 27, 43, 0.18);
+    --display: Optima, "Optima Nova", Candara, "Segoe UI Variable Display", "Gill Sans", "Noto Sans", sans-serif;
+    --text: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, "Songti SC", serif;
+    --ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --paper: #0e1411; --paper-2: #141c17; --paper-3: #1a251e; --ink: #e4ebe6; --ink-2: #9fb0a6; --ink-3: #6f7f75;
-      --line: #223027; --line-subtle: #19241d; --moss: #57c289; --moss-hover: #6dd49c; --moss-ink: #84dfb1; --moss-soft: #172a1e; --moss-line: #294635;
-      --mark: #1c3d2a; --mark-ink: #a2f0c7;
+      --paper: #0d101a; --sheet: #141927; --well: #1b2132; --ink: #e3e6f0; --ink-2: #a3aac2; --ink-3: #8088a2;
+      --line: #262c3f; --line-2: #1d2233; --blue: #9eaeff; --blue-soft: #1c2347; --blue-line: #2f3a70;
+      --lamp: #edb15a; --lamp-soft: #2a2213; --lamp-line: #5a4520; --night: #161d3c; --night-ink: #e7eaf6;
+      --night-2: #a5afdc; --night-line: #2b3566; --night-lamp: #f2b65e; --mark: #4a3a12; --mark-ink: #ffe7b0;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px -14px rgba(0, 0, 0, 0.7);
     }
   }
   :root[data-theme="dark"] {
-    --paper: #0e1411; --paper-2: #141c17; --paper-3: #1a251e; --ink: #e4ebe6; --ink-2: #9fb0a6; --ink-3: #6f7f75;
-    --line: #223027; --line-subtle: #19241d; --moss: #57c289; --moss-hover: #6dd49c; --moss-ink: #84dfb1; --moss-soft: #172a1e; --moss-line: #294635;
-    --mark: #1c3d2a; --mark-ink: #a2f0c7;
-  }
-  :root[data-theme="light"] {
-    --paper: #ffffff; --paper-2: #f6f8f6; --paper-3: #edf2ee; --ink: #131a15; --ink-2: #46554c; --ink-3: #75857b;
-    --line: #e0e8e2; --line-subtle: #edf3ee; --moss: #1e6b45; --moss-hover: #165636; --moss-ink: #144e33; --moss-soft: #e8f4ec; --moss-line: #bdd9c7;
-    --mark: #d5ecd9; --mark-ink: #11422b;
+    --paper: #0d101a; --sheet: #141927; --well: #1b2132; --ink: #e3e6f0; --ink-2: #a3aac2; --ink-3: #8088a2;
+    --line: #262c3f; --line-2: #1d2233; --blue: #9eaeff; --blue-soft: #1c2347; --blue-line: #2f3a70;
+    --lamp: #edb15a; --lamp-soft: #2a2213; --lamp-line: #5a4520; --night: #161d3c; --night-ink: #e7eaf6;
+    --night-2: #a5afdc; --night-line: #2b3566; --night-lamp: #f2b65e; --mark: #4a3a12; --mark-ink: #ffe7b0;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px -14px rgba(0, 0, 0, 0.7);
   }
   * { box-sizing: border-box; }
   html { background: var(--paper); }
-  body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
-  a { color: var(--moss); text-decoration: none; }
-  a:hover { text-decoration: underline; text-underline-offset: 3px; }
-  a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--moss); outline-offset: 2px; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.55 var(--ui); -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 2px; }
   code { font: 0.86em var(--mono); }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  svg.moon { width: 11px; height: 11px; flex-shrink: 0; color: var(--blue); vertical-align: -1px; }
 
-  .app { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 100vh; }
+  .app { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
 
-  /* ---- rail ---- */
-  .rail { position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 26px 18px 24px 22px; border-right: 1px solid var(--line); background: var(--paper-2); display: flex; flex-direction: column; gap: 20px; }
-  .brand { display: flex; align-items: baseline; gap: 10px; color: var(--ink); text-decoration: none !important; }
-  .brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--moss); transform: translateY(-1px); flex-shrink: 0; }
-  .brand .name { font: 500 22px/1 var(--display); letter-spacing: 0.01em; }
-  .brand .sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink-3); }
+  /* ---- rail: quiet chrome, the notebook's spine ---- */
+  .rail { position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 22px 16px 18px 20px; border-right: 1px solid var(--line); background: var(--paper); display: flex; flex-direction: column; gap: 18px; }
+  .brand { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; align-items: center; color: var(--ink); text-decoration: none !important; }
+  .brand svg { width: 26px; height: 26px; grid-row: span 2; }
+  .brand .name { font: 600 19px/1 var(--display); letter-spacing: 0.02em; }
+  .brand .sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px/1.4 var(--mono); color: var(--ink-3); margin-top: 3px; }
 
   .search { position: relative; }
-  .search input { width: 100%; padding: 8px 26px 8px 32px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font: 13.5px var(--body); transition: border-color 120ms ease; }
+  .search input { width: 100%; padding: 8px 30px 8px 32px; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet); color: var(--ink); font: 13.5px var(--ui); }
   .search input::-webkit-search-decoration,
   .search input::-webkit-search-cancel-button,
   .search input::-webkit-search-results-button,
   .search input::-webkit-search-results-decoration { display: none; -webkit-appearance: none; }
-  .search input:focus { border-color: var(--moss); outline: none; }
+  .search input:focus { border-color: var(--blue); outline: none; box-shadow: 0 0 0 3px var(--blue-soft); }
   .search input::placeholder { color: var(--ink-3); }
-  .search .search-icon { position: absolute; left: 11px; top: 11px; width: 15px; height: 15px; fill: none; stroke: var(--ink-3); stroke-width: 2; pointer-events: none; }
-  .search-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; padding: 2px 6px; font-size: 13px; color: var(--ink-3); cursor: pointer; border-radius: 4px; display: none; line-height: 1; }
-  .search-clear:hover { color: var(--ink); background: var(--paper-3); }
+  .search .search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; fill: none; stroke: var(--ink-3); stroke-width: 2; pointer-events: none; }
+  .search .kbd { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); font: 11px var(--mono); color: var(--ink-3); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; pointer-events: none; }
+  .search input:not(:placeholder-shown) ~ .kbd { display: none; }
+  .search-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: none; padding: 2px 6px; font-size: 13px; color: var(--ink-3); cursor: pointer; border-radius: 4px; display: none; line-height: 1; }
+  .search-clear:hover { color: var(--ink); background: var(--well); }
   .search input:not(:placeholder-shown) + .search-clear { display: block; }
 
-  nav { display: flex; flex-direction: column; gap: 2px; }
-  nav .label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); margin: 6px 0 6px 10px; font-weight: 500; }
-  nav a { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 10px; border-radius: 7px; color: var(--ink-2); font-size: 14.5px; transition: background 100ms ease, color 100ms ease; }
-  nav a:hover { background: var(--paper); color: var(--ink); text-decoration: none; }
-  nav a.active { background: var(--moss-soft); color: var(--moss-ink); font-weight: 500; }
-  nav a .n { font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--ink-3); }
-  nav a.active .n { color: var(--moss-ink); }
-  nav a .n.zero { opacity: 0.55; }
+  nav { display: flex; flex-direction: column; gap: 1px; }
+  nav .label { font: 500 10.5px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); margin: 4px 0 6px 10px; }
+  nav a { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 5px 10px; border-radius: 5px; color: var(--ink-2); font-size: 14px; position: relative; }
+  nav a:hover { background: var(--well); color: var(--ink); text-decoration: none; }
+  nav a.active { background: var(--sheet); color: var(--ink); font-weight: 600; box-shadow: inset 0 0 0 1px var(--line); }
+  nav a.active::before { content: ""; position: absolute; left: -10px; top: 7px; bottom: 7px; width: 3px; border-radius: 2px; background: var(--blue); }
+  nav a .n { font: 11.5px var(--mono); color: var(--ink-3); }
+  nav a .n.zero { opacity: 0.5; }
+  nav a .n.open { color: var(--lamp); }
+  nav .gap { height: 10px; }
 
-  .rail .foot { margin-top: auto; font-size: 12px; line-height: 1.55; color: var(--ink-3); display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
-  .rail .foot code { font-size: 11px; color: var(--ink-2); }
-  .theme-switch { display: inline-flex; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 2px; gap: 2px; align-self: flex-start; }
-  .theme-btn { background: none; border: none; padding: 2px 8px; font: 11px var(--body); color: var(--ink-3); border-radius: 4px; cursor: pointer; }
+  .rail .foot { margin-top: auto; font: 11px/1.6 var(--mono); color: var(--ink-3); display: flex; flex-direction: column; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .theme-switch { display: inline-flex; background: var(--well); border-radius: 6px; padding: 2px; gap: 2px; align-self: flex-start; }
+  .theme-btn { background: none; border: none; padding: 3px 9px; font: 11.5px var(--ui); color: var(--ink-2); border-radius: 4px; cursor: pointer; }
   .theme-btn:hover { color: var(--ink); }
-  .theme-btn.active { background: var(--moss-soft); color: var(--moss-ink); font-weight: 500; }
+  .theme-btn.active { background: var(--sheet); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.12); }
 
   /* ---- main ---- */
-  main { min-width: 0; width: 100%; overflow-wrap: anywhere; padding: 44px 56px 96px; max-width: 920px; }
-  .eyebrow { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--moss); margin-bottom: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .eyebrow .sep { color: var(--ink-3); letter-spacing: 0; }
-  .eyebrow .when { color: var(--ink-3); letter-spacing: 0.02em; text-transform: none; font-variant-numeric: tabular-nums; }
-  .eyebrow-path { font: 11.5px var(--mono); color: var(--ink-3); text-transform: none; background: var(--paper-2); border: 1px solid var(--line); padding: 1px 7px; border-radius: 4px; cursor: pointer; }
-  .eyebrow-path:hover { color: var(--moss); border-color: var(--moss-line); }
+  main { min-width: 0; width: 100%; overflow-wrap: anywhere; padding: 40px 56px 96px; max-width: 1180px; }
+  main:focus { outline: none; }
+  .eyebrow { font: 11.5px/1.4 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .eyebrow a { color: var(--blue); }
+  .eyebrow .sep { color: var(--line); }
+  .eyebrow .when { text-transform: none; letter-spacing: 0; }
+  h1 { font: 500 40px/1.08 var(--display); letter-spacing: -0.01em; margin: 0 0 12px; text-wrap: balance; color: var(--ink); }
+  .lede { color: var(--ink-2); font-size: 15.5px; margin: 0 0 32px; max-width: 64ch; }
+  .lede b { color: var(--ink); font-weight: 600; }
+  h2.section { font: 500 22px/1.2 var(--display); margin: 52px 0 6px; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+  h2.section .n { font: 11.5px var(--mono); color: var(--ink-3); text-align: right; font-weight: 400; }
+  h2.section .n a { color: var(--ink-2); }
+  .section-sub { color: var(--ink-3); font-size: 13.5px; margin: 0 0 14px; }
 
-  .record-header-bar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
-  .record-title-area { flex: 1; min-width: 0; }
-  .record-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
-  .btn-action { font: 12px var(--body); color: var(--ink-2); background: var(--paper-2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: all 120ms ease; }
-  .btn-action:hover { color: var(--moss-ink); background: var(--moss-soft); border-color: var(--moss-line); }
-  .btn-action:active { transform: translateY(1px); }
+  /* status: a moon phase, full when investigated */
+  .pill { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px 1px 6px; border-radius: 999px; font: 500 11px/1.6 var(--mono); letter-spacing: 0.02em; text-transform: none; background: var(--blue-soft); color: var(--blue); white-space: nowrap; }
+  .pill.status.mapped { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--ink-3); }
+  .pill.status.mapped svg.moon { color: var(--ink-3); }
+  .pill.quiet { background: var(--well); color: var(--ink-2); }
+  .pill.warn { background: var(--lamp-soft); color: var(--lamp); }
 
-  h1 { font: 500 34px/1.15 var(--display); letter-spacing: -0.005em; margin: 0 0 12px; text-wrap: balance; color: var(--ink); }
-  .lede { color: var(--ink-2); font-size: 15px; margin: 0 0 34px; max-width: 66ch; }
-  .lede-person { font-size: 18px; line-height: 1.55; color: var(--ink); margin-bottom: 28px; }
-  h2.section { font: 500 22px/1.2 var(--display); margin: 44px 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
-  h2.section .n { font: 13px var(--body); color: var(--ink-3); text-align: right; }
+  /* ---- the night: the home's one loud thing ---- */
+  .night { position: relative; margin: 8px 0 8px; padding: 26px 28px 22px; border-radius: 10px; background: var(--night); color: var(--night-ink); overflow: hidden; box-shadow: var(--shadow); }
+  .night::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.5;
+    background-image: radial-gradient(1px 1px at 12% 22%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 31% 12%, #fff 50%, transparent 51%),
+      radial-gradient(1px 1px at 57% 26%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 78% 9%, #fff 50%, transparent 51%),
+      radial-gradient(1px 1px at 91% 31%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 44% 6%, #fff 50%, transparent 51%); }
+  .night > * { position: relative; }
+  .night .kicker { font: 11.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--night-2); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .night .kicker svg { width: 14px; height: 14px; color: var(--night-lamp); }
+  .night .thesis { font: 400 27px/1.25 var(--display); margin: 10px 0 18px; max-width: 30ch; text-wrap: balance; }
+  .night .thesis b { font-weight: 600; color: #fff; }
+  .night .stats { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 0 0 16px; }
+  .night .stat .v { font: 500 22px/1 var(--mono); color: #fff; }
+  .night .stat .k { font: 11px var(--mono); color: var(--night-2); margin-top: 4px; letter-spacing: 0.04em; }
+  .night .stat.warn .v { color: var(--night-lamp); }
+  .hypno { position: relative; height: 104px; margin: 6px 0 4px; }
+  .hypno svg { display: block; width: 100%; height: 84px; overflow: visible; }
+  .hypno .grid { stroke: var(--night-line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .hypno .trace { fill: none; stroke: #c9d0f5; stroke-width: 1.5; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+  .hypno .area { fill: #c9d0f5; opacity: 0.13; }
+  .hypno .day { position: absolute; top: 88px; padding-left: 4px; font: 10px var(--mono); color: var(--night-2); white-space: nowrap; }
+  .hypno .dot { position: absolute; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,0.12); }
+  .hypno .dot.woke { background: var(--night-lamp); box-shadow: 0 0 0 3px rgba(242,182,94,0.18); }
+  .night .legend { font: 10.5px var(--mono); color: var(--night-2); display: flex; gap: 16px; flex-wrap: wrap; }
+  .night .legend i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+  .night .changes { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--night-line); display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: baseline; }
+  .night .changes .k { font: 11px var(--mono); color: var(--night-2); margin-right: 4px; letter-spacing: 0.04em; }
+  .night .changes a { color: var(--night-ink); font-size: 13.5px; padding: 2px 9px; border-radius: 999px; background: rgba(255,255,255,0.07); box-shadow: inset 0 0 0 1px var(--night-line); }
+  .night .changes a:hover { background: rgba(255,255,255,0.14); text-decoration: none; }
+  .night code { font: 12px var(--mono); color: #fff; background: rgba(255,255,255,0.08); padding: 2px 7px; border-radius: 4px; }
+  .night p { margin: 0; color: var(--night-2); font-size: 14px; }
 
-  /* in-page navigation jump bar */
-  .jump-nav { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 0 0 28px; padding: 10px 14px; background: var(--paper-2); border: 1px solid var(--line); border-radius: 8px; font-size: 13px; max-width: 66ch; }
-  .jump-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-right: 4px; font-weight: 500; }
-  .jump-pill { padding: 3px 9px; border-radius: 5px; color: var(--ink-2); background: var(--paper); border: 1px solid var(--line); font-size: 12.5px; transition: all 100ms ease; }
-  .jump-pill:hover { color: var(--moss-ink); background: var(--moss-soft); border-color: var(--moss-line); text-decoration: none; }
+  /* ---- open threads: who owes whom ---- */
+  .threads { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .thread { display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; gap: 4px 16px; align-items: baseline; padding: 12px 16px; background: var(--sheet); border: 1px solid var(--line); border-left: 3px solid var(--lamp); border-radius: 4px 8px 8px 4px; }
+  .thread.theirs { border-left-color: var(--blue); }
+  .thread.plain { border-left-color: var(--ink-3); }
+  .dir { font: 600 10.5px/1.7 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--lamp); white-space: nowrap; }
+  .thread.theirs .dir { color: var(--blue); }
+  .thread.plain .dir { color: var(--ink-3); }
+  .thread .what { font: 15px/1.5 var(--text); color: var(--ink); }
+  .thread .who { font-size: 13px; color: var(--ink-2); margin-top: 3px; font-family: var(--ui); }
+  .thread .when { font: 11.5px var(--mono); color: var(--ink-3); white-space: nowrap; }
 
-  /* overview: the notebook's table of contents */
-  .toc { columns: 2; column-gap: 40px; list-style: none; margin: 0; padding: 0; }
-  .toc li { break-inside: avoid; padding: 4px 0; font-size: 15px; line-height: 1.45; display: flex; align-items: baseline; gap: 6px; }
-  .toc a { color: var(--ink); }
-  .toc a:hover { color: var(--moss); }
-  .toc .path-hint { font: 11px var(--mono); color: var(--ink-3); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .toc .more { color: var(--ink-3); font-size: 13.5px; }
-  .maint { margin-top: 56px; padding: 22px 24px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper-2); }
-  .maint h2 { font: 500 17px/1.2 var(--display); margin: 0 0 12px; }
-  .maint .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px 22px; margin-bottom: 14px; }
-  .maint .k { font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
-  .maint .v { font-size: 15px; font-variant-numeric: tabular-nums; margin-top: 2px; }
-  .maint .state { font-size: 13.5px; color: var(--ink-2); margin: 0 0 14px; }
-  table.runs { width: 100%; border-collapse: collapse; font-size: 13px; }
-  table.runs th { text-align: left; font-weight: 500; color: var(--ink-3); padding: 6px 10px 6px 0; border-bottom: 1px solid var(--line); }
-  table.runs td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; color: var(--ink-2); }
-  table.runs td:first-child { color: var(--ink); }
-  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--moss-soft); color: var(--moss-ink); font-weight: 500; }
-  .status { font-size: 11.5px; letter-spacing: 0.02em; text-transform: none; }
-  .status.mapped { background: var(--paper); border: 1px dashed var(--line); color: var(--ink-3); font-weight: 400; }
-  .missing { max-width: 66ch; margin-top: 30px; padding: 14px 16px; border: 1px dashed var(--line); border-radius: 8px; color: var(--ink-3); font-size: 14px; line-height: 1.6; }
-  .missing .cmd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
-  .missing code { font: 12.5px var(--mono); color: var(--ink-2); background: var(--paper-2); border: 1px solid var(--line); border-radius: 5px; padding: 2px 7px; overflow-wrap: anywhere; }
-  .page-foot { max-width: 66ch; margin-top: 30px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  /* ---- rows: a page as one line of what it knows ---- */
+  .hits { list-style: none; margin: 0; padding: 0; max-width: 80ch; border-top: 1px solid var(--line); }
+  .hits.cols { max-width: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 40px; }
+  .hits > li { padding: 13px 0 14px; border-bottom: 1px solid var(--line); min-width: 0; }
   .hits .t { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-  .hits .t .when, .toc .when { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .pill.quiet { background: var(--paper); border: 1px solid var(--line); color: var(--ink-2); }
+  .hits .t > span:first-child { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
+  .hits .t a { color: var(--ink); font-weight: 600; font-size: 15px; }
+  .hits .t a:hover { color: var(--blue); }
+  .hits .t .meta { font-size: 12.5px; color: var(--ink-3); }
+  .hits .when { font: 11.5px var(--mono); color: var(--ink-3); white-space: nowrap; }
+  .hits .hit { margin-top: 4px; color: var(--ink-2); font: 14.5px/1.5 var(--text); }
+  .hits .hit.ui { font-family: var(--ui); font-size: 13px; }
+  .hits .open { color: var(--ink); display: flex; gap: 8px; align-items: baseline; }
+  .hits .open .k { flex-shrink: 0; font: 600 10px/1.9 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--lamp); background: var(--lamp-soft); padding: 0 6px; border-radius: 3px; }
+  .hits .eyebrow { margin-bottom: 4px; }
+  .usage { display: flex; align-items: center; gap: 10px; margin-top: 6px; font: 11.5px var(--mono); color: var(--ink-3); }
+  .usage .bar { width: 120px; height: 4px; border-radius: 2px; background: var(--well); overflow: hidden; flex-shrink: 0; }
+  .usage .bar i { display: block; height: 100%; background: var(--blue); border-radius: 2px; }
+  mark { background: var(--mark); color: var(--mark-ink); padding: 0 2px; border-radius: 2px; }
 
-  /* record */
-  .note { max-width: 66ch; font-size: 16.5px; line-height: 1.68; }
+  /* the home's quick entry: one shelf per kind of page */
+  .shelves { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 28px 40px; margin-top: 14px; }
+  .shelf h3 { font: 600 11px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 6px; padding-bottom: 7px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
+  .shelf h3 a { color: inherit; }
+  .shelf .ask { font: italic 13.5px/1.4 var(--text); color: var(--ink-3); margin: 0 0 6px; }
+  .toc { list-style: none; margin: 0; padding: 0; }
+  .toc li { padding: 4px 0; font-size: 14px; line-height: 1.4; display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .toc li > a:first-of-type { color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .toc li > a:hover { color: var(--blue); }
+  .toc .when, .toc .path-hint { margin-left: auto; font: 11px var(--mono); color: var(--ink-3); white-space: nowrap; flex-shrink: 0; }
+  .toc .path-hint { max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+  .toc .more { color: var(--blue); font-size: 13px; }
+
+  /* the engine room: maintenance, kept below everything */
+  .maint { margin-top: 64px; border-top: 1px solid var(--line); padding-top: 8px; }
+  .maint > summary { cursor: pointer; list-style: none; padding: 10px 0; display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
+  .maint > summary::-webkit-details-marker { display: none; }
+  .maint > summary h2 { font: 500 18px var(--display); margin: 0; display: inline; }
+  .maint > summary .n { font: 11.5px var(--mono); color: var(--ink-3); }
+  .maint > summary::after { content: "+"; font: 16px var(--mono); color: var(--ink-3); }
+  .maint[open] > summary::after { content: "−"; }
+  .maint .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px 22px; margin: 6px 0 16px; }
+  .maint .k { font: 10.5px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+  .maint .v { font: 500 16px var(--mono); margin-top: 3px; }
+  .maint .state { font-size: 14px; color: var(--ink-2); margin: 4px 0 14px; max-width: 72ch; }
+  table.runs { width: 100%; border-collapse: collapse; font: 12.5px var(--mono); }
+  table.runs th { text-align: left; font-weight: 500; color: var(--ink-3); padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  table.runs td { padding: 7px 12px 7px 0; border-bottom: 1px solid var(--line-2); color: var(--ink-2); white-space: nowrap; }
+  table.runs td:first-child { color: var(--ink); }
+
+  /* ---- a page ---- */
+  .page-head { margin-bottom: 26px; }
+  .standfirst { font: 400 20px/1.55 var(--text); color: var(--ink); margin: 6px 0 0; max-width: 62ch; }
+  .page-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 56px; }
+  .page-grid > .side { margin: 34px 0 0; max-width: 66ch; }
+  .panel { background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; font-size: 13px; }
+  .panel + .panel { margin-top: 12px; }
+  .panel h3 { font: 600 10.5px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 10px; }
+  .panel dl { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 6px 10px; margin: 0; }
+  .panel dt { color: var(--ink-3); font-size: 12px; }
+  .panel dd { margin: 0; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
+  .panel dd.mono, .panel dd .mono { font-size: 12px; }
+  .unk { color: var(--ink-3); opacity: 0.7; }
+  .bigstat { display: flex; align-items: baseline; gap: 8px; }
+  .bigstat .v { font: 500 30px/1 var(--mono); color: var(--ink); }
+  .bigstat .k { font-size: 12.5px; color: var(--ink-3); }
+  .panel .usage { margin-top: 10px; }
+  .panel .usage .bar { width: 100%; height: 6px; }
+  .panel p { margin: 8px 0 0; color: var(--ink-2); }
+
+  .note { max-width: 66ch; font: 16.5px/1.68 var(--text); color: var(--ink); }
   .note p { margin: 0 0 1em; }
-  .note h2 { font: 500 21px/1.25 var(--display); margin: 1.7em 0 0.5em; position: relative; }
-  .note h3 { font: 500 17.5px/1.3 var(--display); margin: 1.4em 0 0.4em; position: relative; }
-  .heading-anchor { opacity: 0; margin-left: 8px; font-weight: normal; font-size: 0.85em; color: var(--moss); text-decoration: none !important; transition: opacity 120ms ease; }
-  .note :is(h2,h3,h4):hover .heading-anchor, .heading-anchor:focus-visible { opacity: 0.6; }
-  .heading-anchor:hover { opacity: 1; }
-
-  .note ul, .note ol { padding-left: 1.3em; margin: 0 0 1em; }
+  .note > h2 { font: 500 21px/1.25 var(--display); margin: 2.1em 0 0.6em; position: relative; display: flex; align-items: baseline; gap: 10px; }
+  .note > h2::after { content: ""; flex: 1; height: 1px; background: var(--line); transform: translateY(-5px); }
+  .note > h2:first-child { margin-top: 0; }
+  .note h3 { font: 600 16px/1.3 var(--ui); margin: 1.5em 0 0.4em; position: relative; }
+  .note h4, .note h5, .note h6 { font: 600 14.5px/1.3 var(--ui); margin: 1.3em 0 0.4em; }
+  .heading-anchor { opacity: 0; font: 400 13px var(--mono); color: var(--ink-3); text-decoration: none !important; }
+  .note :is(h2,h3,h4):hover .heading-anchor, .heading-anchor:focus-visible { opacity: 1; }
+  .heading-anchor:hover { color: var(--blue); }
+  .note ul, .note ol { padding-left: 1.25em; margin: 0 0 1em; }
+  .note li { margin: 0.3em 0; }
   .note li > p { margin-bottom: 0.25em; }
   .note li > ul, .note li > ol { margin-bottom: 0.5em; }
-  .note li { margin: 0.25em 0; }
   .note li::marker { color: var(--ink-3); }
   .note li.unknown-item, .note p.unknown-item { color: var(--ink-3); font-style: italic; font-size: 15px; }
-
-  /* code block */
-  .code-block { position: relative; margin: 0 0 1.2em; }
-  .note pre { background: var(--paper-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto; font-size: 13px; line-height: 1.5; max-width: 100%; tab-size: 4; margin: 0; }
-  .note code { background: var(--paper-2); padding: 1px 5px; border-radius: 4px; }
-  .note pre code { background: none; padding: 0; font: inherit; white-space: pre; overflow-wrap: normal; }
-  .code-copy { position: absolute; top: 8px; right: 8px; font: 11px var(--mono); color: var(--ink-3); background: var(--paper); border: 1px solid var(--line); border-radius: 5px; padding: 2px 7px; opacity: 0; cursor: pointer; transition: all 120ms ease; }
-  .code-block:hover .code-copy, .code-copy:focus-visible { opacity: 1; }
-  .code-copy:hover { color: var(--moss-ink); background: var(--moss-soft); border-color: var(--moss-line); }
-
-  .note blockquote { margin: 0 0 1em; padding: 4px 16px; border-left: 3px solid var(--moss-line); color: var(--ink-2); }
-  .note table { border-collapse: collapse; margin: 0 0 1.2em; font-size: 15px; }
-  .note th, .note td { border: 1px solid var(--line); padding: 6px 12px; text-align: left; vertical-align: top; }
-  .note th { background: var(--paper-2); font-weight: 500; }
-  .note hr { border: 0; border-top: 1px solid var(--line); margin: 1.6em 0; }
-  .note strong { font-weight: 600; }
-  .aside { max-width: 66ch; margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px 18px; font-size: 14px; }
-  .aside .k { font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); padding-top: 3px; }
-  .aside .related a { display: inline-block; margin: 0 14px 6px 0; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chip { font: 12px var(--mono); color: var(--ink-2); background: var(--paper-2); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
-  .chip .d { color: var(--ink-3); margin-left: 6px; }
-
-  /* lists of pages, search */
-  .hits { list-style: none; margin: 0; padding: 0; max-width: 72ch; }
-  .hits li { padding: 16px 0; border-bottom: 1px solid var(--line); }
-  .hits .t { font: 500 18px/1.3 var(--display); }
-  .hits .t a { color: var(--ink); }
-  .hits .hit { margin-top: 6px; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
-  .hits .eyebrow { margin-bottom: 4px; }
-  .hits .open { color: var(--ink); }
-  .hits .open .k { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--moss); }
-  mark { background: var(--mark); color: var(--mark-ink); padding: 1px 3px; border-radius: 3px; font-weight: 500; }
-  .empty { color: var(--ink-2); padding: 20px 24px; font-size: 14.5px; max-width: 60ch; background: var(--paper-2); border: 1px solid var(--line); border-radius: 8px; margin-top: 18px; line-height: 1.6; }
-
+  .note strong { font-weight: 700; }
+  .note code { background: var(--well); padding: 1px 5px; border-radius: 3px; font-size: 0.82em; }
+  .note blockquote { margin: 0 0 1em; padding: 2px 18px; border-left: 2px solid var(--blue-line); color: var(--ink-2); font-style: italic; }
+  .note hr { border: 0; border-top: 1px solid var(--line); margin: 1.8em 0; }
+  .note table { border-collapse: collapse; font: 14px/1.45 var(--ui); }
+  .note th, .note td { border-bottom: 1px solid var(--line); padding: 7px 14px 7px 0; text-align: left; vertical-align: top; }
+  .note th { font: 600 11px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
   .table-scroll { max-width: 100%; overflow-x: auto; margin-bottom: 1.2em; }
   .table-scroll table { margin-bottom: 0; min-width: 100%; }
   .table-scroll th, .table-scroll td { min-width: 120px; }
-  .note :is(h2,h3,h4,h5,h6) { scroll-margin-top: 24px; }
+  .note :is(h2,h3,h4,h5,h6), .note [id^="src-"] { scroll-margin-top: 24px; }
+
+  /* citations: a small chip that names its source on hover or focus */
+  .cite { display: inline-block; position: relative; vertical-align: super; font: 600 9.5px/1 var(--mono); color: var(--blue); background: var(--blue-soft); border-radius: 3px; padding: 2px 3px 1px; margin: 0 1px; text-decoration: none !important; }
+  .cite:hover, .cite:focus-visible { background: var(--blue); color: var(--sheet); }
+  .cite[data-tip]:hover::after, .cite[data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; z-index: 5; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); width: max-content; max-width: min(340px, 80vw); padding: 7px 10px; border-radius: 6px; background: var(--ink); color: var(--paper); font: 400 12px/1.45 var(--ui); white-space: normal; text-align: left; box-shadow: var(--shadow); }
+
+  /* open threads on a page: the visual centre */
+  .block-threads { margin: 0 0 8px; }
+  .note .threads, .note .timeline, .note .block-sources ol { padding-left: 0; }
+  .thread .when:empty { display: none; }
+  .block-threads .threads { margin-bottom: 1em; }
+  .calm { display: flex; gap: 10px; align-items: baseline; padding: 11px 16px; border-radius: 8px; background: var(--well); color: var(--ink-2); font-size: 15px; margin-bottom: 1em; }
+  .calm .dir { color: var(--ink-3); }
+
+  /* history: a dated spine */
+  .timeline { list-style: none; margin: 0 0 1.2em; padding: 0; position: relative; }
+  .timeline li { display: grid; grid-template-columns: 108px minmax(0, 1fr); gap: 0; margin: 0; padding: 0 0 12px; position: relative; }
+  .timeline li::before { content: ""; position: absolute; left: 101px; top: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--sheet); box-shadow: 0 0 0 1.5px var(--blue); }
+  .timeline li::after { content: ""; position: absolute; left: 104px; top: 20px; bottom: -2px; width: 1px; background: var(--line); }
+  .timeline li:last-child::after { display: none; }
+  .timeline .d { font: 12px/1.9 var(--mono); color: var(--ink-3); text-align: right; padding-right: 20px; white-space: nowrap; }
+  .timeline .e { padding-left: 18px; font-size: 15.5px; line-height: 1.55; }
+  .timeline li.undated .d { visibility: hidden; }
+  .timeline li.undated::before { box-shadow: 0 0 0 1.5px var(--line); }
+
+  /* sources: a compact footnote list */
+  .block-sources ol { list-style: none; padding: 0; margin: 0 0 1em; font: 13px/1.5 var(--ui); color: var(--ink-2); }
+  .block-sources li { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line-2); margin: 0; }
+  .block-sources li:target { background: var(--blue-soft); }
+  .block-sources .n { font: 600 11px/1.9 var(--mono); color: var(--blue); }
+  .block-sources .id { font: 11.5px var(--mono); color: var(--ink); }
+
+  /* where it stands: a status block */
+  .block-standing { border-left: 2px solid var(--blue); padding: 2px 0 2px 18px; margin-bottom: 1.2em; }
+  .block-standing ul { list-style: none; padding: 0; }
+  .block-standing li + li { margin-top: 0.6em; }
+
+  /* code and diagrams: a plate */
+  .code-block { position: relative; margin: 0 0 1.3em; }
+  .note pre { background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; overflow-x: auto; font: 12.5px/1.55 var(--mono); max-width: 100%; tab-size: 4; margin: 0; color: var(--ink); }
+  .code-block.diagram pre { background-color: var(--sheet); background-image: radial-gradient(var(--line) 1px, transparent 1.2px); background-size: 14px 14px; background-position: 7px 7px; padding: 22px 22px 20px; }
+  .code-block .cap { position: absolute; left: 12px; top: -8px; font: 600 9.5px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); background: var(--paper); padding: 3px 6px; border-radius: 3px; }
+  .note pre code { background: none; padding: 0; font: inherit; white-space: pre; overflow-wrap: normal; }
+  .code-copy { position: absolute; top: 8px; right: 8px; font: 11px var(--mono); color: var(--ink-2); background: var(--sheet); border: 1px solid var(--line); border-radius: 5px; padding: 2px 8px; opacity: 0; cursor: pointer; }
+  .code-block:hover .code-copy, .code-copy:focus-visible { opacity: 1; }
+
+  /* guidance, not error: what is not known yet and the command that fills it */
+  .missing, .empty { max-width: 66ch; margin-top: 34px; padding: 16px 18px 16px 20px; border-radius: 8px; background: var(--sheet); border: 1px dashed var(--blue-line); color: var(--ink-2); font-size: 14px; line-height: 1.6; position: relative; }
+  .empty { margin-top: 10px; }
+  .missing .lead, .empty .lead { display: block; font: 600 10.5px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--blue); margin-bottom: 4px; }
+  .missing .cmd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+  .missing code, .empty code { font: 12.5px var(--mono); color: var(--ink); background: var(--well); border-radius: 4px; padding: 3px 8px; overflow-wrap: anywhere; }
+  .aside { max-width: 66ch; margin-top: 34px; padding-top: 16px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px 18px; font-size: 14px; }
+  .aside .k { font: 10.5px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); padding-top: 4px; }
+  .aside .related a { display: inline-block; margin: 0 14px 6px 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font: 11.5px var(--mono); color: var(--ink-2); background: var(--sheet); border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .chip .d { color: var(--ink-3); margin-left: 6px; }
+  .page-foot { max-width: 66ch; margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--line-2); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .btn-action, .eyebrow-path { font: 12px var(--ui); color: var(--ink-2); background: var(--sheet); border: 1px solid var(--line); border-radius: 5px; padding: 4px 10px; cursor: pointer; }
+  .eyebrow-path { font: 11.5px var(--mono); }
+  .btn-action:hover, .eyebrow-path:hover { color: var(--blue); border-color: var(--blue-line); }
+  .btn-action.done { color: var(--blue); border-color: var(--blue-line); background: var(--blue-soft); }
+  details.copies { margin: 0 0 20px; font-size: 14px; }
+  details.copies summary { cursor: pointer; color: var(--ink-2); }
+  details.copies p { margin: 6px 0 0 16px; font: 12px var(--mono); }
+
+  /* questions & connections */
+  .review { max-width: 72ch; padding: 18px 0; border-bottom: 1px solid var(--line); }
+  .review h2 { font: 500 19px/1.3 var(--display); margin: 0 0 6px; }
+  .review .basis { font-size: 13.5px; color: var(--ink-2); margin: 0 0 8px; }
+  .review .subjects a { margin-right: 14px; font-size: 14px; }
+  .review .response { font: italic 15px var(--text); color: var(--ink-2); margin: 8px 0 0; }
+  .review .note { margin-top: 10px; font-size: 14px; }
+  .review button { font: 12px var(--ui); color: var(--ink-2); background: var(--sheet); border: 1px solid var(--line); border-radius: 5px; padding: 4px 10px; cursor: pointer; margin-bottom: 6px; }
+
   .nav-toggle { display: none; }
-  .skip { position: absolute; left: 16px; top: -80px; z-index: 2; background: var(--paper); padding: 10px; }
+  .skip { position: absolute; left: 16px; top: -80px; z-index: 2; background: var(--sheet); padding: 10px; }
   .skip:focus { top: 8px; }
-  :focus-visible { outline: 2px solid var(--moss); outline-offset: 3px; }
+  .mobile-back { display: none; margin-bottom: 14px; }
+  .mobile-back a { font-size: 13.5px; color: var(--ink-2); }
 
-  .mobile-back { display: none; margin-bottom: 16px; }
-  .mobile-back a { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--ink-2); padding: 4px 8px; border-radius: 6px; background: var(--paper-2); border: 1px solid var(--line); }
-
+  @media (min-width: 1180px) {
+    .page-grid.has-side { grid-template-columns: minmax(0, 66ch) 256px; }
+    .page-grid.has-side > .side { order: 0; margin: 0; position: sticky; top: 24px; align-self: start; }
+  }
+  @media (min-width: 821px) and (max-width: 1179px) {
+    .page-grid > .side { order: -1; margin: 0 0 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; align-items: start; }
+    .page-grid > .side .panel + .panel { margin-top: 0; }
+  }
+  @media (max-width: 1100px) { .hits.cols { grid-template-columns: 1fr; } }
   @media (max-width: 820px) {
     .app { grid-template-columns: 1fr; align-content: start; }
-    .rail { padding: 16px 20px; gap: 12px; position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
-    main { padding: 24px 20px 64px; }
-    .toc { columns: 1; }
+    .rail { padding: 14px 16px; gap: 10px; position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+    .brand svg { width: 22px; height: 22px; }
+    .search .kbd { display: none; }
+    main { padding: 22px 16px 64px; }
     .rail .foot { display: none; }
-    .nav-toggle { display: block; padding: 9px 12px; text-align: left; color: var(--moss-ink); background: var(--moss-soft); border: 1px solid var(--moss-line); border-radius: 8px; font: 14px var(--body); cursor: pointer; }
+    .rail[data-open="true"] .foot { display: flex; }
+    .nav-toggle { display: flex; justify-content: space-between; padding: 9px 12px; text-align: left; color: var(--ink); background: var(--sheet); border: 1px solid var(--line); border-radius: 6px; font: 14px var(--ui); cursor: pointer; }
+    .nav-toggle::after { content: "▾"; color: var(--ink-3); }
+    .nav-toggle[aria-expanded="true"]::after { content: "▴"; }
     #nav { display: none; }
     .rail[data-open="true"] #nav { display: flex; }
     nav a { min-height: 44px; align-items: center; }
     .search input { font-size: 16px; }
-    h1 { font-size: 28px; }
+    h1 { font-size: 30px; }
+    .standfirst { font-size: 18px; }
     h2.section { display: block; }
-    h2.section .n { display: block; text-align: left; margin-top: 6px; line-height: 1.5; }
-    .maint { padding: 18px; }
-    .maint .row { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+    h2.section .n { display: block; text-align: left; margin-top: 4px; }
+    .night { padding: 20px 18px 18px; margin-left: -4px; margin-right: -4px; }
+    .night .thesis { font-size: 22px; }
+    .thread, .block-threads .thread { grid-template-columns: minmax(0, 1fr); padding: 11px 14px; }
+    .thread .when { order: -1; }
     .aside { grid-template-columns: 1fr; }
-    .record-header-bar { flex-direction: column; align-items: stretch; gap: 10px; }
-    .record-actions { align-self: flex-start; }
+    .timeline li { grid-template-columns: 84px minmax(0, 1fr); }
+    .timeline li::before { left: 77px; }
+    .timeline li::after { left: 80px; }
+    .timeline .d { font-size: 11px; padding-right: 16px; }
+    .timeline .e { padding-left: 14px; font-size: 15px; }
     .mobile-back { display: block; }
+    .note { font-size: 16px; }
+    .maint > summary .n { display: none; }
   }
-  @media (prefers-reduced-motion: no-preference) { a, button { transition: color 120ms ease, background 120ms ease, border-color 120ms ease; } }
+  @media (prefers-reduced-motion: no-preference) {
+    a, button, nav a, .cite, .thread { transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease; }
+    .hypno .trace { stroke-dasharray: 2400; stroke-dashoffset: 2400; animation: draw 1.4s ease-out 120ms forwards; }
+    @keyframes draw { to { stroke-dashoffset: 0; } }
+  }
 </style>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <div class="app">
   <aside class="rail">
-    <a class="brand" href="#"><span class="dot"></span><span class="name">co rem</span><span class="sub" id="brand-sub"></span></a>
+    <a class="brand" href="#" aria-label="co rem, contents">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--night)"></rect><path d="M19.5 7.5a9 9 0 1 0 5 15.6A10.5 10.5 0 0 1 19.5 7.5z" fill="var(--night-ink)"></path><circle cx="23.5" cy="9.5" r="1.3" fill="var(--night-lamp)"></circle></svg>
+      <span class="name">co rem</span><span class="sub" id="brand-sub"></span></a>
     <div class="search">
       <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
       <input id="q" type="search" placeholder="Search the notebook" autocomplete="off" aria-label="Search the notebook">
       <button id="q-clear" class="search-clear" type="button" aria-label="Clear search" title="Clear search">✕</button>
+      <span class="kbd" aria-hidden="true">/</span>
     </div>
     <button class="nav-toggle" aria-expanded="false" aria-controls="nav" type="button">Browse notebook</button>
     <nav id="nav" aria-label="Categories"></nav>
@@ -260,23 +441,25 @@
 const REM = /*__REM_DATA__*/null;
 window.REM = REM;
 
-// Theme setup
+// Theme: auto follows the system; light or dark is remembered for file:// only.
 (function() {
-  const saved = location.protocol === "file:" ? localStorage.getItem("co-rem-theme") : null;
-  if (saved === "light" || saved === "dark") {
-    document.documentElement.dataset.theme = saved;
-  }
+  let saved = null;
+  try { saved = location.protocol === "file:" ? localStorage.getItem("co-rem-theme") : null; } catch (_) { saved = null; }
+  if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
 })();
 
 function setTheme(mode) {
-  if (mode === "auto") {
-    delete document.documentElement.dataset.theme;
-    if (location.protocol === "file:") localStorage.removeItem("co-rem-theme");
-  } else {
-    document.documentElement.dataset.theme = mode;
-    if (location.protocol === "file:") localStorage.setItem("co-rem-theme", mode);
-  }
-  renderRail(route().category || (route().record ? route().record.split("/")[0] : (route().query ? "search" : null)));
+  try {
+    if (mode === "auto") {
+      delete document.documentElement.dataset.theme;
+      if (location.protocol === "file:") localStorage.removeItem("co-rem-theme");
+    } else {
+      document.documentElement.dataset.theme = mode;
+      if (location.protocol === "file:") localStorage.setItem("co-rem-theme", mode);
+    }
+  } catch (_) { /* storage blocked (sandboxed frame): the choice lasts this view only */ }
+  if (mode !== "auto") document.documentElement.dataset.theme = mode;
+  renderRail(railActive());
 }
 
 // ---------- helpers ----------
@@ -290,7 +473,7 @@ function el(tag, attrs, children) {
     else if (k === "html") node.innerHTML = v;
     else node.setAttribute(k, v);
   }
-  for (const child of children || []) node.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
+  for (const child of children || []) if (child != null) node.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
   return node;
 }
 const CATEGORY_LABEL = {
@@ -312,14 +495,16 @@ const CATEGORY_ASK = {
   notes: "everything durable that fits nowhere else"
 };
 function label(c) { return CATEGORY_LABEL[c] || c; }
+function singular(c) { return ({ people: "Person", orgs: "Organisation", skills: "Skill" })[c] || label(c).replace(/s$/, ""); }
 function byPath(path) { return REM.records.find(r => r.path === path); }
 // Services still on a people page (census.py) are left off like held pages (#2008).
 function listedRecords() { return REM.records.filter(r => !r.catalog_parent && !r.needs_review && !r.service && r.path !== "skills/catalog/index.md"); }
 function inCategory(category) { return listedRecords().filter(r => r.category === category); }
 function initCommand() { return "co rem --root '" + String(REM.root).replace(/'/g, "'\\''") + "' init --mail outlook"; }
+function href(r) { return "#r=" + encodeURIComponent(r.path); }
 function fmtDate(iso) {
   if (!iso) return "";
-  const d = new Date(iso);
+  const d = new Date(String(iso).length === 10 ? iso + "T00:00:00" : iso);
   return isNaN(d) ? iso : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 function fmtTime(iso) {
@@ -327,61 +512,78 @@ function fmtTime(iso) {
   const d = new Date(iso);
   return isNaN(d) ? iso : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
+function shortDate(day) {
+  if (!day) return "";
+  const d = new Date(day + "T00:00:00");
+  if (isNaN(d)) return day;
+  const sameYear = d.getFullYear() === new Date(REM.as_of || Date.now()).getFullYear();
+  return d.toLocaleDateString(undefined, sameYear ? { day: "numeric", month: "short" } : { day: "numeric", month: "short", year: "numeric" });
+}
 function num(n) { return n == null ? "unknown" : Number(n).toLocaleString(); }
-function resolve(from, href) {
+function compact(n) { return n == null ? "—" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e4 ? Math.round(n / 1e3) + "k" : String(n); }
+function resolve(from, path) {
   const base = from.split("/").slice(0, -1);
-  for (const part of href.split("/")) {
+  for (const part of path.split("/")) {
     if (part === "..") base.pop();
     else if (part !== "." && part !== "") base.push(part);
   }
   return base.join("/");
 }
 function safeHref(from, raw) {
-  const href = raw.trim();
-  if (/^(https?:|file:|mailto:)/i.test(href)) return { href, external: true };
-  if (href.startsWith("#")) return { href: "#r=" + encodeURIComponent(from) + "&h=" + encodeURIComponent(href.slice(1)), external: false };
-  if (/\.md(#.*)?$/i.test(href) && !/^[a-z]+:/i.test(href)) {
-    const target = resolve(from, href.split("#")[0]);
-    if (byPath(target)) return { href: "#r=" + encodeURIComponent(target) + (href.includes("#") ? "&h=" + encodeURIComponent(href.split("#")[1]) : ""), external: false };
+  const target = raw.trim();
+  if (/^(https?:|file:|mailto:)/i.test(target)) return { href: target, external: true };
+  if (target.startsWith("#")) return { href: "#r=" + encodeURIComponent(from) + "&h=" + encodeURIComponent(target.slice(1)), external: false };
+  if (/\.md(#.*)?$/i.test(target) && !/^[a-z]+:/i.test(target)) {
+    const path = resolve(from, target.split("#")[0]);
+    if (byPath(path)) return { href: "#r=" + encodeURIComponent(path) + (target.includes("#") ? "&h=" + encodeURIComponent(target.split("#")[1]) : ""), external: false };
   }
   return null;
 }
-
 function copyToClipboard(text, btn, successMsg) {
-  const originalText = btn.textContent;
-  navigator.clipboard.writeText(text).then(() => {
-    btn.textContent = successMsg || "Copied!";
-    btn.style.color = "var(--moss-ink)";
-    btn.style.borderColor = "var(--moss-line)";
-    btn.style.backgroundColor = "var(--moss-soft)";
-    setTimeout(() => {
-      btn.textContent = originalText;
-      btn.style.color = "";
-      btn.style.borderColor = "";
-      btn.style.backgroundColor = "";
-    }, 1500);
-  }).catch(() => {
-    btn.textContent = "Failed";
-    setTimeout(() => { btn.textContent = originalText; }, 1500);
-  });
+  const original = btn.textContent;
+  const done = msg => { btn.textContent = msg; btn.classList.add("done"); setTimeout(() => { btn.textContent = original; btn.classList.remove("done"); }, 1500); };
+  if (!navigator.clipboard) { done("Select and copy"); return; }
+  navigator.clipboard.writeText(text).then(() => done(successMsg || "Copied"), () => done("Copy failed"));
+}
+// Status as a moon phase: full when investigated, half with some findings, new when only mapped.
+const MOON = {
+  "Investigated": '<circle cx="6" cy="6" r="5" fill="currentColor"/>',
+  "Some findings": '<circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 1a5 5 0 0 1 0 10z" fill="currentColor"/>',
+  "Mapped": '<circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2"/>'
+};
+function moon(status) {
+  const span = el("span", { "aria-hidden": "true", html: '<svg class="moon" viewBox="0 0 12 12">' + (MOON[status] || MOON.Mapped) + "</svg>" });
+  return span.firstChild;
 }
 
 // ---------- markdown (small, escape-first) ----------
+// The page being rendered: its numbered sources, so a claim's [n] can name its source.
+let CITES = { from: "", sources: {} };
+function citeChip(n, from) {
+  const tip = from === CITES.from ? CITES.sources[n] : "";
+  return '<a class="cite" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + n + '"' +
+    (tip ? ' data-tip="' + esc(tip) + '"' : "") + ' aria-label="Source ' + n + (tip ? ": " + esc(tip) : "") + '">' + n + "</a>";
+}
 function inline(text, from) {
   let s = esc(text);
   const codes = [];
   s = s.replace(/`([^`]+)`/g, (m, c) => { codes.push(c); return "\u0001" + (codes.length - 1) + "\u0001"; });
+  const links = [];
   s = s.replace(/\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, (m, lbl, url) => {
     const link = safeHref(from, url.replace(/&amp;/g, "&"));
     if (!link) return lbl;
     const attrs = link.external ? ' target="_blank" rel="noopener noreferrer"' : "";
-    return '<a href="' + esc(link.href) + '"' + attrs + ">" + lbl + "</a>";
+    links.push('<a href="' + esc(link.href) + '"' + attrs + ">" + lbl + "</a>");
+    return "\u0002" + (links.length - 1) + "\u0002";
   });
+  s = s.replace(/\s*\[(\d{1,3})\]/g, (m, n) => citeChip(n, from));
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>");
+  s = s.replace(/\u0002(\d+)\u0002/g, (m, i) => links[i]);
   s = s.replace(/\u0001(\d+)\u0001/g, (m, i) => "<code>" + codes[i] + "</code>");
   return s;
 }
+const UNKNOWN_TEXT = /^Unknown\s*—\s*(?:not investigated yet|not verified)/i;
 
 function markdownList(lines, start, from) {
   const marker = /^( *)([-*+]|\d+[.)])\s+(.*)$/;
@@ -407,12 +609,22 @@ function markdownList(lines, start, from) {
       body.push(lines[i].slice(Math.min(spaces, contentIndent))); i++;
     }
     const itemContent = body.join("\n");
-    const isUnknown = /^Unknown\s*—\s*(?:not investigated yet|not verified)/i.test(itemContent.trim());
-    const itemClass = isUnknown ? ' class="unknown-item"' : '';
+    const itemClass = UNKNOWN_TEXT.test(itemContent.trim()) ? ' class="unknown-item"' : "";
     items.push("<li" + itemClass + ">" + markdown(itemContent, from) + "</li>");
   }
   const startAt = ordered ? ' start="' + parseInt(first[2], 10) + '"' : "";
   return { html: "<" + tag + startAt + ">" + items.join("") + "</" + tag + ">", next: i };
+}
+
+// A fenced block drawn with box characters or arrows is a diagram: set on a dotted plate.
+const DIAGRAM = /[─│┌┐└┘├┤┬┴┼→←↑↓▶▼]|-->|->|\+-{2,}|\|\s{2,}\S|^\s*v\s*$/m;
+function codeBlock(code, info) {
+  const lang = (info || "").trim().split(/\s+/)[0].toLowerCase();
+  const diagram = (!lang || lang === "text" || lang === "ascii" || lang === "txt") && DIAGRAM.test(code);
+  const cap = diagram ? "Diagram" : lang && lang !== "text" ? lang : "";
+  return '<div class="code-block' + (diagram ? " diagram" : "") + '">' + (cap ? '<span class="cap" aria-hidden="true">' + esc(cap) + "</span>" : "") +
+    '<pre tabindex="0" aria-label="' + (diagram ? "Diagram" : "Code block") + '"><code>' + esc(code) +
+    '</code></pre><button class="code-copy" type="button" aria-label="Copy code">Copy</button></div>';
 }
 
 function markdown(text, from) {
@@ -423,8 +635,7 @@ function markdown(text, from) {
   const flush = () => {
     if (para.length) {
       const pText = para.join(" ");
-      const isUnknown = /^Unknown\s*—\s*(?:not investigated yet|not verified)/i.test(pText.trim());
-      const pClass = isUnknown ? ' class="unknown-item"' : '';
+      const pClass = UNKNOWN_TEXT.test(pText.trim()) ? ' class="unknown-item"' : "";
       out.push("<p" + pClass + ">" + inline(pText, from) + "</p>");
       para.length = 0;
     }
@@ -435,11 +646,12 @@ function markdown(text, from) {
     if ((m = /^\s{0,3}(`{3,}|~{3,})/.exec(line))) {
       flush();
       const code = [];
+      const info = line.slice(m[0].length);
       const close = new RegExp("^\\s{0,3}" + m[1][0] + "{" + m[1].length + ",}\\s*$");
       i++;
       while (i < lines.length && !close.test(lines[i])) code.push(lines[i++]);
       i++;
-      out.push('<div class="code-block"><pre tabindex="0" aria-label="Code block"><code>' + esc(code.join("\n")) + '</code></pre><button class="code-copy" type="button" aria-label="Copy code">Copy</button></div>');
+      out.push(codeBlock(code.join("\n"), info));
       continue;
     }
     if ((m = /^(#{1,6})\s+(.*)$/.exec(line))) {
@@ -519,20 +731,23 @@ function sourceChips(text) {
 // the assistant does not know. Views read pages through known(): unknown lines
 // are dropped, a heading left empty is named once at the end with the command
 // that fills it, and lists rank by last contact instead of by the first
-// character of an email address.
-const UNKNOWN_LINE = /^\s*[-*]\s*(?:[^:\n]{1,40}:\s*)?(?:unknown|not known)(?:\s*[—(-].*)?\s*$/i;
+// character of an email address. An unknown answer written as a bare line
+// (a mapped skill's sections) is dropped the same as one written as a bullet.
+const UNKNOWN_LINE = /^\s*(?:[-*]\s*)?(?:[^:\n]{1,40}:\s*)?(?:unknown|not known)(?:\s*[—(-].*)?\s*$/i;
 // Sections every mapped page fills from metadata alone: they are not findings.
 const MECHANICAL = new Set(["contact", "history", "uncertainties", "sources", "people here", "domains"]);
 // What mapping writes where an answer will go (files.py): a placeholder, not a finding.
 const PLACEHOLDER = /identity unverified|classification unassessed|^\s*[-*]\s*\(none yet\)\s*$/i;
 const STAMP = /^Investigation:[^\n]*$/m;
+// Markers the notebook's own tools leave in a page (<!-- rem-usage -->): not text.
+const COMMENT = /<!--[\s\S]*?-->/g;
 // A person page's lead as mapping writes it (files.py PERSON_LEAD, #1974): a slot, not a finding.
 const UNFILLED_LEAD = /^Unknown\s*—\s*not investigated yet\.?(?:\s*Last contact:\s*Unknown\.?)?$/i;
 const KNOWN = new Map();
 function known(r) {
   if (KNOWN.has(r.path)) return KNOWN.get(r.path);
   const stamp = (STAMP.exec(r.text) || [""])[0];
-  const body = splitTrailers(r.text).body.replace(/^#[^\n]*\n?/, "").replace(STAMP, "");
+  const body = splitTrailers(r.text).body.replace(/^#[^\n]*\n?/, "").replace(STAMP, "").replace(COMMENT, "");
   const title = r.title.trim().toLowerCase();
   const repeatsTitle = line => (/^\s*[-*]\s*[^:\n]{1,40}:\s*(.+)$/.exec(line) || [])[1]?.trim().toLowerCase() === title;
   const kept = [], missing = [];
@@ -557,12 +772,17 @@ function known(r) {
   // rewrites every project page, and "Recently active" dated them all today.
   const last = r.last_activity !== undefined ? r.last_activity
     : (/\blast(?: contact)?:\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || String(r.updated || "").slice(0, 10);
-  const summary = (intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || kept.find(k => k.title.toLowerCase() === "history") || { text: "" }).text
-    .split("\n").map(l => l.replace(/^\s*[-*]\s*/, "").replace(/[#*`>]/g, "").trim()).find(Boolean) || "";
+  const summary = plainLine((intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || kept.find(k => k.title.toLowerCase() === "history") || { text: "" }).text);
   const k = { intro, kept, missing, status, last, summary, stamp: stamp.replace(/^Investigation:\s*/, "") };
   KNOWN.set(r.path, k);
   return k;
 }
+// The first readable line of some Markdown, without its markup or claim numbers.
+function plainLine(text) {
+  return String(text).split("\n").map(l => l.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/\s*\[\d{1,3}\]/g, "").replace(/[#*`>]/g, "").trim()).find(Boolean) || "";
+}
+function section(r, name) { return known(r).kept.find(s => s.title.toLowerCase() === name); }
 function byActivity(a, b) {
   const auto = r => /\(automated candidate\)$/.test(r.title) ? 1 : 0;
   // Pages with findings before outlines: a mapped page's date is when the
@@ -572,10 +792,181 @@ function byActivity(a, b) {
 }
 function statusPill(r) {
   const st = known(r).status;
-  return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), text: st, title: known(r).stamp || st });
+  return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: known(r).stamp || st }, [moon(st), st]);
 }
-function shortDate(day) {
-  return day ? new Date(day + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "";
+
+// ---------- reading a page's parts ----------
+// Open threads name who owes whom (rem-page-person): the reader shows the direction.
+const YOU_OWE = /\bthe user (?:has |still )?(?:owes?|owed|has owed|needs to|must|should|to (?:send|reply|sign|confirm|pay|review|decide)|has not (?:replied|signed|sent|answered|paid|decided|confirmed))\b|\byou owe\b/i;
+const THEY_OWE = /\b(?:owes?|owed) the user\b|\bwaiting (?:on|for) (?:them|him|her|their)\b|\bunanswered\b|\b(?:he|she|they) (?:has|have) not (?:replied|answered|sent|confirmed)\b|\bno reply\b|\bpromised\b/i;
+function direction(text) { return YOU_OWE.test(text) ? "mine" : THEY_OWE.test(text) ? "theirs" : "plain"; }
+const DIRECTION_LABEL = { mine: "You owe", theirs: "They owe", plain: "Open" };
+function listItems(text) {
+  const items = [];
+  for (const line of String(text).split("\n")) {
+    if (/^\s*(?:[-*+]|\d+[.)])\s+/.test(line) && !/^\s{2,}/.test(line)) items.push(line.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, ""));
+    else if (line.trim() && items.length) items[items.length - 1] += " " + line.trim();
+    else if (line.trim()) items.push(line.trim());
+  }
+  return items;
+}
+function threads(r) {
+  const s = section(r, "open threads");
+  if (!s) return { items: [], calm: "" };
+  const all = listItems(s.text);
+  const calm = all.find(t => /^nothing open\b/i.test(t.replace(/\*/g, ""))) || "";
+  const items = all.filter(t => t !== calm).map(text => ({ text, dir: direction(text), since: (/(\d{4}-\d{2}-\d{2})/.exec(text) || [])[1] || "" }));
+  return { items, calm };
+}
+function historyItems(text) {
+  return listItems(text).map(t => {
+    const m = /^(?:\*\*)?(\d{4}-\d{2}(?:-\d{2})?)(?:\*\*)?\s*[:—–-]\s*(?:\*\*)?\s*(.*)$/.exec(t);
+    return m ? { day: m[1], text: m[2] } : { day: "", text: t };
+  });
+}
+// "- [n] id — what it shows; confidence; observed date" -> {n: "id — what it shows ..."}
+function rawSection(r, name) {
+  const text = r.text.replace(COMMENT, "");
+  const m = new RegExp("^## " + name + "[^\\n]*\\n([\\s\\S]*?)(?=^## |^Investigation:|(?![\\s\\S]))", "mi").exec(text);
+  return m ? m[1].trim() : "";
+}
+function sourceList(r) {
+  const out = [];
+  for (const item of listItems(rawSection(r, "Sources"))) {
+    const m = /^\[(\d{1,3})\]\s*(.*)$/.exec(item);
+    if (m && !UNKNOWN_TEXT.test(m[2])) out.push({ n: m[1], text: m[2].replace(/[*`]/g, "") });
+  }
+  return out;
+}
+const CONTACT_FIELDS = ["Email", "Phone", "Company", "Role", "Signing entity", "Handles", "Language", "Also known as"];
+function contactFields(r) {
+  const fields = [];
+  for (const item of listItems(rawSection(r, "Contact"))) {
+    const m = /^([^:]{1,30}):\s*(.*)$/.exec(item);
+    if (!m) continue;
+    const value = m[2].trim();
+    fields.push({ label: m[1].trim(), value: /^(unknown|not known)\b/i.test(value) || !value ? "" : value });
+  }
+  return fields;
+}
+// A skill's Usage history line (skill_usage.py usage_line).
+function skillUsage(r) {
+  const m = /Invoked (once|(\d+) times)[^\n]*?last (\d+) days[^\n]*?last on (\d{4}-\d{2}-\d{2})(?: \(([^)]*)\))?/.exec(r.text);
+  if (m) return { count: m[2] ? Number(m[2]) : 1, days: Number(m[3]), last: m[4], tools: m[5] || "" };
+  const none = /No invocation found[^\n]*?last (\d+) days/.exec(r.text);
+  return none ? { count: 0, days: Number(none[1]), last: "", tools: "" } : null;
+}
+let MAX_USAGE = null;
+function maxUsage() {
+  if (MAX_USAGE === null) MAX_USAGE = Math.max(1, ...inCategory("skills").map(r => (skillUsage(r) || { count: 0 }).count));
+  return MAX_USAGE;
+}
+function usageBar(u) {
+  const pct = Math.round(100 * u.count / maxUsage());
+  return el("span", { class: "bar", title: u.count + " of the most-used skill's " + maxUsage() }, [el("i", { style: "width:" + Math.max(u.count ? 3 : 0, pct) + "%" })]);
+}
+function company(r) {
+  const c = contactFields(r).find(f => f.label === "Company");
+  return c && c.value ? plainLine(c.value) : "";
+}
+
+// ---------- the night: what the last pass did ----------
+const HOUR = 3600e3, DAY_MS = 24 * HOUR;
+const FAILED = /^(failed|abandoned|error|refused|timeout)/i;
+function runTime(run) { return new Date(run.started_at).getTime(); }
+function runEnd(run) {
+  const end = run.finished_at ? new Date(run.finished_at).getTime() : runTime(run) + 1000 * (run.seconds || 0);
+  return Math.max(runTime(run), isNaN(end) ? runTime(run) : end);
+}
+function sourceName(s) { return typeof s === "string" ? s : (s && (s.id || s.kind)) || ""; }
+function lastPass() {
+  const logs = (REM.logs || []).filter(run => !isNaN(runTime(run)));
+  if (!logs.length) return null;
+  const latest = Math.max(...logs.map(runTime));
+  // One pass is every run in the evening-to-morning stretch before the latest one.
+  const runs = logs.filter(run => runTime(run) >= latest - 18 * HOUR);
+  const changed = new Set();
+  for (const run of runs) for (const path of run.changed || []) if (byPath(path) && path !== "skills/catalog/index.md") changed.add(path);
+  // Investigations write the page's stamp; count those of the pass's day as changed too.
+  const day = new Date(latest - 18 * HOUR).toISOString().slice(0, 10);
+  for (const r of listedRecords()) {
+    const m = /\b(?:investigated|updated)\s+(\d{4}-\d{2}-\d{2})/.exec((STAMP.exec(r.text) || [""])[0]);
+    if (m && m[1] >= day) changed.add(r.path);
+  }
+  const sources = [...new Set(runs.flatMap(run => Array.isArray(run.sources) ? run.sources.map(sourceName) : []).filter(Boolean))];
+  const failed = runs.filter(run => FAILED.test(String(run.outcome || "")));
+  const items = runs.reduce((n, run) => n + (Number(run.items) || 0), 0);
+  return { latest, runs, changed: [...changed].map(byPath).sort(byActivity), sources, failed, items };
+}
+function listWords(words) {
+  return words.length <= 1 ? words.join("") : words.slice(0, -1).join(", ") + " and " + words[words.length - 1];
+}
+// A hypnogram: the week's runs as dips below waking, deeper the more was read.
+function hypnogram(asOf) {
+  const W = 720, H = 84, PAD = 4, TOP = 14, FLOOR = 76;
+  const end = asOf, start = end - 7 * DAY_MS;
+  const x = t => PAD + (W - 2 * PAD) * (t - start) / (end - start);
+  const runs = (REM.logs || []).filter(run => runTime(run) >= start && runTime(run) <= end).sort((a, b) => runTime(a) - runTime(b));
+  const pct = v => (100 * v / W).toFixed(2) + "%";
+  // The trace stretches with the band; labels and dots are HTML so they never distort.
+  const svg = ['<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" aria-hidden="true">'];
+  const over = [];
+  const midnight = new Date(start); midnight.setHours(24, 0, 0, 0);
+  for (let t = midnight.getTime(); t < end; t += DAY_MS) {
+    svg.push('<line class="grid" x1="' + x(t).toFixed(1) + '" y1="0" x2="' + x(t).toFixed(1) + '" y2="' + H + '"/>');
+    if (x(t) < W - 30) over.push('<span class="day" style="left:' + pct(x(t)) + '">' + esc(new Date(t).toLocaleDateString(undefined, { weekday: "short" })) + "</span>");
+  }
+  let path = "M" + PAD + "," + TOP;
+  for (const run of runs) {
+    const x0 = x(runTime(run)), x1 = Math.max(x0 + 4, x(runEnd(run)));
+    const failed = FAILED.test(String(run.outcome || ""));
+    const weight = (Number(run.items) || 0) + 4 * (run.changed || []).length;
+    const depth = failed ? TOP + 8 : TOP + 12 + (FLOOR - TOP - 12) * Math.min(1, Math.log1p(weight) / Math.log1p(120));
+    path += " L" + x0.toFixed(1) + "," + TOP + " L" + x0.toFixed(1) + "," + depth.toFixed(1) + " L" + x1.toFixed(1) + "," + depth.toFixed(1) + " L" + x1.toFixed(1) + "," + TOP;
+    const tip = esc(fmtTime(run.started_at) + " · " + (failed ? run.outcome : (run.items || 0) + " read, " + (run.changed || []).length + " changed"));
+    if (failed) over.push('<span class="dot woke" style="left:' + pct(x0) + ";top:" + (TOP - 8) + 'px" title="' + tip + '"></span>');
+    else if ((run.changed || []).length) over.push('<span class="dot changed" style="left:' + pct((x0 + x1) / 2) + ";top:" + depth.toFixed(0) + 'px" title="' + tip + '"></span>');
+  }
+  path += " L" + (W - PAD) + "," + TOP;
+  svg.push('<path class="area" d="' + path + ' Z"/>', '<path class="trace" d="' + path + '"/>', "</svg>");
+  return '<div class="hypno" role="img" aria-label="' + runs.length + ' runs in the seven days before this snapshot; each dip is one run, deeper the more it read">' +
+    svg.join("") + over.join("") + "</div>";
+}
+function nightBand() {
+  const pass = lastPass();
+  const asOf = new Date(REM.as_of).getTime() || Date.now();
+  const band = el("section", { class: "night", "aria-label": "The last pass" });
+  const crescent = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2.2a6 6 0 1 0 3.8 10.4A7 7 0 0 1 10 2.2z" fill="currentColor"/></svg>';
+  if (!pass) {
+    band.appendChild(el("div", { class: "kicker", html: crescent + "<span>No pass yet</span>" }));
+    band.appendChild(el("div", { class: "thesis", text: "Nothing has been consolidated yet." }));
+    band.appendChild(el("p", {}, ["Each night co rem reads what came in and rewrites the pages it touches. Run ", el("code", { text: "co rem sync" }), " to do one pass now."]));
+    return band;
+  }
+  const ago = Math.max(0, Math.round((asOf - pass.latest) / HOUR));
+  const when = new Date(pass.latest).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  band.appendChild(el("div", { class: "kicker", html: crescent + "<span>" + (ago < 24 ? "Last night" : "The last pass") + "</span><span>·</span><span>" + esc(when) + "</span>" +
+    "<span>·</span><span>" + (ago < 1 ? "just before this snapshot" : ago < 48 ? ago + " h ago" : Math.round(ago / 24) + " days ago") + "</span>" }));
+  const n = pass.changed.length;
+  const read = pass.items ? "read <b>" + pass.items.toLocaleString() + (pass.items === 1 ? " item" : " items") + "</b>" + (pass.sources.length ? " from " + esc(listWords(pass.sources)) : "") : "found nothing new to read";
+  const wrote = n ? " and rewrote <b>" + n + (n === 1 ? " page" : " pages") + "</b>." : pass.items ? ", and no page changed." : ".";
+  band.appendChild(el("div", { class: "thesis", html: "Your assistant " + read + wrote }));
+  const stats = el("div", { class: "stats" });
+  const stat = (v, k, warn) => stats.appendChild(el("div", { class: "stat" + (warn ? " warn" : "") }, [el("div", { class: "v", text: v }), el("div", { class: "k", text: k })]));
+  stat(String(pass.runs.length), pass.runs.length === 1 ? "run" : "runs");
+  stat(compact(pass.items), "items read");
+  stat(String(n), n === 1 ? "page changed" : "pages changed");
+  if (pass.failed.length) stat(String(pass.failed.length), "stopped early", true);
+  band.appendChild(stats);
+  band.insertAdjacentHTML("beforeend", hypnogram(asOf));
+  band.appendChild(el("div", { class: "legend", html: '<span><i style="background:#c9d0f5"></i>a run, deeper the more it read</span><span><i style="background:#fff"></i>pages changed</span><span><i style="background:var(--night-lamp)"></i>stopped early</span>' }));
+  if (n) {
+    const changes = el("div", { class: "changes" }, [el("span", { class: "k", text: "CHANGED" })]);
+    for (const r of pass.changed.slice(0, 14)) changes.appendChild(el("a", { href: href(r), title: label(r.category) }, [r.title]));
+    if (n > 14) changes.appendChild(el("span", { class: "k", text: "+" + (n - 14) + " more" }));
+    band.appendChild(changes);
+  }
+  return band;
 }
 
 // ---------- views ----------
@@ -583,7 +974,10 @@ function route() {
   const params = new URLSearchParams(location.hash.replace(/^#/, ""));
   return { record: params.get("r"), category: params.get("c"), query: params.get("q"), heading: params.get("h"), reviews: params.has("reviews") };
 }
-
+function railActive() {
+  const { record: r, category: c, query, reviews } = route();
+  return reviews ? "reviews" : c || (r ? r.split("/")[0] : (query ? "search" : null));
+}
 function renderRail(active) {
   const nav = document.getElementById("nav");
   nav.textContent = "";
@@ -594,251 +988,323 @@ function renderRail(active) {
     nav.appendChild(el("a", { href: "#c=" + c, class: active === c ? "active" : "" },
       [el("span", { text: label(c) }), el("span", { class: "n" + (n ? "" : " zero"), text: String(n) })]));
   }
+  nav.appendChild(el("div", { class: "gap" }));
+  const pending = (REM.reviews || []).filter(r => r.status === "pending").length;
   nav.appendChild(el("a", { href: "#reviews=1", class: active === "reviews" ? "active" : "" },
-    [el("span", { text: "Questions & connections" }), el("span", { class: "n", text: String((REM.reviews || []).filter(r => r.status === "pending").length) })]));
+    [el("span", { text: "Questions & connections" }), el("span", { class: "n" + (pending ? " open" : " zero"), text: String(pending) })]));
   const s = REM.status || {};
   const foot = document.getElementById("foot");
   foot.textContent = "";
-  
-  const curTheme = document.documentElement.dataset.theme || "auto";
+  const current = document.documentElement.dataset.theme || "auto";
   const themeSwitch = el("div", { class: "theme-switch", role: "radiogroup", "aria-label": "Theme" });
-  ["auto", "light", "dark"].forEach(mode => {
-    const btn = el("button", {
-      class: "theme-btn" + (curTheme === mode ? " active" : ""),
-      type: "button",
-      text: mode[0].toUpperCase() + mode.slice(1),
-      title: mode + " theme"
-    });
+  for (const mode of ["auto", "light", "dark"]) {
+    const btn = el("button", { class: "theme-btn" + (current === mode ? " active" : ""), type: "button", role: "radio",
+      "aria-checked": String(current === mode), text: mode[0].toUpperCase() + mode.slice(1), title: mode + " theme" });
     btn.onclick = () => setTheme(mode);
     themeSwitch.appendChild(btn);
-  });
+  }
   foot.appendChild(themeSwitch);
-
   foot.appendChild(el("div", { text: "Snapshot " + fmtTime(REM.as_of) }));
   foot.appendChild(el("div", { text: s.next_run ? "Next pass " + fmtTime(s.next_run) : (s.state || "") }));
   foot.appendChild(el("div", { text: location.protocol === "about:" ? "Reload for latest" : "co rem open re-renders" }));
   document.getElementById("brand-sub").textContent = (REM.root || "").split("/").filter(Boolean).slice(-2).join("/");
 }
 
+// One page as one row: its name, what it is to you, what is open, when.
+function row(r, opts) {
+  const k = known(r);
+  const meta = (opts && opts.kind) ? singular(r.category) : r.category === "people" ? company(r) : "";
+  const li = el("li", {}, [
+    el("div", { class: "t" }, [
+      el("span", {}, [el("a", { href: href(r), text: r.title }), meta ? el("span", { class: "meta", text: meta }) : null, statusPill(r)]),
+      el("span", { class: "when", text: shortDate(k.last) })])]);
+  const lead = k.summary.length > 220 ? k.summary.slice(0, 217) + "…" : k.summary;
+  if (lead) li.appendChild(el("div", { class: "hit", text: lead }));
+  const open = threads(r).items[0];
+  if (open) li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: DIRECTION_LABEL[open.dir] }), el("span", { text: plainLine(open.text) })]));
+  const u = r.category === "skills" ? skillUsage(r) : null;
+  if (u) li.appendChild(el("div", { class: "usage" }, [usageBar(u), el("span", { text: u.count ? (u.count === 1 ? "used once" : "used " + u.count + "×") + " in " + u.days + " days · last " + shortDate(u.last) : "not used in " + u.days + " days" })]));
+  if (r.installations && r.installations.length > 1) li.appendChild(el("div", { class: "hit ui", text: r.installations.length + " installed copies — open to compare sources" }));
+  return li;
+}
+function threadRow(r, t, withPage) {
+  return el("li", { class: "thread " + t.dir }, [
+    el("span", { class: "dir", text: DIRECTION_LABEL[t.dir] }),
+    el("div", {}, [el("div", { class: "what", html: inline(withPage ? t.text.replace(/\s*\[\d{1,3}\]/g, "") : t.text, r.path) }),
+      withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: r.title }), " · " + singular(r.category)]) : null]),
+    el("span", { class: "when", text: t.since ? "since " + shortDate(t.since) : "" })]);
+}
+
+function sectionHead(title, note) {
+  return el("h2", { class: "section" }, [el("span", { text: title }), note ? el("span", { class: "n" }, [note]) : null]);
+}
 function overview() {
   const s = REM.status || {};
   const main = document.getElementById("main");
   main.textContent = "";
-  main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "Contents" }), el("span", { class: "sep", text: "·" }), el("span", { class: "when", text: fmtDate(REM.as_of) })]));
+  main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "Contents" }), el("span", { class: "sep", text: "/" }), el("span", { class: "when", text: fmtDate(REM.as_of) })]));
   main.appendChild(el("h1", { text: "What your assistant knows" }));
   const n = listedRecords().length;
   const mapped = listedRecords().filter(r => known(r).status === "Mapped").length;
   main.appendChild(el("p", { class: "lede", text: n === 0 ? "Nothing written yet. The first maintenance pass fills this in." :
     n + (n === 1 ? " page" : " pages") + (mapped ? ": " + (n - mapped) + " with findings, " + mapped + " mapped from your sources and not investigated yet." : ".") }));
-  const recent = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category) && known(r).status !== "Mapped" && !/\(automated candidate\)$/.test(r.title))
-    .sort(byActivity).slice(0, 12);
-  if (recent.length) {
-    main.appendChild(el("h2", { class: "section" }, [el("span", { text: "Recently active" }), el("span", { class: "n", text: "last contact or change first" })]));
-    main.appendChild(el("ul", { class: "toc" }, recent.map(r => el("li", {}, [
-      el("a", { href: "#r=" + encodeURIComponent(r.path), text: r.title }),
-      el("span", { class: "when", text: label(r.category).replace(/s$/, "") + (known(r).last ? " · " + shortDate(known(r).last) : "") })]))));
+  main.appendChild(nightBand());
+
+  // What is open, with whom: the reason most people come back.
+  const open = [];
+  for (const r of listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category)))
+    for (const t of threads(r).items) open.push({ r, t });
+  open.sort((a, b) => ({ mine: 0, theirs: 1, plain: 2 })[a.t.dir] - ({ mine: 0, theirs: 1, plain: 2 })[b.t.dir] || byActivity(a.r, b.r));
+  if (open.length) {
+    const mine = open.filter(o => o.t.dir === "mine").length;
+    main.appendChild(sectionHead("Open threads", open.length + " open" + (mine ? " · " + mine + " yours to answer" : "")));
+    main.appendChild(el("p", { class: "section-sub", text: "Who owes whom, from each page's Open threads. Yours first." }));
+    main.appendChild(el("ul", { class: "threads" }, open.slice(0, 8).map(o => threadRow(o.r, o.t, true))));
   }
+
+  const recent = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category) && known(r).status !== "Mapped" && !/\(automated candidate\)$/.test(r.title))
+    .sort(byActivity).slice(0, 8);
+  if (recent.length) {
+    main.appendChild(sectionHead("Recently active", "last contact or change first"));
+    main.appendChild(el("ul", { class: "hits cols" }, recent.map(r => row(r, { kind: true }))));
+  }
+
+  const shelves = el("div", { class: "shelves" });
   for (const c of REM.categories) {
     const items = inCategory(c).sort(byActivity);
     if (!items.length) continue;
-    main.appendChild(el("h2", { class: "section" }, [el("span", { text: label(c) }), el("span", { class: "n", text: CATEGORY_ASK[c] || "" })]));
-    const ul = el("ul", { class: "toc" });
-    const shown = items.slice(0, 24);
-    
-    // Check title duplicates in this category to offer hints
+    const counts = (REM.counts || {})[c];
+    const shelf = el("section", { class: "shelf" });
+    shelf.appendChild(el("h3", {}, [el("a", { href: "#c=" + c, text: label(c) }), el("span", { class: "mono", text: counts ? counts.written + " / " + counts.mapped + " written" : String(items.length) })]));
+    shelf.appendChild(el("p", { class: "ask", text: CATEGORY_ASK[c] || "" }));
     const titleCounts = {};
     for (const item of items) titleCounts[item.title] = (titleCounts[item.title] || 0) + 1;
-
-    for (const r of shown) {
-      const liChildren = [el("a", { href: "#r=" + encodeURIComponent(r.path), text: r.title })];
-      if (titleCounts[r.title] > 1) {
-        const stem = r.path.split("/").pop().replace(/\.md$/, "");
-        liChildren.push(el("span", { class: "path-hint", text: stem }));
-      }
-      ul.appendChild(el("li", {}, liChildren));
+    const ul = el("ul", { class: "toc" });
+    for (const r of items.slice(0, 8)) {
+      const hint = titleCounts[r.title] > 1 ? el("span", { class: "path-hint", text: r.path.split("/").pop().replace(/\.md$/, "") })
+        : el("span", { class: "when", text: shortDate(known(r).last) });
+      ul.appendChild(el("li", {}, [moon(known(r).status), el("a", { href: href(r), text: r.title }), hint]));
     }
-    if (items.length > shown.length) ul.appendChild(el("li", {}, [el("a", { class: "more", href: "#c=" + c, text: "all " + items.length + " " + label(c).toLowerCase() + " →" })]));
-    main.appendChild(ul);
+    if (items.length > 8) ul.appendChild(el("li", {}, [el("a", { class: "more", href: "#c=" + c, text: "all " + items.length + " " + label(c).toLowerCase() + " →" })]));
+    shelf.appendChild(ul);
+    shelves.appendChild(shelf);
   }
+  if (shelves.childNodes.length) {
+    main.appendChild(sectionHead("The notebook", "by kind of page"));
+    main.appendChild(shelves);
+  }
+  main.appendChild(maintenance(s));
+}
 
-  const maint = el("section", { class: "maint" });
-  maint.appendChild(el("h2", { text: "Maintenance" }));
+function maintenance(s) {
+  const maint = el("details", { class: "maint" });
+  maint.appendChild(el("summary", {}, [el("span", {}, [el("h2", { text: "Maintenance" })]), el("span", { class: "n", text: s.state ? plainLine(s.state).slice(0, 80) : "" })]));
   maint.appendChild(el("p", { class: "state", html: inline(s.state || "", "") }));
   const usage = s.usage_today || {};
-  const row = el("div", { class: "row" });
-  const cell = (k, v) => row.appendChild(el("div", {}, [el("div", { class: "k", text: k }), el("div", { class: "v", text: v })]));
+  const cells = el("div", { class: "row" });
+  const cell = (k, v) => cells.appendChild(el("div", {}, [el("div", { class: "k", text: k }), el("div", { class: "v", text: v })]));
   cell("Batches today", String(s.batches_today ?? "—"));
   cell("Model turns today", String(s.runner_attempts_today ?? "—"));
   cell("Input tokens today", num(usage.input_tokens));
   cell("Output tokens today", num(usage.output_tokens));
   cell("Timezone", s.timezone || "—");
-  maint.appendChild(row);
-
+  maint.appendChild(cells);
   const subs = Object.entries(REM.subscriptions || {});
   if (subs.length) {
-    const line = el("p", { class: "state" });
-    line.appendChild(document.createTextNode("Sources: "));
-    subs.forEach(([name, sub], i) => {
+    const line = el("p", { class: "state" }, ["Sources: "]);
+    subs.forEach(([name, sub]) => {
       const state = !sub.enabled ? "off" : sub.adapter === "available" ? (sub.consented ? "reading" : "waiting for start") : (sub.adapter || "");
-      line.appendChild(el("span", { class: "pill" + (state === "reading" ? "" : " quiet"), text: name + " · " + state }));
-      if (i < subs.length - 1) line.appendChild(document.createTextNode(" "));
+      line.append(el("span", { class: "pill" + (state === "reading" ? "" : " quiet"), text: name + " · " + state }), " ");
     });
     maint.appendChild(line);
   }
-
   if ((REM.logs || []).length) {
     const table = el("table", { class: "runs" });
     table.appendChild(el("tr", {}, ["Run", "Outcome", "Items", "Pages changed", "Input", "Output", "Seconds"].map(h => el("th", { text: h }))));
     for (const run of REM.logs.slice(0, 8)) {
       const u = run.usage || {};
-      const outcomeText = String(run.outcome || "");
-      const isOk = outcomeText.toLowerCase() === "completed" || outcomeText.toLowerCase() === "pass";
-      const outcomeCell = el("td", {}, [
-        el("span", { class: "pill" + (isOk ? "" : " quiet"), text: outcomeText })
-      ]);
+      const outcome = String(run.outcome || "");
+      const ok = /^(completed|pass)$/i.test(outcome);
       table.appendChild(el("tr", {}, [
         el("td", { text: fmtTime(run.started_at) }),
-        outcomeCell,
+        el("td", {}, [el("span", { class: "pill" + (ok ? "" : FAILED.test(outcome) ? " warn" : " quiet"), text: outcome })]),
         el("td", { text: String(run.items ?? "") }),
         el("td", { text: String((run.changed || []).length) }),
         el("td", { text: num(u.input_tokens) }),
         el("td", { text: num(u.output_tokens) }),
-        el("td", { text: run.seconds == null ? "—" : String(run.seconds) })
-      ]));
+        el("td", { text: run.seconds == null ? "—" : String(run.seconds) })]));
     }
     maint.appendChild(el("div", { class: "table-scroll", role: "region", "aria-label": "Recent runs", tabindex: "0" }, [table]));
   }
-  main.appendChild(maint);
+  return maint;
 }
 
 function category(c) {
   const main = document.getElementById("main");
   main.textContent = "";
-
-  const mobileBack = el("div", { class: "mobile-back" });
-  mobileBack.appendChild(el("a", { href: "#" }, ["← Contents"]));
-  main.appendChild(mobileBack);
-
-  main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "Category" })]));
-  main.appendChild(el("h1", { text: label(c) }));
-  main.appendChild(el("p", { class: "lede", text: (CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase()) }));
+  main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#" }, ["← Contents"])]));
   const items = inCategory(c);
-  if (!items.length) { main.appendChild(el("div", { class: "empty", text: c === "people" ? "No people mapped yet. Run " + initCommand() + " (or select gmail) to read correspondent metadata. No background schedule is started." : "Nothing here yet. The notebook fills what the sources support." })); return; }
-  const ul = el("ul", { class: "hits" });
-  for (const r of items.sort(byActivity)) {
-    const text = splitTrailers(r.text).body.replace(/^#[^\n]*\n?/, "");
-    const k = known(r);
-    const lead = k.summary.length > 220 ? k.summary.slice(0, 217) + "…" : k.summary;
-    const li = el("li", {}, [
-      el("div", { class: "t" }, [
-        el("span", {}, [el("a", { href: "#r=" + encodeURIComponent(r.path), text: r.title }), " ", statusPill(r)]),
-        el("span", { class: "when", text: shortDate(k.last) })]),
-      ...(lead ? [el("div", { class: "hit", text: lead })] : [])
-    ]);
-    const open = /\n##\s*(?:Open|Where we left off|待办|未决)[^\n]*\n+([^\n#]+)/i.exec(text);
-    if (open) {
-      const openText = open[1].trim();
-      if (!/Unknown\s*—\s*(?:not investigated|not verified)/i.test(openText)) {
-        li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: "Open · " }), openText.replace(/^[-*]\s*/, "")]));
-      }
-    }
-    if (r.installations && r.installations.length > 1) li.appendChild(el("div", { class: "hit", text: r.installations.length + " installed copies — open to compare sources" }));
-    ul.appendChild(li);
+  const counts = (REM.counts || {})[c];
+  main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: "Contents" }), el("span", { class: "sep", text: "/" }), el("span", { text: "Category" })]));
+  main.appendChild(el("h1", { text: label(c) }));
+  const lede = (CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
+  main.appendChild(el("p", { class: "lede" }, [lede + (items.length ? ". " : ""), items.length ? el("span", { class: "mono", text: counts ? counts.written + " written of " + counts.mapped : items.length + " pages" }) : null]));
+  if (!items.length) {
+    main.appendChild(c === "people"
+      ? el("div", { class: "empty" }, [el("span", { class: "lead", text: "Not mapped yet" }), "No people mapped yet. Run ", el("code", { text: initCommand() }), " (or select gmail) to read correspondent metadata. No background schedule is started."])
+      : el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing here yet" }), "Nothing here yet. The notebook fills what the sources support."]));
+    return;
   }
-  main.appendChild(ul);
+  main.appendChild(el("ul", { class: "hits" }, items.sort(byActivity).map(r => row(r))));
+}
+
+// ---------- a page ----------
+// Which sections lead: what is open first on a relationship, the state of play on a project.
+const LEADING = {
+  people: ["open threads"], orgs: ["open threads"],
+  projects: ["what it is", "where it stands", "overview", "open threads"]
+};
+function ordered(r, sections) {
+  const lead = LEADING[r.category] || [];
+  const first = lead.map(t => sections.find(s => s.title.toLowerCase() === t)).filter(Boolean);
+  return [...first, ...sections.filter(s => !first.includes(s))];
+}
+function sectionBody(r, s) {
+  const name = s.title.toLowerCase();
+  if (name === "open threads") {
+    const t = threads(r);
+    const box = el("div", { class: "block-threads" });
+    if (t.calm) box.appendChild(el("div", { class: "calm" }, [el("span", { class: "dir", text: "Clear" }), el("span", { html: inline(t.calm, r.path) })]));
+    if (t.items.length) box.appendChild(el("ul", { class: "threads" }, t.items.map(item => threadRow(r, item, false))));
+    return box.childNodes.length ? box : el("div", { html: markdown(s.text, r.path) });
+  }
+  if (name === "history") {
+    const items = historyItems(s.text);
+    if (items.some(i => i.day)) {
+      return el("div", { class: "block-history" }, [el("ol", { class: "timeline" }, items.map(i => el("li", { class: i.day ? "" : "undated" }, [
+        el("span", { class: "d", text: i.day ? shortDate(i.day.length === 7 ? i.day + "-01" : i.day) : "·" }), el("div", { class: "e", html: inline(i.text, r.path) })])))]);
+    }
+  }
+  if (name === "sources") {
+    const list = sourceList(r);
+    if (list.length) {
+      return el("div", { class: "block-sources" }, [el("ol", {}, list.map(src => {
+        const id = /\b([a-z][a-z-]*:[\w./-]{4,})/i.exec(src.text);
+        const rest = id ? src.text.replace(id[1], "").replace(/^\s*[—–-]\s*/, "") : src.text;
+        return el("li", { id: "src-" + src.n }, [el("span", { class: "n", text: "[" + src.n + "]" }),
+          el("span", {}, [id ? el("span", { class: "id", text: id[1] }) : null, id ? " " : "", rest])]);
+      }))]);
+    }
+  }
+  const html = markdown(s.text, r.path);
+  return el("div", { class: /^(where it stands|current status)$/.test(name) ? "block-standing" : "block", html });
+}
+function panel(title, children) { return el("section", { class: "panel" }, [el("h3", { text: title }), ...children]); }
+function fieldValue(value, from) {
+  if (!value) return el("span", { class: "unk", title: "Unknown", text: "—" });
+  const clean = value.replace(/\s*\[\d{1,3}\]/g, "");
+  if (/^[\w.+-]+@[\w-]+\.[\w.-]+(?:\s*,\s*[\w.+-]+@[\w-]+\.[\w.-]+)*$/.test(clean))
+    return el("span", { class: "mono" }, clean.split(/\s*,\s*/).flatMap((a, i) => [i ? ", " : "", el("a", { href: "mailto:" + a, text: a })]));
+  return el("span", { html: inline(clean, from) });
+}
+function sidePanels(r, k) {
+  const panels = [];
+  const glance = el("dl", {});
+  const add = (dt, dd) => glance.append(el("dt", { text: dt }), el("dd", {}, [dd]));
+  add("Status", statusPill(r));
+  if (k.last) add(r.category === "people" ? "Last contact" : "Last active", el("span", { class: "mono", text: fmtDate(k.last) }));
+  const mail = /Observed mail count:\s*(\d+);\s*first:\s*(\d{4}-\d{2}-\d{2});\s*last:\s*(\d{4}-\d{2}-\d{2})/.exec(r.text);
+  if (mail) add("Mail", el("span", { class: "mono", text: mail[1] + " · " + shortDate(mail[2]) + "–" + shortDate(mail[3]) }));
+  const sessions = /^- Sessions:\s*(\d+)/m.exec(r.text), first = /^- First seen:\s*(\S+)/m.exec(r.text);
+  if (sessions) add("Sessions", el("span", { class: "mono", text: sessions[1] + (first ? " since " + shortDate(first[1]) : "") }));
+  if (r.category === "skills") {
+    const u = skillUsage(r);
+    if (u) panels.push(panel("Usage", [el("div", { class: "bigstat" }, [el("span", { class: "v", text: String(u.count) }), el("span", { class: "k", text: (u.count === 1 ? "invocation" : "invocations") + " in " + u.days + " days" })]),
+      el("div", { class: "usage" }, [usageBar(u)]), el("p", { class: "mono", text: u.last ? "last " + fmtDate(u.last) + (u.tools ? " · " + u.tools : "") : "no recent use" })]));
+    if (r.installation) {
+      const file = el("dl", {});
+      file.append(el("dt", { text: "File" }), el("dd", { class: "mono" }, [el("a", { href: "file://" + encodeURI(r.installation), title: r.installation, text: r.installation.split("/").slice(-3).join("/") })]));
+      const disc = /^- Discovery:\s*(.+)$/m.exec(r.text);
+      if (disc) file.append(el("dt", { text: "Found by" }), el("dd", { class: "mono", text: disc[1] }));
+      panels.push(panel("Source", [file]));
+    }
+  }
+  panels.unshift(panel("At a glance", [glance]));
+  if (r.category === "people") {
+    const fields = contactFields(r);
+    if (fields.length) {
+      const dl = el("dl", {});
+      for (const f of fields) dl.append(el("dt", { text: f.label === "Signing entity" ? "Signs as" : f.label === "Also known as" ? "Also" : f.label }), el("dd", {}, [fieldValue(f.value, r.path)]));
+      panels.splice(1, 0, panel("Contact", [dl]));
+    }
+  }
+  return panels;
 }
 
 function record(path, heading) {
   const r = byPath(path);
   const main = document.getElementById("main");
   main.textContent = "";
-  if (!r) { main.appendChild(el("div", { class: "empty", text: "No such page in this snapshot: " + path })); return; }
+  if (!r) {
+    main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "Not in this snapshot" }), "No such page in this snapshot: " + path]));
+    return;
+  }
   const parts = splitTrailers(r.text);
-
-  const mobileBack = el("div", { class: "mobile-back" });
-  mobileBack.appendChild(el("a", { href: "#c=" + r.category }, ["← " + label(r.category)]));
-  main.appendChild(mobileBack);
-
-  const eyebrow = el("div", { class: "eyebrow" });
-  eyebrow.appendChild(el("a", { href: "#c=" + r.category, text: label(r.category) }));
-  eyebrow.appendChild(el("span", { class: "sep", text: "·" }));
-  eyebrow.appendChild(el("span", { class: "when", text: "updated " + fmtDate(r.updated) }));
-  eyebrow.appendChild(statusPill(r));
-  main.appendChild(eyebrow);
-
-  const headerBar = el("div", { class: "record-header-bar" });
-  const titleArea = el("div", { class: "record-title-area" });
-  titleArea.appendChild(el("h1", { text: r.title }));
-  headerBar.appendChild(titleArea);
-
-  main.appendChild(headerBar);
+  const k = known(r);
+  CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
+  main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#c=" + r.category }, ["← " + label(r.category)])]));
+  main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#c=" + r.category, text: label(r.category) }), el("span", { class: "sep", text: "/" }),
+    el("span", { class: "when", text: "file updated " + fmtDate(r.updated) })]));
+  const head = el("header", { class: "page-head" }, [el("h1", { text: r.title })]);
+  // A relationship's lead is its standfirst: who they are, what is open, last contact.
+  let intro = k.intro;
+  if (intro && ["people", "orgs"].includes(r.category)) {
+    const [first, ...rest] = intro.split(/\n\s*\n/);
+    if (!/^\s*(?:#|[-*]\s)/.test(first)) { head.appendChild(el("p", { class: "standfirst", html: inline(first.replace(/\n/g, " "), r.path) })); intro = rest.join("\n\n"); }
+  }
+  main.appendChild(head);
 
   const catalog = r.catalog_parent ? byPath(r.catalog_parent) : r;
-  if (catalog.installations && catalog.installations.length > 1) {
-    const copies = el("details", {}, [el("summary", { text: catalog.installations.length + " installed copies (may differ)" })]);
+  if (catalog && catalog.installations && catalog.installations.length > 1) {
+    const copies = el("details", { class: "copies" }, [el("summary", { text: catalog.installations.length + " installed copies (may differ)" })]);
     for (const copy of catalog.installations) copies.appendChild(el("p", {}, [el("a", { href: "#r=" + encodeURIComponent(copy.path), text: copy.source })]));
     main.appendChild(copies);
   }
-  const k = known(r);
-  let body = [k.intro, ...k.kept.map(section => "## " + section.title + "\n\n" + section.text)].filter(Boolean).join("\n\n");
-  const contacts = r.category === "people" ? [...new Set((r.text.match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) || []))] : [];
-  if (r.category === "people") {
-    const m = /^\s*([^\n]+(?:\n(?!\s*\n|#)[^\n]+)*)/.exec(body);
-    if (m && !m[1].startsWith("#") && !m[1].startsWith("-")) {
-      main.appendChild(el("p", { class: "lede lede-person", html: inline(m[1].replace(/\n/g, " "), r.path) }));
-      body = body.slice(m[0].length);
-    }
+
+  const note = el("div", { class: "note" });
+  if (intro) note.insertAdjacentHTML("beforeend", markdown(intro, r.path));
+  for (const s of ordered(r, k.kept)) {
+    if (r.category === "people" && s.title.toLowerCase() === "contact") continue;
+    note.appendChild(el("h2", { html: inline(s.title, r.path) }));
+    const body = sectionBody(r, s);
+    // Plain Markdown joins the note flat, so lists and code stay direct children.
+    if (body.className === "block") note.append(...body.childNodes); else note.appendChild(body);
   }
 
-  // Render body markdown
-  const noteDiv = el("div", { class: "note", html: markdown(body, r.path) });
-
-  // Generate IDs and Anchor links for headings
-  const headings = [...noteDiv.querySelectorAll("h2, h3, h4, h5, h6")];
-  const ids = new Set();
-  const tocHeadings = [];
-
+  const headings = [...note.querySelectorAll("h2, h3, h4, h5, h6")];
+  const ids = new Set(), toc = [];
   for (const h of headings) {
     const base = h.textContent.trim().toLowerCase().replace(/[^\p{L}\p{N}_\s-]/gu, "").replace(/\s+/g, "-") || "section";
     let id = base, n = 1;
     while (ids.has(id)) id = base + "-" + n++;
     ids.add(id); h.id = id;
-
-    const anchor = el("a", { class: "heading-anchor", href: "#r=" + encodeURIComponent(r.path) + "&h=" + encodeURIComponent(id), "aria-label": "Direct link to section", text: "#" });
-    h.appendChild(anchor);
-
-    if (h.tagName.toLowerCase() === "h2") {
-      tocHeadings.push({ title: h.childNodes[0].textContent.trim(), id });
-    }
+    if (h.tagName === "H2") toc.push({ title: h.textContent.trim(), id });
+    h.appendChild(el("a", { class: "heading-anchor", href: "#r=" + encodeURIComponent(r.path) + "&h=" + encodeURIComponent(id), "aria-label": "Direct link to section", text: "#" }));
+  }
+  for (const block of note.querySelectorAll(".code-block")) {
+    const btn = block.querySelector(".code-copy");
+    btn.onclick = () => copyToClipboard(block.querySelector("code").textContent, btn, "Copied");
   }
 
-  // In-page TOC jump bar if 3 or more h2 headings
-  if (tocHeadings.length >= 3) {
-    const jumpNav = el("nav", { class: "jump-nav", "aria-label": "In-page jump navigation" });
-    jumpNav.appendChild(el("span", { class: "jump-label", text: "Jump to:" }));
-    for (const th of tocHeadings) {
-      jumpNav.appendChild(el("a", { class: "jump-pill", href: "#r=" + encodeURIComponent(r.path) + "&h=" + encodeURIComponent(th.id), text: th.title }));
-    }
-    main.appendChild(jumpNav);
-  }
+  const panels = sidePanels(r, k);
+  if (toc.length >= 4) panels.push(panel("On this page", [el("ul", { class: "toc" }, toc.map(t =>
+    el("li", {}, [el("a", { href: "#r=" + encodeURIComponent(r.path) + "&h=" + encodeURIComponent(t.id), text: t.title })])))]));
+  const grid = el("div", { class: "page-grid has-side" }, [el("div", { class: "body" }, [note]), el("aside", { class: "side", "aria-label": "About this page" }, panels)]);
+  main.appendChild(grid);
+  const column = grid.firstChild;
 
-  main.appendChild(noteDiv);
-
-  // Setup code block copy buttons
-  noteDiv.querySelectorAll(".code-block").forEach(block => {
-    const code = block.querySelector("code");
-    const copyBtn = block.querySelector(".code-copy");
-    if (code && copyBtn) {
-      copyBtn.onclick = () => copyToClipboard(code.textContent, copyBtn, "Copied");
-    }
-  });
-
-  if (parts.related || parts.sources || contacts.length) {
+  if (parts.related || parts.sources) {
     const aside = el("div", { class: "aside" });
-    if (contacts.length) {
-      aside.appendChild(el("div", { class: "k", text: "Contact" }));
-      aside.appendChild(el("div", { class: "chips" }, contacts.map(a => el("a", { class: "chip", href: "mailto:" + a, text: a }))));
-    }
     if (parts.related) {
       aside.appendChild(el("div", { class: "k", text: "Related" }));
       const links = [...parts.related.matchAll(/\[([^\]]+)\]\(([^)\s]+)\)/g)];
@@ -848,9 +1314,7 @@ function record(path, heading) {
           const link = safeHref(r.path, url);
           box.appendChild(link ? el("a", { href: link.href, text: lbl }) : el("span", { text: lbl }));
         }
-      } else {
-        box.innerHTML = inline(parts.related, r.path);
-      }
+      } else box.innerHTML = inline(parts.related, r.path);
       aside.appendChild(box);
     }
     if (parts.sources) {
@@ -858,14 +1322,15 @@ function record(path, heading) {
       const chips = sourceChips(parts.sources);
       aside.appendChild(chips.length ? el("div", { class: "chips" }, chips) : el("div", { text: parts.sources }));
     }
-    main.appendChild(aside);
+    column.appendChild(aside);
   }
 
   if (k.missing.length) {
     const command = "co rem investigate '" + r.path.replace(/'/g, "'\\''") + "'";
     const copyCmd = el("button", { class: "btn-action", type: "button", text: "Copy" });
     copyCmd.onclick = () => copyToClipboard(command, copyCmd, "Copied");
-    main.appendChild(el("div", { class: "missing" }, [
+    column.appendChild(el("div", { class: "missing" }, [
+      el("span", { class: "lead", text: "Still to learn" }),
       el("div", { text: "Not investigated yet: " + k.missing.join(", ") + "." }),
       el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]));
   }
@@ -873,13 +1338,13 @@ function record(path, heading) {
   const foot = el("div", { class: "page-foot" });
   const pathBtn = el("button", { class: "eyebrow-path", type: "button", text: r.path, title: "Copy the file path" });
   pathBtn.onclick = () => copyToClipboard(r.path, pathBtn, "Path copied");
-  const copyMdBtn = el("button", { class: "btn-action", type: "button", text: "Copy Markdown", title: "Copy the page as written, unknowns included" });
-  copyMdBtn.onclick = () => copyToClipboard(r.text, copyMdBtn, "Markdown copied");
-  foot.append(pathBtn, copyMdBtn);
-  main.appendChild(foot);
+  const copyMd = el("button", { class: "btn-action", type: "button", text: "Copy Markdown", title: "Copy the page as written, unknowns included" });
+  copyMd.onclick = () => copyToClipboard(r.text, copyMd, "Markdown copied");
+  foot.append(pathBtn, copyMd);
+  column.appendChild(foot);
 
   if (heading) {
-    const target = headings.find(h => h.id === heading.toLowerCase());
+    const target = document.getElementById(heading) || headings.find(h => h.id === heading.toLowerCase());
     if (target) target.scrollIntoView();
   }
 }
@@ -905,7 +1370,7 @@ function search(q) {
   const plain = l => l.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*`>]/g, "");
   for (const r of REM.records) {
     if (r.path === "skills/catalog/index.md") continue;
-    const lines = splitTrailers(r.text).body.split("\n").map(plain)
+    const lines = splitTrailers(r.text).body.replace(COMMENT, "").split("\n").map(plain)
       .filter(l => l.toLowerCase().includes(needle)).slice(0, 3);
     if (lines.length || r.title.toLowerCase().includes(needle)) {
       const primary = r.catalog_parent ? byPath(r.catalog_parent) : r;
@@ -915,50 +1380,61 @@ function search(q) {
       hit.lines = [...new Set(hit.lines)].slice(0, 3);
     }
   }
+  // Names first: a page whose title matches is what was looked for.
+  hits.sort((a, b) => (b.r.title.toLowerCase().includes(needle) ? 1 : 0) - (a.r.title.toLowerCase().includes(needle) ? 1 : 0));
   main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "Search" })]));
   main.appendChild(el("h1", { text: "“" + q + "”" }));
   main.appendChild(el("p", { class: "lede", text: hits.length + (hits.length === 1 ? " page matches" : " pages match") + " — literal, case-insensitive" }));
-  if (!hits.length) { main.appendChild(el("div", { class: "empty", text: "No page contains that. Try a related term, a person's first name, or a project name." })); return; }
+  if (!hits.length) {
+    main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "No match" }), "No page contains that. Try a related term, a person's first name, or a project name."]));
+    return;
+  }
   const ul = el("ul", { class: "hits" });
   for (const { r, lines } of hits) {
-    const li = el("li", {}, [el("div", { class: "eyebrow" }, [el("span", { text: label(r.category) })]),
-      el("div", { class: "t" }, [el("a", { href: "#r=" + encodeURIComponent(r.path), text: r.title })])]);
-    for (const l of lines) li.appendChild(el("div", { class: "hit", html: highlight(l.trim().replace(/^#+\s*/, ""), needle) }));
+    const li = el("li", {}, [
+      el("div", { class: "t" }, [el("span", {}, [el("a", { href: href(r), html: highlight(r.title, needle) }), el("span", { class: "meta", text: singular(r.category) }), statusPill(r)]),
+        el("span", { class: "when", text: shortDate(known(r).last) })])]);
+    for (const l of lines) li.appendChild(el("div", { class: "hit", html: highlight(l.trim().replace(/^#+\s*/, "").replace(/^[-+]\s+/, ""), needle) }));
     ul.appendChild(li);
   }
   main.appendChild(ul);
 }
+
 function reviewPage() {
   const main = document.getElementById("main");
   main.textContent = "";
+  main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: "Contents" }), el("span", { class: "sep", text: "/" }), el("span", { text: "Review" })]));
   main.appendChild(el("h1", { text: "Questions & connections" }));
-  main.appendChild(el("p", { text: "Evidence-linked suggestions, not established facts. This snapshot is read-only; use the terminal command to record your decision, then run co rem open again." }));
+  main.appendChild(el("p", { class: "lede", text: "Evidence-linked suggestions, not established facts. This snapshot is read-only; use the terminal command to record your decision, then run co rem open again." }));
   const quote = value => "'" + String(value).replace(/'/g, "'\\''") + "'";
   for (const row of REM.reviews || []) {
-    main.appendChild(el("h2", { text: row.question }));
-    main.appendChild(el("p", { text: row.status + " · " + row.basis }));
-    for (const path of row.subjects) main.appendChild(el("p", {}, [el("a", {href: "#r=" + encodeURIComponent(path), text: byPath(path)?.title || path})]));
-    if (row.response) main.appendChild(el("p", { text: row.author + ": " + row.response }));
+    const box = el("section", { class: "review" });
+    box.appendChild(el("div", { class: "eyebrow" }, [el("span", { class: "pill" + (row.status === "pending" ? " warn" : " quiet"), text: row.status }), el("span", { text: row.kind || "" })]));
+    box.appendChild(el("h2", { text: row.question }));
+    box.appendChild(el("p", { class: "basis", text: row.status + " · " + row.basis }));
+    box.appendChild(el("p", { class: "subjects" }, row.subjects.map(path => el("a", { href: "#r=" + encodeURIComponent(path), text: byPath(path)?.title || path }))));
+    if (row.response) box.appendChild(el("p", { class: "response", text: row.author + ": " + row.response }));
     if (row.status === "pending") {
       const command = "co rem --root " + quote(REM.root) + " review " + quote(row.id);
-      const verdicts = row.kind === "link" ? ["yes", "no"] : ["answer"];
-      for (const verdict of verdicts) {
+      for (const verdict of row.kind === "link" ? ["yes", "no"] : ["answer"]) {
         const text = command + " --verdict " + verdict + " --author 'your name' --response 'your reason or answer'";
         const button = el("button", { type: "button", text: "Copy " + verdict + " command" });
         button.addEventListener("click", async () => {
           try { await navigator.clipboard.writeText(text); button.textContent = "Copied — edit your name and response"; }
           catch (_) { button.textContent = "Select and copy the command below"; }
         });
-        main.appendChild(el("div", { class: "note" }, [button, el("pre", {}, [el("code", { text })])]));
+        box.appendChild(el("div", { class: "note" }, [button, el("div", { class: "code-block" }, [el("pre", {}, [el("code", { text })])])]));
       }
     }
+    main.appendChild(box);
   }
-  if (!(REM.reviews || []).length) main.appendChild(el("p", { text: "No review candidates yet. No new connection is better than an invented one." }));
+  if (!(REM.reviews || []).length) main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing to review" }), "No review candidates yet. No new connection is better than an invented one."]));
 }
+
 function render() {
   if (!REM) return;
   const { record: r, category: c, query, heading, reviews } = route();
-  renderRail(reviews ? "reviews" : c || (r ? r.split("/")[0] : (query ? "search" : null)));
+  renderRail(railActive());
   const box = document.getElementById("q");
   if (box.value !== (query || "")) box.value = query || "";
   window.scrollTo(0, 0);
@@ -973,17 +1449,11 @@ function render() {
 
 const qInput = document.getElementById("q");
 const qClear = document.getElementById("q-clear");
-
 qInput.addEventListener("input", e => {
   const q = e.target.value.trim();
   location.hash = q ? "q=" + encodeURIComponent(q) : "";
 });
-
-qClear.addEventListener("click", () => {
-  qInput.value = "";
-  location.hash = "";
-  qInput.focus();
-});
+qClear.addEventListener("click", () => { qInput.value = ""; location.hash = ""; qInput.focus(); });
 
 const rail = document.querySelector(".rail");
 const toggle = document.querySelector(".nav-toggle");
@@ -999,19 +1469,14 @@ document.getElementById("nav").addEventListener("click", e => {
 document.addEventListener("keydown", e => {
   if (e.key === "Escape") {
     if (document.activeElement === qInput) {
-      if (qInput.value) {
-        qInput.value = "";
-        location.hash = "";
-      } else {
-        qInput.blur();
-      }
+      if (qInput.value) { qInput.value = ""; location.hash = ""; } else qInput.blur();
       return;
     }
     closeNav();
     if (document.activeElement.closest("#nav")) toggle.focus();
   }
   if (e.key === "/" && !e.ctrlKey && !e.metaKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
-    e.preventDefault(); document.getElementById("q").focus();
+    e.preventDefault(); qInput.focus();
   }
 });
 window.addEventListener("hashchange", render);
