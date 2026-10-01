@@ -1,6 +1,6 @@
 """`co slack channels | history | thread | search` against a real Slack workspace (#2051).
 
-Opt-in: needs SLACK_BOT_TOKEN (xoxb-) for an app installed with the read scopes
+Opt-in: needs SLACK_BOT_TOKEN (xoxb-), exported or saved with `co env set … --secret`, for an app installed with the read scopes
 (`co auth slack` makes one), invited to at least one channel. Search also needs
 SLACK_USER_TOKEN (xoxp-, search:read). Read-only: nothing is posted.
 
@@ -14,9 +14,11 @@ import sys
 
 import pytest
 
+from connectonion.environment import setting
+
 pytestmark = [
     pytest.mark.real_api,
-    pytest.mark.skipif(not os.environ.get("SLACK_BOT_TOKEN"), reason="SLACK_BOT_TOKEN not set"),
+    pytest.mark.skipif(not setting("SLACK_BOT_TOKEN"), reason="SLACK_BOT_TOKEN not set"),
 ]
 
 
@@ -44,7 +46,7 @@ def test_channels_history_and_a_thread_read_back():
         assert thread[0]["id"] == threaded[0]["id"] and len(thread) == threaded[0]["replies"] + 1
 
 
-@pytest.mark.skipif(not os.environ.get("SLACK_USER_TOKEN"), reason="SLACK_USER_TOKEN not set")
+@pytest.mark.skipif(not setting("SLACK_USER_TOKEN"), reason="SLACK_USER_TOKEN not set")
 def test_search_finds_what_history_shows():
     channel = next(row for row in co("channels", "--json") if row["kind"] == "public")
     words = next((m["text"].split()[0] for m in co("history", channel["id"], "-n", "20", "--json")

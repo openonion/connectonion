@@ -276,7 +276,8 @@ class TestTheCommandLine:
         lines = [line for line in result.stdout.splitlines() if line.startswith("{")]
         assert len(lines) == 3
 
-    @pytest.mark.parametrize("args", [["channels"], ["history", OPS], ["thread", f"{OPS}:1727500200.000200"]])
+    @pytest.mark.parametrize("args", [["channels"], ["history", OPS], ["thread", f"{OPS}:1727500200.000200"],
+                                      ["history", OPS, "--json"]])
     def test_next_comes_after_the_results_when_piped(self, slack, args):
         import subprocess
         import sys
