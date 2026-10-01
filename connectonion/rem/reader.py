@@ -50,6 +50,21 @@ def mail_facts(root: Path) -> dict:
     return facts
 
 
+def index_rows(root: Path) -> dict:
+    """{record: row} from the notebook's index (#2067) once it exists; {} before.
+
+    The People sheet reads these columns first and falls back to the page's own
+    fields and the map's mail counts. A notebook with no index yet (or a co rem
+    without the store) gets the fallback, never an error; a corrupt index raises,
+    naming the command that rebuilds it.
+    """
+    try:
+        from . import store
+    except ImportError:
+        return {}
+    return {row["record"]: row for row in store.people_table(root, include_unlisted=True) or []}
+
+
 def snapshot(root: Path) -> dict:
     """Everything the page shows, read once; no model, no writes into the notebook."""
     from .map import needs_review
@@ -68,10 +83,12 @@ def snapshot(root: Path) -> dict:
     # place (`census`), the same that `co rem status` counts with (#2008).
     from .census import counts, pages
     found = pages(root)
-    mail = mail_facts(root)
+    mail, index = mail_facts(root), index_rows(root)
     for record in records:
         if record["path"] in mail:
             record["mail"] = mail[record["path"]]
+        if record["path"] in index:
+            record["index"] = index[record["path"]]
         record["needs_review"] = record["path"] in held
         entry = found.get(record["path"])
         if entry:
@@ -103,7 +120,7 @@ def owner_record(root: Path) -> str:
 
 
 def render(root: Path) -> str:
-    data = json.dumps(snapshot(root), ensure_ascii=False)
+    data = json.dumps(snapshot(root), ensure_ascii=False, default=str)
     # Inside a script block only "</script" and the U+2028/9 terminators can break
     # out. Escaping "<" as \u003c keeps the JSON valid and makes note text inert.
     data = data.replace("<", "\\u003c").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")

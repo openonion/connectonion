@@ -1102,6 +1102,18 @@ function facts(r) {
     repo: (paths.find(p => /^\/|^~|^[A-Z]:\\/.test(p)) || "").replace(/\s*\[\d+\].*$/, ""),
     sessions: Number(field(/^Sessions:\s*(\d+)/)) || null
   };
+  // The notebook's index (#2067), when the snapshot carries a row for this page, is the
+  // first source for each column; the page's fields above fill whatever it leaves empty.
+  const x = r.index;
+  if (x) {
+    const take = (key, value) => { if (value != null && value !== "" && !(Array.isArray(value) && !value.length)) f[key] = value; };
+    take("email", Array.isArray(x.emails) ? x.emails.join("; ") : x.emails);
+    take("phone", x.phone); take("company", x.company); take("role", x.role); take("language", x.language);
+    take("location", [x.location, x.timezone].filter(Boolean).join(" · "));
+    take("links", [x.linkedin, x.website].filter(Boolean).join(", "));
+    take("how", x.how_known); take("first", x.first_contact); take("last", x.last_contact);
+    take("mails", x.mails); take("sent", x.sent); take("received", x.received);
+  }
   FACTS.set(r.path, f);
   return f;
 }

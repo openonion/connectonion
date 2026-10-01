@@ -46,6 +46,24 @@ def test_mail_facts_sum_a_person_seen_under_two_addresses(tmp_path):
     assert mail_facts(tmp_path) == {"people/a.md": {"mails": 9, "sent": 3, "received": 6, "first": "2026-07-09", "last": "2026-09-20"}}
 
 
+def test_the_sheet_reads_the_index_when_there_is_one_and_the_page_before(tmp_path, monkeypatch):
+    """#2067: the index's People rows come first; without an index the snapshot has none."""
+    import sys
+    import types
+    from connectonion.rem.reader import index_rows
+    monkeypatch.setitem(sys.modules, "connectonion.rem.store", None)  # a co rem without the store
+    assert index_rows(tmp_path) == {}
+    fake = types.ModuleType("connectonion.rem.store")
+    fake.people_table = lambda root, **kw: [{"record": "people/a.md", "phone": "+64 21 000", "emails": ["a@x.example"]}] \
+        if kw.get("include_unlisted") else []
+    monkeypatch.setitem(sys.modules, "connectonion.rem.store", fake)
+    import connectonion.rem as rem
+    monkeypatch.setattr(rem, "store", fake, raising=False)
+    assert index_rows(tmp_path) == {"people/a.md": {"record": "people/a.md", "phone": "+64 21 000", "emails": ["a@x.example"]}}
+    fake.people_table = lambda root, **kw: []  # the index file does not exist yet
+    assert index_rows(tmp_path) == {}
+
+
 def test_the_fixture_notebook_snapshot_carries_what_the_views_draw(tmp_path, monkeypatch):
     import sys
     from pathlib import Path

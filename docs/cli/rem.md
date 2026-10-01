@@ -333,9 +333,10 @@ where it answers why you came back.
   the facts in columns (people: company, role, email, phone, last contact,
   mails, what's open, status), a sticky header, sort on any column, filters
   (*Something open*, *Yours to answer*, *Written*, *Mapped only*) and a
-  text filter. A row opens the page. Mail counts come from the map; one
-  adapter (`mail_facts` in `reader.py`, `facts()` in the page) is all that
-  changes when facts move to an index (#2067).
+  text filter. A row opens the page. The columns come from the notebook's
+  index (`store.people_table`, #2067) when `.state/rem.db` exists, embedded in
+  the snapshot; before it does, from each page's Facts and the map's mail
+  counts (`index_rows` and `mail_facts` in `reader.py`, `facts()` in the page).
 - **A page** opens on its lead, then a row with the first open thread
   (*You owe* / *They owe*, and for how long), the last contact, and a `?`
   when the page lists uncertainties. Its `## Facts` (or a legacy page's
