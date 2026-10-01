@@ -567,6 +567,97 @@
   .fact.missing-fact { background: repeating-linear-gradient(135deg, var(--sheet) 0 7px, var(--paper) 7px 8px); }
   .fact.missing-fact .v { color: var(--ink-3); font: italic 13px var(--text); }
 
+  /* The memory surface: answer, connections, and activity before the full note. */
+  .record-focus { max-width: 1120px; margin: 8px 0 34px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .focus-head { grid-column: 1 / -1; min-height: 170px; padding: 26px 32px; border-radius: 16px; color: var(--night-ink); background: var(--night); position: relative; overflow: hidden; }
+  .focus-head::after { content: ""; position: absolute; width: 420px; height: 420px; border: 1px solid var(--night-line); border-radius: 50%; right: -100px; top: -296px; box-shadow: 0 0 0 45px rgba(105, 128, 217, .035), 0 0 0 90px rgba(105, 128, 217, .025); pointer-events: none; }
+  .focus-kicker { display: block; font: 600 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--night-2); }
+  .focus-statement { max-width: 64ch; position: relative; z-index: 1; font: 26px/1.28 var(--display); margin: 16px 0 0; }
+  .focus-statement.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+  .focus-more { position: relative; z-index: 1; border: 0; background: transparent; color: var(--night-ink); cursor: pointer; margin: 12px 0 0; padding: 0; font: 600 12px var(--ui); text-decoration: underline; text-underline-offset: 3px; }
+  .focus-section.next-exchanges { grid-column: 1 / -1; }
+  .project-workspace { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .project-workspace .focus-section { min-width: 0; }
+  .project-workspace p, .project-workspace li { font: 15px/1.5 var(--text); }
+  .project-workspace p { margin: 0; }
+  .project-workspace ul { margin: 0; padding-left: 18px; }
+  .project-workspace li { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .project-workspace .open-note { display: inline-block; margin-top: 12px; font: 600 12px var(--ui); }
+  .focus-section { background: var(--sheet); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; min-width: 0; }
+  .focus-section h2 { margin: 0 0 14px; font: 600 17px var(--ui); }
+  .focus-section .threads { margin: 0; padding: 0; }
+  .focus-section .thread { margin: 0 0 8px; }
+  .focus-section .thread:last-child { margin-bottom: 0; }
+  .focus-facts { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; padding: 14px 20px; margin: 0; background: var(--blue-soft); border: 1px solid var(--blue-line); border-radius: 10px; }
+  .focus-fact { min-width: 0; }
+  .focus-facts dt { font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--blue); }
+  .focus-facts dd { margin: 6px 0 0; font-size: 13px; color: var(--ink); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .relation-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 9px; }
+  .relation-card { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 11px 13px; border: 1px solid var(--line); background: var(--paper); border-radius: 8px; text-decoration: none !important; transition: border-color .16s ease, transform .16s ease; }
+  .relation-card:hover, .relation-card:focus-visible { border-color: var(--blue); transform: translateY(-2px); }
+  .relation-card strong { font: 600 14px var(--ui); color: var(--ink); }
+  .relation-kind { font: 10px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--blue); }
+  .relation-basis { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font: 12px/1.45 var(--ui); color: var(--ink-2); }
+  .more-relations { margin-top: 10px; }
+  .more-relations > summary { cursor: pointer; font: 600 12px var(--ui); color: var(--blue); }
+  .more-relations .relation-list { margin-top: 10px; }
+  .related-records { grid-column: 1 / -1; }
+  .conversation-view { grid-column: 1 / -1; }
+  .conversation-list { display: flex; flex-wrap: wrap; gap: 9px; }
+  .conversation-open { flex: 1 1 210px; text-align: left; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: var(--paper); color: var(--ink); cursor: pointer; }
+  .conversation-open:hover, .conversation-open:focus-visible { border-color: var(--blue); }
+  .conversation-open strong { display: block; font: 600 14px var(--ui); }
+  .conversation-open span { display: block; margin-top: 5px; font: 11px var(--mono); color: var(--ink-3); }
+  .conversation-message { border-top: 1px solid var(--line); padding: 14px 0; }
+  .conversation-message p { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 15px/1.5 var(--text); }
+  .activity-view { grid-column: 1 / -1; }
+  .activity-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .activity-note { font: 11px var(--mono); color: var(--ink-3); }
+  .activity-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .activity-filters button { font: 12px var(--ui); padding: 6px 10px; background: var(--paper); color: var(--ink-2); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
+  .activity-filters button.active { background: var(--night); color: var(--night-ink); border-color: var(--night); }
+  .activity-list { list-style: none; margin: 0; padding: 0; max-height: 340px; overflow: auto; }
+  .activity-list li { display: grid; grid-template-columns: 105px 105px minmax(0, 1fr); gap: 12px; padding: 11px 0; border-top: 1px solid var(--line-2); align-items: baseline; }
+  .activity-list li[hidden] { display: none; }
+  .activity-day { font: 11px var(--mono); color: var(--ink-3); }
+  .activity-type { font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--blue); }
+  .activity-text { font: 14px/1.5 var(--text); }
+  .deep-note { max-width: 1120px; border-top: 1px solid var(--line); margin-top: 18px; }
+  .deep-note > summary { display: flex; justify-content: space-between; gap: 15px; align-items: baseline; padding: 19px 0; cursor: pointer; font: 600 17px var(--ui); color: var(--ink); }
+  .deep-note > summary::marker { color: var(--blue); }
+  .deep-hint { font: 11px var(--mono); color: var(--ink-3); }
+  .deep-note[open] .page-grid { padding-top: 22px; }
+  .claim-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 20px 0; }
+  .claim-grid.standalone { max-width: 980px; }
+  .claim-card { padding: 16px 18px; border-radius: 10px; border: 1px solid var(--blue-line); background: var(--sheet); color: var(--ink); }
+  .claim-kind { font: 600 10px var(--mono); color: var(--blue); text-transform: uppercase; letter-spacing: .07em; }
+  .claim-card h3 { font: 600 16px var(--ui); margin: 9px 0; }
+  .claim-card .before { color: var(--ink-3); text-decoration: line-through; }
+  .claim-card .after { font: 16px/1.45 var(--text); }
+  .claim-card p { margin: 7px 0; }
+  .claim-card > a:last-child { font-size: 12px; }
+  .memory-card > p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+  .category-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 9px; margin: 15px 0 25px; }
+  .category-card { border: 1px solid var(--line); border-radius: 9px; padding: 14px; background: var(--sheet); text-decoration: none !important; }
+  .category-card:hover, .category-card:focus-visible { border-color: var(--blue); }
+  .category-card strong { display: block; color: var(--ink); font: 600 14px var(--ui); }
+  .category-card span { display: block; margin-top: 6px; color: var(--ink-3); font: 11px var(--mono); }
+  .task-band { max-width: 980px; margin: 30px 0; }
+  .task-band .threads { padding: 0; }
+  .evidence-dialog { width: min(680px, calc(100vw - 24px)); max-height: min(760px, calc(100vh - 24px)); overflow: auto; padding: 26px; border: 1px solid var(--blue-line); border-radius: 14px; background: var(--sheet); color: var(--ink); box-shadow: 0 24px 80px rgba(0,0,0,.28); }
+  .evidence-dialog::backdrop { background: rgba(5, 9, 25, .7); }
+  .evidence-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+  .evidence-top .focus-kicker { color: var(--blue); }
+  .evidence-close { border: 1px solid var(--line); background: var(--paper); color: var(--ink); padding: 7px 10px; border-radius: 6px; cursor: pointer; }
+  .evidence-dialog h2 { font: 25px var(--display); margin: 14px 0; }
+  .evidence-summary { color: var(--ink-2); }
+  .evidence-original { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 18px; }
+  .evidence-original .focus-kicker { color: var(--blue); }
+  .evidence-meta { font: 11px var(--mono); color: var(--ink-3); }
+  .evidence-original blockquote { margin: 12px 0 0; padding: 14px 18px; border-left: 3px solid var(--blue); background: var(--blue-soft); font: 16px/1.55 var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .evidence-unavailable { color: var(--ink-2); }
+  @media (prefers-reduced-motion: reduce) { .relation-card { transition: none; } .relation-card:hover, .relation-card:focus-visible { transform: none; } }
+
   @media (min-width: 1180px) {
     .page-grid.has-side { grid-template-columns: minmax(0, 66ch) 320px; }
     .page-grid.has-side > .side { order: 0; margin: 0; position: sticky; top: 24px; align-self: start; }
@@ -577,6 +668,20 @@
   }
   @media (max-width: 1100px) { .hits.cols { grid-template-columns: 1fr; } }
   @media (max-width: 820px) {
+    .record-focus { grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
+    .focus-head { padding: 20px; min-height: 0; }
+    .focus-statement { font-size: 22px; }
+    .focus-section { padding: 16px; }
+    .focus-facts, .related-records, .activity-view, .conversation-view, .project-workspace { grid-column: 1; }
+    .project-workspace { grid-template-columns: 1fr; }
+    .focus-facts { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    .focus-facts dd { margin: 0; }
+    .activity-list li { grid-template-columns: 76px minmax(0, 1fr); gap: 3px 9px; }
+    .activity-list .activity-text { grid-column: 2; }
+    .activity-note { display: none; }
+    .deep-note > summary { display: block; }
+    .deep-hint { display: block; margin-top: 3px; }
+    .evidence-dialog { padding: 18px; }
     .app { grid-template-columns: 1fr; align-content: start; }
     .rail { padding: 14px 16px; gap: 10px; position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
     .brand svg { width: 22px; height: 22px; }
@@ -637,7 +742,7 @@
 <div class="app">
   <aside class="rail">
     <a class="brand" href="#" aria-label="co rem, contents">
-      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--night)"></rect><path d="M19.5 7.5a9 9 0 1 0 5 15.6A10.5 10.5 0 0 1 19.5 7.5z" fill="var(--night-ink)"></path><circle cx="23.5" cy="9.5" r="1.3" fill="var(--night-lamp)"></circle></svg>
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--night)"></rect><path d="M4.5 16c3.2-5.1 7.1-7.6 11.5-7.6S24.3 10.9 27.5 16c-3.2 5.1-7.1 7.6-11.5 7.6S7.7 21.1 4.5 16Z" fill="none" stroke="var(--night-ink)" stroke-width="1.65"></path><circle cx="16" cy="16" r="4" fill="var(--night-ink)"></circle><path d="M8.5 25.5c4.8 3 11.6 3 16.1-.6" fill="none" stroke="var(--night-lamp)" stroke-width="1.65" stroke-linecap="round"></path></svg>
       <span class="name">co rem</span><span class="sub" id="brand-sub"></span></a>
     <div class="search">
       <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
@@ -1355,7 +1460,9 @@ function lastPass() {
   const sources = [...new Set(runs.flatMap(run => Array.isArray(run.sources) ? run.sources.map(sourceName) : []).filter(Boolean))];
   const failed = runs.filter(run => FAILED.test(String(run.outcome || "")));
   const items = runs.reduce((n, run) => n + (Number(run.items) || 0), 0);
-  return { latest, runs, changed: [...changed].map(byPath).sort(byActivity), sources, failed, items };
+  const claims = runs.flatMap(run => Array.isArray(run.claim_changes) ? run.claim_changes : [])
+    .filter(claim => byPath(claim.record) && (claim.sources || []).length);
+  return { latest, runs, changed: [...changed].map(byPath).sort(byActivity), sources, failed, items, claims };
 }
 function weekChanges() {
   const asOf = new Date(REM.as_of).getTime() || Date.now(), since = asOf - 7 * DAY_MS, seen = new Map();
@@ -1444,11 +1551,12 @@ function nightBand() {
 // ---------- views ----------
 function route() {
   const params = new URLSearchParams(location.hash.replace(/^#/, ""));
-  return { record: params.get("r"), category: params.get("c"), query: params.get("q"), heading: params.get("h"), reviews: params.has("reviews") };
+  return { record: params.get("r"), category: params.get("c"), query: params.get("q"), heading: params.get("h"),
+    view: params.get("view"), reviews: params.has("reviews") };
 }
 function railActive() {
-  const { record: r, category: c, query, reviews } = route();
-  return reviews ? "reviews" : c || (r ? r.split("/")[0] : (query ? "search" : null));
+  const { record: r, category: c, query, view, reviews } = route();
+  return reviews ? "reviews" : view || c || (r ? r.split("/")[0] : (query ? "search" : "today"));
 }
 function renderRail(active) {
   const nav = document.getElementById("nav");
@@ -1456,8 +1564,12 @@ function renderRail(active) {
   const owner = REM.owner && byPath(REM.owner);
   if (owner) nav.appendChild(el("a", { href: href(owner), class: "you" + (route().record === owner.path ? " active" : "") }, [
     el("span", {}, [moon(known(owner).status), " You"]), el("span", { class: "n", text: owner.title })]));
-  nav.appendChild(el("div", { class: "label", text: "Notebook" }));
-  nav.appendChild(el("a", { href: "#", class: active === null ? "active" : "" }, [el("span", { text: "Contents" }), el("span", { class: "n", text: String(listedRecords().length) })]));
+  nav.appendChild(el("div", { class: "label", text: "Your day" }));
+  for (const [key, title, link] of [["today", "Today", "#"], ["open", "Open threads", "#view=open"],
+    ["changes", "Memory changes", "#view=changes"]])
+    nav.appendChild(el("a", { href: link, class: active === key ? "active" : "" }, [el("span", { text: title })]));
+  nav.appendChild(el("div", { class: "label", text: "Explore memory" }));
+  nav.appendChild(el("a", { href: "#c=all", class: active === "all" ? "active" : "" }, [el("span", { text: "All records" }), el("span", { class: "n", text: String(listedRecords().length) })]));
   for (const c of REM.categories) {
     const n = inCategory(c).length;
     if (!n && active !== c && !["people", "orgs", "projects"].includes(c)) continue;
@@ -1517,7 +1629,7 @@ function sectionHead(title, note) {
 function memoryStatement(r) {
   const insight = section(r, "insight");
   const lines = insight ? listItems(insight.text) : [];
-  const line = lines.find(item => /^Changed:/i.test(item)) || lines.find(item => /^Now:/i.test(item))
+  const line = lines.find(item => /^Now:/i.test(item)) || lines.find(item => /^Changed:/i.test(item))
     || lines.find(item => /^At stake:/i.test(item)) || lines[0];
   const current = section(r, "where it stands");
   const statement = plainLine(line ? line.replace(/^(?:Changed|Now|At stake):\s*/i, "") : current?.text || known(r).summary);
@@ -1539,6 +1651,18 @@ function memoryConnection(records) {
   }
   return null;
 }
+function changeCard(claim) {
+  const r = byPath(claim.record);
+  if (!r) return null;
+  const card = el("article", { class: "claim-card" }, [
+    el("span", { class: "claim-kind", text: claim.kind === "newly recorded" ? "Newly recorded · supported" : "Revised in memory · supported" }),
+    el("h3", {}, [el("a", { href: href(r), text: r.title }), " / " + claim.field]),
+    claim.before ? el("p", { class: "before", text: "Before: " + claim.before }) : null,
+    el("p", { class: "after", text: "Now: " + claim.after }),
+    el("a", { href: href(r) + "&h=src-" + (claim.sources || [""])[0].toLowerCase(),
+      text: "Open the page and source →" })]);
+  return card;
+}
 function morningBrief() {
   const pass = lastPass();
   const changed = (pass?.changed || []).filter(r => r.path !== REM.owner && known(r).status !== "Mapped");
@@ -1551,6 +1675,11 @@ function morningBrief() {
         ? "The context to carry into today" : "The context from the last pass") : "Ready when there is something new" })]),
     el("span", { class: "morning-time", text: pass ? fmtTime(new Date(pass.latest).toISOString()) : "No pass yet" })]);
   brief.appendChild(top);
+  if (pass?.claims?.length) {
+    const found = el("div", { class: "claim-grid", "aria-label": "Source-backed memory changes" },
+      pass.claims.slice(0, 4).map(changeCard).filter(Boolean));
+    brief.appendChild(found);
+  }
   if (!changed.length) {
     brief.appendChild(el("p", { class: "memory-empty", text: pass
       ? "The last pass did not update a page. Your existing context is still in the library below."
@@ -1559,7 +1688,7 @@ function morningBrief() {
   }
   const cards = el("div", { class: "memory-grid" });
   for (const r of changed.slice(0, 3)) cards.appendChild(el("article", { class: "memory-card" }, [
-    el("span", { class: "kind", text: singular(r.category) + " · Updated in the latest pass" }),
+    el("span", { class: "kind", text: singular(r.category) + " · Current context on an updated page" }),
     el("h3", {}, [el("a", { href: href(r), text: r.title })]),
     el("p", { text: memoryStatement(r) || "This page was updated. Open it to see the current context." }),
     el("a", { class: "open", href: href(r), text: "Read the page and sources →" })]));
@@ -1567,6 +1696,35 @@ function morningBrief() {
   const connection = memoryConnection(changed);
   if (connection) brief.appendChild(connection);
   return brief;
+}
+function taskView(kind) {
+  const main = document.getElementById("main");
+  main.textContent = "";
+  main.appendChild(el("div", { class: "eyebrow", text: "REM / Today" }));
+  if (kind === "changes") {
+    const pass = lastPass();
+    main.appendChild(el("h1", { text: "Memory changes" }));
+    main.appendChild(el("p", { class: "lede", text: "Source-backed changes from the latest pass. Page rewrites are listed separately." }));
+    const claims = pass?.claims || [];
+    if (claims.length) main.appendChild(el("div", { class: "claim-grid standalone" }, claims.map(changeCard).filter(Boolean)));
+    else main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "No verified claim change in this pass" }),
+      "The pass may have refreshed pages; that alone is not a new memory."]));
+    if (pass?.changed?.length) main.appendChild(el("div", { class: "changed-pages" }, [sectionHead("Pages rewritten", "Current context"),
+      el("ul", { class: "hits" }, pass.changed.map(r => row(r, { kind: true })))]));
+    return;
+  }
+  main.appendChild(el("h1", { text: "Open threads" }));
+  main.appendChild(el("p", { class: "lede", text: "What needs your answer, and what you are waiting to hear back." }));
+  const entries = listedRecords().flatMap(r => threads(r).items.map(t => ({ r, t })))
+    .sort((a, b) => ({ mine: 0, theirs: 1, plain: 2 })[a.t.dir] - ({ mine: 0, theirs: 1, plain: 2 })[b.t.dir]
+      || (a.t.since || "9999").localeCompare(b.t.since || "9999"));
+  if (!entries.length) main.appendChild(el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing open" }),
+    "No supported open loop is in this snapshot."]));
+  else for (const [title, dir] of [["Waiting on you", "mine"], ["Waiting on others", "theirs"], ["Other open context", "plain"]]) {
+    const items = entries.filter(row => row.t.dir === dir);
+    if (items.length) main.appendChild(el("section", { class: "task-band" }, [sectionHead(title, String(items.length)),
+      el("ul", { class: "threads" }, items.map(row => threadRow(row.r, row.t, true)))]));
+  }
 }
 function recallPrompt() {
   const changed = new Set((lastPass()?.changed || []).map(r => r.path));
@@ -1630,9 +1788,9 @@ function overview() {
     const others = [...open.filter(o => o.t.dir === "theirs").sort(oldest), ...open.filter(o => o.t.dir === "plain")];
     main.appendChild(sectionHead("Open threads", open.length + " open · " + mine.length + " waiting on you"));
     const band = (title, note, rows) => el("section", { class: "band" }, [el("h3", {}, [el("span", { text: title }), el("span", { class: "mono", text: note })]),
-      rows.length ? el("ul", { class: "threads" }, rows.slice(0, 6).map(o => threadRow(o.r, o.t, true)))
+      rows.length ? el("ul", { class: "threads" }, rows.slice(0, 3).map(o => threadRow(o.r, o.t, true)))
         : el("p", { class: "band-none", text: "Nothing here." }),
-      rows.length > 6 ? el("p", { class: "band-none", text: "+" + (rows.length - 6) + " more on their pages" }) : null]);
+      rows.length > 3 ? el("p", { class: "band-none" }, [el("a", { href: "#view=open", text: "View all " + rows.length + " open threads →" })]) : null]);
     main.appendChild(el("div", { class: "bands" }, [band("Waiting on you", String(mine.length), mine), band("Waiting on others", String(others.length), others)]));
   }
 
@@ -1657,29 +1815,12 @@ function overview() {
     main.appendChild(el("ul", { class: "hits cols" }, recent.map(r => row(r, { kind: true }))));
   }
 
-  const shelves = el("div", { class: "shelves" });
-  for (const c of REM.categories) {
-    const items = inCategory(c).sort(byActivity);
-    if (!items.length) continue;
-    const counts = (REM.counts || {})[c];
-    const shelf = el("section", { class: "shelf" });
-    shelf.appendChild(el("h3", {}, [el("a", { href: "#c=" + c, text: label(c) }), el("span", { class: "mono", text: counts ? counts.written + " / " + counts.mapped + " written" : String(items.length) })]));
-    shelf.appendChild(el("p", { class: "ask", text: CATEGORY_ASK[c] || "" }));
-    const titleCounts = {};
-    for (const item of items) titleCounts[item.title] = (titleCounts[item.title] || 0) + 1;
-    const ul = el("ul", { class: "toc" });
-    for (const r of items.slice(0, 8)) {
-      const hint = titleCounts[r.title] > 1 ? el("span", { class: "path-hint", text: r.path.split("/").pop().replace(/\.md$/, "") })
-        : el("span", { class: "when", text: shortDate(known(r).last) });
-      ul.appendChild(el("li", {}, [moon(known(r).status), el("a", { href: href(r), text: r.title }), hint]));
-    }
-    if (items.length > 8) ul.appendChild(el("li", {}, [el("a", { class: "more", href: "#c=" + c, text: "all " + items.length + " " + label(c).toLowerCase() + " →" })]));
-    shelf.appendChild(ul);
-    shelves.appendChild(shelf);
-  }
-  if (shelves.childNodes.length) {
+  const categories = REM.categories.map(c => ({ c, count: inCategory(c).length })).filter(item => item.count);
+  if (categories.length) {
     main.appendChild(sectionHead("Explore the memory", n + " pages" + (mapped ? " · " + mapped + " mapped only" : "")));
-    main.appendChild(shelves);
+    main.appendChild(el("div", { class: "category-cards" }, categories.map(({ c, count }) =>
+      el("a", { class: "category-card", href: "#c=" + c }, [el("strong", { text: label(c) }),
+        el("span", { text: count + (count === 1 ? " record" : " records") })]))));
   }
   main.appendChild(maintenance(s));
 }
@@ -1731,11 +1872,11 @@ function category(c) {
   const main = document.getElementById("main");
   main.textContent = "";
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#" }, ["← Contents"])]));
-  const items = inCategory(c);
+  const items = c === "all" ? listedRecords() : inCategory(c);
   const counts = (REM.counts || {})[c];
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: "Contents" }), el("span", { class: "sep", text: "/" }), el("span", { text: "Category" })]));
-  main.appendChild(el("h1", { text: label(c) }));
-  const lede = (CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
+  main.appendChild(el("h1", { text: c === "all" ? "Explore memory" : label(c) }));
+  const lede = (c === "all" ? "People, projects, skills and ideas in one place" : CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
   main.appendChild(el("p", { class: "lede" }, [lede + (items.length ? (/[?.]$/.test(lede) ? " " : ". ") : ""), items.length ? el("span", { class: "mono", text: counts ? counts.written + " written of " + counts.mapped : items.length + " pages" }) : null]));
   if (!items.length) {
     main.appendChild(c === "people"
@@ -1854,7 +1995,8 @@ function factList(r) {
   return panel("Facts", [el("p", { class: "fill mono", text: filled + " of " + order.length + " known" }), dl]);
 }
 function daysSince(day) {
-  const ms = new Date(REM.as_of || Date.now()).getTime() - new Date(day + "T00:00:00").getTime();
+  const today = String(REM.as_of || new Date().toISOString()).slice(0, 10);
+  const ms = new Date(today + "T00:00:00Z").getTime() - new Date(day + "T00:00:00Z").getTime();
   return isNaN(ms) ? null : Math.max(0, Math.floor(ms / DAY_MS));
 }
 function age(day) {
@@ -1909,6 +2051,145 @@ function sidePanels(r, k) {
   return panels;
 }
 
+function recordFocus(r) {
+  const k = known(r), out = el("section", { class: "record-focus " + r.category,
+    "aria-label": "At a glance" });
+  const statement = memoryStatement(r) || facts(r).what || k.summary;
+  const question = ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
+    skills: "When this helps" })[r.category] || "What matters now";
+  const focusHead = el("div", { class: "focus-head" }, [el("span", { class: "focus-kicker", text: question })]);
+  const statementNode = el("p", { class: "focus-statement clamped", text: statement || (k.status === "Mapped"
+    ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet.") });
+  focusHead.appendChild(statementNode);
+  if ((statement || "").length > 180) {
+    const more = el("button", { type: "button", class: "focus-more", "aria-expanded": "false", text: "Read full context" });
+    more.onclick = () => {
+      const expanded = statementNode.classList.toggle("clamped");
+      more.setAttribute("aria-expanded", String(!expanded));
+      more.textContent = expanded ? "Read full context" : "Show less";
+    };
+    focusHead.appendChild(more);
+  }
+  out.appendChild(focusHead);
+  const open = threads(r).items;
+  if (open.length) out.appendChild(el("div", { class: "focus-section next-exchanges" }, [
+    el("h2", { text: "Next exchanges" }), el("ul", { class: "threads", "aria-label": "Open threads on this record" },
+      open.slice(0, 3).map(t => threadRow(r, t, false)))]));
+  if (r.category === "projects") {
+    const purpose = section(r, "what it is"), decisions = section(r, "key decisions");
+    const blocks = [];
+    if (purpose) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: "What this is" }),
+      el("p", { html: inline(listItems(purpose.text)[0] || purpose.text, r.path) })]));
+    if (decisions) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: "A recorded decision" }),
+      el("ul", {}, listItems(decisions.text).slice(-1).map(item => el("li", { html: inline(item, r.path) }))),
+      el("a", { class: "open-note", href: href(r) + "&h=key-decisions", text: "View all decisions →" })]));
+    if (blocks.length) out.appendChild(el("div", { class: "project-workspace" }, blocks));
+  }
+  const f = facts(r);
+  const labels = r.category === "people" ? [["Role", f.role], ["Company", f.company], ["Last contact", f.last]]
+    : r.category === "projects" ? [["Last active", f.last], ["Sessions", f.sessions], ["Repository", f.repo]]
+      : r.category === "orgs" ? [["Domain", f.domain], ["Last contact", f.last]]
+        : r.category === "skills" ? [["Usage", skillUsage(r) ? skillUsage(r).count + " uses" : ""], ["Last active", f.last]] : [];
+  const shown = labels.filter(([, value]) => value).slice(0, 3);
+  if (shown.length) out.appendChild(el("dl", { class: "focus-facts" }, shown.map(([key, value]) =>
+    el("div", { class: "focus-fact" }, [el("dt", { text: key }), el("dd", { html: inline(String(value), r.path), title: plainLine(String(value)) })]))));
+  const related = (r.relations || []).filter(link => byPath(link.path) && !byPath(link.path).service);
+  if (related.length) out.appendChild(el("div", { class: "focus-section related-records" }, [
+    el("h2", { text: "Connected context" }), el("div", { class: "relation-list" }, related.slice(0, 6).map(link => {
+      const other = byPath(link.path);
+      return el("a", { class: "relation-card", href: href(other) }, [
+        el("span", { class: "relation-kind", text: singular(other.category) + " · " + link.kind }),
+        el("strong", { text: other.title }), el("span", { class: "relation-basis", text: youify(link.basis || "Linked from another record") })]);
+    })), related.length > 6 ? el("details", { class: "more-relations" }, [
+      el("summary", { text: "Show " + (related.length - 6) + " more connections" }),
+      el("div", { class: "relation-list" }, related.slice(6).map(link => {
+        const other = byPath(link.path);
+        return el("a", { class: "relation-card", href: href(other) }, [
+          el("span", { class: "relation-kind", text: singular(other.category) + " · " + link.kind }),
+          el("strong", { text: other.title }), el("span", { class: "relation-basis", text: youify(link.basis || "Linked from another record") })]);
+      }))]) : null]));
+  const conversations = [...new Set(sourceList(r).map(source => {
+    const id = /\b([a-z][a-z-]*:[\w./:-]{4,})/i.exec(source.text)?.[1];
+    return id && (REM.source_context || {})[id]?.thread;
+  }).filter(Boolean))].map(id => [id, (REM.conversations || {})[id]]).filter(([, value]) => value);
+  if (conversations.length) out.appendChild(el("div", { class: "focus-section conversation-view" }, [
+    el("h2", { text: "Cited conversations" }),
+    el("div", { class: "conversation-list" }, conversations.slice(0, 3).map(([id, value]) => {
+      const button = el("button", { type: "button", class: "conversation-open" }, [
+        el("strong", { text: byPath(value.subject)?.title || value.subject }),
+        el("span", { text: value.total + " archived messages · " + (value.messages.at(-1)?.time ? fmtDate(value.messages.at(-1).time) : "date unknown") })]);
+      button.onclick = () => openConversation(id, button);
+      return button;
+    })), conversations.length > 3 ? el("details", { class: "more-relations" }, [
+      el("summary", { text: "Show " + (conversations.length - 3) + " more cited conversations" }),
+      el("div", { class: "conversation-list" }, conversations.slice(3).map(([id, value]) => {
+        const button = el("button", { type: "button", class: "conversation-open" }, [
+          el("strong", { text: byPath(value.subject)?.title || value.subject }),
+          el("span", { text: value.total + " archived messages · " + (value.messages.at(-1)?.time ? fmtDate(value.messages.at(-1).time) : "date unknown") })]);
+        button.onclick = () => openConversation(id, button);
+        return button;
+      }))]) : null]));
+  const activity = activityPanel(r);
+  if (activity) out.appendChild(activity);
+  return out;
+}
+
+function openConversation(id, trigger) {
+  const conversation = (REM.conversations || {})[id];
+  if (!conversation) return;
+  let dialog = document.getElementById("conversation-dialog");
+  if (!dialog) { dialog = el("dialog", { id: "conversation-dialog", class: "evidence-dialog", "aria-label": "Conversation" }); document.body.appendChild(dialog); }
+  dialog.textContent = "";
+  const close = el("button", { type: "button", class: "evidence-close", text: "Close ×", "aria-label": "Close conversation" });
+  close.onclick = () => dialog.close();
+  dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "REM / archived conversation" }), close]),
+    el("h2", { text: byPath(conversation.subject)?.title || conversation.subject }),
+    el("p", { class: "evidence-summary", text: "Latest " + conversation.messages.length + " of " + conversation.total + " archived messages in this cited thread. Some messages may not have an archived body." }));
+  for (const message of conversation.messages) dialog.appendChild(el("div", { class: "conversation-message" }, [
+    el("span", { class: "evidence-meta", text: [message.sender, message.time ? fmtTime(message.time) : ""].filter(Boolean).join(" · ") }),
+    el("p", { text: message.excerpt + (message.truncated ? "…" : "") })]));
+  dialog.addEventListener("close", () => trigger.focus(), { once: true });
+  if (dialog.showModal) dialog.showModal(); else dialog.setAttribute("open", "");
+  close.focus();
+}
+function activityType(text) {
+  if (/\b(decid|agreed|chose|approved|rejected)\w*/i.test(text)) return "Decision";
+  if (/\b(promis|owe|waiting|due|sent)\w*/i.test(text)) return "Commitment";
+  return "Conversation";
+}
+function activityPanel(r) {
+  const history = section(r, "history");
+  if (!history) return null;
+  const items = historyItems(history.text).filter(item => item.day);
+  if (!items.length) return null;
+  const box = el("section", { class: "focus-section activity-view", "aria-label": "Activity" });
+  box.appendChild(el("div", { class: "activity-head" }, [el("h2", { text: "Activity" }),
+    el("span", { class: "activity-note", text: "From this page's dated history" })]));
+  const filters = el("div", { class: "activity-filters", role: "group", "aria-label": "Filter activity" });
+  const list = el("ol", { class: "activity-list" });
+  const rows = items.slice().reverse().map(item => {
+    const type = activityType(item.text);
+    const row = el("li", { "data-type": type }, [el("span", { class: "activity-day", text: item.day }),
+      el("span", { class: "activity-type", text: type }),
+      el("span", { class: "activity-text", html: inline(item.text, r.path) })]);
+    list.appendChild(row);
+    return row;
+  });
+  for (const name of ["All", "Conversation", "Commitment", "Decision"]) {
+    const count = name === "All" ? rows.length : rows.filter(row => row.dataset.type === name).length;
+    if (!count) continue;
+    const button = el("button", { type: "button", class: name === "All" ? "active" : "",
+      "aria-pressed": String(name === "All"), text: name + " " + count });
+    button.onclick = () => {
+      for (const b of filters.querySelectorAll("button")) { b.classList.toggle("active", b === button); b.setAttribute("aria-pressed", String(b === button)); }
+      for (const row of rows) row.hidden = name !== "All" && row.dataset.type !== name;
+    };
+    filters.appendChild(button);
+  }
+  box.append(filters, list);
+  return box;
+}
+
 function record(path, heading) {
   const r = byPath(path);
   const main = document.getElementById("main");
@@ -1924,16 +2205,12 @@ function record(path, heading) {
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#c=" + r.category, text: label(r.category) }), el("span", { class: "sep", text: "/" }),
     statusPill(r), el("span", { class: "when", text: (k.last ? "last activity " + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })]));
   const head = el("header", { class: "page-head" }, [el("h1", { text: r.title })]);
-  // The lead is the standfirst: who this is to you, what is open, last contact (#2068:
-  // a person's first sentence states the balance; a project's, where you stopped).
+  // Keep the original prose in the full note. The first screen uses the
+  // structured status, actions, facts and connections above that note.
   let intro = k.intro;
-  if (intro && ["people", "orgs", "projects"].includes(r.category)) {
-    const [first, ...rest] = intro.split(/\n\s*\n/);
-    // Only a plain paragraph: a list, fence, quote or table stays in the body as written.
-    if (!/^\s*(?:#|[-*+]\s|\d+[.)]\s|```|~~~|>|\|)/.test(first) && !/^\s*(`{3,}|~{3,})/m.test(first)) { head.appendChild(el("p", { class: "standfirst", html: inline(first.replace(/\n/g, " "), r.path) })); intro = rest.join("\n\n"); }
-  }
   head.appendChild(leadRow(r));
   main.appendChild(head);
+  main.appendChild(recordFocus(r));
 
   const catalog = r.catalog_parent ? byPath(r.catalog_parent) : r;
   if (catalog && catalog.installations && catalog.installations.length > 1) {
@@ -1971,7 +2248,9 @@ function record(path, heading) {
   if (toc.length >= 4) panels.push(tocPanel([el("ul", { class: "toc" }, toc.map(t =>
     el("li", {}, [el("a", { href: "#r=" + encodeURIComponent(r.path) + "&h=" + encodeURIComponent(t.id), text: t.title })])))]));
   const grid = el("div", { class: "page-grid" + (panels.length ? " has-side" : "") }, [el("div", { class: "body" }, [note]), el("aside", { class: "side", "aria-label": "About this page" }, panels)]);
-  main.appendChild(grid);
+  const deep = el("details", { class: "deep-note" }, [el("summary", {}, [el("span", { text: "Full memory and sources" }),
+    el("span", { class: "deep-hint", text: "Original note · all fields · citations" })]), grid]);
+  main.appendChild(deep);
   const column = grid.firstChild;
 
   if (parts.related || parts.sources) {
@@ -2008,7 +2287,7 @@ function record(path, heading) {
       mapped ? el("p", { class: "why", text: "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in." }) : null,
       el("div", { class: "names", text: "Not investigated yet: " + youify(k.missing.join(", ")) + "." }),
       el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]);
-    if (mapped) grid.parentNode.insertBefore(box, grid); else column.appendChild(box);
+    if (mapped) deep.parentNode.insertBefore(box, deep); else column.appendChild(box);
   }
 
   const foot = el("div", { class: "page-foot" });
@@ -2020,6 +2299,7 @@ function record(path, heading) {
   column.appendChild(foot);
 
   if (heading) {
+    deep.open = true;
     const target = document.getElementById(heading) || document.getElementById(heading.toLowerCase()) || headings.find(h => h.id === heading.toLowerCase());
     if (target && target.tagName === "LI") {
       // A citation's source: centred and briefly lit, so the eye finds the line (#2054).
@@ -2044,6 +2324,19 @@ function highlight(line, needle) {
 function search(q) {
   const main = document.getElementById("main");
   main.textContent = "";
+  if (/\b(who\s+(?:do\s+i\s+)?owe|what\s+do\s+i\s+owe|waiting\s+on\s+me|open\s+threads)\b/i.test(q)) { taskView("open"); return; }
+  if (/\b(what\s+changed|memory\s+changes|learned\s+(?:last\s+night|overnight))\b/i.test(q)) { taskView("changes"); return; }
+  const connected = /\b(?:connected|related)\s+to\s+(.+)/i.exec(q);
+  if (connected) {
+    const target = listedRecords().find(r => r.title.toLowerCase() === connected[1].trim().toLowerCase());
+    if (target) {
+      main.appendChild(el("div", { class: "eyebrow", text: "Search / connected context" }));
+      main.appendChild(el("h1", { text: "Connected to " + target.title }));
+      const card = recordFocus(target).querySelector(".related-records");
+      main.appendChild(card || el("div", { class: "empty", text: "No supported links in this snapshot." }));
+      return;
+    }
+  }
   const needle = q.toLowerCase();
   const hits = [];
   const grouped = new Map();
@@ -2143,7 +2436,7 @@ function reviewPage() {
 
 function render() {
   if (!REM) return;
-  const { record: r, category: c, query, heading, reviews } = route();
+  const { record: r, category: c, query, heading, view, reviews } = route();
   renderRail(railActive());
   const box = document.getElementById("q");
   if (box.value !== (query || "")) box.value = query || "";
@@ -2153,11 +2446,46 @@ function render() {
   if (reviews) reviewPage();
   else if (query) search(query);
   else if (r) record(r, heading);
+  else if (view === "open" || view === "changes") taskView(view);
   else if (c) category(c);
   else overview();
-  document.title = (reviews ? "Questions & connections" : r ? (byPath(r)?.title || "Missing page") : query ? "Search: " + query : c ? label(c) : "Contents") + " · co rem";
+  document.title = (reviews ? "Questions & connections" : r ? (byPath(r)?.title || "Missing page") : query ? "Search: " + query :
+    view === "open" ? "Open threads" : view === "changes" ? "Memory changes" : c ? (c === "all" ? "Explore" : label(c)) : "Today") + " · co rem";
   for (const link of document.querySelectorAll("#nav a.active")) link.setAttribute("aria-current", "page");
 }
+
+function openEvidence(r, number, trigger) {
+  const source = sourceList(r).find(item => item.n.toLowerCase() === number.toLowerCase());
+  if (!source) return false;
+  const id = /\b([a-z][a-z-]*:[\w./:-]{4,})/i.exec(source.text)?.[1] || "";
+  const context = (REM.source_context || {})[id];
+  let dialog = document.getElementById("evidence-dialog");
+  if (!dialog) { dialog = el("dialog", { id: "evidence-dialog", class: "evidence-dialog", "aria-label": "Source context" }); document.body.appendChild(dialog); }
+  dialog.textContent = "";
+  const close = el("button", { type: "button", class: "evidence-close", text: "Close ×", "aria-label": "Close source context" });
+  close.onclick = () => dialog.close();
+  dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "REM / source " + number }), close]),
+    el("h2", { text: "Why this appears on " + r.title }),
+    el("p", { class: "evidence-summary", text: source.text }));
+  if (context) dialog.append(el("div", { class: "evidence-original" }, [
+    el("span", { class: "focus-kicker", text: "Original source context · not a validated claim span" }),
+    el("p", { class: "evidence-meta", text: [context.source, context.sender, context.time ? fmtTime(context.time) : ""].filter(Boolean).join(" · ") }),
+    el("blockquote", { text: context.excerpt + (context.truncated ? "…" : "") })]));
+  else dialog.appendChild(el("p", { class: "evidence-unavailable", text: "The original body is not archived in this snapshot. The source description above is a generated summary, not the original message." }));
+  dialog.addEventListener("close", () => trigger.focus(), { once: true });
+  if (dialog.showModal) dialog.showModal(); else dialog.setAttribute("open", "");
+  close.focus();
+  return true;
+}
+document.addEventListener("click", e => {
+  const citation = e.target.closest("a.cite");
+  if (!citation) return;
+  const url = new URL(citation.href);
+  const params = new URLSearchParams(url.hash.slice(1));
+  const path = params.get("r"), number = (params.get("h") || "").replace(/^src-/, "");
+  const r = byPath(path);
+  if (r && openEvidence(r, number, citation)) e.preventDefault();
+});
 
 const qInput = document.getElementById("q");
 const qClear = document.getElementById("q-clear");
