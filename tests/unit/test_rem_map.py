@@ -17,12 +17,14 @@ def test_map_groups_project_worktrees_preserves_pages_and_keeps_noise(tmp_path, 
          'path': path, 'sessions': 2, 'first': '2026-09-18', 'last': '2026-09-19'}
         for path in ('/repo/atlas', '/worktree/atlas')])
     first = build_map(tmp_path, {}, {}, skill_directories=[skills])
-    assert len(first['people']) == len(first['projects']) == 1
+    assert len(first['projects']) == 1
     record = first['projects'][0]['record']
     nb = Notebook(tmp_path)
     assert first['projects'][0]['sessions'] == 4
     assert '/worktree/atlas' in nb.read(record)
-    assert first['people'][0]['classification'] == 'automated candidate'
+    # The noise is kept in the map, not as a page: an automated sender gets none (#2057).
+    assert first['people'] == [] and nb.people() == []
+    assert [row['address'] for row in first['automated_correspondents']] == ['noreply@example.org']
     curated = nb.read(record).replace('## What it is\n', '## What it is\nCurated purpose.\n')
     curated = curated.replace('- /repo/atlas\n', '- /repo/atlas [1]\n')
     nb.write(record, curated)
@@ -80,7 +82,7 @@ def test_init_maps_domain_candidates_without_claiming_employment(tmp_path, monke
     prepare(tmp_path)
     skills = tmp_path / 'installed'
     skills.mkdir()
-    people = [{'name': address, 'address': address, 'mails': 1} for address in (
+    people = [{'name': address, 'address': address, 'mails': 2, 'sent': 1, 'received': 1} for address in (
         'a@EXAMPLE.org', 'b@example.org', 'solo@school.edu.au',
         'noreply@notices.example.org', 'personal@gmail.com', 'invalid-address')]
     monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (people, set()))
@@ -89,7 +91,9 @@ def test_init_maps_domain_candidates_without_claiming_employment(tmp_path, monke
     orgs = {row['domain']: row for row in result['orgs']}
     # notices.example.org is example.org's sending subdomain, not a second organisation (#1844)
     assert set(orgs) == {'example.org', 'school.edu.au'}
-    assert len(orgs['example.org']['people']) == 3
+    assert orgs['example.org']['domains'] == ['example.org', 'notices.example.org']
+    # The notice sender lends example.org its subdomain but gets no page of its own (#2057).
+    assert len(orgs['example.org']['people']) == 2
     nb = Notebook(tmp_path)
     for row in orgs.values():
         page = nb.read(row['record'])
@@ -118,7 +122,7 @@ def test_init_reuses_existing_org_with_matching_domain(tmp_path, monkeypatch):
     nb.stub_org('orgs/existing.md', 'Known organization', ['EXAMPLE.ORG'])
     old = nb.read('orgs/existing.md')
     monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (
-        [{'name': 'Person', 'address': 'person@example.org', 'mails': 1}], set()))
+        [{'name': 'Person', 'address': 'person@example.org', 'mails': 2, 'sent': 1, 'received': 1}], set()))
     monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
     result = build_map(tmp_path, {}, {}, skill_directories=[skills])
     assert result['orgs'][0]['record'] == 'orgs/existing.md'
@@ -199,22 +203,25 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
     skills = tmp_path / 'installed'
     skills.mkdir()
     people = [
-        {'name': 'Ody Zhou', 'address': 'zhouodywork@gmail.com', 'mails': 30, 'one_way': False,
-         'first': '2026-07-17', 'last': '2026-09-14', 'boxes': ['gmail']},
-        {'name': 'Ody Zhou', 'address': 'zhouody@gmail.com', 'mails': 3, 'one_way': False,
-         'first': '2026-08-01', 'last': '2026-08-02', 'boxes': ['gmail']},
+        {'name': 'Ody Zhou', 'address': 'zhouodywork@gmail.com', 'mails': 30, 'sent': 12, 'received': 18,
+         'one_way': False, 'first': '2026-07-17', 'last': '2026-09-14', 'boxes': ['gmail']},
+        {'name': 'Ody Zhou', 'address': 'zhouody@gmail.com', 'mails': 3, 'sent': 1, 'received': 2,
+         'one_way': False, 'first': '2026-08-01', 'last': '2026-08-02', 'boxes': ['gmail']},
         {'name': 'Ody Zhou', 'address': 'usr-abc@user.luma-mail.com', 'mails': 1, 'one_way': True},
         {'name': 'Ody Zhou (via Google Drive)', 'address': 'drive-shares-dm-noreply@google.com', 'mails': 2,
          'one_way': True},
         {'name': 'Neon Changelog', 'address': 'changelog@neon.tech', 'mails': 4, 'one_way': True},
         {'name': 'Andrew Suryanto', 'address': 'usr-xyz@user.luma-mail.com', 'mails': 1, 'one_way': True},
-        {'name': 'John', 'address': 'john@a.com', 'mails': 2, 'one_way': False},
-        {'name': 'John', 'address': 'john@b.com', 'mails': 2, 'one_way': False},
+        {'name': 'John', 'address': 'john@a.com', 'mails': 2, 'sent': 1, 'received': 1, 'one_way': False},
+        {'name': 'John', 'address': 'john@b.com', 'mails': 2, 'sent': 1, 'received': 1, 'one_way': False},
         {'name': 'a16z speedrun', 'address': 'speedrun@substack.com', 'mails': 10, 'one_way': True},
         {'name': 'AI Tinkerers', 'address': 'post-training@mail.aitinkerers.org', 'mails': 13, 'one_way': True},
         {'name': '', 'address': '0xa633fd2e63@mail.openonion.ai', 'mails': 3, 'one_way': True},
-        {'name': 'Zhang, Misa', 'address': 'misa.zhang@fisglobal.com', 'mails': 3, 'one_way': True},
-        {'name': 'Lee Chen', 'address': 'lee.chen@mail.com', 'mails': 2, 'one_way': True},
+        # Each answered at least once: a one-way correspondent gets no page at all (#2057).
+        {'name': 'Zhang, Misa', 'address': 'misa.zhang@fisglobal.com', 'mails': 3, 'sent': 1, 'received': 2,
+         'one_way': False},
+        {'name': 'Lee Chen', 'address': 'lee.chen@mail.com', 'mails': 2, 'sent': 1, 'received': 1,
+         'one_way': False},
     ]
     monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (people, set()))
     monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
@@ -225,7 +232,7 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
     assert ody['mails'] == 34
     page = Notebook(tmp_path).read(ody['record'])
     assert 'zhouody@gmail.com' in page and 'Confirm they are one person' in page
-    assert len(pages) == 5               # Ody, the two Johns, Misa who wrote first, and a mail.com person
+    assert len(pages) == 5               # Ody, the two Johns, Misa, and a mail.com person
     listed = {row['address'] for row in result['automated_correspondents']}
     assert {'changelog@neon.tech', 'drive-shares-dm-noreply@google.com', 'usr-xyz@user.luma-mail.com',
             'speedrun@substack.com', 'post-training@mail.aitinkerers.org',
@@ -640,7 +647,9 @@ def test_a_nameless_address_the_owner_never_wrote_to_waits_for_review(tmp_path, 
     still titled by a bare address: senders the owner never wrote to. Each would
     have cost an investigation and filled the contents with addresses (#1844).
     Held back, never deleted; a nameless address the owner wrote to, and the
-    agent's own address, stay people."""
+    agent's own address, stay people.
+    #2057: an address the owner never wrote to now gets no page at all, named or
+    not; the one nameless page still held is one the owner only writes to."""
     from connectonion.rem.queue import order
     from connectonion.rem.reader import snapshot
     prepare(tmp_path)
@@ -650,16 +659,18 @@ def test_a_nameless_address_the_owner_never_wrote_to_waits_for_review(tmp_path, 
         {'name': '', 'address': '0xa633fd2e63@mail.openonion.ai', 'mails': 6, 'sent': 3, 'received': 3,
          'one_way': False},
         {'name': 'Ann Lee', 'address': 'ann@partner.example', 'mails': 1, 'sent': 0, 'received': 1,
-         'one_way': True}])
+         'one_way': True},
+        {'name': '', 'address': 'desk@quiet.example', 'mails': 3, 'sent': 3, 'received': 0, 'one_way': True}])
     pages = {row['addresses'][0]: row['record'] for row in result['people']}
-    held = pages['x7@shop.example']
+    assert {row['address'] for row in result['without_page']} == {'x7@shop.example', 'ann@partner.example'}
+    assert not {'x7@shop.example', 'ann@partner.example'} & set(pages)
+    held = pages['desk@quiet.example']
     assert result['needs_review'] == [held]
-    assert Notebook(tmp_path).read(held).startswith('# x7@shop.example\n')          # kept, not deleted
+    assert Notebook(tmp_path).read(held).startswith('# desk@quiet.example\n')       # kept, not deleted
     assert Notebook(tmp_path).read(pages['0xa633fd2e63@mail.openonion.ai']).startswith('# 0xa633fd2e63@')
     queued = [row['path'] for row in order(tmp_path, 'people')]
     assert held not in queued
-    assert {pages['client@firm.example'], pages['0xa633fd2e63@mail.openonion.ai'],
-            pages['ann@partner.example']} <= set(queued)
+    assert {pages['client@firm.example'], pages['0xa633fd2e63@mail.openonion.ai']} <= set(queued)
     records = {row['path']: row for row in snapshot(tmp_path)['records']}
     assert records[held]['needs_review']                          # still linkable, left off the contents
     assert not any(row.get('needs_review') for path, row in records.items() if path != held)
@@ -689,7 +700,9 @@ def test_a_sender_named_after_its_own_domain_is_a_service_not_a_person(tmp_path,
         {'name': 'Mia Tan', 'address': 'mia@acme.example', 'mails': 5, 'sent': 0, 'received': 5, 'one_way': True},
         {'name': 'Acme Sales', 'address': 'sales@acme.example', 'mails': 4, 'sent': 2, 'received': 2,
          'one_way': False}])
-    assert {row.get('name') for row in result['people']} == {'Aaron Wu', 'Mia Tan', 'Acme Sales'}
+    assert {row.get('name') for row in result['people']} == {'Aaron Wu', 'Acme Sales'}
+    # Mia only ever wrote: a person without a page yet, not a service (#2057).
+    assert [row['address'] for row in result['without_page']] == ['mia@acme.example']
     listed = {row['address'] for row in result['automated_correspondents']}
     assert {'developer@email.apple.com', 'developer@insideapple.apple.com', 'discover@airbnb.com',
             'googlecloud@google.com', 'learn@retool.com', 'notify@x.com'} <= listed
@@ -713,16 +726,24 @@ def test_an_address_titled_page_the_owner_only_ever_writes_to_is_held(tmp_path, 
 
 
 def test_a_reply_or_a_name_on_a_later_map_brings_the_page_back(tmp_path, monkeypatch):
+    """#2057: an address that only ever wrote to the owner gets no page, held or
+    not, until the owner writes back; the held pages are the nameless ones the
+    owner only writes to, and a reply or a name releases them."""
     from connectonion.rem.map import needs_review
     prepare(tmp_path)
-    quiet = [{'name': '', 'address': 'a@one.example', 'mails': 2, 'sent': 0, 'received': 2, 'one_way': True},
-             {'name': '', 'address': 'b@two.example', 'mails': 2, 'sent': 0, 'received': 2, 'one_way': True}]
-    first = _map(tmp_path, monkeypatch, quiet)
+    quiet = [{'name': '', 'address': 'a@one.example', 'mails': 3, 'sent': 3, 'received': 0, 'one_way': True},
+             {'name': '', 'address': 'b@two.example', 'mails': 3, 'sent': 3, 'received': 0, 'one_way': True}]
+    silent = {'name': '', 'address': 'c@three.example', 'mails': 2, 'sent': 0, 'received': 2, 'one_way': True}
+    first = _map(tmp_path, monkeypatch, [*quiet, silent])
     assert len(first['needs_review']) == 2 and needs_review(tmp_path) == set(first['needs_review'])
-    answered = [{**quiet[0], 'mails': 3, 'sent': 1, 'one_way': False}, {**quiet[1], 'name': 'Bo Chen'}]
+    assert [row['address'] for row in first['without_page']] == ['c@three.example']
+    answered = [{**quiet[0], 'mails': 4, 'received': 1, 'one_way': False}, {**quiet[1], 'name': 'Bo Chen'},
+                {**silent, 'mails': 3, 'sent': 1, 'one_way': False}]
     second = _map(tmp_path, monkeypatch, answered)
     assert second['needs_review'] == [] and needs_review(tmp_path) == set()
-    assert {row['record'] for row in second['people']} == set(first['needs_review'])
+    paged = {row['address']: row['record'] for row in second['people']}
+    assert {paged['a@one.example'], paged['b@two.example']} == set(first['needs_review'])
+    assert 'c@three.example' in paged and second['without_page'] == []      # its reply brings a page
 
 
 def test_an_investigated_page_is_never_held_for_review(tmp_path, monkeypatch):
@@ -734,9 +755,12 @@ def test_an_investigated_page_is_never_held_for_review(tmp_path, monkeypatch):
     notebook.stub_person('people/kept.md', 'kept@q.example', ['kept@q.example'], email='kept@q.example')
     notebook.note_investigation('people/kept.md', 'gmail')
     before = notebook.read('people/kept.md')
+    # The investigated page keeps its row although its mail is one-way; a map-only
+    # one-way page would get none (#2057), so the held one is written to, never answered.
     result = _map(tmp_path, monkeypatch, [
         {'name': '', 'address': 'kept@q.example', 'mails': 2, 'sent': 0, 'received': 2, 'one_way': True},
-        {'name': '', 'address': 'held@q.example', 'mails': 2, 'sent': 0, 'received': 2, 'one_way': True}])
+        {'name': '', 'address': 'held@q.example', 'mails': 3, 'sent': 3, 'received': 0, 'one_way': True}])
+    assert 'people/kept.md' in {row['record'] for row in result['people']}
     held = result['needs_review']
     assert len(held) == 1 and 'people/kept.md' not in held
     assert notebook.read('people/kept.md') == before
@@ -885,8 +909,11 @@ def test_a_fresh_map_makes_no_page_for_booking_otp_and_portal_senders(tmp_path, 
     result = build_map(tmp_path, {}, {}, skill_directories=[skills])
     listed = {row['address'] for row in result['automated_correspondents']}
     assert listed >= {row['address'] for row in services}
-    mapped = {row.get('address') for row in result['people']}
-    assert mapped >= {'mia@acme.example', 'john@smith.dev', 'ann@partner.com.au', 'eishi.sn@gmail.com'}
+    # People, not services: Ann has a page, and the three who only wrote wait
+    # without one until the owner answers (#2057).
+    assert {row.get('address') for row in result['people']} >= {'ann@partner.com.au'}
+    assert {row['address'] for row in result['without_page']} == {
+        'mia@acme.example', 'john@smith.dev', 'eishi.sn@gmail.com'}
     assert not any(service_page(p['title'], p['emails'], None, set()) for p in Notebook(tmp_path).people())
     assert tidy(tmp_path) == {}
 
@@ -982,6 +1009,32 @@ def test_a_company_writing_as_itself_is_a_service_and_its_people_stay_people(tmp
     result = build_map(tmp_path, {}, {}, skill_directories=[skills])
     listed = {row['address'] for row in result['automated_correspondents']}
     assert listed >= {row['address'] for row in services}
-    mapped = {row.get('address') for row in result['people']}
-    assert mapped >= {'mia@miatan.com', 'ann@flagshipminerals.com', 'ann@flagship.com.au'}
+    # People, not services: the one who corresponds has a page, the two who
+    # only wrote are listed without one (#2057).
+    assert {row.get('address') for row in result['people']} >= {'ann@flagshipminerals.com'}
+    assert {row['address'] for row in result['without_page']} == {'mia@miatan.com', 'ann@flagship.com.au'}
     assert service_page('Flagship Minerals', ['ceo@flagshipminerals.com'], None, set())
+
+
+# ------------------------------------------- fewer pages (#2057)
+
+
+def test_a_page_is_for_someone_the_owner_corresponds_with(tmp_path, monkeypatch):
+    """#2057: 374 of the owner's 381 people pages were empty templates, most for
+    one mail either way. A page comes with mail both ways, or when the owner
+    writes twice; one mail sent or one received is listed in the map, not paged,
+    and its domain makes no organisation page."""
+    prepare(tmp_path)
+    result = _map(tmp_path, monkeypatch, [
+        _row('Kai Ng', 'kai@both.example', 1, 1), _row('Lu Fang', 'lu@twice.example', 2, 0),
+        _row('Ola Berg', 'ola@sentone.example', 1, 0), _row('Pat Kim', 'pat@gotone.example', 0, 1)])
+    paged = {row['address']: row['record'] for row in result['people']}
+    assert set(paged) == {'kai@both.example', 'lu@twice.example'}
+    notebook = Notebook(tmp_path)
+    assert sorted(email for page in notebook.people() for email in page['emails']) == [
+        'kai@both.example', 'lu@twice.example']
+    assert {row['address']: (row['sent'], row['received']) for row in result['without_page']} == {
+        'ola@sentone.example': (1, 0), 'pat@gotone.example': (0, 1)}
+    assert {row['domain'] for row in result['orgs']} == {'both.example', 'twice.example'}
+    assert notebook.list('orgs') == sorted(row['record'] for row in result['orgs'])
+    assert any('2 correspondents with mail one way only' in line for line in result['coverage'])

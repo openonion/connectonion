@@ -20,6 +20,10 @@ def test_init_archive_is_private_resumable_and_people_read_it_without_listing(tm
              "to": ["a@example.org", "b@example.org"], "cc": [], "subject": "Plan"},
             {"id": "reply", "date": (datetime.fromisoformat(when) + timedelta(minutes=1)).isoformat(),
              "from": "a@example.org",
+             "to": ["me@example.org"], "cc": [], "subject": "Re: Plan"},
+            # b answers too: someone who only ever got one mail has no page to index (#2057).
+            {"id": "b-reply", "date": (datetime.fromisoformat(when) + timedelta(minutes=2)).isoformat(),
+             "from": "b@example.org",
              "to": ["me@example.org"], "cc": [], "subject": "Re: Plan"}]
 
     class Mail:
@@ -42,16 +46,16 @@ def test_init_archive_is_private_resumable_and_people_read_it_without_listing(tm
     report = build_map(tmp_path, {}, {"gmail": mail}, days=1, skill_directories=[skills],
                        capture_sources=True)
     archive = archive_init(tmp_path, report, {"gmail": mail})
-    assert archive["phase"] == "complete" and archive["saved"] == 2
-    assert mail.reads == 2
+    assert archive["phase"] == "complete" and archive["saved"] == 3
+    assert mail.reads == 3
     again = archive_init(tmp_path, report, {"gmail": mail})
-    assert again["reused"] == 2 and mail.reads == 2
+    assert again["reused"] == 3 and mail.reads == 3
     by_address = {row.get("address"): row["record"] for row in report["people"]}
     a, b = by_address["a@example.org"], by_address["b@example.org"]
     assert len(person_index_path(tmp_path, a).read_text().splitlines()) == 2
-    assert len(person_index_path(tmp_path, b).read_text().splitlines()) == 1
+    assert len(person_index_path(tmp_path, b).read_text().splitlines()) == 2
     stored = list((tmp_path / ".state/mail/messages/gmail").glob("*.json"))
-    assert len(stored) == 2  # shared message is indexed twice, stored once
+    assert len(stored) == 3  # shared message is indexed twice, stored once
     assert all(os.stat(path).st_mode & 0o777 == 0o600 for path in stored)
     assert "body shared" not in (tmp_path / a).read_text()
     # Other people's mail is owner-only at every level, and no page outside
@@ -72,8 +76,9 @@ def test_init_archive_is_private_resumable_and_people_read_it_without_listing(tm
     items, coverage = gather("Example", ["example.org"], days=1, clients={}, subscriptions={},
                              archive_root=tmp_path, record="orgs/example.md")
     assert [item["text"] for item in items] == ["--- Email Body ---\nbody shared",
-                                                 "--- Email Body ---\nbody reply"]
-    assert any("2 loaded from private init archive" in note for note in coverage)
+                                                 "--- Email Body ---\nbody reply",
+                                                 "--- Email Body ---\nbody b-reply"]
+    assert any("3 loaded from private init archive" in note for note in coverage)
     items, _ = gather("Other", ["other.org"], days=1, clients={}, subscriptions={},
                       archive_root=tmp_path, record="orgs/other.md")
     assert items == []
