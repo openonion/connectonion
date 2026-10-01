@@ -74,8 +74,10 @@ sections are usually:
 **No section is left saying `Unknown — not investigated yet`**: that is the
 map's placeholder, and a page that keeps it after this turn is refused. Each
 section becomes what the messages show, or a bare `Unknown`. `Try it`,
-`Getting started`, `How it is built`, `Architecture map` and `People and
-ownership` are usually `Unknown` unless the user spelled them out.
+`Getting started`, `How it is built` and `Architecture map` are usually
+`Unknown` unless the user spelled them out. `People and ownership` is not: these
+are the user's own sessions in the project's folders, so the user owns it unless
+the messages name someone else.
 
 **`Overview` is required when the messages show the architecture**: which parts
 there are and how a request, a file or a job moves between them. Draw it as a

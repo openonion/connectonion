@@ -131,7 +131,27 @@ def material(root: Path, record: str, *, now: datetime | None = None) -> tuple[l
     items = [{"role": "page", "record": record, "source": "investigation:page", "timestamp": stamp,
               "text": f"The page as it stands, at {record}:\n\n{normalize(record, notebook.read(record))}"},
              {"role": "coverage", "source": "investigation:coverage", "timestamp": stamp, "text": note}]
-    return items + _message_items(sent), sent[-1]["timestamp"]
+    return items + _readme(notebook.read(record), stamp) + _message_items(sent), sent[-1]["timestamp"]
+
+
+README_CHARS = 3_000
+
+
+def _readme(page: str, stamp: str) -> list[dict]:
+    """The project's own README, the start of it: what the project says it is (#2060).
+
+    Written from the user's typed requests alone, project pages hedged every
+    line as "unverified", and connectonion was described only as its newest
+    feature. The README says what it is in a paragraph."""
+    from .investigate import project_paths
+    for folder in project_paths(page)[:2]:
+        for name in ("README.md", "README.rst", "README.txt", "README"):
+            path = Path(folder) / name
+            if path.is_file():
+                text = path.read_text(encoding="utf-8", errors="replace")[:README_CHARS]
+                return [{"role": "readme", "source": f"file:{path}", "timestamp": stamp,
+                         "text": f"The start of {path}, the project's own description:\n\n{text}"}]
+    return []
 
 
 def _message_items(messages: list[dict]) -> list[dict]:
@@ -200,7 +220,7 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
         # A refused page left its material.json/material.md behind (#2029).
         from .runner import scrub_task
         scrub_task(directory)
-    messages = len(items) - 2
+    messages = sum(1 for item in items if item["role"] == "user")
     tools = sorted({i["tool"] for i in items if i.get("tool")})
     with maintenance_lock(root, wait=60):
         notebook.note_pass(record, "written", "own messages: " + ", ".join(tools))

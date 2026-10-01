@@ -982,9 +982,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                   "file": str(laid_out["index"]), "sources": laid_out["sources"],
                   "text": (f"The gathered evidence ({len(laid_out['sources'])} items, {laid_out['chars']:,} "
                            f"characters) did not fit one turn and has NOT been summarised. It is in files under "
-                           f"{evidence_dir}. For each Unknown or stale field on the page, search those files "
-                           "with rg/grep, then read only the matching entries with sed or a file tool; use ls to "
-                           "see the layout. Cite the source id from the `###` heading of each entry you rely on. "
+                           f"{evidence_dir}. Each file is a month of one mailbox, an attachment, a session or "
+                           "a chat, under 40k characters: read the files that matter whole, newest first, rather "
+                           "than many small pieces (every tool call re-sends this whole turn); use rg to find "
+                           "which files. Cite the source id from the `###` heading of each entry you rely on. "
                            "In your final reply, list the files you read and the questions left open.\n\n"
                            + shown)}]
         coverage.append(f"evidence: {gathered_chars:,} chars gathered (~{gathered_chars // 4:,} tokens), over the "

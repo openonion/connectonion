@@ -326,4 +326,22 @@ def test_the_maps_mail_count_moves_from_history_to_the_lead(tmp_path):
     assert "## History\n- Unknown — not investigated yet" in text
     from connectonion.rem.census import last_activity
     assert last_activity(text) == "2026-09-06"                              # still dated for the lists
+
+
+def test_a_written_page_links_the_people_it_names_and_a_mapped_one_is_left(tmp_path):
+    """#2060: 2 of the owner's 381 people pages had any link at all."""
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    _person(notebook, "people/jiexuan.md", "Jiexuan Deng", "j@unsw.edu.au")
+    _person(notebook, "people/richard.md", "Richard Lai", "r@unsw.edu.au", investigated=True)
+    _person(notebook, "people/stub.md", "Stub Person", "s@unsw.edu.au")
+    for record in ("people/richard.md", "people/stub.md"):
+        page = re.sub(r"## Who they are\n- Unknown[^\n]*", "## Who they are\n- Works with Jiexuan Deng. [1]",
+                      notebook.read(record), count=1)
+        notebook.write(record, page)
+
+    done = tidy(tmp_path)
+
+    assert done["linked people named on the page"] == ["people/richard.md"]
+    assert "Works with [Jiexuan Deng](../people/jiexuan.md). [1]" in notebook.read("people/richard.md")
     assert tidy(tmp_path) == {}

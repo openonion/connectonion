@@ -89,7 +89,8 @@ An unknown flow stays Unknown; a plausible diagram is not evidence.
   impact, status, evidence, next step. A report is not a diagnosis; a proposed
   fix is not a resolution.
 - `People and ownership`: who to ask, by area, where known; link person pages.
-  Never infer ownership from one commit or message.
+  Never infer someone else's ownership from one commit or message; the user's
+  own sessions in the project's folders make the user its owner.
 - `Getting started`: per relevant role (designer, engineer, operator); commands
   and expected outputs only when verified.
 

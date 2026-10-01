@@ -90,9 +90,9 @@ Related: [Aurora](../projects/aurora.md)
 Sources: codex:session-1:0 (2026-09-02), codex:session-1:347 (2026-09-07)
 ```
 
-Write in the language of the user's own messages in this batch (English → English;
-中文消息，中文页面), not that of replies, instructions or existing pages; if mixed,
-the one they use most. Never translate names, product names or quoted terms.
+Write every page in English, whatever language the messages are in: never an
+English heading over a Chinese body. A short quote may stay in its original
+language. Never translate names, product names or quoted terms.
 
 ## Where meaning belongs
 

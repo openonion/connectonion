@@ -363,3 +363,29 @@ def test_one_new_message_is_singular(world):
     row = {"record": "projects/tide.md", "last_activity": "2026-09-29T00:00:00Z", "new_messages": 1,
            "mode": "first", "left_out": 0}
     assert _order_lines([row]) == ["  projects/tide.md  (last active 2026-09-29, 1 message, first write)"]
+
+
+def test_a_project_page_is_also_given_the_start_of_its_readme(tmp_path):
+    """#2060: written from the user's typed requests alone, connectonion's page
+    described only REM and said "Owner: Unknown" for the owner's own repository."""
+    root = tmp_path / "rem"
+    prepare(root)
+    folder = tmp_path / "work" / "tide"
+    folder.mkdir(parents=True)
+    (folder / "README.md").write_text("# Tide\n\nA swell warning tool for surfers.\n" + "x" * 5000)
+    Notebook(root).stub_project("projects/tide.md", "tide", [str(folder)])
+    [readme] = project_pages._readme(Notebook(root).read("projects/tide.md"), NOW.isoformat())
+    assert readme["source"] == f"file:{folder / 'README.md'}"                # citable by its path
+    assert "A swell warning tool for surfers." in readme["text"]
+    assert len(readme["text"]) < project_pages.README_CHARS + 200            # the start, not the file
+    Notebook(root).stub_project("projects/bare.md", "bare", [str(tmp_path / "work" / "bare")])
+    assert project_pages._readme(Notebook(root).read("projects/bare.md"), NOW.isoformat()) == []
+
+
+def test_the_material_carries_the_readme_beside_the_messages(world, monkeypatch):
+    codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide", [("user", "Add a tide chart.", 1)])
+    extract(world.root, world.subs)
+    readme = {"role": "readme", "source": "file:/work/tide/README.md", "timestamp": "t", "text": "Tide."}
+    monkeypatch.setattr(project_pages, "_readme", lambda page, stamp: [readme])
+    items, _ = project_pages.material(world.root, "projects/tide.md")
+    assert readme in items and sum(1 for item in items if item["role"] == "user") == 1
