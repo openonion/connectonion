@@ -330,6 +330,18 @@ def _archive_line(archive) -> str:
     return f"{have:,} of {archive['target']:,} mail bodies saved · {archive.get('phase', 'unknown')}"
 
 
+def _store_lines(store, said, spell) -> list:
+    """The index the table view reads (#2067), in status's layout: its size, or ✗ and what rebuilds it."""
+    from . import rem_look
+    if not isinstance(store, dict):
+        return []
+    if store.get('skipped'):
+        return [rem_look.section('Index', style.warn(rem_look.BROKEN) + ' ' + said(f"not updated: {store['skipped']}")),
+                rem_look.follow(style.command(spell(['sync'])))]
+    rows = store.get('rows') or {}
+    return [rem_look.section('Index', said(f"{rows.get('people', 0):,} people · {rows.get('messages', 0):,} messages"))]
+
+
 def _pages_line(pages: list, left) -> str:
     counts = {}
     for row in pages:
@@ -382,6 +394,7 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
     archive = _archive_line(batch.get('mail_archive'))
     if archive:
         lines.append(rem_look.section('Mail archive', said(archive) + ' ' + style.muted(rem_look.RESUMES)))
+    lines += _store_lines(batch.get('store'), said, spell)
     tokens = _tokens(batch.get('usage'), run.get('usage'))
     if tokens:
         lines.append(rem_look.section('Tokens', said(tokens)))

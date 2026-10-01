@@ -951,4 +951,9 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
         lines = [f'# {category.capitalize()} map', '', 'Generated enumeration; not an investigation or importance ranking.', '']
         lines += [f'- [{Path(row["record"]).stem}](../{row["record"]})' for row in report[category]]
         notebook.write(f'notes/{category}-map.md', '\n'.join(lines) + '\n')
+    # The index the table and thread views read, from what this map just wrote (#2067).
+    # Derived and rebuilt next time, so a failure is reported, never the map's.
+    from .store import refresh_safely
+    report['store'] = refresh_safely(root)
+    save()
     return report

@@ -30,7 +30,10 @@ class SourceInventory:
                              "from": str(row.get("from") or ""),
                              "to": headers(row.get("to")),
                              "cc": headers(row.get("cc")),
-                             "subject": str(row.get("subject") or "")})
+                             "subject": str(row.get("subject") or ""),
+                             # The provider's own conversation (Gmail threadId, Graph conversationId):
+                             # the index groups a thread by it rather than by subject (#2067).
+                             "thread": str(row.get("thread_id") or "")})
 
     def window(self, provider: str, start: str, end: str, count: int, limit: int,
                complete: bool = False) -> None:
