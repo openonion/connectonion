@@ -29,6 +29,14 @@ project of fifteen requests and one reported result (the "outcomes are not in
 these messages" caveat said once, not per line), and messages mixing Chinese
 and English (one language on the page).
 
+#2068 added four person cases on facts and insight: two phones only in a
+signature (work and mobile), a role only in a calendar invitation, a company
+only in the address domain, and a relationship that went quiet after a price
+change. `check_pages.py` runs production's extractor over each fixture and
+reports any phone, address, link or contact date the page left off; it also
+requires labelled Insight lines (`Now:`, `Changed:`, `At stake:`, `Pattern:`)
+and refuses generic ones ("key stakeholder", "valuable relationship").
+
 ## What the two checks cover
 
 - `co eval` judges what a reader would see: facts from the material, nothing

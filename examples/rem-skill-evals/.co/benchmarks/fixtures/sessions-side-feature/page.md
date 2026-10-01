@@ -1,5 +1,17 @@
 # ledgerline
 
+## Facts
+- Repository: Unknown
+- Stack: Unknown
+- Status: Unknown
+- People: Unknown
+- Organisation: Unknown
+- Started: Unknown
+- Last activity: Unknown
+
+## Insight
+- Unknown — not investigated yet
+
 ## What it is
 - Unknown — not investigated yet
 

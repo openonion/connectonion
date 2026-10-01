@@ -40,6 +40,10 @@ cases:
     must:
     - Where it stands says no activity since 2026-05-20
     - Latest issues records that 3 tests fail after the whisper 3 upgrade and it is not fixed
+    - The first Insight line, labelled Now, says the work stopped on 2026-05-20 after the whisper 3 upgrade, that fixing the timestamp format is next, and that the 3 failing tests block it
+    - Facts Last activity is 2026-05-20, cited
+    must_not:
+    - The Insight section uses generic filler such as an important initiative or a promising project
 - id: workspace-is-not-a-project
   kind: counterexample
   fixture: fixtures/project-workspace

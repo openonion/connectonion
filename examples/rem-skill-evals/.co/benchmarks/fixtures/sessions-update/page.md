@@ -1,5 +1,17 @@
 # tallyho
 
+## Facts
+- Repository: Unknown
+- Stack: Unknown
+- Status: Unknown
+- People: Unknown
+- Organisation: Unknown
+- Started: Unknown
+- Last activity: Unknown
+
+## Insight
+- Unknown — not investigated yet
+
 ## What it is
 A command-line tool that shows writers word counts per Markdown heading. [1]
 
