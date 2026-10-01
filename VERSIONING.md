@@ -400,7 +400,20 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a10
+## Current Version: 1.9.0a11
+
+1.9.0a11 makes the overnight memory the first screen of the REM reader. It
+shows current context from pages touched by the latest pass, an explicit
+cross-page link, and a recall prompt from an older page. Open threads remain
+visible while run counts move into a disclosure. The ranked audit records ten
+product and design problems; this preview is a first slice, not their closure.
+The reader remains an offline, read-only snapshot, and a changed page is not
+presented as a newly discovered fact. Stable is 1.8.10. See
+[1.9.0a11 notes](docs/releases/1.9.0a11.md).
+
+- 1.9.0a11 (#2065, #2066, #2095, #2096, #2097, #2098; product audit).
+
+## Previous preview: 1.9.0a10
 
 1.9.0a10 is the first published preview of the redesigned REM reader. It
 includes the a9 reader, terminal and SQLite work, plus cited Facts and Insight
@@ -412,6 +425,14 @@ reader were reviewed. Stable is 1.8.10. See
 [1.9.0a10 notes](docs/releases/1.9.0a10.md).
 
 - 1.9.0a10 (#1972, #2068, #2078, #2079, #2086; includes a9's unpublished changes.)
+
+## Stable line: 1.8.10
+
+1.8.10 is the published stable patch carrying `co linear`, `co canny`, Slack
+reads, and `environment.setting()` from the reviewed 1.8 work (#2087, #2088).
+See the [v1.8.10 GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.8.10).
+
+- 1.8.10 (#2087, #2088).
 
 ## Unpublished preview tag: 1.9.0a9
 
