@@ -277,4 +277,5 @@ def test_the_table_before_any_build_says_how_to_make_one(tmp_path):
     from connectonion.cli.main import app
     root = notebook(tmp_path)
     result = CliRunner().invoke(app, ["rem", "--root", str(root), "list", "people", "--table"])
-    assert result.exit_code == 0 and "co rem sync" in result.output
+    assert result.exit_code == 0 and "No people table yet" in result.output
+    assert result.output.rstrip().endswith(f"{root} sync")     # the Next line, spelled with this --root

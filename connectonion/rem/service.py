@@ -785,6 +785,11 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
                               with_person=with_person, include_local=not source, say=say)
         archive = _resume_archive(root, say) if isinstance(record, dict) else None
         record = {**record, "mail_archive": archive} if archive else record
+        if isinstance(record, dict):
+            # The index the table and thread views read (#2067): after everything this
+            # sync wrote, still under the lock, and reported rather than fatal.
+            from .store import refresh_safely
+            record = {**record, "store": refresh_safely(root)}
         return {**record, "tidied": tidied} if tidied and isinstance(record, dict) else record
 
 

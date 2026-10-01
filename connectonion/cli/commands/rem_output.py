@@ -315,6 +315,16 @@ def _archive_line(archive) -> str:
     return f"Mail archive: {have:,} of {archive['target']:,} bodies saved ({archive.get('phase', 'unknown')})"
 
 
+def _store_line(store) -> str:
+    """The index the table view reads (#2067): its size, or why it was not built this time."""
+    if not isinstance(store, dict):
+        return ''
+    if store.get('skipped'):
+        return f"Index: not updated ({store['skipped']}); the next sync tries again"
+    rows = store.get('rows') or {}
+    return f"Index: {rows.get('people', 0):,} people, {rows.get('messages', 0):,} messages"
+
+
 def _pages_line(pages: list, left) -> str:
     counts = {}
     for row in pages:
@@ -346,6 +356,7 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
     lines += [f"  Refused {row.get('record')}: {(row.get('errors') or ['rejected'])[0]}"[:200]
               for row in batch.get('refusals') or [] if isinstance(row, dict)]
     lines.append(_archive_line(batch.get('mail_archive')))
+    lines.append(_store_line(batch.get('store')))
     if 'maintenance' in value:
         investigation = value.get('investigation')
         if investigation:

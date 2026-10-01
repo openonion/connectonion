@@ -533,6 +533,20 @@ def _init_done(ctx, result) -> str:
         "Then keep it current: " + _next(ctx, ["start"]) + " (it asks before anything is read in the background)."])
 
 
+def _people_table(ctx, root, category, *, company, open_only, sort):
+    """`co rem list people --table`: rows from the index (#2067), most recent contact first."""
+    from ...rem.files import RemError
+    from ...rem.store import db_path, people_table
+    if category != "people":
+        raise RemError("--table goes with people")
+    if not db_path(root).is_file():
+        return ("No people table yet: it is built at the end of a map or a sync. Run "
+                + _next(ctx, ["sync"]) + " to build it."), ["sync"]
+    rows = people_table(root, company=company, open_only=open_only, sort=sort,
+                        descending=sort in ("last_contact", "first_contact", "mails", "open_threads"))
+    return rows, (["show", rows[0]["record"]] if rows else ["list", "people"])
+
+
 def make_rem_app(factory):
     rem = factory(help="co rem", no_args_is_help=False)
     base = verbatim("co rem", rem.info.cls)
@@ -990,11 +1004,20 @@ def make_rem_app(factory):
     @rem.command("list", cls=V("co rem list"))
     def list_records(ctx: typer.Context, category: str = typer.Argument(""),
                      aliases: bool = typer.Option(False, "--aliases"),
-                     review: bool = typer.Option(False, "--review")):
+                     review: bool = typer.Option(False, "--review"),
+                     table: bool = typer.Option(False, "--table", help="People as a table: company, role, email, "
+                                                "phone, last contact, mails, what is open"),
+                     company: str = typer.Option("", "--company", help="With --table: only this company"),
+                     open_only: bool = typer.Option(False, "--open", help="With --table: only people with "
+                                                    "something open"),
+                     sort: str = typer.Option("last_contact", "--sort", help="With --table: name, company, role, "
+                                              "last_contact, mails or open_threads")):
         from ...rem.files import CATEGORIES, Notebook, RemError
         from ...rem.map import needs_review
 
         def operation(root):
+            if table:
+                return _people_table(ctx, root, category, company=company, open_only=open_only, sort=sort)
             notebook = Notebook(root)
             if aliases:
                 if category not in ("", "people"):
@@ -1022,7 +1045,9 @@ def make_rem_app(factory):
                             "connected. Connect one with co auth google or co auth microsoft, then run "
                             + _next(ctx, ["init"]) + "."), ["sources"]
             return records, (["show", records[0]] if records else ["list"])
-        _handle(ctx, operation, ["list"])
+        from .rem_table import draw
+        order = "most recent contact first" if sort == "last_contact" else "by " + sort.replace("_", " ")
+        _handle(ctx, operation, ["list"], draw=lambda rows: draw(rows, order) if table else None)
 
     @rem.command("show", cls=V("co rem show"))
     def show_record(ctx: typer.Context, record: str = typer.Argument(...)):
