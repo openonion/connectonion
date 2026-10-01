@@ -8,7 +8,7 @@
 - Runner: Chrome headless, light theme, 100% zoom, top of Projects, 1440 × 900 and 390 × 844. Screenshots show the whole document.
 - Before: [desktop](before-desktop.png), [phone](before-phone.png). After: [desktop](after-desktop.png), [phone](after-phone.png).
 - Reference: the before state is the behavior under review, captured from the same invented source material. This is a data-integrity comparison, not a comparison with another product's visual style.
-- Limit: the fixture has only two projects and no investigated project content. Real sources were checked separately for aggregate counts, but no private page or screenshot is published.
+- Limit: the fixture has only two projects and no investigated project content. An installed-wheel private five-day init separately reported 3 mapped projects and 3 final project files, with 0 material-created pages; no private page or screenshot is published.
 
 ## Comparison
 
