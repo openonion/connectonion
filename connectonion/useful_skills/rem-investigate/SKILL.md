@@ -77,5 +77,9 @@ or outcome evidence, completion is unverified. One subject, one page; never
 write `agenda/`, `opportunities/` or `decisions/`. Before you reply, run
 `grep -n "not investigated yet" <candidate>`: after this investigation that
 phrase is false, so every line it prints becomes the answer or a bare `Unknown`,
-and you run it again until it prints nothing (9 of 98 real pages kept it). End
+and you run it again until it prints nothing (9 of 98 real pages kept it). Then
+read the page once more for private life, the user's own included (a trip, a
+relative, a pet, a hobby, an appointment, money): each such sentence must end
+with `[personal]` or `[sensitive]`; add any that is missing. A real run labelled
+a dental reminder but not a relative's travel plans. End
 with a short reply: the files you read, and what stayed open.
