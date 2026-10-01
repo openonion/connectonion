@@ -164,6 +164,7 @@ def test_reader_preserves_code_and_nested_lists(reader_page):
 
 def test_private_sentences_can_be_hidden_and_restored(reader_page):
     page, _, _ = reader_page
+    page.locator(".deep-note > summary").click()
     private = page.locator(".note .private")
     assert private.count() == 1 and private.is_visible()
     assert "family plan" in private.inner_text()
