@@ -82,14 +82,16 @@ Where each column comes from:
   (count = links; no date yet — #2068's project people will give one).
 - **runs**: `.state/runs/*.json`, tokens from `usage`.
 
-### Mail threads are approximate
+### Mail threads: the provider's, else approximate
 
-Neither the inventory nor the body snapshot records the provider's thread id.
-A mail's `thread` is `mail:` plus a hash of its provider, its subject without
-`Re:`/`Fwd:` prefixes, and the counterparts on From and To other than the
-owner. A reply and its original land together; two unrelated mails titled
-"Hello" between different people do not. Recording `threadId` at inventory
-time is the fix (open question below).
+From this step the map's listing keeps the provider's conversation (Gmail
+`threadId`, Graph `conversationId`) and the inventory records it as
+`thread`; such a mail's thread is `mail:<provider>:<thread>`. An inventory
+written before has no thread id, so its mail's `thread` is `mail:` plus a
+hash of its provider, its subject without `Re:`/`Fwd:` prefixes, and the
+counterparts on From and To other than the owner: a reply and its original
+land together, and two unrelated mails titled "Hello" between different
+people do not. The next map replaces it with the provider's.
 
 ## How it is built
 
@@ -167,10 +169,16 @@ one by one.
 - No chat messages (WhatsApp, Feishu) yet: they have no archive to index.
 - No backup: the file is rebuilt, not restored.
 
-## Open questions
+## Decisions (owner-delegated defaults, 2026-10-02)
 
-1. Record the provider's thread id in the inventory so mail threads are exact?
-2. Should the store keep a person's address → record table, so a thread view
-   names senders by page rather than address?
-3. When JSON goes, does `map.json` become rows in the store, or stay as the
-   map's run report?
+1. **Provider thread ids: yes, done in this step.** The map's mail listing
+   now keeps Gmail's `threadId` and Graph's `conversationId`, the inventory
+   records it as `thread`, and the index uses `mail:<provider>:<thread>` when
+   it is there. Mail listed before this change keeps the subject hash until
+   the next map lists it again.
+2. **An address → page table: yes, next step.** A thread view will name
+   senders by their page, not their address.
+3. **`map.json` when the JSON goes: undecided** until then; it stays as is.
+4. **Person–project edges: from #2068's structured project facts** (the
+   People field) once that lands; page links until then.
+5. **All-or-nothing `pages` rebuild: fine for now** (0.34 s on 381 pages).

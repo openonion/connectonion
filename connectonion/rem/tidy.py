@@ -315,19 +315,31 @@ def _same_skill(one: str, other: str) -> bool:
 
 
 def _lines(notebook: Notebook) -> list[dict]:
-    """Old `web: not searched` lines and model-written coverage citations, removed line by line."""
+    """Lines about the run rather than the subject, and model-written coverage citations, removed line by line.
+
+    `web: not searched` at first; then any bullet `page_review.TOOL_TEXT`
+    recognises above Sources, such as Tamara's "The current collector reports
+    50 matching Outlook messages" (#2058). A contact field keeps its label."""
+    from .page_review import CONTACT_LINE, TOOL_TEXT
     removed = []
     for record in notebook.list():
         text = notebook.read(record)
-        if "web: not searched" not in text and "investigation:coverage" not in text:
+        head = text.partition("\n## Sources\n")[0]
+        if "investigation:coverage" not in text and not any(
+                TOOL_TEXT.search(line) for line in head.split("\n") if line.lstrip().startswith("- ")):
             continue
         keys = [match[1] for match in map(COVERAGE.match, text.split("\n"))
                 if match and RUNNER_COVERAGE not in match[0]]
-        kept, gone = [], []
+        kept, gone, above = [], [], True
         for line in text.split("\n"):
+            above = above and line != "## Sources"
             match = COVERAGE.match(line)
-            if WEB_LINE.match(line) or (match and match[1] in keys):
+            run_text = above and line.lstrip().startswith("- ") and TOOL_TEXT.search(line)
+            if WEB_LINE.match(line) or (match and match[1] in keys) or run_text:
                 gone.append(line)
+                contact = CONTACT_LINE.match(line) if run_text and record.startswith("people/") else None
+                if contact:
+                    kept.append(f"- {contact[1]}: Unknown")
                 continue
             for key in keys:
                 line = re.sub(rf" ?\[{key}\](?!\()", "", line)

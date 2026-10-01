@@ -91,7 +91,7 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
         # A drawing may decline a result of another shape (sync's dry run) by
         # returning None; a failed result it draws ends on its Next line too.
         from .rem_output import printable
-        rem_look.say(printable(drawn))
+        rem_look.say(printable(drawn), hanging=True)
         rem_look.say(next_line(command))
     else:
         path, parent = [ctx.info_name or "status"], ctx.parent
@@ -242,8 +242,8 @@ def _logged(root, record, phase, call):
                    instructions_chars=result.get("instructions_chars") or {})
         _WRITTEN.append(record)
         # Said, not left to the record: an accepted page had no outcome line (#2044).
-        rem_look.line(f"Outcome: {record} accepted, {len(run['changed'])} page"
-                      f"{'' if len(run['changed']) == 1 else 's'} changed", err=True)
+        rem_look.step(f"Updated {record}: accepted, {len(run['changed'])} page"
+                      f"{'' if len(run['changed']) == 1 else 's'} changed")
         return result
     except BaseException as error:
         run.update(outcome=("refused" if isinstance(error, RunFailed) and "rejected" in str(error) else
@@ -710,7 +710,8 @@ def make_rem_app(factory):
             if not ctx.obj["json"]:
                 # The map's summary and your page's facts first: value before any spending.
                 text = render(result, "init")
-                rem_look.say(rem_look.result(text), plain=text)
+                typer.echo(err=True)   # the stage lines above are stderr; a gap, then the map
+                rem_look.say(rem_look.result(text), plain=text, hanging=True)
                 typer.echo()
             say = ((lambda text: None) if ctx.obj["json"] else
                    lambda text: rem_look.say(rem_look.highlight(text, counts=True), plain=text))
@@ -1162,7 +1163,7 @@ def make_rem_app(factory):
                 try:
                     record = run_sync(root, source=source, with_person=with_person, dry_run=dry_run,
                                       scheduled=scheduled, all_pending=all_pending, on_batch=progress,
-                                      say=lambda text: rem_look.line(text, err=True))
+                                      say=lambda text: rem_look.step(text))
                 except KeyboardInterrupt:
                     # Ctrl-C exited 130 with nothing said; the finished batches are
                     # kept, and the interrupted one reads again next time.
@@ -1188,7 +1189,7 @@ def make_rem_app(factory):
             # The whole update: new material first, then at most one unfinished page.
             from ...rem.daily import run_daily
             result = run_daily(root, days=days, scheduled=scheduled,
-                               say=lambda text: rem_look.line(text, err=True))
+                               say=lambda text: rem_look.step(text))
             if result is None:
                 return {"due": False, "ran": False}, ["status"]
             if result["outcome"] == "partial":
@@ -1197,6 +1198,8 @@ def make_rem_app(factory):
         from .rem_output import sync_summary
 
         def draw(value):
+            # The page lines above are stderr; a gap, then the summary.
+            typer.echo(err=True)
             return sync_summary(value, lambda arguments: _next(ctx, arguments))
         _handle(ctx, operation, ["logs"], draw=draw)
 
@@ -1410,11 +1413,9 @@ def make_rem_app(factory):
                 slot = status(root).get("next_run")
                 check("schedule", slot is not None, f"next run {slot}" if slot else "not installed",
                       rem_fix=["start"])
-            if not ctx.obj["json"]:
-                checks = [f"{'ok ' if row['ok'] else 'NO '} {row['check']}: {row['detail']}"
-                          + ("" if row["ok"] else f" -> {row['fix']}") for row in checks]
             return checks, (rem_fixes[0] if rem_fixes else ["status"])
-        _handle(ctx, operation, ["config"])
+        from .rem_output import doctor_board
+        _handle(ctx, operation, ["config"], draw=doctor_board)
 
     # --------------------------------------------------------------- Advanced
 

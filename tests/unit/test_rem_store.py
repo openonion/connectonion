@@ -272,6 +272,69 @@ def test_co_rem_list_people_table_prints_the_crm_columns(tmp_path):
     assert data["data"][0]["record"] == "people/ody.md" and data["data"][0]["company"] == "Acme"
 
 
+def test_the_provider_thread_id_reaches_the_inventory(monkeypatch):
+    """Gmail's threadId and Graph's conversationId, kept from the listing on (owner's decision, #2067)."""
+    from connectonion.rem.source_inventory import SourceInventory
+    from connectonion.useful_tools.gmail import Gmail
+    from connectonion.useful_tools.outlook import Outlook
+
+    class Call:
+        def __init__(self, result): self.result = result
+        def execute(self, num_retries=0): return self.result
+
+    class Messages:
+        def list(self, **kw): return Call({"messages": [{"id": "a", "threadId": "t-1"}]})
+        def get(self, **kw):
+            return Call({"id": kw["id"], "snippet": "", "labelIds": [], "payload": {"headers": [
+                {"name": "From", "value": "a@x.y"}, {"name": "Subject", "value": "s"},
+                {"name": "Date", "value": "Thu, 10 Sep 2026 10:00:00 +0000"}]}})
+
+    class Service:
+        def users(self): return type("Users", (), {"messages": lambda self: Messages()})()
+    gmail = Gmail.__new__(Gmail)
+    gmail._get_service = lambda: Service()
+    assert gmail.list_between("2026-09-01T00:00:00+00:00", "2026-09-20T00:00:00+00:00")[0]["thread_id"] == "t-1"
+    outlook = Outlook.__new__(Outlook)
+    message = {"id": "1", "conversationId": "c-1", "from": {"emailAddress": {"address": "a@x.y", "name": ""}},
+               "toRecipients": [], "ccRecipients": [], "subject": "s", "receivedDateTime": "2026-09-10T00:00:00Z",
+               "bodyPreview": "", "isRead": True}
+    monkeypatch.setattr(outlook, "_request", lambda *a, **k: {"value": [message]}, raising=False)
+    row = outlook.list_between("2026-09-01T00:00:00+00:00", "2026-09-20T00:00:00+00:00")[0]
+    assert row["thread_id"] == "c-1"
+    inventory = SourceInventory.__new__(SourceInventory)
+    inventory.records = []
+    inventory.mail("outlook", row)
+    assert inventory.records[0]["thread"] == "c-1"
+
+
+def test_a_provider_thread_id_wins_over_the_subject(tmp_path):
+    from connectonion.rem import store
+    root = notebook(tmp_path)
+    path = state_path(root, "source-inventory.jsonl")
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    rows[0]["thread"] = rows[3]["thread"] = "T9"      # m1 (Ody) and m4 (Tamara) are one provider thread
+    _jsonl(path, rows)
+    store.refresh(root)
+    assert [m["id"] for m in store.thread(root, "mail:gmail:T9")] == ["gmail:m4", "gmail:m1"]
+    contract = [t["thread"] for t in store.threads(root, "people/ody.md")]
+    assert "mail:gmail:T9" in contract and len(contract) == 2   # m2, m3 have no id yet: still the subject hash
+
+
+def test_the_sync_summary_says_the_index_in_the_status_layout():
+    from rich.text import Text
+    from connectonion.cli.commands.rem_look import COLUMN
+    from connectonion.cli.commands.rem_output import sync_summary
+
+    def plain(store):
+        drawn = sync_summary({"items": 2, "changed": [], "outcome": "completed", "store": store})
+        return [line for line in Text.from_markup(drawn).plain.splitlines() if "Index" in line or "→" in line]
+    built = plain({"rebuilt": ["pages"], "rows": {"people": 330, "messages": 4057}})
+    assert built == ["Index" + " " * (COLUMN - 5) + "330 people · 4,057 messages"]
+    skipped = plain({"skipped": "OperationalError: disk I/O error"})
+    assert skipped[0].startswith("Index" + " " * (COLUMN - 5) + "✗ not updated: OperationalError")
+    assert skipped[1] == " " * COLUMN + "→ co rem sync"
+
+
 def test_the_table_before_any_build_says_how_to_make_one(tmp_path):
     from typer.testing import CliRunner
     from connectonion.cli.main import app

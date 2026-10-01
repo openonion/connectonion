@@ -44,6 +44,19 @@ THEME = Theme({
     "co.heading": "bold underline",
     "co.ok": "green",
     "co.muted": "dim",
+    # A dashboard's section label (`Today`, `Mailboxes`): bold, not underlined,
+    # so the one underlined heading is the title (1.9.0a9).
+    "co.label": "bold",
+    # Rich's own progress colours were pink, green and yellow on one line; a
+    # bar is the accent (the green of a finished state) on a dim track, its
+    # count bold like every count, its elapsed time dim (1.9.0a9).
+    "bar.complete": "green",
+    "bar.finished": "green",
+    "bar.pulse": "green",
+    "bar.back": "dim",
+    "progress.spinner": "green",
+    "progress.download": "bold",
+    "progress.elapsed": "dim",
 })
 
 
@@ -86,6 +99,10 @@ def ok(text: str) -> str:
 
 def muted(text: str) -> str:
     return _wrap("co.muted", text)
+
+
+def label(text: str) -> str:
+    return _wrap("co.label", text)
 
 
 def next_line(cmd: str) -> str:
@@ -141,5 +158,5 @@ def progress(out: Console = None) -> Progress:
     # Off a terminal Rich still prints the last frame when the bar stops (an
     # empty line when disabled), so the bar gets a console that prints nothing.
     shown = out if out.is_terminal else Console(quiet=True)
-    return Progress(SpinnerColumn(), TextColumn("{task.description}"), BarColumn(), MofNCompleteColumn(),
+    return Progress(SpinnerColumn(), TextColumn("{task.description}"), BarColumn(bar_width=24), MofNCompleteColumn(),
                     TimeElapsedColumn(), console=shown, transient=True)

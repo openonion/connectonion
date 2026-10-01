@@ -1,5 +1,7 @@
 """Tidying a notebook an older version made (#1999, #2008): shaped on the owner's copy."""
 
+import re
+
 from connectonion.rem.config import prepare
 from connectonion.rem.files import Notebook, read_json, state_path, write_json
 from connectonion.rem.tidy import tidy
@@ -58,6 +60,28 @@ def test_a_link_to_an_archived_page_keeps_its_name_and_loses_the_dead_link(tmp_p
     text = notebook.read("orgs/apple.md")
     assert "- Apple Support; [Mia Tan](../people/mia.md)" in text      # the live link stays
     assert done["unlinked archived page"] == ["orgs/apple.md"]
+    assert tidy(tmp_path) == {}
+
+
+def test_lines_about_the_run_leave_pages_already_written(tmp_path):
+    """#2058: Tamara's History opened with "The current collector reports 50
+    matching Outlook messages with 50 bodies read"."""
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    _person(notebook, "people/tamara.md", "Tamara", "t@unsw.edu.au", investigated=True)
+    page = notebook.read("people/tamara.md")
+    page = re.sub(r"^- Phone: .*$", "- Phone: not found; web not searched because co rem runs are offline.",
+                  page, count=1, flags=re.M)
+    page = page.replace("## History\n", "## History\n- The current collector reports 50 matching Outlook "
+                        "messages with 50 bodies read. [1]\n- 2026-09-24: agreed the pilot. [1]\n", 1)
+    notebook.write("people/tamara.md", page)
+
+    done = tidy(tmp_path)
+
+    text = notebook.read("people/tamara.md")
+    assert done["removed line"] == ["people/tamara.md"]
+    assert "collector" not in text and "- Phone: Unknown" in text
+    assert "- 2026-09-24: agreed the pilot. [1]" in text
     assert tidy(tmp_path) == {}
 
 

@@ -50,7 +50,10 @@ class StageProgress:
         if stage != self.stage:
             self._finish()
             self.stage = stage
-        self.line = "co rem init: " + text
+        # A finished stage is ✓ and what it found, in a pipe as in a terminal
+        # (1.9.0a9); "co rem init: " before every line was the program's name
+        # said six times over its own output.
+        self.line = "✓ " + text
         if self.tty and not self.quiet:
             self._draw(text, *self._size(message, count))
 
@@ -103,8 +106,7 @@ class StageProgress:
             from .rem_look import highlight
             self.bar.remove_task(self.task)
             self.task = None
-            prefix, _, text = self.line.partition(": ")
-            self.bar.console.print(style.muted(prefix + ":") + " " + highlight(text, counts=True), emoji=False)
+            self.bar.console.print(style.ok(self.line[:1]) + " " + highlight(self.line[2:], counts=True), emoji=False)
 
     def close(self):
         self._finish()
@@ -122,7 +124,7 @@ class Turn:
         self.label, self.stream = label, stream or sys.stderr
         self.bar = None
         if getattr(self.stream, "isatty", lambda: False)():
-            self.bar = Progress(SpinnerColumn(style="co.command"), TextColumn("{task.description}"),
+            self.bar = Progress(SpinnerColumn(), TextColumn("{task.description}"),
                                 TimeElapsedColumn(), console=_terminal(self.stream), transient=True)
 
     def __enter__(self):
@@ -205,40 +207,52 @@ def _lines(value, indent=0, raw_keys=False):
     return [pad + _scalar(value)]
 
 
+def _init_text(value: dict, failed: bool) -> str:
+    """init's map in status's layout (1.9.0a9): a label in the margin, counts right-aligned at one column.
+
+    The complete map is persisted and available through --json. Printing every
+    contact, subject and installed skill made a normal first run thousands of
+    lines long and buried the next action.
+    """
+    from .rem_look import BROKEN, COLUMN
+    skills = value.get('skills') or {}
+    skill_count = len(skills.get('skills') or []) if isinstance(skills, dict) else len(skills)
+    skill_names = (len({str(row.get('name', '')).casefold() for row in skills.get('skills') or []})
+                   if isinstance(skills, dict) else skill_count)
+    skills_created = len(skills.get('created') or []) if isinstance(skills, dict) else 0
+    counts = [('People', len(value.get('people') or []), ''),
+              ('Organizations', len(value.get('orgs') or []), ''),
+              ('Projects', len(value.get('projects') or []), ''),
+              ('Skills', skill_names, f" names · {skill_count:,} installed copies"),
+              ('New pages', len(value.get('created') or []) + skills_created, '')]
+    wide = max(len(f"{number:,}") for _, number, _ in counts)
+
+    def labelled(label, text):
+        return label + ' ' * (COLUMN - len(label)) + text
+    title = 'co rem init' + (' — needs attention' if failed else
+                             f" · {value.get('phase', 'unknown')} · {value.get('days', '?')} days")
+    lines = [title, '', *(labelled(label, f"{number:,}".rjust(wide) + tail) for label, number, tail in counts),
+             labelled('Detailed map', '.state/map.json in this notebook, or rerun with --json')]
+    for error in value.get('errors') or []:
+        source = str(error.get('source', 'source'))
+        lines.append(f"  {BROKEN} {source}" + ' ' * max(1, COLUMN - 4 - len(source)) + str(error.get('error', 'unavailable')))
+    owner = value.get('owner_page')
+    if owner:
+        # The one page with value before any model runs (#1943): print it.
+        lines += ['', labelled('Your page', owner['title']),
+                  *(' ' * COLUMN + fact for fact in owner['facts']), ' ' * COLUMN + owner['path']]
+    lines += [*([''] if value.get('confirm_own_addresses') else []), *(value.get('confirm_own_addresses') or []),
+              *(value.get('tips') or []), *([value['people_setup']] if value.get('people_setup') else []),
+              *([value['recovery']] if value.get('recovery') else [])]
+    return '\n'.join(lines)
+
+
 def render(value, command: str, *, failed: bool = False) -> str:
     """Render readable results without interpreting source text as terminal markup."""
     if isinstance(value, str):
         text = ('Error: ' if failed else '') + value
     elif command == 'init' and isinstance(value, dict):
-        # The complete map is persisted and available through --json. Printing
-        # every contact, subject and installed skill made a normal first run
-        # thousands of lines long and buried the next action.
-        title = 'co rem init' + (' — needs attention' if failed else '')
-        skills = value.get('skills') or {}
-        skill_count = len(skills.get('skills') or []) if isinstance(skills, dict) else len(skills)
-        skill_names = (len({str(row.get('name', '')).casefold() for row in skills.get('skills') or []})
-                       if isinstance(skills, dict) else skill_count)
-        skills_created = len(skills.get('created') or []) if isinstance(skills, dict) else 0
-        text = '\n'.join([
-            title, '',
-            f"Map: {value.get('phase', 'unknown')} · {value.get('days', '?')} days",
-            *(f"{label}: {len(value.get(kind) or [])}"
-              for kind, label in (('people', 'People'), ('orgs', 'Organizations'),
-                                  ('projects', 'Projects'))),
-            f"Skills: {skill_names} names ({skill_count} installed copies)",
-            f"New pages: {len(value.get('created') or []) + skills_created}",
-            'Detailed map: .state/map.json inside this co rem root (or rerun with --json).',
-            *(f"{error.get('source', 'source')}: {error.get('error', 'unavailable')}"
-              for error in value.get('errors') or []),
-            # The one page with value before any model runs (#1943): print it.
-            *(['', f"Your page: {owner['title']}", *(f"  {fact}" for fact in owner['facts']),
-               f"  {owner['path']}"] if (owner := value.get('owner_page')) else []),
-            *([''] if value.get('confirm_own_addresses') else []),
-            *(value.get('confirm_own_addresses') or []),
-            *(value.get('tips') or []),
-            *([value['people_setup']] if value.get('people_setup') else []),
-            *([value['recovery']] if value.get('recovery') else []),
-        ])
+        text = _init_text(value, failed)
     else:
         title = 'co rem ' + ('status' if command == 'rem' else command.replace('-', ' '))
         if command in ('status', 'rem') and isinstance(value, dict):
@@ -305,24 +319,27 @@ def _tokens(*usages) -> str:
                 total[key] = total.get(key, 0) + usage[key]
     if not total:
         return ''
-    return f"Tokens: {total.get('input_tokens', 0):,} in, {total.get('output_tokens', 0):,} out"
+    from .rem_look import compact
+    return f"{compact(total.get('input_tokens', 0))} in · {compact(total.get('output_tokens', 0))} out"
 
 
 def _archive_line(archive) -> str:
     if not isinstance(archive, dict) or 'target' not in archive:
         return ''
     have = archive.get('saved', 0) + archive.get('reused', 0)
-    return f"Mail archive: {have:,} of {archive['target']:,} bodies saved ({archive.get('phase', 'unknown')})"
+    return f"{have:,} of {archive['target']:,} mail bodies saved · {archive.get('phase', 'unknown')}"
 
 
-def _store_line(store) -> str:
-    """The index the table view reads (#2067): its size, or why it was not built this time."""
+def _store_lines(store, said, spell) -> list:
+    """The index the table view reads (#2067), in status's layout: its size, or ✗ and what rebuilds it."""
+    from . import rem_look
     if not isinstance(store, dict):
-        return ''
+        return []
     if store.get('skipped'):
-        return f"Index: not updated ({store['skipped']}); the next sync tries again"
+        return [rem_look.section('Index', style.warn(rem_look.BROKEN) + ' ' + said(f"not updated: {store['skipped']}")),
+                rem_look.follow(style.command(spell(['sync'])))]
     rows = store.get('rows') or {}
-    return f"Index: {rows.get('people', 0):,} people, {rows.get('messages', 0):,} messages"
+    return [rem_look.section('Index', said(f"{rows.get('people', 0):,} people · {rows.get('messages', 0):,} messages"))]
 
 
 def _pages_line(pages: list, left) -> str:
@@ -331,7 +348,7 @@ def _pages_line(pages: list, left) -> str:
         counts[row.get('outcome')] = counts.get(row.get('outcome'), 0) + 1
     words = [f"{counts.pop('accepted', 0)} updated"]
     words += [f"{number} {name.replace('_', ' ')}" for name, number in counts.items()]
-    return "Pages: " + ", ".join(words) + (f"; {left} left" if left is not None else "")
+    return " · ".join(words) + (f" · {left} left" if left is not None else "")
 
 
 def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments)):
@@ -339,37 +356,85 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
 
     It ended in a ~200-line dump: page paths as capitalised keys, the model's
     report cut mid-sentence, "Seconds: Unknown". Each page's outcome is said as
-    it finishes; this is the total and where the full record is. `spell`
-    writes a command as this user types it. Returns None
-    for a result of another shape (a dry run, a slot not due), which `render` prints.
+    it finishes; this is the total and where the full record is, in status's
+    layout (1.9.0a9): a label in the margin, the value at one column, a refusal
+    marked ✗ under the material it refused. `spell` writes a command as this
+    user types it. Returns None for a result of another shape (a dry run, a
+    slot not due), which `render` prints.
     """
     if not isinstance(value, dict) or not isinstance(value.get('maintenance', value), dict):
         return None
     if 'maintenance' not in value and 'items' not in value:
         return None
+    from . import rem_look
     from .rem_look import highlight
+
+    def said(text):
+        return highlight(printable(text), counts=True)
     batch = value.get('maintenance') if 'maintenance' in value else value
     run = value.get('run') or {}
     changed = len(batch.get('changed') or [])
-    lines = [f"New material: {batch.get('items', 0)} items, {changed} page{'' if changed == 1 else 's'} changed "
-             f"({str(batch.get('outcome', 'unknown')).replace('_', ' ')})"]
-    lines += [f"  Refused {row.get('record')}: {(row.get('errors') or ['rejected'])[0]}"[:200]
+    material = f"{batch.get('items', 0)} items · {changed} page{'' if changed == 1 else 's'} changed"
+    if batch.get('outcome') not in ('completed', None):
+        material += f" · {str(batch.get('outcome')).replace('_', ' ')}"
+    lines = [rem_look.section('New material', said(material))]
+    lines += [rem_look.row('Refused', said(f"{row.get('record')}: {(row.get('errors') or ['rejected'])[0]}"[:160]),
+                           style.warn(rem_look.BROKEN))
               for row in batch.get('refusals') or [] if isinstance(row, dict)]
-    lines.append(_archive_line(batch.get('mail_archive')))
-    lines.append(_store_line(batch.get('store')))
     if 'maintenance' in value:
         investigation = value.get('investigation')
         if investigation:
-            lines.append(_pages_line(investigation.get('pages') or [], investigation.get('left')))
+            pages = _pages_line(investigation.get('pages') or [], investigation.get('left'))
         elif value.get('outcome') == 'budget_exhausted':
-            lines.append("Pages: none started; today's calls are spent")
+            pages = "none started; today's calls are spent"
         else:
             why = value.get('reason') or run.get('reason') or ''
-            lines.append(f"Pages: none started; {NO_PAGE.get(why, why or 'see the log')}")
-    lines.append(_tokens(batch.get('usage'), run.get('usage')))
+            pages = f"none started; {NO_PAGE.get(why, why or 'see the log')}"
+        lines.append(rem_look.section('Pages', said(pages)))
+    archive = _archive_line(batch.get('mail_archive'))
+    if archive:
+        lines.append(rem_look.section('Mail archive', said(archive) + ' ' + style.muted(rem_look.RESUMES)))
+    lines += _store_lines(batch.get('store'), said, spell)
+    tokens = _tokens(batch.get('usage'), run.get('usage'))
+    if tokens:
+        lines.append(rem_look.section('Tokens', said(tokens)))
     record = run.get('id') or batch.get('id')
     if record:
-        lines.append(f"Full record: {spell(['logs', record])}")
+        lines.append(rem_look.section('Full record', style.command(spell(['logs', record]))))
+    outcome = str(value.get('outcome') or batch.get('outcome') or 'unknown').replace('_', ' ')
     title = style.heading('co rem sync') + (' — ' + style.error('needs attention')
-                                            if value.get('outcome') in ('partial', 'failed') else '')
-    return "\n".join([title, "", *(highlight(printable(line), counts=True) for line in lines if line)])
+                                            if value.get('outcome') in ('partial', 'failed') else
+                                            ' · ' + highlight(outcome))
+    return "\n".join([title, "", *lines, ""])
+
+
+# What a check is called on doctor's page, where its JSON name is too long for the column.
+DOCTOR_NAMES = {'spreadsheet support (co rem extra)': 'spreadsheet support'}
+
+
+def doctor_board(checks: list) -> str:
+    """`co rem doctor` as one check a line: ✓ or ✗, the check, what is true, and a fix under a failure.
+
+    It printed `ok  co CLI: /Users/…` and `NO  schedule: not installed -> co rem
+    start`: a fix at the end of a line that an 80-column terminal had already
+    wrapped. Now the title counts what needs fixing and each fix is on the line
+    under its check, where the eye already is (1.9.0a9).
+    """
+    from pathlib import Path
+
+    from . import rem_look
+    from .rem_look import highlight
+    home = str(Path.home())
+    names = [DOCTOR_NAMES.get(row['check'], row['check']) for row in checks]
+    width = min(26, 4 + max((len(name) for name in names), default=0) + 2)
+    failed = [row for row in checks if not row['ok']]
+    verdict = (style.ok('every check passes') if not failed else
+               style.warn(f"{len(failed)} of {len(checks)} checks need a fix"))
+    lines = [style.heading('co rem doctor') + ' · ' + verdict, '']
+    for name, row in zip(names, checks):
+        mark = style.ok(rem_look.FINE) if row['ok'] else style.warn(rem_look.BROKEN)
+        detail = printable(str(row['detail'])).replace(home, '~')
+        lines.append(f"  {mark} {name}" + ' ' * max(1, width - 4 - len(name)) + highlight(detail))
+        if not row['ok'] and row.get('fix'):
+            lines.append(' ' * width + style.muted(rem_look.FIX) + ' ' + style.command(row['fix']))
+    return '\n'.join([*lines, ''])

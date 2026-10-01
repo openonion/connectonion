@@ -40,8 +40,10 @@ def _mail_row(root: Path, row: dict, owner: set) -> dict:
     # Who the conversation is with: From and To, never the owner, never Cc.
     counterparts = sorted(({sender, *to} - owner) - {""})
     path = message_path(root, provider, message_id)
-    return {"id": f"{provider}:{message_id}", "source": provider,
-            "thread": "mail:" + thread_key(provider, subject_key(row.get("subject", "")), ",".join(counterparts)),
+    # The provider's thread when the inventory recorded it; before that, subject and counterparts.
+    thread = (f"mail:{provider}:{row['thread']}" if row.get("thread") else
+              "mail:" + thread_key(provider, subject_key(row.get("subject", "")), ",".join(counterparts)))
+    return {"id": f"{provider}:{message_id}", "source": provider, "thread": thread,
             "sender": sender, "recipients": dumps(to + cc), "time": utc(row.get("date", "")),
             "subject": row.get("subject", ""), "body_line": None,
             "body_path": str(path.relative_to(root / ".state")) if path.is_file() else None}

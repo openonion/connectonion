@@ -540,8 +540,8 @@ def test_init_builds_all_maps_without_model_or_investigation(tmp_path, monkeypat
     plain = invoke(tmp_path, 'init', '--skills-dir', str(empty))
     assert plain.exit_code == 0, plain.output
     # One finished line per stage (#1943), not every step.
-    assert 'co rem init: mapped installed skills: 0' in plain.output
-    assert 'co rem init: mapped projects: 0' in plain.output
+    assert '✓ mapped installed skills: 0' in plain.output
+    assert '✓ mapped projects: 0' in plain.output
 
 
 def test_init_archives_connected_mail_body_for_later_investigation(tmp_path, monkeypatch):
@@ -619,8 +619,10 @@ def test_init_human_output_summarizes_map_instead_of_dumping_contacts():
                          'created': ['one', 'two']},
               'created': ['three'], 'investigation': 'not started'}
     text = render(report, 'init')
-    assert 'People: 500' in text and 'Projects: 3' in text
-    assert 'Skills: 2 names (400 installed copies)' in text and 'New pages: 3' in text
+    # 1.9.0a9: status's layout, counts right-aligned at one column.
+    assert text.splitlines()[0] == 'co rem init · mapped · 5 days'
+    assert 'People           500' in text and 'Projects           3' in text
+    assert 'Skills             2 names · 400 installed copies' in text and 'New pages          3' in text
     assert 'user0@example.org' not in text
     assert len(text.splitlines()) < 20
 
@@ -644,8 +646,8 @@ def test_init_asks_whether_a_write_only_address_is_the_owner_s_own(tmp_path, mon
 
     plain = invoke(root, 'init', '--skills-dir', str(empty))
     assert plain.exit_code == 0, plain.output
-    assert 'co rem init: mapped installed skills' in plain.output
-    assert 'co rem init: mapped projects' in plain.output
+    assert '✓ mapped installed skills' in plain.output
+    assert '✓ mapped projects' in plain.output
     assert 'aaronplus1996@gmail.com' in Text.from_ansi(plain.output).plain
 
 
@@ -733,20 +735,29 @@ def _notebook_with_a_run(root, monkeypatch):
 
 
 def test_status_is_a_dashboard_of_the_notebook_not_a_dump_of_fields(tmp_path, monkeypatch):
-    """#1996: one header line, the notebook with skills, today, mailboxes with fixes, the last run in one line."""
+    """#1996: one header line, the notebook with skills, today, mailboxes with fixes, the last run.
+
+    1.9.0a9 laid it out: today first, every value at one column, counts in a
+    meter and right-aligned, a fix on the line under what it fixes."""
     _notebook_with_a_run(tmp_path, monkeypatch)
     lines = invoke(tmp_path, 'status').output.splitlines()
-    assert lines[0].startswith('co rem status · not started') and 'co rem start' in lines[0]
-    assert '  People         1 written of 2 mapped' in lines
-    assert '  Skills         0 written of 3 mapped' in lines
-    assert any(line.startswith('  To write next  1 people page not written: co rem --root') for line in lines)
+    assert lines[0] == 'co rem status · not started'
+    assert lines[1] == '  run co rem start to authorize sources and begin'
     # A manual run records no runner attempts, and its tokens count all the same (#2008).
-    assert '  1 run · 1 page changed · 91,234 tokens in, 812 out' in lines
-    assert '  ✓ Gmail    read by the daily round' in lines
-    assert '  ✗ Outlook  not connected — co auth microsoft' in lines
-    last = [line for line in lines if line.startswith('Last run')]
-    assert len(last) == 1 and 'investigate people/alice.md · completed · 1 page changed · 91,234 tokens in' in last[0]
+    today = lines.index('Today            1 page changed · 3 items read · 1 run')
+    assert lines[today + 1] == '                 91k tokens in · 812 out'
+    assert today < lines.index(next(line for line in lines if line.startswith('Notebook')))
+    assert '  People         ●●●●●○○○○○  1 of 2   50%' in lines
+    assert '  Skills         ○○○○○○○○○○  0 of 3    0%' in lines
+    write = lines.index('  To write next  1 people page not written')
+    assert lines[write + 1].startswith('                 → co rem --root ')
+    assert '  ✓ Gmail        read by the daily round' in lines
+    outlook = lines.index('  ✗ Outlook      not connected')
+    assert lines[outlook + 1] == '                 → co auth microsoft'
+    last = lines.index('Last run         investigate people/alice.md · completed')
+    assert lines[last + 1].endswith(' · 1 page changed · 91k tokens in')
     assert lines[-1] == f'Next: co rem --root {tmp_path} investigate people'  # the first thing to write (#2008)
+    assert [line for line in lines if len(line) > 80 and not line.lstrip().startswith(('→', 'Next:', 'Notebook'))] == []
     for internal in ('Known attempts', 'Schedule times', 'Worker', 'Runner attempts today', 'Usage by stage'):
         assert internal not in '\n'.join(lines), internal
 
@@ -1141,8 +1152,10 @@ def test_doctor_says_whether_spreadsheet_support_is_installed(tmp_path, monkeypa
     monkeypatch.setattr(importlib.util, 'find_spec',
                         lambda name, *a: None if name == 'openpyxl' else real(name, *a))
     result = invoke(tmp_path, 'doctor')
-    line = next(line for line in result.output.splitlines() if 'spreadsheet' in line)
-    assert line.startswith('NO') and "connectonion[rem]" in line
+    lines = result.output.splitlines()
+    at = next(n for n, line in enumerate(lines) if 'spreadsheet' in line)
+    # 1.9.0a9: ✗ and the check on its line, the fix on the line under it.
+    assert lines[at].startswith('  ✗ spreadsheet support') and "connectonion[rem]" in lines[at + 1]
 
 
 def test_a_batch_with_nothing_to_warn_about_prints_no_empty_warning_line():
@@ -1168,8 +1181,11 @@ def test_doctor_says_a_connected_mailbox_the_round_does_not_read(tmp_path, monke
     prepare(tmp_path)
     monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: kind == 'gmail')
     result = invoke(tmp_path, 'doctor')
-    line = next(line for line in result.output.splitlines() if 'mailbox gmail' in line)
-    assert line.startswith('NO') and 'not read by the daily round' in line and 'sources add gmail' in line
+    lines = result.output.splitlines()
+    at = next(n for n, line in enumerate(lines) if 'mailbox gmail' in line)
+    assert lines[at].startswith('  ✗') and 'not read by the daily round' in lines[at]
+    assert lines[at + 1].lstrip().startswith('→ co rem') and lines[at + 1].endswith('sources add gmail')
+    assert lines[0].startswith('co rem doctor · ') and 'need a fix' in lines[0]
 
 
 def test_doctor_and_status_name_a_stalled_init_archive_and_the_command_that_resumes_it(tmp_path, monkeypatch):
@@ -1184,10 +1200,12 @@ def test_doctor_and_status_name_a_stalled_init_archive_and_the_command_that_resu
     write_json(state_path(tmp_path, "mail/archive.json"), {**manifest, "phase": "running"})
     monkeypatch.setattr('connectonion.rem.service.now', lambda: T0 + timedelta(hours=20))
     doctor = invoke(tmp_path, 'doctor')
-    line = next(line for line in doctor.output.splitlines() if 'init mail archive' in line)
-    assert line.startswith('NO') and '2 of 6 bodies saved' in line and line.rstrip().endswith('sync')
+    lines = doctor.output.splitlines()
+    at = next(n for n, line in enumerate(lines) if 'init mail archive' in line)
+    assert lines[at].startswith('  ✗') and '2 of 6 bodies saved' in lines[at] and lines[at + 1].endswith(' sync')
     status = invoke(tmp_path, 'status')
-    assert 'Mail archive incomplete: 2 of 6 bodies saved' in status.output
+    assert '  ↻ Archive      2 of 6 mail bodies saved · stalled since ' in status.output
+    assert 'sync resumes it from the saved bodies' in status.output
 
 
 def test_the_overview_help_names_projects_among_the_advanced_commands(tmp_path):
@@ -1230,12 +1248,15 @@ def test_sync_ends_on_a_short_summary_not_the_run_record(lifecycle, monkeypatch)
     assert result.exit_code == 0, result.output
     out = result.stdout
     assert "\x1b[" not in out                                   # plain off a terminal
-    assert "New material: 42 items, 1 page changed (completed)" in out
-    assert "Refused people/onion-bf710a2371.md: Candidate rejected: over 20,000 characters" in out
-    assert "Mail archive: 2,693 of 3,152 bodies saved (paused)" in out
-    assert "Pages: 1 updated, 1 refused, 1 nothing new; 12 left" in out
-    assert "Tokens: 1,000,000 in, 10,000 out" in out
-    assert "Full record: co rem" in out and "logs run_d" in out
+    # 1.9.0a9: status's layout -- a label in the margin, every value at one column.
+    lines = out.splitlines()
+    assert lines[0] == "co rem sync · completed"
+    assert "New material     42 items · 1 page changed" in lines
+    assert "  ✗ Refused      people/onion-bf710a2371.md: Candidate rejected: over 20,000 characters" in lines
+    assert "Mail archive     2,693 of 3,152 mail bodies saved · paused ↻" in lines
+    assert "Pages            1 updated · 1 refused · 1 nothing new · 12 left" in lines
+    assert "Tokens           1.0M in · 10k out" in lines
+    assert any(line.startswith("Full record      co rem") and line.endswith("logs run_d") for line in lines)
     assert "Projects/" not in out and "Report:" not in out and "Seconds:" not in out
     assert out.rstrip().splitlines()[-1].startswith("Next:")
     assert len(out.strip().splitlines()) <= 12
