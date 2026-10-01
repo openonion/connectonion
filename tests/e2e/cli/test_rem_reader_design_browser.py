@@ -82,12 +82,17 @@ def test_people_open_as_a_sheet_that_sorts_filters_and_opens_a_row(reader):
 def test_a_person_opens_on_a_fact_card_with_cited_values(reader):
     page, _ = reader
     page.goto(page.url.split("#")[0] + "#r=people%2Fmara-ostrowski.md")
-    card = page.locator(".facts")
-    assert "Head of Partnerships" in card.inner_text()
-    phone = card.locator(".fact", has_text="Phone")
-    assert "missing-fact" in phone.get_attribute("class") and "not found yet" in phone.inner_text()
-    cite = card.locator(".fact", has_text="Role").locator(".cite")
-    assert "title and company in signature" in cite.get_attribute("data-tip")
+    # Under the title: what you owe and for how long.
+    lead = page.locator(".leadrow .lead-open")
+    assert lead.locator(".dir").inner_text().upper() == "YOU OWE" and lead.locator(".age").inner_text() == "9 days"
+    card = page.locator(".factlist")
+    value = lambda label: card.locator(f"dt:text-is('{label}') + dd")  # noqa: E731
+    assert "Head of Partnerships" in value("Role").inner_text()
+    assert value("Phone").get_attribute("class") == "none" and "not found" in value("Phone").inner_text()
+    assert "title and company in signature" in value("Role").locator(".cite").get_attribute("data-tip")
+    assert value("Email").locator(".qual").all_inner_texts() == ["work", "personal"]
+    assert [b.upper() for b in page.locator(".insight .badge").all_inner_texts()] == ["NOW", "AT STAKE", "CHANGED", "PATTERN"]
+    assert page.locator(".insight .cite.run").count() == 1  # [4][5][6] read as "3 sources"
     assert page.locator(".block-threads .thread.mine").count() == 1
     assert page.locator(".timeline li").count() == 5
     assert page.locator("#src-6").count() == 1

@@ -23,17 +23,29 @@ def _people(now: datetime) -> dict:
     d = lambda n: _day(now, n)  # noqa: E731
     mara = f"""# Mara Ostrowski
 
-Mara runs partnerships at [Fernhill Labs](../orgs/fernhill-labs.md) and is the user's main contact for the pilot [1][2]. The user owes her the signed data-sharing addendum, asked for on {d(9)} [4]; she owes the user the pilot's usage export [5]. Last contact: {d(1)}, email [6].
+You owe Mara the signed data-sharing addendum — 9 days [4]. She runs partnerships at [Fernhill Labs](../orgs/fernhill-labs.md) and is your main contact for the pilot [1][2]; she owes you the pilot's usage export [5]. Last contact: {d(1)} [6].
 
-## Contact
-- Email: mara@fernhill.example [1]
+## Facts
+- Email: mara@fernhill.example (work); mara.ostrowski@mailbox.example (personal) [1]
 - Phone: Unknown
 - Company: [Fernhill Labs](../orgs/fernhill-labs.md) [2]
 - Role: Head of Partnerships [2]
+- Location: Wellington, New Zealand [2]
+- Time zone: Unknown
+- Links: https://fernhill.example/team/mara [2]
+- How we know them: She asked for a pilot after the user's meetup talk on agent memory [3]
+- First contact: {d(40)} [3]
+- Last contact: {d(1)} [6]
 - Signing entity: Unknown
-- Handles: mara@fernhill.example [1]
-- Language: English; Polish with colleagues [3]
-- Also known as: M. Ostrowski [1]
+- Handles: mara@fernhill.example
+- Language: English; Polish (with colleagues) [3]
+- Also known as: M. Ostrowski
+
+## Insight
+- Now: the pilot's renewal depends on two things you each owe the other [4][5].
+- At stake: the renewal call at the end of the quarter, and a possible fourth seat [6].
+- Changed: she moved from feedback calls to asking about expansion in five weeks [4][6].
+- Pattern: she sets a deadline in the subject line and follows up within four days [4][5][6].
 
 ## Who they are
 - Head of Partnerships at Fernhill Labs, a twelve-person climate-data startup in Wellington [2].

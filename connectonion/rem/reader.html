@@ -130,10 +130,10 @@
   .eyebrow a { color: var(--blue); }
   .eyebrow .sep { color: var(--line); }
   .eyebrow .when { text-transform: none; letter-spacing: 0; }
-  h1 { font: 500 40px/1.08 var(--display); letter-spacing: -0.01em; margin: 0 0 12px; text-wrap: balance; color: var(--ink); }
+  h1 { font: 500 36px/1.1 var(--display); letter-spacing: -0.01em; margin: 0 0 12px; text-wrap: balance; color: var(--ink); }
   .lede { color: var(--ink-2); font-size: 15.5px; margin: 0 0 32px; max-width: 64ch; }
   .lede b { color: var(--ink); font-weight: 600; }
-  h2.section { font: 500 22px/1.2 var(--display); margin: 52px 0 6px; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+  h2.section { font: 500 24px/1.2 var(--display); margin: 52px 0 6px; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
   h2.section .n { font: 11.5px var(--mono); color: var(--ink-3); text-align: right; font-weight: 400; }
   h2.section .n a { color: var(--ink-2); }
   .section-sub { color: var(--ink-3); font-size: 13.5px; margin: 0 0 14px; }
@@ -243,7 +243,7 @@
   .page-head { margin-bottom: 26px; }
   .standfirst { font: 400 20px/1.55 var(--text); color: var(--ink); margin: 6px 0 0; max-width: 62ch; }
   .page-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 56px; }
-  .page-grid > .side { margin: 34px 0 0; max-width: 66ch; }
+  .page-grid > .side { order: -1; margin: 0 0 26px; max-width: 66ch; }
   .panel { background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; font-size: 13px; }
   .panel + .panel { margin-top: 12px; }
   .panel h3 { font: 600 10.5px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 10px; }
@@ -261,7 +261,7 @@
 
   .note { max-width: 66ch; font: 16.5px/1.68 var(--text); color: var(--ink); }
   .note p { margin: 0 0 1em; }
-  .note > h2 { font: 500 21px/1.25 var(--display); margin: 2.1em 0 0.6em; position: relative; display: flex; align-items: baseline; gap: 10px; }
+  .note > h2 { font: 500 24px/1.25 var(--display); margin: 2.1em 0 0.6em; position: relative; display: flex; align-items: baseline; gap: 10px; }
   .note > h2::after { content: ""; flex: 1; height: 1px; background: var(--line); transform: translateY(-5px); }
   .note > h2:first-child { margin-top: 0; }
   .note h3 { font: 600 16px/1.3 var(--ui); margin: 1.5em 0 0.4em; position: relative; }
@@ -290,7 +290,7 @@
   /* citations: a small chip that names its source on hover or focus */
   .cite { display: inline-block; position: relative; vertical-align: super; font: 600 9.5px/1 var(--mono); color: var(--blue); background: var(--blue-soft); border-radius: 3px; padding: 2px 3px 1px; margin: 0 1px; text-decoration: none !important; }
   .cite:hover, .cite:focus-visible { background: var(--blue); color: var(--sheet); }
-  .cite[data-tip]:hover::after, .cite[data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; z-index: 5; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); width: max-content; max-width: min(340px, 80vw); padding: 7px 10px; border-radius: 6px; background: var(--ink); color: var(--paper); font: 400 12px/1.45 var(--ui); white-space: normal; text-align: left; box-shadow: var(--shadow); }
+  .cite[data-tip]:hover::after, .cite[data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; z-index: 5; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); width: max-content; max-width: min(340px, 80vw); padding: 7px 10px; border-radius: 6px; background: var(--ink); color: var(--paper); font: 400 12px/1.45 var(--ui); white-space: pre-line; text-align: left; box-shadow: var(--shadow); }
 
   /* open threads on a page: the visual centre */
   .block-threads { margin: 0 0 8px; }
@@ -411,6 +411,49 @@
   .open-cell .more { font: 11px var(--mono); color: var(--ink-3); }
   .sheet td.none { text-align: center; color: var(--ink-3); padding: 28px; cursor: default; }
 
+  /* ---- under the title: what is open, how long, when you last spoke ---- */
+  .leadrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 16px 0 0; }
+  .leadrow:empty { display: none; }
+  .lead-open { display: inline-flex; align-items: baseline; gap: 9px; max-width: 100%; padding: 7px 12px; border-radius: 6px; background: var(--lamp-soft); box-shadow: inset 3px 0 0 var(--lamp); color: var(--ink); text-decoration: none !important; }
+  .lead-open.theirs { background: var(--blue-soft); box-shadow: inset 3px 0 0 var(--blue); }
+  .lead-open.plain { background: var(--well); box-shadow: inset 3px 0 0 var(--ink-3); }
+  .lead-open .txt { font: 14.5px var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46ch; }
+  .lead-open .age { font-size: 12px; color: var(--lamp); font-weight: 600; white-space: nowrap; }
+  .lead-open.theirs .age { color: var(--blue); }
+  .lead-open .age.today { background: var(--lamp); color: var(--sheet); padding: 0 5px; border-radius: 3px; }
+  .lead-open .more { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+  .lead-calm { font: 600 10.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); background: var(--well); padding: 5px 9px; border-radius: 4px; }
+  .lead-meta { font-size: 12.5px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 8px; }
+  .lead-meta .k { color: var(--ink-3); }
+  .lead-meta.usage .bar { width: 120px; height: 5px; border-radius: 3px; background: var(--well); overflow: hidden; display: inline-block; }
+  .lead-meta.usage .bar i { display: block; height: 100%; background: var(--blue); }
+  .unsure { font-size: 12.5px; color: var(--ink-3); display: inline-flex; align-items: center; gap: 2px; }
+  .unsure::first-letter { font: 700 11px var(--mono); }
+  .unsure { border: 1px dashed var(--line); border-radius: 999px; padding: 1px 9px; }
+
+  /* ---- insight: the lines your inbox could not tell you ---- */
+  .insight { list-style: none; padding: 0 !important; margin: 0 0 1em; display: grid; gap: 10px; }
+  .insight li { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 12px; align-items: baseline; margin: 0; }
+  .insight .badge { font: 600 10px/1.9 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; text-align: center; border-radius: 3px; background: var(--blue-soft); color: var(--blue); }
+  .insight .ins-at-stake .badge { background: var(--lamp-soft); color: var(--lamp); }
+  .insight .ins-changed .badge { background: var(--well); color: var(--ink); }
+  .insight .ins-pattern .badge { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--ink-2); }
+
+  /* ---- facts: a definition list, empty fields visible (#2068) ---- */
+  .panel .fill { margin: -6px 0 10px; font-size: 11px; color: var(--ink-3); }
+  .factlist { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 0; margin: 0; }
+  .factlist dt { font: 600 10px/1.5 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); padding: 7px 8px 7px 0; border-top: 1px solid var(--line-2); }
+  .factlist dd { margin: 0; padding: 5px 0 6px; border-top: 1px solid var(--line-2); font-size: 13.5px; min-width: 0; overflow-wrap: anywhere; position: relative; display: flex; flex-direction: column; gap: 2px; }
+  .factlist dt:first-of-type, .factlist dd:first-of-type { border-top: 0; }
+  .factlist dd.none { color: var(--ink-3); opacity: 0.75; font-size: 12.5px; }
+  .factlist .val.mono > span:first-child { font: 12.5px var(--mono); }
+  .factlist .val.derived { color: var(--ink-2); }
+  .factlist .qual { margin-left: 6px; font: 10px var(--mono); color: var(--ink-3); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
+  .factlist .copy { position: absolute; right: 0; top: 5px; font: 10.5px var(--ui); color: var(--ink-3); background: var(--sheet); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; cursor: pointer; opacity: 0; }
+  .factlist dd:hover .copy, .factlist .copy:focus-visible { opacity: 1; }
+  .factlist dd:has(.copy) .val { padding-right: 44px; }
+  .cite.run { padding: 2px 5px 1px; }
+
   /* ---- the fact card: what you came for, at a glance (#2068) ---- */
   .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0; background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin: 18px 0 26px; max-width: 980px; box-shadow: var(--shadow); }
   .fact { background: var(--sheet); padding: 11px 14px 12px; min-width: 0; box-shadow: 1px 1px 0 var(--line); }
@@ -422,7 +465,7 @@
   .fact.missing-fact .v { color: var(--ink-3); font: italic 13px var(--text); }
 
   @media (min-width: 1180px) {
-    .page-grid.has-side { grid-template-columns: minmax(0, 66ch) 256px; }
+    .page-grid.has-side { grid-template-columns: minmax(0, 66ch) 300px; }
     .page-grid.has-side > .side { order: 0; margin: 0; position: sticky; top: 24px; align-self: start; }
   }
   @media (min-width: 821px) and (max-width: 1179px) {
@@ -462,6 +505,9 @@
     .mobile-back { display: block; }
     .note { font-size: 16px; }
     .maint > summary .n { display: none; }
+    .side .toc-panel { display: none; }
+    .factlist .copy { opacity: 1; }
+    .lead-open .txt { max-width: 100%; white-space: normal; }
     .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .fact { padding: 9px 11px 10px; }
     .sheet-find { flex: 1 1 100%; font-size: 16px; }
@@ -617,6 +663,11 @@ function moon(status) {
 // ---------- markdown (small, escape-first) ----------
 // The page being rendered: its numbered sources, so a claim's [n] can name its source.
 let CITES = { from: "", sources: {} };
+function citeRun(ns, from) {
+  const tips = ns.map(n => "[" + n + "] " + ((from === CITES.from && CITES.sources[n]) || "source " + n));
+  return '<a class="cite run" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + ns[0] + '" data-tip="' + esc(tips.join("\n")) +
+    '" aria-label="' + ns.length + " sources: " + esc(tips.join("; ")) + '">' + ns.length + " sources</a>";
+}
 function citeChip(n, from) {
   const tip = from === CITES.from ? CITES.sources[n] : "";
   return '<a class="cite" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + n + '"' +
@@ -634,7 +685,9 @@ function inline(text, from) {
     links.push('<a href="' + esc(link.href) + '"' + attrs + ">" + lbl + "</a>");
     return "\u0002" + (links.length - 1) + "\u0002";
   });
-  s = s.replace(/\s*\[(\d{1,3})\]/g, (m, n) => citeChip(n, from));
+  // Three or more claim numbers in a row read as noise: one chip says how many, and names them on hover.
+  s = s.replace(/(?:\s*\[W?\d{1,3}\]){3,}/g, run => citeRun(run.match(/W?\d{1,3}/g), from));
+  s = s.replace(/\s*\[(W?\d{1,3})\]/g, (m, n) => citeChip(n, from));
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>");
   s = s.replace(/\u0002(\d+)\u0002/g, (m, i) => links[i]);
@@ -793,7 +846,7 @@ function sourceChips(text) {
 // (a mapped skill's sections) is dropped the same as one written as a bullet.
 const UNKNOWN_LINE = /^\s*(?:[-*]\s*)?(?:[^:\n]{1,40}:\s*)?(?:unknown|not known)(?:\s*[—(-].*)?\s*$/i;
 // Sections every mapped page fills from metadata alone: they are not findings.
-const MECHANICAL = new Set(["contact", "history", "uncertainties", "sources", "people here", "domains"]);
+const MECHANICAL = new Set(["facts", "contact", "history", "uncertainties", "sources", "people here", "domains"]);
 // What mapping writes where an answer will go (files.py): a placeholder, not a finding.
 const PLACEHOLDER = /identity unverified|classification unassessed|^\s*[-*]\s*\(none yet\)\s*$/i;
 const STAMP = /^Investigation:[^\n]*$/m;
@@ -830,7 +883,7 @@ function known(r) {
   // rewrites every project page, and "Recently active" dated them all today.
   const last = r.last_activity !== undefined ? r.last_activity
     : (/\blast(?: contact)?:\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || String(r.updated || "").slice(0, 10);
-  const summary = plainLine((intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || kept.find(k => k.title.toLowerCase() === "history") || { text: "" }).text);
+  const summary = plainLine((intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || { text: "" }).text);
   const k = { intro, kept, missing, status, last, summary, stamp: stamp.replace(/^Investigation:\s*/, "") };
   KNOWN.set(r.path, k);
   return k;
@@ -838,7 +891,7 @@ function known(r) {
 // The first readable line of some Markdown, without its markup or claim numbers.
 function plainLine(text) {
   return String(text).split("\n").map(l => l.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/\s*\[\d{1,3}\]/g, "").replace(/[#*`>]/g, "").trim()).find(Boolean) || "";
+    .replace(/\s*\[W?\d{1,3}\]/g, "").replace(/[#*`>]/g, "").trim()).find(Boolean) || "";
 }
 function section(r, name) { return known(r).kept.find(s => s.title.toLowerCase() === name); }
 function byActivity(a, b) {
@@ -891,21 +944,39 @@ function rawSection(r, name) {
 function sourceList(r) {
   const out = [];
   for (const item of listItems(rawSection(r, "Sources"))) {
-    const m = /^\[(\d{1,3})\]\s*(.*)$/.exec(item);
+    const m = /^\[(W?\d{1,3})\]\s*(.*)$/.exec(item);
     if (m && !UNKNOWN_TEXT.test(m[2])) out.push({ n: m[1], text: m[2].replace(/[*`]/g, "") });
   }
   return out;
 }
 const CONTACT_FIELDS = ["Email", "Phone", "Company", "Role", "Signing entity", "Handles", "Language", "Also known as"];
-function contactFields(r) {
-  const fields = [];
-  for (const item of listItems(rawSection(r, "Contact"))) {
-    const m = /^([^:]{1,30}):\s*(.*)$/.exec(item);
+// A page's fact lines (#2068): `## Facts`, or `## Contact` on a page written before it.
+// Mirrors facts.parse(): {label: [{value, qualifier, citations}]}, [] when Unknown.
+// Values split on "; ", a trailing "(work)" is a qualifier, trailing [n] / [W1] are citations.
+function parseFacts(r) {
+  const out = new Map();
+  const raw = rawSection(r, "Facts") || rawSection(r, "Contact");
+  for (const line of raw.split("\n")) {
+    const m = /^\s*[-*]\s+([^:\n]{1,40}):\s*(.*)$/.exec(line);
     if (!m) continue;
     const value = m[2].trim();
-    fields.push({ label: m[1].trim(), value: /^(unknown|not known)\b/i.test(value) || !value ? "" : value });
+    const items = [];
+    if (value && !/^(unknown|not known)\b/i.test(value)) {
+      for (const part of value.split(/;\s+/)) {
+        const cites = /((?:\s*\[W?\d{1,3}\])+)\s*$/.exec(part);
+        let v = cites ? part.slice(0, cites.index) : part;
+        // "(mobile)" after a space is a qualifier; "[UNSW](../orgs/unsw.md)" is a link, not one.
+        const q = /\s+\(([^()]{1,30})\)\s*$/.exec(v);
+        if (q) v = v.slice(0, q.index);
+        if (v.trim()) items.push({ value: v.trim(), qualifier: q ? q[1] : "", citations: cites ? cites[1].match(/W?\d{1,3}/g) : [] });
+      }
+    }
+    out.set(m[1].trim(), items);
   }
-  return fields;
+  return out;
+}
+function contactFields(r) {
+  return [...parseFacts(r)].map(([label, items]) => ({ label, value: items.map(i => i.value + (i.citations.length ? " [" + i.citations.join("][") + "]" : "")).join("; ") }));
 }
 // A skill's Usage history line (skill_usage.py usage_line).
 function skillUsage(r) {
@@ -976,7 +1047,7 @@ function openCell(f) {
     el("span", { class: "txt", text: plainLine(t.text) }), f.open.length > 1 ? el("span", { class: "more", text: "+" + (f.open.length - 1) }) : null]);
 }
 function dateCell(day) { return day ? el("span", { class: "mono", text: shortDate(day) }) : el("span", { class: "unk", text: "—" }); }
-function textCell(v) { return v ? el("span", { html: inline(v.replace(/\s*\[\d{1,3}\]/g, ""), "") }) : el("span", { class: "unk", text: "—" }); }
+function textCell(v) { return v ? el("span", { html: inline(v.replace(/\s*\[W?\d{1,3}\]/g, ""), "") }) : el("span", { class: "unk", text: "—" }); }
 function nameCell(r, f, withSummary) {
   const k = known(r);
   return el("div", { class: "name-cell" }, [el("span", { class: "nm" }, [moon(k.status), el("a", { href: href(r), text: r.title })]),
@@ -1231,7 +1302,7 @@ function row(r, opts) {
 function threadRow(r, t, withPage) {
   return el("li", { class: "thread " + t.dir }, [
     el("span", { class: "dir", text: DIRECTION_LABEL[t.dir] }),
-    el("div", {}, [el("div", { class: "what", html: inline(withPage ? t.text.replace(/\s*\[\d{1,3}\]/g, "") : t.text, r.path) }),
+    el("div", {}, [el("div", { class: "what", html: inline(withPage ? t.text.replace(/\s*\[W?\d{1,3}\]/g, "") : t.text, r.path) }),
       withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: r.title }), " · " + singular(r.category)]) : null]),
     el("span", { class: "when", text: t.since ? "since " + shortDate(t.since) : "" })]);
 }
@@ -1363,9 +1434,11 @@ function category(c) {
 // ---------- a page ----------
 // Which sections lead: what is open first on a relationship, the state of play on a project.
 const LEADING = {
-  people: ["open threads"], orgs: ["open threads"],
-  projects: ["what it is", "where it stands", "overview", "open threads"]
+  people: ["insight", "open threads"], orgs: ["open threads"],
+  projects: ["insight", "what it is", "where it stands", "overview", "open threads"]
 };
+// Shown as the fact card, not as a section of prose (#2068; legacy pages have Contact).
+const CARD_SECTIONS = new Set(["facts", "contact"]);
 function ordered(r, sections) {
   const lead = LEADING[r.category] || [];
   const first = lead.map(t => sections.find(s => s.title.toLowerCase() === t)).filter(Boolean);
@@ -1373,6 +1446,14 @@ function ordered(r, sections) {
 }
 function sectionBody(r, s) {
   const name = s.title.toLowerCase();
+  // Insight (#2068): each line starts Now / Changed / At stake / Pattern; the label becomes a badge.
+  if (name === "insight") {
+    const items = listItems(s.text).map(t => /^(Now|Changed|At stake|Pattern):\s*(.*)$/i.exec(t.replace(/^\*\*([^*]+)\*\*/, "$1")));
+    if (items.length && items.every(Boolean)) {
+      return el("div", { class: "block-insight" }, [el("ul", { class: "insight" }, items.map(m => el("li", { class: "ins-" + m[1].toLowerCase().replace(/\s+/g, "-") }, [
+        el("span", { class: "badge", text: m[1] }), el("span", { class: "txt", html: inline(m[2], r.path) })])))]);
+    }
+  }
   if (name === "open threads") {
     const t = threads(r);
     const box = el("div", { class: "block-threads" });
@@ -1402,40 +1483,86 @@ function sectionBody(r, s) {
   const html = markdown(s.text, r.path);
   return el("div", { class: /^(where it stands|current status)$/.test(name) ? "block-standing" : "block", html });
 }
-// The facts a reader came for, each cited where the page cites it; a missing one is visibly empty.
-function factCard(r) {
+// The labels of `## Facts`, in the page's order (#2068 docs/cli/rem.md).
+const FACT_LABELS = {
+  people: ["Email", "Phone", "Company", "Role", "Location", "Time zone", "Links", "How we know them", "First contact", "Last contact",
+    "Signing entity", "Handles", "Language", "Also known as"],
+  projects: ["Repository", "Stack", "Status", "People", "Organisation", "Started", "Last activity"],
+  orgs: ["What they do", "Website", "Location", "Legal entity", "Your contacts", "First contact", "Last contact"]
+};
+const COPYABLE = new Set(["Email", "Phone", "Links", "Website", "Repository"]);
+// What a page written before `## Facts` still says, for the labels it has no line for.
+function legacyFact(r, label) {
   const f = facts(r), k = known(r);
-  const cells = [];
-  const put = (label, value, opts) => cells.push({ label, value, ...(opts || {}) });
-  const cited = v => v ? inline(v, r.path) : "";
-  if (r.category === "people") {
-    put("Role", cited(f.role)); put("Company", cited(f.company));
-    put("Email", f.email ? plainValue(f.email).split(/\s*,\s*/).map(a => /@/.test(a) ? '<a href="mailto:' + esc(a) + '">' + esc(a) + "</a>" : esc(a)).join(", ") + (cited(f.email).match(/<a class="cite"[\s\S]*$/) || [""])[0] : "", { mono: true });
-    put("Phone", cited(f.phone), { mono: true }); put("Location", cited(f.location)); put("Language", cited(f.language));
-    put("Links", f.links ? f.links.split(", ").map(u => '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + esc(u.replace(/^https?:\/\/(www\.)?/, "")) + "</a>").join(", ") : "");
-    put("How you know them", f.how ? esc(f.how) : "", { wide: true });
-    put("First contact", f.first ? esc(fmtDate(f.first)) : "", { mono: true }); put("Last contact", k.last ? esc(fmtDate(k.last)) : "", { mono: true });
-    put("Mail", f.mails != null ? esc(f.mails + (f.sent != null ? " · " + f.received + " in, " + f.sent + " out" : "")) : "", { mono: true });
-  } else if (r.category === "orgs") {
-    put("Domain", f.domain ? esc(f.domain) : "", { mono: true }); put("What they do", f.what ? esc(f.what) : "", { wide: true });
-    put("Your contacts", f.people ? esc(String(f.people)) : ""); put("Last contact", k.last ? esc(fmtDate(k.last)) : "", { mono: true });
-  } else if (r.category === "projects") {
-    put("Repository", f.repo ? esc(f.repo) : "", { mono: true, wide: true }); put("Sessions", f.sessions ? esc(String(f.sessions)) : "", { mono: true });
-    put("First seen", f.first ? esc(fmtDate(f.first)) : "", { mono: true }); put("Last active", k.last ? esc(fmtDate(k.last)) : "", { mono: true });
-    const owners = section(r, "people and ownership");
-    put("People", owners ? esc(plainLine(owners.text)) : "", { wide: true });
-  } else return null;
-  return el("section", { class: "facts", "aria-label": "Facts" }, cells.map(c => el("div", { class: "fact" + (c.value ? "" : " missing-fact") + (c.wide ? " wide" : "") }, [
-    el("div", { class: "k", text: c.label }), el("div", { class: "v" + (c.mono && c.value ? " mono" : ""), html: c.value || "not found yet" })])));
+  const v = {
+    "How we know them": f.how, "First contact": f.first, "Last contact": r.category !== "projects" ? k.last : "",
+    "Last activity": r.category === "projects" ? k.last : "", "Started": r.category === "projects" ? f.first : "",
+    "Repository": f.repo, "What they do": r.category === "orgs" ? f.what : "", "Website": r.category === "orgs" ? f.domain : "",
+    "Your contacts": f.people ? f.people + (f.people === 1 ? " person" : " people") : "", "Links": f.links
+  }[label];
+  return v ? [{ value: v, qualifier: "", citations: [], derived: true }] : [];
 }
+function factValue(item, from) {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(item.value);
+  const email = /^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(item.value);
+  const url = /^https?:\/\/\S+$/.test(item.value);
+  const html = day ? esc(fmtDate(item.value)) : email ? '<a href="mailto:' + esc(item.value) + '">' + esc(item.value) + "</a>"
+    : url ? '<a href="' + esc(item.value) + '" target="_blank" rel="noopener noreferrer">' + esc(item.value.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")) + "</a>"
+    : inline(item.value, from);
+  return el("span", { class: "val" + (day || email || url ? " mono" : "") + (item.derived ? " derived" : ""), title: item.derived ? "read from the page's prose, not its Facts" : "" }, [
+    el("span", { html }), item.qualifier ? el("span", { class: "qual", text: item.qualifier }) : null,
+    item.citations.length ? el("span", { html: item.citations.length > 2 ? citeRun(item.citations, from) : item.citations.map(n => citeChip(n, from)).join("") }) : null]);
+}
+// The facts a reader came for: labels in small caps, values cited, a missing one visibly empty.
+function factList(r) {
+  const labels = FACT_LABELS[r.category];
+  if (!labels) return null;
+  const parsed = parseFacts(r);
+  const order = [...labels, ...[...parsed.keys()].filter(l => !labels.includes(l))];
+  const dl = el("dl", { class: "factlist" });
+  let filled = 0;
+  for (const label of order) {
+    const items = (parsed.get(label) || []).length ? parsed.get(label) : legacyFact(r, label);
+    if (items.length) filled++;
+    const dd = el("dd", { class: items.length ? "" : "none" }, items.length ? items.map(i => factValue(i, r.path)) : [el("span", { text: "— not found" })]);
+    if (items.length && COPYABLE.has(label)) {
+      const btn = el("button", { type: "button", class: "copy", "aria-label": "Copy " + label.toLowerCase(), text: "Copy" });
+      btn.onclick = () => copyToClipboard(items.map(i => i.value).join("; "), btn, "Copied");
+      dd.appendChild(btn);
+    }
+    dl.append(el("dt", { text: label }), dd);
+  }
+  if (r.category === "people" && r.mail) {
+    dl.append(el("dt", { text: "Mail" }), el("dd", {}, [el("span", { class: "val mono", text: r.mail.mails + " · " + r.mail.received + " in, " + r.mail.sent + " out" })]));
+  }
+  return panel("Facts", [el("p", { class: "fill mono", text: filled + " of " + order.length + " known" }), dl]);
+}
+function daysSince(day) {
+  const ms = new Date(REM.as_of || Date.now()).getTime() - new Date(day + "T00:00:00").getTime();
+  return isNaN(ms) ? null : Math.max(0, Math.floor(ms / DAY_MS));
+}
+function age(day) {
+  const n = daysSince(day);
+  return n == null ? "" : n === 0 ? "today" : n === 1 ? "1 day" : n + " days";
+}
+// Under the title: what is open and how long, when you last spoke, how sure the page is.
+function leadRow(r) {
+  const k = known(r), t = threads(r), row = el("div", { class: "leadrow" });
+  if (t.items.length) {
+    const first = t.items[0];
+    row.appendChild(el("a", { class: "lead-open " + first.dir, href: "#r=" + encodeURIComponent(r.path) + "&h=open-threads" }, [
+      el("span", { class: "dir", text: DIRECTION_LABEL[first.dir] }), el("span", { class: "txt", text: plainLine(first.text).replace(/\s*[—–-]\s.*$/, "") }),
+      first.since ? el("span", { class: "age mono" + (daysSince(first.since) === 0 ? " today" : ""), text: age(first.since) }) : null,
+      t.items.length > 1 ? el("span", { class: "more mono", text: "+" + (t.items.length - 1) + " more" }) : null]));
+  } else if (t.calm) row.appendChild(el("span", { class: "lead-calm", text: "Nothing open" }));
+  if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "people" ? "Last contact " : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
+  const u = r.category === "skills" ? skillUsage(r) : null;
+  if (u) row.appendChild(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: u.count ? "used " + (u.count === 1 ? "once" : u.count + "×") + " in " + u.days + " days · last " + fmtDate(u.last) + (u.tools ? " · " + u.tools : "") : "not used in " + u.days + " days" })]));
+  if (section(r, "uncertainties")) row.appendChild(el("a", { class: "unsure", href: "#r=" + encodeURIComponent(r.path) + "&h=uncertainties", title: "What this page is not sure of" }, ["?", el("span", { text: " Uncertain points" })]));
+  return row;
+}
+function tocPanel(children) { const p = panel("On this page", children); p.classList.add("toc-panel"); return p; }
 function panel(title, children) { return el("section", { class: "panel" }, [el("h3", { text: title }), ...children]); }
-function fieldValue(value, from) {
-  if (!value) return el("span", { class: "unk", title: "Unknown", text: "—" });
-  const clean = value.replace(/\s*\[\d{1,3}\]/g, "");
-  if (/^[\w.+-]+@[\w-]+\.[\w.-]+(?:\s*,\s*[\w.+-]+@[\w-]+\.[\w.-]+)*$/.test(clean))
-    return el("span", { class: "mono" }, clean.split(/\s*,\s*/).flatMap((a, i) => [i ? ", " : "", el("a", { href: "mailto:" + a, text: a })]));
-  return el("span", { html: inline(clean, from) });
-}
 function sidePanels(r, k) {
   const panels = [];
   const glance = el("dl", {});
@@ -1459,7 +1586,8 @@ function sidePanels(r, k) {
     }
   }
   // People, organisations and projects open on their fact card instead.
-  if (!["people", "orgs", "projects"].includes(r.category)) panels.unshift(panel("At a glance", [glance]));
+  const factsPanel = factList(r);
+  if (factsPanel) panels.unshift(factsPanel); else panels.unshift(panel("At a glance", [glance]));
   return panels;
 }
 
@@ -1478,14 +1606,15 @@ function record(path, heading) {
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#c=" + r.category, text: label(r.category) }), el("span", { class: "sep", text: "/" }),
     statusPill(r), el("span", { class: "when", text: (k.last ? "last activity " + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })]));
   const head = el("header", { class: "page-head" }, [el("h1", { text: r.title })]);
-  const card = factCard(r);
-  if (card) head.appendChild(card);
-  // A relationship's lead is its standfirst: who they are, what is open, last contact.
+  // The lead is the standfirst: who this is to you, what is open, last contact (#2068:
+  // a person's first sentence states the balance; a project's, where you stopped).
   let intro = k.intro;
-  if (intro && ["people", "orgs"].includes(r.category)) {
+  if (intro && ["people", "orgs", "projects"].includes(r.category)) {
     const [first, ...rest] = intro.split(/\n\s*\n/);
-    if (!/^\s*(?:#|[-*]\s)/.test(first)) { head.appendChild(el("p", { class: "standfirst", html: inline(first.replace(/\n/g, " "), r.path) })); intro = rest.join("\n\n"); }
+    // Only a plain paragraph: a list, fence, quote or table stays in the body as written.
+    if (!/^\s*(?:#|[-*+]\s|\d+[.)]\s|```|~~~|>|\|)/.test(first) && !/^\s*(`{3,}|~{3,})/m.test(first)) { head.appendChild(el("p", { class: "standfirst", html: inline(first.replace(/\n/g, " "), r.path) })); intro = rest.join("\n\n"); }
   }
+  head.appendChild(leadRow(r));
   main.appendChild(head);
 
   const catalog = r.catalog_parent ? byPath(r.catalog_parent) : r;
@@ -1498,7 +1627,7 @@ function record(path, heading) {
   const note = el("div", { class: "note" });
   if (intro) note.insertAdjacentHTML("beforeend", markdown(intro, r.path));
   for (const s of ordered(r, k.kept)) {
-    if (r.category === "people" && s.title.toLowerCase() === "contact") continue;
+    if (FACT_LABELS[r.category] && CARD_SECTIONS.has(s.title.toLowerCase())) continue;
     note.appendChild(el("h2", { html: inline(s.title, r.path) }));
     const body = sectionBody(r, s);
     // Plain Markdown joins the note flat, so lists and code stay direct children.
@@ -1521,7 +1650,7 @@ function record(path, heading) {
   }
 
   const panels = sidePanels(r, k);
-  if (toc.length >= 4) panels.push(panel("On this page", [el("ul", { class: "toc" }, toc.map(t =>
+  if (toc.length >= 4) panels.push(tocPanel([el("ul", { class: "toc" }, toc.map(t =>
     el("li", {}, [el("a", { href: "#r=" + encodeURIComponent(r.path) + "&h=" + encodeURIComponent(t.id), text: t.title })])))]));
   const grid = el("div", { class: "page-grid" + (panels.length ? " has-side" : "") }, [el("div", { class: "body" }, [note]), el("aside", { class: "side", "aria-label": "About this page" }, panels)]);
   main.appendChild(grid);
