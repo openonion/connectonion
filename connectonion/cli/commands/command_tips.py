@@ -292,6 +292,16 @@ NEXT = {
     "co trust unblock": "See every list:  co trust list",
     "co trust admin add": "See every list:  co trust list",
     "co trust admin remove": "See every list:  co trust list",
+    # co canny: each handler names its next command from what Canny returned
+    # (the first post's id, the exact --yes command after a preview).
+    "co canny check": HANDLER,
+    "co canny boards": HANDLER,
+    "co canny posts": HANDLER,
+    "co canny search": HANDLER,
+    "co canny post": HANDLER,
+    "co canny status": HANDLER,
+    "co canny comment": HANDLER,
+    "co canny changelog create": HANDLER,
     "co youtube *": HANDLER,
     "co tiktok *": HANDLER,
 }

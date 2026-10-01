@@ -31,6 +31,7 @@ JOURNEYS = [
     ("See the unread emails in my Outlook", ["co outlook inbox", "co outlook"]),
     ("Give another agent permission to call my agent", ["co trust add"]),
     ("Set an API key that all my projects use", ["co env set"]),
+    ("List the five most-voted open feature requests on our Canny board", ["co canny posts"]),
     ("Install the skills that another person published at address 0xabc", ["co sub"]),
     ("File this bug in Linear and tell me its id", ["co linear create"]),
     pytest.param("Find a published skill someone else wrote and add it to this project", ["co sub", "co skills copy"],
