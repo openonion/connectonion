@@ -17,7 +17,52 @@ Gmail and Outlook, a logged-in browser, your files, chat apps and other agents.
 
 </div>
 
-<!-- connections -->
+<!-- connections: generated, do not edit by hand. Refresh with
+     curl -s https://www.connectonion.com/connections.md
+     and paste the output between these two comments. -->
+<p><b>Mail, calendar &amp; notes</b><br>
+<a href="docs/cli/gmail.md"><img src="https://www.connectonion.com/logos/gmail.svg" width="40" height="40" alt="Gmail" title="Gmail · co gmail"></a>
+<a href="docs/cli/outlook.md"><img src="https://www.connectonion.com/logos/outlook.svg" width="40" height="40" alt="Outlook" title="Outlook · co outlook"></a>
+<a href="docs/cli/gcalendar.md"><img src="https://www.connectonion.com/logos/gcal.svg" width="40" height="40" alt="Google Calendar" title="Google Calendar · co gcalendar"></a>
+<a href="docs/cli/gcalendar.md"><img src="https://www.connectonion.com/logos/meet.svg" width="40" height="40" alt="Google Meet" title="Google Meet · co gcalendar meet"></a>
+<a href="docs/cli/onenote.md"><img src="https://www.connectonion.com/logos/onenote.svg" width="40" height="40" alt="OneNote" title="OneNote · co onenote"></a>
+<a href="docs/cli/outlook.md"><img src="https://www.connectonion.com/logos/teams.svg" width="40" height="40" alt="Teams meetings" title="Teams meetings · co outlook calendar"></a></p>
+
+<p><b>Chat apps</b><br>
+<a href="docs/cli/whatsapp.md"><img src="https://www.connectonion.com/logos/whatsapp.svg" width="40" height="40" alt="WhatsApp" title="WhatsApp · co whatsapp"></a>
+<a href="docs/cli/telegram.md"><img src="https://www.connectonion.com/logos/telegram.svg" width="40" height="40" alt="Telegram" title="Telegram · co telegram"></a>
+<a href="docs/cli/discord.md"><img src="https://www.connectonion.com/logos/discord.svg" width="40" height="40" alt="Discord" title="Discord · co discord"></a>
+<a href="docs/cli/slack.md"><img src="https://www.connectonion.com/logos/slack.svg" width="40" height="40" alt="Slack" title="Slack · co slack"></a>
+<a href="docs/cli/feishu.md"><img src="https://www.connectonion.com/logos/feishu.svg" width="40" height="40" alt="Feishu / Lark" title="Feishu / Lark · co feishu, co lark"></a></p>
+
+<p><b>Browser &amp; files</b><br>
+<a href="docs/cli/browser.md"><img src="https://www.connectonion.com/logos/chrome.svg" width="40" height="40" alt="Your Chrome" title="Your Chrome · co browser"></a>
+<a href="docs/cli/gdrive.md"><img src="https://www.connectonion.com/logos/gdrive.svg" width="40" height="40" alt="Google Drive" title="Google Drive · co gdrive"></a>
+<a href="docs/cli/youtube.md"><img src="https://www.connectonion.com/logos/youtube.svg" width="40" height="40" alt="YouTube" title="YouTube · co youtube"></a>
+<a href="docs/cli/synology.md"><img src="https://www.connectonion.com/logos/syno.svg" width="40" height="40" alt="Synology NAS" title="Synology NAS · co syno"></a></p>
+
+<p><b>Issues &amp; feedback</b><br>
+<a href="docs/cli/linear.md"><img src="https://www.connectonion.com/logos/linear.svg" width="40" height="40" alt="Linear" title="Linear · co linear"></a>
+<a href="docs/cli/canny.md"><img src="https://www.connectonion.com/logos/canny.svg" width="40" height="40" alt="Canny" title="Canny · co canny"></a></p>
+
+<p><b>Coding agents</b><br>
+<a href="docs/claude-code-plugin.md"><img src="https://www.connectonion.com/logos/claude.svg" width="40" height="40" alt="Claude Code" title="Claude Code · co claude"></a>
+<a href="docs/cli/skills.md"><img src="https://www.connectonion.com/logos/codex.svg" width="40" height="40" alt="Codex" title="Codex · co skills link"></a>
+<a href="docs/cli/skills.md"><img src="https://www.connectonion.com/logos/cursor.svg" width="40" height="40" alt="Cursor" title="Cursor · co skills discover"></a>
+<a href="docs/cli/skills.md"><img src="https://www.connectonion.com/logos/kiro.svg" width="40" height="40" alt="Kiro" title="Kiro · co skills discover"></a></p>
+
+<p><b>Models</b><br>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/openai.svg" width="40" height="40" alt="OpenAI" title="OpenAI · gpt-…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/anthropic.svg" width="40" height="40" alt="Anthropic" title="Anthropic · claude-…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/gemini.svg" width="40" height="40" alt="Gemini" title="Gemini · gemini-…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/mistral.svg" width="40" height="40" alt="Mistral" title="Mistral · mistral/…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/groq.svg" width="40" height="40" alt="Groq" title="Groq · groq/…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/grok.svg" width="40" height="40" alt="Grok" title="Grok · grok/…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/openrouter.svg" width="40" height="40" alt="OpenRouter" title="OpenRouter · openrouter/…"></a>
+<a href="docs/concepts/local-models.md"><img src="https://www.connectonion.com/logos/ollama.svg" width="40" height="40" alt="Ollama (local)" title="Ollama (local) · ollama/…"></a></p>
+
+<p><b>Built into co</b><br>
+0x address <code>co init</code> · Agent mailbox <code>co email</code> · Memory <code>co wiki</code> · Secrets <code>co env</code> · Credits <code>co transfer</code> · SMS <code>co sms</code> · Remote browser <code>co remote-browser</code> · Web search <code>co search</code> · Your skills <code>co skills</code> · Shared skills <code>co sub</code> · Evals <code>co eval</code> · Managed keys <code>co/… ($5 credit)</code> · Remote agents <code>co call</code> · Your internet <code>co proxy</code> · Your servers <code>co deploy --to</code> · SSH <code>co server ssh</code> · Schedules <code>co schedule</code></p>
 <!-- /connections -->
 
 ## Install
