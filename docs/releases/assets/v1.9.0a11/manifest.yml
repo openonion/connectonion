@@ -1,0 +1,30 @@
+version: v1.9.0a11
+images:
+  - file: home-before-desktop.png
+    alt: "Earlier REM home with processing statistics ahead of remembered content"
+    caption: "Before: the reader made the night run's volume the first thing to see."
+    scenario: "Invented notebook fixture, home before the morning-memory change"
+    viewport: "1440x900, light"
+    commit: 541a0486
+    source_run: "tests/fixtures/rem_reader_notebook.py rendered in Chrome with Playwright"
+  - file: home-after-desktop.png
+    alt: "REM home leading with three current memories, a connected page, and a recall question"
+    caption: "After: the latest pass's context leads the morning reader."
+    scenario: "Invented notebook fixture, home after the morning-memory change"
+    viewport: "1440x900, light"
+    commit: e76a950d
+    source_run: "tests/fixtures/rem_reader_notebook.py rendered in Chrome with Playwright"
+  - file: home-after-phone.png
+    alt: "REM morning reader stacked on a 390 pixel phone viewport"
+    caption: "The morning brief and recall prompt fit a phone without sideways overflow."
+    scenario: "Invented notebook fixture, home at phone width"
+    viewport: "390x844, light"
+    commit: e76a950d
+    source_run: "tests/fixtures/rem_reader_notebook.py rendered in Chrome with Playwright"
+  - file: recall-revealed-desktop.png
+    alt: "Remember with REM card after the owner reveals the older page's answer"
+    caption: "The owner can pause before revealing already written context."
+    scenario: "Invented notebook fixture, recall answer revealed"
+    viewport: "1440x900, light"
+    commit: e76a950d
+    source_run: "tests/fixtures/rem_reader_notebook.py rendered in Chrome with Playwright"
