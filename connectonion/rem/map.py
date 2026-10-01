@@ -128,6 +128,15 @@ def owner_tokens(addresses, name: str) -> set[str]:
     return {word for word in words if len(word) >= 4 and word not in generic}
 
 
+def spells_owner(address: str, owner_name: str) -> bool:
+    """The address's local part is the owner's full name: aaron.xie@ for "Aaron Xie" (#2078).
+
+    Replies or not: the owner's agents and aliases answer mail too. Two words at
+    least, so a first name alone never makes a stranger the owner."""
+    words = re.findall(r'[a-z]+', (owner_name or '').casefold())
+    return len(words) >= 2 and re.sub(r'[^a-z]', '', address.split('@')[0].casefold()) == ''.join(words)
+
+
 def looks_own(group: list[dict], tokens: set[str]) -> list[dict]:
     """The rows of `group` worth asking "is this yours?" about (#2008).
 
@@ -808,6 +817,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
         report['owner'] = {'record': owner_record, 'addresses': []}
         report['people'].append({'record': owner_record, 'classification': 'account owner'})
     owner = report.get('owner') or {}
+    known_name = owner_name if owner and owner_name != 'Account owner' else ''
     tokens = owner_tokens(owner.get('addresses') or [], owner_name if owner else '')
     org_rows = []
     for group in _people_groups(people):
@@ -832,6 +842,21 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
             report['automated_correspondents' if automated else 'without_page'].append(
                 {**first, 'addresses': addresses, 'sent': sent, 'received': received,
                  **({'record': existing} if existing else {})})
+            org_rows += [{'address': a, 'record': None} for a in addresses]
+            continue
+        # Only when the map knows the owner: knowing nothing, `looks_own` offers
+        # every write-only address, and none of them would get a page.
+        own = (looks_own(group, tokens) if tokens else []) or [
+            row for row in group if spells_owner(row['address'], known_name)]
+        if not kept and own and len(own) == len(group):
+            # The owner's own mailbox is not a person (#2078): a fresh init made
+            # pages for aaronplus1996@ (108 sent, none back) and aaron@. It is
+            # still asked about, on the owner's page and in init's summary; it
+            # just gets no page of its own. An agent address stays a person
+            # (#1844): it may be someone else's agent.
+            report['possible_own_addresses'] += [
+                {'address': row['address'], 'sent': row.get('sent', 0), 'record': existing,
+                 'confirm': 'co rem init --mine ' + row['address']} for row in own]
             org_rows += [{'address': a, 'record': None} for a in addresses]
             continue
         if automated:
