@@ -250,7 +250,24 @@ def test_a_refused_page_leaves_its_messages_pending(world):
         write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
     assert world.notebook.read("projects/tide.md") == before
     assert page_state(world.root, "projects/tide.md")["written_through"] == ""
+    # #2026: refused for this material, it waits for newer messages instead of
+    # being retried with the same ones on every sync (~260k tokens, 0 changes).
+    assert "projects/tide.md" not in [r["record"] for r in queue(world.root)]
+    assert not list((world.root / ".state/tasks").glob("projects-*/material.*"))   # #2029
+    codex(world.codex / "2026/09/21/rollout-b.jsonl", "/work/tide", [("user", "Tide now warns by SMS.", 0)])
+    extract(world.root, world.subs)
     assert "projects/tide.md" in [r["record"] for r in queue(world.root)]
+
+
+def test_the_page_s_size_and_the_limit_are_said_before_the_turn(tmp_path):
+    """#2026: the 20k limit lived only in the review, so a 24.6k page was written
+    at full length and refused."""
+    from connectonion.rem.project_pages import prompt
+
+    small = prompt(tmp_path, [{"role": "page", "text": "# t"}], tmp_path / "candidate.md", 4_000)
+    large = prompt(tmp_path, [{"role": "page", "text": "# t"}], tmp_path / "candidate.md", 24_586)
+    assert "must stay under 20,000 characters" in small
+    assert "The page is 24,586 characters" in large and "fold the oldest History" in large
 
 
 def test_write_pages_takes_a_portion_in_order_and_one_failure_does_not_stop_the_rest(world):
