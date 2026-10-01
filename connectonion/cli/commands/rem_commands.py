@@ -418,8 +418,7 @@ def _first_run_gate(root, config):
     runner, or Codex not reporting) the page counts are the only bound.
     """
     from ...rem import quota
-    from ...rem.service import run_logs
-    from ...rem.service import now
+    from ...rem.service import now, run_logs
     start, began = quota.read(config), now().isoformat()
 
     def gate():
@@ -909,8 +908,7 @@ def make_rem_app(factory):
             (#1843): the weekly budget, this run's --budget, and the floor."""
             from ...rem import quota
             from ...rem.config import read_config
-            from ...rem.service import run_logs
-            from ...rem.service import now
+            from ...rem.service import now, run_logs
             config = read_config(root)
             start, began = quota.read(config), now().isoformat()
 
