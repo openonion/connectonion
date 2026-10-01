@@ -124,6 +124,7 @@ def _next(command: str, json_output: bool) -> None:
     if not json_output:
         print_tip(f"Next: {command}")
         return
+    sys.stdout.flush()  # the rows first, even where 2>&1 merges the two streams
     style.console(stderr=True).print(style.markup(f"Next: {selected_tip(command)}"))
     mark_next_step_named()
 
