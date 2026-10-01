@@ -209,9 +209,12 @@ def _logged(root, record, phase, call):
 
     def update(stage, processed=None, total=None, usage=None):
         moment = now()
-        if stage != open_stage["name"]:
+        # "gathering codex sessions: 40 scanned" is one stage at a count, not a
+        # stage of its own: keyed on the full text, a record had 47–51 (#2030).
+        name = re.sub(r":\s*[\d,]+\b.*$", "", stage)
+        if name != open_stage["name"]:
             close_stage(moment)
-            open_stage.update(name=stage, at=moment)
+            open_stage.update(name=name, at=moment)
         run["stage"] = stage
         run["stage_updated_at"] = moment.isoformat()
         if processed is not None:

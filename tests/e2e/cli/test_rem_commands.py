@@ -985,7 +985,11 @@ def test_a_run_record_says_how_long_each_stage_took(tmp_path, monkeypatch):
 
     def run(update):
         update('gathering sources')
-        clock['t'] += timedelta(seconds=40)
+        clock['t'] += timedelta(seconds=30)
+        update('gathering codex sessions: 40 scanned')
+        clock['t'] += timedelta(seconds=5)
+        update('gathering codex sessions: 1,200 scanned')     # #2030: one stage, not two
+        clock['t'] += timedelta(seconds=5)
         update('gathering gmail mail', 3, 10)
         clock['t'] += timedelta(seconds=5)
         update('gathering gmail mail', 10, 10)       # same stage: counts, not a new one
@@ -996,8 +1000,8 @@ def test_a_run_record_says_how_long_each_stage_took(tmp_path, monkeypatch):
 
     _logged(tmp_path, 'people/owner.md', 'investigate me', run)
     record = json.loads(next((tmp_path / '.state/runs').glob('*.json')).read_text())
-    assert record['stage_seconds'] == {'gathering sources': 40.0, 'gathering gmail mail': 10.0,
-                                       'writing investigation': 290.0}
+    assert record['stage_seconds'] == {'gathering sources': 30.0, 'gathering codex sessions': 10.0,
+                                       'gathering gmail mail': 10.0, 'writing investigation': 290.0}
 
 
 def test_category_run_reports_partial_failure_nonzero(tmp_path, monkeypatch):
