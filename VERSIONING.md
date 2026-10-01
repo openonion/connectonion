@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a11
+## Current Version: 1.9.0a12
+
+1.9.0a12 repairs local REM snapshot opening on Windows. The reader writes a
+private temporary file and replaces the predictable snapshot name without
+opening a planted link's target. Its Windows CI checks `co rem open` twice from
+an installed wheel outside the source checkout. It carries the morning reader
+introduced in 1.9.0a11. Stable remains 1.8.10. See
+[1.9.0a12 notes](docs/releases/1.9.0a12.md).
+
+- 1.9.0a12 (#1941, #2101; Windows reader snapshot and installed-wheel gate).
+
+## Previous preview: 1.9.0a11
 
 1.9.0a11 makes the overnight memory the first screen of the REM reader. It
 shows current context from pages touched by the latest pass, an explicit
