@@ -91,7 +91,9 @@ AGENT_ADDRESS = re.compile(r'^0x[0-9a-f]{6,}@', re.I)
 # and never once hearing back is the shape of an address you own. On the real
 # 90-day map of 2026-09-23 the owner's own Gmail carried 106 sent and 0
 # received, while the genuinely unanswered strangers sat at one or two.
-WRITE_ONLY_MIN = 3
+# Two, since a page is made from two sends (`worth_a_page`, #2057): a nameless
+# address written to twice and never answering is held, not queued.
+WRITE_ONLY_MIN = 2
 
 
 def _write_only(row: dict) -> bool:
@@ -145,6 +147,15 @@ def looks_own(group: list[dict], tokens: set[str]) -> list[dict]:
     return [row for row in rows if any(
         token in row['address'].split('@')[0].casefold() or token in str(row.get('name') or '').casefold()
         for token in tokens)]
+
+
+def worth_a_page(sent: int, received: int) -> bool:
+    """Someone the owner corresponds with: mail both ways, or the owner wrote to them twice.
+
+    On the owner's 367 correspondents: 41 both ways, 31 written to twice or
+    more; the other 295 were one cold mail, a newsletter, a booking (#2057).
+    """
+    return bool((sent and received) or sent >= 2)
 
 
 def _notice(row: dict) -> bool:
@@ -500,6 +511,9 @@ def _held(group: list[dict], page: str) -> bool:
     the shape of their own other mailbox, which 1.9.0a3 listed as a person
     (aaron@openonion.ai, 10 sent, none received). It is still asked about with
     `init --mine`, and held until that is answered or it replies (#1987).
+
+    Since #2057 an address the owner never wrote to gets no page at all, so the
+    write-only case is the one that still arrives here.
     """
     title = page.split('\n', 1)[0]
     return '@' in title and _mapped_only(page) and (
@@ -720,7 +734,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
     notebook = Notebook(root)
     report = {'phase': 'mapping', 'started': datetime.now(timezone.utc).isoformat(),
               'days': days, 'coverage': [], 'people': [], 'projects': [], 'orgs': [], 'created': [],
-              'errors': list(source_errors or []), 'automated_correspondents': [],
+              'errors': list(source_errors or []), 'automated_correspondents': [], 'without_page': [],
               'possible_own_addresses': []}
     state = root / '.state' / 'map.json'
     from .source_inventory import SourceInventory
@@ -798,9 +812,20 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
             report['automated_correspondents'].extend(group)
             org_rows += [{'address': a, 'record': None} for a in addresses]
             continue
+        existing = next((p['path'] for p in roster if {a.casefold() for a in addresses} & set(p['emails'])), None)
+        sent, received = sum(row.get('sent', 0) for row in group), sum(row.get('received', 0) for row in group)
+        kept = existing and not _mapped_only(notebook.read(existing))
+        if not kept and (automated or not worth_a_page(sent, received)):
+            # 374 of the owner's 381 people pages were empty templates, most
+            # for one mail either way: Apple, a newsletter, one cold outreach
+            # (#2057). They stay in the map, and get a page once they write back.
+            report['automated_correspondents' if automated else 'without_page'].append(
+                {**first, 'addresses': addresses, 'sent': sent, 'received': received,
+                 **({'record': existing} if existing else {})})
+            org_rows += [{'address': a, 'record': None} for a in addresses]
+            continue
         if automated:
             report['automated_correspondents'].extend(group)
-        existing = next((p['path'] for p in roster if {a.casefold() for a in addresses} & set(p['emails'])), None)
         name = next((row['name'] for row in group if row.get('name')), '') or first['address']
         record = existing or _record('people', name, first['address'])
         made = notebook.stub_person(record, name, addresses, email=', '.join(addresses))
@@ -861,6 +886,10 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
     if report['automated_correspondents']:
         report['coverage'].append(f"{len(report['automated_correspondents'])} notice or relay senders listed in "
                                   ".state/map.json without people pages")
+    if report['without_page']:
+        report['coverage'].append(f"{len(report['without_page'])} correspondents with mail one way only, and at "
+                                  "most one from the owner, listed in .state/map.json without people pages; a page "
+                                  "comes when mail goes both ways or the owner writes twice")
     # Why a mailbox is not here is the command layer's knowledge, not the map's:
     # from inside, a mailbox nobody connected, one the user unsubscribed, and one
     # that failed to open are all equally absent. It says what it was told, and
@@ -922,4 +951,9 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
         lines = [f'# {category.capitalize()} map', '', 'Generated enumeration; not an investigation or importance ranking.', '']
         lines += [f'- [{Path(row["record"]).stem}](../{row["record"]})' for row in report[category]]
         notebook.write(f'notes/{category}-map.md', '\n'.join(lines) + '\n')
+    # The index the table and thread views read, from what this map just wrote (#2067).
+    # Derived and rebuilt next time, so a failure is reported, never the map's.
+    from .store import refresh_safely
+    report['store'] = refresh_safely(root)
+    save()
     return report

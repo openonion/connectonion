@@ -1025,10 +1025,13 @@ class Outlook:
             "$filter": f"receivedDateTime ge {start} and receivedDateTime lt {end}",
             "$orderby": f"receivedDateTime {'desc' if newest_first else 'asc'}",
             "$top": max_results,
-            "$select": "id,from,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
+            "$select": "id,conversationId,from,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
         }
         result = self._request("GET", "/me/messages", params=params)
         rows = self._email_dicts(result.get('value', []))
+        # Graph's conversation id is the thread co rem's chat view groups by (#2067).
+        for row, msg in zip(rows, result.get('value', [])):
+            row['thread_id'] = msg.get('conversationId', '')
         # co rem files the user's own mail under the person it went to, which the
         # from-address cannot say; recipients are only on this listing.
         # Each recipient keeps its name ("Ody Zhou <ody@g.com>"): dropping it mapped

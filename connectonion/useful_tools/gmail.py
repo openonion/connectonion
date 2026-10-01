@@ -1223,8 +1223,11 @@ class Gmail(GmailMailbox):
             userId='me', q=f"after:{first} before:{last}", maxResults=max_results).execute(num_retries=3)
         self._last_message_page = page
         rows = self._email_dicts(page.get('messages', []), max_results, recipients=True)
+        # The listing names each message's conversation; co rem's thread view groups by it (#2067).
+        threads = {message['id']: message.get('threadId', '') for message in page.get('messages', [])}
         for row in rows:
             row['date'] = _iso_date(row['date'], start)
+            row['thread_id'] = threads.get(row['id'], '')
         return sorted(rows, key=lambda row: (row['date'], row['id']))
 
     def my_addresses(self) -> set:

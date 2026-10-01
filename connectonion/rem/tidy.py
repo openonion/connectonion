@@ -37,6 +37,8 @@ def tidy(root: Path, *, lock_held: bool = False, own_addresses: bool = True) -> 
         notebook, actions = Notebook(root), []
         state = read_json(state_path(root, "map.json"), {})
         actions += _services(notebook, state)
+        actions += _strangers(notebook, state)
+        actions += _empty_orgs(notebook, state)
         actions += _own_addresses(notebook, state) if own_addresses else []
         actions += _skills(notebook)
         actions += _orgs(notebook)
@@ -115,6 +117,45 @@ def _services(notebook: Notebook, state: dict) -> list[dict]:
             continue
         if service_page(person["title"], person["emails"], rows.get(record), automated):
             moved.append({"action": "archived service", "page": record, "archived": _archive(notebook, record)})
+    return moved
+
+
+def _strangers(notebook: Notebook, state: dict) -> list[dict]:
+    """People pages the map made for someone the owner never corresponded with, never written: archived.
+
+    One mail either way, or a newsletter that never heard back: 295 of the
+    owner's 367 correspondents, and most of 374 empty people pages (#2057).
+    A later map makes the page again once mail goes both ways."""
+    from .census import written
+    from .map import worth_a_page
+    owner = (state.get("owner") or {}).get("record")
+    moved = []
+    # A map that gave no page names the old one it left in `without_page`;
+    # an older map's row is judged by its counts.
+    rows = [*state.get("people", []), *({**row, "sent": 0, "received": 0} for row in state.get("without_page", []))]
+    for row in rows:
+        record = row.get("record")
+        if (not record or record == owner or "sent" not in row or not notebook.path(record).is_file()
+                or written(notebook.read(record))):
+            continue
+        if row.get("classification") == "automated candidate" or not worth_a_page(row.get("sent", 0),
+                                                                                  row.get("received", 0)):
+            moved.append({"action": "archived one-way correspondent", "page": record,
+                          "archived": _archive(notebook, record)})
+    return moved
+
+
+def _empty_orgs(notebook: Notebook, state: dict) -> list[dict]:
+    """Organisation pages the map made whose people all lost their pages, never written: archived."""
+    from .census import written
+    moved = []
+    for row in state.get("orgs", []):
+        record = row.get("record")
+        if (not record or not row.get("people") or not notebook.path(record).is_file()
+                or written(notebook.read(record))
+                or any(notebook.path(person).is_file() for person in row["people"])):
+            continue
+        moved.append({"action": "archived organisation", "page": record, "archived": _archive(notebook, record)})
     return moved
 
 
