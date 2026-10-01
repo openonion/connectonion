@@ -207,6 +207,12 @@ NEXT = {
     "co slack chats": HANDLER,
     "co slack log": "co slack ls",
     "co slack consume": "co slack ls",
+    # The read verbs (#2051) print their own Next: after the results, naming a
+    # real id from them; this table's line would print first in a pipe.
+    "co slack channels": HANDLER,
+    "co slack history": HANDLER,
+    "co slack thread": HANDLER,
+    "co slack search": HANDLER,
     "co email send": HANDLER,
     "co email inbox": HANDLER,
     "co email read": 'Reply from this address:  co email send <sender> "<subject>" "<body>"',
