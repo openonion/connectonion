@@ -163,6 +163,23 @@ def load_environment() -> None:
         print(f"[env] {path}", file=sys.stderr)
 
 
+def setting(name: str) -> str | None:
+    """One setting: the process and the selected file, then `co env set --secret`'s store.
+
+    os.environ never holds the encrypted store, so a command that reads only
+    os.environ cannot see a key saved the way `co env set --help` shows. The
+    store comes last, as in `co env get`, so it never changes what a plain
+    setting resolves to. A stored value that will not open raises rather than
+    reading as unset.
+    """
+    if os.environ.get(name):
+        return os.environ[name]
+    from .secret_store import get, stored_names
+    if name.lower() in stored_names(global_config_dir()):
+        return get(global_config_dir(), name)
+    return None
+
+
 def load_project_env(path: Path) -> list[str]:
     """Layer a hosted project's .env over keys.env; the process environment still wins.
 
