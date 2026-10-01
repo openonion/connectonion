@@ -42,15 +42,30 @@ def reader(tmp_path, monkeypatch):
         page.on("request", lambda request: requests.append(request.url) if request.url.startswith("http") else None)
         page.route("http*://**/*", lambda route: route.abort())
         page.goto(path.as_uri())
-        page.get_by_role("heading", name="What your assistant knows").wait_for()
+        page.get_by_role("heading", name="What REM carried forward").wait_for()
         yield page, path.as_uri()
         browser.close()
         assert not errors, errors
         assert not requests, requests
 
 
-def test_home_opens_on_the_night_and_what_is_owed(reader):
+def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     page, _ = reader
+    memories = page.locator(".memory-card")
+    assert memories.count() >= 3
+    assert "Mara Ostrowski" in memories.all_inner_texts()[0]
+    assert "pilot" in " ".join(memories.all_inner_texts()).lower()
+    assert page.locator(".memory-connection a").count() >= 2
+    recall = page.locator(".recall")
+    assert recall.count() == 1
+    assert not recall.locator(".recall-answer").is_visible()
+    recall.get_by_role("button", name="Reveal the context").focus()
+    page.keyboard.press("Enter")
+    assert recall.locator(".recall-answer").is_visible()
+    assert recall.get_by_role("button", name="Hide the context").get_attribute("aria-expanded") == "true"
+    assert recall.get_by_role("button", name="Hide the context").get_attribute("aria-controls") == "recall-answer"
+    assert page.locator(".night-details").count() == 1
+    page.locator(".night-details summary").click()
     night = page.locator(".night")
     assert "46 items" in night.inner_text() and "4 pages" in night.inner_text()
     assert night.locator(".hypno .dot.woke").count() == 1  # the night that stopped early
