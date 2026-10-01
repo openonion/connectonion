@@ -197,6 +197,12 @@ NEXT = {
     "co slack chats": HANDLER,
     "co slack log": "co slack ls",
     "co slack consume": "co slack ls",
+    # The read verbs (#2051) print their own Next: after the results, naming a
+    # real id from them; this table's line would print first in a pipe.
+    "co slack channels": HANDLER,
+    "co slack history": HANDLER,
+    "co slack thread": HANDLER,
+    "co slack search": HANDLER,
     "co email send": HANDLER,
     "co email inbox": HANDLER,
     "co email read": 'Reply from this address:  co email send <sender> "<subject>" "<body>"',
@@ -221,6 +227,19 @@ NEXT = {
     "co gcalendar *": HANDLER,
     "co gdrive *": HANDLER,
     "co gmail *": HANDLER,
+    # Each co linear handler names the next command from what it found (#2049).
+    "co linear issues": HANDLER,
+    "co linear issue": HANDLER,
+    "co linear search": HANDLER,
+    "co linear teams": HANDLER,
+    "co linear projects": HANDLER,
+    "co linear states": HANDLER,
+    "co linear labels": HANDLER,
+    "co linear users": HANDLER,
+    "co linear check": HANDLER,
+    "co linear create": HANDLER,
+    "co linear update": HANDLER,
+    "co linear comment": HANDLER,
     # Every wiki command already ends by naming one next command, chosen from what
     # it found: `list` points at the first page, `search` at the first hit, a failed
     # `show` back at the category. A static line here would contradict that.
@@ -279,6 +298,16 @@ NEXT = {
     "co trust unblock": "See every list:  co trust list",
     "co trust admin add": "See every list:  co trust list",
     "co trust admin remove": "See every list:  co trust list",
+    # co canny: each handler names its next command from what Canny returned
+    # (the first post's id, the exact --yes command after a preview).
+    "co canny check": HANDLER,
+    "co canny boards": HANDLER,
+    "co canny posts": HANDLER,
+    "co canny search": HANDLER,
+    "co canny post": HANDLER,
+    "co canny status": HANDLER,
+    "co canny comment": HANDLER,
+    "co canny changelog create": HANDLER,
     "co youtube *": HANDLER,
     "co tiktok *": HANDLER,
 }

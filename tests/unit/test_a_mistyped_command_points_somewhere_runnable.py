@@ -6,7 +6,7 @@ candidate had just been named. Two problems with that, both measured:
 
   * when Click *does* know the answer, the tip throws it away. The reader is
     told the right word in one line and sent to a flag in the next.
-  * when Click does *not* know — `co like`, `co lisen`, both too far by edit
+  * when Click does *not* know — `co loke`, `co lisen`, both too far by edit
     distance to match anything — `co --help` is a boxed, paginated screen of
     groups. `co commands` prints all 199 commands one per line with a summary,
     which is the shape something reading this output can actually use.
@@ -46,7 +46,9 @@ def test_a_near_miss_names_the_command_it_guessed(typo, wanted, tmp_path):
     assert f"Next: {wanted}" in out, f"the tip should carry the guess, got:\n{out}"
 
 
-@pytest.mark.parametrize("typo", ["like", "lisen", "zzzzzz"])
+# `like` was here until `co linear` arrived: difflib scores like/linear at
+# exactly 0.6, Click's cutoff, so Click now guesses `co linear` for it.
+@pytest.mark.parametrize("typo", ["loke", "lisen", "zzzzzz"])
 def test_no_guess_points_at_the_list_of_everything(typo, tmp_path):
     """`co --help` is a screen of groups; `co commands` is every command, one per line."""
     code, out = run(typo, home=tmp_path)
@@ -65,7 +67,7 @@ def test_a_subcommand_typo_stays_inside_its_group(tmp_path):
 
 
 def test_there_is_still_exactly_one_next_step(tmp_path):
-    code, out = run("like", home=tmp_path)
+    code, out = run("loke", home=tmp_path)
 
     assert out.count("Next:") == 1
 
