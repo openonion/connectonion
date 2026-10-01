@@ -316,19 +316,20 @@ the headings still empty are named once at the foot of the page with the
 findings first, then newest last contact. The Markdown file is unchanged, and
 **Copy Markdown** at the foot copies it as written, unknowns included.
 
-### What the reader shows (1.9.0a9)
+### What the reader shows (next preview candidate)
 
-The reader is a notebook you come back to, so it is quiet everywhere except
-where it answers why you came back.
+The reader returns the context REM carried forward, then helps you recall an
+older page before showing its answer. It remains a point-in-time snapshot.
 
-- **Home** opens on the last night: a dark band says what the last pass read
-  and how many pages it rewrote, draws the week's runs as a hypnogram (each
-  dip one run, deeper the more it read; an amber dot where a run stopped
-  early) and links the pages it changed. Below it, **Open threads** in two
-  bands, *Waiting on you* (oldest first, with its age) and *Waiting on
-  others*; then **This week**, the pages rewritten in seven days with their
-  one line; then the notebook by kind of page, ranked by activity. The
-  owner's page is pinned as **You** at the top of the navigation.
+- **Home** opens with up to three pages changed in the latest pass, showing
+  their current context and links to their sources. An explicit page link is
+  shown as connected context; a proposed link appears separately as a question
+  for the owner to review. **Remember with REM** asks about an older page and
+  reveals what that page already says on request. **Open threads** keeps
+  *Waiting on you* (oldest first) beside *Waiting on others*. **This week**
+  follows. The last pass's counts and hypnogram are available in **How REM
+  processed the last pass** below the memories. The owner's page is pinned as
+  **You** at the top of the navigation.
 - **People, Organisations and Projects** open as a sheet: one row per page,
   the facts in columns (people: what's open next to the name, then company,
   role, email, phone, last contact, mails; status is the moon beside the

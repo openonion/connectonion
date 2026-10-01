@@ -40,7 +40,7 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.route("http://**/*", lambda route: route.abort())
             page.route("https://**/*", lambda route: route.abort())
             page.goto(page_path.as_uri())
-            page.get_by_role("heading", name="What your assistant knows").wait_for()
+            page.get_by_role("heading", name="What REM carried forward").wait_for()
             page.screenshot(path=str(shots / "rem-desktop.png"), full_page=True)
             page.locator("#main").get_by_role("link", name="Aurora", exact=True).first.click()
             page.locator("#main").get_by_role("link", name="Storage", exact=True).click()
@@ -76,7 +76,7 @@ def test_reader_runs_inside_opaque_rem_iframe(tmp_path, monkeypatch):
         page.locator("iframe").evaluate("(frame, content) => frame.srcdoc = content",
                                          html.replace("<head>", "<head>" + csp))
         frame = page.frame_locator("iframe")
-        frame.get_by_role("heading", name="What your assistant knows").wait_for()
+        frame.get_by_role("heading", name="What REM carried forward").wait_for()
         assert frame.get_by_role("link", name="Example").first.is_visible()
         assert frame.locator("body").evaluate("body => getComputedStyle(body).fontFamily")
         browser.close()
@@ -176,7 +176,7 @@ def test_reader_contains_overflow_and_keeps_content_visible(reader_page, tmp_pat
     shots.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(shots / f"reader-{width}.png"), full_page=True)
     page.locator(".brand").click()
-    page.get_by_role("heading", name="What your assistant knows").wait_for()
+    page.get_by_role("heading", name="What REM carried forward").wait_for()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     page.screenshot(path=str(shots / f"contents-{width}.png"), full_page=True)
     page.emulate_media(color_scheme="dark")
@@ -278,6 +278,9 @@ def test_review_candidates_are_readable_and_inert(reader_page, tmp_path):
                          "question": "<img src=x onerror=alert(1)>", "basis": "A literal quoted question", "status": "answered", "author": "User", "response": "Different scope"}]}
     path = tmp_path / "reviews.html"
     path.write_text(TEMPLATE.read_text().replace(PLACEHOLDER, json.dumps(data).replace("<", "\\u003c")))
+    page.goto(path.as_uri())
+    assert "Do these constraints share a cause?" in page.locator(".connection-review").inner_text()
+    assert page.locator(".connection-review img").count() == 0
     page.goto(path.as_uri() + "#reviews=1")
     page.get_by_role('heading', name='Questions & connections', exact=True).wait_for()
     assert page.locator('#main img').count() == 0

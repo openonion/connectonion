@@ -7,10 +7,10 @@
   Note text is data: it reaches the DOM only through esc() or textContent.
 
   Design. co rem is named for REM sleep: overnight it consolidates the day's
-  mail and coding sessions into pages. The reader is a notebook you come back
-  to, so it is quiet everywhere except one place: the home opens on the night
-  (what the last pass read, which pages changed, a hypnogram of the week's
-  runs), and every page opens on what is still open.
+  mail and coding sessions into pages. The home returns the changed context
+  first, then asks the owner to recall an older page. Processing details remain
+  available below the memory; a candidate connection stays a question until
+  the owner reviews it. Every page opens on what is still open.
   - Palette: cool, blue-biased neutrals ("pillow" paper, "midnight" ink), one
     night blue for links and knowledge, one lamp amber kept for what is owed
     or open. Dark is its own palette, not an inversion.
@@ -176,6 +176,46 @@
   .night .changes a:hover { background: rgba(255,255,255,0.14); text-decoration: none; }
   .night code { font: 12px var(--mono); color: #fff; background: rgba(255,255,255,0.08); padding: 2px 7px; border-radius: 4px; }
   .night p { margin: 0; color: var(--night-2); font-size: 14px; }
+
+  /* Morning recall: the foreground is what the notebook retained, not its run log. */
+  .morning { position: relative; isolation: isolate; overflow: hidden; margin: 20px 0 0; padding: 32px; border-radius: 16px; background: #111931; color: #f4f5fb; box-shadow: 0 18px 48px -30px rgba(12, 20, 48, .55); }
+  .morning::before { content: ""; position: absolute; z-index: -1; width: 500px; height: 500px; right: -185px; top: -340px; border: 1px solid rgba(163, 181, 255, .35); border-radius: 50%; box-shadow: 0 0 0 70px rgba(134, 157, 255, .035), 0 0 0 140px rgba(134, 157, 255, .025); pointer-events: none; }
+  .morning-top { display: flex; justify-content: space-between; gap: 18px; align-items: start; border-bottom: 1px solid rgba(194, 205, 255, .18); padding-bottom: 22px; }
+  .morning-kicker { display: block; color: #aab7e8; font: 600 11px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .13em; }
+  .morning h2 { max-width: 22ch; font: 400 clamp(28px, 3vw, 42px)/1.12 var(--display); letter-spacing: -.02em; margin: 9px 0 0; text-wrap: balance; }
+  .morning-time { flex-shrink: 0; color: #b3bfed; font: 11px/1.5 var(--mono); }
+  .memory-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; }
+  .memory-card { min-width: 0; padding: 24px 22px 12px 0; }
+  .memory-card + .memory-card { border-left: 1px solid rgba(194, 205, 255, .18); padding-left: 22px; }
+  .memory-card .kind { color: #b3bfed; font: 10px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .1em; }
+  .memory-card h3 { font: 500 20px/1.25 var(--display); margin: 9px 0 10px; }
+  .memory-card h3 a, .memory-card .open { color: #fff; }
+  .memory-card p { margin: 0 0 12px; color: #d4daf2; font: 15px/1.5 var(--text); }
+  .memory-card .open { display: inline-block; font: 12px var(--ui); text-decoration: underline; text-underline-offset: 4px; }
+  .memory-empty { margin: 22px 0 0; color: #c8d0ed; font: 16px/1.5 var(--text); }
+  .memory-connection { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; border-top: 1px solid rgba(194, 205, 255, .18); padding-top: 17px; margin-top: 8px; font-size: 13px; }
+  .memory-connection .label { color: #b3bfed; font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+  .memory-connection a { color: #fff; }
+  .memory-connection .relation { color: #aab7e8; }
+  .memory-connection .basis { color: #b3bfed; }
+  .recall { margin-top: 22px; padding: 23px 27px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 24px; align-items: center; background: var(--sheet); border: 1px solid var(--line); border-radius: 12px; }
+  .recall .label { font: 600 10px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--blue); }
+  .recall h2 { grid-column: 1; font: 500 23px/1.28 var(--display); margin: 6px 0; }
+  .recall .why { grid-column: 1; color: var(--ink-2); font-size: 13px; margin: 0; }
+  .recall-toggle { grid-column: 2; grid-row: 1 / span 3; align-self: center; min-height: 44px; border: 1px solid var(--blue-line); background: var(--blue-soft); color: var(--blue); border-radius: 7px; padding: 10px 14px; font: 600 13px var(--ui); cursor: pointer; }
+  .recall-toggle:hover { border-color: var(--blue); }
+  .recall-answer { grid-column: 1 / -1; border-top: 1px solid var(--line); margin-top: 16px; padding-top: 15px; }
+  .recall-answer[hidden] { display: none; }
+  .recall-answer p { font: 16px/1.5 var(--text); margin: 0 0 7px; }
+  .recall-answer a { font-size: 13px; }
+  .connection-review { margin-top: 14px; padding: 20px 27px; border: 1px solid var(--blue-line); background: var(--blue-soft); border-radius: 12px; }
+  .connection-review .label { font: 600 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--blue); }
+  .connection-review h2 { font: 500 20px/1.3 var(--display); margin: 7px 0; }
+  .connection-review p { margin: 0 0 10px; color: var(--ink-2); font-size: 13px; }
+  .connection-review .subjects { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 13px; }
+  .night-details { margin-top: 60px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .night-details > summary { cursor: pointer; color: var(--ink-2); font: 13px var(--ui); padding: 8px 0; }
+  .night-details .night { margin-top: 10px; }
 
   /* ---- this week: what was rewritten ---- */
   .week { list-style: none; padding: 0; margin: 10px 0 0; border-top: 1px solid var(--line); }
@@ -557,8 +597,16 @@
     h2.section .n { display: block; text-align: left; margin-top: 4px; }
     .night { padding: 20px 18px 18px; margin-left: -4px; margin-right: -4px; }
     .night .thesis { font-size: 22px; }
-    .thread, .block-threads .thread { grid-template-columns: minmax(0, 1fr); padding: 11px 14px; }
+    .thread, .band .threads .thread, .block-threads .thread { grid-template-columns: minmax(0, 1fr); padding: 11px 14px; }
     .thread .when { order: -1; }
+    .morning { padding: 23px 20px; }
+    .morning-top { display: block; }
+    .morning-time { display: block; margin-top: 10px; }
+    .memory-grid { grid-template-columns: minmax(0, 1fr); }
+    .memory-card { padding: 18px 0; }
+    .memory-card + .memory-card { border-left: 0; border-top: 1px solid rgba(194, 205, 255, .18); padding-left: 0; }
+    .recall { grid-template-columns: minmax(0, 1fr); padding: 20px; }
+    .recall-toggle { grid-column: 1; grid-row: auto; justify-self: start; margin-top: 12px; }
     .aside { grid-template-columns: 1fr; }
     .timeline li { grid-template-columns: 84px minmax(0, 1fr); }
     .timeline li::before { left: 77px; }
@@ -1412,12 +1460,13 @@ function renderRail(active) {
   nav.appendChild(el("a", { href: "#", class: active === null ? "active" : "" }, [el("span", { text: "Contents" }), el("span", { class: "n", text: String(listedRecords().length) })]));
   for (const c of REM.categories) {
     const n = inCategory(c).length;
+    if (!n && active !== c && !["people", "orgs", "projects"].includes(c)) continue;
     nav.appendChild(el("a", { href: "#c=" + c, class: active === c ? "active" : "" },
       [el("span", { text: label(c) }), el("span", { class: "n" + (n ? "" : " zero"), text: String(n) })]));
   }
   nav.appendChild(el("div", { class: "gap" }));
   const pending = (REM.reviews || []).filter(r => r.status === "pending").length;
-  nav.appendChild(el("a", { href: "#reviews=1", class: active === "reviews" ? "active" : "" },
+  if ((REM.reviews || []).length || active === "reviews") nav.appendChild(el("a", { href: "#reviews=1", class: active === "reviews" ? "active" : "" },
     [el("span", { text: "Questions & connections" }), el("span", { class: "n" + (pending ? " open" : " zero"), text: String(pending) })]));
   const s = REM.status || {};
   const foot = document.getElementById("foot");
@@ -1465,17 +1514,109 @@ function threadRow(r, t, withPage) {
 function sectionHead(title, note) {
   return el("h2", { class: "section" }, [el("span", { text: title }), note ? el("span", { class: "n" }, [note]) : null]);
 }
+function memoryStatement(r) {
+  const insight = section(r, "insight");
+  const lines = insight ? listItems(insight.text) : [];
+  const line = lines.find(item => /^Changed:/i.test(item)) || lines.find(item => /^Now:/i.test(item))
+    || lines.find(item => /^At stake:/i.test(item)) || lines[0];
+  const current = section(r, "where it stands");
+  const statement = plainLine(line ? line.replace(/^(?:Changed|Now|At stake):\s*/i, "") : current?.text || known(r).summary);
+  return statement ? statement[0].toUpperCase() + statement.slice(1) : "";
+}
+function memoryConnection(records) {
+  const visible = new Set(listedRecords().map(r => r.path));
+  for (const r of records) {
+    for (const match of r.text.matchAll(/\[[^\]]+\]\(([^)]+\.md)\)/g)) {
+      const other = byPath(resolve(r.path, match[1]));
+      if (!other || other.path === r.path || !visible.has(other.path)) continue;
+      return el("div", { class: "memory-connection" }, [
+        el("span", { class: "label", text: "Connected context" }),
+        el("a", { href: href(r), text: r.title }),
+        el("span", { class: "relation", "aria-hidden": "true", text: "↔" }),
+        el("a", { href: href(other), text: other.title }),
+        el("span", { class: "basis", text: "Linked in " + r.title + "'s page" })]);
+    }
+  }
+  return null;
+}
+function morningBrief() {
+  const pass = lastPass();
+  const changed = (pass?.changed || []).filter(r => r.path !== REM.owner && known(r).status !== "Mapped");
+  const rank = r => ({ people: 0, projects: 1, orgs: 2 })[r.category] ?? 3;
+  changed.sort((a, b) => rank(a) - rank(b) || byActivity(a, b));
+  const brief = el("section", { class: "morning", "aria-label": "What REM carried forward" });
+  const top = el("div", { class: "morning-top" }, [
+    el("div", {}, [el("span", { class: "morning-kicker", text: "REM / latest pass" }),
+      el("h2", { text: changed.length ? (new Date(REM.as_of).getTime() - pass.latest < DAY_MS
+        ? "The context to carry into today" : "The context from the last pass") : "Ready when there is something new" })]),
+    el("span", { class: "morning-time", text: pass ? fmtTime(new Date(pass.latest).toISOString()) : "No pass yet" })]);
+  brief.appendChild(top);
+  if (!changed.length) {
+    brief.appendChild(el("p", { class: "memory-empty", text: pass
+      ? "The last pass did not update a page. Your existing context is still in the library below."
+      : "REM has not completed a pass yet. Once it has, the pages it updates will appear here." }));
+    return brief;
+  }
+  const cards = el("div", { class: "memory-grid" });
+  for (const r of changed.slice(0, 3)) cards.appendChild(el("article", { class: "memory-card" }, [
+    el("span", { class: "kind", text: singular(r.category) + " · Updated in the latest pass" }),
+    el("h3", {}, [el("a", { href: href(r), text: r.title })]),
+    el("p", { text: memoryStatement(r) || "This page was updated. Open it to see the current context." }),
+    el("a", { class: "open", href: href(r), text: "Read the page and sources →" })]));
+  brief.appendChild(cards);
+  const connection = memoryConnection(changed);
+  if (connection) brief.appendChild(connection);
+  return brief;
+}
+function recallPrompt() {
+  const changed = new Set((lastPass()?.changed || []).map(r => r.path));
+  const candidates = listedRecords().filter(r => r.path !== REM.owner && !changed.has(r.path)
+    && ["people", "projects", "orgs"].includes(r.category) && known(r).status !== "Mapped" && known(r).summary);
+  candidates.sort((a, b) => Number(!!section(b, "our relationship")) - Number(!!section(a, "our relationship")) || byActivity(a, b));
+  const r = candidates[0];
+  if (!r) return null;
+  const relationship = section(r, "our relationship");
+  const answerText = plainLine(relationship?.text || known(r).summary);
+  const card = el("section", { class: "recall", "aria-label": "Recall a memory" });
+  const answer = el("div", { id: "recall-answer", class: "recall-answer", hidden: "", "aria-live": "polite" }, [
+    el("p", { text: answerText }), el("a", { href: href(r), text: "Open " + r.title + " and its sources →" })]);
+  const button = el("button", { class: "recall-toggle", type: "button", "aria-controls": "recall-answer", "aria-expanded": "false", text: "Reveal the context" });
+  button.onclick = () => {
+    answer.hidden = !answer.hidden;
+    button.setAttribute("aria-expanded", String(!answer.hidden));
+    button.textContent = answer.hidden ? "Reveal the context" : "Hide the context";
+  };
+  card.append(el("span", { class: "label", text: "Remember with REM" }),
+    el("h2", { text: relationship ? "How do you know " + r.title + "?" : "What should you remember about " + r.title + "?" }),
+    el("p", { class: "why", text: "Pause before revealing. The answer comes from a page REM already wrote." }), button, answer);
+  return card;
+}
+function connectionReview() {
+  const candidate = (REM.reviews || []).find(row => row.status === "pending" && row.kind === "link");
+  if (!candidate) return null;
+  return el("section", { class: "connection-review", "aria-label": "Connection awaiting review" }, [
+    el("span", { class: "label", text: "A possible connection · Your judgment needed" }),
+    el("h2", { text: candidate.question }),
+    el("p", { text: candidate.basis }),
+    el("div", { class: "subjects" }, [
+      ...candidate.subjects.map(path => el("a", { href: "#r=" + encodeURIComponent(path), text: byPath(path)?.title || path })),
+      el("a", { href: "#reviews=1", text: "Review the evidence →" })])]);
+}
 function overview() {
   const s = REM.status || {};
   const main = document.getElementById("main");
   main.textContent = "";
-  main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "Contents" }), el("span", { class: "sep", text: "/" }), el("span", { class: "when", text: fmtDate(REM.as_of) })]));
-  main.appendChild(el("h1", { text: "What your assistant knows" }));
+  main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "REM / Today" }), el("span", { class: "sep", text: "/" }), el("span", { class: "when", text: fmtDate(REM.as_of) })]));
+  main.appendChild(el("h1", { text: "What REM carried forward" }));
   const n = listedRecords().length;
   const mapped = listedRecords().filter(r => known(r).status === "Mapped").length;
-  main.appendChild(el("p", { class: "lede", text: n === 0 ? "Nothing written yet. The first maintenance pass fills this in." :
-    n + (n === 1 ? " page" : " pages") + (mapped ? ": " + (n - mapped) + " with findings, " + mapped + " mapped from your sources and not investigated yet." : ".") }));
-  main.appendChild(nightBand());
+  main.appendChild(el("p", { class: "lede", text: n === 0 ? "Once REM has read your permitted sources, it will bring back the context worth keeping." :
+    "A short return to what changed, what is still open, and what is worth remembering." }));
+  main.appendChild(morningBrief());
+  const recall = recallPrompt();
+  if (recall) main.appendChild(recall);
+  const review = connectionReview();
+  if (review) main.appendChild(review);
 
   // What is open, with whom: the reason most people come back.
   const open = [];
@@ -1504,6 +1645,9 @@ function overview() {
       el("span", { class: "w" }, [el("a", { href: href(r), text: r.title }), el("span", { class: "meta", text: singular(r.category) }),
         known(r).summary ? el("span", { class: "s", text: known(r).summary }) : null])]))));
   }
+
+  const processing = el("details", { class: "night-details" }, [el("summary", { text: "How REM processed the last pass" }), nightBand()]);
+  main.appendChild(processing);
 
   const recent = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category) && known(r).status !== "Mapped" && !/\(automated candidate\)$/.test(r.title))
     .sort(byActivity).slice(0, 6);
@@ -1534,7 +1678,7 @@ function overview() {
     shelves.appendChild(shelf);
   }
   if (shelves.childNodes.length) {
-    main.appendChild(sectionHead("The notebook", "by kind of page"));
+    main.appendChild(sectionHead("Explore the memory", n + " pages" + (mapped ? " · " + mapped + " mapped only" : "")));
     main.appendChild(shelves);
   }
   main.appendChild(maintenance(s));
