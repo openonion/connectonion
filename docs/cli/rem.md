@@ -330,13 +330,18 @@ where it answers why you came back.
   one line; then the notebook by kind of page, ranked by activity. The
   owner's page is pinned as **You** at the top of the navigation.
 - **People, Organisations and Projects** open as a sheet: one row per page,
-  the facts in columns (people: company, role, email, phone, last contact,
-  mails, what's open, status), a sticky header, sort on any column, filters
-  (*Something open*, *Yours to answer*, *Written*, *Mapped only*) and a
-  text filter. A row opens the page. The columns come from the notebook's
+  the facts in columns (people: what's open next to the name, then company,
+  role, email, phone, last contact, mails; status is the moon beside the
+  name), a sticky header, sort on any column, filters (*Something open*,
+  *Yours to answer*, *Written*, *Mapped only*) and a text filter. A row opens
+  the page. It fits 1440 px; narrower, it scrolls inside itself with the cut
+  edge shaded and the name column held. The columns come from the notebook's
   index (`store.people_table`, #2067) when `.state/rem.db` exists, embedded in
   the snapshot; before it does, from each page's Facts and the map's mail
   counts (`index_rows` and `mail_facts` in `reader.py`, `facts()` in the page).
+- **"You", not "the user"**: pages are written about "the user"; the reader
+  says "you" ("you have not signed it", "How you write to them") at render
+  time only, so the Markdown and Copy Markdown keep the words as written.
 - **A page** opens on its lead, then a row with the first open thread
   (*You owe* / *They owe*, and for how long), the last contact, and a `?`
   when the page lists uncertainties. Its `## Facts` (or a legacy page's
