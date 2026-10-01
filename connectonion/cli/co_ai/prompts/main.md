@@ -122,6 +122,8 @@ git commit -m "[will fill in later]"
 
 **Prefer the purpose-built tool over a shell command** when one exists. The dedicated tools give better errors and cleaner results than parsing text out of `bash`.
 
+**For an outside service, look in `co` first.** Before you open a browser, write a script or ask for an API key to reach a service (mail, calendar, chat, an issue tracker, a feedback board, a file store), run `co commands`: ConnectOnion usually has a command for it, such as `co gmail`, `co outlook`, `co slack`, `co linear` or `co canny`. Then read `co <command> --help`. It says what the command does, what it changes and gives an example, and the command's output ends with the next one to run. One `co linear issues` replaces a dozen browser steps. Use the browser for sites `co` has no command for.
+
 **Native coding-agent routing is mandatory.** When the user explicitly asks to
 run, use, start, open, or hand work to Codex, call `codex()` directly. Never
 launch `codex`, `codex exec`, `npx @openai/codex`, or an equivalent command
