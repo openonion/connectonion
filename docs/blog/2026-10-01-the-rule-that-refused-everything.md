@@ -22,8 +22,8 @@ The same run found the second bug that could not wait: one Gmail message whose
 date had no timezone crashed the gather for `co rem investigate me`, so a new
 user's first page could not be written at all.
 
-Both are fixed in 1.9.0a6, which ships with nothing else so that it can ship
-today. The placeholder rule now applies only to a page's own investigation. A
+Both are fixed in 1.9.0a6, which went out the same day with the other things
+that acceptance run found. The placeholder rule now applies only to a page's own investigation. A
 date with no timezone is read as UTC, and a mail whose date cannot be read is
 skipped instead of ending the run.
 

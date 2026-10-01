@@ -407,10 +407,13 @@ notebook found broken: a Gmail date with no timezone stopped `co rem
 investigate me` and the first run's first page, because one bad item ended the
 whole gather (#2013); and daily maintenance refused every page not yet
 investigated, spending 290k tokens to change nothing, because the "no
-placeholder left" rule from #2011 applied to it (#2014). Stable is 1.8.9. See
+placeholder left" rule from #2011 applied to it (#2014). Also: a same-day
+re-investigation of already-cited mail calls no model (#2015), the owner page is
+rewritten rather than appended (#2017), services and mail providers make no
+pages (#2018), and a page cannot grow past 20k characters (#2019). Stable is 1.8.9. See
 [1.9.0a6 notes](docs/releases/1.9.0a6.md).
 
-- 1.9.0a6 (#2013 naive Gmail dates read as UTC, one unreadable date skips its mail; #2014 the placeholder rule applies only to a page's own investigation.)
+- 1.9.0a6 (#2013 naive Gmail dates read as UTC, one unreadable date skips its mail; #2014 the placeholder rule applies only to a page's own investigation; #2015 already-cited mail is not new; #2016 per-stage seconds; #2017 owner page rewritten not appended; #2018 tidy after the map, wider service rule, mail providers never orgs; #2019 20k growth refused.)
 
 ## Previous preview: 1.9.0a5
 
