@@ -64,6 +64,12 @@ emails no one.
   in its settings; the built-in ones are listed in `co canny status --help`.
 - **Changelog entries do not email subscribers** when made here, published
   or not.
+- **A post can open by id and still be missing from every listing.** Canny
+  keeps some posts (seen: one with test-like text, most likely held by its
+  spam review) out of `posts`, `search` and board counts. "Not listed" is
+  not "does not exist"; say which one you checked.
+- **Free plan: no internal comments.** `--internal` is refused there; the
+  `Next:` line offers the same comment in public. Ask before posting it.
 - **Rate limits.** A short wait is taken once automatically; after that the
   command exits 1 and names itself as the command to run again after the
   stated wait.

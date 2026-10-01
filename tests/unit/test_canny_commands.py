@@ -82,7 +82,8 @@ def run(*args, input=None):
 def test_boards_lists_id_name_and_count(canny):
     result = run("boards")
     assert result.exit_code == 0, result.output
-    assert f"{BOARD['id']}    123 posts  public   Feature Requests" in result.output
+    assert result.output.startswith("1 board\n")
+    assert f"{BOARD['id']}    123 posts  public   Feature Requests  {BOARD['url']}" in result.output
     assert canny.sent("v1/boards/list") == [{"apiKey": "test-key"}]
     assert f"Next: co canny posts --board {BOARD['id']} --sort score" in result.output
 
@@ -128,7 +129,8 @@ def test_search_sorts_by_relevance(canny):
 def test_post_shows_details_votes_and_comments(canny):
     result = run("post", POST["id"])
     assert result.exit_code == 0, result.output
-    for text in ("Dark mode [beta]", "72 votes", "Please.", "Sam Admin (internal): Looking at it", "1 newest of 1"):
+    for text in ("Dark mode [beta]", "72 votes", "Please.", "Sam Admin (internal): Looking at it",
+                 "1 comment, newest first, of 1"):
         assert text in result.output
     assert canny.sent("v2/comments/list")[0]["postID"] == POST["id"]
     assert f'Next: co canny comment {POST["id"]} "<your reply>"' in result.output
@@ -332,6 +334,50 @@ def test_bare_group_prints_help_and_the_first_step():
     result = run()
     assert result.exit_code == 0
     assert "co canny check" in result.output.splitlines()[-1]
+
+
+def test_counts_are_singular_for_one(canny):
+    canny.answers["v1/posts/list"] = {"posts": [{**POST, "score": 1}], "hasMore": False}
+    result = run("posts")
+    assert result.output.startswith("1 post\n")
+    assert f"{POST['id']}     1 vote   open" in result.output
+    assert "1 changelog entry," in run("changelog").output
+    canny.answers["v1/boards/list"] = {"boards": [{**BOARD, "postCount": 1}]}
+    assert "Feature Requests (1 post)" in run("check").output
+
+
+def test_empty_posts_point_at_the_boards_not_the_same_list(canny):
+    canny.answers["v1/posts/list"] = {"posts": [], "hasMore": False}
+    result = run("posts", "--sort", "score")
+    assert result.exit_code == 0
+    assert "0 posts" in result.output and "Next: co canny boards" in result.output
+
+
+def test_empty_search_points_at_browsing(canny):
+    canny.answers["v1/posts/list"] = {"posts": [], "hasMore": False}
+    assert "Next: co canny posts --sort score" in run("search", "nothing like this").output
+
+
+def test_boards_with_no_posts_say_where_to_add_one(canny):
+    canny.answers["v1/boards/list"] = {"boards": [{**BOARD, "postCount": 0}]}
+    result = run("boards")
+    assert f"Add one on the board's page, {BOARD['url']}" in result.output
+    assert "Next: co canny boards" in result.output and "co canny posts --board" not in result.output
+
+
+def test_internal_comment_on_a_plan_without_them_offers_the_public_one(canny):
+    canny.queue["v1/comments/create"] = [httpx.Response(400, json={"error": "plan does not support internal comments"})]
+    result = run("comment", POST["id"], "Thanks!", "--internal", "--yes")
+    assert result.exit_code == 1
+    assert "plan does not support internal comments" in result.output
+    assert "the comment is public" in result.output
+    assert f"Next: co canny comment {POST['id']} 'Thanks!'\n" in result.output
+
+
+def test_other_comment_refusals_point_at_the_post(canny):
+    canny.queue["v1/comments/create"] = [httpx.Response(400, json={"error": "invalid value"})]
+    result = run("comment", POST["id"], "Thanks!", "--yes")
+    assert f"Next: co canny post {POST['id']}" in result.output
 
 
 def test_the_skill_names_every_command_and_only_those():

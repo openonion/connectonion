@@ -1,7 +1,7 @@
 """co canny: read and triage Canny feedback over Canny's REST API (#2050).
 
 LLM-Note:
-  Dependencies: imports from [typer, httpx (lazy), cli/style.py, cli/typer_groups.py, command_tips.py, environment.py, secret_store.py] | imported by [cli/main.py] | tested by [tests/unit/test_canny_commands.py, tests/e2e/real_api/test_real_co_canny.py]
+  Dependencies: imports from [typer, httpx (lazy), cli/style.py, cli/typer_groups.py, command_tips.py, environment.py (setting)] | imported by [cli/main.py] | tested by [tests/unit/test_canny_commands.py, tests/e2e/real_api/test_real_co_canny.py]
   Data flow: handler → _call(endpoint, recover, **body) → POST https://canny.io/api/<endpoint> with {"apiKey", ...} → trimmed rows → text or --json on stdout, Next: tip after
   State/Effects: reads CANNY_API_KEY (process, then the selected env file, then the encrypted store) and CANNY_USER_ID | status, comment and changelog create change Canny only with --yes; without it they print a preview and the exact command
   Errors: missing key, API refusal or a second 429 → message on stderr, Next: <command> on stderr, exit 1
@@ -57,18 +57,22 @@ def _fail(message: str, command: str) -> None:
     raise typer.Exit(1)
 
 
+def _setting(name: str) -> Optional[str]:
+    """A value from the shell, the selected env file, or `co env set --secret`'s store."""
+    from ...environment import load_environment, setting
+    load_environment()
+    return setting(name)
+
+
 def _find_key() -> tuple[Optional[str], str]:
     """CANNY_API_KEY and where it came from: the shell, the env file, or the encrypted store."""
-    from ...environment import display_path, global_config_dir, load_environment, process_environment, selected_env_file
-    from ...secret_store import get, stored_names
-    load_environment()
+    from ...environment import display_path, process_environment, selected_env_file
+    key = _setting("CANNY_API_KEY")
     if "CANNY_API_KEY" in process_environment():
-        return os.environ["CANNY_API_KEY"], "your shell"
-    if os.environ.get("CANNY_API_KEY"):
-        return os.environ["CANNY_API_KEY"], display_path(selected_env_file())
-    if "canny_api_key" in stored_names(global_config_dir()):
-        return get(global_config_dir(), "CANNY_API_KEY"), "the encrypted store"
-    return None, display_path(selected_env_file())
+        return key, "your shell"
+    if os.environ.get("CANNY_API_KEY") or not key:
+        return key, display_path(selected_env_file())
+    return key, "the encrypted store"
 
 
 def _api_key() -> str:
@@ -104,19 +108,19 @@ def _call(endpoint: str, recover: str, **body) -> dict:
     return response.json()
 
 
-def _refused(endpoint: str, response, recover: str) -> None:
+def _refused(endpoint: str, response, recover) -> None:
+    """recover is the next command, or a function of Canny's error text returning (note, command)."""
     is_json = "json" in response.headers.get("content-type", "")
-    error = response.json().get("error", "") if is_json else response.text[:200]
-    if response.status_code in (401, 403) or "api key" in str(error).lower():
+    error = str(response.json().get("error", "") if is_json else response.text[:200])
+    if response.status_code in (401, 403) or "api key" in error.lower():
         _fail(f"Canny rejected the API key (HTTP {response.status_code}: {error}). {KEY_HELP}, then:", SET_KEY)
-    _fail(f"Canny refused {endpoint} (HTTP {response.status_code}): {error}", recover)
+    note, command = recover(error) if callable(recover) else ("", recover)
+    _fail(f"Canny refused {endpoint} (HTTP {response.status_code}): {error}{note}", command)
 
 
 def _acting_user() -> str:
     """The Canny user id recorded as changing a status or writing a comment."""
-    from ...environment import load_environment
-    load_environment()
-    user = os.environ.get("CANNY_USER_ID")
+    user = _setting("CANNY_USER_ID")
     if not user:
         _fail("Canny records which admin changed a status or wrote a comment, and an API key does not say "
               "who you are. Set CANNY_USER_ID once to your own Canny user id. Find it by your login email:",
@@ -148,7 +152,7 @@ def _post_row(post: dict) -> dict:
 
 
 def _post_line(row: dict) -> str:
-    return (f"{row['id']}  {row['votes']:>4} votes  {row['status']:<12}  {row['board']}  "
+    return (f"{row['id']}  {row['votes']:>4} {_plural(row['votes'], 'vote'):<5}  {row['status']:<12}  {row['board']}  "
             f"{row['created'][:10]}  {row['title']}")
 
 
@@ -161,19 +165,37 @@ def _say(text: str) -> None:
     style.console().print(text, markup=False)
 
 
+def _plural(n: int, word: str, words: str = "") -> str:
+    """"1 board", "2 boards"; pass the plural when it is not word + s."""
+    return word if n == 1 else (words or word + "s")
+
+
 # -- read commands ------------------------------------------------------------
 
 def handle_boards(json_output: bool) -> None:
     boards = _call("v1/boards/list", "co canny check")["boards"]
     rows = [{"id": b["id"], "name": b["name"], "posts": b["postCount"], "private": b.get("isPrivate", False),
-             "created": b["created"]} for b in boards]
+             "created": b["created"], "url": b.get("url")} for b in boards]
     if json_output:
         _print_json({"boards": rows})
     else:
-        style.console().print(f"{style.count(len(rows))} boards")
+        style.console().print(f"{style.count(len(rows))} {_plural(len(rows), 'board')}")
         for row in rows:
-            _say(f"{row['id']}  {row['posts']:>5} posts  {'private' if row['private'] else 'public ':<7}  {row['name']}")
-    _next(f"co canny posts --board {rows[0]['id']} --sort score" if rows else "co canny check", json_output)
+            _say(f"{row['id']}  {row['posts']:>5} {_plural(row['posts'], 'post'):<5}  "
+                 f"{'private' if row['private'] else 'public ':<7}  {row['name']}  {row['url']}")
+    _next_after_boards(rows, json_output)
+
+
+def _next_after_boards(rows: list, json_output: bool) -> None:
+    """The busiest board's posts; with no posts anywhere, where to add one, not an empty listing."""
+    busy = sorted((r for r in rows if r["posts"]), key=lambda r: -r["posts"])
+    if busy:
+        _next(f"co canny posts --board {busy[0]['id']} --sort score", json_output)
+        return
+    if rows:
+        print(f"No board has posts yet. Add one on the board's page, {rows[0]['url']}, then list again.",
+              file=sys.stderr if json_output else sys.stdout)
+    _next("co canny boards" if rows else "co canny check", json_output)
 
 
 def handle_posts(board: Optional[str], status: Optional[str], sort: str, limit: int,
@@ -185,10 +207,15 @@ def handle_posts(board: Optional[str], status: Optional[str], sort: str, limit: 
         _print_json({"posts": rows, "hasMore": data.get("hasMore", False)})
     else:
         more = "; more match, raise -n to see them" if data.get("hasMore") else ""
-        style.console().print(f"{style.count(len(rows))} posts{more}")
+        style.console().print(f"{style.count(len(rows))} {_plural(len(rows), 'post')}{more}")
         for row in rows:
             _say(_post_line(row))
-    _next(f"co canny post {rows[0]['id']}" if rows else "co canny posts --sort score", json_output)
+    _next(f"co canny post {rows[0]['id']}" if rows else _next_after_nothing(search), json_output)
+
+
+def _next_after_nothing(search: Optional[str]) -> str:
+    """No rows: browse instead of searching; with nothing to browse, the boards and their post counts."""
+    return "co canny posts --sort score" if search else "co canny boards"
 
 
 def _comment_row(comment: dict) -> dict:
@@ -208,7 +235,9 @@ def _print_post(detail: dict) -> None:
     _say(f"by {detail['author']}  owner {detail['owner']}  eta {detail['eta'] or '-'}  {detail['url']}")
     if detail["details"]:
         _say("\n" + detail["details"])
-    style.console().print(f"\nComments: {style.count(len(detail['comments']))} newest of {detail['commentCount']}")
+    shown = len(detail["comments"])
+    style.console().print(f"\n{style.count(shown)} {_plural(shown, 'comment')}, newest first, "
+                          f"of {detail['commentCount']}")
     for c in detail["comments"]:
         internal = " (internal)" if c["internal"] else ""
         _say(f"  {c['created'][:10]}  {c['author']}{internal}: {c['value']}")
@@ -232,7 +261,8 @@ def handle_changelog(limit: int, json_output: bool) -> None:
     if json_output:
         _print_json({"entries": rows})
     else:
-        style.console().print(f"{style.count(len(rows))} changelog entries, unpublished first")
+        style.console().print(f"{style.count(len(rows))} {_plural(len(rows), 'changelog entry', 'changelog entries')}, "
+                              "unpublished first")
         for row in rows:
             date = (row["publishedAt"] or row["created"])[:10]
             _say(f"{row['id']}  {row['status']:<9}  {date}  {row['title']}")
@@ -259,7 +289,7 @@ def _lookup(email: str) -> None:
 
 def _report_user() -> bool:
     """Print who writes as you. True when CANNY_USER_ID is set and an admin."""
-    user_id = os.environ.get("CANNY_USER_ID")
+    user_id = _setting("CANNY_USER_ID")
     if not user_id:
         style.console().print(style.warn("Acting user: CANNY_USER_ID is not set; status and comment need it"))
         return False
@@ -278,7 +308,8 @@ def handle_check(email: Optional[str]) -> None:
     out = style.console()
     out.print(f"API key: {style.ok('accepted')} (CANNY_API_KEY from {style.path(where)})")
     _say(f"Workspace: {_workspace(boards)}")
-    _say(f"Boards: {len(boards)} visible: " + ", ".join(f"{b['name']} ({b['postCount']} posts)" for b in boards))
+    _say(f"Boards: {len(boards)} visible: "
+         + ", ".join(f"{b['name']} ({b['postCount']} {_plural(b['postCount'], 'post')})" for b in boards))
     _next("co canny posts --status open --sort score" if _report_user() else FIND_USER)
 
 
@@ -322,10 +353,20 @@ def handle_comment(post_id: str, text: str, internal: bool, yes: bool) -> None:
                   f"Visible to {seen}; voters are not emailed."],
                  ["co", "canny", "comment", post_id, text, *(["--internal"] if internal else []), "--yes"])
         return
-    created = _call("v1/comments/create", f"co canny post {post_id}", postID=post_id, authorID=author,
-                    value=text, internal=internal or None)
+    created = _call("v1/comments/create", _after_comment_refused(post_id, text), postID=post_id,
+                    authorID=author, value=text, internal=internal or None)
     style.console().print(style.ok(f"Commented on {post_id} (comment {created['id']})."))
     _next(f"co canny post {post_id}")
+
+
+def _after_comment_refused(post_id: str, text: str):
+    """Canny's Free plan has no internal comments: offer the same comment, said plainly to be public."""
+    def recover(error: str):
+        if "internal" not in error.lower():
+            return "", f"co canny post {post_id}"
+        return ("\nYour Canny plan has no internal comments. Without --internal the comment is public: "
+                "everyone who can see the post reads it.", shlex.join(["co", "canny", "comment", post_id, text]))
+    return recover
 
 
 def handle_changelog_create(title: str, details: str, publish: bool, yes: bool) -> None:

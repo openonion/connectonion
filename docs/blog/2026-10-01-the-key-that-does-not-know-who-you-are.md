@@ -36,7 +36,15 @@ of seconds and the command to run again.
 
 The page you read before running a command should tell you what Canny will
 record and who it will email. Ours didn't, until we read the endpoint itself
-and not just the issue. One honest gap remains: nobody has run this against a
-real Canny account yet. Every command is tested against a fake built from
-the shapes in Canny's reference, and the opt-in real test is waiting for a
-key.
+and not just the issue.
+
+The first run on a real account found two things the reference does not
+say. The test post we made opened by id, took a status change and a comment,
+and never appeared in a listing: `posts/list` returned nothing and the board
+counted zero posts an hour later. A second post with ordinary text was listed
+at once. The hidden one had no `idea` behind it and no author vote, which is
+what Canny's lists are built from; the likely cause is Canny's spam review
+reading "[co canny test] ... Safe to delete" as spam. So "not listed" is not
+"does not exist", and the docs now say so. The other: the Free plan has no
+internal comments. The refusal used to point at the post; now it offers the
+same comment without `--internal`, and says plainly that it will be public.
