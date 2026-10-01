@@ -29,6 +29,42 @@ def _title(record: str, text: str) -> str:
     return Path(record).stem.replace("-", " ")
 
 
+def mail_facts(root: Path) -> dict:
+    """{record: {mails, sent, received, first, last}} from the map's correspondent rows.
+
+    The People table's mail columns. One adapter on purpose: when the notebook
+    keeps its facts in an index (#2067) this reads that instead, and the page
+    does not change. A person seen under several addresses is summed.
+    """
+    from .files import read_json, state_path
+    facts = {}
+    for row in read_json(state_path(root, "map.json"), {}).get("people", []):
+        if not isinstance(row, dict) or not row.get("record") or not row.get("address"):
+            continue
+        fact = facts.setdefault(row["record"], {"mails": 0, "sent": 0, "received": 0, "first": "", "last": ""})
+        for key in ("mails", "sent", "received"):
+            fact[key] += row.get(key) if type(row.get(key)) is int else 0
+        first, last = str(row.get("first") or ""), str(row.get("last") or "")
+        fact["first"] = min(filter(None, (fact["first"], first)), default="")
+        fact["last"] = max(fact["last"], last)
+    return facts
+
+
+def index_rows(root: Path) -> dict:
+    """{record: row} from the notebook's index (#2067) once it exists; {} before.
+
+    The People sheet reads these columns first and falls back to the page's own
+    fields and the map's mail counts. A notebook with no index yet (or a co rem
+    without the store) gets the fallback, never an error; a corrupt index raises,
+    naming the command that rebuilds it.
+    """
+    try:
+        from . import store
+    except ImportError:
+        return {}
+    return {row["record"]: row for row in store.people_table(root, include_unlisted=True) or []}
+
+
 def snapshot(root: Path) -> dict:
     """Everything the page shows, read once; no model, no writes into the notebook."""
     from .map import needs_review
@@ -47,7 +83,12 @@ def snapshot(root: Path) -> dict:
     # place (`census`), the same that `co rem status` counts with (#2008).
     from .census import counts, pages
     found = pages(root)
+    mail, index = mail_facts(root), index_rows(root)
     for record in records:
+        if record["path"] in mail:
+            record["mail"] = mail[record["path"]]
+        if record["path"] in index:
+            record["index"] = index[record["path"]]
         record["needs_review"] = record["path"] in held
         entry = found.get(record["path"])
         if entry:
@@ -67,11 +108,19 @@ def snapshot(root: Path) -> dict:
     return {"as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "categories": list(CATEGORIES), "records": records,
             "status": status(root), "subscriptions": subscriptions(root),
-            "logs": run_logs(root)[:20], "reviews": listing(root), "counts": counts(root, found)}
+            "logs": run_logs(root)[:20], "reviews": listing(root), "counts": counts(root, found),
+            "owner": owner_record(root)}
+
+
+def owner_record(root: Path) -> str:
+    """The owner's own page, pinned as "You" at the top of the reader's navigation."""
+    from .files import read_json, state_path
+    owner = read_json(state_path(root, "map.json"), {}).get("owner") or {}
+    return owner.get("record", "") if isinstance(owner, dict) else ""
 
 
 def render(root: Path) -> str:
-    data = json.dumps(snapshot(root), ensure_ascii=False)
+    data = json.dumps(snapshot(root), ensure_ascii=False, default=str)
     # Inside a script block only "</script" and the U+2028/9 terminators can break
     # out. Escaping "<" as \u003c keeps the JSON valid and makes note text inert.
     data = data.replace("<", "\\u003c").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")

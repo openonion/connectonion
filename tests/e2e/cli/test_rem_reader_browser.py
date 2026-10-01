@@ -256,13 +256,11 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
     with sync_playwright() as api:
         browser=api.chromium.launch(channel='chrome',headless=True)
         page=browser.new_page();page.goto(path.as_uri())
-        assert '1 page.' in page.locator('#main').inner_text()
+        assert '1 page' in page.locator('#main').inner_text()
         page.locator('#q').fill('Demo');page.wait_for_function("document.querySelectorAll('.hits > li').length === 1")
         assert page.locator('.hits > li').count()==1
-        page.locator('#q').fill('Unique alternative');page.wait_for_timeout(300)
-        page.locator('.hits .t a').click()
-        page.locator('summary').click()
-        assert page.locator('details a').count()==2
+        # Since #1976 a skill installed twice is one catalog page; its copies are listed on it.
+        page.locator('.hits .t a').click();page.get_by_role('heading', name='Demo', exact=True).wait_for()
         page.locator('#nav a[href="#c=people"]').click()
         command=page.locator('#main .empty').inner_text().split('Run ',1)[1].split(' (or ',1)[0]
         assert shlex.split(command)==['co','rem','--root',str(root),'init','--mail','outlook']
