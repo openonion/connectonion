@@ -121,11 +121,19 @@ def _add_usage(total: dict, usage) -> dict:
 
 
 def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
-              maintain=None, investigate_one=None, person_one=None, project_one=None) -> dict | None:
+              maintain=None, investigate_one=None, person_one=None, project_one=None, say=None) -> dict | None:
     """One scheduled run. `investigate_one`, `person_one` and `project_one` replace
     the model calls in tests; `investigate_one` given alone takes every page the
-    older way, as before this stage."""
+    older way, as before this stage.
+
+    `say` gets one line per step. Run off a terminal, a sync printed nothing
+    for 25 minutes and everything at the end (#2033)."""
+    say = say or (lambda text: None)
+    say("Reading new material…")
     maintenance = (maintain or run_sync)(root, scheduled=True) if scheduled else (maintain or run_sync)(root)
+    if maintenance is not None:
+        say(f"New material: {maintenance.get('items', 0)} items, "
+            f"{len(maintenance.get('changed') or [])} pages changed ({maintenance['outcome']})")
     if maintenance is None:
         return None
     if maintenance['outcome'] not in ('completed', 'no_change'):
@@ -145,12 +153,13 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     if any(record.get('phase') == 'daily-investigation' for record in today):
         previous = max((record['started_at'] for record in logs if record.get('phase') in PHASES), default='')
         return _follow_new(root, config, maintenance, remaining, meter, stop, previous,
-                           person_one=person_one, project_one=project_one)
+                           person_one=person_one, project_one=project_one, say=say)
     return _unfinished(root, config, maintenance, remaining, meter, stop, days,
-                       investigate_one=investigate_one, person_one=person_one)
+                       investigate_one=investigate_one, person_one=person_one, say=say)
 
 
-def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, investigate_one, person_one):
+def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, investigate_one, person_one,
+                say=lambda text: None):
     """The first run of the day: unfinished pages, most recent activity first."""
     pages = unfinished_by_recency(root)
     from .inquiry import routing
@@ -183,6 +192,7 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
             target = page['path']
             if calls < 1 or (done and _stopped(root, config)):
                 break
+            say(f"Investigating {target}…")
             if target.startswith('people/') and investigate_one is None:
                 tried.append(target)
                 try:
@@ -263,7 +273,8 @@ def _project(root, record, *, config):
     return write_page(root, record, config=config)
 
 
-def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, person_one, project_one):
+def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, person_one, project_one,
+                say=lambda text: None):
     """A later run: only people and projects with new material since the previous run."""
     from .people_pages import correspondents_since
     from .people_pages import queue as people_queue
@@ -298,6 +309,7 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
         for row in chosen:
             if done and _stopped(root, config):
                 break
+            say(f"Updating {row.get('record') or row.get('path')}…")
             try:
                 if row['kind'] == 'person':
                     result = (person_one or _person)(root, row, clients=clients, subscriptions=sources)

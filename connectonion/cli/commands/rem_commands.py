@@ -1156,7 +1156,8 @@ def make_rem_app(factory):
                 return record, ["logs", record["id"]]
             # The whole update: new material first, then at most one unfinished page.
             from ...rem.daily import run_daily
-            result = run_daily(root, days=days, scheduled=scheduled)
+            result = run_daily(root, days=days, scheduled=scheduled,
+                               say=lambda text: rem_look.line(text, err=True))
             if result is None:
                 return {"due": False, "ran": False}, ["status"]
             if result["outcome"] == "partial":

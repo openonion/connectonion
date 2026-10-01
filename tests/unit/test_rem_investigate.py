@@ -219,6 +219,20 @@ def test_the_scheduled_daily_investigation_runs_confined(tmp_path, co_ai, monkey
     assert [argv[1:-1] for argv in co_ai] == [PINNED[runner]]
 
 
+def test_a_daily_run_says_each_step_as_it_starts(tmp_path, co_ai, monkeypatch):
+    """#2033: off a terminal, a sync printed nothing for 25 minutes, then everything."""
+    from connectonion.rem.daily import run_daily
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "outlook")
+    monkeypatch.setattr("connectonion.rem.daily.mail_client", lambda kind, **kw: Quiet())
+    root = _pinned_notebook(tmp_path, "codex")
+    said = []
+    run_daily(root, scheduled=True, say=said.append,
+              maintain=lambda root, scheduled: {"outcome": "no_change", "items": 0, "changed": []})
+    assert said[0] == "Reading new material…"
+    assert said[1].startswith("New material: 0 items, 0 pages changed")
+    assert any(line.startswith("Investigating people/") for line in said), said
+
+
 def test_runner_coai_is_co_ai_on_our_own_loop_and_its_own_default_model(tmp_path, co_ai):
     root = _notebook(tmp_path, "coai")
     inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=7,
