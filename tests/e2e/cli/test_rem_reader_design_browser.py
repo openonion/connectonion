@@ -79,6 +79,23 @@ def test_people_open_as_a_sheet_that_sorts_filters_and_opens_a_row(reader):
     page.get_by_role("heading", name="Inès Halvorsen", exact=True).wait_for()
 
 
+def test_the_people_sheet_fits_1440_and_says_when_it_is_cut(reader):
+    page, _ = reader
+    page.goto(page.url.split("#")[0] + "#c=people")
+    scroller = page.locator(".sheet-scroll")
+    # Every column is visible at 1440, What's open included; nothing waits to the right.
+    assert scroller.evaluate("e => e.scrollWidth <= e.clientWidth + 1")
+    assert page.locator("th.c-open").evaluate("e => e.getBoundingClientRect().right <= innerWidth")
+    assert "clip-right" not in page.locator(".sheet-box").get_attribute("class")
+    # Narrower, the sheet scrolls inside itself, the cut edge shades, the name stays put.
+    page.set_viewport_size({"width": 900, "height": 900})
+    page.wait_for_function("document.querySelector('.sheet-box').classList.contains('clip-right')")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    scroller.evaluate("e => { e.scrollLeft = e.scrollWidth; }")
+    page.wait_for_function("!document.querySelector('.sheet-box').classList.contains('clip-right')")
+    assert page.locator("td.name").first.evaluate("e => e.getBoundingClientRect().left") >= scroller.evaluate("e => e.getBoundingClientRect().left") - 1
+
+
 def test_a_person_opens_on_a_fact_card_with_cited_values(reader):
     page, _ = reader
     page.goto(page.url.split("#")[0] + "#r=people%2Fmara-ostrowski.md")
