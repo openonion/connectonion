@@ -25,15 +25,14 @@ python -m pip install --upgrade 'connectonion==1.8.9'
 
 ## Current preview
 
-Alpha **1.9.0a6**: co rem's first run is capped and says what it will cost,
-your own page has its own shape and your name, an upgraded notebook is tidied,
-status and the reader count from one census, and every co command has one look
-that `co audit` checks (1.9.0a5). 1.9.0a6 fixes `co rem investigate me`
-stopping on one Gmail date and maintenance that refused unwritten pages. See
-[1.9.0a6 notes](releases/1.9.0a6.md) and [1.9.0a5 notes](releases/1.9.0a5.md).
+Alpha **1.9.0a7**: co rem spends less for nothing (a refused page waits for new
+material; the daily cap is 50), your own page names what you are working on and
+never treats your coding agents as people, and a stalled init resumes. It
+follows 1.9.0a5's capped first run, own-page shape and one look across co. See
+[1.9.0a7 notes](releases/1.9.0a7.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.0a6'
+python -m pip install --upgrade 'connectonion==1.9.0a7'
 co rem status
 ```
 
