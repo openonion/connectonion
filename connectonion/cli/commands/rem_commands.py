@@ -1348,6 +1348,12 @@ def make_rem_app(factory):
                     check(f"mailbox {kind}", False, state, rem_fix=fix.split()[2:])
                 else:
                     check(f"mailbox {kind}", not fix, state, fix)
+            from ...rem.mail_archive import archive_state
+            from ...rem.service import now as service_now
+            archive = archive_state(root, now=service_now())
+            if archive:
+                # A stalled archive sent every investigation to the mail servers for a day (#2035).
+                check("init mail archive", not archive["stalled"], archive["summary"], rem_fix=["sync"])
             for name, sub in subscriptions(root).items():
                 if sub.get("kind") in ("codex", "claude-code") and sub.get("enabled", True):
                     check(f"sessions {name}", Path(sub.get("root", "")).is_dir(), sub.get("root", ""),

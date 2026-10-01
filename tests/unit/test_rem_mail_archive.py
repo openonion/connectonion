@@ -153,3 +153,93 @@ def test_failed_body_fetch_resumes_without_refetching_successful_mail(tmp_path):
     second = archive_init(tmp_path, report, {"gmail": mail})
     assert second["phase"] == "complete" and (second["reused"], second["saved"]) == (1, 1)
     assert mail.calls == ["one", "two", "two"]
+
+
+# ------------------------------------------- the 1.9.0a6 acceptance run (#2035)
+
+T0 = datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc)
+
+
+class Bodies:
+    def __init__(self):
+        self.calls = []
+
+    def get_email_body(self, message_id):
+        self.calls.append(message_id)
+        return f"--- Email Body ---\nbody {message_id}"
+
+
+class Clock:
+    """A monotonic clock that moves 10 seconds a reading."""
+    def __init__(self):
+        self.value = 0.0
+
+    def __call__(self):
+        self.value += 10
+        return self.value
+
+
+def _inventory(root, count=6):
+    from connectonion.rem.files import atomic_write, state_path, write_json
+    rows = [{"type": "mail", "source": "gmail", "id": f"m{n}", "date": (T0 - timedelta(days=n)).isoformat(),
+             "from": "a@example.org", "to": ["me@example.org"], "cc": [], "subject": f"S{n}"} for n in range(count)]
+    atomic_write(state_path(root, "source-inventory.jsonl"), "".join(json.dumps(row) + "\n" for row in rows))
+    report = {"started": T0.isoformat(), "days": 90, "people": [], "projects": [], "errors": [],
+              "owner": {"record": "people/me.md", "addresses": ["me@example.org"]}}
+    write_json(state_path(root, "map.json"), report)
+    return report
+
+
+def test_a_stalled_archive_says_so_with_the_command_that_resumes_it(tmp_path):
+    """#2035: archive.json sat at `phase: running` (550 of 3,152) for a day and status said nothing."""
+    from connectonion.rem.files import read_json, state_path, write_json
+    from connectonion.rem.mail_archive import archive_state
+    prepare(tmp_path)
+    report = _inventory(tmp_path)
+    paused = archive_init(tmp_path, report, {"gmail": Bodies()}, seconds=25, clock=Clock(), now=lambda: T0)
+    assert paused["phase"] == "paused" and paused["saved"] == 2
+    manifest = read_json(state_path(tmp_path, "mail/archive.json"), {})
+    assert manifest["updated"] == T0.isoformat()
+    write_json(state_path(tmp_path, "mail/archive.json"), {**manifest, "phase": "running"})   # the process died
+
+    fresh = archive_state(tmp_path, now=T0 + timedelta(minutes=2))
+    assert fresh["phase"] == "running" and not fresh["stalled"]
+    stalled = archive_state(tmp_path, now=T0 + timedelta(hours=20))
+    assert stalled["stalled"] and (stalled["on_disk"], stalled["target"]) == (2, 6)
+    assert "no progress since 2026-09-30T09:00" in stalled["summary"]
+    assert "co rem sync" in stalled["summary"]
+    write_json(state_path(tmp_path, "mail/archive.json"), {**manifest, "phase": "complete"})
+    assert archive_state(tmp_path, now=T0) is None                       # nothing to say
+
+
+def test_the_next_sync_resumes_from_the_bodies_already_saved(tmp_path):
+    from connectonion.rem.mail_archive import archive_state, resume_stalled
+    prepare(tmp_path)
+    report = _inventory(tmp_path)
+    archive_init(tmp_path, report, {"gmail": Bodies()}, seconds=25, clock=Clock(), now=lambda: T0)
+    mail = Bodies()
+
+    later = T0 + timedelta(hours=20)
+    first = resume_stalled(tmp_path, {"gmail": mail}, seconds=25, clock=Clock(), now=lambda: later)
+    assert first["phase"] == "paused" and first["reused"] == 2 and mail.calls == ["m2", "m3"]
+    assert resume_stalled(tmp_path, {"gmail": mail}, now=lambda: later) is None   # paused just now: not stalled
+    done = resume_stalled(tmp_path, {"gmail": mail}, now=lambda: later + timedelta(hours=1))
+    assert done["phase"] == "complete" and done["reused"] == 4 and mail.calls == ["m2", "m3", "m4", "m5"]
+    assert archive_state(tmp_path, now=later + timedelta(hours=9)) is None
+    assert resume_stalled(tmp_path, {"gmail": mail}, now=lambda: later + timedelta(hours=9)) is None
+
+
+def test_a_stalled_archive_waits_when_its_mailbox_cannot_be_read(tmp_path):
+    from connectonion.rem.mail_archive import resume_stalled
+    prepare(tmp_path)
+    archive_init(tmp_path, _inventory(tmp_path), {"gmail": Bodies()}, seconds=25, clock=Clock(), now=lambda: T0)
+    left = resume_stalled(tmp_path, {}, now=lambda: T0 + timedelta(hours=20))
+    assert left == {"phase": "paused", "resumed": False, "reason": "gmail unavailable"}
+
+
+def test_status_shows_an_incomplete_archive(tmp_path):
+    from connectonion.rem.service import status
+    prepare(tmp_path)
+    archive_init(tmp_path, _inventory(tmp_path), {"gmail": Bodies()}, seconds=25, clock=Clock(), now=lambda: T0)
+    shown = status(tmp_path)["mail_archive"]
+    assert shown["phase"] == "paused" and (shown["on_disk"], shown["target"]) == (2, 6)

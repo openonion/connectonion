@@ -1115,3 +1115,21 @@ def test_usage_by_model_says_unrecorded_and_skips_per_1k_without_sizes(tmp_path)
     assert "?" not in report["by_model"] and "unrecorded" in report["by_model"]
     assert "input_tokens_per_1k_chars" not in report["by_model"]["unrecorded"]
     assert report["by_model"]["m"]["input_tokens_per_1k_chars"] == 250.0
+
+
+def test_a_sync_resumes_a_stalled_init_archive_and_status_stops_mentioning_it(rem, monkeypatch):
+    """#2035: only `init` resumed the archive; a day of investigations asked the servers instead."""
+    from connectonion.rem.mail_archive import archive_init
+    from tests.unit.test_rem_mail_archive import T0, Bodies, Clock, _inventory
+    root, _ = rem
+    archive_init(root, _inventory(root), {"gmail": Bodies()}, seconds=25, clock=Clock(), now=lambda: T0)
+    mail = Bodies()
+    monkeypatch.setattr("connectonion.rem.service.now", lambda: T0 + timedelta(hours=20))
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "gmail")
+    monkeypatch.setattr("connectonion.rem.service.mail_client", lambda kind, **kw: mail)
+    assert status(root)["mail_archive"]["stalled"]                      # said before anything resumes it
+    record = run_sync(root, runner=lambda *a, **kw: {"usage": {}})
+    assert record["mail_archive"]["phase"] == "complete" and record["mail_archive"]["reused"] == 2
+    assert mail.calls == ["m2", "m3", "m4", "m5"]
+    assert "mail_archive" not in status(root)
+    assert "mail_archive" not in run_sync(root, runner=lambda *a, **kw: {"usage": {}})

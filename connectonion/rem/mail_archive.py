@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -73,12 +74,22 @@ def _project_indexes(root: Path, report: dict, sessions: list[dict]) -> int:
     return len(indexes)
 
 
-def archive_init(root: Path, report: dict, clients: dict, progress=None) -> dict:
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seconds: float | None = None,
+                 clock=time.monotonic, now=_utcnow) -> dict:
     """Fetch 90-day provider body snapshots once; keep files if interrupted.
 
     The inventory is the bounded enumeration. This pass uses its IDs, never a
     second mailbox-wide query, and an existing valid snapshot is reused on a
     retry. Attachments stay outside this first-pass archive.
+
+    `seconds` bounds the fetching (a resume from sync, #2035): when it is
+    spent the archive stops at `phase: paused`, and the next resume reuses
+    every body saved so far. `updated` is stamped at every checkpoint, so a
+    pass whose process died is told apart from one still running.
     """
     inventory = state_path(root, "source-inventory.jsonl")
     rows = [json.loads(line) for line in inventory.read_text(encoding="utf-8").splitlines() if line]
@@ -102,8 +113,9 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None) -> dict
               "people_indexes": 0,
               "project_indexes": 0, "providers": sorted(clients),
               "owner_addresses": (report.get("owner") or {}).get("addresses", []),
-              "attachments": "not downloaded"}
+              "attachments": "not downloaded", "updated": now().isoformat()}
     write_json(state, result)
+    deadline = None if seconds is None else clock() + seconds
     for index, row in enumerate(messages, 1):
         provider, message_id = row["source"], row["id"]
         key = _key(provider + ":" + message_id)
@@ -114,6 +126,10 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None) -> dict
                 if stored.get("provider") != provider or stored.get("id") != message_id:
                     raise RemError("Existing mail snapshot does not match its source ID")
                 result["reused"] += 1
+            elif deadline is not None and clock() >= deadline:
+                result.update(phase="paused", updated=now().isoformat())
+                write_json(state, result)
+                return {key: value for key, value in result.items() if key not in ("failed_keys", "owner_addresses")}
             else:
                 client = clients.get(provider)
                 if client is None:
@@ -135,6 +151,7 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None) -> dict
             progress(f"saving mail bodies ({result['saved']} saved, {result['reused']} reused, "
                      f"{result['failed']} failed)", f"{index}/{len(messages)}")
         if index % 25 == 0:
+            result["updated"] = now().isoformat()
             write_json(state, result)
     result["people_indexes"] = _person_indexes(root, report, messages)
     result["project_indexes"] = _project_indexes(root, report, sessions)
@@ -142,7 +159,7 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None) -> dict
                         if error.get("source") in ("gmail", "outlook")]
     result["phase"] = ("partial" if result["failed"] or mail_scan_errors else
                        "unavailable" if not clients else "complete")
-    result["finished"] = datetime.now(timezone.utc).isoformat()
+    result["finished"] = result["updated"] = now().isoformat()
     write_json(state, result)
     summary = state_path(root, "mail/summary.md")
     atomic_write(summary, "\n".join(["# Initial mail materials", "",
@@ -220,3 +237,60 @@ def domain_material(root: Path, domains: list[str]) -> tuple[dict[str, list[dict
             if any(address.endswith(suffixes) for address in addresses):
                 snapshots.append(snapshot)
     return _material(manifest, snapshots)
+
+
+# No checkpoint for this long means no process is saving: init stamps `updated`
+# every 25 messages, seconds apart.
+STALL_SECONDS = 600
+# What one sync may spend resuming it: the rest waits for the next sync.
+RESUME_SECONDS = 300
+
+
+def archive_state(root: Path, now: datetime | None = None) -> dict | None:
+    """An unfinished init archive, as status and doctor show it; None when there is none (#2035).
+
+    The 1.9.0a6 acceptance notebook's archive sat at `phase: running`, 550 of
+    3,152 bodies saved, for a day: every investigation skipped it and asked the
+    mail servers, and nothing said so. `on_disk` counts the snapshots that exist,
+    which is what a resume reuses.
+    """
+    path = state_path(root, "mail/archive.json")
+    manifest = read_json(path, {})
+    if not isinstance(manifest, dict) or manifest.get("phase") not in ("running", "paused"):
+        return None
+    now = now or _utcnow()
+    updated = manifest.get("updated") or datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
+    stalled = (now - datetime.fromisoformat(updated)).total_seconds() > STALL_SECONDS
+    on_disk = sum(1 for provider in manifest.get("providers", []) if provider in ("gmail", "outlook")
+                  for _ in state_path(root, f"mail/messages/{provider}").glob("*.json"))
+    target = manifest.get("target", 0)
+    if stalled:
+        summary = (f"Mail archive incomplete: {on_disk} of {target} bodies saved, no progress since "
+                   f"{updated[:16]}; investigations ask the mail servers until it is done. The next "
+                   f"`co rem sync` resumes it from the saved bodies.")
+    else:
+        summary = f"Mail archive saving: {on_disk} of {target} bodies so far."
+    return {"phase": manifest["phase"], "target": target, "on_disk": on_disk, "updated": updated,
+            "stalled": stalled, "summary": summary}
+
+
+def resume_stalled(root: Path, clients: dict, *, seconds: float = RESUME_SECONDS, clock=time.monotonic,
+                   now=_utcnow) -> dict | None:
+    """Continue a stalled or paused init archive for at most `seconds`; None when there is nothing to do.
+
+    It reuses every body already on disk (`archive_init` checks each one) and
+    reads the inventory the map last wrote, so it asks no server for a list.
+    A mailbox it cannot open leaves the archive as it is, and says so.
+    """
+    state = archive_state(root, now=now())
+    if not state or not state["stalled"]:
+        return None
+    report = read_json(state_path(root, "map.json"), {})
+    if not report.get("started") or not state_path(root, "source-inventory.jsonl").is_file():
+        return None
+    providers = read_json(state_path(root, "mail/archive.json"), {}).get("providers", [])
+    missing = [provider for provider in providers if clients.get(provider) is None]
+    if missing:
+        return {"phase": state["phase"], "resumed": False, "reason": f"{', '.join(missing)} unavailable"}
+    return archive_init(root, report, {provider: clients[provider] for provider in providers},
+                        seconds=seconds, clock=clock, now=now)
