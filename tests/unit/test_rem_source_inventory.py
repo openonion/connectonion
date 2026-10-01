@@ -69,8 +69,10 @@ def test_init_enumerates_all_90_day_mail_past_provider_page_cap(tmp_path, cap_en
     skills = tmp_path / "empty-skills"
     skills.mkdir()
     first = datetime.now(timezone.utc) - timedelta(hours=1)
+    # Every tenth one the owner's reply, so a@example.org corresponds and has a page (#2057).
     messages = [{"id": str(i), "date": (first + timedelta(seconds=i)).isoformat(),
-                 "from": "a@example.org", "to": ["me@example.org"], "subject": "Project"}
+                 **({"from": "me@example.org", "to": ["a@example.org"]} if i % 10 == 0
+                    else {"from": "a@example.org", "to": ["me@example.org"]}), "subject": "Project"}
                 for i in range(250)]
 
     class Mail:

@@ -656,7 +656,7 @@ def make_rem_app(factory):
                     tips.append(f"Connect {provider.title()} for People: co auth {provider}; then run "
                                 + _next(ctx, ["init", *window]) + ".")
             if result.get("needs_review"):
-                tips.append(f"Held for review, not investigated or listed (no name, never written to): "
+                tips.append(f"Held for review, not investigated or listed (no name, never replied): "
                             f"{len(result['needs_review'])}. See " + _next(ctx, ["list", "people", "--review"]))
             if tips:
                 result["tips"] = tips

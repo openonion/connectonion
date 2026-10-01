@@ -553,8 +553,11 @@ def test_init_archives_connected_mail_body_for_later_investigation(tmp_path, mon
     class Mail:
         def my_addresses(self): return {'me@example.org'}
         def list_between(self, start, end, limit):
+            # The owner answers, so alice corresponds and has a page (#2057).
             return ([{'id': 'm1', 'date': when, 'from': 'alice@example.org',
-                      'to': ['me@example.org'], 'subject': 'Decision'}]
+                      'to': ['me@example.org'], 'subject': 'Decision'},
+                     {'id': 'm2', 'date': when, 'from': 'me@example.org',
+                      'to': ['alice@example.org'], 'subject': 'Re: Decision'}]
                     if start <= when < end else [])
         def get_email_body(self, message_id): return '--- Email Body ---\nThe decision'
 
@@ -565,8 +568,8 @@ def test_init_archives_connected_mail_body_for_later_investigation(tmp_path, mon
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)['data']
     assert data['mail_archive']['phase'] == 'complete'
-    assert data['mail_archive']['saved'] == 1
-    assert len(list((tmp_path / '.state/mail/messages/gmail').glob('*.json'))) == 1
+    assert data['mail_archive']['saved'] == 2
+    assert len(list((tmp_path / '.state/mail/messages/gmail').glob('*.json'))) == 2
     person = next(row['record'] for row in data['people'] if row.get('address') == 'alice@example.org')
     assert 'The decision' not in (tmp_path / person).read_text()
 
@@ -650,15 +653,19 @@ def test_init_asks_whether_a_write_only_address_is_the_owner_s_own(tmp_path, mon
 
 
 def test_init_says_how_many_addresses_are_held_for_review_and_where_to_see_them(tmp_path, monkeypatch):
+    # A never-written sender gets no page now (#2057); the page still held is a
+    # nameless address the owner writes to and never hears from.
     monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
     monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: ([
-        {'name': '', 'address': 'x7@shop.example', 'mails': 5, 'sent': 0, 'received': 5, 'one_way': True}], set()))
+        {'name': '', 'address': 'x7@shop.example', 'mails': 5, 'sent': 0, 'received': 5, 'one_way': True},
+        {'name': '', 'address': 'desk@quiet.example', 'mails': 3, 'sent': 3, 'received': 0, 'one_way': True}],
+        set()))
     empty = tmp_path / 'empty-skills'
     empty.mkdir()
     root = tmp_path / 'rem'
     result = invoke(root, 'init', '--skills-dir', str(empty))
     assert result.exit_code == 0, result.output
-    assert "Held for review, not investigated or listed (no name, never written to): 1." in result.output
+    assert "Held for review, not investigated or listed (no name, never replied): 1." in result.output
     assert f"--root {root} list people --review" in result.output
 
 

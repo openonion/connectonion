@@ -29,8 +29,9 @@ def test_services_an_older_map_made_people_are_archived_and_investigated_pages_s
     _state(tmp_path, people=[
         {"record": "people/clarity.md", "address": "maccount@microsoft.com", "name": "Microsoft Clarity",
          "sent": 0, "received": 1, "one_way": True},
-        {"record": "people/mia.md", "address": "mia@acme.example", "name": "Mia Tan", "sent": 0, "received": 5,
-         "one_way": True}])
+        # Mail both ways, so she is a correspondent and stays (#2057).
+        {"record": "people/mia.md", "address": "mia@acme.example", "name": "Mia Tan", "sent": 1, "received": 5,
+         "one_way": False}])
 
     done = tidy(tmp_path)
 
@@ -268,3 +269,35 @@ def test_a_folded_address_carries_its_evidence_and_the_uncertainty_it_resolved_g
     assert any("aaronplus1996@gmail.com and aaron@openonion.ai" in line for line in lines)
     assert tidy(tmp_path) == {}                                                   # idempotent
     assert notebook.read("people/aaron-xie.md") == page
+
+
+# ------------------------------------------- fewer pages (#2057)
+
+
+def test_an_older_maps_page_for_a_one_way_correspondent_is_archived_and_a_written_one_stays(tmp_path):
+    """#2057: an older map made a page for every correspondent; 374 of 381 were
+    empty. Tidy archives the map-only ones for one mail either way, and an
+    organisation page left with nobody on it; anything someone wrote stays."""
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    _person(notebook, "people/ola.md", "Ola Berg", "ola@cold.example")
+    _person(notebook, "people/pat.md", "Pat Kim", "pat@warm.example", investigated=True)
+    _person(notebook, "people/kai.md", "Kai Ng", "kai@warm.example")
+    notebook.stub_org("orgs/cold.md", "cold.example", ["cold.example"], ["people/ola.md"])
+    notebook.stub_org("orgs/warm.md", "warm.example", ["warm.example"], ["people/kai.md", "people/pat.md"])
+    _state(tmp_path, people=[
+        {"record": "people/ola.md", "address": "ola@cold.example", "name": "Ola Berg", "sent": 0, "received": 1},
+        {"record": "people/pat.md", "address": "pat@warm.example", "name": "Pat Kim", "sent": 0, "received": 1},
+        {"record": "people/kai.md", "address": "kai@warm.example", "name": "Kai Ng", "sent": 1, "received": 0}],
+        orgs=[{"domain": "cold.example", "record": "orgs/cold.md", "people": ["people/ola.md"]},
+              {"domain": "warm.example", "record": "orgs/warm.md", "people": ["people/kai.md", "people/pat.md"]}])
+
+    done = tidy(tmp_path)
+
+    assert done == {"archived one-way correspondent": ["people/kai.md", "people/ola.md"],
+                    "archived organisation": ["orgs/cold.md"]}
+    assert notebook.list("people") == ["people/pat.md"]                    # written: stays, same counts
+    assert notebook.list("orgs") == ["orgs/warm.md"]                       # Pat still has a page there
+    assert (tmp_path / ".state/archived/people/ola.md").is_file()          # moved, never deleted
+    assert (tmp_path / ".state/archived/orgs/cold.md").is_file()
+    assert tidy(tmp_path) == {}                                             # idempotent
