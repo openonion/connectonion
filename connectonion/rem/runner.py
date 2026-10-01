@@ -432,6 +432,21 @@ def _project_window_notice(text: str, items: list[dict]) -> str:
     return head.rstrip() + "\n" + notice + marker + tail
 
 
+def _one_more_turn(workdir, prompt, config, stage, candidate, first):
+    """The model stopped without writing the candidate: ask once more, saying where it may write.
+
+    Real first runs (2026-10-01) lost one to five pages a run this way: the
+    model decided the candidate path, inside its writable root, was not
+    writable and ended its turn. Both turns are charged to the run.
+    """
+    again = run_task(workdir, prompt + f" Your previous turn ended without writing {candidate}. That path is "
+                                       f"inside your writable root {workdir}: write the complete page there now.",
+                     config, stage)
+    usage = [first.get("usage") or {}, again.get("usage") or {}]
+    again["usage"] = {key: sum(part.get(key) or 0 for part in usage) for key in usage[0].keys() | usage[1].keys()} or None
+    return again
+
+
 # Longer than a scheduled sync batch holds the notebook (five one-page turns).
 PROMOTE_WAIT_SECONDS = 1800
 
@@ -693,6 +708,8 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
             prompt += f" Read {directory / 'synthesize.json'} and retain unresolved findings and cited correction reasons."
         selected_config = stage_config(notebook.root, config, "render") if candidate else config
         result = run_task(workdir, prompt, selected_config, stage)
+        if candidate and not summary and not candidate.is_file():
+            result = _one_more_turn(workdir, prompt, selected_config, stage, candidate, result)
         if summary:
             from .tier import page_from_reply
             candidate.write_text(page_from_reply(result.get("result")), encoding="utf-8")

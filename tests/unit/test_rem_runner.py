@@ -586,3 +586,29 @@ def test_check_skill_fails_in_seconds_with_the_cause(tmp_path, monkeypatch):
         runner.check_skill(tmp_path, "investigate")
     assert calls[0][1]["cwd"] == str(tmp_path / ".state" / "tasks")
     assert calls[0][1]["timeout"] <= 60
+
+
+def test_a_turn_that_writes_no_candidate_gets_one_more_turn(notebook, monkeypatch):
+    """Real first runs lost 1-5 pages a run this way: the model decided the
+    candidate path, inside its writable root, was not writable and stopped."""
+    import re as regex
+    record = 'people/first.md'
+    notebook.stub_person(record, 'First', ['first@example.org'], email='first@example.org')
+    prompts, promoted = [], []
+
+    def run_model(workdir, prompt, config, stage):
+        prompts.append(prompt)
+        if len(prompts) == 2:
+            path = regex.search(r'(/\S+/candidate\.md)', prompt).group(1)
+            Path(path).write_text('# First\n')
+        return {'usage': {'input_tokens': 10, 'output_tokens': 1}, 'result': 'done'}
+
+    def promote(book, record, candidate, original, items, directory, usage, **options):
+        promoted.append((candidate.is_file(), usage))
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
+    monkeypatch.setattr('connectonion.rem.runner._promote_candidate', promote)
+    run_stage(notebook, [{'role': 'page', 'record': record, 'text': notebook.read(record),
+                          'source': 'investigation:page'}], default_config(), stage='investigate')
+    assert len(prompts) == 2 and 'writable' in prompts[1]
+    assert promoted == [(True, {'input_tokens': 20, 'output_tokens': 2})]

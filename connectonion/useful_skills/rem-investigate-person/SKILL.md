@@ -36,6 +36,11 @@ Why these rules: docs/rem-skills/rem-investigate.md
 
 ## Reading the mail
 
+- **`How the user writes to them`** comes from the user's own messages to them
+  (language, tone, length, how they open, what they ask); **`Cadence`** from the
+  dates (`about weekly, July–September`). Each is `Unknown` only when there is
+  no such message, or a single one: 59 and 54 of 98 real pages left them
+  `Unknown` with those messages in hand.
 - **Signature block first**: into `Contact` field by field (title, org,
   department, office, direct line, booking link, language). A changed signature
   is a dated move or promotion.

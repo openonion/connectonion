@@ -73,7 +73,7 @@ Unknown — not investigated yet. Last contact: Unknown.
 Rules:
 
 - **The lead comes first**: under the title, before `Contact`, 2–3 cited
-  sentences: who they are to the user; what is open, who owes whom what (or
+  sentences, always all three parts: who they are to the user; what is open, who owes whom what (or
   `Nothing open as of <date>`); `Last contact: <date>` (newest message either
   way, with its channel). A summary of the sections below; no contact details,
   no heading.
@@ -94,19 +94,6 @@ Rules:
 - **`Our relationship` is a state, not a log**: what kind of relationship, where
   it stands today, its concrete shape (numbers, terms, who owes what), and how
   the person plays it. The dated log goes in `History`.
-- **`How the user writes to them` is read from the user's own messages** to
-  this person: language, length, tone, how they open and sign off, what they
-  usually ask for. `Unknown` only when no message from the user to them is in
-  the material (59 of 98 real pages left it `Unknown` with those messages in
-  hand).
-- **`Cadence` is read from the dates**: how often they exchange and in which
-  stretch (`about weekly, July–September 2026; busiest around the term sheet
-  in late August`), and when the next contact is expected if a thread says so.
-  The mapped count and first/last dates are evidence too. `Unknown` only with a
-  single message.
-- **The lead always has its three parts**: who they are to the user; who owes
-  whom what, or `Nothing open as of <date>`; and `Last contact: <date>, <channel>`.
-  A lead missing one is incomplete.
 - **An open thread names who owes whom what, and since when** ("the user has
   owed a reply for twelve days"). "Status is not recorded" is a gap, not a
   thread. If nothing is open: `Nothing open as of <date>`, plus the next
