@@ -67,7 +67,7 @@ Rules:
   except `Email`, `Handles`, `Also known as`. A contact detail never goes in a
   sentence instead of its field. `Links`: LinkedIn, personal or company site.
   `How we know them`: who introduced whom, or the first thread.
-- **`Insight` is 2–4 cited bullets, each starting `Now:`, `Changed:`,
+- **`Insight` is 2–4 cited bullets of at most 30 words, each starting `Now:`, `Changed:`,
   `At stake:` or `Pattern:`** — what the inbox does not say outright: what they
   are to the user's work now; what moved recently; what is at risk or owed;
   a pattern over time (reply speed, topics, who chases whom). Never generic

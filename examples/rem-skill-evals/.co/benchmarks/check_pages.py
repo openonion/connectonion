@@ -108,6 +108,9 @@ def insight_problems(page: str) -> list[str]:
              for l in lines if l.startswith("- ") and not INSIGHT_LINE.match(l)]
     if len([l for l in lines if l.startswith("- ")]) > 4:
         found.append("Insight has more than 4 lines")
+    # The skill says 30 words; a real Ody page wrote a 58-word "Now:" (2026-10-02).
+    found += [f"Insight line of {len(l.split())} words (at most 40): {l[:40]!r}" for l in lines
+              if len(re.sub(r"\[W?\d+\]", "", l).split()) > 40]
     return found + [f"generic filler in Insight: {m[0]!r}" for m in GENERIC.finditer("\n".join(lines))]
 
 

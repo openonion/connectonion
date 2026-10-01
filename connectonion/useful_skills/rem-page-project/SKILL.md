@@ -59,7 +59,7 @@ explained. Use exactly these headings:
   `Unknown`: `Repository`, `Stack`, `Status`, `People`, `Organisation`,
   `Started`, `Last activity`. Several values `; ` between, each
   `value (qualifier) [n]`; dates `YYYY-MM-DD`; every value cited.
-- `Insight`: 2–4 cited bullets, each starting `Now:`, `Changed:`, `At stake:`
+- `Insight`: 2–4 cited bullets of at most 30 words, each starting `Now:`, `Changed:`, `At stake:`
   or `Pattern:`. The first is the resume card: where the user stopped, what is
   next, what blocks it (`Now: stopped 2026-09-28 mid Outlook import; next the
   attachment retry; blocked on Graph 500s [4][6]`). Then what moved recently,
