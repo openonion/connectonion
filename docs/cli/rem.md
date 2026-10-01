@@ -66,6 +66,10 @@ already written, or when there is no terminal (scripts and `--json`) unless
 projects wait for `co rem projects write`; more people for
 `co rem investigate people`.
 
+The bundled `rem-init` Skill uses `--no-investigate` explicitly for its map-only
+pass, including when an agent runs it from an interactive terminal. Investigation
+is a separate step after reviewing the map.
+
 Your page is titled with what you are called: `--name` if given, else the
 name the people writing to you put on your address (the To and Cc of mail you
 received; spellings that differ only in case are one name, and a name that is

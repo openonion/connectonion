@@ -400,7 +400,20 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a12
+## Current Version: 1.9.0a13
+
+1.9.0a13 corrects the bundled `rem-init` Skill's map-only command. Plain
+`co rem init` intentionally investigates pages in a terminal; the Skill now
+passes `--no-investigate` so an agent following its map-first workflow does not
+start model turns. The installed a12 CLI mapped 90 days of two connected
+mailboxes in 8.5 minutes on a private acceptance notebook: 3,196 listed mail
+bodies were saved or reused with zero failures, and the notebook held 70 People,
+18 organizations, 13 projects and 150 Skill pages. Stable remains 1.8.10. See
+[1.9.0a13 notes](docs/releases/1.9.0a13.md).
+
+- 1.9.0a13 (#1972; bundled map-only Skill correction).
+
+## Previous preview: 1.9.0a12
 
 1.9.0a12 repairs local REM snapshot opening on Windows. The reader writes a
 private temporary file and replaces the predictable snapshot name without

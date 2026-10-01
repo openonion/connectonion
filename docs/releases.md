@@ -23,15 +23,14 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
-Alpha **1.9.0a12**: REM's morning reader leads with context from the latest
-pass, an explicit link between pages, and an older memory to recall. This
-revision also makes `co rem open` write its local snapshot safely on Windows.
-It remains a read-only preview with known limits. See
-[1.9.0a12 notes](releases/1.9.0a12.md).
+Alpha **1.9.0a13**: the bundled `rem-init` Skill now explicitly selects the
+map-only first pass, so running that Skill in an interactive terminal does not
+start a model investigation. This preview carries the morning reader and
+Windows snapshot fix from a12. See [1.9.0a13 notes](releases/1.9.0a13.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.0a12'
-co rem open
+python -m pip install --upgrade 'connectonion==1.9.0a13'
+co rem init --no-investigate
 ```
 
 <details>
