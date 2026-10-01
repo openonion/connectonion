@@ -19,7 +19,9 @@ the channel id. See docs/cli/discord.md.
 `co slack …` (experimental) takes the same verbs for a Slack app over Socket
 Mode (`SLACK_APP_TOKEN` xapp- and `SLACK_BOT_TOKEN` xoxb-). Its ids are
 `<channel>:<ts>`, its chat is the channel id, and `reply` answers in the
-message's thread. See docs/cli/slack.md.
+message's thread. `co auth slack` sets it up; `co slack channels | history |
+thread | search` read the workspace directly (the co-slack skill). See
+docs/cli/slack.md.
 
 ## Which command
 

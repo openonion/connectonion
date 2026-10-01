@@ -291,14 +291,14 @@ def deploy(
         raise typer.Exit(1)
 
 
-@app.command(epilog="Example:  co auth  |  co auth status  |  co auth google")
-def auth(service: Optional[str] = typer.Argument(None, help="login, status, logout, or a service: google, microsoft, feishu, lark"),
+@app.command(epilog="Example:  co auth  |  co auth status  |  co auth google  |  co auth slack")
+def auth(service: Optional[str] = typer.Argument(None, help="login, status, logout, or a service: google, microsoft, feishu, lark, slack"),
          scopes: Optional[str] = typer.Option(None, "--scopes", help="Google: comma-separated limited scopes. Default: Gmail, Calendar, Drive and YouTube."),
          app_id: Optional[str] = typer.Option(None, "--app-id", metavar="cli_…",
                                               help="Feishu/Lark: authorize an application you already have, keeping its groups and permissions"),
          core: bool = typer.Option(False, "--core",
                                    help="Microsoft: mail, calendar, contacts and people only, not OneNote, OneDrive, Teams and To Do")):
-    """Sign in to OpenOnion (login, status, logout) or connect a service. Writes tokens to the env file; feishu and lark also create a Feishu application you own. status is Read-only."""
+    """Sign in to OpenOnion (login, status, logout) or connect a service. Writes tokens to the env file; feishu and lark also create a Feishu application you own; slack asks you to paste tokens from an app you create. status is Read-only."""
     if scopes is not None and service != "google":
         print("--scopes is only supported for Google. Next: co auth google --help")
         raise typer.Exit(2)
@@ -317,6 +317,9 @@ def auth(service: Optional[str] = typer.Argument(None, help="login, status, logo
     elif service in ("feishu", "lark"):
         from .commands.feishu_auth import handle_feishu_auth
         handle_feishu_auth(brand=service, app_id=app_id)
+    elif service == "slack":
+        from .commands.slack_auth import handle_slack_auth
+        handle_slack_auth()
     elif service == "status":
         from .commands.auth_commands import handle_auth_status
         handle_auth_status()
@@ -332,7 +335,7 @@ def auth(service: Optional[str] = typer.Argument(None, help="login, status, logo
         # A word we do not know must not do the one thing that writes secrets.
         from .commands.command_tips import print_tip
         print(f"Unknown auth target: {service}. Use one of: login, status, logout, "
-              "google, microsoft, feishu, lark.")
+              "google, microsoft, feishu, lark, slack.")
         print_tip("Next: co auth status")
         raise typer.Exit(2)
 
@@ -1870,8 +1873,63 @@ app.add_typer(_inbox_group("discord", "Experimental: Discord bot as an inbox: li
               short_help="Experimental: Discord bot as an inbox: listen, receive, send, reply.")
 # Slack over Socket Mode: the same outbound-WebSocket shape as Discord, the same
 # dependency. Experimental for 1.8.9: tested against fakes, never a live workspace.
-app.add_typer(_inbox_group("slack", "Experimental: Slack bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="slack",
-              short_help="Experimental: Slack bot as an inbox: listen, receive, send, reply.")
+# Beside the inbox, four read verbs on Slack's Web API (#2051), for what was said
+# before the listener ran or where the bot was never mentioned.
+_slack_app = _inbox_group(
+    "slack", "Experimental: Slack bot as an inbox (listen, receive, send, reply), and a reader for "
+             "the channels it is in (channels, history, thread, search). Setup: co auth slack. Sends as your bot.")
+_SLACK_READ = "Read the workspace"
+_SLACK_MSG = _INBOX_IDS["slack"][1]
+
+
+@_slack_app.command("channels", rich_help_panel=_SLACK_READ,
+                    epilog="Example:  co slack channels  |  co slack channels --json")
+def _slack_channels(json_output: bool = typer.Option(False, "--json", help="One JSON object per line")):
+    """List the channels and direct messages the bot is in, from Slack itself: id, name, kind, member count. Read-only. Unlike `chats`, which lists only what the inbox has received."""
+    from .commands.slack_commands import handle_channels
+    handle_channels(json_output)
+
+
+@_slack_app.command("history", rich_help_panel=_SLACK_READ,
+                    epilog="Example:  co slack history ops -n 20  |  co slack history C0123456789 --json")
+def _slack_history(
+    channel: str = typer.Argument(..., help="Channel name (ops, or '#ops' quoted) or id (C…, G…, D…), from `co slack channels`"),
+    last: int = typer.Option(50, "--last", "-n", min=1, max=1000, help="How many of the latest messages"),
+    json_output: bool = typer.Option(False, "--json", help="One JSON object per line"),
+):
+    """Read a channel's latest messages, oldest first: time, author, text, message id, reply count. Read-only. The bot must be in the channel."""
+    from .commands.slack_commands import handle_history
+    handle_history(channel, last, json_output)
+
+
+@_slack_app.command("thread", rich_help_panel=_SLACK_READ,
+                    epilog=f"Example:  co slack thread {_SLACK_MSG}  |  co slack thread {_SLACK_MSG} --json")
+def _slack_thread(
+    message_id: str = typer.Argument(..., help="<channel>:<ts>, as history and search print it"),
+    json_output: bool = typer.Option(False, "--json", help="One JSON object per line"),
+):
+    """Read a message and every reply in its thread, oldest first. Read-only. Answer in it with co slack send <channel> "<text>" --reply-to <id>."""
+    from .commands.slack_commands import handle_thread
+    handle_thread(message_id, json_output)
+
+
+@_slack_app.command("search", rich_help_panel=_SLACK_READ,
+                    epilog='Example:  co slack search "deploy failed" --in ops --from alice -n 10  |  '
+                           'co slack search "invoice" --json')
+def _slack_search(
+    text: str = typer.Argument(..., help="What to look for; Slack's own modifiers (before:, has:link) work too"),
+    where: Optional[str] = typer.Option(None, "--in", help="Only this channel: name (ops) or id"),
+    who: Optional[str] = typer.Option(None, "--from", help="Only this author: their Slack handle (alice) or user id"),
+    last: int = typer.Option(20, "--last", "-n", min=1, max=100, help="How many matches, newest first"),
+    json_output: bool = typer.Option(False, "--json", help="One JSON object per line"),
+):
+    """Search messages across the workspace, newest first: time, channel, author, text, message id. Read-only. Needs SLACK_USER_TOKEN (xoxp-, scope search:read), which co auth slack adds."""
+    from .commands.slack_commands import handle_search
+    handle_search(text, where, who, last, json_output)
+
+
+app.add_typer(_slack_app, name="slack",
+              short_help="Experimental: Slack bot as an inbox, and a reader for its channels.")
 _whatsapp_app = _inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply. Sends as your linked account.",
                              writes=True)
 _whatsapp_groups = _typer_app(

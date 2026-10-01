@@ -5,7 +5,7 @@ LLM-Note:
   Data flow: run(inbox) → auth.test (who the bot is) → apps.connections.open (a one-time wss URL) → hello → events_api envelopes → to_message() → inbox.deliver() → ACK {"envelope_id"} | send() → POST chat.postMessage (thread_ts on a reply) → "<channel>:<ts>"
   State/Effects: reads SLACK_APP_TOKEN (xapp-, opens the socket) and SLACK_BOT_TOKEN (xoxb-, reads and posts) | one outbound WebSocket that dials out, so no port is opened and no public URL exists | the threads the bot is part of live in memory, seeded from sent.jsonl at start | writes connection.json on every transition so `check` can report the real state
   Integration: Slack's ts is unique only inside a channel, so a message id is "<channel>:<ts>" | a DM and an @mention are addressed to the bot; so is a message in a thread the bot started or replied in | experimental: tested against fakes only, never a live workspace
-  Errors: check() names each missing or misplaced token and the app-settings steps | a dropped socket or a Slack `disconnect` reconnects on a fresh URL with backoff | a token Slack rejects, or Socket Mode switched off (link_disabled), ends the listener with ListenerStopped | send() refuses >40000 characters before the network, honours one 429, and never echoes a token
+  Errors: check() names each missing or misplaced token and the app-settings steps; advice() names the read-verb scopes the bot token lacks (auth.test's x-oauth-scopes) and an absent SLACK_USER_TOKEN, without failing check | a dropped socket or a Slack `disconnect` reconnects on a fresh URL with backoff | a token Slack rejects, or Socket Mode switched off (link_disabled), ends the listener with ListenerStopped | send() refuses >40000 characters before the network, honours one 429, and never echoes a token
 """
 
 import asyncio
@@ -34,13 +34,13 @@ APPS = "https://api.slack.com/apps"
 NO_APP_TOKEN = (
     f"SLACK_APP_TOKEN is not set. At {APPS} open your app (or Create New App → From scratch), "
     "turn on Socket Mode, and create the app-level token it asks for with the scope "
-    "connections:write. Put the xapp-… token in ~/.co/keys.env as SLACK_APP_TOKEN. Next: co slack check"
+    "connections:write. Put the xapp-… token in ~/.co/keys.env as SLACK_APP_TOKEN. Next: co auth slack"
 )
 NO_BOT_TOKEN = (
     f"SLACK_BOT_TOKEN is not set. In your app at {APPS}: OAuth & Permissions → add the bot scopes "
     "chat:write, im:history and app_mentions:read; Event Subscriptions → subscribe to the bot events "
     "message.im and app_mention; App Home → turn on the Messages Tab; then Install to Workspace and "
-    "put the Bot User OAuth Token (xoxb-…) in ~/.co/keys.env as SLACK_BOT_TOKEN. Next: co slack check"
+    "put the Bot User OAuth Token (xoxb-…) in ~/.co/keys.env as SLACK_BOT_TOKEN. Next: co auth slack"
 )
 WRONG_APP_TOKEN = (
     "SLACK_APP_TOKEN does not start with xapp-. It must be the app-level token (xapp-…, from Basic "
@@ -67,6 +67,16 @@ _SEND_HINTS = {
     "is_archived": "Next: co slack chats",
     "msg_too_long": "Next: split the text and send each part",
 }
+
+# The bot scopes the inbox needs, and the ones `co slack channels | history |
+# thread` need on top (conversations.list / .history / .replies, users.info).
+INBOX_SCOPES = ("chat:write", "im:history", "app_mentions:read", "channels:history")
+READ_SCOPES = ("channels:read", "groups:read", "im:read", "channels:history", "groups:history",
+               "im:history", "users:read")
+# `co slack search` runs as a person: search.messages takes only a user token.
+SEARCH_SCOPES = ("search:read", "users:read")
+REINSTALL = (f"at {APPS} open your app → OAuth & Permissions → Bot Token Scopes, add them, then "
+             "Reinstall to Workspace")
 
 # Subtypes that carry a person's new message. Everything else (edits,
 # deletions, joins, topic changes, bot_message) is not something to answer.
@@ -114,6 +124,9 @@ class Slack:
     def __init__(self):
         self.app_token = os.environ.get("SLACK_APP_TOKEN", "")
         self.bot_token = os.environ.get("SLACK_BOT_TOKEN", "")
+        # The bot token's scopes, from auth.test's x-oauth-scopes header; None
+        # until me() has asked, or when Slack sent no header.
+        self.scopes: Optional[set] = None
         self._me_id: Optional[str] = None
         self._me_name: Optional[str] = None
         self._bot_id: Optional[str] = None
@@ -148,15 +161,31 @@ class Slack:
                                 f"Slack did not accept {which}: {text}. {fix}")
         return problems
 
+    def advice(self) -> list:
+        """What works but could do more: the read verbs' missing bot scopes and
+        an absent search token. Not problems: the inbox runs without them."""
+        lines = []
+        missing = [scope for scope in READ_SCOPES if self.scopes is not None and scope not in self.scopes]
+        if missing:
+            lines.append(f"co slack channels, history and thread need the bot scopes {', '.join(missing)}: "
+                         f"{REINSTALL}")
+        if not os.environ.get("SLACK_USER_TOKEN"):
+            lines.append("co slack search needs SLACK_USER_TOKEN (xoxp-, scope search:read); "
+                         "co auth slack adds it")
+        return lines
+
     def me(self) -> dict:
         """The bot's own user, for telling a mention of us from somebody else's."""
+        response = self._post("auth.test", self.bot_token)
         try:
-            result = self._api("auth.test", self.bot_token)
+            result = self._result(response)
         except SlackError as exc:
             if exc.error in _REJECTED:
                 raise SlackStopped(exc.error, f"Slack rejected SLACK_BOT_TOKEN ({exc.error}). "
                                               f"{_BOT_FIX}") from None
             raise
+        granted = response.headers.get("x-oauth-scopes")
+        self.scopes = {scope.strip() for scope in granted.split(",")} if granted is not None else None
         self._me_id = str(result.get("user_id", "")) or None
         self._me_name = result.get("user") or self._me_name
         self._bot_id = str(result.get("bot_id", "")) or None
@@ -385,11 +414,13 @@ class Slack:
     # ---- Web API -----------------------------------------------------------
 
     def _api(self, method: str, token: str) -> dict:
+        return self._result(self._post(method, token))
+
+    def _post(self, method: str, token: str):
         try:
-            response = requests.post(f"{API}/{method}", headers=self._headers(token), timeout=15)
+            return requests.post(f"{API}/{method}", headers=self._headers(token), timeout=15)
         except requests.RequestException as exc:
             raise RuntimeError(f"Slack request failed ({type(exc).__name__})") from None
-        return self._result(response)
 
     def _headers(self, token: str) -> dict:
         return {"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"}
