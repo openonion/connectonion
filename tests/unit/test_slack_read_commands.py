@@ -8,7 +8,10 @@ What it tests:
   resolved to display names with one users.info per person, reply counts, --json
 - thread: a reply's ts reads the whole thread from its root; a bad id is a usage error
 - search: needs SLACK_USER_TOKEN (exit 1 naming token, scope and co auth slack, no request);
-  in:/from: modifiers, the thread root from the permalink, the user token in the header
+  in:/from: modifiers, the thread root from the permalink, the user token only for search.messages
+  and the bot token for names (a user token with just search:read is enough)
+- the Next: line comes after the results in a pipe, and on stderr under --json
+- tokens saved with `co env set --secret` are found (environment.setting)
 - Slack's ok:false (missing_scope, not_in_channel, channel_not_found, invalid_auth) → one
   sentence with the next command, exit 1; one HTTP 429 waited out
 - `co slack check` names the read scopes the bot token lacks, from x-oauth-scopes
@@ -17,6 +20,7 @@ No network: httpx.MockTransport stands in for slack.com.
 """
 
 import json
+from pathlib import Path
 from urllib.parse import parse_qs
 
 import httpx
@@ -100,7 +104,8 @@ def json_lines(out):
 class TestChannels:
     def test_lists_the_bots_channels_and_dms_with_people_named(self, slack, capsys):
         slack_commands.handle_channels(json_output=False)
-        rows = [line.split("\t") for line in capsys.readouterr().out.splitlines()]
+        *rows, tip = [line.split("\t") for line in capsys.readouterr().out.splitlines()]
+        assert tip == ["Next: co slack history <channel> -n 50"]
         assert rows == [[OPS, "#ops", "public", "12 members"],
                         ["G0SECRET01", "#secret", "private", "3 members"],
                         ["D0DIRECT01", "@Alice", "im", ""]]
@@ -138,6 +143,11 @@ class TestHistory:
         out = capsys.readouterr().out
         assert f"Alice  {OPS}:1727500200.000200  (2 replies)" in out
         assert "\n  @Bob Li deploy failed\n" in out
+
+    def test_one_reply_is_singular(self, slack, capsys):
+        slack.answers["conversations.history"] = {"ok": True, "messages": [dict(HISTORY[1], reply_count=1)]}
+        slack_commands.handle_history(OPS, 50, json_output=False)
+        assert "(1 reply)" in capsys.readouterr().out
 
     def test_n_follows_the_cursor_and_stops_at_n(self, slack, capsys):
         pages = iter([{"ok": True, "messages": HISTORY[:2], "response_metadata": {"next_cursor": "p2"}},
@@ -210,6 +220,7 @@ class TestSearch:
 
         method, params, auth = slack.requests[0]
         assert method == "search.messages" and auth == f"Bearer {USER}"
+        assert {auth for m, _, auth in slack.requests if m == "users.info"} == {f"Bearer {BOT}"}
         assert params["query"] == "deploy failed in:#ops from:@alice"
         assert params["count"] == "5" and params["sort"] == "timestamp"
         [record] = json_lines(capsys.readouterr().out)
@@ -265,11 +276,51 @@ class TestTheCommandLine:
         lines = [line for line in result.stdout.splitlines() if line.startswith("{")]
         assert len(lines) == 3
 
+    @pytest.mark.parametrize("args", [["channels"], ["history", OPS], ["thread", f"{OPS}:1727500200.000200"]])
+    def test_next_comes_after_the_results_when_piped(self, slack, args):
+        import subprocess
+        import sys
+
+        # Through a real pipe, stdout and stderr into one file, as an agent captures it.
+        code = ("import httpx, sys; from connectonion.cli.commands import slack_commands as s; "
+                "from tests.unit.test_slack_read_commands import FakeSlack, HISTORY; f = FakeSlack(); "
+                "f.answers['conversations.replies'] = {'ok': True, 'messages': [HISTORY[1]]}; "
+                "s.transport = httpx.MockTransport(f); from connectonion.cli.main import cli; "
+                f"sys.argv = ['co', 'slack', *{args!r}]; cli()")
+        root = Path(__file__).resolve().parents[2]
+        result = subprocess.run([sys.executable, "-c", code], stdout=subprocess.PIPE, cwd=root,
+                                stderr=subprocess.STDOUT, text=True, timeout=120)
+        lines = [line for line in result.stdout.splitlines() if line.strip()]
+        assert result.returncode == 0, result.stdout
+        assert lines[-1].startswith("Next: ") and sum(line.startswith("Next:") for line in lines) == 1
+
+    def test_under_json_next_goes_to_stderr(self, slack, capsys):
+        slack_commands.handle_history(OPS, 50, json_output=True)
+        out, err = capsys.readouterr()
+        assert "Next:" not in out and f"Next: co slack thread {OPS}:1727500200.000200" in err
+
     def test_every_read_verb_has_a_next_step(self):
         from connectonion.cli.commands.command_tips import NEXT
 
         for verb in ("channels", "history", "thread", "search"):
-            assert NEXT[f"co slack {verb}"]
+            assert f"co slack {verb}" in NEXT  # HANDLER: the handler prints it after the results
+
+
+class TestSecretTokens:
+    def test_a_token_saved_with_secret_is_read(self, slack, monkeypatch, tmp_path, capsys):
+        from connectonion import address, secret_store
+
+        phrase = "legal winner thank year wave sausage worth useful legal winner thank yellow"
+        (tmp_path / "keys").mkdir()
+        (tmp_path / "keys" / "agent.key").write_bytes(bytes(address.recover(phrase)["signing_key"]))
+        monkeypatch.setenv("AGENT_CONFIG_PATH", str(tmp_path))
+        monkeypatch.delenv("SLACK_BOT_TOKEN")
+        secret_store.put(tmp_path, "SLACK_BOT_TOKEN", BOT)
+
+        slack_commands.handle_channels(json_output=True)
+
+        assert slack.requests[0][2] == f"Bearer {BOT}"
+        assert Slack().bot_token == BOT
 
 
 class Response:
