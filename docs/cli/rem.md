@@ -837,7 +837,7 @@ In a quick pass (`--quick`), the extractor sees only the sampled mail.
 - Today's tokens add up every run that reported usage — investigations
   included, which the day's total used to leave out — and say
   "N runs without usage" instead of turning the total into "unknown".
-- `People 3 written of 82` is the census above, the same as the reader.
+- `People ●○○○○○○○○○  3 of 82  4%` is the census above, the same as the reader.
 - The budget line says its unit: points are percent of the Codex week, moved by
   investigation runs only. Maintenance runs are bounded by the daily call cap,
   so a day of maintenance tokens beside "0 of 10 points" is not a contradiction,
@@ -845,13 +845,52 @@ In a quick pass (`--quick`), the extractor sees only the sampled mail.
 - `Next` is the first thing under "To write next" (`co rem investigate me` on a
   notebook whose own page is still mapped), then `start` or `logs` as before.
 
+## How co rem's results are laid out (1.9.0a9)
+
+`status`, `doctor`, the `sync` summary and the map `init` prints share one
+layout, so it is learned once:
+
+```
+co rem status · running in background (launchd)
+  next slot 07:00
+
+Today            7 pages changed · 248 items read · 3 runs
+                 1.7M tokens in · 20k out
+
+Notebook         ~/.co/rem
+  People         ●○○○○○○○○○   46 of 312   15%
+  Skills         ●●●●●●●●●●  154 of 154  100%
+                 ● written  ○ mapped, not written yet
+
+Mailboxes
+  ✓ Gmail        read by the daily round
+  ✗ Outlook      connected, but not read by the daily round (not subscribed)
+                 → co rem sources add outlook
+```
+
+- One title line; what the state asks for goes under it, not after it.
+- A section label in the margin, every value at column 17, one item a line.
+  Status leads with today, because the notebook consolidates overnight.
+- Counts are bold and right-aligned; tokens read as `812`, `91k`, `1.7M` (the
+  exact numbers are in `--json` and `co rem logs`).
+- Glyphs mean one thing each: `●` written, `○` mapped but not written, `✓`
+  fine, `✗` needs a fix, `↻` unfinished and resumable, `→` the command that
+  fixes the line above. They print the same in a pipe; only colour is dropped.
+- A long value wraps under its own column in a terminal, never at the margin.
+- Colour by role from `connectonion/cli/style.py`: commands cyan, counts bold,
+  paths and notes dim, the green of a finished state as the one accent (the
+  meter, `✓`, every progress bar), yellow for what needs a fix.
+- Progress: one live line per stage (spinner, what it is doing, a 24-cell bar,
+  `i/N` bold, elapsed dim); a finished stage leaves `✓ what it found`.
+
 ## What `sync` prints, and where the tokens went (#2043, #2044)
 
 `co rem sync` says each page's outcome as it finishes, not in a dump at the end:
 
 ```
-Updated people/ada-1f2e3d.md (accepted)
-Refused people/bob-4a5b6c.md: over 20,000 characters
+  Investigating people/ada-1f2e3d.md…
+✓ Updated people/ada-1f2e3d.md (accepted)
+✗ Refused people/bob-4a5b6c.md: over 20,000 characters
 ```
 
 and ends with a short summary instead of the whole run record: new material

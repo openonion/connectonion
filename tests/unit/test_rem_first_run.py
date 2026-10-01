@@ -155,7 +155,7 @@ def test_a_90_day_scan_prints_a_handful_of_lines_and_logs_the_rest(first_run):
     root, init, _ = first_run
     result = init("--no-investigate")
     assert result.exit_code == 0, result.output
-    progress = [line for line in result.output.splitlines() if line.startswith("co rem init:")]
+    progress = [line for line in result.output.splitlines() if line.startswith("✓ ")]
     assert 3 <= len(progress) <= 8, progress
     assert not any("listed gmail mail 20" in line for line in progress)
     log = (root / ".state/init-progress.log").read_text()
@@ -183,8 +183,8 @@ def test_a_terminal_sees_a_bar_per_stage_and_each_finished_stage_once():
     progress.close()
     shown = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", screen.getvalue())
     assert "━" in shown and "13/13" in shown and "50/80" in shown
-    assert shown.count("co rem init: ") == 2
-    assert "co rem init: gmail: 52 messages listed, 3 correspondents" in shown
+    assert shown.count("✓ ") == 2
+    assert "✓ gmail: 52 messages listed, 3 correspondents" in shown
 
 
 def test_a_model_turn_is_a_spinner_with_its_time_in_a_terminal_and_lines_elsewhere(capsys):
