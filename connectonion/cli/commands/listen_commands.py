@@ -706,6 +706,9 @@ def handle_check(name: str) -> None:
     stale = version_line(name, inbox, pid, installed=installed_version()) if pid else ""
     if stale:
         errors.print(stale, style="yellow")
+    # Slack: what works but could do more (read scopes, the search token).
+    for line in getattr(p, "advice", list)():
+        errors.print(line, style="yellow")
     _report_connection(name, inbox, pid)
 
 

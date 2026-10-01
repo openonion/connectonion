@@ -207,6 +207,11 @@ NEXT = {
     "co slack chats": HANDLER,
     "co slack log": "co slack ls",
     "co slack consume": "co slack ls",
+    # The read verbs (#2051): ids are "<channel>:<ts>", the inbox's own.
+    "co slack channels": "Read one:  co slack history <channel> -n 50",
+    "co slack history": "Read a message's replies:  co slack thread <message-id>",
+    "co slack thread": 'Answer in this thread:  co slack send <channel> "<text>" --reply-to <message-id>',
+    "co slack search": "Read the whole thread:  co slack thread <message-id>",
     "co email send": HANDLER,
     "co email inbox": HANDLER,
     "co email read": 'Reply from this address:  co email send <sender> "<subject>" "<body>"',

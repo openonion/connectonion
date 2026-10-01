@@ -3,7 +3,8 @@
 > **Experimental.** `co slack` was tested against fakes, not yet a live
 > workspace. Edit, delete and react are not implemented and say so. It is in
 > 1.8.9 so people can try listen and reply on a workspace of their own; tell us
-> what breaks.
+> what breaks. The read verbs (`channels`, `history`, `thread`, `search`) and
+> `co auth slack` are newer still and equally untested on a live workspace.
 
 Turn a Slack app you own into a directory of files. Every message your bot can
 see becomes one line in a log and one file in a queue; anything that can read a
@@ -21,6 +22,11 @@ co slack consume -- claude -p           # one command per message, stdout is the
 co slack ls                             # what is waiting
 co slack chats                          # which channels have spoken
 co slack log -f                         # everything, as it arrives
+
+co slack channels                       # the channels and DMs the bot is in, from Slack
+co slack history ops -n 20              # what #ops said lately, oldest first
+co slack thread C0123456789:1727500000.123456   # a message and its replies
+co slack search "deploy failed" --in ops       # needs SLACK_USER_TOKEN
 ```
 
 The listener uses Slack's **Socket Mode**: it dials out to Slack over a
@@ -29,48 +35,69 @@ credential involved.
 
 ## Setup
 
-Slack needs two tokens: an **app-level token** (`xapp-…`) that opens the Socket
-Mode connection, and a **bot token** (`xoxb-…`) that reads who the bot is and
-posts replies.
+```bash
+co auth slack
+```
 
-1. Go to <https://api.slack.com/apps> → **Create New App** → **From scratch**.
-   Name it and pick your workspace.
-2. **Socket Mode** (left sidebar) → turn on **Enable Socket Mode**. Slack asks
-   for an app-level token: name it anything, give it the scope
-   `connections:write`, and copy the `xapp-…` token it shows.
-3. **OAuth & Permissions** → **Bot Token Scopes** → add:
-   - `chat:write` — post replies
-   - `im:history` — read direct messages to the bot
-   - `app_mentions:read` — read messages that @mention the bot
-   - `channels:history` — only if you subscribe to `message.channels` below
-4. **Event Subscriptions** → turn on **Enable Events** (no Request URL is
-   needed with Socket Mode) → **Subscribe to bot events** → add:
-   - `message.im` — direct messages to the bot
-   - `app_mention` — messages in a channel that @mention the bot
-   - `message.channels` — optional: every message in public channels the bot
-     is in, which is what lets a thread the bot is part of keep reaching it
-     without an @mention each time
-5. **App Home** → under **Show Tabs**, turn on **Messages Tab** and tick
-   **Allow users to send Slash commands and messages from the messages tab**.
-   Without it nobody can DM the bot.
-6. **Install App** (or **OAuth & Permissions**) → **Install to Workspace** →
-   **Allow**, then copy the **Bot User OAuth Token** (`xoxb-…`). Any time you
-   change scopes later, Slack asks you to reinstall; do it, or the new scope is
-   not in the token.
-7. Put both tokens in your global credential file:
+It prints a link that creates the app from a manifest already filled in:
+Socket Mode on, the events subscribed, the Messages tab on, and every scope the
+inbox and the read verbs need. Then three clicks and three pastes:
 
-   ```dotenv
-   # ~/.co/keys.env
-   SLACK_APP_TOKEN=xapp-...
-   SLACK_BOT_TOKEN=xoxb-...
-   ```
+1. Open the link, pick your workspace, click **Create**. (If the form opens
+   empty, choose **From a manifest** → JSON and paste the manifest it printed.)
+2. **Install App** → **Install to Workspace** → **Allow**. Copy the **Bot User
+   OAuth Token** (`xoxb-…`) and, for `co slack search`, the **User OAuth Token**
+   (`xoxp-…`).
+3. **Basic Information** → **App-Level Tokens** → **Generate Token and Scopes**,
+   add `connections:write`, and copy the `xapp-…` token. A manifest cannot make
+   this one.
 
-8. Invite the bot to any channel it should hear: `/invite @YourBot` in that
-   channel. `co slack check` then tests both tokens against Slack.
+Each token is asked for at a hidden prompt, never as an argument (it would sit
+in your shell history). Without a terminal, pipe them in, in any order; the
+prefixes tell them apart:
+
+```bash
+printf '%s\n' "$BOT" "$APP" "$USER" | co auth slack
+```
+
+Every token is checked with Slack before anything is written: `auth.test` for
+the bot and user tokens, `apps.connections.open` for the app-level token. One
+that Slack rejects exits 1 and saves nothing. Scopes a token lacks (read from
+Slack's `x-oauth-scopes` header) are listed with the step that adds them, and
+the tokens that work are saved anyway. They go to the selected env file
+(`~/.co/keys.env` unless `co --env-file` says otherwise):
+
+```dotenv
+SLACK_BOT_TOKEN=xoxb-...     # reads channels, posts replies
+SLACK_APP_TOKEN=xapp-...     # opens the Socket Mode connection
+SLACK_USER_TOKEN=xoxp-...    # optional: co slack search runs as you
+```
+
+Press Enter at a prompt to keep the token already set, so running it again to
+add the user token later changes nothing else.
+
+Then invite the bot to every channel it should hear or read:
+`/invite @YourBot` in that channel. `co slack check` tests both tokens, and
+names any read scope the bot token is missing.
 
 The tokens are read only by the local process. They are never sent to
 OpenOnion, never written into the inbox, and never included in an error.
 `co status` and `co keys` show whether they were found and hide their values.
+
+### By hand
+
+The manifest is the same app you would build by hand:
+
+| where in the app settings | what |
+|---|---|
+| Socket Mode | on, with an app-level token that has `connections:write` |
+| OAuth & Permissions → Bot Token Scopes | `chat:write`, `app_mentions:read`, `im:history`, `channels:history`, and for the read verbs `channels:read`, `groups:read`, `im:read`, `groups:history`, `users:read` |
+| OAuth & Permissions → User Token Scopes | `search:read`, `users:read` (only for `co slack search`) |
+| Event Subscriptions → bot events | `message.im`, `app_mention`, and optionally `message.channels` |
+| App Home | Messages Tab on, with "Allow users to send … messages" ticked |
+
+Any time you change scopes, Slack asks you to reinstall; do it, or the new scope
+is not in the token.
 
 ## What lands
 
@@ -132,6 +159,71 @@ a second time; look at the thread first.
 
 `co slack edit`, `delete` and `react` exist so the verbs match every other
 provider, and say plainly that they are not wired up for Slack yet.
+
+## Reading the workspace
+
+The inbox only has what arrived while a listener ran, and only what was
+addressed to the bot or said where it listens. `channels`, `history`, `thread`
+and `search` ask Slack directly, through its Web API, so an agent can answer
+"what did #ops say about the deploy today?" without having been there.
+
+```bash
+co slack channels                        # id, #name or @person, kind, member count
+co slack history ops -n 50               # latest 50, oldest first
+co slack thread C0123456789:1727500000.123456
+co slack search "deploy failed" --in ops --from alice -n 10
+```
+
+Each message prints as its local time, author, id and reply count, then its
+text indented beneath:
+
+```text
+2024-09-28 15:10  Alice  C0123456789:1727500200.000200  (2 replies)
+  @Bob deploy failed on staging
+```
+
+`--json` prints the same as one object per line, in the inbox's own field names:
+
+```json
+{"id":"C0123456789:1727500200.000200","chat":"C0123456789","thread":null,"at":"2024-09-28T05:10:00Z",
+ "sender":"U0ALICE001","sender_name":"Alice","text":"@Bob deploy failed on staging","replies":2}
+```
+
+- **Names, not ids.** Authors and `<@U…>` mentions are shown by display name,
+  looked up once per person per run (`users.info`, which is why `users:read`
+  is in the manifest).
+- **Channels by name.** `history` and `thread` take an id or a name: `ops`, or
+  `'#ops'` in quotes, because an unquoted `#` starts a comment in bash.
+- **Answering what you read.** The ids are the inbox's own `<channel>:<ts>`.
+  `co slack send <channel> "text" --reply-to <id>` answers in that message's
+  thread. `co slack reply` is for messages the inbox received, since it marks
+  them answered there.
+- **Threads.** `thread` given the id of a reply reads the whole thread from its
+  root. `history` shows a thread's first message with its reply count; the
+  replies themselves are in `thread`.
+- **Search runs as you.** Slack's `search.messages` refuses bot tokens, so
+  `search` uses `SLACK_USER_TOKEN` (`xoxp-`, scopes `search:read` and
+  `users:read`) and sees what you can see, not just the bot's channels.
+  Without that token it exits 1 and says how to add it. `--in` and `--from`
+  become Slack's own `in:#ops` and `from:@alice`; other modifiers (`before:`,
+  `has:link`) can go in the text.
+
+The [co-slack skill](../../connectonion/useful_skills/co-slack/SKILL.md) walks
+an agent through the two common asks: "what did #ops say today" and "find the
+message about X and reply in its thread".
+
+Everything here is read-only. When Slack refuses, the error says why and what
+to run next, and the command exits 1:
+
+| Slack says | means | next |
+|---|---|---|
+| `missing_scope` | the token lacks the scope Slack names | add it under OAuth & Permissions, Reinstall to Workspace, `co slack check` |
+| `not_in_channel` | the bot was never invited | `/invite @YourBot` in that channel |
+| `channel_not_found` | no such channel for this token | `co slack channels` |
+| `invalid_auth`, `token_revoked` | the token no longer works | `co auth slack` |
+
+One rate limit (HTTP 429) is waited out as long as Slack's `Retry-After` says,
+at most 30 seconds; a second is reported.
 
 ## When the connection drops
 
