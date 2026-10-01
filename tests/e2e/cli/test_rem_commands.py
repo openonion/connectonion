@@ -733,20 +733,29 @@ def _notebook_with_a_run(root, monkeypatch):
 
 
 def test_status_is_a_dashboard_of_the_notebook_not_a_dump_of_fields(tmp_path, monkeypatch):
-    """#1996: one header line, the notebook with skills, today, mailboxes with fixes, the last run in one line."""
+    """#1996: one header line, the notebook with skills, today, mailboxes with fixes, the last run.
+
+    1.9.0a9 laid it out: today first, every value at one column, counts in a
+    meter and right-aligned, a fix on the line under what it fixes."""
     _notebook_with_a_run(tmp_path, monkeypatch)
     lines = invoke(tmp_path, 'status').output.splitlines()
-    assert lines[0].startswith('co rem status · not started') and 'co rem start' in lines[0]
-    assert '  People         1 written of 2 mapped' in lines
-    assert '  Skills         0 written of 3 mapped' in lines
-    assert any(line.startswith('  To write next  1 people page not written: co rem --root') for line in lines)
+    assert lines[0] == 'co rem status · not started'
+    assert lines[1] == '  run co rem start to authorize sources and begin'
     # A manual run records no runner attempts, and its tokens count all the same (#2008).
-    assert '  1 run · 1 page changed · 91,234 tokens in, 812 out' in lines
-    assert '  ✓ Gmail    read by the daily round' in lines
-    assert '  ✗ Outlook  not connected — co auth microsoft' in lines
-    last = [line for line in lines if line.startswith('Last run')]
-    assert len(last) == 1 and 'investigate people/alice.md · completed · 1 page changed · 91,234 tokens in' in last[0]
+    today = lines.index('Today            1 page changed · 3 items read · 1 run')
+    assert lines[today + 1] == '                 91k tokens in · 812 out'
+    assert today < lines.index(next(line for line in lines if line.startswith('Notebook')))
+    assert '  People         ●●●●●○○○○○  1 of 2   50%' in lines
+    assert '  Skills         ○○○○○○○○○○  0 of 3    0%' in lines
+    write = lines.index('  To write next  1 people page not written')
+    assert lines[write + 1].startswith('                 → co rem --root ')
+    assert '  ✓ Gmail        read by the daily round' in lines
+    outlook = lines.index('  ✗ Outlook      not connected')
+    assert lines[outlook + 1] == '                 → co auth microsoft'
+    last = lines.index('Last run         investigate people/alice.md · completed')
+    assert lines[last + 1].endswith(' · 1 page changed · 91k tokens in')
     assert lines[-1] == f'Next: co rem --root {tmp_path} investigate people'  # the first thing to write (#2008)
+    assert [line for line in lines if len(line) > 80 and not line.lstrip().startswith(('→', 'Next:', 'Notebook'))] == []
     for internal in ('Known attempts', 'Schedule times', 'Worker', 'Runner attempts today', 'Usage by stage'):
         assert internal not in '\n'.join(lines), internal
 
@@ -1187,7 +1196,8 @@ def test_doctor_and_status_name_a_stalled_init_archive_and_the_command_that_resu
     line = next(line for line in doctor.output.splitlines() if 'init mail archive' in line)
     assert line.startswith('NO') and '2 of 6 bodies saved' in line and line.rstrip().endswith('sync')
     status = invoke(tmp_path, 'status')
-    assert 'Mail archive incomplete: 2 of 6 bodies saved' in status.output
+    assert '  ↻ Archive      2 of 6 mail bodies saved · stalled since ' in status.output
+    assert 'sync resumes it from the saved bodies' in status.output
 
 
 def test_the_overview_help_names_projects_among_the_advanced_commands(tmp_path):

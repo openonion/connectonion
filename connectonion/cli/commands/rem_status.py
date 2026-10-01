@@ -13,6 +13,7 @@ this module only draws the same result.
 from pathlib import Path
 
 from .. import style
+from . import rem_look
 from .rem_look import highlight
 
 CATEGORIES = (("people", "People"), ("projects", "Projects"), ("orgs", "Organizations"), ("skills", "Skills"))
@@ -22,30 +23,35 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     """The status result as markup (the plain text is the same markup read without its styles).
 
     `spell` turns arguments into the command as this user types it (`_next`).
+    A notebook consolidates overnight, so after the title it says what happened
+    today before what it holds (1.9.0a9); every value starts at one column.
     """
     from ...rem.migrate import program
     counts = notebook(root)
-    lines = [_header(value, program()), "", *_notebook(root, value, counts, spell), "",
-             *_today(root, value), "", *_mailboxes(root), *_archive(value), ""]
+    lines = [*_header(value, program()), "", *_today(root, value), "", *_notebook(root, value, counts, spell), "",
+             *_mailboxes(root), *_archive(value, spell), ""]
     budget = value.get("investigation_quota")
     if budget:
         # "0 of 10 points" beside 3.0M tokens today read as a contradiction
         # (#2008): points are percent of the Codex week, moved only by
         # investigations; maintenance is bounded by the daily call cap instead.
-        lines.append(f"{style.heading('Budget')}     {_number(budget['spent_points'])} of "
-                     f"{_number(budget['budget_points'])} investigation points this week · "
-                     f"Codex week {highlight(value.get('codex_week', 'unknown'))}")
-        lines.append(f"  {style.muted('A point is 1% of your Codex week, counted for investigations only; daily maintenance is bounded by its call cap.')}")
         # Codex reports whole percents: a run under one is counted from its
         # tokens, and "0.6 points" with no unit read as made up (#1990).
         from ...rem.quota import TOKENS_PER_POINT
-        lines.append("  " + style.muted("Codex reports whole percents, so a run too small to move it counts "
-                                        f"its fresh tokens: {TOKENS_PER_POINT:,} tokens a point."))
-    lines.append(f"{style.heading('Last run')}   {_last_run(value.get('last_run'), _zone(root))}")
+        lines.append(rem_look.section("Budget", f"{_number(budget['spent_points'])} of "
+                                      f"{_number(budget['budget_points'])} investigation points this week  "
+                                      + rem_look.meter(budget["spent_points"], budget["budget_points"])))
+        for part in f"Codex week {value.get('codex_week') or 'unknown'}".split("; "):
+            lines.append(rem_look.follow(highlight(part), glyph=""))
+        lines.append(rem_look.follow(style.muted("a point is 1% of your Codex week, spent by investigations only"),
+                                     glyph=""))
+        lines.append(rem_look.follow(style.muted(f"a run under 1% counts fresh tokens, {TOKENS_PER_POINT:,} "
+                                                 "tokens a point"), glyph=""))
+    lines.append(rem_look.section("Last run", _last_run(value.get("last_run"), _zone(root))))
     if verbose:
         from .rem_output import _lines
-        lines += ["", style.heading("Details"), *(highlight(line) for line in _lines(value, indent=2))]
-    return "\n".join(lines)
+        lines += ["", style.label("Details"), *(highlight(line) for line in _lines(value, indent=2))]
+    return "\n".join([*lines, ""])
 
 
 def status_next(value: dict) -> list:
@@ -102,71 +108,111 @@ def _plural(number: int, word: str) -> str:
     return f"{_number(number)} {word}{'s' if number != 1 else ''}"
 
 
-def _header(value: dict, program: str) -> str:
+def _header(value: dict, program: str) -> list[str]:
+    """The title and the state's short name on one line; what the state asks for under it, muted.
+
+    "not scheduled here — the saved schedule belongs to another notebook or
+    was removed; co rem start schedules this one · no run scheduled" was one
+    line of 130 characters, wrapped in two by an 80-column terminal.
+    """
     state = value["state"].replace("`", "")
-    state = state[:1].lower() + state[1:]
-    tail = "" if value.get("next_run") else " · no run scheduled"
-    return style.heading(f"{program} status") + " · " + highlight(state + tail)
+    head, _, rest = state.partition(" — ")
+    if not rest:
+        head, _, rest = state.partition("; ")
+    head = head[:1].lower() + head[1:]
+    # A state that is not running already says nothing is scheduled.
+    tail = " · no run scheduled" if not value.get("next_run") and head.startswith("running") else ""
+    lines = [style.heading(f"{program} status") + " · " + highlight(head + tail)]
+    return lines + ["  " + highlight(part.strip()) for part in rest.split("; ") if part.strip()]
 
 
 def _notebook(root, value: dict, counts: dict, spell) -> list[str]:
+    """Each category's pages, written of mapped, as a meter and two right-aligned counts."""
     where = str(value["root"]).replace(str(Path.home()), "~", 1)
-    built = "" if value.get("configured") else " (not built yet)"
-    lines = [f"{style.heading('Notebook')}  {style.path(where)}{built}"]
-    for category, label in CATEGORIES:
-        row = counts[category]
-        lines.append(f"  {label:<14} {_number(row['written'])} written of {_number(row['mapped'])} mapped")
+    built = "  (not built yet)" if not value.get("configured") else ""
+    lines = [rem_look.section("Notebook", style.path(where) + built)]
+    rows = [(label, counts[category]) for category, label in CATEGORIES]
+    wide = max(len(f"{row['mapped']:,}") for _, row in rows)
+    for label, row in rows:
+        done, total = row["written"], row["mapped"]
+        share = f"{round(100 * done / total)}%" if total else "—"
+        lines.append(rem_look.row(label, rem_look.meter(done, total) + "  "
+                                  + _number(done).rjust(len(_number(done)) + wide - len(f"{done:,}"))
+                                  + style.muted(" of ") + _number(total)
+                                  + " " * (wide - len(f"{total:,}")) + "  " + style.muted(share.rjust(4))))
+    lines.append(rem_look.follow(style.muted(f"{rem_look.WRITTEN} written  {rem_look.MAPPED} mapped, not written yet"),
+                                 glyph=""))
     what, arguments = next_to_write(root, counts)
     if what:
-        lines.append(f"  {'To write next':<14} {what}: {style.command(spell(arguments))}")
+        lines.append(rem_look.row("To write next", what))
+        lines.append(rem_look.follow(style.command(spell(arguments))))
     return lines
 
 
 def _today(root, value: dict) -> list[str]:
+    """What the notebook did today, first: pages changed and material read, then what it cost."""
     from ...rem.config import read_config
     from ...rem.service import notebook_zone, run_logs, runs_today
     _, recent = runs_today(run_logs(root), notebook_zone(read_config(root)))
     changed = len({page for record in recent for page in record.get("changed") or []})
+    items = sum(record.get("items") or 0 for record in recent if isinstance(record.get("items"), int))
+    runs = value.get("batches_today", 0)
+    if not runs:
+        return [rem_look.section("Today", style.muted(f"nothing ran yet ({value.get('date', '')})"))]
     usage = value.get("usage_today") or {}
     spent = ("tokens unknown" if usage.get("input_tokens") is None else
-             f"{_number(usage['input_tokens'])} tokens in, {_number(usage.get('output_tokens') or 0)} out")
+             f"{_compact(usage['input_tokens'])} tokens in · {_compact(usage.get('output_tokens') or 0)} out")
     missing = usage.get("runs_without_usage") or 0
     if missing and usage.get("input_tokens") is not None:
         spent += f" ({_plural(missing, 'run')} without usage)"
-    return [f"{style.heading('Today')}  {value.get('date', '')}",
-            f"  {_plural(value.get('batches_today', 0), 'run')} · {_plural(changed, 'page')} changed · {spent}"]
+    return [rem_look.section("Today", f"{_plural(changed, 'page')} changed · {_plural(items, 'item')} read · "
+                             f"{_plural(runs, 'run')}"),
+            rem_look.follow(spent, glyph="")]
 
 
 def _mailboxes(root) -> list[str]:
+    """One line a mailbox: ✓ read, ✗ not, and the command that fixes it on the line under."""
     from ...rem.service import MAIL_KINDS, mailbox_state, subscriptions
-    sources, lines = subscriptions(root), [style.heading("Mailboxes")]
+    sources, lines = subscriptions(root), [style.label("Mailboxes")]
     for kind in MAIL_KINDS:
         state, fix = mailbox_state(kind, sources.get(kind, {}))
-        mark = style.ok("✓") if state == "read by the daily round" else style.warn("✗")
-        lines.append(f"  {mark} {kind.title():<8} {highlight(state)}" + (f" — {style.command(fix)}" if fix else ""))
+        mark = style.ok(rem_look.FINE) if state == "read by the daily round" else style.warn(rem_look.BROKEN)
+        lines.append(rem_look.row(kind.title(), highlight(state), mark))
+        if fix:
+            lines.append(rem_look.follow(style.command(fix)))
     return lines
 
 
-def _archive(value: dict) -> list[str]:
-    """An unfinished init mail archive, one line (#2035); nothing once it is complete."""
+def _archive(value: dict, spell=lambda arguments: "co rem " + " ".join(arguments)) -> list[str]:
+    """An unfinished init mail archive (#2035): ↻ and how far it got; nothing once it is complete."""
     archive = value.get("mail_archive")
     if not archive:
         return []
-    mark = style.warn("✗") if archive.get("stalled") else style.muted("…")
-    return [f"  {mark} {'Archive':<8} {highlight(archive['summary'])}"]
+    if "on_disk" not in archive:   # a result from before the archive said its counts
+        return [rem_look.row("Archive", highlight(archive["summary"]), style.muted(rem_look.RESUMES))]
+    saved = f"{_number(archive['on_disk'])} of {_number(archive['target'])} mail bodies saved"
+    if not archive.get("stalled"):
+        return [rem_look.row("Archive", saved + style.muted(" · saving"), style.muted(rem_look.RESUMES))]
+    since = str(archive.get("updated", ""))[:16].replace("T", " ")
+    return [rem_look.row("Archive", saved + " · " + style.warn(f"stalled since {since}"), style.warn(rem_look.RESUMES)),
+            rem_look.follow(style.muted("investigations ask the mail servers until it is done"), glyph=""),
+            rem_look.follow(style.command(spell(["sync"])) + style.muted(" resumes it from the saved bodies"))]
 
 
 def _last_run(run, zone) -> str:
-    """One line; the time in the notebook's zone, like every other time status shows (#2008)."""
+    """What ran and how it ended, then when and what it changed on the line under (#2008: the notebook's zone)."""
     from datetime import datetime
     if not run:
-        return "none yet"
+        return style.muted("none yet")
     what = " ".join(filter(None, [run.get("phase") or "sync", run.get("record")]))
+    outcome = str(run.get("outcome", "unknown")).replace("_", " ")
     started = datetime.fromisoformat(run["started_at"]).astimezone(zone).strftime("%Y-%m-%d %H:%M")
-    parts = [highlight(part) for part in (started, what,
-                                          str(run.get("outcome", "unknown")).replace("_", " "))]
-    parts.append(_plural(len(run.get("changed") or []), "page") + " changed")
+    detail = [highlight(started), _plural(len(run.get("changed") or []), "page") + " changed"]
     tokens = (run.get("usage") or {}).get("input_tokens")
     if tokens is not None:
-        parts.append(f"{_number(tokens)} tokens in")
-    return " · ".join(parts)
+        detail.append(f"{_compact(tokens)} tokens in")
+    return highlight(what) + " · " + highlight(outcome) + "\n" + rem_look.follow(" · ".join(detail), glyph="")
+
+
+def _compact(tokens) -> str:
+    return style.count(rem_look.compact(tokens))

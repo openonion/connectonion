@@ -132,3 +132,51 @@ def _page_rest(text: str) -> str:
     if option and not _commands().match(text.lstrip()):
         return option.group(1) + style.command(option.group(2)) + highlight(text[option.end():])
     return highlight(text)
+
+
+# ------------------------------------------------- the shapes results share
+#
+# co rem's results are small dashboards: status, doctor, sync and init end on
+# one. They share one layout so the eye learns it once (1.9.0a9): a title line,
+# section labels in the left margin, every value starting at the same column,
+# one item per line, and a fix on the line under the thing it fixes. A few
+# glyphs carry meaning and nothing else does -- they are words too, printed
+# the same in a pipe, so a log reads like the terminal:
+#   ● written  ○ mapped, not yet written  ✓ fine  ✗ needs a fix
+#   ↻ unfinished, picks up where it stopped  → the command that fixes the line above
+
+COLUMN = 17            # where every value starts: "  Organizations" and two spaces
+WRITTEN, MAPPED, FINE, BROKEN, RESUMES, FIX = "●", "○", "✓", "✗", "↻", "→"
+
+
+def compact(number) -> str:
+    """Tokens as a person reads them: 812, 91k, 1.7M. Exact counts stay in --json and logs."""
+    number = int(number)
+    if number < 1000:
+        return f"{number:,}"
+    return f"{round(number / 1000)}k" if number < 999_500 else f"{number / 1_000_000:.1f}M"
+
+
+def meter(done: int, total: int, cells: int = 10) -> str:
+    """●●●○○○○○○○: how much of something is done, in tenths; full only when all of it is."""
+    # Six pages of 330 is one dot, not none: anything written shows.
+    filled = (0 if not total or done <= 0 else cells if done >= total
+              else min(cells - 1, max(1, round(cells * done / total))))
+    return (style.ok(WRITTEN * filled) if filled else "") + (style.muted(MAPPED * (cells - filled)) if filled < cells else "")
+
+
+def section(name: str, value: str = "") -> str:
+    """A section's first line: its label in the margin, its value at COLUMN."""
+    return style.label(name) + (" " * max(1, COLUMN - len(name)) + value if value else "")
+
+
+def row(name: str, value: str, mark: str = "") -> str:
+    """One item under a section, its value at COLUMN; `mark` is a glyph already styled."""
+    lead = "  " + (mark + " " if mark else "")
+    width = 2 + (2 if mark else 0) + len(name)
+    return lead + name + " " * max(1, COLUMN - width) + value
+
+
+def follow(markup: str, glyph: str = FIX) -> str:
+    """A line under an item, at COLUMN: `→ co rem start`, or a note in muted words."""
+    return " " * COLUMN + (style.muted(glyph) + " " if glyph else "") + markup

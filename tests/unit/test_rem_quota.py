@@ -149,7 +149,7 @@ def test_status_says_what_a_point_is(tmp_path, monkeypatch):
     from connectonion.cli.commands import rem_status
     for name in ("_notebook", "_today", "_mailboxes", "_archive"):
         monkeypatch.setattr(rem_status, name, lambda *a, **k: [])
-    monkeypatch.setattr(rem_status, "_header", lambda *a: "co rem")
+    monkeypatch.setattr(rem_status, "_header", lambda *a: ["co rem"])
     monkeypatch.setattr(rem_status, "notebook", lambda root: {})
     monkeypatch.setattr(rem_status, "_last_run", lambda *a: "none")
     monkeypatch.setattr(rem_status, "_zone", lambda root: None)
