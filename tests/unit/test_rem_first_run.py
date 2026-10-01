@@ -183,8 +183,8 @@ def test_a_terminal_sees_a_bar_per_stage_and_each_finished_stage_once():
     progress.close()
     shown = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", screen.getvalue())
     assert "━" in shown and "13/13" in shown and "50/80" in shown
-    assert shown.count("co rem init: ") == 2
-    assert "co rem init: gmail: 52 messages listed, 3 correspondents" in shown
+    assert shown.count("✓ ") == 2
+    assert "✓ gmail: 52 messages listed, 3 correspondents" in shown
 
 
 def test_a_model_turn_is_a_spinner_with_its_time_in_a_terminal_and_lines_elsewhere(capsys):

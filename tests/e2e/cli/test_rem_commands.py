@@ -540,8 +540,8 @@ def test_init_builds_all_maps_without_model_or_investigation(tmp_path, monkeypat
     plain = invoke(tmp_path, 'init', '--skills-dir', str(empty))
     assert plain.exit_code == 0, plain.output
     # One finished line per stage (#1943), not every step.
-    assert 'co rem init: mapped installed skills: 0' in plain.output
-    assert 'co rem init: mapped projects: 0' in plain.output
+    assert '✓ mapped installed skills: 0' in plain.output
+    assert '✓ mapped projects: 0' in plain.output
 
 
 def test_init_archives_connected_mail_body_for_later_investigation(tmp_path, monkeypatch):
@@ -619,8 +619,10 @@ def test_init_human_output_summarizes_map_instead_of_dumping_contacts():
                          'created': ['one', 'two']},
               'created': ['three'], 'investigation': 'not started'}
     text = render(report, 'init')
-    assert 'People: 500' in text and 'Projects: 3' in text
-    assert 'Skills: 2 names (400 installed copies)' in text and 'New pages: 3' in text
+    # 1.9.0a9: status's layout, counts right-aligned at one column.
+    assert text.splitlines()[0] == 'co rem init · mapped · 5 days'
+    assert 'People           500' in text and 'Projects           3' in text
+    assert 'Skills             2 names · 400 installed copies' in text and 'New pages          3' in text
     assert 'user0@example.org' not in text
     assert len(text.splitlines()) < 20
 
@@ -644,8 +646,8 @@ def test_init_asks_whether_a_write_only_address_is_the_owner_s_own(tmp_path, mon
 
     plain = invoke(root, 'init', '--skills-dir', str(empty))
     assert plain.exit_code == 0, plain.output
-    assert 'co rem init: mapped installed skills' in plain.output
-    assert 'co rem init: mapped projects' in plain.output
+    assert '✓ mapped installed skills' in plain.output
+    assert '✓ mapped projects' in plain.output
     assert 'aaronplus1996@gmail.com' in Text.from_ansi(plain.output).plain
 
 

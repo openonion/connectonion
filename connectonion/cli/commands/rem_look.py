@@ -90,7 +90,15 @@ def result(text: str, *, titled: bool = True) -> str:
     if titled:
         head, attention, _ = lines.pop(0).partition(" — needs attention")
         marked.append(style.heading(head) + (" — " + style.error("needs attention") if attention else ""))
-    return "\n".join([*marked, *(_result_line(line) for line in lines)])
+    return "\n".join([*marked, *(_labelled(line) for line in lines)])
+
+
+def _labelled(text: str) -> str:
+    """A line in the margin-label layout (`People           312`): the label bold, the rest as a result line."""
+    found = re.fullmatch(r"([A-Z][\w ]*?\w)( {2,})(\S.*)", text)
+    if not found:
+        return _result_line(text)
+    return style.label(found.group(1)) + found.group(2) + _result_line(found.group(3))
 
 
 def line(text: str, *, err: bool = False) -> None:

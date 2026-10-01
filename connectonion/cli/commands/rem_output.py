@@ -50,7 +50,10 @@ class StageProgress:
         if stage != self.stage:
             self._finish()
             self.stage = stage
-        self.line = "co rem init: " + text
+        # A finished stage is ✓ and what it found, in a pipe as in a terminal
+        # (1.9.0a9); "co rem init: " before every line was the program's name
+        # said six times over its own output.
+        self.line = "✓ " + text
         if self.tty and not self.quiet:
             self._draw(text, *self._size(message, count))
 
@@ -103,8 +106,7 @@ class StageProgress:
             from .rem_look import highlight
             self.bar.remove_task(self.task)
             self.task = None
-            prefix, _, text = self.line.partition(": ")
-            self.bar.console.print(style.muted(prefix + ":") + " " + highlight(text, counts=True), emoji=False)
+            self.bar.console.print(style.ok(self.line[:1]) + " " + highlight(self.line[2:], counts=True), emoji=False)
 
     def close(self):
         self._finish()
@@ -122,7 +124,7 @@ class Turn:
         self.label, self.stream = label, stream or sys.stderr
         self.bar = None
         if getattr(self.stream, "isatty", lambda: False)():
-            self.bar = Progress(SpinnerColumn(style="co.command"), TextColumn("{task.description}"),
+            self.bar = Progress(SpinnerColumn(), TextColumn("{task.description}"),
                                 TimeElapsedColumn(), console=_terminal(self.stream), transient=True)
 
     def __enter__(self):
@@ -205,40 +207,52 @@ def _lines(value, indent=0, raw_keys=False):
     return [pad + _scalar(value)]
 
 
+def _init_text(value: dict, failed: bool) -> str:
+    """init's map in status's layout (1.9.0a9): a label in the margin, counts right-aligned at one column.
+
+    The complete map is persisted and available through --json. Printing every
+    contact, subject and installed skill made a normal first run thousands of
+    lines long and buried the next action.
+    """
+    from .rem_look import BROKEN, COLUMN
+    skills = value.get('skills') or {}
+    skill_count = len(skills.get('skills') or []) if isinstance(skills, dict) else len(skills)
+    skill_names = (len({str(row.get('name', '')).casefold() for row in skills.get('skills') or []})
+                   if isinstance(skills, dict) else skill_count)
+    skills_created = len(skills.get('created') or []) if isinstance(skills, dict) else 0
+    counts = [('People', len(value.get('people') or []), ''),
+              ('Organizations', len(value.get('orgs') or []), ''),
+              ('Projects', len(value.get('projects') or []), ''),
+              ('Skills', skill_names, f" names · {skill_count:,} installed copies"),
+              ('New pages', len(value.get('created') or []) + skills_created, '')]
+    wide = max(len(f"{number:,}") for _, number, _ in counts)
+
+    def labelled(label, text):
+        return label + ' ' * (COLUMN - len(label)) + text
+    title = 'co rem init' + (' — needs attention' if failed else
+                             f" · {value.get('phase', 'unknown')} · {value.get('days', '?')} days")
+    lines = [title, '', *(labelled(label, f"{number:,}".rjust(wide) + tail) for label, number, tail in counts),
+             labelled('Detailed map', '.state/map.json in this notebook, or rerun with --json')]
+    for error in value.get('errors') or []:
+        source = str(error.get('source', 'source'))
+        lines.append(f"  {BROKEN} {source}" + ' ' * max(1, COLUMN - 4 - len(source)) + str(error.get('error', 'unavailable')))
+    owner = value.get('owner_page')
+    if owner:
+        # The one page with value before any model runs (#1943): print it.
+        lines += ['', labelled('Your page', owner['title']),
+                  *(' ' * COLUMN + fact for fact in owner['facts']), ' ' * COLUMN + owner['path']]
+    lines += [*([''] if value.get('confirm_own_addresses') else []), *(value.get('confirm_own_addresses') or []),
+              *(value.get('tips') or []), *([value['people_setup']] if value.get('people_setup') else []),
+              *([value['recovery']] if value.get('recovery') else [])]
+    return '\n'.join(lines)
+
+
 def render(value, command: str, *, failed: bool = False) -> str:
     """Render readable results without interpreting source text as terminal markup."""
     if isinstance(value, str):
         text = ('Error: ' if failed else '') + value
     elif command == 'init' and isinstance(value, dict):
-        # The complete map is persisted and available through --json. Printing
-        # every contact, subject and installed skill made a normal first run
-        # thousands of lines long and buried the next action.
-        title = 'co rem init' + (' — needs attention' if failed else '')
-        skills = value.get('skills') or {}
-        skill_count = len(skills.get('skills') or []) if isinstance(skills, dict) else len(skills)
-        skill_names = (len({str(row.get('name', '')).casefold() for row in skills.get('skills') or []})
-                       if isinstance(skills, dict) else skill_count)
-        skills_created = len(skills.get('created') or []) if isinstance(skills, dict) else 0
-        text = '\n'.join([
-            title, '',
-            f"Map: {value.get('phase', 'unknown')} · {value.get('days', '?')} days",
-            *(f"{label}: {len(value.get(kind) or [])}"
-              for kind, label in (('people', 'People'), ('orgs', 'Organizations'),
-                                  ('projects', 'Projects'))),
-            f"Skills: {skill_names} names ({skill_count} installed copies)",
-            f"New pages: {len(value.get('created') or []) + skills_created}",
-            'Detailed map: .state/map.json inside this co rem root (or rerun with --json).',
-            *(f"{error.get('source', 'source')}: {error.get('error', 'unavailable')}"
-              for error in value.get('errors') or []),
-            # The one page with value before any model runs (#1943): print it.
-            *(['', f"Your page: {owner['title']}", *(f"  {fact}" for fact in owner['facts']),
-               f"  {owner['path']}"] if (owner := value.get('owner_page')) else []),
-            *([''] if value.get('confirm_own_addresses') else []),
-            *(value.get('confirm_own_addresses') or []),
-            *(value.get('tips') or []),
-            *([value['people_setup']] if value.get('people_setup') else []),
-            *([value['recovery']] if value.get('recovery') else []),
-        ])
+        text = _init_text(value, failed)
     else:
         title = 'co rem ' + ('status' if command == 'rem' else command.replace('-', ' '))
         if command in ('status', 'rem') and isinstance(value, dict):

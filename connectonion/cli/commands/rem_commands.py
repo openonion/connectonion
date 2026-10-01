@@ -242,8 +242,8 @@ def _logged(root, record, phase, call):
                    instructions_chars=result.get("instructions_chars") or {})
         _WRITTEN.append(record)
         # Said, not left to the record: an accepted page had no outcome line (#2044).
-        rem_look.line(f"Outcome: {record} accepted, {len(run['changed'])} page"
-                      f"{'' if len(run['changed']) == 1 else 's'} changed", err=True)
+        rem_look.step(f"Updated {record}: accepted, {len(run['changed'])} page"
+                      f"{'' if len(run['changed']) == 1 else 's'} changed")
         return result
     except BaseException as error:
         run.update(outcome=("refused" if isinstance(error, RunFailed) and "rejected" in str(error) else
