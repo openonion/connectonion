@@ -2,7 +2,7 @@
 Purpose: Lay out one investigation's gathered material as files an agent searches, instead of chunks a model summarises
 LLM-Note:
   Dependencies: imports from [hashlib, json, pathlib, .chat.CHAT_KINDS] | imported by [rem/investigate.py] | tested by [tests/unit/test_rem_evidence.py]
-  Data flow: write_evidence(directory, items) → one file per mail/attachment/document, one per session or chat → index.md, one line per file → {"index", "files", "sources", "chars"}
+  Data flow: write_evidence(directory, items) → one file per mailbox-month (split past 40k chars), per attachment, per session or chat → index.md, one line per file → {"index", "files", "sources", "chars"}
   State/Effects: writes under the given directory only (0700); the caller deletes it after the run
 
 Why files (#1850, owner 2026-09-24/30). The script has already gathered and
@@ -13,9 +13,10 @@ finds what each Unknown needs with rg, sed and ls. Summarising everything is
 maintenance's job; investigation goes looking for answers.
 
 Every entry's heading carries its source id, because that id is what the page
-cites and what the validator accepts. A mail is its own file, so a search hit
-names one message. A session or a chat is one file, because a line of it
-means little outside the conversation around it.
+cites and what the validator accepts, so a search hit names one message even
+though a month of mail shares a file (#2080: one file per mail meant one tool
+call per mail). A session or a chat is one file, because a line of it means
+little outside the conversation around it.
 """
 
 import hashlib
@@ -27,13 +28,24 @@ from .chat import CHAT_KINDS
 INDEX = "index.md"
 
 
+# A file the agent reads in one go. One file per mail made Ody Zhou's 98k
+# characters 373 files; the agent re-sends its whole context with every file
+# it opens, and the turn cost 2.77M input tokens (#2080). A month of one
+# mailbox is one file, split when it passes this.
+FILE_CHARS = 40_000
+
+
 def _group(item: dict) -> str:
     source = str(item.get("source", ""))
     kind = source.split(":")[0]
     if kind in CHAT_KINDS:
         return f"{kind}:{item.get('correspondent') or item.get('subject') or 'chat'}"
-    if item.get("role") == "attachment" or source.count(":") < 2:
-        return source   # one mail, one attachment, one document
+    if item.get("role") == "attachment":
+        return source   # one attachment, one file: a document read on its own
+    if source.count(":") < 2:
+        # Mail: a month per mailbox. Each entry keeps its `### <source id>`
+        # heading, so a search hit still names the one message to cite.
+        return f"{kind}:{str(item.get('timestamp', ''))[:7] or 'undated'}"
     return source.rsplit(":", 1)[0]   # a session: codex:<session>:<offset>
 
 
@@ -53,12 +65,27 @@ def _entry(item: dict) -> str:
     return "\n".join([head, *detail, "", str(item.get("text", "")).rstrip(), ""])
 
 
+def _split(group: str, entries: list[dict]):
+    """A group past FILE_CHARS in parts, whole entries each: `outlook:2026-09`, `outlook:2026-09 part 2`."""
+    parts, size = [[]], 0
+    for item in entries:
+        length = len(_entry(item))
+        if parts[-1] and size + length > FILE_CHARS:
+            parts.append([])
+            size = 0
+        parts[-1].append(item)
+        size += length
+    for number, part in enumerate(parts, 1):
+        yield (group if number == 1 else f"{group} part {number}"), part
+
+
 def write_evidence(directory: Path, items: list[dict]) -> dict:
     """Write every item, oldest first within each file; return the index path and every citable id."""
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     groups: dict[str, list[dict]] = {}
     for item in sorted(items, key=lambda i: str(i.get("timestamp", ""))):
         groups.setdefault(_group(item), []).append(item)
+    groups = {name: part for group, entries in groups.items() for name, part in _split(group, entries)}
     lines, sources, total = [], [], 0
     for group, entries in sorted(groups.items(), key=lambda pair: str(pair[1][0].get("timestamp", ""))):
         name = _file_name(group, str(entries[0].get("timestamp", "")))
