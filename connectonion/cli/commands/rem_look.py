@@ -75,11 +75,13 @@ def _literal(text: str, *, before_tag: bool) -> str:
 LIVE = None
 
 
-def say(markup: str, *, err: bool = False, plain: str = None, end: str = "\n") -> None:
-    """Print markup in a terminal; elsewhere the same words, plain, through typer as before."""
+def say(markup: str, *, err: bool = False, plain: str = None, end: str = "\n", hanging: bool = False) -> None:
+    """Print markup in a terminal; elsewhere the same words, plain, through typer as before.
+
+    `hanging` wraps a long line of a laid-out result under its value column (`hang`)."""
     out = LIVE if err and LIVE is not None else style.console(stderr=err)
     if out.is_terminal:
-        out.print(markup, emoji=False, end=end)
+        out.print(hang(markup, out.width) if hanging else markup, emoji=False, end=end)
     else:
         typer.echo(Text.from_markup(markup, emoji=False).plain if plain is None else plain, err=err, nl=end == "\n")
 
@@ -208,3 +210,28 @@ def step(text: str, *, err: bool = True) -> None:
     if text.endswith("…"):
         return say("  " + style.muted(text), err=err)
     say("  " + _result_line(text), err=err)
+
+
+def hang(markup: str, width: int) -> str:
+    """Lines too wide for the terminal, wrapped under their own value column, not at the margin.
+
+    A long value in the layout above ("connected, but not read by the daily
+    round (not subscribed)") wrapped to column 0 and broke the column it sat
+    in (1.9.0a9). Only a terminal comes here, and only the line breaks move:
+    every word is where it was.
+    """
+    from rich.console import Console
+    measure = Console(width=width, theme=style.THEME, force_terminal=True, color_system=None)
+    out = []
+    for line in markup.split("\n"):
+        text = Text.from_markup(line, emoji=False)
+        if text.cell_len <= width:
+            out.append(line)
+            continue
+        found = re.match(r"( *)(?:\S.*?  +)?(?=\S)", text.plain)
+        indent = len(found.group(0)) if found and len(found.group(0)) <= 30 else 0
+        head, body = text[:indent], text[indent:]
+        rows = body.wrap(measure, width - indent) if indent else [text]
+        out.append(head.markup + rows[0].markup)
+        out += [" " * indent + row.markup for row in list(rows)[1:]]
+    return "\n".join(out)

@@ -47,6 +47,7 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
                                      glyph=""))
         lines.append(rem_look.follow(style.muted(f"a run under 1% counts fresh tokens, {TOKENS_PER_POINT:,} "
                                                  "tokens a point"), glyph=""))
+        lines.append("")
     lines.append(rem_look.section("Last run", _last_run(value.get("last_run"), _zone(root))))
     if verbose:
         from .rem_output import _lines

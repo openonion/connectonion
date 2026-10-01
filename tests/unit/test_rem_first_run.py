@@ -155,7 +155,7 @@ def test_a_90_day_scan_prints_a_handful_of_lines_and_logs_the_rest(first_run):
     root, init, _ = first_run
     result = init("--no-investigate")
     assert result.exit_code == 0, result.output
-    progress = [line for line in result.output.splitlines() if line.startswith("co rem init:")]
+    progress = [line for line in result.output.splitlines() if line.startswith("✓ ")]
     assert 3 <= len(progress) <= 8, progress
     assert not any("listed gmail mail 20" in line for line in progress)
     log = (root / ".state/init-progress.log").read_text()

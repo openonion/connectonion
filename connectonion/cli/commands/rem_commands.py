@@ -91,7 +91,7 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
         # A drawing may decline a result of another shape (sync's dry run) by
         # returning None; a failed result it draws ends on its Next line too.
         from .rem_output import printable
-        rem_look.say(printable(drawn))
+        rem_look.say(printable(drawn), hanging=True)
         rem_look.say(next_line(command))
     else:
         path, parent = [ctx.info_name or "status"], ctx.parent
@@ -696,7 +696,8 @@ def make_rem_app(factory):
             if not ctx.obj["json"]:
                 # The map's summary and your page's facts first: value before any spending.
                 text = render(result, "init")
-                rem_look.say(rem_look.result(text), plain=text)
+                typer.echo(err=True)   # the stage lines above are stderr; a gap, then the map
+                rem_look.say(rem_look.result(text), plain=text, hanging=True)
                 typer.echo()
             say = ((lambda text: None) if ctx.obj["json"] else
                    lambda text: rem_look.say(rem_look.highlight(text, counts=True), plain=text))
@@ -1172,6 +1173,8 @@ def make_rem_app(factory):
         from .rem_output import sync_summary
 
         def draw(value):
+            # The page lines above are stderr; a gap, then the summary.
+            typer.echo(err=True)
             return sync_summary(value, lambda arguments: _next(ctx, arguments))
         _handle(ctx, operation, ["logs"], draw=draw)
 
