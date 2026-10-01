@@ -243,3 +243,63 @@ def test_status_shows_an_incomplete_archive(tmp_path):
     archive_init(tmp_path, _inventory(tmp_path), {"gmail": Bodies()}, seconds=25, clock=Clock(), now=lambda: T0)
     shown = status(tmp_path)["mail_archive"]
     assert shown["phase"] == "paused" and (shown["on_disk"], shown["target"]) == (2, 6)
+
+
+# ------------------------------------------- the 1.9.0a7 acceptance run (#2042)
+
+
+def _with_person(root):
+    from connectonion.rem.files import state_path, write_json
+    report = _inventory(root)
+    report["people"] = [{"record": "people/a.md", "addresses": ["a@example.org"]}]
+    write_json(state_path(root, "map.json"), report)
+    return report
+
+
+class Listing(Bodies):
+    """A mailbox that lists the six inventory messages and serves their bodies."""
+
+    def my_addresses(self):
+        return {"me@example.org"}
+
+    def list_with(self, address, start, end):
+        return [{"id": f"m{n}", "date": (T0 - timedelta(days=n)).isoformat(), "from": "a@example.org",
+                 "to": ["me@example.org"], "subject": f"S{n}"} for n in range(6)]
+
+
+def test_an_investigation_reads_the_bodies_a_paused_archive_saved_and_fetches_only_the_rest(tmp_path):
+    """#2042: 2,693 of 3,152 bodies were saved and every investigation said
+    "0 loaded from private init archive" and fetched all of them again."""
+    prepare(tmp_path)
+    report = _with_person(tmp_path)
+    paused = archive_init(tmp_path, report, {"gmail": Bodies()}, seconds=25, clock=Clock(), now=lambda: T0)
+    assert paused["phase"] == "paused" and paused["people_indexes"] == 2   # indexed at the pause, not only at the end
+    mail = Listing()
+    items, coverage = gather("A", ["a@example.org"], days=36500, clients={"gmail": mail}, subscriptions={},
+                             archive_root=tmp_path, record="people/a.md")
+    assert sorted(mail.calls) == ["m2", "m3", "m4", "m5"]          # m0 and m1 came from disk
+    assert len(items) == 6
+    note = next(line for line in coverage if line.startswith("gmail"))
+    assert "2 loaded from private init archive (2 of 6 bodies saved so far)" in note
+    assert "searched on the server for a@example.org" in note     # the rest still asked the mailbox
+
+
+def test_an_org_reads_a_paused_archive_too(tmp_path):
+    prepare(tmp_path)
+    archive_init(tmp_path, _with_person(tmp_path), {"gmail": Bodies()}, seconds=25, clock=Clock(), now=lambda: T0)
+    items, coverage = gather("Example", ["example.org"], days=36500, clients={}, subscriptions={},
+                             archive_root=tmp_path, record="orgs/example.md")
+    assert [item["subject"] for item in items] == ["S1", "S0"]
+    assert any("2 loaded from private init archive (2 of 6 bodies saved so far)" in line for line in coverage)
+
+
+def test_a_sync_that_resumes_the_archive_says_how_far_it_has_got(tmp_path):
+    """#2042: a sync spent 5 minutes saving bodies under "Reading new material…" and said nothing else."""
+    from connectonion.rem.mail_archive import resume_stalled
+    prepare(tmp_path)
+    archive_init(tmp_path, _inventory(tmp_path), {"gmail": Bodies()}, seconds=25, clock=Clock(), now=lambda: T0)
+    said = []
+    resume_stalled(tmp_path, {"gmail": Bodies()}, now=lambda: T0 + timedelta(hours=20), say=said.append)
+    assert said[0] == "Saving mail bodies: 2 of 6 saved by init; resuming for at most 5 minutes"
+    assert said[-1] == "Saving mail bodies: 6 of 6, done"
+    assert len(said) <= 12

@@ -685,7 +685,7 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
 
 def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bool = False,
              scheduled: bool = False, all_pending: bool = False, runner=None, extractor=None,
-             on_batch=None) -> dict | None:
+             on_batch=None, say=None) -> dict | None:
     """One bounded batch; caller must have recorded explicit source consent.
 
     `scheduled` is what the background tick passes: run only if a saved time has
@@ -749,7 +749,8 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         if slot is None or (served and datetime.fromisoformat(served) >= slot):
             return None
         try:
-            record = run_sync(root, source=source, with_person=with_person, runner=runner, extractor=extractor)
+            record = run_sync(root, source=source, with_person=with_person, runner=runner, extractor=extractor,
+                              say=say)
         except RemError as error:
             if CAP_LIMIT not in str(error):
                 raise
@@ -775,12 +776,12 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
             raise RemError("Invalid source progress; preserve it for diagnosis")
         record = _sync_locked(root, selected, progress, config, runner, extractor,
                               with_person=with_person, include_local=not source)
-        archive = _resume_archive(root) if isinstance(record, dict) else None
+        archive = _resume_archive(root, say) if isinstance(record, dict) else None
         record = {**record, "mail_archive": archive} if archive else record
         return {**record, "tidied": tidied} if tidied and isinstance(record, dict) else record
 
 
-def _resume_archive(root: Path) -> dict | None:
+def _resume_archive(root: Path, say=None) -> dict | None:
     """A stalled init mail archive continues in the sync, for a bounded time (#2035).
 
     Only `init` ever resumed it, so on the 1.9.0a6 acceptance notebook every
@@ -797,7 +798,7 @@ def _resume_archive(root: Path) -> dict | None:
                 clients[kind] = mail_client(kind)
             except Exception:  # resume_stalled names the mailbox it could not open
                 clients[kind] = None
-    return resume_stalled(root, clients, now=lambda: now())
+    return resume_stalled(root, clients, now=lambda: now(), say=say)
 
 
 @contextmanager

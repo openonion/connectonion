@@ -130,7 +130,9 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     for 25 minutes and everything at the end (#2033)."""
     say = say or (lambda text: None)
     say("Reading new material…")
-    maintenance = (maintain or run_sync)(root, scheduled=True) if scheduled else (maintain or run_sync)(root)
+    # The archive a sync resumes says its progress through `say` too (#2042).
+    sync = maintain or (lambda root, **options: run_sync(root, say=say, **options))
+    maintenance = sync(root, scheduled=True) if scheduled else sync(root)
     if maintenance is not None:
         say(f"New material: {maintenance.get('items', 0)} items, "
             f"{len(maintenance.get('changed') or [])} pages changed ({maintenance['outcome']})")
