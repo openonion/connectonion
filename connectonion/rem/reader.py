@@ -139,11 +139,24 @@ def reader_path(root: Path) -> Path:
 def write_reader(root: Path) -> Path:
     page = render(root)
     path = reader_path(root)
-    # The name is predictable; refuse to write through a link someone planted there.
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as output:
-        output.write(page)
-    os.chmod(path, 0o600)
+    # The public name is predictable. Write a private random file, then replace
+    # the directory entry atomically so a planted link can never be truncated.
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", prefix="co-rem-", suffix=".html",
+            dir=path.parent, delete=False,
+        ) as output:
+            temporary = Path(output.name)
+            output.write(page)
+        if path.is_symlink():
+            raise OSError(f"refusing to replace a planted reader link: {path}")
+        if os.name != "nt":
+            os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     return path
 
 
