@@ -9,7 +9,7 @@ Gmail and Outlook, a logged-in browser, your files, chat apps and other agents.
 
 [![PyPI](https://img.shields.io/pypi/v/connectonion?style=flat-square)](https://pypi.org/project/connectonion/)
 [![Python](https://img.shields.io/pypi/pyversions/connectonion?style=flat-square)](https://pypi.org/project/connectonion/)
-[![Tests](https://img.shields.io/github/actions/workflow/status/openonion/connectonion/tests.yml?branch=main&style=flat-square&label=tests)](https://github.com/openonion/connectonion/actions/workflows/tests.yml?query=branch%3Amain)
+[![Tests](https://img.shields.io/github/actions/workflow/status/openonion/connectonion/tests.yml?branch=main&event=push&style=flat-square&label=tests)](https://github.com/openonion/connectonion/actions/workflows/tests.yml?query=branch%3Amain)
 [![License](https://img.shields.io/pypi/l/connectonion?style=flat-square)](LICENSE)
 [![PyPI Downloads](https://static.pepy.tech/personalized-badge/connectonion?period=total&units=international_system&left_color=black&right_color=green&left_text=downloads)](https://pepy.tech/projects/connectonion)
 
