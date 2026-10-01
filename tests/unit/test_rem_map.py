@@ -91,7 +91,7 @@ def test_init_maps_domain_candidates_without_claiming_employment(tmp_path, monke
     orgs = {row['domain']: row for row in result['orgs']}
     # notices.example.org is example.org's sending subdomain, not a second organisation (#1844)
     assert set(orgs) == {'example.org', 'school.edu.au'}
-    assert 'notices.example.org' in orgs['example.org']['domains']
+    assert orgs['example.org']['domains'] == ['example.org', 'notices.example.org']
     # The notice sender lends example.org its subdomain but gets no page of its own (#2057).
     assert len(orgs['example.org']['people']) == 2
     nb = Notebook(tmp_path)
