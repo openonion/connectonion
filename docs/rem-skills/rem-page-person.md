@@ -92,3 +92,17 @@ one, and the next batch meets the person as a stranger.
 
 A pass that rewrote it in its own words (2026-09-14) got a second, machine stamp
 appended, and the line then said two different things.
+
+## The owner's page (`rem-owner-page`)
+
+The owner's page is a person's page with its own lead, composed only for
+`co rem investigate me`. On the 1.9.0a6 acceptance notebook it said "Claude
+Code owes the user a message-volume check" and "Codex owes the user a
+status", and its `Last contact` was a Claude Code session (#2027). A session
+is the owner talking to a tool, so what they asked for is what they were
+doing: it belongs in the lead and `History`, never in `Open threads` as a
+debt. The same page named no project of the last weeks while its Skill asked
+for them, and cited 3 of 1,477 session messages. The map already knows each
+project's sessions and dates, so the owner's turn now gets them as a
+`recent-projects` item (the four weeks before the map's own date, newest
+first), and the lead names the busiest, dated.

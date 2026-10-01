@@ -122,7 +122,9 @@ def _own_addresses(notebook: Notebook, state: dict) -> list[dict]:
         group = [{"address": email, "name": row.get("name", ""), "sent": row.get("sent", 0),
                   "received": row.get("received", 1)} for email in sorted(emails)]
         if emails <= confirmed or (tokens and len(group) == 1 and looks_own(group, tokens)):
-            _fold_owner(notebook, record, page, sorted(emails))
+            evidence = ("confirmed as the owner's own address (owner.addresses)" if emails <= confirmed else
+                        f"{group[0]['sent']} sent, none received, carrying the owner's name (people)")
+            _fold_owner(notebook, record, page, sorted(emails), evidence)
             folded.append({"action": "folded into the owner's page", "page": page, "into": record,
                            "addresses": sorted(emails), "archived": f".state/archived/{page}"})
             added += sorted(emails - confirmed)
@@ -133,7 +135,55 @@ def _own_addresses(notebook: Notebook, state: dict) -> list[dict]:
         owner["addresses"] = sorted(confirmed | set(added))
         state.update(owner=owner, possible_own_addresses=kept)
         write_json(state_path(notebook.root, "map.json"), state)
-    return folded + _owner_lines(notebook, record, {row.get("address", "").casefold() for row in kept})
+    own = confirmed | set(added)
+    return (folded + _resolved_uncertainties(notebook, record, own)
+            + _owner_lines(notebook, record, {row.get("address", "").casefold() for row in kept}))
+
+
+ADDRESS = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+CITED = re.compile(r"(?:\s*\[W?\d+\])+\s*$")
+
+
+def _resolved_uncertainties(notebook: Notebook, record: str, own: set[str]) -> list[dict]:
+    """Uncertainties lines about addresses that are now all the owner's: removed (#2028).
+
+    The 1.9.0a6 acceptance page still said whether two folded addresses were
+    his "remains unresolved". A line that also names an address still open
+    stays, since it is still true of that one; "Possibly" lines are `_owner_lines`'s.
+    """
+    from .map import POSSIBLY
+    text = notebook.read(record)
+    head, found, rest = text.partition("## Uncertainties\n")
+    if not found:
+        return []
+    body, sep, tail = rest.partition("\n## ")
+    kept, gone = [], []
+    for line in body.split("\n"):
+        named = {address.casefold() for address in ADDRESS.findall(line)}
+        if line.startswith("- ") and not line.startswith(POSSIBLY) and named and named <= own:
+            gone.append(line)
+        else:
+            kept.append(line)
+    if not gone:
+        return []
+    if not any(line.startswith("- ") for line in kept):
+        kept.insert(0, "- Unknown")
+    notebook.write(record, head + found + "\n".join(kept) + sep + tail)
+    return [{"action": "removed line", "page": record, "line": line} for line in gone]
+
+
+def _cite(text: str, evidence: str) -> tuple[str, int]:
+    """`text` with a new numbered source for `evidence` in its Sources section, and its number."""
+    head, found, rest = text.partition("## Sources\n")
+    numbers = [int(n) for n in re.findall(r"^- \[(\d+)\]", rest.split("\n## ", 1)[0], re.M)]
+    number = max(numbers, default=0) + 1
+    line = f"- [{number}] .state/map.json — {evidence}"
+    if not found:
+        return text.rstrip("\n") + f"\n\n## Sources\n{line}\n", number
+    if rest.startswith("- (none yet)"):
+        return head + found + line + rest[len("- (none yet)"):], number
+    body, sep, tail = rest.partition("\n\n")
+    return head + found + body + "\n" + line + sep + tail, number
 
 
 def _owner_lines(notebook: Notebook, record: str, asked: set[str]) -> list[dict]:
@@ -155,17 +205,27 @@ def _owner_lines(notebook: Notebook, record: str, asked: set[str]) -> list[dict]
     return [{"action": "removed line", "page": record, "line": line} for line in gone]
 
 
-def _fold_owner(notebook: Notebook, owner: str, page: str, emails: list[str]) -> None:
-    """The addresses join the owner's contact lines; the page, map output only, is archived
-    with an alias. Its correspondent lines ("classification unassessed", a
-    mail count as someone else) would say the wrong thing on the owner's page."""
+def _fold_owner(notebook: Notebook, owner: str, page: str, emails: list[str], evidence: str) -> None:
+    """The addresses join the owner's contact lines, each cited to the map's evidence
+    (#2028); the page, map output only, is archived with an alias. Its
+    correspondent lines ("classification unassessed", a mail count as someone
+    else) would say the wrong thing on the owner's page."""
     from .skill_map import _alias
-    text = notebook.read(owner)
+    text, number = notebook.read(owner), 0
     for label in ("Email", "Handles", "Also known as"):
-        def extend(match):
-            known = [part.strip() for part in match[2].split(",") if part.strip() and part.strip() != "Unknown"]
-            return match[1] + ", ".join(dict.fromkeys([*known, *emails]))
-        text = re.sub(rf"^(- {label}: )(.*)$", extend, text, count=1, flags=re.M)
+        match = re.search(rf"^(- {label}: )(.*)$", text, re.M)
+        if not match:
+            continue
+        known = [part.strip() for part in match[2].split(",") if part.strip()
+                 and CITED.sub("", part).strip() != "Unknown"]
+        bare = {CITED.sub("", part).strip().casefold() for part in known}
+        new = [email for email in emails if email not in bare]
+        if not new:
+            continue
+        if not number:
+            text, number = _cite(text, evidence)
+        line = match[1] + ", ".join([*known, *(f"{email} [{number}]" for email in new)])
+        text = re.sub(rf"^- {label}: .*$", lambda _: line, text, count=1, flags=re.M)
     notebook.write(owner, text)
     _archive(notebook, page)
     _alias(notebook, page, owner, "the owner's own address")

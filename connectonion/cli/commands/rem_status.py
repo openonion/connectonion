@@ -26,7 +26,7 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     from ...rem.migrate import program
     counts = notebook(root)
     lines = [_header(value, program()), "", *_notebook(root, value, counts, spell), "",
-             *_today(root, value), "", *_mailboxes(root), ""]
+             *_today(root, value), "", *_mailboxes(root), *_archive(value), ""]
     budget = value.get("investigation_quota")
     if budget:
         # "0 of 10 points" beside 3.0M tokens today read as a contradiction
@@ -140,6 +140,15 @@ def _mailboxes(root) -> list[str]:
         mark = style.ok("✓") if state == "read by the daily round" else style.warn("✗")
         lines.append(f"  {mark} {kind.title():<8} {highlight(state)}" + (f" — {style.command(fix)}" if fix else ""))
     return lines
+
+
+def _archive(value: dict) -> list[str]:
+    """An unfinished init mail archive, one line (#2035); nothing once it is complete."""
+    archive = value.get("mail_archive")
+    if not archive:
+        return []
+    mark = style.warn("✗") if archive.get("stalled") else style.muted("…")
+    return [f"  {mark} {'Archive':<8} {highlight(archive['summary'])}"]
 
 
 def _last_run(run, zone) -> str:

@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 from .config import prepare, read_config, validate
 from .files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .mail import collect_mail
+from .mail_archive import archive_state, resume_stalled
 from .chat import CHAT_KINDS, chat_home, collect_chat
 from .source import KINDS, collect, pending_metadata, timestamp
 
@@ -442,6 +443,8 @@ def status(root: Path, *, live_quota: bool = False) -> dict:
             "usage_today": usage, "usage_coverage": coverage,
             "last_run": {**logs[0], "outcome": seen_outcome(logs[0])} if logs else None,
             "mailboxes": _mailbox_lines(root),
+            # An unfinished init archive (#2035): investigations ask the servers until it is done.
+            **({"mail_archive": archive} if (archive := archive_state(root, now=now())) else {}),
             **(_quota_status(config, logs) if live_quota else {})}
 
 
@@ -772,7 +775,29 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
             raise RemError("Invalid source progress; preserve it for diagnosis")
         record = _sync_locked(root, selected, progress, config, runner, extractor,
                               with_person=with_person, include_local=not source)
+        archive = _resume_archive(root) if isinstance(record, dict) else None
+        record = {**record, "mail_archive": archive} if archive else record
         return {**record, "tidied": tidied} if tidied and isinstance(record, dict) else record
+
+
+def _resume_archive(root: Path) -> dict | None:
+    """A stalled init mail archive continues in the sync, for a bounded time (#2035).
+
+    Only `init` ever resumed it, so on the 1.9.0a6 acceptance notebook every
+    investigation for a day asked the mail servers instead. A mailbox the owner
+    unsubscribed is not read; one that will not open is reported, not guessed.
+    """
+    state = archive_state(root, now=now())
+    if not state or not state["stalled"]:
+        return None
+    sources, clients = subscriptions(root), {}
+    for kind in MAIL_KINDS:
+        if mail_available(kind) and not sources.get(kind, {}).get("unsubscribed"):
+            try:
+                clients[kind] = mail_client(kind)
+            except Exception:  # resume_stalled names the mailbox it could not open
+                clients[kind] = None
+    return resume_stalled(root, clients, now=lambda: now())
 
 
 @contextmanager

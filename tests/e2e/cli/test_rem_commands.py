@@ -1172,6 +1172,24 @@ def test_doctor_says_a_connected_mailbox_the_round_does_not_read(tmp_path, monke
     assert line.startswith('NO') and 'not read by the daily round' in line and 'sources add gmail' in line
 
 
+def test_doctor_and_status_name_a_stalled_init_archive_and_the_command_that_resumes_it(tmp_path, monkeypatch):
+    """#2035: archive.json sat at `phase: running` for a day; neither status nor doctor said so."""
+    from datetime import timedelta
+    from connectonion.rem.files import read_json, state_path, write_json
+    from connectonion.rem.mail_archive import archive_init
+    from tests.unit.test_rem_mail_archive import T0, Bodies, Clock, _inventory
+    prepare(tmp_path)
+    archive_init(tmp_path, _inventory(tmp_path), {"gmail": Bodies()}, seconds=25, clock=Clock(), now=lambda: T0)
+    manifest = read_json(state_path(tmp_path, "mail/archive.json"), {})
+    write_json(state_path(tmp_path, "mail/archive.json"), {**manifest, "phase": "running"})
+    monkeypatch.setattr('connectonion.rem.service.now', lambda: T0 + timedelta(hours=20))
+    doctor = invoke(tmp_path, 'doctor')
+    line = next(line for line in doctor.output.splitlines() if 'init mail archive' in line)
+    assert line.startswith('NO') and '2 of 6 bodies saved' in line and line.rstrip().endswith('sync')
+    status = invoke(tmp_path, 'status')
+    assert 'Mail archive incomplete: 2 of 6 bodies saved' in status.output
+
+
 def test_the_overview_help_names_projects_among_the_advanced_commands(tmp_path):
     result = invoke(tmp_path, "--help")
     advanced = result.output[result.output.index("Advanced:"):result.output.index("Old names:")]

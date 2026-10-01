@@ -1123,3 +1123,39 @@ def test_one_saved_mail_with_an_unreadable_date_is_skipped_not_the_whole_run(tmp
 
     assert [i["text"] for i in items] == ["kept"]
     assert "gmail: 1 saved message(s) skipped for an unreadable date" in coverage
+
+
+# ------------------------------------------- the 1.9.0a6 acceptance run (#2027)
+
+
+def test_the_owners_turn_is_handed_the_recent_projects_dated_and_a_persons_is_not(tmp_path, monkeypatch):
+    """#2027: of 1,477 session messages read, 3 were cited, and the owner page's
+    `Who they are` named no project of the last weeks."""
+    from connectonion.rem.files import state_path, write_json
+    root = _notebook(tmp_path, "codex")
+    write_json(state_path(root, "map.json"), {"started": "2026-09-30T04:45:06+00:00", "projects": [
+        {"name": "browser", "record": "projects/browser.md", "sessions": 17, "first": "2026-08-30",
+         "last": "2026-09-27"},
+        {"name": "connectonion", "record": "projects/connectonion.md", "sessions": 158, "first": "2026-09-07",
+         "last": "2026-09-30"},
+        {"name": "old-thing", "record": "projects/old.md", "sessions": 40, "first": "2026-06-01",
+         "last": "2026-07-01"}]})
+    monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: ([
+        {"source": "codex:s:1", "role": "user", "timestamp": "2026-09-01", "text": "ship the reader"}], ["codex: 1"]))
+    seen = []
+
+    def runner(notebook, items, config, stage):
+        seen.extend(items)
+        return {"changed": []}
+
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=5, clients={}, subscriptions={},
+                    runner=runner, sent_only=True)
+    recent = next(item for item in seen if item["role"] == "recent-projects")["text"]
+    lines = [line for line in recent.splitlines() if line.startswith("- ")]
+    assert lines == ["- connectonion (projects/connectonion.md): 158 sessions, 2026-09-07 to 2026-09-30",
+                     "- browser (projects/browser.md): 17 sessions, 2026-08-30 to 2026-09-27"]
+    assert "old-thing" not in recent and "working on now" in recent
+    seen.clear()
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=5, clients={}, subscriptions={},
+                    runner=runner)
+    assert not any(item["role"] == "recent-projects" for item in seen)

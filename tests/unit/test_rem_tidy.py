@@ -67,7 +67,7 @@ def test_the_owners_own_addresses_fold_into_their_page_and_real_people_never_do(
     assert done["folded into the owner's page"] == ["people/confirmed.md", "people/cx.md"]
     assert sorted(notebook.list("people")) == ["people/aaron-smith.md", "people/aaron-xie.md", "people/larry.md"]
     page = notebook.read("people/aaron-xie.md")
-    assert "- Email: openonionai@gmail.com, xietianle@outlook.com, aaronplus1996@gmail.com" in page
+    assert "- Email: openonionai@gmail.com, xietianle@outlook.com [1], aaronplus1996@gmail.com [2]" in page
     assert "classification unassessed" not in page                          # not a correspondent of their own
     state = read_json(state_path(tmp_path, "map.json"), {})
     assert "aaronplus1996@gmail.com" in state["owner"]["addresses"]
@@ -185,3 +185,42 @@ def test_organisation_pages_for_mailbox_providers_and_relays_are_archived(tmp_pa
                                               "orgs/yahoo.com.hk.md"]}
     assert sorted(notebook.list("orgs")) == ["orgs/qq.md", "orgs/unsw.edu.au.md"]   # investigated stays
     assert (tmp_path / ".state/archived/orgs/yahoo.com.hk.md").is_file()
+
+
+# ------------------------------------------- the 1.9.0a6 acceptance run (#2028, #2031)
+
+
+def test_a_folded_address_carries_its_evidence_and_the_uncertainty_it_resolved_goes(tmp_path):
+    """#2028: `xietianle@outlook.com [1], aaron@openonion.ai, aaronplus1996@gmail.com` -- the
+    folded two uncited -- and Uncertainties still calling them unresolved."""
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.write("people/aaron-xie.md", (
+        "# Aaron Xie\n\n## Contact\n- Email: openonionai@gmail.com, xietianle@outlook.com [1]\n"
+        "- Handles: Unknown\n\n## Uncertainties\n"
+        "- Whether aaronplus1996@gmail.com and aaron@openonion.ai are his remains unresolved. [1]\n"
+        "- Whether aaronchen@openonion.ai is his remains unresolved. [1]\n- Role: not in the mail. [1]\n\n"
+        "## Sources\n- [1] gmail:abc — a mail\n\nInvestigation: investigated 2026-09-30\n"))
+    _person(notebook, "people/cx.md", "常兴", "aaronplus1996@gmail.com")
+    _person(notebook, "people/oo.md", "aaron@openonion.ai", "aaron@openonion.ai")
+    _state(tmp_path, owner={"record": "people/aaron-xie.md",
+                            "addresses": ["openonionai@gmail.com", "xietianle@outlook.com", "aaron@openonion.ai"]},
+           people=[{"record": "people/cx.md", "address": "aaronplus1996@gmail.com", "name": "常兴", "sent": 108,
+                    "received": 0}])
+
+    tidy(tmp_path)
+
+    page = notebook.read("people/aaron-xie.md")
+    email = next(line for line in page.split("\n") if line.startswith("- Email: "))
+    assert email == ("- Email: openonionai@gmail.com, xietianle@outlook.com [1], aaronplus1996@gmail.com [2], "
+                     "aaron@openonion.ai [3]")
+    sources = page.split("## Sources\n", 1)[1]
+    assert "- [2] .state/map.json — 108 sent, none received, carrying the owner's name" in sources
+    assert "- [3] .state/map.json — confirmed as the owner's own address" in sources
+    assert "aaronplus1996@gmail.com and aaron@openonion.ai are his" not in page        # resolved: gone
+    assert "- Whether aaronchen@openonion.ai is his remains unresolved. [1]" in page   # still open: kept
+    assert "- Role: not in the mail. [1]" in page
+    lines = [entry.get("line", "") for entry in read_json(state_path(tmp_path, "tidy.json"), [])]
+    assert any("aaronplus1996@gmail.com and aaron@openonion.ai" in line for line in lines)
+    assert tidy(tmp_path) == {}                                                   # idempotent
+    assert notebook.read("people/aaron-xie.md") == page
