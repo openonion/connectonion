@@ -28,12 +28,14 @@ abbreviate it for readability. Replace placeholders with observed values.
 
 ## 1. Build the frame without a model
 
-Run `co rem --root '<absolute-notebook-root>' init --days 90`. This command
-creates all four maps and complete page skeletons before returning. It never
-starts a model or investigates a page. It saves mail bodies privately under
-`.state/mail/` and makes per-person references and per-project session indexes;
-the page skeletons never contain raw bodies. If a short metadata-only run is
-needed, pass `--no-mail-archive`. Do not invoke this Skill from that command.
+Run `co rem --root '<absolute-notebook-root>' init --days 90 --no-investigate`.
+The explicit flag keeps this Skill's first pass to mapping even in an interactive
+terminal; plain `co rem init` also investigates pages there. The command creates
+all four maps and complete page skeletons before returning. It saves mail bodies
+privately under `.state/mail/` and makes per-person references and per-project
+session indexes; the page skeletons never contain raw bodies. If a short
+metadata-only run is needed, pass `--no-mail-archive`. Do not invoke this Skill
+from that command.
 Connected mailboxes are mapped by default; `--mail` selects explicit mailboxes. Read the init coverage report.
 Use `--skills-dir` for known extra roots (explicit roots replace defaults).
 Existing skills remain at their source paths and existing pages are preserved.
