@@ -105,8 +105,14 @@ def snapshot(root: Path) -> dict:
         first["installations"] = [{"path": r["path"], "source": r["installation"]} for r in group]
         for other in group[1:]:
             other["catalog_parent"] = first["path"]
+    from .reader_model import cited_context, cited_conversations, relationships
+    links = relationships(records)
+    for record in records:
+        record["relations"] = links.get(record["path"], [])
+    contexts = cited_context(root, records)
     return {"as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "categories": list(CATEGORIES), "records": records,
+            "source_context": contexts, "conversations": cited_conversations(root, contexts),
             "status": status(root), "subscriptions": subscriptions(root),
             "logs": run_logs(root)[:20], "reviews": listing(root), "counts": counts(root, found),
             "owner": owner_record(root)}

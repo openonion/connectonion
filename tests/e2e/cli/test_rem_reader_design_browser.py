@@ -127,6 +127,7 @@ def test_a_person_opens_on_a_fact_card_with_cited_values(reader):
     # Under the title: what you owe and for how long.
     lead = page.locator(".leadrow .lead-open")
     assert lead.locator(".dir").inner_text().upper() == "YOU OWE" and lead.locator(".age").inner_text() == "9 days"
+    page.locator(".deep-note > summary").click()
     card = page.locator(".factlist")
     value = lambda label: card.locator(f"dt:text-is('{label}') + dd")  # noqa: E731
     assert "Head of Partnerships" in value("Role").inner_text()
@@ -160,8 +161,45 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
     page.goto(page.url.split("#")[0] + "#r=people%2Fmara-ostrowski.md")
     main = page.locator("#main").inner_text()
     assert "the user" not in main.lower() and "you have not signed it" in main
+    page.locator(".deep-note > summary").click()
     assert page.get_by_role("heading", name="How you write to them").count() == 1
     assert page.evaluate("REM.records.find(r => r.path === 'people/mara-ostrowski.md').text.includes('the user has not signed it')", isolated_context=False)
+
+
+def test_focus_connects_project_people_org_and_archived_conversation(reader):
+    page, uri = reader
+    page.goto(uri + "#r=projects%2Fharbour.md")
+    connected = page.locator(".related-records .relation-card")
+    assert {name.strip() for name in connected.locator("strong").all_inner_texts()} >= {
+        "Mara Ostrowski", "Fernhill Labs"}
+    assert page.get_by_role("heading", name="What this is").is_visible()
+    assert page.get_by_role("heading", name="A recorded decision").is_visible()
+    page.get_by_role("link", name="View all decisions").click()
+    assert page.locator(".deep-note").get_attribute("open") is not None
+    page.goto(uri + "#r=projects%2Fharbour.md")
+    assert page.locator(".deep-note").get_attribute("open") is None
+    page.goto(uri + "#r=people%2Fmara-ostrowski.md")
+    page.locator(".conversation-open").first.click()
+    dialog = page.locator("#conversation-dialog")
+    assert dialog.is_visible() and "usage export" in dialog.inner_text()
+    dialog.get_by_role("button", name="Close conversation").click()
+    assert page.locator(".conversation-open").first.evaluate("e => document.activeElement === e")
+    page.locator(".deep-note > summary").click()
+    page.locator("a.cite[href*='src-5']").first.click()
+    evidence = page.locator("#evidence-dialog")
+    assert evidence.is_visible() and "I will send the usage export" in evidence.inner_text()
+
+
+def test_changes_and_open_threads_are_actionable_destinations(reader):
+    page, uri = reader
+    page.goto(uri + "#view=changes")
+    assert "Head of Partnerships" in page.locator(".claim-card").first.inner_text()
+    page.locator(".claim-card a").first.click()
+    page.get_by_role("heading", name="Mara Ostrowski", exact=True).wait_for()
+    page.goto(uri + "#view=open")
+    assert page.get_by_role("heading", name="Open threads").is_visible()
+    assert page.locator(".task-band .thread").count() >= 2
+    assert page.locator(".task-band a[href*='people']").count() >= 1
 
 
 @pytest.mark.parametrize("theme", ["light", "dark"])

@@ -323,20 +323,20 @@ the headings still empty are named once at the foot of the page with the
 findings first, then newest last contact. The Markdown file is unchanged, and
 **Copy Markdown** at the foot copies it as written, unknowns included.
 
-### What the reader shows (next preview candidate)
+### What the reader shows (1.9.0a13 preview)
 
 The reader returns the context REM carried forward, then helps you recall an
 older page before showing its answer. It remains a point-in-time snapshot.
 
-- **Home** opens with up to three pages changed in the latest pass, showing
-  their current context and links to their sources. An explicit page link is
-  shown as connected context; a proposed link appears separately as a question
-  for the owner to review. **Remember with REM** asks about an older page and
-  reveals what that page already says on request. **Open threads** keeps
-  *Waiting on you* (oldest first) beside *Waiting on others*. **This week**
-  follows. The last pass's counts and hypnogram are available in **How REM
-  processed the last pass** below the memories. The owner's page is pinned as
-  **You** at the top of the navigation.
+- **Home** opens with up to three pages changed in the latest pass, labeling
+  their statements as current context. When the new run log has cited Facts or
+  Contact value changes, they appear separately as old and new values. A page
+  rewrite alone is not described as a new fact. **Remember with REM** asks
+  about an older page and reveals what it says on request. **Open threads**
+  previews three items in each direction and links to the full action view.
+  **This week** follows. Compact category cards replace the long contents
+  shelves. The last pass's counts and hypnogram are available in **How REM
+  processed the last pass**. The owner's page is pinned as **You**.
 - **People, Organisations and Projects** open as a sheet: one row per page,
   the facts in columns (people: what's open next to the name, then company,
   role, email, phone, last contact, mails; status is the moon beside the
@@ -350,19 +350,23 @@ older page before showing its answer. It remains a point-in-time snapshot.
 - **"You", not "the user"**: pages are written about "the user"; the reader
   says "you" ("you have not signed it", "How you write to them") at render
   time only, so the Markdown and Copy Markdown keep the words as written.
-- **A page** opens on its lead, then a row with the first open thread
-  (*You owe* / *They owe*, and for how long), the last contact, and a `?`
-  when the page lists uncertainties. Its `## Facts` (or a legacy page's
-  `## Contact`) sits beside the prose as a list: every label shown, values
-  cited, a qualifier such as *mobile* as a small tag, Email, Phone and Links
-  copyable, and a missing value shown as "— not found". `## Insight` lines
-  carry *Now*, *Changed*, *At stake* or *Pattern* as a badge. History is a
-  dated spine, Sources a footnote list, and a claim number `[n]` is a chip
-  that names its source on hover or focus; three or more in a row read as
-  "3 sources". An ASCII diagram is set on a dotted plate. A page only mapped
-  from metadata says so at the top, with the one command that investigates
-  it.
-- **Search** answers first: when a person's or organisation's name matches,
+- **A page** opens on a focused status, next exchanges, compact facts, related
+  records and filterable dated Activity. Project pages add purpose and a
+  recorded decision when supported. Explicit links and unambiguous name
+  mentions make cross-page cards and backlinks; their labels distinguish a
+  link from a mention. The original prose, every Facts/Contact field,
+  Insight, History and Sources stay under **Full memory and sources**. A claim
+  number `[n]` opens its source description and, when locally archived, an
+  original excerpt. Cited conversations show up to twelve recent archived
+  messages with the total count. Missing original bodies are labeled, never
+  replaced by a generated summary. A page only mapped from metadata says so
+  and gives the command to investigate it.
+- **Open threads** shows all supported obligations with direct record links.
+  **Memory changes** keeps cited field changes separate from page rewrites.
+  Older run logs have no claim-level comparison; they show an empty state.
+- **Search** routes common requests such as “who do I owe?”, “what changed?”
+  and “connected to Mara Ostrowski” to task views. Literal search also answers
+  first: when a person's or organisation's name matches,
   a *Best match* card gives the email, phone, last contact and what is open.
   The rest is grouped by kind, people first, one snippet a page, never a
   local path.

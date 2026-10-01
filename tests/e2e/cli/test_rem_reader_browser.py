@@ -43,8 +43,10 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.get_by_role("heading", name="What REM carried forward").wait_for()
             page.screenshot(path=str(shots / "rem-desktop.png"), full_page=True)
             page.locator("#main").get_by_role("link", name="Aurora", exact=True).first.click()
+            page.locator(".deep-note > summary").click()
             page.locator("#main").get_by_role("link", name="Storage", exact=True).click()
             page.get_by_role("heading", name="Storage", exact=True).wait_for()
+            page.locator(".deep-note > summary").click()
             assert "inspectability" in page.locator("#main").inner_text()
             assert page.evaluate("window.wikiInjected === undefined")
             page.locator("input[type=search]").fill("inspectability")
@@ -175,6 +177,7 @@ def test_private_sentences_can_be_hidden_and_restored(reader_page):
 def test_reader_contains_overflow_and_keeps_content_visible(reader_page, tmp_path, width, height):
     page, _, _ = reader_page
     page.set_viewport_size({"width": width, "height": height})
+    page.locator(".deep-note > summary").click()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     assert page.locator("#main").evaluate("e => e.getBoundingClientRect().top") < 260
     # Wide diagrams/tables scroll locally; inline tokens and sources wrap.
@@ -227,6 +230,7 @@ def test_reader_heading_links_and_search_state(reader_page):
     from patchright.sync_api import expect
 
     page, _, _ = reader_page
+    page.locator(".deep-note > summary").click()
     page.get_by_role("link", name="Jump within").click()
     page.wait_for_function("location.hash.includes('h=next-steps') && scrollY > 0")
     assert page.locator("#next-steps").evaluate("e => e.getBoundingClientRect().top >= 0 && e.getBoundingClientRect().top < innerHeight")
@@ -247,6 +251,7 @@ def test_reader_nested_fences_keep_literal_metadata(reader_page):
     page, _, _ = reader_page
     page.goto(page.url.split("#")[0] + "#r=projects%2Fnested.md")
     page.get_by_role("heading", name="Nested example", exact=True).wait_for()
+    page.locator(".deep-note > summary").click()
     assert page.locator("pre").text_content() == "Sources: nested literal\n\n\nRelated: nested literal"
     assert "nested literal" not in page.locator(".aside").inner_text()
     assert "codex:actual" in page.locator(".aside").inner_text()
