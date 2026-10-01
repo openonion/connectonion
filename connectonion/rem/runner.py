@@ -466,6 +466,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # One miscopied id drops what rests on it, not the page (#1974).
     text, dropped = drop_unresolved(record, normalize_numbered_sources(text), original, items)
     text = link_company(notebook, record, drop_uncited_sources(text))
+    from .page_review import link_people, person_names
+    text = link_people(record, text, person_names(notebook, owner.get("record", "")))
     if record.startswith("projects/"):
         text = _project_window_notice(text, items)
     errors = validate(record, text, original, items, owner=record == owner.get("record"))
