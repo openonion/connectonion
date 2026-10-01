@@ -1070,6 +1070,10 @@ def _sync_locked(root, selected, progress, config, runner, extractor=None, *,
             forget_digest(root)
     finally:
         record["finished_at"] = now().isoformat()
+        if record["outcome"] == "completed" and record.get("changed"):
+            from .claim_changes import material_changes
+            after = {page: notebook.read(page) for page in record["changed"] if notebook.path(page).is_file()}
+            record["claim_changes"] = material_changes(before, after, record["changed"])
         record["quota"]["after"] = quota.read(config)
         record["seconds"] = round((datetime.fromisoformat(record["finished_at"])
                                    - datetime.fromisoformat(record["started_at"])).total_seconds(), 1)
