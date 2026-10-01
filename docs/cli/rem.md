@@ -316,6 +316,56 @@ the headings still empty are named once at the foot of the page with the
 findings first, then newest last contact. The Markdown file is unchanged, and
 **Copy Markdown** at the foot copies it as written, unknowns included.
 
+### What the reader shows (1.9.0a9)
+
+The reader is a notebook you come back to, so it is quiet everywhere except
+where it answers why you came back.
+
+- **Home** opens on the last night: a dark band says what the last pass read
+  and how many pages it rewrote, draws the week's runs as a hypnogram (each
+  dip one run, deeper the more it read; an amber dot where a run stopped
+  early) and links the pages it changed. Below it, **Open threads** in two
+  bands, *Waiting on you* (oldest first, with its age) and *Waiting on
+  others*; then **This week**, the pages rewritten in seven days with their
+  one line; then the notebook by kind of page, ranked by activity. The
+  owner's page is pinned as **You** at the top of the navigation.
+- **People, Organisations and Projects** open as a sheet: one row per page,
+  the facts in columns (people: company, role, email, phone, last contact,
+  mails, what's open, status), a sticky header, sort on any column, filters
+  (*Something open*, *Yours to answer*, *Written*, *Mapped only*) and a
+  text filter. A row opens the page. Mail counts come from the map; one
+  adapter (`mail_facts` in `reader.py`, `facts()` in the page) is all that
+  changes when facts move to an index (#2067).
+- **A page** opens on its lead, then a row with the first open thread
+  (*You owe* / *They owe*, and for how long), the last contact, and a `?`
+  when the page lists uncertainties. Its `## Facts` (or a legacy page's
+  `## Contact`) sits beside the prose as a list: every label shown, values
+  cited, a qualifier such as *mobile* as a small tag, Email, Phone and Links
+  copyable, and a missing value shown as "— not found". `## Insight` lines
+  carry *Now*, *Changed*, *At stake* or *Pattern* as a badge. History is a
+  dated spine, Sources a footnote list, and a claim number `[n]` is a chip
+  that names its source on hover or focus; three or more in a row read as
+  "3 sources". An ASCII diagram is set on a dotted plate. A page only mapped
+  from metadata says so at the top, with the one command that investigates
+  it.
+- **Search** answers first: when a person's or organisation's name matches,
+  a *Best match* card gives the email, phone, last contact and what is open.
+  The rest is grouped by kind, people first, one snippet a page, never a
+  local path.
+
+Design: cool blue-biased neutrals with one night blue for links and one lamp
+amber kept for what is owed; a dark palette of its own; Optima for titles,
+Charter for prose, the system face for chrome and the mono face for every
+date, count and id. Fonts are local faces, so the page makes no network
+request. Every view fits a 390 px phone without sideways scrolling, keyboard
+focus is visible, and the only motion (the hypnogram drawing in) is off under
+`prefers-reduced-motion`.
+
+To see every view on an invented notebook, light and dark, desktop and phone:
+`python scripts/capture_rem_reader.py OUT_DIR` (the fixture is
+`tests/fixtures/rem_reader_notebook.py`; `--root COPY` renders a copy of a
+real notebook, and those screenshots stay local).
+
 `init` is the foreground Skill workflow. `start` remains the explicit
 background lifecycle command; initialization does not install a schedule.
 Map is a stage inside rem-init, not a separate model runner.
