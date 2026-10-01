@@ -960,3 +960,28 @@ def test_a_remap_rewrites_the_owners_map_lines_instead_of_adding_more(tmp_path, 
                        "1 correspondents in gmail. [1]"]
     assert '2026-09-25' not in page and page.count('Most mail with:') == 1
     assert f"- [1] Enumeration metadata, observed {last['started']}" in page
+
+
+# ------------------------------------------- the 1.9.0a6 acceptance run (#2031)
+
+
+def test_a_company_writing_as_itself_is_a_service_and_its_people_stay_people(tmp_path, monkeypatch):
+    """#2031: "Flagship Minerals" <ceo@flagshipminerals.com>, one investor update never
+    answered, was queued as a person and cost 100,080 tokens. Its display name is
+    its own domain written as words; a person writing from a company domain is not."""
+    from connectonion.rem.map import service_page
+    prepare(tmp_path)
+    skills = tmp_path / 'installed'
+    skills.mkdir()
+    services = [_row('Flagship Minerals', 'ceo@flagshipminerals.com', 0, 1),
+                _row('Blue Sky Ventures Ltd', 'investors@blueskyventures.com', 0, 2)]
+    people = [_row('Mia Tan', 'mia@miatan.com', 0, 1), _row('Ann Smith', 'ann@flagshipminerals.com', 3, 2),
+              _row('Ann Lee', 'ann@flagship.com.au', 0, 1)]
+    monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (services + people, set()))
+    monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [])
+    result = build_map(tmp_path, {}, {}, skill_directories=[skills])
+    listed = {row['address'] for row in result['automated_correspondents']}
+    assert listed >= {row['address'] for row in services}
+    mapped = {row.get('address') for row in result['people']}
+    assert mapped >= {'mia@miatan.com', 'ann@flagshipminerals.com', 'ann@flagship.com.au'}
+    assert service_page('Flagship Minerals', ['ceo@flagshipminerals.com'], None, set())

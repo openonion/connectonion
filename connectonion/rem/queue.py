@@ -61,6 +61,7 @@ def excluded_people(state: dict) -> set:
     sends the notices the map set aside -- `express@airbnb.com` beside
     `automated@airbnb.com` -- the vendors that topped 1.9.0a2's queue.
     """
+    from .map import service_page
     from .scan import AUTOMATED_HINT
     excluded = {(state.get("owner") or {}).get("record")}
     excluded |= {row.get("record") for row in state.get("possible_own_addresses", [])}
@@ -70,8 +71,11 @@ def excluded_people(state: dict) -> set:
         addresses = row.get("addresses") or ([row["address"]] if row.get("address") else [])
         vendor = not row.get("sent") and addresses and all(
             address.rpartition("@")[2].casefold() in notice_domains for address in addresses)
+        # An older map's row the map's own rule now calls a service (#2031): an
+        # investor-update sender cost the 1.9.0a6 daily round 100,080 tokens.
         if (row.get("classification") == "automated candidate" or vendor
-                or (addresses and all(AUTOMATED_HINT.search(address) for address in addresses))):
+                or (addresses and all(AUTOMATED_HINT.search(address) for address in addresses))
+                or (addresses and service_page(row.get("name") or "", addresses, row, set()))):
             excluded.add(row.get("record"))
     return excluded
 

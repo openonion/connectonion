@@ -163,6 +163,9 @@ def _notice(row: dict) -> bool:
                                          or AGENT_ADDRESS.search(address)))
 
 
+CORPORATE = {'ltd', 'limited', 'inc', 'pty', 'llc', 'plc', 'corp', 'co', 'group', 'the'}
+
+
 def _service(group: list[dict]) -> bool:
     """A sender named after its own domain whose mail mostly comes in: a service, not a person (#1987).
 
@@ -187,7 +190,13 @@ def _service(group: list[dict]) -> bool:
         own = {part for part in re.split(r'[^a-z0-9]+', local) if part}
         first = words and local != words[0] and brand == words[0]
         last = len(words) > 1 and brand == words[-1] and not own & set(words)
-        if not domain or not (first or last):
+        # Or all of it: "Flagship Minerals" <ceo@flagshipminerals.com> sent the
+        # owner an investor update and the 1.9.0a6 daily round spent 100,080
+        # tokens investigating it as a person (#2031). A company writing as
+        # itself spells its domain in words; a person on it writes their own name.
+        whole = len(words) > 1 and ''.join(word for word in words if word not in CORPORATE) == brand \
+            and not own & set(words)
+        if not domain or not (first or last or whole):
             return False
     # Never written to, one mail is enough: "Apple" <appleid@id.apple.com> and
     # "Microsoft Clarity" <maccount@microsoft.com> each wrote once and stayed
