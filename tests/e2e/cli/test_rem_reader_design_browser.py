@@ -443,6 +443,19 @@ def test_written_unknown_sections_are_distinct_from_uninvestigated_pages(reader)
     assert page.locator('.missing .lead').inner_text().lower() == 'only mapped so far'
 
 
+def test_unknown_open_status_is_not_a_current_exchange(reader):
+    page, uri = reader
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.evaluate("""() => {
+      const r = byPath('projects/harbour.md');
+      r.text = '# Harbour\\n\\n## Open threads\\nUnknown. Historical requests do not establish currently pending work. [1]\\n\\n## Sources\\n- [1] test:historical';
+      KNOWN.delete(r.path);
+      render();
+    }""", isolated_context=False)
+    assert page.evaluate("threads(byPath('projects/harbour.md')).items.length", isolated_context=False) == 0
+    assert page.get_by_role('heading', name='Next exchanges').count() == 0
+
+
 def test_completed_delivery_is_conversation_instead_of_a_commitment(reader):
     page, url = reader
     page.evaluate(r"""() => {

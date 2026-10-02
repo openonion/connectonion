@@ -202,7 +202,10 @@ def project_paths(page: str) -> list[str]:
 
 
 def _listed_path(line: str) -> str:
-    return re.sub(r"\s+\[\d+\](?:\s*\[\d+\])*\s*$", "", line[2:].strip()) if line.startswith("- /") else ""
+    quoted = re.match(r"^- `(/[^`]+)`(?:\s|$)", line)
+    if quoted:
+        return quoted[1]
+    return re.sub(r"\s+\[\d+\](?:\s*\[\d+\])*\s*$", "", line[2:].strip().split(" — ", 1)[0]) if line.startswith("- /") else ""
 
 
 def collapse_worktree_paths(page: str) -> str:

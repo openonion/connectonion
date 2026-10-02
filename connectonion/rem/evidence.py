@@ -40,8 +40,8 @@ def _group(item: dict) -> str:
     kind = source.split(":")[0]
     if kind in CHAT_KINDS:
         return f"{kind}:{item.get('correspondent') or item.get('subject') or 'chat'}"
-    if item.get("role") == "attachment":
-        return source   # one attachment, one file: a document read on its own
+    if item.get("role") == "attachment" or source.startswith("project-source:"):
+        return source   # one snapshot/document per file keeps its index entry discoverable
     if source.count(":") < 2:
         # Mail: a month per mailbox. Each entry keeps its `### <source id>`
         # heading, so a search hit still names the one message to cite.

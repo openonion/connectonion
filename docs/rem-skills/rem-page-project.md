@@ -15,6 +15,26 @@ package version, checkout ref and recent commits without an unbounded search.
 A commit is not evidence of passing tests or deployment. The Skill still says
 write once, check once, fix once.
 
+Initial project writing also supplies a searchable source index. A real invoice
+page led with stale Git dates while its committed download link had no matching
+route in that revision. README and metadata alone could not verify that mismatch.
+The writer now receives the fixed tracked tree and at most 60 eligible source
+snapshots, including declared package CLI entry points, implementation, configuration
+and tests. Files over 1 MB are omitted; hidden paths, symlinks, dependency/build
+trees, sensitive names, lockfiles and unsupported suffixes have no supplied bodies.
+The tree states these limits; an omitted body is not evidence of missing code.
+Non-Git projects use the existing safe local inventory and bounded file snapshots;
+that inventory is not a complete tracked tree, so its missing entries cannot establish
+missing implementation. Written Paths accept backticks, spaces, descriptions and
+trailing citations, preserving source collection after Markdown formatting.
+The agent reads the index and searches relevant supplied files, rather than loading
+every source file into its first prompt or reopening a changing checkout.
+
+The planning estimate includes 20,000 characters for the index, not all possible
+source reads. Agent search and subsequent context reads cost additional tokens;
+the existing quota guard remains authoritative. Supplying source evidence and
+passing unit checks do not prove that a real model will produce a useful finding.
+
 CI/SEO requests also select at most two tracked workflow files, prioritizing
 matching filenames within the same 9,000-character text budget. All Git reads
 use one resolved commit SHA. This gathers configuration, without executing a

@@ -1115,7 +1115,7 @@ function sourceChips(text) {
 // that fills it, and lists rank by last contact instead of by the first
 // character of an email address. An unknown answer written as a bare line
 // (a mapped skill's sections) is dropped the same as one written as a bullet.
-const UNKNOWN_LINE = /^\s*(?:[-*]\s*)?(?:[^:\n]{1,40}:\s*)?(?:unknown|not known)(?:\s*[—(-].*)?\s*$/i;
+const UNKNOWN_LINE = /^\s*(?:[-*]\s*)?(?:[^:\n]{1,40}:\s*)?(?:unknown|not known)(?:\s*(?:[—(:.;-]|\[\d+\]).*)?\s*$/i;
 // Sections every mapped page fills from metadata alone: they are not findings.
 const MECHANICAL = new Set(["facts", "contact", "history", "uncertainties", "sources", "people here", "domains"]);
 // What mapping writes where an answer will go (files.py): a placeholder, not a finding.

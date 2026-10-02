@@ -19,8 +19,8 @@ def _cost_line(estimate: dict, meter: dict) -> str:
     week = (f"; the Codex week is at {meter['used_percent']}%" if "used_percent" in meter
             else f"; {meter['unknown']}" if meter.get("unknown") else "")
     return (f"Cost: {estimate['model_calls']} model call(s) carrying about {estimate['chars']:,} characters "
-            f"(~{estimate['tokens_estimated_in']:,} tokens) of skills, pages and messages; the runner re-reads "
-            f"them each turn, so billed input is several times that{week}.")
+            f"(~{estimate['tokens_estimated_in']:,} tokens) of skills, pages, messages and estimated source index. "
+            f"Selected source reads cost extra; the runner re-reads context each turn, so billed input is several times that{week}.")
 
 
 def _mode(row: dict) -> str:

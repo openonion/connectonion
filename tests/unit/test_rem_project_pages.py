@@ -522,6 +522,83 @@ def test_project_items_keep_where_workspace_input_was_supplied():
     assert item["folder"] == "/work/docs-site" and item["typed_in"] == "/work/platform"
 
 
+def test_initial_writer_can_search_fixed_implementation_and_declared_cli(tmp_path):
+    repo = tmp_path / "invoice"
+    (repo / "src/app").mkdir(parents=True)
+    (repo / "README.md").write_text("Download PDF at /api/invoice.pdf")
+    (repo / "package.json").write_text('{"bin":{"invoice-pdf":"invoice-pdf"}}')
+    (repo / "invoice-pdf").write_text("#!/bin/sh\nexec node scripts/render.ts\n")
+    (repo / "fixture.json").write_text('{"expected":"example"}')
+    (repo / "verify.sh").write_text("#!/bin/sh\nnode scripts/check.ts")
+    original = '\n  const href = "/api/invoice.pdf";\n' + "// padding\n" * 1200
+    (repo / "src/app/page.tsx").write_text(original)
+    (repo / "src/app/link.tsx").symlink_to("page.tsx")
+    (repo / ".env").write_text("PASSWORD=must-not-read")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.org",
+                    "commit", "-qm", "Add invoice"], check=True)
+    revision = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    (repo / "src/app/page.tsx").write_text("uncommitted different implementation")
+    packet = project_pages.repository_snapshots(project_pages._repository_evidence(
+        "## Paths\n- " + str(repo) + "\n", NOW.isoformat(), NOW.isoformat()))
+    code = [item for item in packet if item.get("snapshot_kind") == "git-file"]
+    assert any(item["origin"].endswith(f":{revision}:invoice-pdf") for item in code)
+    assert any(item["origin"].endswith(":fixture.json") for item in code)
+    assert any(item["origin"].endswith(":verify.sh") for item in code)
+    page = next(item for item in code if item["origin"].endswith(":src/app/page.tsx"))
+    assert len(page["text"]) > 9000 and "/api/invoice.pdf" in page["text"]
+    assert page["text"] == original
+    assert "uncommitted" not in page["text"]
+    assert not any(item["origin"].endswith(":src/app/link.tsx") for item in code)
+    assert "must-not-read" not in json.dumps(packet)
+    tree = next(item for item in code if item["origin"].endswith(":tracked-files"))
+    assert "src/app/page.tsx" in tree["text"] and "src/app/api" not in tree["text"]
+    task = tmp_path / "task"
+    task.mkdir()
+    prompt = project_pages.prompt(task, packet, task / "candidate.md")
+    assert page["text"] not in prompt and "source index" in prompt.lower()
+    index = task / "repository/index.md"
+    assert index.exists() and "src/app/page.tsx" in index.read_text()
+    assert "do not read any other file" not in prompt
+    from connectonion.rem.files import maintenance_lock
+    with maintenance_lock(tmp_path / "rem"):
+        assert project_pages.retain_repository_context(tmp_path / "rem", code, {page["source"]}) == 1
+    context = project_pages.repository_context(tmp_path / "rem", page["source"])
+    assert context["excerpt"] == page["text"].strip()[:640]
+    assert context["time"] == "" and context["captured_at"] == NOW.isoformat()
+
+
+def test_written_project_paths_still_resolve_after_markdown_formatting():
+    from connectonion.rem.investigate import project_paths
+    page = "## Paths\n- `/work/invoice project` — project repository. [1]\n- /work/other [2][3]\n"
+    assert project_paths(page) == ["/work/invoice project", "/work/other"]
+
+
+def test_initial_source_index_states_omissions_and_preserves_complete_tree(tmp_path, monkeypatch):
+    repo = tmp_path / "bounded"
+    repo.mkdir()
+    (repo / "a.py").write_text("# " + "x" * 300)
+    (repo / "b.py").write_text("print('second')\n")
+    (repo / "package-lock.json").write_text('{"ignored":"dependency metadata"}')
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.org",
+                    "commit", "-qm", "Bounded sources"], check=True)
+    revision = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    monkeypatch.setattr(project_pages, "IMPLEMENTATION_FILES", 1)
+    # A deliberately small byte cap for the selected body; tree uses the real retention limit.
+    monkeypatch.setattr(project_pages, "FILE_SNAPSHOT_CHARS", 256)
+    items = project_pages._implementation_evidence(str(repo), revision, NOW.isoformat())
+    assert len(items) == 1  # first selected file is too large, rather than supplied partially
+    assert "0 of 2 eligible" in items[0]["text"]
+    assert "[truncated]" in items[0]["text"]  # this deliberately tiny cap also bounds the tree
+    monkeypatch.setattr(project_pages, "FILE_SNAPSHOT_CHARS", 1_000_000)
+    items = project_pages._implementation_evidence(str(repo), revision, NOW.isoformat())
+    assert len(items) == 2 and "a.py" in items[0]["text"] and "b.py" in items[0]["text"]
+    assert "1 of 2 eligible" in items[0]["text"] and "omitted" in items[0]["text"]
+
+
 def test_the_busiest_project_comes_first_and_recency_only_breaks_ties(world):
     """#2079: by recency alone a fresh init wrote the owner's private journal
     before LayeredVisions (28 sessions) and browser (17)."""
