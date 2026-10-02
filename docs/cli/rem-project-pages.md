@@ -1,11 +1,10 @@
-# Project pages from your own messages (#1943, stage 2)
+# Project pages from your messages and local project evidence
 
 The first run should leave you with something true about your projects, not a
-list of empty frames. The best record of what a project is and where it stands
-is what you told your coding agents while working on it. This stage reads only
-that — the messages **you** typed in your local Codex and Claude Code
-sessions — and writes each project's page from it, most recently active
-projects first.
+list of empty frames. Your messages to coding agents show intent and decisions.
+A bounded read of the project's local README, package metadata, checkout state
+and recent commits helps distinguish those requests from work actually
+committed. The first run writes the most active project pages first.
 
 It is two steps, and only the second one uses a model.
 
@@ -14,7 +13,7 @@ It is two steps, and only the second one uses a model.
                  │  1. script, no model: your messages only, per project folder
                  ▼
   .state/projects/<page>/messages.md      (0600, owner-only)
-                 │  2. one model call per page, recent projects first
+                 │  2. add local evidence; one model call per page
                  ▼
   projects/<page>.md                      (validated, then saved)
 ```
@@ -182,36 +181,34 @@ last 14 days. Per folder: median 0.9 KB, 90th percentile 10 KB, largest 38.7 KB
 |---|---|---|
 | One message | 4,000 characters | The existing session parser's cap: nobody types more; a longer one is a pasted log, and its head says what it was |
 | Stored per page | 400,000 characters, newest kept | Ten times the largest project measured; bounds the disk copy of a very busy year |
-| Sent in one write | 60,000 characters, newest kept | Fits the largest measured project whole, and with the two skills and the page stays under the runner's 100,000-byte inline prompt, so the model is handed everything rather than told to go read files. Anything older that does not fit is named in the material's coverage note |
+| Sent in one write | 60,000 message characters, newest kept | The model also receives the page, two skills and about 9,000 characters reserved for local repository evidence. Older messages that do not fit are named in the coverage note |
 
 ## Step 2: the page (a model)
 
 One call per page, through the configured runner (`co ai --harness codex` by
 default), in the same sandbox as investigation: it may write only its candidate
-file. The call is given two skills — `rem-project-sessions` (how to read your
-messages) and `rem-page-project` (the page's shape) — and two inputs: the page
-as it stands, and your messages for that project. Those are the whole input.
+file. The call gets two skills — `rem-project-sessions` and `rem-page-project` —
+and the page, your messages, and a local evidence packet. Code reads the README
+and package metadata from the checkout's current local Git ref when available,
+plus checkout freshness and up to five recent commit subjects. It does not
+fetch from a network, run tests, or treat a commit as proof of deployment.
 
 - **First write**: all your messages for the project (the newest 60,000
   characters of them).
 - **Update**: the page as it stands and only the messages after
   `written_through`. A project with nothing new is not written again.
 
-The page it writes passes the same review as an investigated page: canonical
-sections, every citation pointing at a supplied message, mapped `Sessions` /
+The page it writes passes the same review as an investigated page: required
+sections, every citation pointing at a supplied message or local source, mapped `Sessions` /
 `First seen` / `Last seen` kept. A refused page is kept beside its task with the
 reason, and `written_through` does not move, so the next run tries again. An
 accepted page's status line gains `written <date> (own messages: codex,
 claude-code)`.
 
-Two more checks since #2008. A page that still says `Unknown — not
-investigated yet` in any section is refused (the map's placeholder; the section
-becomes content or a bare `Unknown`): on 1.9.0a5's real run two project pages
-came back after 614k and 922k billed input with five and six sections still
-saying it. `Overview` is required when your messages show the architecture (the
-parts and how work moves between them), as a fenced `text` flow; and a
-dictated name ("WTF engine") is corrected only when the material itself shows
-the right term, never guessed.
+The map's `Unknown — not investigated yet` placeholder is refused after a
+write. Core sections remain; unsupported optional sections are omitted. A
+supported `Overview` uses a fenced `text` flow. A dictated name is corrected
+only when the material itself shows the right term, never guessed.
 
 `co rem projects write` states, before the first page, about how many billed
 input tokens and minutes the pages will take: the median of this notebook's
@@ -219,10 +216,10 @@ own completed page runs, or 750k and ~4.5 minutes a page before there are any
 (measured on 2026-10-01). It ends with one line per page (`written`, or why
 not) and what is left; Ctrl-C names the pages written before the stop.
 
-Your messages say what you wanted, decided and saw; they do not prove a build
-passed or a site went live. The skill writes a request as a request and a
-reported result as reported by you, and leaves what the messages do not say
-`Unknown`. Reading the repository itself stays with `co rem investigate`.
+Your messages say what you wanted, decided and saw; local commits show what was
+committed. Neither proves a build passed or a site went live. The skill writes
+a request as a request, compares it with supplied local evidence when possible,
+and states the remaining uncertainty once.
 
 ### Measured
 

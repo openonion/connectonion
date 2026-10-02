@@ -7,13 +7,16 @@ description: A project page with a short visual overview and evidence-backed det
 
 Why these rules: docs/rem-skills/rem-page-project.md
 
-**How to do it.** Read the page and the material in full. Never search example
-pages, earlier outputs, logs, skills or the repository for a format; look beyond
-the material only for a named gap. Write once, check once, fix in one edit, stop.
+**How to do it.** Read the page and supplied material. Do not search examples,
+logs or the repository for a format. Write once, check once, fix once, stop.
 
 Write for a first-time reader (designer, programmer, operator, nontechnical
 colleague): purpose and flow before implementation, plain language, terms
-explained. Use exactly these headings:
+explained. The map may carry every heading below as an unfinished scaffold.
+After investigation, **keep the core headings** `Facts`, `Insight`, `What it is`,
+`Where it stands`, `Paths`, `Open threads`, `Uncertainties`, and `Sources`.
+Use the other headings only when evidence fills them; omit an optional heading
+whose whole body would be `Unknown`. Keep the following order for those shown:
 
 ```markdown
 # <Name>
@@ -59,39 +62,40 @@ explained. Use exactly these headings:
   `Unknown`: `Repository`, `Stack`, `Status`, `People`, `Organisation`,
   `Started`, `Last activity`. Several values `; ` between, each
   `value (qualifier) [n]`; dates `YYYY-MM-DD`; every value cited.
-- `Insight`: 2–4 cited bullets of at most 30 words, each starting `Now:`, `Changed:`, `At stake:`
-  or `Pattern:`. The first is the resume card: where the user stopped, what is
-  next, what blocks it (`Now: stopped 2026-09-28 mid Outlook import; next the
-  attachment retry; blocked on Graph 500s [4][6]`). Then what moved recently,
-  what is at risk, or a pattern (`Pattern: three restarts of the same parser
-  since July [2][5][9]`). Never generic ("an important initiative"); thin
-  material: `- Unknown`.
+- `Insight`: 2–4 cited bullets of at most 30 words, starting `Now:`, `Changed:`,
+  `At stake:` or `Pattern:`. Lead with a verified state, mismatch or decision
+  that changes the next step, not a recap of the last request. Read the local
+  repository packet first. When its README, manifest, checkout or commits bear
+  on a dated user message, join them in one bullet and cite both. If unrelated,
+  name the precise unknown and next verification; do not infer no fix from
+  commit subjects. `Changed:` needs a verified change. A local commit does not
+  prove tests or deployment. Thin material: `- Unknown`.
 
 **The opening: one sentence, one diagram, one entry point**
 
 - `What it is`: one plain sentence: the product, who uses it, to achieve what;
   never the most-discussed side thread, no history or stack inventory.
-- `Overview`: a compact ASCII diagram in a fenced `text` block, 3–7 labelled
+- When shown, `Overview` is a compact ASCII diagram in a fenced `text` block, 3–7 labelled
   steps, narrow-screen readable: the user's start, main actions, outcome.
   Product flow only; modules go in `Architecture map`.
-- `Try it`: entry point and a tiny example with its visible result, at most
+- When shown, `Try it` is an entry point and a tiny example with its visible result, at most
   three steps. Say if access is needed or no working entry point exists. Never
   invent a URL, screenshot or run; never publish credentials.
 
-An unknown flow stays Unknown; a plausible diagram is not evidence.
+An unknown flow is omitted; a plausible diagram is not evidence.
 
 **Current work and joining the team**
 
 - `Where it stands`: 3–5 bullets, now, not a log: last activity date (say if
   quiet for months); current phase and goal; latest verified run or test result
   with date, or none found. The past goes in `Key decisions`.
-- `Latest issues`: bugs, regressions, blockers, newest first: date, symptom,
+- When shown, `Latest issues` lists bugs, regressions, blockers, newest first: date, symptom,
   impact, status, evidence, next step. A report is not a diagnosis; a proposed
   fix is not a resolution.
-- `People and ownership`: who to ask, by area, where known; link person pages.
+- When shown, `People and ownership` says who to ask, by area, where known; link person pages.
   Never infer someone else's ownership from one commit or message; the user's
   own sessions in the project's folders make the user its owner.
-- `Getting started`: per relevant role (designer, engineer, operator); commands
+- When shown, `Getting started` is per relevant role (designer, engineer, operator); commands
   and expected outputs only when verified.
 
 **Background and technical detail**
@@ -119,7 +123,7 @@ Mapping writes observed metadata only; other sections stay
 `Unknown — not investigated yet` until investigation fills them from evidence.
 User-only coding transcripts show intent, not implementation or passing tests:
 verify those from repository or execution evidence. On an older page, add
-missing sections and reorder to this shape, keeping supported content. Never
-reuse the architecture diagram as the overview. Leave the `Investigation:` line
-unchanged. Keep the mapped `Sessions`, `First seen` and `Last seen` fields in
-`Paths` exactly.
+missing core sections and reorder to this shape, keeping supported optional
+content. Never reuse the architecture diagram as the overview. Leave the
+`Investigation:` line unchanged. Keep the mapped `Sessions`, `First seen` and
+`Last seen` fields in `Paths` exactly.

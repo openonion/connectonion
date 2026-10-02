@@ -14,8 +14,53 @@ def test_legacy_project_gets_missing_sections_without_losing_content():
     old = '# Atlas\n\n## What it is\nA demo.\n\n## Sources\n- [1] source:1\n\nInvestigation: mapped today\n'
     new = normalize('projects/atlas.md', old)
     assert 'A demo.' in new
-    assert all(new.count('## '+h+'\n') == 1 for h in Notebook.PROJECT_SECTIONS)
+    assert all(new.count('## '+h+'\n') == 1 for h in ('What it is', 'Where it stands', 'Paths',
+                                                      'Open threads', 'Uncertainties'))
+    assert '## Architecture map\n' not in new
     assert normalize('projects/atlas.md', new) == new
+
+
+def test_written_project_drops_empty_optional_sections_and_keeps_supported_detail(tmp_path):
+    from connectonion.rem.page_review import compact_project_page
+    prepare(tmp_path)
+    nb = Notebook(tmp_path)
+    nb.stub_project('projects/atlas.md', 'Atlas', sessions=2,
+                    first_seen='2026-09-01', last_seen='2026-09-19')
+    mapped = nb.read('projects/atlas.md')
+    candidate = mapped.replace('## What it is\n- Unknown — not investigated yet',
+                               '## What it is\nA local demo. [1]')
+    candidate = candidate.replace('## Key decisions\n- Unknown — not investigated yet',
+                                  '## Key decisions\n2026-09-19: chose local storage. [1]')
+    candidate = candidate.replace('- Unknown — not investigated yet', '- Unknown')
+    candidate = candidate.replace('## Sources\n', '## Sources\n- [1] fixture:readme — 2026-09-19\n')
+    compact = compact_project_page(candidate)
+    assert '## Key decisions\n2026-09-19: chose local storage. [1]' in compact
+    assert '## Overview\n' not in compact
+    assert '## Try it\n' not in compact
+    assert '## Paths\n' in compact and '- Sessions:' in compact
+    assert normalize('projects/atlas.md', compact) == compact
+    errors = validate('projects/atlas.md', compact, mapped, [{'source': 'fixture:readme'}])
+    assert not [error for error in errors if 'Section must occur once' in error]
+
+
+@pytest.mark.parametrize('newline', ['\n', '\r\n'])
+def test_compact_project_preserves_fenced_diagram_and_later_sections(newline):
+    from connectonion.rem.page_review import compact_project_page, prose
+    page = newline.join([
+        '# Atlas', '## Facts', '- Local project [1]', '## Insight', '- A decision is open [1]',
+        '## What it is', 'A local demo [1]', '## Where it stands', '- Active [1]',
+        '## Overview', '```text', '## This is a diagram, not a section', 'box -> arrow', '```',
+        '## Try it', '- Unknown', '## Paths', '- /tmp/atlas', '## Open threads', '- None known [1]',
+        '## Uncertainties', '- Outcome unverified [1]', '## Sources', '- [1] fixture:readme', '',
+    ])
+    assert len(prose(page)) == len(page)
+    compact = compact_project_page(page)
+    assert '## Try it' not in compact
+    assert '```text' + newline + '## This is a diagram, not a section' + newline + 'box -> arrow' in compact
+    assert '## Paths' + newline + '- /tmp/atlas' in compact
+    assert '## Sources' + newline + '- [1] fixture:readme' in compact
+    if newline == '\r\n':
+        assert '\r\n\n## Paths' not in compact
 
 
 def test_long_material_is_readable_and_the_exact_copy_is_kept(tmp_path):
@@ -70,7 +115,7 @@ def test_investigation_promotes_only_valid_new_candidate(tmp_path, monkeypatch, 
     candidate = candidate.replace('- (none yet)', '- [1] observed 2026-09-19 — fixture:readme')
     candidate = candidate.replace('- Unknown — not investigated yet', '- Unknown')
     if invalid:
-        candidate += '\n## Overview\nDuplicate\n'
+        candidate += '\n## What it is\nDuplicate\n'
     def run(directory, prompt, config, stage):
         path = Path(re.search(r'NEW file (.+?candidate.md)', prompt)[1])
         from connectonion.useful_tools.file_tools.write import write
@@ -84,7 +129,8 @@ def test_investigation_promotes_only_valid_new_candidate(tmp_path, monkeypatch, 
         assert nb.read('projects/atlas.md') == old
     else:
         assert run_stage(nb, items, default_config(), stage='investigate')['changed'] == ['projects/atlas.md']
-        assert nb.read('projects/atlas.md') == candidate
+        from connectonion.rem.page_review import compact_project_page
+        assert nb.read('projects/atlas.md') == compact_project_page(candidate)
 
 
 def test_local_citations_require_existing_files_under_supplied_paths(tmp_path):
@@ -493,11 +539,11 @@ def test_an_investigated_page_that_still_says_not_investigated_yet_is_refused(tm
     assert 'A local demo. [1]' in nb.read('projects/atlas.md')
 
 
-def test_the_project_skills_ask_for_the_overview_and_no_placeholder_and_never_guess_a_dictated_name():
+def test_the_project_skills_require_evidence_for_overview_and_no_placeholder_or_guessed_name():
     from connectonion.rem import project_pages
     from connectonion.rem.runner import instructions
     for text in (project_pages.instructions(), instructions('investigate', page_kind='project')):
-        assert 'is required' in text and 'Overview' in text
+        assert 'Overview' in text and 'evidence' in text
         assert 'refused' in text and 'misheard' in text and 'never guess' in text.lower()
 
 

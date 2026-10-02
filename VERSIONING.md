@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a16
+## Current Version: 1.9.0a17
+
+1.9.0a17 gives REM's first written project page bounded, separately citable
+local repository evidence and removes unsupported optional fields. A private
+five-day candidate init wrote one project page with 14 headings, one `Unknown`
+fields and three cited Insight bullets. This is a project-page quality slice;
+cross-page links and owner-page history remain open. Stable remains 1.8.10.
+See [1.9.0a17 notes](docs/releases/1.9.0a17.md).
+
+- 1.9.0a17 (#2122; project-page evidence and density).
+
+## Previous preview: 1.9.0a16
 
 1.9.0a16 bounds Gmail API reads and avoids fetching message headers in a full
 listing window that REM must split. A real 90-day first run listed and archived

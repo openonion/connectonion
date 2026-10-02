@@ -23,17 +23,23 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
-Alpha **1.9.0a16**: Gmail scans now set a network timeout and avoid fetching
-message headers twice when a busy week must be split. A private 90-day first
-run listed and archived 3,202 messages and completed all 36 selected pages.
-See [1.9.0a16 notes](releases/1.9.0a16.md).
+Alpha **1.9.0a17**: REM's first written project page compares the owner's
+requests with a bounded local README, package metadata and Git evidence.
+Unsupported optional sections disappear after investigation, while supported
+claims remain cited. Cross-page links and owner-page history are still open.
+See [1.9.0a17 notes](releases/1.9.0a17.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.0a16'
-co rem init
+python -m pip install --upgrade 'connectonion==1.9.0a17'
+co rem init --days 5
 ```
 
 Earlier alpha previews remain available:
+
+Alpha **1.9.0a16**: Gmail scans set a network timeout and avoid fetching
+headers twice when a busy week must be split. A private 90-day first run
+archived 3,202 messages and completed all 36 selected pages. See
+[1.9.0a16 notes](releases/1.9.0a16.md).
 
 Alpha **1.9.0a15**: REM's first run keeps its project list consistent with the
 map it just showed. A later session scan prepares evidence for mapped projects
