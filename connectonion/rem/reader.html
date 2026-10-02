@@ -2128,16 +2128,18 @@ function refreshFocusExpansion() {
 function recordFocus(r) {
   const k = known(r), out = el("section", { class: "record-focus " + r.category,
     "aria-label": "At a glance" });
+  const privateMapped = r.private_project && k.status === "Mapped";
   const purpose = section(r, r.category === "orgs" ? "our relationship" : r.category === "skills" ? "when to use" : "");
   const finding = r.category === "skills" ? plainLine(section(r, "insight")?.text || "") : "";
-  const statement = finding || plainLine(purpose?.text || "") || memoryStatement(r) || facts(r).what || k.summary;
-  const question = ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
+  const statement = privateMapped ? "Automatic investigations skip this private project. Name this page to request a write."
+    : finding || plainLine(purpose?.text || "") || memoryStatement(r) || facts(r).what || k.summary;
+  const question = privateMapped ? "Needs your explicit request" : ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
     skills: finding ? "Useful finding" : "When this helps" })[r.category] || "What matters now";
   const focusHead = el("div", { class: "focus-head" }, [el("span", { class: "focus-kicker", text: question })]);
-  const statementNode = el("p", { class: "focus-statement clamped", html: inline(statement || (k.status === "Mapped"
+  const statementNode = el("p", { class: "focus-statement" + (privateMapped ? "" : " clamped"), html: inline(statement || (k.status === "Mapped"
     ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet."), r.path) });
   focusHead.appendChild(statementNode);
-  if (statement) {
+  if (statement && !privateMapped) {
     const more = el("button", { type: "button", class: "focus-more", "aria-expanded": "false", text: "Read full context", hidden: "" });
     more.onclick = () => {
       const expanded = statementNode.classList.toggle("clamped");
@@ -2379,7 +2381,9 @@ function record(path, heading) {
     // a written page names its remaining gaps in one quiet line at the foot.
     const box = el("div", { class: "missing" + (mapped ? " primary" : "") }, [
       el("span", { class: "lead", text: mapped ? "Only mapped so far" : k.missing.length + (k.missing.length === 1 ? " unresolved section" : " unresolved sections") }),
-      mapped ? el("p", { class: "why", text: "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in." }) : null,
+      mapped ? el("p", { class: "why", text: r.private_project
+        ? "Automatic investigation skips this private project. To request a write, run the command for this page."
+        : "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in." }) : null,
       el("div", { class: "names", text: (mapped ? "Not investigated yet: " : "Still unknown: ") + youify(k.missing.join(", ")) + "." }),
       el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]);
     if (mapped) deep.parentNode.insertBefore(box, deep); else column.appendChild(box);

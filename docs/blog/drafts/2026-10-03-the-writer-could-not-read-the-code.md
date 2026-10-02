@@ -176,3 +176,18 @@ and remaining automatic reconciliation and broader review limits.
 The [cited-thread comparison review](../../design-evidence/rem-cited-thread-comparison-review-2026-10-03/REVIEW.md)
 records the old-request comparison, exact citation matching, first-snapshot
 provenance handoff and selected unchanged reader states.
+
+
+A final pending project revealed a different boundary. Its folder matched the
+existing private-project rule, so the automatic queues already skipped it.
+Status still counted it as ordinary unfinished work and suggested a category
+command that could never write it. The mapped page led with a local path and
+left the reason for waiting unexplained. The candidate keeps the written count
+truthful, separates the explicit-request hold from the ordinary next action,
+and explains the hold in the page's lead and existing named-page callout.
+Private original bodies and that page were unchanged. Independent phone review
+also caught the request instruction folding away; the brief explanation is now
+fully visible. This is sampled action-clarity verification, not an automatic
+writer or all-page usefulness pass.
+
+[Private project status review](../../design-evidence/rem-private-project-status-review-2026-10-03/REVIEW.md) records the inspected states and remaining gaps.

@@ -784,6 +784,31 @@ def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_pat
                                  'investigation_this_week', 'quota', 'investigation_quota'}
 
 
+@pytest.mark.parametrize('ordinary_pending', [False, True])
+def test_status_keeps_private_projects_mapped_without_suggesting_automatic_writes(tmp_path, monkeypatch,
+                                                                             ordinary_pending):
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    book.stub_project('projects/journal.md', 'Journal', ['/Users/me/journal'])
+    book.stub_project('projects/atlas.md', 'Atlas', ['/Users/me/atlas'])
+    if not ordinary_pending:
+        book.note_investigation('projects/atlas.md', 'codex')
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    result = invoke(tmp_path, 'status')
+    assert result.exit_code == 0, result.output
+    assert 'Private projects 1 unwritten; write only when you name the page' in result.output
+    assert '2 projects pages not written' not in result.output
+    if ordinary_pending:
+        assert 'To write next  1 projects page not written' in result.output
+        assert result.output.rstrip().endswith(' investigate projects')
+    else:
+        assert '1 of 2' in result.output
+        assert 'To write next' not in result.output
+        assert result.output.rstrip().endswith(' start')
+    payload = json.loads(invoke(tmp_path, '--json', 'status').output)
+    assert payload['next'].endswith(' investigate projects' if ordinary_pending else ' start')
+
+
 def test_unfinished_tip_names_an_existing_page_and_preserves_root(tmp_path):
     import shlex
     root = tmp_path / 'co rem with spaces'

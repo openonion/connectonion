@@ -26,6 +26,37 @@ VIEWS = ["", "#c=people", "#c=orgs", "#c=projects", "#c=skills", "#r=people%2Fma
          "#r=skills%2Fcatalog%2Fweekly-brief.md", "#q=pilot", "#q=mara", "#r=people%2Favery-lin.md", "#c=opportunities", "#reviews=1"]
 
 
+def test_private_mapped_project_explains_why_it_waits_on_desktop_and_phone(tmp_path, monkeypatch):
+    from patchright.sync_api import sync_playwright
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.reader import render
+
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).stub_project("projects/journal.md", "Journal", ["/work/journal"])
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    path = tmp_path / "reader.html"
+    path.write_text(render(root))
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel="chrome", headless=True)
+        for width in (1440, 375):
+            page = browser.new_page(viewport={"width": width, "height": 812})
+            page.goto(path.as_uri() + "#r=projects%2Fjournal.md")
+            statement = page.locator(".focus-statement").inner_text()
+            assert "Automatic investigations skip this private project." in statement
+            assert "Name this page to request a write." in statement
+            assert "clamped" not in page.locator(".focus-statement").get_attribute("class")
+            assert "/work/journal" not in statement
+            assert "NEEDS YOUR EXPLICIT REQUEST" in page.locator(".focus-kicker").inner_text()
+            assert "Automatic investigation skips this private project." in page.locator(".missing").inner_text()
+            assert "investigate 'projects/journal.md'" in page.locator(".missing .cmd").inner_text()
+            assert page.get_by_role("button", name="Copy the command").is_visible()
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            page.close()
+        browser.close()
+
+
 @pytest.fixture
 def reader(tmp_path, monkeypatch):
     from patchright.sync_api import sync_playwright
@@ -173,7 +204,7 @@ def test_focus_connects_project_people_org_and_archived_conversation(reader):
     assert {name.strip() for name in connected.locator("strong").all_inner_texts()} >= {
         "Mara Ostrowski", "Fernhill Labs"}
     assert page.get_by_role("heading", name="What this is").is_visible()
-    assert page.get_by_role("heading", name="A recorded decision").is_visible()
+    assert page.get_by_role("heading", name="Recorded direction").is_visible()
     page.get_by_role("link", name="View all decisions").click()
     assert page.locator(".deep-note").get_attribute("open") is not None
     page.goto(uri + "#r=projects%2Fharbour.md")
