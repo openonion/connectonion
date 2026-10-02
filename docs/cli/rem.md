@@ -12,11 +12,13 @@ current CI blockers and remaining work.
 
 ## What it is
 
-In REM sleep the brain replays the day and keeps what matters. **co rem** does
-the same for your work: it reads your mail (connected with `co auth google` or
-`co auth microsoft`) and your local Codex and Claude Code sessions, and keeps a
-Markdown page on each person, project and tool you work with. Your agent reads
-those pages, so it picks up where you left off instead of asking again.
+**co rem enables decentralized context flow.** It connects context from your
+mail (connected with `co auth google` or `co auth microsoft`) and your local
+Codex and Claude Code sessions in linked Markdown pages about people,
+projects and tools. Those pages stay on your machine, with links back to
+the evidence. You and your agents can read and reuse them in the next task.
+Memory keeps context available over time; carrying context through your
+work is the purpose.
 
 The notebook is a folder on your machine, `~/.co/rem`. Saved mail bodies stay
 in its owner-only `.state/` and never go into a page; a model reads them only
