@@ -70,6 +70,14 @@ comparison in the lead when evidence permits one. If the sources do not
 establish an outcome, it says what to verify instead of implying success or
 failure from a commit title.
 
+A recovered historical project page joined a slow-crawler request with a later
+1,000-property target but cited only the first message. Both messages existed;
+source-id validation could not establish that each clause was supported. The
+writer now checks numbers, dates and joined clauses against their attached
+citations. With user-only material it also preserves precise operating scope,
+such as a branch exclusion versus an organization-wide exclusion, so the lead
+offers a decision instead of several unverified completion questions.
+
 ## Mapped `Paths` fields
 
 `Sessions`, `First seen` and `Last seen` are window-scoped counts and dates

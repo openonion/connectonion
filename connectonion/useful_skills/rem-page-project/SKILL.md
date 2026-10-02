@@ -10,9 +10,8 @@ Why these rules: docs/rem-skills/rem-page-project.md
 **How to do it.** Read the page and supplied material. Do not search examples,
 logs or the repository for a format. Write once, check once, fix once, stop.
 
-Write for a first-time reader (designer, programmer, operator, nontechnical
-colleague): purpose and flow before implementation, plain language, terms
-explained. The map may carry every heading below as an unfinished scaffold.
+Write purpose and flow before implementation, in plain language for a new
+teammate; explain terms. The map is an unfinished scaffold.
 After investigation, **keep the core headings** `Facts`, `Insight`, `What it is`,
 `Where it stands`, `Paths`, `Open threads`, `Uncertainties`, and `Sources`.
 Use the other headings only when evidence fills them; omit an optional heading
@@ -70,6 +69,8 @@ whose whole body would be `Unknown`. Keep the following order for those shown:
   name the precise unknown and next verification; do not infer no fix from
   commit subjects. `Changed:` needs a verified change. A local commit does not
   prove tests or deployment. Thin material: `- Unknown`.
+  With requests only, surface precise operating constraints; preserve branch
+  versus organization scope.
 
 **The opening: one sentence, one diagram, one entry point**
 
@@ -113,6 +114,8 @@ An unknown flow is omitted; a plausible diagram is not evidence.
   here rather than as a tail on every bullet elsewhere.
 - `Sources`: numbered, `- [n] <source id> — <date>`, nothing more; each inspected
   file its own entry. Mark inference; never copy facts from examples.
+  Cite every clause, quantity and date. A joined claim needs each supporting
+  message; adjacent requests do not support its numbers or deadlines.
 
 State a claim in one clause. How the page was made (the mapper, the collector,
 counts of matched sessions, the prior page) goes nowhere in the body.
