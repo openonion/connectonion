@@ -211,6 +211,24 @@ def _material(manifest: dict, snapshots: list[dict]) -> tuple[dict[str, list[dic
 READABLE = ("complete", "partial", "running", "paused")
 
 
+def _thread_context(root: Path, refs: list[dict]) -> list[dict]:
+    inventory = state_path(root, "source-inventory.jsonl")
+    if not inventory.is_file():
+        return []
+    rows = [json.loads(line) for line in inventory.read_text(encoding="utf-8").splitlines() if line]
+    direct = {(ref["provider"], ref["id"]) for ref in refs}
+    threads = {(row["source"], row["thread"]) for row in rows if row.get("type") == "mail"
+               and row.get("thread") and (row["source"], row.get("id")) in direct}
+    return [{"provider": row["source"], "id": row["id"],
+             "message": str(message_path(root, row["source"], row["id"]).relative_to(root)),
+             "relationship_scope": "Same provider thread as a message involving this person, "
+                 "but this message is not addressed to this person. Use as thread context, not their "
+                 "statement, contact date or personal obligation."}
+            for row in rows if row.get("type") == "mail" and row.get("id") and row.get("thread")
+            and (row["source"], row["thread"]) in threads and (row["source"], row["id"]) not in direct
+            and message_path(root, row["source"], row["id"]).is_file()]
+
+
 def person_material(root: Path, record: str) -> tuple[dict[str, list[dict]], datetime, datetime] | None:
     """One mapped page's saved mail, without a provider query; while the archive
     is unfinished, only the bodies saved so far."""
@@ -219,8 +237,8 @@ def person_material(root: Path, record: str) -> tuple[dict[str, list[dict]], dat
     if manifest.get("phase") not in READABLE or not index.is_file():
         return None
     snapshots = []
-    for line in index.read_text(encoding="utf-8").splitlines():
-        ref = json.loads(line)
+    refs = [json.loads(line) for line in index.read_text(encoding="utf-8").splitlines() if line]
+    for ref in [*refs, *_thread_context(root, refs)]:
         path = state_path(root, ref["message"].removeprefix(".state/"))
         if manifest["phase"] != "complete" and not path.is_file():
             continue   # not saved yet: the investigation fetches it
@@ -228,7 +246,8 @@ def person_material(root: Path, record: str) -> tuple[dict[str, list[dict]], dat
         if (not isinstance(snapshot, dict) or snapshot.get("id") != ref["id"]
                 or snapshot.get("provider") != ref["provider"] or "body" not in snapshot):
             return None
-        snapshots.append(snapshot)
+        snapshots.append({**snapshot, **({"relationship_scope": ref["relationship_scope"]}
+                                        if ref.get("relationship_scope") else {})})
     return _material(manifest, snapshots)
 
 

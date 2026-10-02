@@ -26,6 +26,48 @@ def test_material_keeps_named_corecipients_separate_from_the_reply_author():
     assert item["text"] == snapshot["body"]
 
 
+def test_person_archive_keeps_exact_thread_replies_after_cc_member_is_dropped(tmp_path):
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import message_path, person_material
+    from connectonion.rem.fact_extract import extract
+    prepare(tmp_path)
+    record = "people/member.md"
+    rows = [
+        {"source": "outlook", "id": "request", "thread": "scope", "from": "lead@school.example",
+         "to": ["me@example.org"], "cc": ["member@school.example"], "date": "2026-10-01T00:00:00Z"},
+        {"source": "outlook", "id": "approval", "thread": "scope", "from": "me@example.org",
+         "to": ["lead@school.example"], "cc": [], "date": "2026-10-02T00:00:00Z"},
+        {"source": "outlook", "id": "other-team", "thread": "other", "from": "lead@school.example",
+         "to": ["me@example.org"], "cc": [], "date": "2026-10-02T01:00:00Z"},
+        {"source": "gmail", "id": "collision", "thread": "scope", "from": "lead@school.example",
+         "to": ["me@example.org"], "cc": [], "date": "2026-10-02T02:00:00Z"},
+        {"source": "outlook", "id": "unthreaded", "thread": "", "from": "lead@school.example",
+         "to": ["me@example.org"], "cc": [], "date": "2026-10-02T03:00:00Z"},
+    ]
+    write_json(state_path(tmp_path, "mail/archive.json"), {
+        "phase": "complete", "providers": ["outlook", "gmail"], "owner_addresses": ["me@example.org"],
+        "range_start": "2026-10-01T00:00:00+00:00", "range_end": "2026-10-03T00:00:00+00:00"})
+    state_path(tmp_path, "source-inventory.jsonl").write_text("".join(
+        json.dumps({"type": "mail", "subject": "Scope approval", **r}) + "\n" for r in rows))
+    for row in rows:
+        write_json(message_path(tmp_path, row["source"], row["id"]), {
+            **row, "provider": row["source"], "subject": "Scope approval",
+            "body": "Approved with additions." if row["id"] == "approval" else "Please approve."})
+    index = person_index_path(tmp_path, record)
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(json.dumps({"provider": "outlook", "id": "request", "roles": ["cc"],
+        "message": str(message_path(tmp_path, "outlook", "request").relative_to(tmp_path))}) + "\n")
+    material, _, _ = person_material(tmp_path, record)
+    items = material["outlook"]
+    assert len(items) == 2 and not material["gmail"]
+    request, approval = items
+    assert "relationship_scope" not in request
+    assert "not addressed to this person" in approval["relationship_scope"]
+    assert approval["role"] == "user" and approval["text"] == "Approved with additions."
+    facts = extract([i for i in items if not i.get("relationship_scope")], ["member@school.example"])
+    assert all(r["value"] != "2026-10-02" for r in facts if r["field"] == "Last contact")
+
+
 def test_init_archive_is_private_resumable_and_people_read_it_without_listing(tmp_path):
     prepare(tmp_path)
     skills = tmp_path / "source-skills"

@@ -56,14 +56,11 @@ or decided, attributed and dated. So:
   A folder or tool-attributed repository does not establish the request's subject.
   Keep unrelated backend, release or model requests as related context, not this
   project's progress, activity date or pending work.
-- When supplied descriptions and messages establish only task history, label
-  the page a session workspace and describe that documented scope. Keep software
-  repository, stack and ownership `Unknown` when they are not established.
-  Separate unrelated subjects. Specific historical constraints such as identity
-  checks, save-only instructions, permitted recipients or preserving originals
-  can be useful findings; attribute them as requested behavior with unknown
-  outcomes. A pasted skill definition describes intended behavior, not installation
-  or an implemented product.
+- Task history alone establishes a session workspace, not a software product:
+  describe that scope; unsupported repository, stack and ownership stay `Unknown`.
+  Separate subjects. Historical identity checks, save-only rules, recipients or
+  preserving originals can be useful findings; date requested behavior, keep
+  outcomes unknown. Pasted skills prove intended behavior, not installation.
 - The local checkout can lag behind the latest session. `checkout-state` says
   which ref is current and whether the working tree is stale. Use recent local
   commits to describe what was committed, not to claim tests, deployment or

@@ -40,6 +40,17 @@ def test_an_odd_source_id_cannot_escape_the_evidence_directory(tmp_path):
     assert all((tmp_path / "ev") in p.parents for p in written) and out["files"] == 1
 
 
+def test_indexed_mail_preserves_actual_cc_when_rendered_body_omits_it(tmp_path):
+    participants = {"from": "Lead <lead@school.example>", "to": ["me@example.org"],
+                    "cc": ["Member <member@school.example>"]}
+    text = "From: lead@school.example\nTo: me@example.org\n\nPlease approve the scope."
+    write_evidence(tmp_path / "ev", [item("outlook:request", "2026-10-02", text,
+                                         participants=participants)])
+    packet = next(p.read_text() for p in (tmp_path / "ev").rglob("*.md") if p.name != "index.md")
+    assert '"cc": ["Member <member@school.example>"]' in packet
+    assert text in packet
+
+
 def test_legacy_timestamp_scope_survives_an_indexed_evidence_packet(tmp_path):
     out = write_evidence(tmp_path / "ev", [item(
         "codex:legacy:100", "2025-11-04T15:24:50Z", "Vern asked about the placement",

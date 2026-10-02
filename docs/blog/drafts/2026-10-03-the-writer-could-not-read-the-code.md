@@ -50,6 +50,17 @@ four pages were manually filled and reviewed; their pending automatic writes
 remain queued for a resource-permitted run. A written-page count is not proof of
 automatic quality or successful task execution.
 
+A person-page comparison showed the same access problem in mail. A copied
+member's page retained an approval request after replies stopped including them,
+although the client's approval was saved in the same provider thread. Address
+filtering alone kept the obsolete task alive. The candidate supplies saved
+messages from exact provider/thread matches, marked as context rather than that
+person's contact or obligation. It also retains raw To/Cc metadata in the
+searchable packet. Subject matching would be easier to add but could join
+unrelated discussions; even one genuine thread can contain different teams, so
+the writer still has to match the actual ask. Two page corrections remain
+manual evidence work, rather than proof of automatic reconciliation.
+
 This trades a small initial index for additional, variable source reads. The cost
 estimate says so; the quota guard remains in place. It also leaves real limits:
 60 files cannot cover every repository, and the reader's short source prefix may
@@ -65,3 +76,5 @@ The follow-up [large-project review](../../design-evidence/rem-large-project-sou
 records the bounded selection change and the second manually corrected sample.
 The [session-workspace review](../../design-evidence/rem-remaining-workspaces-review-2026-10-03/REVIEW.md)
 records four manual pages, reader corrections and remaining automatic-write limits.
+The [person-thread review](../../design-evidence/rem-person-thread-review-2026-10-03/REVIEW.md)
+records the missing group reply and responsibility corrections, with exact scope.

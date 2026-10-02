@@ -20,6 +20,7 @@ little outside the conversation around it.
 """
 
 import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -67,6 +68,8 @@ def _entry(item: dict) -> str:
                                                        ("input_scope", "Input scope"),
                                                        ("relationship_scope", "Relationship scope"))
               if item.get(key)]
+    if item.get("participants"):
+        detail.append("Participants: " + json.dumps(item["participants"], ensure_ascii=False))
     return "\n".join([head, *detail, "", str(item.get("text", "")), ""])
 
 

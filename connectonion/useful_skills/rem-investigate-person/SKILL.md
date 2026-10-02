@@ -23,18 +23,15 @@ Why these rules: docs/rem-skills/rem-investigate.md
 
 ## Reading the mail
 
-- **The `investigation:facts` item first**: addresses, phones, links and
-  contact dates our code read, each with its source id; every one goes in its
-  `Facts` field, cited to that id. Its `Signature` and `Calendar` lines give
-  role, company, office, location and time zone. Then each signature block
-  you read, field by field. A changed signature is a dated move or promotion.
-  Two phones are two values with their qualifiers.
+- **The `investigation:facts` item first**: put each extracted value in its
+  cited `Facts` field. Read `Signature`, `Calendar` and mail signatures for role,
+  company, office, location and time zone. Date signature changes; keep both
+  phones with qualifiers.
 - `Phone` means the person's contact number, never a meeting dial-in, passcode
   or attendee's number. Calendar text is context, not their contact details.
-- **Address domain = employer** (`@unsw.edu.au` → UNSW), never a role;
-  gmail/outlook/qq/163 → `Company: Unknown`. An org page for the domain (listed
-  in the `investigation:org-pages` item) → `Company:` is that link,
-  `[Name](../orgs/<file>.md)`, cited to the mail that shows it.
+- **Address domain = employer**, never a role; gmail/outlook/qq/163 →
+  `Company: Unknown`. Link a matching `investigation:org-pages` entry as
+  `[Name](../orgs/<file>.md)`, citing the mail.
 - `[attachment]` entries are the file's text; the terms are there; cite their id.
   An unreadable attachment → your final reply.
 - Mail gives identity and commitments; sessions give intent. Sources disagree →
@@ -42,6 +39,9 @@ Why these rules: docs/rem-skills/rem-investigate.md
 - Check asks/promises across topics before `Nothing open`; unrelated replies
   close none. Questions promise no deadline. Invites, empty forwards or quick
   samples leave completion Unknown.
+- Thread context can resolve a group ask after recipients drop. Match the team
+  and ask; one thread can mix both. Preserve requester, decision maker and debtor;
+  context is not this person's statement, contact date or assigned work.
 
 ## What to produce
 

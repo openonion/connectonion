@@ -6,6 +6,38 @@ round of a co rem investigation (#1851). This file holds the reasons, incidents 
 examples behind those rules. It is not loaded at runtime. When you change a rule
 there, update its reason here in the same change.
 
+## Group replies after a recipient is dropped
+
+A real person page still said the client owed scope approval, while another
+page recorded that client's approval and the team's later wording changes.
+The first person was copied on the request but absent from later replies.
+Address-only archive selection kept the request and missed its resolution.
+
+Person archive material now also includes saved messages with the same exact
+provider/thread identifier as direct indexed messages. There is no subject-line
+matching or transitive expansion. Missing identifiers or unsaved bodies supply
+no additional context. These messages carry a relationship-scope warning and
+are excluded from extracted personal contact facts. They do not prove the
+person wrote the reply, received it or owns the group's task.
+
+Indexed evidence now includes raw participant metadata, including Cc; a
+provider-rendered body may omit it. The writer must distinguish the requester,
+decision maker and debtor, and match the team and actual ask before closing it.
+A shared install/poll thread can contain replies from different teams.
+
+The inspected person's material grew from six direct messages to twelve:
+three later approval/wording replies and three replies on shared threads.
+Only the matching scope replies resolve the original approval. A second page's
+reversed approval obligation was manually corrected: a co-recipient is not
+automatically assigned the client's work. These manual changes do not establish
+automatic compliance. The full notebook's index adds 96 context/page pairs to
+17 of 36 person pages; these are overlapping evidence, not 96 verified findings.
+
+The focused gate also caught instruction-budget failures. Person rules and
+session-workspace wording were compacted without raising the 15,000 limit;
+all current instruction-composition checks pass. Exact rendered/source coverage
+and remaining gaps are recorded in the round's review report.
+
 ## Organization context across mail domains (#2157)
 
 Domain-only investigation split a real offer/acceptance timeline across two
