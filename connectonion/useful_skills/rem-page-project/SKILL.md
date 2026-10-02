@@ -74,8 +74,8 @@ whose whole body would be `Unknown`. Keep the following order for those shown:
 
 **Opening**
 
-- `What it is`: one plain sentence: the product, who uses it, to achieve what;
-  never a side thread, history or stack inventory.
+- `What it is`: one sentence about the product, user and purpose. If product
+  identity is unknown, label a session workspace with its documented task scope.
 - `Overview`, when supported: 3–7 narrow-screen ASCII steps in a `text` fence,
   showing user start, actions and outcome. Modules go in `Architecture map`.
 - `Try it`, when supported: entry point, tiny example and visible result,

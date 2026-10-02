@@ -15,6 +15,21 @@ package version, checkout ref and recent commits without an unbounded search.
 A commit is not evidence of passing tests or deployment. The Skill still says
 write once, check once, fix once.
 
+Four remaining ordinary pages held only archived skill/task requests in session
+workspaces. Their folder names did not establish software products. The writer
+is instructed to label that scope, keep software repository/stack/ownership
+unknown, and can lead with a precise historical operating constraint. Saving,
+invoking and completing a skill are separate evidence states. A pasted definition
+is intended behavior; it does not verify an installation or browser property.
+
+Rendered review also found two ways the reader overstated or buried evidence:
+tag priority selected a later `Now`/`Changed` line over the writer's first useful
+finding, and a session directory filled a Repository value despite an explicit
+Unknown. The candidate displays the first Insight, labels directory metadata as
+a local path, and respects explicit Unknown values. These changes have actual
+page rechecks and reproducing browser coverage; automatic model usefulness
+still needs a live first-write check.
+
 Initial project writing also supplies a searchable source index. A real invoice
 page led with stale Git dates while its committed download link had no matching
 route in that revision. README and metadata alone could not verify that mismatch.

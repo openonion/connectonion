@@ -1668,10 +1668,9 @@ function sectionHead(title, note) {
 function memoryStatement(r) {
   const insight = section(r, "insight");
   const lines = insight ? listItems(insight.text) : [];
-  const line = lines.find(item => /^Now:/i.test(item)) || lines.find(item => /^Changed:/i.test(item))
-    || lines.find(item => /^At stake:/i.test(item)) || lines[0];
+  const line = lines[0];
   const current = section(r, "where it stands");
-  const statement = plainLine(line ? line.replace(/^(?:Changed|Now|At stake):\s*/i, "") : current?.text || known(r).summary);
+  const statement = plainLine(line ? line.replace(/^(?:Changed|Now|At stake|Pattern):\s*/i, "") : current?.text || known(r).summary);
   return statement ? statement[0].toUpperCase() + statement.slice(1) : "";
 }
 function memoryConnection(records) {
@@ -1996,7 +1995,7 @@ function legacyFact(r, label) {
   const v = {
     "How we know them": f.how, "First contact": f.first, "Last contact": r.category !== "projects" ? f.last : "", "Email": f.email,
     "Last activity": r.category === "projects" ? k.last : "",
-    "Repository": f.repo, "What they do": r.category === "orgs" ? f.what : "", "Website": r.category === "orgs" ? f.domain : "",
+    "What they do": r.category === "orgs" ? f.what : "", "Website": r.category === "orgs" ? f.domain : "",
     "Your contacts": f.people ? f.people + (f.people === 1 ? " person" : " people") : "", "Links": f.links
   }[label];
   return v ? [{ value: v, qualifier: "", citations: [], derived: true }] : [];
@@ -2021,7 +2020,7 @@ function factList(r) {
   const dl = el("dl", { class: "factlist" });
   let filled = 0;
   for (const label of order) {
-    const items = (parsed.get(label) || []).length ? parsed.get(label) : legacyFact(r, label);
+    const items = parsed.has(label) ? parsed.get(label) : legacyFact(r, label);
     if (items.length) filled++;
     const dd = el("dd", { class: items.length ? "" : "none" }, items.length ? items.map(i => factValue(i, r.path)) : [el("span", { text: "— not found" })]);
     if (items.length && COPYABLE.has(label)) {
@@ -2139,7 +2138,7 @@ function recordFocus(r) {
   }
   const f = facts(r);
   const labels = r.category === "people" ? [["Role", f.role], ["Company", f.company], ["Last contact", f.last]]
-    : r.category === "projects" ? [["Last active", f.last], ["Mapped sessions", f.sessions], ["Repository", f.repo]]
+    : r.category === "projects" ? [["Last active", f.last], ["Mapped sessions", f.sessions], ["Local path", f.repo]]
       : r.category === "orgs" ? [["Domain", f.domain], ["Last contact", f.last]]
         : r.category === "skills" ? [["Recorded invocations", skillUsage(r) ? String(skillUsage(r).count) : ""], ["Last invocation", f.last]] : [];
   const shown = labels.filter(([, value]) => value).slice(0, 3);
@@ -2463,7 +2462,7 @@ function bestMatch(r) {
     ? [["Email", plainValue(first("Email") || f.email)], ["Phone", plainValue(first("Phone"))], ["Company", plainValue(first("Company") || f.company)], ["Last contact", k.last ? fmtDate(k.last) : ""]]
     : r.category === "orgs"
       ? [["What they do", plainValue(first("What they do") || f.what)], ["Website", plainValue(first("Website") || f.domain)], ["Last contact", k.last ? fmtDate(k.last) : ""]]
-      : [["Repository", plainValue(first("Repository") || f.repo)], ["Status", plainValue(first("Status"))], ["Last activity", k.last ? fmtDate(k.last) : ""]];
+      : [[first("Repository") ? "Repository" : "Local path", plainValue(first("Repository") || f.repo)], ["Status", plainValue(first("Status"))], ["Last activity", k.last ? fmtDate(k.last) : ""]];
   const open = f.open[0];
   return el("section", { class: "best" }, [
     el("div", { class: "best-head" }, [el("span", { class: "lead", text: "Best match" }), el("a", { href: href(r), text: r.title }), statusPill(r)]),

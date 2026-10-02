@@ -35,6 +35,21 @@ and 24 REM files into the inspected seven-input pool without raising the 60-file
 limit. Hints remain discovery aids, not proof of what a request concerns; Python
 entrypoint syntax and package layouts still have narrow coverage.
 
+Four remaining pages carried skill and task requests in session workspaces,
+with no established software-product identity. A folder was evidence of where
+the conversation happened. The useful findings were requested operating
+constraints: verified recipients and one send, save-only instructions, per-person
+memory, and preserving originals while working on copies. They were historical
+intent, with unknown execution outcomes.
+
+Rendering created two further problems. It chose later updates by their tags,
+burying the first useful finding, and filled an unknown Repository with a local
+workspace path. The candidate uses the first Insight and keeps local paths
+separate from declared repository facts. Explicit Unknown stays unknown. These
+four pages were manually filled and reviewed; their pending automatic writes
+remain queued for a resource-permitted run. A written-page count is not proof of
+automatic quality or successful task execution.
+
 This trades a small initial index for additional, variable source reads. The cost
 estimate says so; the quota guard remains in place. It also leaves real limits:
 60 files cannot cover every repository, and the reader's short source prefix may
@@ -48,3 +63,5 @@ to produce supported findings, rather than another list of verification requests
 See the [review and exact coverage](../../design-evidence/rem-initial-project-source-review-2026-10-03/REVIEW.md).
 The follow-up [large-project review](../../design-evidence/rem-large-project-source-review-2026-10-03/REVIEW.md)
 records the bounded selection change and the second manually corrected sample.
+The [session-workspace review](../../design-evidence/rem-remaining-workspaces-review-2026-10-03/REVIEW.md)
+records four manual pages, reader corrections and remaining automatic-write limits.

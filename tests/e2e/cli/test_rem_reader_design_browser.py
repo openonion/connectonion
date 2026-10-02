@@ -237,6 +237,42 @@ def test_project_first_seen_does_not_establish_an_unknown_start_date(reader):
     assert 'not found' in started.inner_text()
 
 
+def test_project_hero_keeps_the_first_finding_before_later_tagged_updates(reader):
+    page, uri = reader
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.evaluate("""() => {
+      const r = byPath('projects/harbour.md');
+      r.text = '# Harbour\\n\\n## Insight\\n- Pattern: Historical send rule: verified recipient, approved text, screenshot, no retries. [1]\\n'
+        + '- Changed: A later UI request corrected its wording. [2]\\n- Now: A release was requested in July. [3]';
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    for width in (1440, 768, 375):
+        page.set_viewport_size({'width': width, 'height': 1000})
+        assert page.locator('.focus-statement').inner_text() == (
+            'Historical send rule: verified recipient, approved text, screenshot, no retries.')
+
+
+def test_unknown_repository_stays_unknown_while_workspace_path_remains_visible(reader):
+    page, uri = reader
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.evaluate("""() => {
+      const r = byPath('projects/harbour.md');
+      r.text = '# Harbour\\n\\n## Facts\\n- Repository: Unknown\\n- Started: Unknown\\n'
+        + '\\n## Insight\\n- At stake: Keep the source folder intact. [1]\\n'
+        + '\\n## Paths\\n- /tmp/session-workspace\\n- Sessions: 4\\n- First seen: 2026-07-18\\n- Last seen: 2026-07-20';
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    assert page.locator('.focus-facts dt:text-is("Local path") + dd').inner_text() == '/tmp/session-workspace'
+    assert not page.locator('.focus-facts dt:text-is("Repository")').count()
+    page.locator('.deep-note > summary').click()
+    repository = page.locator('.factlist dt:text-is("Repository") + dd')
+    assert not repository.locator('.val').count()
+    assert 'not found' in repository.inner_text()
+    page.evaluate("() => { location.hash = '#q=Harbour'; render(); }", isolated_context=False)
+    assert page.locator('.best-facts dt:text-is("Local path") + dd').inner_text() == '/tmp/session-workspace'
+    assert not page.locator('.best-facts dt:text-is("Repository")').count()
+
+
 def test_investigation_command_targets_the_notebook_being_viewed(reader):
     page, uri = reader
     page.goto(uri + "#r=people%2Fquinn-alder.md")
