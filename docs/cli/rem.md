@@ -23,6 +23,13 @@ in its owner-only `.state/` and never go into a page; a model reads them only
 through the login you choose. By default it runs on your own Codex plan and
 spends no OpenOnion credits.
 
+What it costs, measured: the first run writes 12 pages at a time. On a real
+notebook it wrote 198 of 242 people, project and organisation pages in about 25
+minutes, and it stops starting pages at 60 points of your Codex week.
+Investigating a very large subject can still cost millions of tokens; searching
+instead of summarising is
+[#1850](https://github.com/openonion/connectonion/issues/1850).
+
 ## Coming from co wiki (1.8.8–1.8.9)
 
 1.9.0 renames the feature `co rem` (#1932). Nothing needs doing by hand:
