@@ -598,14 +598,18 @@
   .focus-fact { min-width: 0; }
   .focus-facts dt { font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--blue); }
   .focus-facts dd { margin: 6px 0 0; font-size: 13px; color: var(--ink); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .relation-description { font: 13px/1.5 var(--ui); color: var(--ink-2); margin: 0 0 10px; }
+  .relation-entry { min-width: 0; }
+  .relation-provenance { font: 12px/1.5 var(--ui); color: var(--ink-2); padding: 7px 3px; overflow-wrap: anywhere; }
+  .relation-provenance .cite { margin-left: 4px; }
   .relation-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 9px; }
   .relation-card { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 11px 13px; border: 1px solid var(--line); background: var(--paper); border-radius: 8px; text-decoration: none !important; transition: border-color .16s ease, transform .16s ease; }
   .relation-card:hover, .relation-card:focus-visible { border-color: var(--blue); transform: translateY(-2px); }
   .relation-card strong { font: 600 14px var(--ui); color: var(--ink); }
   .relation-kind { font: 10px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--blue); }
-  .relation-basis { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font: 12px/1.45 var(--ui); color: var(--ink-2); }
+  .relation-basis { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font: 13px/1.5 var(--ui); color: var(--ink-2); }
   .more-relations { margin-top: 10px; }
-  .more-relations > summary { cursor: pointer; font: 600 12px var(--ui); color: var(--blue); }
+  .more-relations > summary { cursor: pointer; font: 600 14px/1.5 var(--ui); color: var(--blue); min-height: 44px; display: list-item; padding: 11px 0; box-sizing: border-box; }
   .more-relations .relation-list { margin-top: 10px; }
   .related-records { grid-column: 1 / -1; }
   .conversation-view { grid-column: 1 / -1; }
@@ -2126,6 +2130,44 @@ function refreshFocusExpansion() {
   if (!statement || !more) return;
   more.hidden = statement.classList.contains("clamped") && statement.scrollHeight <= statement.clientHeight + 1;
 }
+function relationCard(link) {
+  const other = byPath(link.path), origin = byPath(link.via);
+  const labels = { linked: "Linked in this note", "linked from": "Linked from another note",
+    "cited mention": "Text mention", mentioned: "Text mention", "mentioned by": "Mentioned in another note" };
+  const entry = el("div", { class: "relation-entry" }, [
+    el("a", { class: "relation-card", href: href(other) }, [
+      el("span", { class: "relation-kind", text: singular(other.category) + " · " + (labels[link.kind] || link.kind) }),
+      el("strong", { text: other.title }),
+      el("span", { class: "relation-basis" + (link.private ? " private" : ""), text: youify(link.basis || "Notebook link") })])]);
+  if (origin) entry.appendChild(el("div", { class: "relation-provenance" + (link.private ? " private" : "") }, [
+    el("span", { text: "On " }), el("a", { href: href(origin), text: origin.title }),
+    el("span", { html: inline((link.sources || []).map(n => "[" + n + "]").join(""), origin.path) })]));
+  return entry;
+}
+function relationDisclosure(links, label, className = "") {
+  return links.length ? el("details", { class: "more-relations " + className }, [
+    el("summary", { text: label }), el("div", { class: "relation-list" }, links.map(relationCard))]) : null;
+}
+function connectedContext(r) {
+  const related = (r.relations || []).filter(link => byPath(link.path) && !byPath(link.path).service);
+  if (!related.length) return null;
+  const explicit = link => link.kind === "linked" || link.kind === "linked from";
+  const page = link => ["people", "orgs", "projects"].includes(byPath(link.path).category)
+    || link.path.startsWith("skills/catalog/") && !link.path.endsWith("/index.md");
+  const links = related.filter(link => explicit(link) && page(link));
+  const notes = related.filter(link => explicit(link) && !page(link));
+  const mentions = related.filter(link => !explicit(link));
+  return el("div", { class: "focus-section related-records" }, [
+    el("h2", { text: "Connected context" }),
+    links.length ? el("p", { class: "relation-description", text: "Explicit links between notebook pages." }) : null,
+    links.length ? el("div", { class: "relation-list" }, links.slice(0, 6).map(relationCard)) : null,
+    relationDisclosure(links.slice(6), "Show " + (links.length - 6) + " more notebook links"),
+    relationDisclosure(notes, "Other notebook links · " + notes.length, "notebook-links"),
+    mentions.length ? el("details", { class: "more-relations mention-hints" }, [
+      el("summary", { text: "Text mentions · " + mentions.length }),
+      el("p", { class: "relation-description", text: "Name matches help navigate the notebook. A mention alone does not establish a relationship." }),
+      el("div", { class: "relation-list" }, mentions.map(relationCard))]) : null]);
+}
 function recordFocus(r) {
   const k = known(r), out = el("section", { class: "record-focus " + r.category,
     "aria-label": "At a glance" });
@@ -2174,21 +2216,6 @@ function recordFocus(r) {
   const shown = labels.filter(([, value]) => value).slice(0, 3);
   if (shown.length) out.appendChild(el("dl", { class: "focus-facts" }, shown.map(([key, value]) =>
     el("div", { class: "focus-fact" }, [el("dt", { text: key }), el("dd", { html: inline(String(value), r.path), title: plainLine(String(value)) })]))));
-  const related = (r.relations || []).filter(link => byPath(link.path) && !byPath(link.path).service);
-  if (related.length) out.appendChild(el("div", { class: "focus-section related-records" }, [
-    el("h2", { text: "Connected context" }), el("div", { class: "relation-list" }, related.slice(0, 6).map(link => {
-      const other = byPath(link.path);
-      return el("a", { class: "relation-card", href: href(other) }, [
-        el("span", { class: "relation-kind", text: singular(other.category) + " · " + link.kind }),
-        el("strong", { text: other.title }), el("span", { class: "relation-basis" + (link.private ? " private" : ""), text: youify(link.basis || "Linked from another record") })]);
-    })), related.length > 6 ? el("details", { class: "more-relations" }, [
-      el("summary", { text: "Show " + (related.length - 6) + " more connections" }),
-      el("div", { class: "relation-list" }, related.slice(6).map(link => {
-        const other = byPath(link.path);
-        return el("a", { class: "relation-card", href: href(other) }, [
-          el("span", { class: "relation-kind", text: singular(other.category) + " · " + link.kind }),
-          el("strong", { text: other.title }), el("span", { class: "relation-basis" + (link.private ? " private" : ""), text: youify(link.basis || "Linked from another record") })]);
-      }))]) : null]));
   const conversations = [...new Set(sourceList(r).map(source => {
     const id = sourceId(source.text);
     return id && (REM.source_context || {})[id]?.thread;
@@ -2210,6 +2237,8 @@ function recordFocus(r) {
         button.onclick = () => openConversation(id, button);
         return button;
       }))]) : null]));
+  const related = connectedContext(r);
+  if (related) out.appendChild(related);
   const activity = activityPanel(r);
   if (activity) out.appendChild(activity);
   return out;

@@ -234,3 +234,21 @@ regression and targeted desktop/phone hide/restore checks cover that failure.
 This still does not prove automatic reconciliation or all-page
 usefulness. The [organization review](../../design-evidence/rem-org-observed-review-2026-10-03/REVIEW.md)
 records the source, rendered-state and verification limits.
+
+The reader had a separate source-access problem in its navigation: an earlier
+reverse name mention could replace a page's explicit link, including the link's
+actual citations and private flag. Exact skill links could vanish altogether.
+The candidate resolves local paths first and keeps each forward link's own
+line. A read-only census recovered 219 lost or misclassified explicit links;
+this is a navigation result, not a semantic proof of relationships.
+
+Independent AI review from a founder/marketing/UI perspective showed maps and incidental name matches
+ahead of useful links and original conversations. Cited conversations now come
+first, explicit notebook links remain visible, and secondary notes and mentions
+are folded separately. Cards identify the note containing their basis and open
+its originals. Independent review also caught repeated citations inflating a
+source count; the candidate deduplicates them. Whole-line summaries can still
+clip the linked sentence, and one entry per page pair does not expose every
+incoming link separately. The [connected context review](../../design-evidence/rem-connected-context-review-2026-10-03/REVIEW.md)
+records the actual inspected scope and remaining gaps. This remains an
+unpublished draft.

@@ -73,6 +73,48 @@ def test_relationship_basis_keeps_privacy_after_its_text_is_clipped():
     assert not relationships(records)['projects/harbour.md'][0]['private']
 
 
+def test_explicit_links_keep_their_own_line_even_after_a_reverse_mention():
+    records = [
+        {"path": "people/mara.md", "category": "people", "title": "Mara Ostrowski",
+         "text": "Harbour is a possible project.\n"},
+        {"path": "projects/harbour.md", "category": "projects", "title": "Harbour",
+         "text": "Mara is in an old directory.\n"
+                 "The pilot involved [our contact](../people/mara.md) [sensitive] [2][2][3].\n"},
+    ]
+    links = relationships(records)
+    assert links == relationships(list(reversed(records)))
+    forward = links['projects/harbour.md'][0]
+    assert forward['kind'] == 'linked'
+    assert forward['basis'].startswith('The pilot involved our contact')
+    assert forward['sources'] == ['2', '3'] and forward['private']
+    assert forward['via'] == 'projects/harbour.md'
+    # The opposite page has its own weaker statement, with its own provenance.
+    reverse = links['people/mara.md'][0]
+    assert reverse['kind'] == 'mentioned'
+    assert reverse['sources'] == [] and not reverse['private']
+    assert reverse['via'] == 'people/mara.md'
+
+
+def test_exact_path_links_include_skills_and_ignore_urls_and_source_trailers():
+    records = [
+        {"path": "people/mara.md", "category": "people", "title": "Mara Ostrowski",
+         "text": "Use [playbook](../skills/catalog/triage.md) [3].\n"
+                 "External [guide](https://example.test/projects/harbour.md).\n"
+                 "## Sources\n- [3] See [Harbour](../projects/harbour.md)"},
+        {"path": "skills/catalog/triage.md", "category": "skills", "title": "Triage",
+         "text": "# Triage"},
+        {"path": "projects/harbour.md", "category": "projects", "title": "Harbour",
+         "text": "# Harbour"},
+    ]
+    links = relationships(records)
+    assert [r['path'] for r in links['people/mara.md']] == ['skills/catalog/triage.md']
+    link = links['people/mara.md'][0]
+    assert link['kind'] == 'linked' and link['sources'] == ['3']
+    incoming = links['skills/catalog/triage.md'][0]
+    assert incoming['kind'] == 'linked from'
+    assert incoming['via'] == 'people/mara.md' and incoming['sources'] == ['3']
+
+
 def test_claim_changes_require_a_cited_new_value_and_do_not_count_formatting():
     before = {"people/mara.md": "# Mara\n\n## Facts\n- Role: Partnerships Lead [1]\n- Phone: Unknown\n"}
     after = {"people/mara.md": "# Mara\n\n## Facts\n- Role: partnerships-lead [2]\n- Phone: +64 21 123 [3]\n- Company: Fernhill\n\n## Sources\n- [2] mail:role — role\n- [3] mail:phone — phone\n"}

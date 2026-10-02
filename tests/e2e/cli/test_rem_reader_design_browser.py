@@ -200,6 +200,9 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
 def test_focus_connects_project_people_org_and_archived_conversation(reader):
     page, uri = reader
     page.goto(uri + "#r=projects%2Fharbour.md")
+    # This fixture names the pilot participants without linking their paths.
+    # They remain available as text hints, behind progressive disclosure.
+    page.locator('.mention-hints > summary').click()
     connected = page.locator(".related-records .relation-card")
     assert {name.strip() for name in connected.locator("strong").all_inner_texts()} >= {
         "Mara Ostrowski", "Fernhill Labs"}
@@ -219,6 +222,36 @@ def test_focus_connects_project_people_org_and_archived_conversation(reader):
     page.locator("a.cite[href*='src-5']").first.click()
     evidence = page.locator("#evidence-dialog")
     assert evidence.is_visible() and "I will send the usage export" in evidence.inner_text()
+
+
+def test_conversations_precede_links_and_name_hints_keep_their_source_page(reader):
+    page, uri = reader
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate(r"""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      REM.records.push({path: 'notes/run.md', category: 'notes', title: 'Run note', text: '# Run note'});
+      r.relations = [
+        {path: 'skills/catalog/weekly-brief.md', kind: 'linked', basis: 'Use the brief', via: r.path, sources: ['5']},
+        {path: 'notes/run.md', kind: 'linked', basis: 'Run evidence', via: r.path, sources: []},
+        {path: 'orgs/fernhill-labs.md', kind: 'mentioned by', basis: 'Mara in a directory',
+         via: 'orgs/fernhill-labs.md', sources: ['1']}
+      ];
+      render();
+    }""", isolated_context=False)
+    assert page.locator('.conversation-view').bounding_box()['y'] < page.locator('.related-records').bounding_box()['y']
+    assert page.locator('.relation-card').filter(has_text='weekly-brief').is_visible()
+    note = page.locator('.relation-card').filter(has_text='Run note')
+    hint = page.locator('.relation-card').filter(has_text='Mara in a directory')
+    assert not note.is_visible() and not hint.is_visible()
+    page.locator('.notebook-links > summary').click()
+    assert note.is_visible() and not hint.is_visible()
+    page.locator('.mention-hints > summary').click()
+    assert hint.is_visible()
+    assert 'On Fernhill Labs' in hint.locator('..').inner_text()
+    assert hint.locator('..').locator('a.cite').get_attribute('href') == '#r=orgs%2Ffernhill-labs.md&h=src-1'
+    # Forward-link citations open the origin's original, not the destination's [5].
+    page.locator('.related-records a.cite[href*="mara-ostrowski"]').first.click()
+    assert 'I will send the usage export' in page.locator('#evidence-dialog').inner_text()
 
 
 def test_short_focus_text_clipped_on_phone_can_expand_and_collapse(reader):

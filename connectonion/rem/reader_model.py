@@ -32,8 +32,40 @@ def _destination(origin: str, raw: str) -> str:
     return posixpath.normpath(posixpath.join(posixpath.dirname(origin), raw))
 
 
+def _relation(origin: str, target: str, line: str, kind: str) -> dict:
+    basis = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
+    basis = CITATION.sub("", basis).lstrip("- ").strip()[:220]
+    return {"path": target, "kind": kind, "basis": basis,
+            "private": bool(PRIVATE.search(line)), "sources": list(dict.fromkeys(CITATION.findall(line)))[:4], "via": origin}
+
+
+def _forward_relations(origin: str, text: str, paths: dict, names: dict) -> dict:
+    body = _not_sources(text)
+    found = {}
+    # An exact notebook path does not depend on its label or the target's title.
+    for line in body.splitlines():
+        for _, raw in REFERENCE.findall(line):
+            target = _destination(origin, raw)
+            if target in paths and target != origin and target not in found:
+                found[target] = _relation(origin, target, line.strip(), "linked")
+    # Match visible prose once per name, never Markdown URLs. Replacing link
+    # markup preserves line boundaries, citation numbers and privacy markers.
+    prose = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", body)
+    for name, target in sorted(names.items(), key=lambda pair: -len(pair[0])):
+        if target == origin or target in found:
+            continue
+        match = re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", prose, re.I)
+        if match:
+            start = prose.rfind("\n", 0, match.start()) + 1
+            end = prose.find("\n", match.end())
+            line = prose[start:end if end >= 0 else len(prose)].strip()
+            kind = "cited mention" if CITATION.search(line) else "mentioned"
+            found[target] = _relation(origin, target, line, kind)
+    return found
+
+
 def relationships(records: list[dict]) -> dict[str, list[dict]]:
-    """Exact, unambiguous mentions with their basis; reverse links stay explicit."""
+    """Exact notebook links first; unambiguous mentions remain navigation hints."""
     paths = {row["path"]: row for row in records}
     names: dict[str, list[str]] = {}
     for row in records:
@@ -41,9 +73,6 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
             title = row["title"].replace(" (automated candidate)", "").strip()
             if len(title) >= 4:
                 names.setdefault(title.casefold(), []).append(row["path"])
-                # Short references are useful only when they identify one record.
-                # A first name or organisation stem is a navigational hint, not a
-                # claim about the nature of the relationship.
                 words = title.split()
                 if (row["category"] in {"people", "orgs"} and len(words) >= 2
                         and words[0][0].isupper() and words[1][0].isupper()):
@@ -51,32 +80,16 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
                     if len(stem) >= 4:
                         names.setdefault(stem.casefold(), []).append(row["path"])
     unique = {name: rows[0] for name, rows in names.items() if len(set(rows)) == 1}
-    found: dict[str, dict[str, dict]] = {path: {} for path in paths}
-
-    for origin, row in paths.items():
-        body = _not_sources(row["text"])
-        lower = body.casefold()
-        explicit = {_destination(origin, raw) for _, raw in REFERENCE.findall(body)}
-        for name, target in sorted(unique.items(), key=lambda pair: -len(pair[0])):
-            if target == origin or target in found[origin] or name not in lower:
-                continue
-            match = re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", body, re.I)
-            if not match:
-                continue
-            start, end = body.rfind("\n", 0, match.start()) + 1, body.find("\n", match.end())
-            line = body[start:end if end >= 0 else len(body)].strip()
-            cites = CITATION.findall(line)
-            linked = target in explicit
-            private = bool(PRIVATE.search(line))
-            basis = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
-            basis = CITATION.sub("", basis).lstrip("- ").strip()[:220]
-            relation = {"path": target, "kind": "linked" if linked else "cited mention" if cites else "mentioned",
-                        "basis": basis, "private": private, "sources": cites[:4], "via": origin}
-            found[origin][target] = relation
-            found[target].setdefault(origin, {"path": origin, "kind": "mentioned by", "basis": basis,
-                                              "private": private, "sources": cites[:4], "via": origin})
-    rank = {"linked": 0, "mentioned by": 1, "cited mention": 2, "mentioned": 3}
-    return {path: sorted(rows.values(), key=lambda rel: (rank.get(rel["kind"], 4), rel["path"]))
+    forward = {path: _forward_relations(path, row["text"], paths, unique) for path, row in paths.items()}
+    found = {path: dict(rows) for path, rows in forward.items()}
+    # Finish every page's own links before adding incoming navigation. Otherwise
+    # a reverse hint can replace a later page's explicit link and its provenance.
+    for origin, rows in forward.items():
+        for target, relation in rows.items():
+            kind = "linked from" if relation["kind"] == "linked" else "mentioned by"
+            found[target].setdefault(origin, {**relation, "path": origin, "kind": kind})
+    rank = {"linked": 0, "linked from": 1, "cited mention": 2, "mentioned": 3, "mentioned by": 4}
+    return {path: sorted(rows.values(), key=lambda rel: (rank[rel["kind"]], rel["path"]))
             for path, rows in found.items()}
 
 
