@@ -57,6 +57,8 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import httplib2
+from google_auth_httplib2 import AuthorizedHttp
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
@@ -68,6 +70,14 @@ from ._attachment_files import path_of_open_file
 from .gmail_mailbox import GmailMailbox
 
 GMAIL_ATTACHMENT_LIMIT = 25_000_000
+GOOGLE_API_TIMEOUT_SECONDS = 30
+
+
+def _authorized_http(credentials: Credentials) -> AuthorizedHttp:
+    # A stalled Gmail socket blocked a real 90-day REM init indefinitely. The
+    # Google client retries timed-out reads, but only when the transport has a
+    # timeout in the first place.
+    return AuthorizedHttp(credentials, http=httplib2.Http(timeout=GOOGLE_API_TIMEOUT_SECONDS))
 
 
 
@@ -167,7 +177,7 @@ class Gmail(GmailMailbox):
             refresh_handler=self._refresh_handler,
         )
 
-        self._service = build('gmail', 'v1', credentials=creds)
+        self._service = build('gmail', 'v1', http=_authorized_http(creds))
         return self._service
 
     def _token_expiry(self) -> datetime | None:
@@ -1213,8 +1223,14 @@ class Gmail(GmailMailbox):
         first, and reports the Date header in RFC 2822; co rem importer wants
         the opposite of all three, so it is normalised here.
         """
+        return self._list_between(start, end, max_results, defer_full=False)
+
+    def list_between_for_rem(self, start: str, end: str, max_results: int = 200) -> list:
+        """Defer metadata for a full window that REM will split and discard."""
+        return self._list_between(start, end, max_results, defer_full=True)
+
+    def _list_between(self, start: str, end: str, max_results: int, *, defer_full: bool) -> list:
         from datetime import datetime
-        from email.utils import parsedate_to_datetime
         first = int(datetime.fromisoformat(start).timestamp())
         last = int(datetime.fromisoformat(end).timestamp())
         # co rem files the user's own mail under the person it went to, so the
@@ -1222,6 +1238,11 @@ class Gmail(GmailMailbox):
         page = self._get_service().users().messages().list(
             userId='me', q=f"after:{first} before:{last}", maxResults=max_results).execute(num_retries=3)
         self._last_message_page = page
+        # REM bisects every full window to avoid losing mail at the provider's
+        # cap. Fetching 200 headers here only to throw them away and fetch them
+        # again in the halves made a real 201-message week take minutes.
+        if defer_full and len(page.get('messages', [])) >= max_results:
+            return [{'id': message['id']} for message in page['messages']]
         rows = self._email_dicts(page.get('messages', []), max_results, recipients=True)
         # The listing names each message's conversation; co rem's thread view groups by it (#2067).
         threads = {message['id']: message.get('threadId', '') for message in page.get('messages', [])}
@@ -1247,7 +1268,8 @@ class Gmail(GmailMailbox):
         which co rem treats as "no contacts" rather than a failed map.
         """
         from googleapiclient.discovery import build
-        people = build('people', 'v1', credentials=self._get_service()._http.credentials, cache_discovery=False)
+        people = build('people', 'v1', http=_authorized_http(self._get_service()._http.credentials),
+                       cache_discovery=False)
         names = {}
         for listing, key, params in ((people.people().connections(), 'connections',
                                       {'resourceName': 'people/me', 'personFields': 'names,emailAddresses'}),
