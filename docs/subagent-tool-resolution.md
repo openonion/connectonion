@@ -1,5 +1,11 @@
 # Sub-Agent Tool Resolution System
 
+> **Design note, not the current layout.** The `subagents/` folder this page
+> describes was a prototype and has been removed. Subagents are implemented in
+> `connectonion/useful_plugins/subagents.py`; definitions are `AGENT.md` files
+> in `.co/agents/<name>/`, `~/.co/agents/<name>/`, or the built-ins under
+> `connectonion/useful_plugins/builtin_agents/`.
+
 ## How to Add Different Tools to Sub-Agents
 
 ### Current System (Only FileTools)
