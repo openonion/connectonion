@@ -8,8 +8,8 @@
 
 One command line, `co`, gives your AI agent the accounts and tools it works with:
 Gmail and Outlook, a logged-in browser, your files, chat apps and other agents.
-**co rem gives that work a memory:** people, projects and decisions,
-with links back to the sources.
+**co rem enables decentralized context flow:** connect the context in your
+work, keep it on your machine, and carry it into the next task.
 
 [![PyPI](https://img.shields.io/pypi/v/connectonion?style=flat-square)](https://pypi.org/project/connectonion/)
 [![Python](https://img.shields.io/pypi/pyversions/connectonion?style=flat-square)](https://pypi.org/project/connectonion/)
@@ -17,7 +17,7 @@ with links back to the sources.
 [![License](https://img.shields.io/pypi/l/connectonion?style=flat-square)](LICENSE)
 [![PyPI Downloads](https://static.pepy.tech/personalized-badge/connectonion?period=total&units=international_system&left_color=black&right_color=green&left_text=downloads)](https://pepy.tech/projects/connectonion)
 
-[Website](https://www.connectonion.com) · [Docs](https://docs.connectonion.com) · [Get started](#install-and-start) · [co rem](#co-rem--your-agents-memory) · [Releases](https://github.com/openonion/connectonion/releases) · [Discord](https://discord.gg/4xfD9k8AUF)
+[Website](https://www.connectonion.com) · [Docs](https://docs.connectonion.com) · [Get started](#install-and-start) · [co rem](#co-rem--decentralized-context-flow) · [Releases](https://github.com/openonion/connectonion/releases) · [Discord](https://discord.gg/4xfD9k8AUF)
 
 </div>
 
@@ -93,11 +93,18 @@ with links back to the sources.
 <p><a href="docs/cli/README.md">Every command</a> · <code>co commands</code> lists them all.</p>
 <!-- /connections -->
 
-## co rem — your agent's memory
+<a id="co-rem--your-agents-memory"></a>
 
-**Pick up where yesterday left off.** co rem turns your mail and coding
-sessions into local pages about the people, projects and skills in your work.
-Like REM sleep, it carries useful context forward.
+## co rem — decentralized context flow
+
+**Your context, connected and ready for the next task.** co rem connects
+context from your mail and coding sessions in local, linked Markdown pages.
+People, projects, skills and decisions stay connected to their sources, so
+you and your agents can follow the evidence and reuse that context.
+
+The context lives on your machine, where your tools and agents can read it.
+Memory keeps it available over time; the goal is to keep context flowing
+through your work.
 
 [**Explore co rem →**](https://docs.connectonion.com/rem) ·
 [Try the sample reader](https://docs.connectonion.com/rem/demo) ·
@@ -113,12 +120,12 @@ Like REM sleep, it carries useful context forward.
 *The 1.9.0a20 reader with invented example data. The linked sample is a frozen
 notebook you can explore without connecting an account.*
 
-- **See what changed.** Review new facts, decisions and open threads, with
-  citations you can follow back to the source.
-- **Find the context again.** Browse connected people and project pages,
-  then use recall prompts to revisit what matters.
-- **Keep it current.** The first run builds your map and investigates recent
-  work. An approved schedule updates it overnight.
+- **Connect scattered context.** Bring mail and coding sessions into linked
+  pages about the people, projects and skills involved.
+- **Follow the evidence.** Trace facts, decisions and changes back to their
+  sources, then carry that understanding into the next task.
+- **Keep context in your hands.** Local Markdown pages can be read by you and
+  your agents. An approved schedule keeps them current.
 
 ### Try co rem · 1.9.0 preview
 

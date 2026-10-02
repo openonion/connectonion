@@ -38,3 +38,16 @@ command walkthrough can wait for a click. A visual introduction that makes
 the product recognizable should not disappear just because another feature
 needs attention. The browser recheck now needs to verify both promises:
 visible integrations on arrival, and a direct path to co rem.
+
+The wording needed a second correction. “Your agent's memory” described
+what was saved, but the owner named the purpose: decentralized context flow.
+The local pages matter because they connect evidence from different parts
+of work and make it available to the next task, tool or agent. A person can
+follow a source; an agent can read the same Markdown. Memory is how that
+context remains available over time.
+
+The introduction now leads with that purpose and explains it through the
+existing local pages and source links. It does not need a new promise of
+automatic sharing between machines to make the idea concrete. The notebook
+stays under the owner's control, and the installation section still explains
+which selected sources are sent to a model during investigation.
