@@ -86,7 +86,7 @@ from the existing test venv and the built wheel installed into an isolated targe
 python -m pip install --no-deps --target /tmp/co-github-installed-2147 \
   dist/connectonion-1.9.0a18-py3-none-any.whl
 PYTHONPATH=/tmp/co-github-installed-2147 python \
-  docs/design-evidence/github-inbox-2147/installed-wheel-smoke.py
+  tests/e2e/manual/github_inbox_smoke.py
 ```
 
 Output: `Installed wheel: watch → fixture scan → receive → done; consume --once
@@ -108,3 +108,5 @@ not a GitHub-feature release. The target is the next unassigned alpha after a19.
 Both websites were rebuilt after their main merges. Blog source/build checks
 now cover 121 Markdown files, 137 canonical/feed/sitemap entries and 113
 generated articles. Screenshot evidence was refreshed against those builds.
+
+CI caught the acceptance script being included as Python code in the docs path rewrite, which broke editable metadata generation. Moved the standalone acceptance script to `tests/e2e/manual/github_inbox_smoke.py`; the unchanged baseline editable install passed. The docs tree now carries data only, preserving the existing package mapping.
