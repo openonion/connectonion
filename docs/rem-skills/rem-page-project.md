@@ -73,8 +73,10 @@ failure from a commit title.
 A recovered historical project page joined a slow-crawler request with a later
 1,000-property target but cited only the first message. Both messages existed;
 source-id validation could not establish that each clause was supported. The
-writer now checks numbers, dates and joined clauses against their attached
-citations. With user-only material it also preserves precise operating scope,
+instruction now requires checking inherited numbers, dates and joined clauses
+against their original sources. A generic live rereview still retained the old
+error, so the observed page was corrected against both messages; that manual
+correction does not prove the model reliably follows the instruction. With user-only material it also preserves precise operating scope,
 such as a branch exclusion versus an organization-wide exclusion, so the lead
 offers a decision instead of several unverified completion questions.
 

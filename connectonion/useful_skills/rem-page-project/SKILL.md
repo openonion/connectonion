@@ -114,8 +114,8 @@ An unknown flow is omitted; a plausible diagram is not evidence.
   here rather than as a tail on every bullet elsewhere.
 - `Sources`: numbered, `- [n] <source id> — <date>`, nothing more; each inspected
   file its own entry. Mark inference; never copy facts from examples.
-  Cite every clause, quantity and date. A joined claim needs each supporting
-  message; adjacent requests do not support its numbers or deadlines.
+  Recheck inherited clauses, quantities and dates against original sources.
+  Joined claims need both messages; cite each clause.
 
 State a claim in one clause. How the page was made (the mapper, the collector,
 counts of matched sessions, the prior page) goes nowhere in the body.
