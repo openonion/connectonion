@@ -3,7 +3,7 @@
 ## Scope and evidence
 
 - Task: keep a recent, consequential owner decision in the first-run evidence packet; remove a person-only empty section and an unrelated contact date from the owner page.
-- Build: `feat/rem-owner-schema-a19` on the published 1.9.0a19 main line. These are candidate screenshots, not an installed release.
+- Build: `feat/rem-owner-schema-a19` rebased onto main merge `91b32942` (the 1.9.0a20 reader-label candidate). These are candidate screenshots, not an installed release.
 - State: invented Avery / Harbour notebook. The before state adds the two defects seen in a private 1.9.0a18 owner page; the after state applies this branch's deterministic cleanup. Both use the same candidate reader and content otherwise.
 - Capture: `python scripts/capture_rem_owner_schema.py docs/design-evidence/rem-owner-schema-2026-10-02` in a venv with Playwright and Chrome. Chrome, light theme, 100% zoom, 1440×900 / 900×900 / 390×844; keyboard opens the full note. No network requests.
 - Source: invented fixture in `tests/fixtures/rem_reader_notebook.py`, captured locally on 2026-10-02. Private notebook text and screenshots are not included.
