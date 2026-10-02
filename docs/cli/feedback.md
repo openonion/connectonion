@@ -1,5 +1,7 @@
 # Feedback
 
+These commands currently require the [development branch installation](experimental-integrations.md#install-the-preview); they are not released on PyPI yet.
+
 Every `co` invocation ends with feedback channels on **stderr**, including failures. Command results remain on stdout. Feedback channels stay visible when Next-step tips are disabled.
 
 - [GitHub issue](https://github.com/openonion/connectonion/issues/new): best for reproducible bugs and integration requests.
