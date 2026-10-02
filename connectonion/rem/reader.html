@@ -577,6 +577,9 @@
   .focus-kicker { display: block; font: 600 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--night-2); }
   .focus-statement { max-width: 64ch; position: relative; z-index: 1; font: 26px/1.28 var(--display); margin: 16px 0 0; }
   .focus-statement.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+  .focus-next { position: relative; z-index: 1; max-width: 68ch; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--night-line); }
+  .focus-next .k { display: block; font: 600 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--night-2); }
+  .focus-next p { margin: 5px 0 0; font: 15px/1.45 var(--text); }
   .focus-more { position: relative; z-index: 1; border: 0; background: transparent; color: var(--night-ink); cursor: pointer; margin: 12px 0 0; padding: 0; font: 600 12px var(--ui); text-decoration: underline; text-underline-offset: 3px; }
   .focus-section.next-exchanges { grid-column: 1 / -1; }
   .project-workspace { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
@@ -1658,7 +1661,10 @@ function sectionHead(title, note) {
 function memoryStatement(r) {
   const insight = section(r, "insight");
   const lines = insight ? listItems(insight.text) : [];
-  const line = lines.find(item => /^Now:/i.test(item)) || lines.find(item => /^Changed:/i.test(item))
+  // The owner opens this page to recall what changed; a generic "Now" often
+  // restates the latest request. Other records keep their current-state lead.
+  const preferred = r.path === REM.owner ? ["Changed", "Now"] : ["Now", "Changed"];
+  const line = preferred.map(kind => lines.find(item => new RegExp("^" + kind + ":", "i").test(item))).find(Boolean)
     || lines.find(item => /^At stake:/i.test(item)) || lines[0];
   const current = section(r, "where it stands");
   const statement = plainLine(line ? line.replace(/^(?:Changed|Now|At stake):\s*/i, "") : current?.text || known(r).summary);
@@ -2044,7 +2050,7 @@ function leadRow(r) {
       threadAge(first) ? el("span", { class: "age mono" + (first.since && daysSince(first.since) === 0 ? " today" : ""), text: threadAge(first) }) : null,
       t.items.length > 1 ? el("span", { class: "more mono", text: "+" + (t.items.length - 1) + " more" }) : null]));
   } else if (t.calm) row.appendChild(el("span", { class: "lead-calm", text: "Nothing open" }));
-  if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "people" ? "Last contact " : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
+  if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "people" && r.path !== REM.owner ? "Last contact " : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u) row.appendChild(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: u.count ? "used " + (u.count === 1 ? "once" : u.count + "×") + " in " + u.days + " days · last " + fmtDate(u.last) + (u.tools ? " · " + u.tools : "") : "not used in " + u.days + " days" })]));
   if (section(r, "uncertainties")) row.appendChild(el("a", { class: "unsure", href: "#r=" + encodeURIComponent(r.path) + "&h=uncertainties", title: "What this page is not sure of" }, ["?", el("span", { text: " Uncertain points" })]));
@@ -2090,6 +2096,18 @@ function recordFocus(r) {
   const statementNode = el("p", { class: "focus-statement clamped", text: statement || (k.status === "Mapped"
     ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet.") });
   focusHead.appendChild(statementNode);
+  if (r.path === REM.owner) {
+    const insight = section(r, "insight");
+    const items = insight ? listItems(insight.text) : [];
+    const changed = items.some(item => /^Changed:/i.test(item));
+    const next = changed && items.find(item => /^Now:/i.test(item));
+    if (next) {
+      const step = plainLine(next.replace(/^Now:\s*/i, ""));
+      focusHead.appendChild(el("div", { class: "focus-next" }, [
+        el("span", { class: "k", text: "Next step" }),
+        el("p", { text: step[0].toUpperCase() + step.slice(1) })]));
+    }
+  }
   if ((statement || "").length > 180) {
     const more = el("button", { type: "button", class: "focus-more", "aria-expanded": "false", text: "Read full context" });
     more.onclick = () => {
@@ -2115,7 +2133,8 @@ function recordFocus(r) {
     if (blocks.length) out.appendChild(el("div", { class: "project-workspace" }, blocks));
   }
   const f = facts(r);
-  const labels = r.category === "people" ? [["Role", f.role], ["Company", f.company], ["Last contact", f.last]]
+  const labels = r.path === REM.owner ? [["Role", f.role], ["Location", f.location], ["Company", f.company]]
+    : r.category === "people" ? [["Role", f.role], ["Company", f.company], ["Last contact", f.last]]
     : r.category === "projects" ? [["Last active", f.last], ["Sessions", f.sessions], ["Repository", f.repo]]
       : r.category === "orgs" ? [["Domain", f.domain], ["Last contact", f.last]]
         : r.category === "skills" ? [["Usage", skillUsage(r) ? skillUsage(r).count + " uses" : ""], ["Last active", f.last]] : [];
