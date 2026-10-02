@@ -106,6 +106,13 @@ from connectonion import Agent
       requires is attached or linked here (tests, journeys, screenshots,
       exact commands) — see docs/ai-implementation-contract.md
 
+## CLI discovery surfaces (new or changed service commands)
+
+- [ ] GitHub README logo wall and documentation link checked
+- [ ] Docs website logo wall and documentation link checked (link companion PR)
+- [ ] Landing page logo wall and documentation link checked (link companion PR)
+- [ ] Full service inventory compared; desktop/mobile layout and release labels checked
+
 ## Screenshots (if applicable)
 Add screenshots to help explain your changes.
 

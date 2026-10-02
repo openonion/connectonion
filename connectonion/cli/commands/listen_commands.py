@@ -841,10 +841,11 @@ def handle_log(name: str, follow: bool = False, chat: Optional[str] = None,
 
 
 def handle_consume(name: str, command: List[str], once: bool = False, workers: int = 1,
-                   context: int = 0) -> None:
+                   context: int = 0, no_reply: bool = False) -> None:
     """For each message: run COMMAND with the message on stdin, send its
     stdout back as the reply. Empty stdout or a non-zero exit sends nothing."""
     p = _configured(name)
+    no_reply = no_reply or getattr(p, "read_only", False)
     inbox = Inbox(name)
     if not command or shutil.which(command[0]) is None:
         # Found out now, before a message is taken. A typo used to claim the
@@ -881,7 +882,8 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
         # one the chat cannot currently distinguish from the bot being down.
         # Marking after it would light up for the millisecond before the reply
         # lands, which is the same as not marking at all.
-        _mark_answering(p, inbox, message)
+        if not no_reply:
+            _mark_answering(p, inbox, message)
         run = subprocess.run(command, input=_with_context(inbox, message, context) + "\n",
                              capture_output=True, text=True, env=env)
         # Returning finishes the message; raising leaves it in cur/ for the
@@ -891,6 +893,10 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
         # 0 with nothing to say returns, because silence is an answer.
         if run.returncode != 0:
             failed(message, f"command exited {run.returncode}: {run.stderr.strip()[:500]}")
+        if no_reply:
+            print(run.stdout, end="")
+            print(run.stderr, end="", file=sys.stderr)
+            return
         if not run.stdout.strip():
             inbox.log(f"consume: nothing to say for {message.id}")
             return
