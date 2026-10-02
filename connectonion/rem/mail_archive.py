@@ -234,6 +234,7 @@ def _material_item(snapshot: dict, own: set) -> dict:
             "participants": {"from": sender, "to": snapshot.get("to") or [], "cc": snapshot.get("cc") or []},
             "subject": snapshot.get("subject", ""), "source": f"{provider}:{_key(message_id)[:12]}",
             "_mail_id": message_id,
+            **({"thread": f"mail:{provider}:{snapshot['thread']}"} if snapshot.get("thread") else {}),
             **{key: snapshot[key] for key in ("input_scope", "retained_at", "body_format") if snapshot.get(key)},
             **({"captured_at": snapshot["fetched_at"]} if snapshot.get("fetched_at") else {}),
             **({"relationship_scope": snapshot["relationship_scope"]} if snapshot.get("relationship_scope") else {})}
@@ -308,6 +309,7 @@ def person_material(root: Path, record: str, *, handles=()) -> tuple[dict[str, l
     snapshots = []
     refs = [json.loads(line) for line in index.read_text(encoding="utf-8").splitlines() if line] if index.is_file() else []
     rows = mail_metadata(root)
+    threads = {(row["source"], row["id"]): row.get("thread") or "" for row in rows}
     direct = {(ref["provider"], ref["id"]) for ref in refs}
     refs += [ref for row in rows if (row["source"], row["id"]) not in direct
              and addresses.intersection(participants(row)) and (ref := _saved_ref(root, row, addresses=addresses))]
@@ -319,7 +321,8 @@ def person_material(root: Path, record: str, *, handles=()) -> tuple[dict[str, l
         if (not isinstance(snapshot, dict) or snapshot.get("id") != ref["id"]
                 or snapshot.get("provider") != ref["provider"] or "body" not in snapshot):
             return None
-        snapshots.append({**snapshot, **({"relationship_scope": ref["relationship_scope"]}
+        snapshots.append({**snapshot, "thread": threads.get((ref["provider"], ref["id"]), ""),
+                          **({"relationship_scope": ref["relationship_scope"]}
                                         if ref.get("relationship_scope") else {})})
     return _material(manifest, snapshots)
 

@@ -591,10 +591,14 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             mail_to_read = mail_to_read[-12:]
         for number, r in enumerate(mail_to_read, 1):
             body = _patient(client.get_email_body, r["id"])
+            provenance = {}
             if archive_root is not None:
                 from .mail_archive import retain_message
                 saved = retain_message(archive_root, kind, r, body, fetched_at=datetime.now(timezone.utc).isoformat())
                 body = saved["body"]
+                provenance = {key: saved[key] for key in ("input_scope", "retained_at", "body_format") if saved.get(key)}
+                if saved.get("fetched_at"):
+                    provenance["captured_at"] = saved["fetched_at"]
                 r = {**r, **{key: saved[key] if key in saved else r.get(key)
                             for key in ("date", "from", "to", "cc", "subject")}}
             head, _, rest = body.partition("--- Email Body ---")
@@ -602,11 +606,14 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             own = _address(r["from"]) in mine or "@" not in _address(r["from"])
             short = hashlib.sha256(r["id"].encode()).hexdigest()[:12]
             scope = RELATED_ORG_SCOPE if domains and not on_domains(r, domains) else ""
+            thread = r.get("thread_id") or r.get("thread") or ""
             items.append({"role": "user" if own else "other", "speaker": r["from"],
                           "text": body, "timestamp": str(r["date"]),
                           "participants": {key: r.get(key) or ([] if key in ("to", "cc") else "")
                                            for key in ("from", "to", "cc")},
                           "subject": r.get("subject", ""), "source": f"{kind}:{short}",
+                          **provenance,
+                          **({"thread": f"mail:{kind}:{thread}"} if thread else {}),
                           **({"relationship_scope": scope} if scope else {})})
             add_attachments(r["id"], r["from"], str(r["date"]), r.get("subject", ""), scope)
             if stage_progress and (number % 10 == 0 or number == len(mail_to_read)):
@@ -678,6 +685,16 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                            else " (handle, sender or chat match)" if chat else " (handle or project match)"))
         items += picked
     items.sort(key=lambda i: i["timestamp"])
+    if archive_root is not None:
+        from .mail_archive import mail_metadata
+        threads = {f"{row['source']}:{hashlib.sha256(row['id'].encode()).hexdigest()[:12]}":
+                   f"mail:{row['source']}:{row['thread']}" if row.get("thread") else ""
+                   for row in mail_metadata(archive_root)}
+        for item in items:
+            if item.get("source") in threads:
+                item.pop("thread", None)
+                if threads[item["source"]]:
+                    item["thread"] = threads[item["source"]]
     for item in items:
         item.pop("_mail_id", None)
     return items, coverage
@@ -937,6 +954,28 @@ def _keep_facts(notebook: Notebook, root: Path, record: str, rows: list[dict]) -
             notebook.write(record, kept)
 
 
+def _mail_comparison(root, record, handles, items, fresh, cited, subscriptions, *, sent_only=False):
+    """Previously cited originals for a newly supplied exact mail thread, including older asks."""
+    threads = {item["thread"] for item in fresh if item.get("thread")
+               and item.get("source", "").split(":")[0] in MAIL_KINDS and item.get("role") != "attachment"}
+    if not record.startswith("people/") or not threads:
+        return []
+    from .mail_archive import person_material
+    archived = person_material(root, record, handles=handles)
+    available = {item["source"]: item for item in items if item.get("source")}
+    for provider, saved in archived[0].items() if archived else []:
+        if not (subscriptions.get(provider) or {}).get("unsubscribed"):
+            for item in saved:
+                item.pop("_mail_id", None)
+                available.setdefault(item["source"], item)
+    return [{**item, "comparison_scope": "Previously cited original retained to compare a newly supplied "
+             "message in this exact provider thread. It may predate the requested window; it is old "
+             "evidence, not new correspondence or additional initial-window coverage."}
+            for source, item in available.items() if source in cited and item.get("thread") in threads
+            and item.get("source", "").split(":")[0] in MAIL_KINDS and item.get("role") != "attachment"
+            and (not sent_only or item.get("role") == "user")]
+
+
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
@@ -980,27 +1019,37 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     if last:
         # The window is whole days, so an investigation straight after another
         # re-gathers the mail the page already cites: 102k tokens to be told
-        # it was "already represented as source [21]" (#2015). What the page
-        # cites, it has read.
-        cited = notebook.read(record).partition("\n## Sources\n")[2]
+        # it was "already represented as source [21]" (#2015). Retain cited
+        # originals only when new exact-thread mail needs comparison.
+        from .reader_model import _source_ids
+        cited = _source_ids([{"text": notebook.read(record).partition("\n## Sources\n")[2]}])
         fresh = [item for item in items if not item.get("source") or item["source"] not in cited]
         if related["candidates"] and any(item.get("relationship_scope") for item in fresh):
             coverage.append("Related-domain comparison: previously cited primary correspondence retained "
                             "to check offer dates and terms against the newly gathered contact context")
         else:
-            if len(fresh) < len(items):
-                coverage.append(f"{len(items) - len(fresh)} gathered item(s) already cited on the page, not re-read")
-            items = fresh
+            comparison = _mail_comparison(root, record, handles, items, fresh, cited, subscriptions,
+                                          sent_only=sent_only)
+            compared = {item["source"] for item in comparison}
+            skipped = sum(item.get("source") in cited and item.get("source") not in compared for item in items)
+            if skipped:
+                coverage.append(f"{skipped} gathered item(s) already cited on the page, not re-read")
+            if comparison:
+                coverage.append(f"Update material: {len(fresh)} newly supplied source(s), "
+                                f"{len(comparison)} previously cited mail source(s) retained for exact "
+                                "provider-thread comparison; comparison is old evidence, not new contact")
+            items = [*fresh, *comparison]
     if last and not items and not record.startswith("projects/"):
         _keep_facts(notebook, root, record, fact_rows)
         raise _nothing_new(record, subject, coverage, last)
     gathered_sources = {item["source"] for item in items if item.get("source")}
     refusal = refused_for(root, record)
     if last:
-        # The page already reflects what came before; say so where the turn
-        # reads it, so it adds the new material instead of rewriting the page.
-        coverage.append(f"Page last updated from its sources {last.isoformat()}: it already reflects "
-                        "material before that date; add only what this material says that is new.")
+        coverage.append(f"Page last investigated {last.isoformat()}: the existing page is prior context, "
+                        "not primary evidence. Newly supplied originals may predate that run. Compare "
+                        "exact requests and replies, correct contradicted claims and preserve supported history; "
+                        "comparison originals are old evidence, not new contact. Unavailable originals or "
+                        "unknown provider threads remain unreviewed; the page is not a substitute original.")
     available_items = len(items)
     if quick:
         items = quick_evidence(items)

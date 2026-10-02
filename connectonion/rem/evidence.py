@@ -61,6 +61,7 @@ def _entry(item: dict) -> str:
     who = item.get("speaker") or item.get("role") or ""
     head = f"### {item.get('source', '')} · {item.get('timestamp', '')} · {who}"
     detail = [f"{label}: {item[key]}" for key, label in (("subject", "Subject"), ("correspondent", "With"),
+                                                       ("thread", "Provider thread"),
                                                        ("project", "Project"), ("reference", "Reference"),
                                                        ("timestamp_scope", "Timestamp scope"),
                                                        ("origin", "Snapshot origin"),
@@ -68,6 +69,7 @@ def _entry(item: dict) -> str:
                                                        ("retained_at", "Retained at"),
                                                        ("body_format", "Body format"),
                                                        ("input_scope", "Input scope"),
+                                                       ("comparison_scope", "Comparison scope"),
                                                        ("relationship_scope", "Relationship scope"))
               if item.get(key)]
     if item.get("participants"):

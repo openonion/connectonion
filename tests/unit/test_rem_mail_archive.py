@@ -99,6 +99,11 @@ def test_live_gather_retains_full_mail_and_recipients_outside_init_inventory(tmp
     assert items[0]['participants'] == {key: row[key] for key in ('from', 'to', 'cc')}
     saved = read_json(observed_message_path(tmp_path, 'outlook', row['id']), {})
     assert saved['body'] == raw and saved['fetched_at'] and saved['retained_at']
+    assert items[0]['captured_at'] == saved['fetched_at']
+    assert items[0]['retained_at'] == saved['retained_at']
+    assert items[0]['input_scope'] == saved['input_scope']
+    assert items[0]['body_format'] == saved['body_format']
+    assert items[0]['thread'] == 'mail:outlook:provider-thread'
     assert not state_path(tmp_path, 'source-inventory.jsonl').exists()
     refresh(tmp_path)
     context = cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + items[0]['source']}])[items[0]['source']]
@@ -112,6 +117,7 @@ def test_live_gather_retains_full_mail_and_recipients_outside_init_inventory(tmp
                       subscriptions={}, archive_root=tmp_path, record='people/mentor.md')
     assert again[0]['text'] == items[0]['text']
     assert again[0]['participants'] == items[0]['participants']
+    assert again[0]['captured_at'] == items[0]['captured_at']
 
 
 def test_recovered_citation_keeps_unknown_retrieval_and_initial_coverage(tmp_path):
@@ -192,6 +198,7 @@ def test_initial_metadata_and_body_win_while_new_exact_thread_replies_are_added(
     material, start, end = person_material(tmp_path, 'people/member.md', handles=['member@school.example'])
     assert [item['_mail_id'] for item in material['outlook']] == ['shared', 'correct-reply']
     assert material['outlook'][0]['text'] == 'Original request.'
+    assert {item['thread'] for item in material['outlook']} == {'mail:outlook:original-thread'}
     assert material['outlook'][1]['relationship_scope'] and material['outlook'][1]['role'] == 'user'
     assert (start.isoformat(), end.isoformat()) == ('2026-10-01T00:00:00+00:00', '2026-10-03T00:00:00+00:00')
     assert json.loads(path.read_text()) == snapshot

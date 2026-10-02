@@ -42,6 +42,7 @@ Why these rules: docs/rem-skills/rem-investigate.md
 - Thread context can resolve a group ask after recipients drop. Match the team
   and ask; one thread can mix both. Preserve requester, decision maker and debtor;
   context is not this person's statement, contact date or assigned work.
+- Reread `Comparison scope` originals by exact `Provider thread`; they are not new contact.
 
 ## What to produce
 

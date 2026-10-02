@@ -84,6 +84,18 @@ not automatic reconciliation or fresh page dates. See the
 [observed-mail review](../design-evidence/rem-observed-person-gather-review-2026-10-03/REVIEW.md)
 for exact source, runtime and rendering coverage.
 
+An update also needs its original request. Exact parsed citation IDs replace
+substring checks, which confused a cited attachment with its carrier email.
+New mail can retain previously cited saved originals from its exact nonempty
+provider thread, even before the update window. Comparison scope labels those
+rereads; their authors, dates and participant boundaries remain explicit.
+They are added after direct fact extraction and do not count as new contact.
+Already-cited mail alone still stops without a model call. The old page is a
+prior interpretation that source evidence may correct, rather than proof that
+every earlier original was understood. See the
+[cited-thread comparison review](../design-evidence/rem-cited-thread-comparison-review-2026-10-03/REVIEW.md)
+for the source assay, actual rendering scope and remaining automatic limits.
+
 The three observed pages were manually filled after primary-source review;
 this does not establish future model reliability or verify referenced files,
 business metrics, travel plans or current completion of historical handoffs.

@@ -140,6 +140,16 @@ from 17 and six messages to 39 and 29, but the pages themselves did not change.
 One still carries an older contact date. More available evidence is a necessary
 input to reconciliation; it is not proof that reconciliation happened.
 
+The update filter could still remove the original request once the page cited
+it, leaving a new reply without its comparison evidence. A citation also matched
+by substring, so citing an attachment could suppress its distinct carrier email.
+The candidate uses exact IDs and rereads only saved cited originals in exact
+threads with new mail, including an ask outside the update window. They carry
+comparison scope and do not move contact dates. The old page remains an
+interpretation the originals can correct. In two offline packets, 18 cited
+originals are available beside 37 uncited messages; their generated use is still
+unverified.
+
 The real page was manually corrected and independently reviewed. The related
 unit and browser checks pass. A live automatic first write and all-page semantic
 review remain unverified. The next question is whether the writer uses this access
@@ -163,3 +173,6 @@ desktop/phone states, with the remaining observed-mail gather gap.
 The [observed-mail review](../../design-evidence/rem-observed-person-gather-review-2026-10-03/REVIEW.md)
 records the candidate gather correction, unchanged initial coverage and pages,
 and remaining automatic reconciliation and broader review limits.
+The [cited-thread comparison review](../../design-evidence/rem-cited-thread-comparison-review-2026-10-03/REVIEW.md)
+records the old-request comparison, exact citation matching, first-snapshot
+provenance handoff and selected unchanged reader states.

@@ -795,7 +795,8 @@ def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monk
 
     out = inv.investigate(root, "people/vern.md", "Vern", ["vern@x.y"], days=11, clients={}, subscriptions={},
                           runner=write)
-    assert f"Page last updated from its sources {ten_days_ago}" in seen["coverage"]
+    assert f"Page last investigated {ten_days_ago}" in seen["coverage"]
+    assert "Newly supplied originals may predate that run" in seen["coverage"]
     assert not any(s.startswith("Page last") for s in inv.searched_sources(out["coverage"]))
 
 
@@ -1036,6 +1037,99 @@ def test_mail_the_page_already_cites_is_not_new_material(tmp_path, monkeypatch):
         inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], days=1, clients={}, subscriptions={},
                         runner=lambda *a, **kw: pytest.fail('no model call for mail the page already cites'))
     assert 'already cited on the page' in str(caught.value)
+
+
+def test_new_reply_keeps_exact_cited_request_outside_update_window(tmp_path):
+    import hashlib
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import retain_message
+    from connectonion.rem.evidence import write_evidence
+
+    root = _notebook(tmp_path, 'codex')
+    record = 'people/vern.md'
+    now = datetime.now(timezone.utc)
+    write_json(state_path(root, 'mail/archive.json'), {
+        'phase': 'complete', 'providers': ['outlook', 'gmail'], 'owner_addresses': ['me@example.org'],
+        'range_start': (now - timedelta(days=90)).isoformat(), 'range_end': now.isoformat()})
+    rows = [('outlook', 'ask', 'scope', ['vern.chan@unsw.edu.au'], 'Please approve integration A only.', 30),
+            ('outlook', 'reply', 'scope', [], 'Approved integration A only.', 0.1),
+            ('outlook', 'other-ask', 'other-scope', ['vern.chan@unsw.edu.au'], 'Please approve B.', 30),
+            ('gmail', 'provider-collision', 'scope', ['vern.chan@unsw.edu.au'], 'Please approve C.', 30),
+            ('outlook', 'unthreaded', '', ['vern.chan@unsw.edu.au'], 'Please approve D.', 30)]
+    for provider, native, thread, cc, body, days in rows:
+        retain_message(root, provider, {'id': native, 'thread_id': thread, 'from': 'lead@school.example',
+            'to': ['me@example.org'], 'cc': cc, 'subject': 'Scope approval',
+            'date': (now - timedelta(days=days)).isoformat()}, body, fetched_at=now.isoformat())
+    source = lambda provider, native: provider + ':' + hashlib.sha256(native.encode()).hexdigest()[:12]
+    _investigated(root, record, 2)
+    notebook = inv.Notebook(root)
+    cited = '\n'.join(f'- [{i}] {source(provider, native)}' for i, (provider, native, *_) in enumerate(rows, 1)
+                      if native != 'reply')
+    before = notebook.read(record).replace('- [1] gmail:0123456789ab', cited)
+    notebook.write(record, before)
+    received = []
+
+    def runner(notebook, items, config, stage):
+        received.extend(items)
+        return {'changed': [], 'usage': None}
+
+    result = inv.investigate(root, record, 'Vern', ['vern.chan@unsw.edu.au'], days=3,
+                             clients={}, subscriptions={}, runner=runner)
+    mail = {i['source']: i for i in received if i['source'].startswith(('outlook:', 'gmail:'))}
+    assert set(mail) == {source('outlook', 'ask'), source('outlook', 'reply')}
+    request, reply = mail[source('outlook', 'ask')], mail[source('outlook', 'reply')]
+    assert request['text'] == 'Please approve integration A only.'
+    assert request['thread'] == reply['thread'] == 'mail:outlook:scope'
+    assert request['comparison_scope'] and not request.get('relationship_scope')
+    assert reply['relationship_scope'] and not reply.get('comparison_scope')
+    assert request['input_scope'] and request['captured_at'] and request['retained_at']
+    assert not any(i.get('role') == 'facts' for i in received)
+    assert any('1 previously cited mail source(s)' in line for line in result['coverage'])
+    assert not any('it already reflects material before' in line for line in result['coverage'])
+    assert notebook.read(record).partition('\nInvestigation:')[0] == before.partition('\nInvestigation:')[0]
+    packet = write_evidence(tmp_path / 'comparison', list(mail.values()))
+    rendered = '\n'.join(p.read_text() for p in packet['index'].parent.rglob('*.md'))
+    assert 'Provider thread: mail:outlook:scope' in rendered and 'Comparison scope:' in rendered
+
+
+def test_attachment_citation_does_not_mean_carrier_mail_was_read(tmp_path, monkeypatch):
+    root = _notebook(tmp_path, 'codex')
+    _investigated(root, 'people/vern.md', 1)
+    notebook = inv.Notebook(root)
+    notebook.write('people/vern.md', notebook.read('people/vern.md').replace(
+        'gmail:0123456789ab', 'gmail:0123456789ab:agreement.pdf'))
+    carrier = {'source': 'gmail:0123456789ab', 'timestamp': '2026-09-30T09:00:00+00:00',
+               'text': 'The terms in this email differ from the attached agreement.'}
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([carrier], ['gmail: 1 bodies read']))
+    received = []
+    inv.investigate(root, 'people/vern.md', 'Vern', ['vern'], days=3, clients={}, subscriptions={},
+                    runner=lambda notebook, items, config, stage: received.extend(items) or {'changed': []})
+    assert carrier in received
+
+
+@pytest.mark.parametrize('fresh', [[], [{'source': 'outlook:new', 'role': 'attachment', 'thread': 'mail:outlook:t'}],
+                                  [{'source': 'codex:new', 'thread': 'mail:outlook:t'}],
+                                  [{'source': 'outlook:new', 'thread': ''}]])
+def test_comparison_needs_new_threaded_mail_not_attachment_or_chat(tmp_path, monkeypatch, fresh):
+    monkeypatch.setattr('connectonion.rem.mail_archive.person_material',
+                        lambda *a, **kw: pytest.fail('no archive reread without new threaded mail'))
+    assert inv._mail_comparison(tmp_path, 'people/vern.md', [], [], fresh, {'outlook:old'}, {}) == []
+
+
+def test_comparison_preserves_context_scope_owner_filter_and_unsubscribe(tmp_path, monkeypatch):
+    old = [{'source': 'outlook:other', 'role': 'other', 'thread': 'mail:outlook:t',
+            'relationship_scope': 'Not this person’s statement or contact.'},
+           {'source': 'outlook:own', 'role': 'user', 'thread': 'mail:outlook:t'}]
+    monkeypatch.setattr('connectonion.rem.mail_archive.person_material', lambda *a, **kw: ({'outlook': old}, None, None))
+    fresh = [{'source': 'outlook:new', 'role': 'user', 'thread': 'mail:outlook:t'}]
+    cited = {i['source'] for i in old}
+    comparison = inv._mail_comparison(tmp_path, 'people/vern.md', [], [], fresh, cited, {})
+    assert comparison[0]['relationship_scope'] == old[0]['relationship_scope']
+    own = inv._mail_comparison(tmp_path, 'people/me.md', [], [], fresh, cited, {}, sent_only=True)
+    assert [i['source'] for i in own] == ['outlook:own']
+    assert inv._mail_comparison(tmp_path, 'people/vern.md', [], [], fresh, cited,
+                                {'outlook': {'unsubscribed': True}}) == []
 
 
 def test_a_project_s_file_list_alone_is_not_new_material_for_a_page_investigated_before(tmp_path, monkeypatch):
