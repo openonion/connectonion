@@ -400,15 +400,25 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a16
+## Current Version: 1.9.0a17
 
-1.9.0a16 makes REM's first investigated project page compare the owner's
-requests with bounded, citable local project evidence. Empty optional sections
-drop away after writing, while the map's unfinished scaffold remains visible.
-This preview does not solve cross-page links or owner-page history. Stable
+1.9.0a17 gives REM's first written project page bounded, separately citable
+local repository evidence and removes unsupported optional fields. A private
+five-day candidate init wrote one project page with 12 headings, no `Unknown`
+fields and three cited Insight bullets. This is a project-page quality slice;
+cross-page links and owner-page history remain open. Stable remains 1.8.10.
+See [1.9.0a17 notes](docs/releases/1.9.0a17.md).
+
+- 1.9.0a17 (#2122; project-page evidence and density).
+
+## Previous preview: 1.9.0a16
+
+1.9.0a16 bounds Gmail API reads and avoids fetching message headers in a full
+listing window that REM must split. A real 90-day first run listed and archived
+3,202 messages, then completed all 36 selected pages with citations. Stable
 remains 1.8.10. See [1.9.0a16 notes](docs/releases/1.9.0a16.md).
 
-- 1.9.0a16 (#2122; project-page evidence and compact written notes).
+- 1.9.0a16 (Gmail first-run scan reliability and performance).
 
 ## Previous preview: 1.9.0a15
 

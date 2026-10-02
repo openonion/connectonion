@@ -191,7 +191,8 @@ def _list_all(client, start: datetime, end: datetime) -> list:
     from the last row would still lose Gmail's. Halving the window until each
     half fits works for both.
     """
-    rows = client.list_between(start.isoformat(), end.isoformat(), LISTING_LIMIT)
+    listing = getattr(client, 'list_between_for_rem', client.list_between)
+    rows = listing(start.isoformat(), end.isoformat(), LISTING_LIMIT)
     if len(rows) < LISTING_LIMIT:
         return rows
     # Whole seconds: Gmail's search takes epoch seconds, so a finer split asks the same question twice.
