@@ -98,12 +98,34 @@ no MCP server, tool schema or skill file to set up.
 <p><a href="docs/cli/README.md">Every command</a> · <code>co commands</code> lists them all.</p>
 <!-- /connections -->
 
-## `--help` is the prompt
+## CLI is all you need
 
-An agent needs three things from a tool: what exists, how to call it, and what
-to do next. MCP servers, tool schemas and skill files are three ways of
-shipping those. Here they are one command line, and the agent finds its own way
-through it:
+An agent's work lives in many places: your inbox, your calendar, a chat
+thread, a web page behind a login, a file on the NAS, an issue tracker, its own
+notes, another agent. **ConnectOnion strings all of that context together with
+one command line, `co`.** The agent reads a thread with one command, looks
+something up with the next, and writes the answer with a third. Every step is
+a line in its shell, and the output of one is the input of the next.
+
+### Why a command line, and not MCP or a plugin per tool
+
+- **Every agent already has one.** Claude Code, Codex, Cursor and any agent you
+  write can run a shell command. There is no server to start, no client to
+  configure and nothing to install into the agent.
+- **It costs no context until it is used.** Tool schemas sit in an agent's
+  prompt whether it needs them or not. A command line is discovered on demand:
+  bare `co` lists the groups, `co gmail --help` explains one, and only the page
+  the agent opens enters its context.
+- **The help page is the prompt.** Each `--help` says what the command does,
+  what it changes (Read-only, Sends, Changes, Deletes…) and gives a real
+  example, so there is no separate skill file or schema to keep in step. CI
+  fails any page that loses one of those parts ([`co audit`](docs/cli/audit.md)).
+- **Every answer names the next step.** A list ends with how to open the first
+  item, a missing login ends with `Next: co auth microsoft`, a typo ends with
+  the command you meant. The agent recovers without asking you.
+- **It composes.** Commands pipe into each other and into scripts, and the
+  transcript is the same commands you would type, so you can read exactly what
+  the agent did, and run it yourself.
 
 ```console
 $ co                       # every command group
@@ -116,54 +138,31 @@ CON-4  Todo  No priority  -  2026-10-01  Set up your teams
 Next: co linear issue CON-3
 ```
 
-- **The help page is the skill.** Every `--help` is written for an agent to
-  read: what the command does, what it changes in one fixed word (Read-only,
-  Sends, Changes, Deletes…), and a real example. There is no separate skill
-  file or tool schema to keep in step, and CI fails any page that loses one of
-  those parts ([`co audit`](docs/cli/audit.md)).
-- **Discovery needs no setup.** Bare `co` lists every group and `co commands`
-  every subcommand, so an agent that has never seen ConnectOnion finds Gmail,
-  Linear or a logged-in browser on its own. Nothing to install into the agent,
-  no tools to register, no prompt to paste.
-- **Every answer names the next command.** A missing login ends with
-  `Next: co auth microsoft`; a typo ends with the command you meant; a list
-  ends with how to open the first item. An agent recovers without asking you.
-- **One shape for everything.** Mail, chat, a browser, issue trackers, the
-  agent's memory (`co wiki`) and its skills (`co skills`) are all commands. What
-  usually takes an MCP server, a skill file and a memory plugin is one thing to
-  learn, and the transcript shows the same commands you would type yourself.
-- **Credentials stay on your machine**, in `~/.co/keys.env` or encrypted with
-  `co env set … --secret`. **Writes are explicit**: each page says what it
-  changes; Calendar, Linear and Canny writes preview until `--yes`, and in
-  `co ai` a risky tool call waits for your approval.
+### MCP becomes a command too
 
-## Install
+MCP servers are useful; the protocol is not the problem, the interface is.
+**`co mcp`** (coming next, [#2048](https://github.com/openonion/connectonion/issues/2048))
+puts any MCP server behind the same command line: `co mcp tools <server>`
+lists its tools, `co mcp help <server> <tool>` renders a tool as a help page,
+and `co mcp call` runs it. The agent finds MCP tools the way it finds
+everything else, through `--help`, and none of them sit in its prompt.
 
-ConnectOnion needs Python 3.10 or newer.
+Credentials stay on your machine, in `~/.co/keys.env` or encrypted with
+`co env set … --secret`. Writes that matter preview until `--yes`, and in
+`co ai` a risky tool call waits for your approval.
+
+## Install and start
 
 ```bash
-pip install connectonion
+pip install connectonion   # Python 3.10+
+co init                    # your identity and ~/.co/keys.env
+co auth microsoft          # or: co auth google
+co outlook                 # or: co gmail
+co commands                # everything else; add --help to any
 ```
 
-## Quick start
-
-```bash
-# your identity and ~/.co/keys.env
-co init
-# settings in use, values hidden
-co env
-# connect Outlook once
-co auth microsoft
-# read your inbox
-co outlook
-# every command; add --help to any
-co commands
-```
-
-For Gmail, use `co auth google` and `co gmail`. `co init` sets up your global configuration and leaves the current directory
-alone; run `co init ./` to initialize a project. The
-[Quick start guide](docs/quickstart.md) covers Google, the browser, chat apps
-and project-specific settings.
+The [Quick start guide](docs/quickstart.md) covers Google, the browser, chat
+apps and project settings.
 
 ## See it work
 
@@ -216,85 +215,21 @@ Your most-voted Canny requests, and a status change you preview before voters he
 
 ## Use it from Claude Code, Codex or Cursor
 
-A coding agent needs nothing but its shell. Ask it to “use `co` to check my
-Outlook inbox”; it can read `co commands` and `co outlook --help` before it
-acts.
+Nothing to install into them: ask your coding agent to "use `co` to check my
+Outlook inbox" and it reads `co commands` and `co outlook --help` before it
+acts. `co skills link` also links ConnectOnion's skills into Claude Code and
+Codex ([`co skills`](docs/cli/skills.md)).
 
-Two optional shortcuts:
+ConnectOnion is also a Python framework for building your own agents on the
+same harness; see the [documentation](https://docs.connectonion.com).
 
-- `co skills link` links ConnectOnion's skills into `~/.claude/skills` and
-  `~/.codex/skills`.
-- `co skills discover` lists the skills Claude Code, Codex, Cursor and Kiro
-  already have.
+## Project
 
-See [`co skills`](docs/cli/skills.md) and the
-[Claude Code plugin](docs/claude-code-plugin.md).
-
-## Build your own agent
-
-The same package is a Python framework. A tool is a plain function; its type
-hints and docstring become the schema the model sees.
-
-```python
-from connectonion import Agent
-
-def weather(city: str) -> str:
-    """Current weather for a city."""
-    return f"Sunny, 22°C in {city}"
-
-agent = Agent("bot", tools=[weather])
-print(agent.input("Weather in Sydney?"))
-```
-
-The default model is `co/gemini-3.8-flash` through ConnectOnion's managed keys,
-which `co init` (or `co auth`) signs you in to. Pass `model=` to use your own OpenAI,
-Anthropic or Gemini key, or a local model as `ollama/<model>`
-([models](docs/concepts/models.md)).
-
-To start from a working agent instead, `co create my-agent` scaffolds the same
-agent that runs `co ai`, with files, shell, browser and sub-agents
-([`co create`](docs/cli/create.md)). From there:
-
-| Topic | Guide |
-|---|---|
-| Agents, prompts and iteration limits | [Agent](docs/concepts/agent.md) · [Prompts](docs/concepts/prompts.md) · [max_iterations](docs/concepts/max_iterations.md) |
-| Tools, built-in tools and `co copy` | [Tools](docs/concepts/tools.md) · [Built-in tools](docs/useful_tools/README.md) · [`co copy`](docs/cli/copy.md) |
-| Plugins and lifecycle hooks | [Plugins](docs/concepts/plugins.md) · [Events](docs/concepts/events.md) · [Built-in plugins](docs/useful_plugins/README.md) |
-| Approval and skills | [tool_approval](docs/useful_plugins/tool_approval.md) · [Skills plugin](docs/useful_plugins/skills.md) |
-| Debugging with `@xray` | [xray](docs/debug/xray.md) · [auto_debug](docs/debug/auto_debug.md) · [Logs](docs/debug/log.md) |
-| Hosting, trust and deploy | [host()](docs/network/host.md) · [Trust](docs/features/trust.md) · [Deploy](docs/network/deploy.md) |
-
-The [full documentation](https://docs.connectonion.com) has the rest.
-
-## Stable and preview releases
-
-ConnectOnion ships on two channels. **Stable**, currently 1.8.10, is what
-`pip install connectonion` installs. **Preview** builds, currently the
-1.9.0aN alphas, carry new features before they are stable; install one by
-pinning its exact version. [docs/releases.md](docs/releases.md) explains both
-channels, and every version has notes on
-[GitHub Releases](https://github.com/openonion/connectonion/releases).
-
-## Community
-
-Ask questions in
-[GitHub Discussions](https://github.com/openonion/connectonion/discussions),
-report bugs in [Issues](https://github.com/openonion/connectonion/issues), or
-talk to the team on the Discord server linked at the top of this page. If
-ConnectOnion is useful to you, starring the repository helps others find it.
-
-## Contributing
-
-Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the
-development setup, tests, the repository layout and what we ask of
-AI-assisted pull requests. Everyone taking part follows the
-[Code of Conduct](CODE_OF_CONDUCT.md).
-
-## Security
-
-Please do not report vulnerabilities in public issues.
-[SECURITY.md](SECURITY.md) explains how to report one privately.
-
-## License
-
+**Stable 1.8.10** is what `pip install connectonion` installs; 1.9.0 previews
+carry new features first ([release channels](docs/releases.md),
+[release notes](https://github.com/openonion/connectonion/releases)).
+Questions go to [Discussions](https://github.com/openonion/connectonion/discussions)
+or the Discord linked above, bugs to [Issues](https://github.com/openonion/connectonion/issues).
+[Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) ·
+[Security](SECURITY.md) (report vulnerabilities privately) ·
 [Apache-2.0](LICENSE).
