@@ -14,6 +14,11 @@ from .files import Notebook, RemError
 NOT_ON_OWNER_PAGE = 'How the user writes to them'
 PROJECT_CORE = ('Facts', 'Insight', 'What it is', 'Where it stands', 'Paths',
                 'Open threads', 'Uncertainties', 'Sources')
+SKILL_CORE = ('What it does', 'Insight', 'When to use', 'Current status', 'How to use',
+              'Inputs and outputs', 'Usage history', 'Limitations', 'Uncertainties', 'Source', 'Sources')
+SKILL_SECTIONS = ('What it does', 'Insight', 'When to use', 'Current status', 'Example result', 'How to use',
+                  'Inputs and outputs', 'Usage history', 'Performance', 'Limitations', 'Maintenance',
+                  'Related projects', 'Open threads', 'Uncertainties', 'Source', 'Sources')
 SECTION_HEADING_RE = re.compile(r'^## ([^\r\n]+)\r?$', re.M)
 
 
@@ -25,12 +30,16 @@ def headings(record: str, owner: bool = False) -> tuple[str, ...]:
         return PROJECT_CORE
     if record.startswith('orgs/'):
         return ('Domains', 'Facts', *Notebook.ORG_SECTIONS, 'Sources')
+    if record.startswith('skills/catalog/'):
+        return SKILL_CORE
     return ()
 
 
 def _canonical_headings(record: str, owner: bool = False) -> tuple[str, ...]:
     if record.startswith('projects/'):
         return ('Facts', 'Insight', *Notebook.PROJECT_SECTIONS, 'Sources')
+    if record.startswith('skills/catalog/'):
+        return SKILL_SECTIONS
     return headings(record, owner)
 
 
@@ -82,8 +91,8 @@ def normalize(record: str, text: str, owner: bool = False) -> str:
     return '\n\n'.join(output + status) + '\n'
 
 
-def compact_project_page(text: str) -> str:
-    """Hide empty optional headings after a project has been investigated.
+def compact_page(record: str, text: str) -> str:
+    """Hide empty optional headings after a project or skill has been investigated.
 
     The map keeps its full scaffold until a write. A written page carries only
     supported detail plus the core needed to resume and audit it (#2122).
@@ -92,7 +101,7 @@ def compact_project_page(text: str) -> str:
     matches = list(SECTION_HEADING_RE.finditer(visible))
     if not matches:
         return text
-    removable = set(_canonical_headings('projects/x.md')) - set(PROJECT_CORE)
+    removable = set(_canonical_headings(record)) - set(headings(record))
     spans = []
     for index, match in enumerate(matches):
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
@@ -178,6 +187,15 @@ def restore_runner_fields(record: str, candidate: str, original: str) -> str:
     """
     if not original:
         return candidate
+    if record.startswith('skills/catalog/'):
+        mapped = re.search(r'(?ms)^## Source\n.*?(?=^## |^Investigation:|\Z)', original)
+        if mapped:
+            candidate = re.sub(r'(?ms)^## Source\n.*?(?=^## |^Investigation:|\Z)',
+                               lambda _: mapped[0], candidate, count=1)
+        usage = re.search(r'(?s)<!-- rem-usage -->.*?<!-- /rem-usage -->', original)
+        if usage:
+            candidate = re.sub(r'(?s)<!-- rem-usage -->.*?<!-- /rem-usage -->\s*', '', candidate)
+            candidate = candidate.replace('## Usage history\n', '## Usage history\n' + usage[0] + '\n', 1)
     status = re.search(r'^Investigation:.*$', original, re.M)
     if status:
         candidate = (re.sub(r'^Investigation:.*$', lambda _: status.group(0), candidate, count=1, flags=re.M)
@@ -266,7 +284,7 @@ def drop_owner_addresses(text: str, owner: set[str]) -> tuple[str, list[str]]:
 # A page that cites only these was written from nothing (#1974).
 CONTEXT_SOURCES = ("investigation:page", "investigation:coverage", "investigation:quick-scope",
                    "investigation:project-inventory", "investigation:original-evidence",
-                   "investigation:org-pages", "investigation:facts")
+                   "investigation:org-pages", "investigation:facts", "investigation:skill-records")
 
 
 def _known_sources(items: list[dict]) -> set:
@@ -279,6 +297,9 @@ def _known_sources(items: list[dict]) -> set:
     derived = [source for i in items if i.get("role") in ("reflection-summary", "extract", "evidence-index", "owner-work-evidence")
                for source in i.get("sources", [])]
     known.update(derived)
+    # Numbered pieces are one original record. A citation to the whole record
+    # remains traceable when the model omits the layout-only part suffix.
+    known.update(re.sub(r':part-\d+$', '', source) for source in derived)
     # A coding session is one transcript file; citing the session rather than
     # one line of it is coarse but traceable. Dora's page cited
     # `claude-code:<session>` for an account digested from that session.
@@ -490,6 +511,19 @@ def fact_errors(record: str, candidate: str, original: str) -> list[str]:
 CITATION = re.compile(r'\[(W?\d+)\](?!\()')
 CONTACT_LINE = re.compile(r'^- (' + '|'.join(re.escape(label) for labels in facts.FIELDS.values()
                                              for label in labels) + r'):')
+
+
+def unresolved_findings(text: str, citations: list[str]) -> list[str]:
+    """Do not silently discard the findings the user came to read."""
+    bad, section, found = set(citations), 'Lead', {}
+    for line in prose(text).splitlines():
+        if line.startswith('## '):
+            section = line[3:].strip()
+        marks = set(CITATION.findall(line))
+        if section in ('Lead', 'Insight', 'Current status', 'Open threads') and marks and marks <= bad:
+            found.setdefault(section, set()).update(marks)
+    return [f'Finding has unresolved citations in {section}: ' + ', '.join(f'[{n}]' for n in sorted(marks))
+            for section, marks in found.items()]
 
 
 def drop_unresolved(record: str, text: str, original: str, items: list[dict],

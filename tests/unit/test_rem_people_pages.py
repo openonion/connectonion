@@ -258,13 +258,13 @@ def test_later_runs_follow_only_what_is_new(root, monkeypatch):
 
 def test_later_runs_stop_at_the_floor_and_say_what_is_left(root, monkeypatch):
     client = FakeMail([])
-    meter = {"used_percent": 75, "window_minutes": 10080, "resets_at": int(NOW.timestamp()) + 86400, "plan": "pro"}
+    meter = {"used_percent": 95, "window_minutes": 10080, "resets_at": int(NOW.timestamp()) + 86400, "plan": "pro"}
     _round(monkeypatch, clients={"gmail": client}, meter=meter)
     first = daily.run_daily(root, maintain=no_change, person_one=lambda *a, **k: pytest.fail("past the floor"))
-    assert "70%" in first["reason"] and first["run"]["phase"] == "daily-investigation"
+    assert "90%" in first["reason"] and first["run"]["phase"] == "daily-investigation"
     client.messages.append(mail("Ada <ada@example.org>", OWNER, datetime.now(timezone.utc).isoformat()))
     second = daily.run_daily(root, maintain=no_change, person_one=lambda *a, **k: pytest.fail("past the floor"))
-    assert "70%" in second["reason"] and second["left"] >= 1
+    assert "90%" in second["reason"] and second["left"] >= 1
 
 
 def test_project_pages_with_new_messages_are_followed_with_since(root, monkeypatch):

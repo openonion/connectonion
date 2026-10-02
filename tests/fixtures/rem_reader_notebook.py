@@ -338,7 +338,9 @@ def build(root: Path, now: datetime | None = None) -> Path:
         db.execute("insert into meta (key, value) values ('schema_version', ?)", (SCHEMA_VERSION,))
         for number, (source, sender, day, body) in enumerate(messages):
             path = evidence / f"message-{number}.json"
-            path.write_text(json.dumps({"body": body}))
+            provider, native = source.split(":", 1)
+            path.write_text(json.dumps({"provider": provider, "id": native, "body": body,
+                                       "body_format": "provider-rendered text, not original MIME"}))
             db.execute("insert into messages (id, source, thread, sender, recipients, time, subject, body_path) "
                        "values (?, ?, ?, ?, ?, ?, ?, ?)",
                        (source, source.split(":")[0], "mail:fixture:harbour-renewal", sender,

@@ -19,8 +19,8 @@ def _cost_line(estimate: dict, meter: dict) -> str:
     week = (f"; the Codex week is at {meter['used_percent']}%" if "used_percent" in meter
             else f"; {meter['unknown']}" if meter.get("unknown") else "")
     return (f"Cost: {estimate['model_calls']} model call(s) carrying about {estimate['chars']:,} characters "
-            f"(~{estimate['tokens_estimated_in']:,} tokens) of skills, pages and messages; the runner re-reads "
-            f"them each turn, so billed input is several times that{week}.")
+            f"(~{estimate['tokens_estimated_in']:,} tokens) of skills, pages, messages and estimated source index. "
+            f"Selected source reads cost extra; the runner re-reads context each turn, so billed input is several times that{week}.")
 
 
 def _mode(row: dict) -> str:
@@ -67,7 +67,7 @@ def _left_line(report: dict, recent_days: int) -> list[str]:
             f"(older than {recent_days} days)"] if left else []
 
 
-NOTHING = "Every project page is written from all of your messages. Nothing to write."
+NOTHING = "No new retained user input to write. Pages without usable evidence remain uninvestigated."
 NO_PAGES = "No project pages yet: the map makes them from your session folders."
 
 

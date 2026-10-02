@@ -11,6 +11,380 @@ from connectonion.rem.mail_archive import archive_init, person_index_path, proje
 from connectonion.rem.map import build_map
 
 
+def test_retained_domain_and_shared_contact_mail_reach_org_gather_without_extending_init(tmp_path):
+    import hashlib
+    from connectonion.rem.files import read_json, state_path, write_json
+    from connectonion.rem.mail_archive import retain_message, saved_share, domain_material
+    from connectonion.rem.mail import RELATED_ORG_SCOPE
+
+    prepare(tmp_path)
+    end = datetime.now(timezone.utc)
+    manifest = {'phase': 'complete', 'providers': ['outlook'], 'target': 0,
+                'owner_addresses': ['me@owner.example'],
+                'range_start': (end - timedelta(days=30)).isoformat(),
+                'range_end': (end - timedelta(days=1)).isoformat()}
+    write_json(state_path(tmp_path, 'mail/archive.json'), manifest)
+    inventory = state_path(tmp_path, 'source-inventory.jsonl')
+    inventory.write_text('')
+    rows = [
+        ('outlook', 'staff', 'Staff <staff@sub.school.example>', ['me@owner.example']),
+        ('outlook', 'owner', 'Me <me@owner.example>', ['Staff <staff@school.example>']),
+        ('outlook', 'related', 'Alex <alex@related.example>', ['me@owner.example']),
+        ('outlook', 'prefix', 'Staff <staff@not-school.example>', ['me@owner.example']),
+        ('gmail', 'extra-provider', 'Staff <staff@school.example>', ['me@owner.example']),
+    ]
+    for provider, native, sender, recipients in rows:
+        row = {'id': native, 'thread_id': 'same-subject', 'from': sender, 'to': recipients,
+               'subject': 'Terms', 'date': (end - timedelta(days=5)).isoformat()}
+        retain_message(tmp_path, provider, row, native + ' original', fetched_at=end.isoformat())
+
+    items, coverage = gather('School', ['school.example', 'alex@related.example'], days=20,
+                             clients={}, subscriptions={}, archive_root=tmp_path, record='orgs/school.md')
+    short = lambda provider, native: provider + ':' + hashlib.sha256(native.encode()).hexdigest()[:12]
+    by_source = {item['source']: item for item in items}
+    assert set(by_source) == {short(provider, native) for provider, native, _, _ in rows if native != 'prefix'}
+    assert by_source[short('outlook', 'owner')]['role'] == 'user'
+    assert by_source[short('outlook', 'related')]['relationship_scope'] == RELATED_ORG_SCOPE
+    assert not by_source[short('outlook', 'staff')].get('relationship_scope')
+    assert by_source[short('outlook', 'staff')]['thread'] == 'mail:outlook:same-subject'
+    assert by_source[short('gmail', 'extra-provider')]['captured_at'] == end.isoformat()
+    assert any(note.startswith('gmail:') and '1 uncovered interval(s)' in note for note in coverage)
+    assert all('requested body interval covered' not in note for note in coverage if note.startswith('gmail:'))
+    assert domain_material(tmp_path, ['school.example'])[0]['outlook'] == []
+    assert saved_share(tmp_path) == (0, 0)
+    assert read_json(state_path(tmp_path, 'mail/archive.json'), {}) == manifest
+    assert inventory.read_text() == ''
+    intervals = []
+
+    class Gmail:
+        def my_addresses(self): return {'me@owner.example'}
+        def list_with(self, domain, start, finish, max_results=1000):
+            intervals.append((start, finish))
+            return []
+
+    gather('School', ['school.example'], days=20, clients={'gmail': Gmail()}, subscriptions={},
+           archive_root=tmp_path, record='orgs/school.md')
+    assert len(intervals) == 1
+    assert datetime.fromisoformat(intervals[0][0]) < end - timedelta(days=19)
+    withheld, _ = gather('School', ['school.example'], days=20, clients={},
+                         subscriptions={'gmail': {'unsubscribed': True}}, archive_root=tmp_path,
+                         record='orgs/school.md')
+    assert all(not item['source'].startswith('gmail:') for item in withheld)
+
+
+def test_observed_reply_reaches_next_person_gather_without_extending_init_coverage(tmp_path):
+    import hashlib
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import retain_message, saved_share
+    from connectonion.rem.fact_extract import extract
+
+    prepare(tmp_path)
+    end = datetime.now(timezone.utc)
+    record = 'people/member.md'
+    manifest = {'phase': 'complete', 'providers': ['outlook', 'gmail'], 'target': 0,
+                'owner_addresses': ['me@example.org'],
+                'range_start': (end - timedelta(days=2)).isoformat(),
+                'range_end': (end - timedelta(days=1)).isoformat()}
+    write_json(state_path(tmp_path, 'mail/archive.json'), manifest)
+    inventory = state_path(tmp_path, 'source-inventory.jsonl')
+    inventory.write_text('')
+    rows = [
+        ('outlook', 'ask', 'scope', ['Member <member@school.example>'], 'Please approve.'),
+        ('outlook', 'reply', 'scope', [], 'Approved with additions.'),
+        ('outlook', 'same-subject', 'other-scope', [], 'Different decision.'),
+        ('gmail', 'provider-collision', 'scope', [], 'Different provider.'),
+        ('outlook', 'no-thread', '', [], 'No conversation ID.'),
+        ('outlook', 'address-prefix', 'scope-prefix', ['member-extra@school.example'], 'Other person.'),
+    ]
+    for number, (provider, native, thread, cc, body) in enumerate(rows):
+        row = {'id': native, 'thread_id': thread, 'from': 'Lead <lead@school.example>',
+               'to': ['Me <me@example.org>'], 'cc': cc, 'subject': 'Scope approval',
+               'date': (end - timedelta(days=40-number)).isoformat()}
+        retain_message(tmp_path, provider, row, body, fetched_at=end.isoformat())
+
+    items, coverage = gather('Member', ['member@school.example'], days=60, clients={}, subscriptions={},
+                             archive_root=tmp_path, record=record)
+    expected = ['outlook:' + hashlib.sha256(native.encode()).hexdigest()[:12] for native in ('ask', 'reply')]
+    assert [item['source'] for item in items] == expected
+    assert not items[0].get('relationship_scope')
+    assert 'not addressed to this person' in items[1]['relationship_scope']
+    assert items[1]['text'] == 'Approved with additions.'
+    facts = extract([item for item in items if not item.get('relationship_scope')], ['member@school.example'])
+    reply_day = (end - timedelta(days=39)).date().isoformat()
+    assert all(row['value'] != reply_day for row in facts if row['field'] == 'Last contact')
+    assert any('2 loaded from private mail archive' in note and '2 uncovered interval(s)' in note for note in coverage)
+    assert saved_share(tmp_path) == (0, 0)
+    assert inventory.read_text() == ''
+    assert not person_index_path(tmp_path, record).exists()
+    assert json.loads(state_path(tmp_path, 'mail/archive.json').read_text()) == manifest
+    from connectonion.rem.mail_archive import mail_metadata, participants
+
+    class ListedArchive:
+        def my_addresses(self): return {'me@example.org'}
+        def list_with(self, address, start, finish):
+            return [row for row in mail_metadata(tmp_path) if row['source'] == 'outlook'
+                    and address in participants(row) and start <= row['date'] < finish]
+        def get_email_body(self, native):
+            raise AssertionError('Retained observations must not be fetched again')
+
+    again, online_coverage = gather('Member', ['member@school.example'], days=60,
+                                    clients={'outlook': ListedArchive()}, subscriptions={},
+                                    archive_root=tmp_path, record=record)
+    assert [item['source'] for item in again] == expected
+    assert any('2 of them from the private mail archive' in note for note in online_coverage)
+    assert not any('private init archive' in note for note in online_coverage)
+    unsubscribed, _ = gather('Member', ['member@school.example'], days=60, clients={},
+                            subscriptions={'outlook': {'unsubscribed': True}}, archive_root=tmp_path, record=record)
+    assert unsubscribed == []
+
+
+def test_org_new_exact_thread_reply_keeps_the_cited_older_original(tmp_path):
+    import hashlib
+    from connectonion.rem.files import Notebook, state_path, write_json
+    from connectonion.rem.investigate import _mail_comparison
+    from connectonion.rem.mail_archive import retain_message
+
+    prepare(tmp_path)
+    end = datetime.now(timezone.utc)
+    write_json(state_path(tmp_path, 'mail/archive.json'), {
+        'phase': 'complete', 'providers': ['outlook'], 'owner_addresses': ['me@owner.example'],
+        'range_start': (end - timedelta(days=2)).isoformat(), 'range_end': (end - timedelta(days=1)).isoformat()})
+    for native, days, thread in [('old-ask', 40, 'terms'), ('new-reply', 5, 'terms'), ('other-ask', 45, 'other')]:
+        row = {'id': native, 'thread_id': thread, 'from': 'staff@school.example', 'to': ['me@owner.example'],
+               'subject': 'Same subject', 'date': (end - timedelta(days=days)).isoformat()}
+        retain_message(tmp_path, 'outlook', row, native + ' original', fetched_at=end.isoformat())
+    source = lambda native: 'outlook:' + hashlib.sha256(native.encode()).hexdigest()[:12]
+    book = Notebook(tmp_path)
+    book.stub_org('orgs/school.md', 'School', ['school.example'])
+    page = book.read('orgs/school.md').replace('- (none yet)', '- [1] ' + source('old-ask'))
+    book.write('orgs/school.md', page)
+    items, _ = gather('School', ['school.example'], days=20, clients={}, subscriptions={},
+                      archive_root=tmp_path, record='orgs/school.md')
+    compared = _mail_comparison(tmp_path, 'orgs/school.md', ['school.example'], items, items,
+                                {source('old-ask'), source('other-ask')}, {})
+    assert [item['source'] for item in compared] == [source('old-ask')]
+    assert compared[0]['text'] == 'old-ask original'
+    assert 'may predate the requested window' in compared[0]['comparison_scope']
+
+
+def test_live_gather_retains_full_mail_and_recipients_outside_init_inventory(tmp_path):
+    from connectonion.rem.files import read_json, state_path
+    from connectonion.rem.mail_archive import observed_message_path
+    from connectonion.rem.reader_model import cited_context
+    from connectonion.rem.store import refresh
+    prepare(tmp_path)
+    raw = 'From: Mentor\n--- Email Body ---\nAccepted.\n\nOn Tuesday wrote:\nPrevious proposal.'
+    row = {'id': 'live-native', 'from': 'Mentor <mentor@example.org>',
+           'to': ['Me <me@owner.example>'], 'cc': ['Guest <guest@example.org>'],
+           'date': '2026-09-30T10:00:00Z', 'subject': 'Re: offer', 'thread_id': 'provider-thread'}
+
+    class Mail:
+        def my_addresses(self): return {'me@owner.example'}
+        def list_with(self, *args): return [row]
+        def get_email_body(self, message_id): return raw
+
+    items, _ = gather('Mentor', ['mentor@example.org'], days=30, clients={'outlook': Mail()},
+                      subscriptions={}, archive_root=tmp_path, record='people/mentor.md')
+    assert len(items) == 1 and 'Previous proposal.' not in items[0]['text']
+    assert items[0]['participants'] == {key: row[key] for key in ('from', 'to', 'cc')}
+    saved = read_json(observed_message_path(tmp_path, 'outlook', row['id']), {})
+    assert saved['body'] == raw and saved['fetched_at'] and saved['retained_at']
+    assert items[0]['captured_at'] == saved['fetched_at']
+    assert items[0]['retained_at'] == saved['retained_at']
+    assert items[0]['input_scope'] == saved['input_scope']
+    assert items[0]['body_format'] == saved['body_format']
+    assert items[0]['thread'] == 'mail:outlook:provider-thread'
+    assert not state_path(tmp_path, 'source-inventory.jsonl').exists()
+    refresh(tmp_path)
+    context = cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + items[0]['source']}])[items[0]['source']]
+    assert context['excerpt'].startswith('Accepted.') and 'Previous proposal.' in context['excerpt']
+    assert context['thread'] == 'mail:outlook:provider-thread'
+    assert context['participants'] == items[0]['participants']
+    assert context['captured_at'] == saved['fetched_at']
+    raw = 'Later provider rendering; different headers.'
+    row['cc'] = ['a-new-recipient@example.org']
+    again, _ = gather('Mentor', ['mentor@example.org'], days=30, clients={'outlook': Mail()},
+                      subscriptions={}, archive_root=tmp_path, record='people/mentor.md')
+    assert again[0]['text'] == items[0]['text']
+    assert again[0]['participants'] == items[0]['participants']
+    assert again[0]['captured_at'] == items[0]['captured_at']
+
+
+def test_recovered_citation_keeps_unknown_retrieval_and_initial_coverage(tmp_path):
+    import hashlib
+    from connectonion.rem.files import atomic_write, read_json, state_path, write_json
+    from connectonion.rem.mail_archive import observed_message_path, retain_message, saved_share, domain_material
+    from connectonion.rem.reader_model import cited_context
+    from connectonion.rem.store import refresh
+    prepare(tmp_path)
+    inventory = '{"type":"session","path":"original-window"}\n'
+    atomic_write(state_path(tmp_path, 'source-inventory.jsonl'), inventory)
+    manifest = {'phase': 'complete', 'target': 10, 'saved': 10, 'providers': ['outlook'],
+                'range_start': '2026-07-01T00:00:00+00:00', 'range_end': '2026-10-01T00:00:00+00:00'}
+    write_json(state_path(tmp_path, 'mail/archive.json'), manifest)
+    row = {'id': 'older-native', 'from': 'Mentor <mentor@example.org>', 'to': ['me@owner.example'],
+           'cc': ['guest@example.org'], 'date': '2025-01-01T10:00:00Z', 'subject': 'Terms'}
+    raw = 'Long provider header ' * 60 + '\n--- Email Body ---\nOne occasion only.'
+    scope = 'Historical citation recovery. Original retrieval time unknown; initial window unchanged.'
+    retain_message(tmp_path, 'outlook', row, raw, fetched_at='', input_scope=scope)
+    assert saved_share(tmp_path) == (0, 10)
+    assert domain_material(tmp_path, ['example.org'])[0]['outlook'] == []
+    first = read_json(observed_message_path(tmp_path, 'outlook', row['id']), {})
+    retain_message(tmp_path, 'outlook', row, 'Later provider rendering', fetched_at='2026-10-03T10:00:00Z')
+    assert read_json(observed_message_path(tmp_path, 'outlook', row['id']), {}) == first
+    assert first['body'] == raw and first['fetched_at'] == '' and first['retained_at']
+    assert state_path(tmp_path, 'source-inventory.jsonl').read_text() == inventory
+    assert read_json(state_path(tmp_path, 'mail/archive.json'), {}) == manifest
+    refresh(tmp_path)
+    source = 'outlook:' + hashlib.sha256(row['id'].encode()).hexdigest()[:12]
+    context = cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + source}])[source]
+    assert context['excerpt'] == 'One occasion only.'
+    assert not context['truncated'] and not context['captured_at']
+    assert context['retained_at'] == first['retained_at']
+    assert context['input_scope'] == scope and context['body_format'] == first['body_format']
+    assert cited_context(tmp_path, [{'text': 'No citations'}]) == {}
+    assert os.stat(observed_message_path(tmp_path, 'outlook', row['id'])).st_mode & 0o777 == 0o600
+    assert os.stat(state_path(tmp_path, 'mail/observed/outlook')).st_mode & 0o777 == 0o700
+    index = person_index_path(tmp_path, 'people/mentor.md')
+    index.parent.mkdir(parents=True)
+    index.write_text('')
+    items, _ = gather('Mentor', ['mentor@example.org'], days=36500, clients={}, subscriptions={},
+                      archive_root=tmp_path, record='people/mentor.md')
+    assert len(items) == 1 and items[0]['input_scope'] == scope
+    assert items[0]['retained_at'] == first['retained_at'] and not items[0].get('captured_at')
+    from connectonion.rem.evidence import write_evidence
+    evidence = tmp_path / 'evidence'
+    write_evidence(evidence, items)
+    supplied = '\n'.join(path.read_text() for path in evidence.rglob('*.md'))
+    assert 'Input scope: ' + scope in supplied
+    assert 'Retained at: ' + first['retained_at'] in supplied and 'Captured at:' not in supplied
+
+
+def test_initial_metadata_and_body_win_while_new_exact_thread_replies_are_added(tmp_path):
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import mail_metadata, message_path, person_material, retain_message
+    prepare(tmp_path)
+    write_json(state_path(tmp_path, 'mail/archive.json'), {
+        'phase': 'complete', 'providers': ['outlook'], 'owner_addresses': ['me@example.org'],
+        'range_start': '2026-10-01T00:00:00+00:00', 'range_end': '2026-10-03T00:00:00+00:00'})
+    original = {'type': 'mail', 'source': 'outlook', 'id': 'shared', 'thread': 'original-thread',
+                'from': 'lead@school.example', 'to': ['member@school.example'], 'cc': [],
+                'date': '2026-10-01T00:00:00Z', 'subject': 'Scope'}
+    inventory = state_path(tmp_path, 'source-inventory.jsonl')
+    inventory.write_text(json.dumps(original) + '\n')
+    path = message_path(tmp_path, 'outlook', 'shared')
+    snapshot = {**original, 'provider': 'outlook', 'body': 'Original request.'}
+    write_json(path, snapshot)
+    index = person_index_path(tmp_path, 'people/member.md')
+    index.parent.mkdir(parents=True)
+    index.write_text(json.dumps({'provider': 'outlook', 'id': 'shared', 'message': str(path.relative_to(tmp_path))}) + '\n')
+    retain_message(tmp_path, 'outlook', {**original, 'thread_id': 'later-thread'},
+                   'Changed rendering.', fetched_at='2026-10-03T12:00:00Z')
+    for native, thread in [('correct-reply', 'original-thread'), ('wrong-reply', 'later-thread')]:
+        row = {'id': native, 'thread_id': thread, 'from': 'me@example.org', 'to': ['lead@school.example'],
+               'cc': [], 'date': '2026-10-02T00:00:00Z', 'subject': 'Scope'}
+        retain_message(tmp_path, 'outlook', row, native, fetched_at='2026-10-03T12:00:00Z')
+    assert next(row for row in mail_metadata(tmp_path) if row['id'] == 'shared') == original
+    material, start, end = person_material(tmp_path, 'people/member.md', handles=['member@school.example'])
+    assert [item['_mail_id'] for item in material['outlook']] == ['shared', 'correct-reply']
+    assert material['outlook'][0]['text'] == 'Original request.'
+    assert {item['thread'] for item in material['outlook']} == {'mail:outlook:original-thread'}
+    assert material['outlook'][1]['relationship_scope'] and material['outlook'][1]['role'] == 'user'
+    assert (start.isoformat(), end.isoformat()) == ('2026-10-01T00:00:00+00:00', '2026-10-03T00:00:00+00:00')
+    assert json.loads(path.read_text()) == snapshot
+
+
+def test_observed_direct_membership_uses_saved_headers_not_only_metadata(tmp_path):
+    from connectonion.rem.files import read_json, state_path, write_json
+    from connectonion.rem.mail_archive import person_material, retain_message
+    prepare(tmp_path)
+    write_json(state_path(tmp_path, 'mail/archive.json'), {
+        'phase': 'complete', 'providers': ['outlook'], 'owner_addresses': ['me@example.org'],
+        'range_start': '2026-10-01T00:00:00+00:00', 'range_end': '2026-10-03T00:00:00+00:00'})
+    index = person_index_path(tmp_path, 'people/member.md')
+    index.parent.mkdir(parents=True)
+    index.write_text('')
+    row = {'id': 'unrelated', 'thread_id': 'scope', 'from': 'lead@school.example',
+           'to': ['other@school.example'], 'cc': [], 'date': '2026-10-01T00:00:00Z', 'subject': 'Scope'}
+    retain_message(tmp_path, 'outlook', row, 'Mentions member@school.example in body only.', fetched_at='')
+    metadata = next(state_path(tmp_path, 'mail/observed-metadata/outlook').glob('*.json'))
+    write_json(metadata, {**read_json(metadata, {}), 'cc': ['member@school.example']})
+    material, _, _ = person_material(tmp_path, 'people/member.md', handles=['member@school.example'])
+    assert material['outlook'] == []
+
+
+def test_mail_metadata_rejects_linked_provider_directory(tmp_path):
+    import pytest
+    from connectonion.rem.files import RemError, state_path
+    from connectonion.rem.mail_archive import mail_metadata
+    prepare(tmp_path)
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (outside / 'mail.json').write_text('{}')
+    folder = state_path(tmp_path, 'mail/observed-metadata')
+    folder.mkdir(parents=True)
+    (folder / 'outlook').symlink_to(outside, target_is_directory=True)
+    with pytest.raises(RemError, match='Symlinks'):
+        mail_metadata(tmp_path)
+
+
+def test_material_keeps_named_corecipients_separate_from_the_reply_author():
+    from connectonion.rem.mail_archive import _material_item
+    from connectonion.rem.runner import readable_material
+    snapshot = {"provider": "outlook", "id": "group-reply", "from": "Mentor <mentor@school.example>",
+                "to": ["Me <me@example.org>", "Alex Chen <a@school.example>"],
+                "cc": ["Guest <guest@school.example>"], "date": "2026-09-11T12:00:00Z",
+                "body": "--- Email Body ---\nIt is not too late to submit.\nMentor", "subject": "Re: project"}
+    item = _material_item(snapshot, {"me@example.org"})
+    assert item["role"] == "other" and item["speaker"] == snapshot["from"]
+    assert item["participants"] == {key: snapshot[key] for key in ("from", "to", "cc")}
+    supplied = readable_material([item])
+    assert 'Alex Chen <a@school.example>' in supplied and 'Guest <guest@school.example>' in supplied
+    assert item["text"] == snapshot["body"]
+
+
+def test_person_archive_keeps_exact_thread_replies_after_cc_member_is_dropped(tmp_path):
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import message_path, person_material
+    from connectonion.rem.fact_extract import extract
+    prepare(tmp_path)
+    record = "people/member.md"
+    rows = [
+        {"source": "outlook", "id": "request", "thread": "scope", "from": "lead@school.example",
+         "to": ["me@example.org"], "cc": ["member@school.example"], "date": "2026-10-01T00:00:00Z"},
+        {"source": "outlook", "id": "approval", "thread": "scope", "from": "me@example.org",
+         "to": ["lead@school.example"], "cc": [], "date": "2026-10-02T00:00:00Z"},
+        {"source": "outlook", "id": "other-team", "thread": "other", "from": "lead@school.example",
+         "to": ["me@example.org"], "cc": [], "date": "2026-10-02T01:00:00Z"},
+        {"source": "gmail", "id": "collision", "thread": "scope", "from": "lead@school.example",
+         "to": ["me@example.org"], "cc": [], "date": "2026-10-02T02:00:00Z"},
+        {"source": "outlook", "id": "unthreaded", "thread": "", "from": "lead@school.example",
+         "to": ["me@example.org"], "cc": [], "date": "2026-10-02T03:00:00Z"},
+    ]
+    write_json(state_path(tmp_path, "mail/archive.json"), {
+        "phase": "complete", "providers": ["outlook", "gmail"], "owner_addresses": ["me@example.org"],
+        "range_start": "2026-10-01T00:00:00+00:00", "range_end": "2026-10-03T00:00:00+00:00"})
+    state_path(tmp_path, "source-inventory.jsonl").write_text("".join(
+        json.dumps({"type": "mail", "subject": "Scope approval", **r}) + "\n" for r in rows))
+    for row in rows:
+        write_json(message_path(tmp_path, row["source"], row["id"]), {
+            **row, "provider": row["source"], "subject": "Scope approval",
+            "body": "Approved with additions." if row["id"] == "approval" else "Please approve."})
+    index = person_index_path(tmp_path, record)
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(json.dumps({"provider": "outlook", "id": "request", "roles": ["cc"],
+        "message": str(message_path(tmp_path, "outlook", "request").relative_to(tmp_path))}) + "\n")
+    material, _, _ = person_material(tmp_path, record)
+    items = material["outlook"]
+    assert len(items) == 2 and not material["gmail"]
+    request, approval = items
+    assert "relationship_scope" not in request
+    assert "not addressed to this person" in approval["relationship_scope"]
+    assert approval["role"] == "user" and approval["text"] == "Approved with additions."
+    facts = extract([i for i in items if not i.get("relationship_scope")], ["member@school.example"])
+    assert all(r["value"] != "2026-10-02" for r in facts if r["field"] == "Last contact")
+
+
 def test_init_archive_is_private_resumable_and_people_read_it_without_listing(tmp_path):
     prepare(tmp_path)
     skills = tmp_path / "source-skills"
@@ -71,14 +445,14 @@ def test_init_archive_is_private_resumable_and_people_read_it_without_listing(tm
                              archive_root=tmp_path, record=a)
     assert [item["text"] for item in items] == ["--- Email Body ---\nbody shared",
                                                  "--- Email Body ---\nbody reply"]
-    assert any("loaded from private init archive" in note for note in coverage)
+    assert any("loaded from private mail archive" in note for note in coverage)
     # An org is read from the same archive by domain: no provider, no listing (#1963).
     items, coverage = gather("Example", ["example.org"], days=1, clients={}, subscriptions={},
                              archive_root=tmp_path, record="orgs/example.md")
     assert [item["text"] for item in items] == ["--- Email Body ---\nbody shared",
                                                  "--- Email Body ---\nbody reply",
                                                  "--- Email Body ---\nbody b-reply"]
-    assert any("3 loaded from private init archive" in note for note in coverage)
+    assert any("3 loaded from private mail archive" in note for note in coverage)
     items, _ = gather("Other", ["other.org"], days=1, clients={}, subscriptions={},
                       archive_root=tmp_path, record="orgs/other.md")
     assert items == []
@@ -274,7 +648,7 @@ class Listing(Bodies):
 
 def test_an_investigation_reads_the_bodies_a_paused_archive_saved_and_fetches_only_the_rest(tmp_path):
     """#2042: 2,693 of 3,152 bodies were saved and every investigation said
-    "0 loaded from private init archive" and fetched all of them again."""
+    "0 loaded from private mail archive" and fetched all of them again."""
     prepare(tmp_path)
     report = _with_person(tmp_path)
     paused = archive_init(tmp_path, report, {"gmail": Bodies()}, seconds=25, clock=Clock(), now=lambda: T0)
@@ -285,7 +659,7 @@ def test_an_investigation_reads_the_bodies_a_paused_archive_saved_and_fetches_on
     assert sorted(mail.calls) == ["m2", "m3", "m4", "m5"]          # m0 and m1 came from disk
     assert len(items) == 6
     note = next(line for line in coverage if line.startswith("gmail"))
-    assert "2 loaded from private init archive (2 of 6 bodies saved so far)" in note
+    assert "2 loaded from private mail archive (2 of 6 bodies saved so far)" in note
     assert "searched on the server for a@example.org" in note     # the rest still asked the mailbox
 
 
@@ -295,7 +669,7 @@ def test_an_org_reads_a_paused_archive_too(tmp_path):
     items, coverage = gather("Example", ["example.org"], days=36500, clients={}, subscriptions={},
                              archive_root=tmp_path, record="orgs/example.md")
     assert [item["subject"] for item in items] == ["S1", "S0"]
-    assert any("2 loaded from private init archive (2 of 6 bodies saved so far)" in line for line in coverage)
+    assert any("2 loaded from private mail archive (2 of 6 bodies saved so far)" in line for line in coverage)
 
 
 def test_a_sync_that_resumes_the_archive_says_how_far_it_has_got(tmp_path):

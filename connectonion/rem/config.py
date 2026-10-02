@@ -68,7 +68,7 @@ def default_config() -> dict:
                        # Points of the Codex weekly window (#1843): investigation's
                        # budget, and the level past which it starts nothing so the
                        # owner's own coding keeps the rest of the week.
-                       "investigation_quota_points": 20, "quota_floor_percent": 70}}
+                       "investigation_quota_points": 35, "quota_floor_percent": 90}}
 
 
 def validate(config: dict) -> dict:
@@ -105,7 +105,9 @@ def validate(config: dict) -> dict:
 SUPERSEDED = {"model": {"gpt-5.3-codex-spark"},
               "limits.timeout_seconds": {600},
               "limits.extract_chars_per_batch": {300000},
-              "limits.runner_calls_per_day": {6, 30}}
+              "limits.runner_calls_per_day": {6, 30},
+              "limits.investigation_quota_points": {20},
+              "limits.quota_floor_percent": {70}}
 EXPLICIT = "config-explicit.json"
 
 

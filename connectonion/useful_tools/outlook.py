@@ -991,7 +991,7 @@ class Outlook:
         params = {
             "$search": f'"participants:{address} AND received>={start[:10]}"',
             "$top": 250,
-            "$select": "id,from,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
+            "$select": "id,conversationId,from,toRecipients,ccRecipients,subject,receivedDateTime,bodyPreview,isRead",
         }
         raw, endpoint = [], "/me/messages"
         while endpoint and len(raw) < max_results:
@@ -1002,8 +1002,9 @@ class Outlook:
         raw = [m for m in raw if start <= str(m.get("receivedDateTime", "")) < end][:max_results]
         rows = self._email_dicts(raw)
         for row, msg in zip(rows, raw):
-            row['to'] = [r.get('emailAddress', {}).get('address', '') for r in msg.get('toRecipients', [])]
-            row['cc'] = [r.get('emailAddress', {}).get('address', '') for r in msg.get('ccRecipients', [])]
+            row['thread_id'] = msg.get('conversationId', '')
+            row['to'] = [self._recipient(r) for r in msg.get('toRecipients', [])]
+            row['cc'] = [self._recipient(r) for r in msg.get('ccRecipients', [])]
         return sorted(rows, key=lambda row: (str(row.get('date', '')), row['id']))
 
     def list_between(self, start: str, end: str, max_results: int = 200,

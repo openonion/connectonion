@@ -110,7 +110,7 @@ def _file_messages(path, kind, parse, read_meta, since, rem_root, counts, owner)
         offset = len(first)
         for line in source:
             at, offset = offset, offset + len(line)
-            if not line.endswith(b"\n") or b"message" not in line or b"role" not in line:
+            if not line.endswith(b"\n") or b'"message"' not in line or b'"role"' not in line:
                 continue
             try:
                 row = json.loads(line)
@@ -131,7 +131,8 @@ def _file_messages(path, kind, parse, read_meta, since, rem_root, counts, owner)
             message = {"source": f"{kind}:{session}:{at}", "tool": kind,
                        # One spelling, so times from both tools compare as text.
                        "timestamp": timestamp(item["timestamp"]).isoformat(),
-                       "cwd": cwd, "text": SECRET_SHAPES.sub(REDACTED, item["text"])}
+                       "cwd": cwd, "text": SECRET_SHAPES.sub(REDACTED, item["text"]),
+                       **({"input_scope": item["input_scope"]} if item.get("input_scope") else {})}
             if why == CONTAINER:
                 held.append((at, message))
             elif why:
@@ -276,7 +277,8 @@ def page_for(cwd: str, folders: dict[str, str]) -> str | None:
 
 def render(messages: list[dict]) -> str:
     """Plain text to read: one heading per message, its date and tool, its words."""
-    blocks = [f"### {m['source']} · {m['timestamp']} — user ({m['tool']}, {m['cwd']})\n\n{m['text'].rstrip()}"
+    blocks = [f"### {m['source']} · {m['timestamp']} — user ({m['tool']}, {m['cwd']})\n\n"
+              + (f"Input scope: {m['input_scope']}\n\n" if m.get('input_scope') else '') + m['text'].rstrip()
               for m in messages]
     return "\n\n".join(blocks) + ("\n" if blocks else "")
 
@@ -340,19 +342,21 @@ def extract(root: Path, subscriptions: dict, *, since: datetime | None = None, f
         record = page_for(message["cwd"], folders)
         if record:
             by_page.setdefault(record, []).append(message)
-    pages = []
-    for record in sorted(set(folders.values())):
-        pages.append(_merge(root, record, by_page.get(record, []), full=full, now=now))
     moved = [m for m in messages if m.get("typed_in")]
     workspace = {"attributed": len(moved), "folders": len({m["cwd"] for m in moved}),
                  "stayed_out": counts["excluded"].get(CONTAINER, 0)}
     index = {"extracted_at": now.isoformat(), "since": since.isoformat(), "created": created,
              "workspace": workspace, "unmapped": _unmapped(messages, folders)}
-    write_json(base / "index.json", index)
+    with nullcontext() if lock_held else maintenance_lock(root, wait=60):
+        pages = [_merge(root, record, by_page.get(record, []), full=full, now=now)
+                 for record in sorted(set(folders.values()))]
+        write_json(base / "index.json", index)
+        from .store import refresh_safely
+        indexed = refresh_safely(root)
     return {"since": since.isoformat(), "files_read": counts["files"], "messages": len(messages),
             "pages": pages, "created": created, "workspace": workspace, "unmapped": index["unmapped"],
             "excluded": counts["excluded"], "harness_blocks_skipped": counts["harness"],
-            "unfamiliar_skipped": counts["unfamiliar"]}
+            "unfamiliar_skipped": counts["unfamiliar"], "store": indexed}
 
 
 def _unmapped(messages: list[dict], folders: dict) -> list[dict]:

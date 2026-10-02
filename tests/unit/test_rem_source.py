@@ -48,6 +48,29 @@ def test_partial_batch_keeps_unread_input(tmp_path):
     assert [i["text"] for i in first.items + second.items] == ["0", "1", "2", "3"]
 
 
+@pytest.mark.parametrize("instructions", ["Private harness rules", None])
+def test_legacy_and_current_codex_sessions_are_read_with_honest_date_scope(tmp_path, instructions):
+    legacy = tmp_path / "rollout-legacy.jsonl"
+    rows = [{"id": "older", "timestamp": "2025-11-04T15:24:50Z", "instructions": instructions},
+            {"type": "message", "id": "u1", "role": "user",
+             "content": [{"type": "input_text", "text": "Ask Vern about the placement"}]},
+            {"type": "message", "id": "a1", "role": "assistant",
+             "content": [{"type": "output_text", "text": "Claimed execution"}]},
+            {"type": "message", "id": "u2", "role": "user",
+             "content": [{"type": "input_text", "text": "<environment_context>Injected context"}]},
+            {"type": "function_call_output", "call_id": "tool", "output": "Unverified output"}]
+    legacy.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    rollout(tmp_path / "rollout-current.jsonl", [("user", "Vern needs the revised scope")])
+    batch = collect(subscription(tmp_path, since="2025-01-01T00:00:00Z"), {}, 20, 10000)
+    assert {item["text"] for item in batch.items} == {"Ask Vern about the placement", "Vern needs the revised scope"}
+    old = next(item for item in batch.items if item["source"].startswith("codex:older:"))
+    assert old["timestamp"] == "2025-11-04T15:24:50Z"
+    assert "individual message time was not recorded" in old["timestamp_scope"]
+    assert not collect(subscription(tmp_path, since="2025-01-01T00:00:00Z"), batch.progress, 20, 10000).items
+    recent = collect(subscription(tmp_path), {}, 20, 10000)
+    assert [item["text"] for item in recent.items] == ["Vern needs the revised scope"]
+
+
 def test_only_authorized_project_and_user_assistant_text(tmp_path):
     rollout(tmp_path / "rollout-a.jsonl", [("developer", "secret rules"),
                                            ("tool", "secret tool result"),
@@ -113,6 +136,23 @@ def test_huge_rollout_is_streamed_not_refused(tmp_path, monkeypatch):
         progress = batch.progress
     assert texts == ["Keep Markdown"]
     assert progress["2026/09/07/rollout-huge.jsonl"]["offset"] == len(meta + blob + late)
+
+
+def test_tool_output_quoting_a_transcript_is_not_decoded_as_a_native_message(tmp_path, monkeypatch):
+    path = tmp_path / 'rollout-quoted-output.jsonl'
+    rollout(path, [("user", "Keep this actual request")])
+    quoted = json.dumps({"type": "message", "role": "user", "text": "Quoted old transcript"}) * 5000
+    with path.open('a') as stream:
+        stream.write(json.dumps({"type": "response_item", "payload": {
+            "type": "function_call_output", "output": quoted}}) + '\n')
+    decoded, original = [], json.loads
+    def counted(value):
+        decoded.append(len(value))
+        return original(value)
+    monkeypatch.setattr('connectonion.rem.source.json.loads', counted)
+    batch = collect(subscription(tmp_path), {}, 20, 10000)
+    assert [item["text"] for item in batch.items] == ["Keep this actual request"]
+    assert max(decoded) < 10000, "the large quoted tool output must be skipped before JSON decoding"
 
 
 def test_files_older_than_the_lookback_are_not_opened(tmp_path, monkeypatch):

@@ -62,7 +62,7 @@ def test_legacy_project_gets_missing_sections_without_losing_content():
 
 
 def test_written_project_drops_empty_optional_sections_and_keeps_supported_detail(tmp_path):
-    from connectonion.rem.page_review import compact_project_page
+    from connectonion.rem.page_review import compact_page
     prepare(tmp_path)
     nb = Notebook(tmp_path)
     nb.stub_project('projects/atlas.md', 'Atlas', sessions=2,
@@ -74,7 +74,7 @@ def test_written_project_drops_empty_optional_sections_and_keeps_supported_detai
                                   '## Key decisions\n2026-09-19: chose local storage. [1]')
     candidate = candidate.replace('- Unknown — not investigated yet', '- Unknown')
     candidate = candidate.replace('## Sources\n', '## Sources\n- [1] fixture:readme — 2026-09-19\n')
-    compact = compact_project_page(candidate)
+    compact = compact_page('projects/atlas.md', candidate)
     assert '## Key decisions\n2026-09-19: chose local storage. [1]' in compact
     assert '## Overview\n' not in compact
     assert '## Try it\n' not in compact
@@ -86,7 +86,7 @@ def test_written_project_drops_empty_optional_sections_and_keeps_supported_detai
 
 @pytest.mark.parametrize('newline', ['\n', '\r\n'])
 def test_compact_project_preserves_fenced_diagram_and_later_sections(newline):
-    from connectonion.rem.page_review import compact_project_page, prose
+    from connectonion.rem.page_review import compact_page, prose
     page = newline.join([
         '# Atlas', '## Facts', '- Local project [1]', '## Insight', '- A decision is open [1]',
         '## What it is', 'A local demo [1]', '## Where it stands', '- Active [1]',
@@ -95,7 +95,7 @@ def test_compact_project_preserves_fenced_diagram_and_later_sections(newline):
         '## Uncertainties', '- Outcome unverified [1]', '## Sources', '- [1] fixture:readme', '',
     ])
     assert len(prose(page)) == len(page)
-    compact = compact_project_page(page)
+    compact = compact_page('projects/atlas.md', page)
     assert '## Try it' not in compact
     assert '```text' + newline + '## This is a diagram, not a section' + newline + 'box -> arrow' in compact
     assert '## Paths' + newline + '- /tmp/atlas' in compact
@@ -111,6 +111,22 @@ def test_long_material_is_readable_and_the_exact_copy_is_kept(tmp_path):
     assert max(map(len, readable.splitlines())) <= 400
     assert json.loads((tmp_path / 'material.json').read_text())[0]['text'] == item['text']
     assert 'material.md' in prompt or '<material>' in prompt
+
+
+@pytest.mark.parametrize('padding', ['', 'x' * 110_000])
+def test_indexed_evidence_is_explicitly_readable_in_inline_and_file_tasks(tmp_path, padding):
+    items = [{'role': 'page', 'record': 'people/mia.md', 'text': '# Mia\n' + padding},
+             {'role': 'evidence-index', 'source': 'investigation:evidence',
+              'file': str(tmp_path / 'evidence/index.md'), 'sources': ['outlook:abc'],
+              'text': 'One archived email body in evidence/01.md; the index is not its contents.'}]
+    prompt = task_prompt(tmp_path, items, 'investigate')
+    assert 'Read and search the evidence files named by that index before writing findings.' in prompt
+    assert 'Do not read' not in prompt
+    if not padding:
+        assert '<material>' in prompt
+        assert 'not the evidence bodies' in prompt
+    else:
+        assert 'Read all source material at' in prompt
 
 
 def test_numbered_source_list_is_normalized_without_changing_claims():
@@ -146,6 +162,35 @@ def test_candidate_checks_duplicate_headings_and_missing_citations(tmp_path):
     assert any('citation: 9' in e for e in errors)
 
 
+def test_skill_finding_citing_a_split_record_survives_promotion(tmp_path, monkeypatch):
+    prepare(tmp_path)
+    nb = Notebook(tmp_path)
+    record = 'skills/catalog/example.md'
+    nb.stub_skill(record, 'example', '/observed/SKILL.md')
+    old = nb.read(record)
+    candidate = re.sub(r'(?m)^(?:- )?Unknown — not investigated yet$',
+                       'Unknown', normalize(record, old))
+    candidate = re.sub(r'(?ms)^## Insight\n.*?(?=^## )',
+                       '## Insight\nThe requested artifact was absent from the reported output. [1]\n\n', candidate)
+    candidate = re.sub(r'(?ms)^## Sources\n.*?(?=^Investigation:|\Z)',
+                       '## Sources\n- [1] skill-eval:abc123 — 2026-09-19\n\n', candidate)
+    def run(directory, prompt, config, stage):
+        Path(re.search(r'NEW file (.+?candidate.md)', prompt)[1]).write_text(candidate)
+        return {'usage': {'input_tokens': 7}}
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run)
+    items = [{'role': 'page', 'record': record, 'text': old},
+             {'role': 'evidence-index', 'source': 'investigation:skill-records',
+              'sources': ['skill-eval:abc123:part-1', 'skill-eval:abc123:part-2'],
+              'text': 'Two pieces of a retained evaluation record.'}]
+    result = run_stage(nb, items, default_config(), stage='investigate')
+    assert result['changed'] == [record]
+    assert 'artifact was absent' in nb.read(record)
+    assert '- [1] skill-eval:abc123' in nb.read(record)
+    from connectonion.rem.page_review import _known_sources
+    assert 'skill-eval:abc123' in _known_sources(items)
+    assert 'skill-eval:abc' not in _known_sources(items)
+
+
 @pytest.mark.parametrize('invalid', [False, True])
 def test_investigation_promotes_only_valid_new_candidate(tmp_path, monkeypatch, invalid):
     prepare(tmp_path)
@@ -170,8 +215,8 @@ def test_investigation_promotes_only_valid_new_candidate(tmp_path, monkeypatch, 
         assert nb.read('projects/atlas.md') == old
     else:
         assert run_stage(nb, items, default_config(), stage='investigate')['changed'] == ['projects/atlas.md']
-        from connectonion.rem.page_review import compact_project_page
-        assert nb.read('projects/atlas.md') == compact_project_page(candidate)
+        from connectonion.rem.page_review import compact_page
+        assert nb.read('projects/atlas.md') == compact_page('projects/atlas.md', candidate)
 
 
 def test_local_citations_require_existing_files_under_supplied_paths(tmp_path):

@@ -14,6 +14,7 @@ Facts label (see facts.FIELDS) or one of the context kinds above.
 """
 
 import re
+from zoneinfo import ZoneInfo
 
 from .files import EMAIL, RemError, is_address
 from .source import timestamp
@@ -27,19 +28,21 @@ MOBILE = re.compile(r"\b(m|mob|mobile|cell|手机)\b\s*[:.]?", re.I)
 WORK = re.compile(r"\b(t|tel|ph|phone|p|w|work|office|direct|d|电话)\b\s*[:.]?", re.I)
 LINKEDIN = re.compile(r"(?:https?://)?(?:[\w-]+\.)?linkedin\.com/in/[\w%-]+/?", re.I)
 INVITE = re.compile(r"^(invitation|updated invitation|invitation updated|accepted|meeting)\b|BEGIN:VCALENDAR|"
-                    r"Join with Google Meet|Microsoft Teams meeting", re.I | re.M)
+                    r"Join with Google Meet|Microsoft Teams meeting|Join Zoom Meeting|One tap mobile|"
+                    r"Dial by your location|dial[ -]?in|scheduled Zoom meeting|"
+                    r"iPhone one[ -]tap|\bzoom\.us/j/|Australian Toll number", re.I | re.M)
 MAIL_SOURCES = ("gmail:", "outlook:", "email:")
 
 
-def _date(item: dict) -> str:
+def _date(item: dict, zone: ZoneInfo) -> str:
     try:
-        return timestamp(item["timestamp"]).date().isoformat()
+        return timestamp(item["timestamp"]).astimezone(zone).date().isoformat()
     except (RemError, KeyError, TypeError, ValueError):
         return ""
 
 
-def _row(field, value, item, qualifier=""):
-    return {"field": field, "value": value, "qualifier": qualifier, "source": item["source"], "date": _date(item)}
+def _row(field, value, item, zone, qualifier=""):
+    return {"field": field, "value": value, "qualifier": qualifier, "source": item["source"], "date": _date(item, zone)}
 
 
 def _body(item: dict) -> list[str]:
@@ -74,7 +77,7 @@ def signature(lines: list[str], names: list[str]) -> list[str]:
     return [line for line in tail[start:] if line][:8] if start is not None else []
 
 
-def _phones(block: list[str], item: dict) -> list[dict]:
+def _phones(block: list[str], item: dict, zone: ZoneInfo) -> list[dict]:
     rows = []
     for line in block:
         for match in PHONE.finditer(line):
@@ -87,7 +90,7 @@ def _phones(block: list[str], item: dict) -> list[dict]:
             if not (labelled or value.startswith(("+", "(", "0"))):
                 continue
             qualifier = "mobile" if MOBILE.search(before) else "work" if WORK.search(before) else ""
-            rows.append(_row("Phone", value, item, qualifier))
+            rows.append(_row("Phone", value, item, zone, qualifier))
     return rows
 
 
@@ -99,7 +102,7 @@ def _subject(item: dict, addresses: set, names: list[str]) -> bool:
     return speaker.strip().casefold() in names
 
 
-def extract(items: list[dict], handles: list[str], *, owner: bool = False) -> list[dict]:
+def extract(items: list[dict], handles: list[str], *, owner: bool = False, timezone: str = "UTC") -> list[dict]:
     """Facts the material states outright about the subject, newest signature first.
 
     `owner` is the user's own page: the user's own messages are the subject's,
@@ -108,8 +111,10 @@ def extract(items: list[dict], handles: list[str], *, owner: bool = False) -> li
     addresses = {h.strip().casefold() for h in handles if is_address(h)}
     words = [h.strip() for h in handles if not is_address(h) and len(h.strip()) >= 3]
     names = sorted({w.casefold() for w in words} | {w.split()[0].casefold() for w in words if len(w.split()[0]) >= 3})
+    zone = ZoneInfo(timezone)
     mail = sorted((i for i in items if str(i.get("source", "")).startswith(MAIL_SOURCES)
-                   and i.get("role") in ("user", "other") and _date(i)), key=_date)
+                   and i.get("role") in ("user", "other") and _date(i, zone)),
+                  key=lambda i: timestamp(i["timestamp"]))
     rows, seen = [], set()
 
     def add(row):
@@ -122,34 +127,37 @@ def extract(items: list[dict], handles: list[str], *, owner: bool = False) -> li
         if not (item["role"] == "user" if owner else item["role"] == "other" and _subject(item, addresses, names)):
             continue
         for address in EMAIL.findall(item.get("speaker") or ""):
-            add(_row("Email", address.casefold(), item))
+            add(_row("Email", address.casefold(), item, zone))
             domain = address.casefold().rsplit("@", 1)[1]
             if domain not in WEBMAIL:
-                add(_row("Company domain", domain, item))
+                add(_row("Company domain", domain, item, zone))
         block = signature(_body(item), names)
         if block and sum(1 for r in rows if r["field"] == "Signature") < 3:
-            add(_row("Signature", " | ".join(block)[:300], item))
-        for row in _phones(block, item):
-            add(row)
+            add(_row("Signature", " | ".join(block)[:300], item, zone))
+        # An organiser's name above dial-in instructions looks like a signature.
+        # Invitation numbers need attribution by the reader, not automatic restoration.
+        if not INVITE.search(item.get("subject", "") + "\n" + (item.get("text") or "")):
+            for row in _phones(block, item, zone):
+                add(row)
         for link in LINKEDIN.findall("\n".join(block)):
-            add(_row("Links", link if link.startswith("http") else "https://" + link, item))
+            add(_row("Links", link if link.startswith("http") else "https://" + link, item, zone))
     for item in reversed(mail):
         if INVITE.search(item.get("subject", "") + "\n" + (item.get("text") or "")):
             for line in _body(item):
                 low = line.casefold()
                 at = min([low.find(n) for n in [*names, *addresses] if n in low], default=-1)
                 if at >= 0:   # a flattened invite is one long line: the window around the name
-                    add(_row("Calendar", line[max(0, at - 60):at + 140] if len(line) > 200 else line, item))
+                    add(_row("Calendar", line[max(0, at - 60):at + 140] if len(line) > 200 else line, item, zone))
     if mail and not owner:
-        add(_row("First contact", _date(mail[0]), mail[0]))
-        add(_row("Last contact", _date(mail[-1]), mail[-1]))
+        add(_row("First contact", _date(mail[0], zone), mail[0], zone))
+        add(_row("Last contact", _date(mail[-1], zone), mail[-1], zone))
     return rows
 
 
 ORDER = ("Email", "Phone", "Links", "First contact", "Last contact", "Company domain", "Signature", "Calendar")
 
 
-def facts_item(rows: list[dict]) -> dict:
+def facts_item(rows: list[dict], timezone: str = "UTC") -> dict:
     """The rows as the one item the turn reads, sources named per line."""
     lines = [f"- {r['field']}: {r['value']}" + (f" ({r['qualifier']})" if r["qualifier"] else "")
              + f" — {r['source']}, {r['date']}"
@@ -160,4 +168,5 @@ def facts_item(rows: list[dict]) -> dict:
                     "Calendar lines are the text itself: read the role, company, location or time zone from "
                     "them. Correct a fact only where the material contradicts it, and say so in "
                     "Uncertainties; a phone, address, link or contact date left off the page is put back "
-                    "after the turn.\n" + "\n".join(lines)}
+                    f"after the turn. Contact and source dates use {timezone}; event dates are separate.\n"
+                    + "\n".join(lines)}

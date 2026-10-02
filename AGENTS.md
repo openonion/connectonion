@@ -445,6 +445,14 @@ the matching docs-site channel, then publishes only from the reviewed exact tag.
 2. **Implementation**: Test first (red) → Minimal code (green) → Refactor → Commit
 3. **When Stuck**: Max 3 attempts, then document failures and try different approach
 4. **Definition of Done**: Tests pass, follows conventions, no TODOs, documentation updated
+5. **Independent experience review**: After each update round, release or trial,
+   use a separate reviewer with a marketing/UI technology-founder perspective.
+   Inspect rendered page structure, content and design on desktop and mobile,
+   including value clarity, evidence, next actions, navigation and interaction
+   states. Record prioritized issues, user impact, evidence and recheck criteria;
+   fix significant issues in scope and inspect the result again. Name the pages
+   and states actually reviewed; sample coverage is not an all-page pass. An AI
+   role review must not be described as a real human founder's review.
 
 ## Important Reminders
 

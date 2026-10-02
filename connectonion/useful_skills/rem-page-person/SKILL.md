@@ -1,24 +1,18 @@
 ---
 name: rem-page-person
-description: What a person's page in the notebook is made of — the fixed sections, the labels the roster reads back, and the rules a thin page always breaks. Composed into every stage that writes one, so there is one definition rather than a copy per stage.
+description: Fixed sections, roster labels and evidence rules for a person's page; composed into every stage that writes one.
 ---
 
 # A person's page
 
 Why these rules: docs/rem-skills/rem-page-person.md
 
-**How to do it.** Your whole input is the page as it stands and the material
-about this person: read both in full, then write the page. Do not look for
-example pages, earlier outputs, logs, other skills or the repository to copy a
-format from; the shape is below. Write the whole page in one go, check it once
-against the rules, fix what is wrong in one edit, and stop.
+Read supplied page/material. Write, check, fix once, stop; use this format.
 
-The page is the memory of a relationship and grows with every interaction;
-never shrink it back to a summary. **Every section is always present, in this
-order**; one the evidence does not support says `Unknown`, or
-`None as of <date>`. **Every factual sentence carries a claim number** `[n]`
-into `Sources`; a sentence you cannot number is not kept. Placeholders are
-never evidence.
+This is a growing relationship memory; never shrink it to a summary. Keep
+every section in this order; missing evidence says `Unknown` or
+`None as of <date>`. Every factual sentence cites `[n]` into `Sources`.
+Placeholders are not evidence.
 
 ```markdown
 # <observed name>
@@ -56,14 +50,14 @@ never evidence.
 
 Rules:
 
-- **The lead comes first**, 2–3 cited sentences, no heading: the balance
-  first — who owes whom what, for how many days ("You owe Mia the revised SOW —
-  12 days"), or `Nothing open as of <date>` — then who they are to the user,
-  then `Last contact: <date>` (newest message either way, with its channel).
+- **Lead**: 2–3 cited sentences. Start with a supported current obligation or
+  relationship finding; end with `Last contact: <date>` and channel. Historical
+  gaps go in `Uncertainties`. `Nothing open as of <date>` needs closure evidence.
 - **`Facts` is data, written first.** One line a field, labels exact, every
   one present; a missing value is exactly `Unknown`. Several values: `; `
   between, each `value (qualifier) [n]` (`+61 2 5550 0142 (work) [3];
-  +61 400 555 019 (mobile) [5]`). Dates `YYYY-MM-DD`. Every value is cited
+  +61 400 555 019 (mobile) [5]`). Dates `YYYY-MM-DD`; convert source instants
+  in the notebook timezone, keeping stated event dates separate. Every value is cited
   except `Email`, `Handles`, `Also known as`. A contact detail never goes in a
   sentence instead of its field. `Links`: LinkedIn, personal or company site.
   `How we know them`: who introduced whom, or the first thread.
@@ -74,35 +68,43 @@ Rules:
   ("key stakeholder", "valuable relationship", "maintains regular
   communication"); thin material: `- Unknown`.
 - **`Language` is observed**: the language they write to the user in.
-- **`Company` comes from the address domain and the signature block.** A
-  mailbox provider (gmail, outlook, qq) is not a company. Where an organisation
-  page exists, link it: `- Company: [UNSW](../orgs/unsw.md) [2]`.
+- Attribute group replies to their sender using exact From/To/Cc metadata.
+  Greetings do not bind names by recipient order; the owner's phone is not
+  the contact's. Date historical plans and handoffs; missing completion
+  evidence does not make them current pending work.
+- **`Company` needs stated employment.** Student or mailbox affiliation proves
+  none: `Unknown`. Link schools/groups in relationship text, not as employers.
 - **`Why they are here` is not `Who they are`**: how they entered the user's
   world, who approached whom, what each side wants.
 - **`Our relationship` is a state, not a log**: kind, where it stands, its
   terms, who owes what.
+  Keep each local link with its relationship, citations and privacy markers;
+  separate different events onto separate lines.
 - **`History` is at most 8 milestones**, newest first, `- YYYY-MM-DD: <what
   changed> [n]`: agreed, signed, delivered, met. Not a send or a newsletter.
   Past 8, fold the oldest into one line per year.
-- **An open thread names who owes whom what, and since when.** Nothing open:
-  `Nothing open as of <date>`, plus the next expected contact.
-- **Say a thing once, in one clause.** Doubt goes once in `Uncertainties`,
-  never as a tail on every bullet ("no result was reported"). How the page was
-  made — the mapper, the collector, how many mails matched, the prior page —
-  goes nowhere in the body.
-- **Mark inference as inference.** Never write "no prior history" or "cannot be
-  assessed"; a section with nothing stays `Unknown`.
+- **Open threads keep exact asks.** Check later replies; separate terms/forms.
+  Reports/optional offers create none. Prerequisites aren't agreed commitments;
+  missing historical outcomes aren't current debts.
+  Accepting an invitation or trial proves intent; attendance/activation need
+  separate evidence.
+  Name debtor, request date and explicit due date; never hardcode its age.
+  Preserve permission to proceed without a reply. Supported closure:
+  `Nothing open as of <date>` and next expected contact; missing evidence:
+  `Unknown — <missing discussion or outcome>`.
+- **Say things once.** Doubt goes in `Uncertainties`; omit collection counts
+  and prior-page metadata.
+- **Label inference.** Empty sections stay `Unknown`; don't infer "no prior
+  history" or "cannot be assessed".
 - **Keep what the map already knew.** `Email`, `Handles`, `Also known as`
   arrive filled; keep them. Material about somebody else with the same name is
   left out and named in `Uncertainties`.
 - **`Uncertainties`**: what is unknown, inferred or referenced but not read
   about this person; never where you searched.
-- **Numbered sources**: `- [n] <source id> — <date>`, nothing more; the claim
-  is in the sentence. Reuse a number for a repeated source; list only what a
-  sentence cites.
+- **Sources**: `- [n] <source id> — <date>`; claims stay in sentences.
+  Reuse numbers and list only cited sources.
 
-## The headings are copied exactly
+## Exact headings
 
-Nothing else goes on a heading line; never rename or annotate a `Facts` label.
-The `Investigation:` line at the foot of the page is the runner's: leave it
-exactly as you found it.
+Never annotate headings or rename `Facts` labels. Preserve the runner's
+`Investigation:` line unchanged.

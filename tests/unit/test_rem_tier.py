@@ -128,7 +128,7 @@ def test_a_summary_tier_project_page_is_handed_its_files(tmp_path):
     readme = tmp_path / "README.md"
     readme.write_text("Orbit is a scheduler. " * 200)
     [item] = project_file_texts([str(readme)])
-    assert item["source"] == str(readme) and item["text"].startswith("Orbit is a scheduler.")
+    assert item["source"] == "file:" + str(readme) and item["text"].startswith("Orbit is a scheduler.")
     assert item["text"].endswith("[truncated]")
 
 

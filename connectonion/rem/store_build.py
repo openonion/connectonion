@@ -53,7 +53,9 @@ def inputs(root: Path) -> dict:
     return {
         "pages": pages + [state / "map.json"],
         # The snapshot folders' own mtimes move when a body is added.
-        "mail": [state / "source-inventory.jsonl", state / "mail/messages/gmail", state / "mail/messages/outlook"],
+        "mail": [state / "source-inventory.jsonl", state / "mail/messages/gmail", state / "mail/messages/outlook",
+                 state / "mail/observed/gmail", state / "mail/observed/outlook",
+                 state / "mail/observed-metadata/gmail", state / "mail/observed-metadata/outlook"],
         "sessions": sorted(state.glob("projects/*/messages.jsonl")),
         "runs": sorted(state.glob("runs/*.json")),
     }
@@ -112,10 +114,9 @@ def facts(text: str) -> dict:
 
 def _linkedin(link: str) -> bool:
     """By host, not by substring: `evil.example/?u=linkedin.com` is a website."""
-    from urllib.parse import urlparse
-    url = link.split()[0] if link.split() else ""
-    host = (urlparse(url if "://" in url else "https://" + url).hostname or "").casefold()
-    return host == "linkedin.com" or host.endswith(".linkedin.com")
+    markdown = re.match(r"\[[^\]]*\]\(([^\s)]+)\)", link)
+    url = markdown[1] if markdown else link.split()[0] if link.split() else ""
+    return bool(re.match(r"^(?:https?://)?(?:[a-z0-9-]+\.)*linkedin\.com(?::\d+)?(?:[/?#]|$)", url, re.I))
 
 
 def columns(found: dict) -> dict:

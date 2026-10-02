@@ -108,6 +108,20 @@ def test_normalize_puts_facts_and_insight_where_the_reader_expects_them():
     assert page.index("You owe Mia") < page.index("## Facts")
 
 
+@pytest.mark.parametrize("placeholder", ["", "- Last activity: Unknown\n"])
+def test_plain_facts_are_visible_in_the_reader_instead_of_hidden_below_unknown(placeholder):
+    page = ("# Project\n\n## Facts\n" + placeholder +
+            "Last activity: 2026-09-17 [1]\nStack: Next.js [2]\n" +
+            "Notes: keep this custom detail\n\n## Sources\n- [1] session:one\n- [2] file:manifest\n")
+    upgraded = facts.upgrade("projects/p.md", page)
+    parsed = facts.parse(upgraded, "projects/p.md")
+    assert parsed["Last activity"] == [{"value": "2026-09-17", "qualifier": "", "citations": ["1"]}]
+    assert parsed["Stack"][0]["value"] == "Next.js"
+    assert upgraded.count("Last activity:") == 1
+    assert "Notes: keep this custom detail" in upgraded
+    assert facts.upgrade("projects/p.md", upgraded) == upgraded
+
+
 def test_the_owners_page_has_facts_and_insight_too():
     """Its Insight is the owner's own month: what shipped, who is waiting (#2065)."""
     assert headings("people/me.md", owner=True)[:2] == ("Facts", "Insight")
@@ -151,3 +165,13 @@ def test_a_link_is_linkedin_by_its_host_not_by_a_substring():
     row = columns({"Links": "https://evil.example/?u=linkedin.com; https://www.linkedin.com/in/mia"})
     assert row["linkedin"] == "https://www.linkedin.com/in/mia"
     assert row["website"] == "https://evil.example/?u=linkedin.com"
+
+
+def test_markdown_and_malformed_links_do_not_block_the_index():
+    from connectonion.rem.store_build import columns
+    row = columns({"Links": "[Personal site](https://harbour.example); "
+                           "[LinkedIn profile](https://www.linkedin.com/in/mia); https://[broken"})
+    assert row["linkedin"] == "[LinkedIn profile](https://www.linkedin.com/in/mia)"
+    assert row["website"] == "[Personal site](https://harbour.example); https://[broken"
+    disguised = columns({"Links": "https://linkedin.com@evil.example/in/mia; https://linkedin.com.evil.example"})
+    assert disguised["linkedin"] == ""

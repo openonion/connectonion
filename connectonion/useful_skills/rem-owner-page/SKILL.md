@@ -1,27 +1,26 @@
 ---
 name: rem-owner-page
-description: How the notebook owner's own page differs from a person's page — who the user is and what they are working on now, their roles only as stated, and what they owe and are owed. Composed after rem-page-person only when `co rem investigate me` writes the owner's page.
+description: The owner's work, commitments and next decisions.
 ---
 
 # Your own page
 
-Write the user's own page from what they sent and typed. Keep the person
-headings and `Facts` labels except `How the user writes to them`.
+Write the user's page from their messages. Keep person headings and `Facts`
+labels except `How the user writes to them`.
 
 ## The lead
 
-Under the title, before `Facts`, 2–4 cited sentences:
+Before `Facts`, write 2–4 cited sentences:
 
 - **Start with what they are working on now and why the next step matters.**
   If `owner-work-evidence` shows an explicit reversal, lead with it and cite
-  both original messages. Newer questions are not a change. Otherwise name a
-  blocker or unresolved choice. Replace the generic quick-pass lead; put the
+  both messages. Newer questions are not a change. Otherwise name a blocker
+  or unresolved choice. Replace the generic lead; put the
   latest request in the next step. `recent-projects` ranks, not proves shipping.
   List projects in `Who they are`.
-- Add only a firm, due-soon commitment or one blocking that work. Distant
-  optional invitations and unrelated mail belong in `Open threads`.
-- The person-page `Last contact:` lead rule does not apply here; contact dates
-  stay in `Facts` and `Cadence`.
+- Add a firm, due-soon commitment or blocker. Put distant invitations and
+  unrelated mail in `Open threads`.
+- Put contact dates in `Facts` and `Cadence`, not the lead.
 
 ## Coding agents are the user's tools, not people
 
@@ -38,18 +37,21 @@ never a correspondent in `Cadence`.
 - **A role in a list the user writes about someone else is that person's, not
   the user's.** "Ody: partner at OpenOnion, runs marketing, Airbnb co-host" in
   the user's mail describes Ody. Leave it off this page.
-- Several stated roles → all of them, each cited and dated. None stated →
-  `Unknown`.
+- List stated roles with citations and dates; otherwise `Unknown`.
 
 ## The sections
 
 - `Who they are`: the user's work in their own words, and the projects of the
   last weeks, each with what they did and when, from the sessions.
-- `Insight`: 2–4 cited bullets. Lead with `Changed:` when a dated reversal is
+- `Insight`: 2–4 cited bullets connecting projects and commitments to the next
+  decision: what must happen first, who waits, or a recurring tradeoff.
+  Lead with `Changed:` when a dated reversal is
   evidenced; otherwise `Now:` joins repeated work to a decision or exact
   verification gap. `Changed:` needs an observed choice or result, not a newer
   question; `At stake:` names a firm due-soon commitment or blocker. Compare
-  sources when possible. A coding request proves no shipment or passing test.
+  sources when possible and cite the dependency. Summarized requests alone are
+  not insight. A coding request proves no shipment or passing test; only
+  artifact evidence proves shipping.
 - `Why they are here`: this is the owner's page; one line, cited to the map.
 - `Our relationship`: `Account owner`.
 - `History`: completed, dated milestones, newest first (launch, hire, move,

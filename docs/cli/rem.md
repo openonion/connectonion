@@ -48,7 +48,7 @@ instead of summarising is
 ## Start here
 
 ```bash
-co rem init                 # Map sources, then investigate your recent important people and work
+co rem init                 # Map sources, then investigate your people, work and installed skills
 co rem open                 # Read your page
 co rem start                # Keep it current: approve sources, turn on the daily round
 ```
@@ -61,18 +61,22 @@ first minutes. Then it uses the configured model to write your own page: the who
 `investigate me`, from everything you sent and your coding sessions of the last
 30 days (or `--days`), one model turn over evidence files, about 15 minutes.
 It writes a quick first pass of your page in about 4 minutes, then the whole
-page alongside the selected recent cohort. Next come people active in the last
-14 days, each investigated from up to two years of their mail; recently active
-projects already listed in the map; and organisations linked to those people:
+page alongside the selected pages. Next come eligible people, those active in
+the last 14 days first, each investigated from up to two years of their mail;
+queued projects already listed in the map, recent first; organisations linked
+to those people; and installed skills from source and retained run evidence:
 12 pages at a time. Session folders discovered after the map summary remain
 unmapped candidates during this first run. They do not silently add project
 pages or change the project count the owner just saw.
+Init rereads the retained project-message window against the current map. If
+you widen `--days`, older newly mapped folders get their existing messages;
+message IDs prevent duplicates. Daily extraction stays incremental.
 An earlier whole-notebook experiment wrote 199 of 242 pages in about 30 minutes
 and moved the Codex week by one point. A person page
 read 150 days at the time; a real contact went back 15 months, so the window is
 now two years. The mail is searched, not pasted: a wider window widens what the
 model can find, not what every turn reads. `--first-people N`,
-`--first-projects N` and `--first-orgs N` cap a kind (0 for none).
+`--first-projects N`, `--first-orgs N` and `--first-skills N` cap a kind (0 for none).
 
 Before it spends anything it says one total (#2008): which runner and model,
 that it runs on your own plan, and "About N pages (...), ~X billed input tokens,
@@ -83,7 +87,7 @@ measured on a real 7-day first run on 2026-10-02: each owner turn 768k and
 with up to two years of evidence, a project 69k and ~1 minute, an organisation
 129k and ~2 minutes. Minutes are wall clock: after the quick owner turn, the
 full turn and selected pages share up to 12 workers. The estimate simulates
-that queue so a slow last page is not hidden by an average. Roughly 20% of a weekly runner
+that queue so a slow last page is not hidden by an average. Roughly 35% of a weekly runner
 allowance is a target, not a hard stop. The selected investigation finishes
 even if it uses more, unless the configured weekly safety floor is reached;
 pages already in flight finish. Ctrl-C stops it, says which pages
@@ -300,7 +304,7 @@ Every command returns a next command, including in JSON and through a pipe.
 
 | Command | Behavior |
 |---|---|
-| `co rem init` | Discover sources and map pages, then use the configured model to investigate your page, recent people, active projects and related organizations. `--no-investigate` explicitly stops after the map. |
+| `co rem init` | Discover sources and map pages, then use the configured model to investigate your page, eligible people, queued projects, related organizations and installed skills, recent first. `--no-investigate` explicitly stops after the map. |
 | `co rem scan people --days 150 --min-mails 1` | Enumerate correspondent signals from Gmail/Outlook; no model. Repeat `--mine <address>` for own addresses. |
 | `co rem scan orgs --days 180 --min-people 2` | List work domains that two or more people write from — where an organisation page earns its place. No model. |
 | `co rem scan projects --days 150` | Enumerate session working directories and local Git repository identities; no model. |
@@ -379,7 +383,8 @@ older page before showing its answer. It remains a point-in-time snapshot.
   recorded decision when supported. Explicit links and unambiguous name
   mentions make cross-page cards and backlinks; their labels distinguish a
   link from a mention. The original prose, every Facts/Contact field,
-  Insight, History and Sources stay under **Full memory and sources**. A claim
+  Insight, History and Sources stay under the always-visible **Full memory and
+  sources** section. A claim
   number `[n]` opens its source description and, when locally archived, an
   original excerpt. Cited conversations show up to twelve recent archived
   messages with the total count. Missing original bodies are labeled, never
@@ -601,11 +606,11 @@ below is good to about one point.
   decimal: about a million tokens the model had to read fresh or write is one
   point. A run that did move the meter counts what the meter says.
 - **Scheduled and manual investigation has a weekly budget**, `limits.investigation_quota_points`,
-  default **20** points of the weekly window. The
+  default **35** points of the weekly window. The
   scheduled round adds up the points its investigation runs used since the
   window last reset, and starts no new page once that reaches the budget.
-- **The initial investigation uses a soft 20% target.** It finishes the
-  selected recent cohort beyond that target and the normal investigation
+- **The initial investigation uses a soft 35% target.** It finishes the
+  selected pages beyond that target and the normal investigation
   budget. The configured safety floor still protects the rest of the week.
   Claude Code and other runners without a readable weekly meter show an
   estimate and finish the selected cohort; the CLI cannot claim to have
@@ -620,11 +625,11 @@ below is good to about one point.
   the round uses), until 10 points of the week are spent. `--list` shows that
   order without running a model.
 - **A floor protects your own coding.** No investigation page starts once the
-  week is at `limits.quota_floor_percent` or more, default **70%**, however much
+  week is at `limits.quota_floor_percent` or more, default **90%**, however much
   of co rem's budget is left. co rem shares this quota with your real work.
 - `co rem status` reads the meter now and says it in two lines, for example
   `Codex week: 5% used on pro; resets Sun 04 Oct 09:49` and
-  `Investigation this week: 0 of 20 points; nothing starts once the week is at 70%`.
+  `Investigation this week: 0 of 35 points; nothing starts once the week is at 90%`.
   The dashboard says what a point is under the line.
   `--json` gives the same numbers under `quota` and `investigation_quota`.
 - When the meter cannot be read (another runner, Codex not signed in, an older
@@ -641,7 +646,7 @@ investigates unfinished pages, most recent activity first, within a reserved
 share of the daily attempt cap (8 calls; a person is one investigation); every later run
 updates only the people with new mail and the projects with new messages since
 the run before, at most 5 pages. Both stop at the weekly budget or the floor and
-record how many pages are left ([details](rem-people-pages.md#the-daily-round-four-runs-two-jobs-1723)). Initialization maps sources first, then runs a model investigation of the selected recent cohort; manual
+record how many pages are left ([details](rem-people-pages.md#the-daily-round-four-runs-two-jobs-1723)). Initialization maps sources first, then runs a model investigation of the selected pages; manual
 investigation remains outside the scheduled cap.
 
 The UI is a static snapshot of the notebook as it is now; run `open` again to see later changes (`--no-launch` says so and ends on `co rem open`). No merge,
@@ -650,21 +655,25 @@ is implied by the architecture refactor.
 
 See [acceptance evidence](../testing/rem-acceptance.md).
 
-### Inspect one skill's retained run evidence
+### Investigate an installed skill
 
 ```bash
 co rem --root /path/to/rem investigate skills/catalog/example.md --eval-dir /path/to/.co/evals
 ```
 
-Skill pages dispatch to a local, deterministic collector instead of the mail/model
-investigation pipeline. Omit `--eval-dir` to use `~/.co/evals`; repeat it for
+Skill pages first collect local run evidence, then use the configured runner
+to write a cited page from the installed source instructions and those records.
+The skill is never executed merely to document it, and mail is not read. Omit `--eval-dir` to use `~/.co/evals`; repeat it for
 additional summary directories. The collector reads immediate summary YAML files
 (up to 1,000 per directory, 4 MB each), matches exact `/skill-name` inputs, and
 deduplicates retained run/turn identities. It writes a linked note containing
 inputs, retained outputs, reported tool calls, recorded evaluations and coverage.
-The skill page gets a managed `Run evidence` block; curated sections and the
-existing investigation stamp are preserved. This is evidence gathering, not
-a completed quality assessment.
+The skill page gets a managed `Run evidence` block and an `Insight` describing
+a concrete use, mismatch or limitation that changes the reader's next action.
+The map-owned source provenance is preserved. The investigation stamp records
+that the page was reviewed; it does not certify execution success. Without
+reviewed artifacts, reliability remains unverified. Unsupported optional
+sections are omitted after investigation.
 
 Counts describe observed invocation attempts, not proven starts or lifetime runs.
 Tool-invoked skills and other harnesses are not yet covered. Historical outputs
@@ -676,7 +685,7 @@ verified changes stay unassessed until actual artifacts are checked.
 
 `co rem --root '<root>' init --days 150` first builds people, projects and installed
 skill maps deterministically. That map phase invokes no model. Current init then
-investigates the owner and selected recent cohort; see Start here.
+investigates the owner and selected pages, recent first; see Start here.
 Only enabled mail sources are read. Use `subscriptions` and explicit `subscribe`
 commands to select sources first. The map records counts, dates and coverage in
 `.state/map.json` and writes people/project indexes under `notes/`; it leaves
@@ -691,8 +700,8 @@ reversible text chunks so line-limited tools can read all of it.
 
 The requirement-to-code/test checklist and remaining decisions are in
 [rem-187-checklist.md](rem-187-checklist.md). This historical note covered the
-map stage; the current first run also investigates the owner, recent important
-people, projects and related organizations.
+map stage; the current first run also investigates the owner, eligible
+people, projects, related organizations and installed skills.
 
 ### First-run People and installed Skills
 

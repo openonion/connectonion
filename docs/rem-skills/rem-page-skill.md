@@ -36,10 +36,13 @@ because a filled-in dashboard reads as verified whether or not it is.
 ## Why the eval collector is limited
 
 `co rem investigate skills/catalog/<page>.md` reads retained co eval summaries
-without a model or mail. It matches explicit slash-command names, so a
-tool-based invocation or another harness's run is not seen, and a summary
-record says nothing about which source version ran or whether the goal was
-achieved.
+before the model reviews the source and retained records; it never reads mail
+or executes the skill. The eval collector matches explicit slash-command names.
+The map's invocation cache also identifies recent matching Codex and Claude
+turns: the review can search raw requests, tool results and replies for up to
+three latest invocations. The supplied index states sample size, matched count
+and missing files. Neither path establishes which installed version ran or
+independently verifies an artifact or achieved goal.
 
 ## One page per name, the source linked (#1974)
 
@@ -72,3 +75,38 @@ Pages from before are folded into the name's page by the map: written lines are
 merged section by section, the old page is moved to `.state/archived/`, and its
 record stays resolvable as an alias. The same mechanism merges a repository's
 split project pages.
+
+## A useful first page
+
+Init investigates installed skills alongside people, projects and organizations.
+The opening connects source instructions to a concrete starting point and a
+cited finding that changes the reader's choice. A source-only review can explain
+the required output and its verification step, while keeping execution
+unverified. Optional Unknown-only sections disappear from investigated pages;
+source provenance and observed invocation counts remain available.
+
+Large text eval records and invocation turns are split into 40,000-character
+pieces for file tools. Each new piece has an identity derived from its origin
+and exact supplied body before digesting or arranging the evidence. Only cited
+pieces from accepted changed pages persist in private state under the result
+recording lock. Unchanged, refused and failed results do not accumulate bodies.
+Original record time and capture time remain separate; a coverage summary has
+no invented execution timestamp.
+
+The reader shows a 640-character prefix, with truncation and record scope.
+It never reopens today's mutable log to replace a lost old citation. Legacy
+identifiers without retained body hashes remain unavailable; a newly inspected
+capture is new evidence, not recovery of the old supplied packet. Identity and
+source access do not validate the attached claim.
+
+Invocation context contains public text, tool reports and final replies.
+Provider thinking, analysis-channel messages and binary image attachments are
+omitted; an image marker explicitly says it was not visually reviewed. A
+screenshot path or assistant report is not visual proof. Any separate inspection
+of an archived image must be described with its actual scope.
+
+The skill reader opens on the first Insight line when available, with the usage
+explanation in the full note. Recheck inherited claims against their exact task,
+date and original result: adjacent runs can have different counts, failures and
+outcomes. A manually corrected page does not demonstrate that the model will
+reliably make the same correction.

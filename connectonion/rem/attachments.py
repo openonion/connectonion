@@ -7,9 +7,42 @@ PDF through pypdf, Word through python-docx, plain text as it is; anything else
 is named but not read, which is a finding the page can carry.
 """
 
+import re
 from pathlib import Path
 
+from .files import state_path
+
 READABLE = {".pdf", ".docx", ".txt", ".md", ".csv", ".json", ".html", ".htm", ".ics"}
+
+
+def attachment_context(root: Path, source: str) -> dict | None:
+    match = re.fullmatch(r"(gmail|outlook):([0-9a-f]{12}):([^/\\]+)", source)
+    if not match:
+        return None
+    provider, message, filename = match.groups()
+    path = state_path(root, f"attachments/{provider}/{message}/{filename}")
+    if not path.is_file():
+        return None
+    text = extract_text(path, limit=None)
+    if not text:
+        return None
+    return {"source": "attachment", "excerpt": text[:640], "truncated": len(text) > 640,
+            "body_format": "Local attachment text extraction; images and signature appearances are not verified.",
+            "input_scope": "Current local attachment. Original capture time and the version read by the writer are unknown."}
+
+
+def _pdf_page_text(page, number: int) -> str:
+    annotations = []
+    for reference in page.get("/Annots", []):
+        annotation = reference.get_object()
+        if annotation.get("/Subtype") == "/FreeText" and annotation.get("/Contents"):
+            annotations.append(f"[annotation text: {annotation['/Contents']}]")
+        elif annotation.get("/Subtype") == "/Stamp":
+            annotations.append("[stamp present; appearance not read; signature not verified]")
+    body = page.extract_text() or ""
+    if not annotations:
+        return body
+    return f"PDF page {number}\n" + "\n".join(annotations + [body])
 
 
 def extract_text(path: Path, limit: int | None = 20_000) -> str:
@@ -19,7 +52,7 @@ def extract_text(path: Path, limit: int | None = 20_000) -> str:
         from pypdf import PdfReader
         try:
             pages = PdfReader(str(path)).pages
-            text = "\n".join((page.extract_text() or "") for page in pages)
+            text = "\n".join(_pdf_page_text(page, number) for number, page in enumerate(pages, 1))
         except Exception as error:  # noqa: BLE001 -- a broken PDF is a finding, not a crash
             return f"[could not read PDF: {type(error).__name__}]"
     elif suffix == ".docx":

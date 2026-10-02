@@ -51,25 +51,100 @@ value cited, written first and rendered as a card; code reads the certain ones
 (addresses, phones, links, dates) from the material before the turn and puts
 back any the turn leaves off. The grammar is in `connectonion/rem/facts.py`.
 
+Conference dial-ins are not contact numbers. Calendar invitations remain context
+for the reader, but their telephone numbers are not automatically restored into
+`Phone`. Genuine direct numbers need evidence of attribution to the subject.
+
+## Held outgoing contacts and group authorship
+
+Three real pages stayed as placeholders because direct metadata showed only
+outgoing mail and no name. One contact's name was already in another sender's
+To header, while his direct counts still correctly showed no mail from him.
+Scanning now retains exact recipient-header names independently of direct
+mail counts, including when the naming message occurs before the direct mail.
+Co-recipients with no direct correspondence do not gain pages from this step;
+nameless write-only addresses and possible owner addresses retain their guards.
+
+The private archive hands over exact From/To/Cc metadata alongside the body.
+The sender's reply or signature belongs to that sender, not every copied
+contact. A joint greeting to two people cannot bind names to addresses by
+their order. An owner's phone in an outgoing signature must not fill the
+recipient's Phone, and outgoing English does not establish their Language.
+
+The candidate also selects later retained messages for the next investigation,
+using exact known email addresses in saved headers. A readable initial manifest
+is still required; an old per-person index is not required when the address is
+explicit. Exact provider/thread matches add labelled context when a recipient
+drops out. Same subjects and empty threads do not establish that connection.
+Initial coverage remains its original interval; observations do not cover gaps.
+Capture and retention limits accompany the supplied material.
+
+An offline source assay and selected reader review establish this access path,
+not automatic reconciliation or fresh page dates. See the
+[observed-mail review](../design-evidence/rem-observed-person-gather-review-2026-10-03/REVIEW.md)
+for exact source, runtime and rendering coverage.
+
+An update also needs its original request. Exact parsed citation IDs replace
+substring checks, which confused a cited attachment with its carrier email.
+New mail can retain previously cited saved originals from its exact nonempty
+provider thread, even before the update window. Comparison scope labels those
+rereads; their authors, dates and participant boundaries remain explicit.
+They are added after direct fact extraction and do not count as new contact.
+Already-cited mail alone still stops without a model call. The old page is a
+prior interpretation that source evidence may correct, rather than proof that
+every earlier original was understood. See the
+[cited-thread comparison review](../design-evidence/rem-cited-thread-comparison-review-2026-10-03/REVIEW.md)
+for the source assay, actual rendering scope and remaining automatic limits.
+
+The three observed pages were manually filled after primary-source review;
+this does not establish future model reliability or verify referenced files,
+business metrics, travel plans or current completion of historical handoffs.
+
 ## `Insight` is labelled
 
 Two to four lines starting `Now:`, `Changed:`, `At stake:` or `Pattern:`. A
 label makes the line say something of that kind; without one, a real page
 filled the slot with "a key stakeholder who maintains regular communication",
-which the inbox already said. The lead's first sentence is the balance (#2065):
-who owes whom what, and for how many days.
+which the inbox already said. A supported current balance can lead (#2065):
+who requested what, when, and any stated deadline. Without established current
+work, use the concrete relationship finding; historical gaps do not become
+debts. The reader derives age from dates; a literal day count would become stale.
 
 ## `Language` is observed
 
 Nobody states their working language in a signature. Waiting for them to is how
 every English-speaking colleague came out `Language: Unknown`.
 
-## `Company` from the domain and signature
+## Employment and affiliation are different facts
 
-Both are already in the material: the address domain names the institution and
-the four lines under "Thank you," give the department, the office and the
-direct line. Institutional facts are kept on the organisation page so they are
-written once rather than drifting across every person who works there.
+An address domain can identify an institution without establishing employment.
+Five reviewed student collaborators had their university in `Company` even
+though their messages established coursework affiliation. The candidate keeps
+unstated employment `Unknown` and links the institution in relationship text.
+Signatures can establish employment when they actually state it.
+
+## Requests, approval boundaries and missing outcomes
+
+The same five-page review found an instruction to update internal records
+rewritten as an obligation to send a reply. A failure report acquired an owed
+response without an explicit request or promise. Preserve the actual action;
+these different messages do not establish the same obligation.
+
+Approval of an integration pair does not approve a subsequent full scope
+statement. Messages in a shared thread can concern different teams; match the
+group and proposal before using an approval to close an ask. A request date,
+reply cutoff and permission to proceed without a response are separate facts.
+That permission does not prove the team proceeded, and a missing later outcome
+does not establish a current blocker.
+
+Source timestamps are converted on the notebook calendar. Explicit event and
+deadline dates remain as stated. The reader gives an explicit due date priority
+over request age and keeps it a due date after passage, without asserting that
+the deadline was missed. A future meeting date alone is not a deadline.
+
+These five corrections were manual reviews of 40 cited originals and 74 saved
+messages across 28 exact provider threads. They do not verify automatic writer
+reliability or complete correspondence outside those saved threads.
 
 ## `Why they are here`
 
@@ -79,6 +154,39 @@ It is the section most often missing and the one the user asks for most.
 
 "Discussion status is not recorded" is not an open thread; it is a gap dressed
 up as a finding.
+
+Two professional-contact pages exposed a second boundary: an invitation was
+still classified as an owed reply after an outgoing request for times, while a
+next-cohort survey was treated as permission to complete an earlier term's
+per-group assessment forms. Later replies must be read before naming a debt;
+optional offers create none, and different terms/forms need separate closure.
+Unknown booking or historical completion stays an explained gap, not a current
+obligation inferred from age.
+
+A canonical page census and finding triage found 224 written pages among 225 semantic pages;
+written status was not a usefulness result. Two source-backed person reviews
+showed the difference: a warm introduction produced an accepted invitation,
+while dated interest in a trial did not establish activation. Missing attendance
+and meeting-link outcomes had become current OPEN/THEY OWE items. The writer's
+lead can now begin with the concrete relationship finding, keeping historical
+gaps in Uncertainties. Linked events stay on their own physical lines, so a
+connection card does not borrow a neighboring event's citations. The
+[all-page triage and interaction review](../design-evidence/rem-page-usefulness-review-2026-10-03/REVIEW.md)
+records the full-original reading, two manual corrections and automatic/all-page
+acceptance limits.
+
+The same review found filled PDF FreeText annotations absent from ordinary
+page text extraction. The candidate reads their text with page/type provenance
+and marks non-text stamp appearances unread and unverified. A named collaborator
+on the owner's side is not the copied liaison's personal signing entity. The
+attachment source dialog identifies a current local file with unknown original
+capture time and historical writer version. Text extraction does not validate
+signatures or legal execution.
+
+The [professional-contact review](../design-evidence/rem-professional-contact-review-2026-10-03/REVIEW.md)
+records 53 full mail originals, two manual page corrections, selected PDF visual
+pages and actual rendered coverage. It does not establish automatic reliability
+or all-page acceptance.
 
 ## Marking inference
 
@@ -121,3 +229,22 @@ for them, and cited 3 of 1,477 session messages. The map already knows each
 project's sessions and dates, so the owner's turn now gets them as a
 `recent-projects` item (the four weeks before the map's own date, newest
 first), and the lead names the busiest, dated.
+
+## Current obligations need current evidence
+
+Screening prerequisites are not agreed commitments. A conditional offer is not
+an accepted paid engagement. An old promise with a missing recorded outcome
+remains a historical uncertainty until reviewed evidence supports a current
+obligation; its age alone cannot establish an overdue task.
+
+Contact dates need the notebook calendar and exact cited original. The narrow
+Facts repair corrects only a bare date with one citation to that original; it
+does not choose a newer correspondent or rewrite qualified interpretations.
+Carrier mail and attachments retain separate source identities. Empty mail
+bodies can still supply subject/header evidence, without proving attendance or
+completion. Marked private evidence must remain private when reused in
+connected-context summaries.
+
+The [contact-freshness review](../design-evidence/rem-contact-freshness-review-2026-10-03/REVIEW.md)
+records four manual pages, bounded original-source coverage, actual privacy
+failures and remaining automatic-writer and broader page-review gaps.

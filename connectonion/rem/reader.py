@@ -68,6 +68,7 @@ def index_rows(root: Path) -> dict:
 def snapshot(root: Path) -> dict:
     """Everything the page shows, read once; no model, no writes into the notebook."""
     from .map import needs_review
+    from .project_pages import private
     from .reviews import listing
     notebook = Notebook(root)
     records = []
@@ -93,6 +94,8 @@ def snapshot(root: Path) -> dict:
         entry = found.get(record["path"])
         if entry:
             record.update(written=entry["written"], last_activity=entry["last"], service=entry["service"])
+        if record["category"] == "projects":
+            record["private_project"] = private(record["path"], record["text"])
     groups = {}
     for record in records:
         if record["path"].startswith("skills/catalog/") and record["path"] != "skills/catalog/index.md":

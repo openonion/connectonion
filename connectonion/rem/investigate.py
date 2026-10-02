@@ -18,8 +18,8 @@ from pathlib import Path
 
 from .config import read_config
 from ..provider_credentials import ProviderCredentialError
-from .files import Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
-from .mail import _address, _list_all, correspondent, strip_noise, strip_quoted
+from .files import SECRET_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
+from .mail import _address, _list_all, correspondent, on_domains, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
 from .source import KINDS, collect, timestamp
 
 MAIL_KINDS = ("outlook", "gmail")
@@ -104,6 +104,13 @@ def _nothing_found(record: str, subject: str, coverage: list[str], *, me: bool =
                         f"`co rem investigate {target} --handle {handle}`.", usage)
 
 
+def org_domains(text: str) -> list[str]:
+    """Mail domains from the page, even after its title becomes a company name."""
+    section = text.partition("## Domains\n")[2].split("\n## ", 1)[0]
+    values = [line[2:].split()[0].casefold() for line in section.splitlines() if line.startswith("- ") and line[2:].strip()]
+    return sorted({match[1] for value in values if (match := DOMAIN_HANDLE.fullmatch(value))})
+
+
 def org_pages(notebook: Notebook, record: str, handles: list[str], *, limit: int = 40) -> list[str]:
     """Organisation pages the subject's Company (a project's Organisation) can link to (#1974).
 
@@ -119,9 +126,7 @@ def org_pages(notebook: Notebook, record: str, handles: list[str], *, limit: int
     for org in notebook.list("orgs"):
         text = notebook.read(org)
         title = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), org)
-        section = text.partition("## Domains\n")[2].split("\n## ", 1)[0]
-        domains = [re.sub(r"\s*\[W?\d+\].*$", "", line[2:]).strip().casefold()
-                   for line in section.splitlines() if line.startswith("- ")]
+        domains = org_domains(text)
         if record.startswith("projects/"):
             found.append(f"{org} — {title}")
             continue
@@ -130,6 +135,31 @@ def org_pages(notebook: Notebook, record: str, handles: list[str], *, limit: int
         if matched:
             found.append(f"{org} — {title} ({', '.join(matched)})")
     return found[:limit]
+
+
+def org_contact_context(notebook: Notebook, record: str) -> dict:
+    """Other domain pages sharing a canonical contact: leads to verify, not identity proof."""
+    if not record.startswith("orgs/"):
+        return {"domains": [], "addresses": [], "candidates": []}
+    rows = read_json(state_path(notebook.root, "map.json"), {}).get("orgs", [])
+    own = next((row for row in rows if row.get("record") == record), {})
+    people = set(own.get("people", []))
+    roster = {person["path"]: person for person in notebook.people()} if people else {}
+    candidates, addresses = [], set()
+    for row in rows:
+        shared = people.intersection(row.get("people", []))
+        other = row.get("record")
+        if not shared or not other or other == record or not notebook.path(other).is_file():
+            continue
+        domains = row.get("domains") or [row.get("domain", "")]
+        contacts = [{"record": person, "addresses": [email for email in roster.get(person, {}).get("emails", [])
+                     if on_domains({"from": email}, domains)]} for person in sorted(shared)]
+        found = {email for contact in contacts for email in contact["addresses"]}
+        if found:
+            addresses.update(found)
+            candidates.append({"record": other, "domains": domains, "shared_contacts": contacts})
+    return {"domains": own.get("domains") or ([own["domain"]] if own.get("domain") else []),
+            "addresses": sorted(addresses), "candidates": candidates}
 
 
 def quick_evidence(items: list[dict], *, max_items: int = 24,
@@ -172,7 +202,10 @@ def project_paths(page: str) -> list[str]:
 
 
 def _listed_path(line: str) -> str:
-    return re.sub(r"\s+\[\d+\](?:\s*\[\d+\])*\s*$", "", line[2:].strip()) if line.startswith("- /") else ""
+    quoted = re.match(r"^- `(/[^`]+)`(?:\s|$)", line)
+    if quoted:
+        return quoted[1]
+    return re.sub(r"\s+\[\d+\](?:\s*\[\d+\])*\s*$", "", line[2:].strip().split(" — ", 1)[0]) if line.startswith("- /") else ""
 
 
 def collapse_worktree_paths(page: str) -> str:
@@ -217,7 +250,7 @@ def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
             dirs[:] = sorted(d for d in dirs if d not in excluded and not d.startswith(".")
                              and not (Path(current) / d).is_symlink()) if depth < 4 else []
             for name in sorted(files):
-                if name.startswith(".") or Path(name).suffix.lower() not in suffixes:
+                if name.startswith(".") or (Path(name).suffix.lower() not in suffixes and name != "package.json"):
                     continue
                 if any(word in name.lower() for word in ("secret", "password", "credential", "private", "token")):
                     continue
@@ -239,19 +272,22 @@ def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
 
 
 def project_file_texts(paths: list[str], *, max_files: int = 12, chars_per_file: int = 2000) -> list[dict]:
-    """The summary tier's project evidence: Python reads the files an agent would open.
-
-    A plain model cannot open the inventory's files itself, so their text is
-    handed over, within the agent's own bound of twelve files. Each file is
-    its own source, cited by its path.
-    """
+    """Bounded file snapshots; capture time is separate from file modification time."""
     items = []
     for name in paths[:max_files]:
         path = Path(name)
-        text = path.read_text(encoding="utf-8", errors="replace")
-        items.append({"role": "project-file", "source": name, "file": name,
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            raw = handle.read(chars_per_file + 1)
+        text = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]", raw[:chars_per_file])
+        truncated = len(raw) > chars_per_file or len(text) > chars_per_file
+        captured = datetime.now(timezone.utc).isoformat()
+        items.append({"role": "project-file", "source": "file:" + name, "file": name,
+                      "snapshot_kind": "local-file", "captured_at": captured,
                       "timestamp": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
-                      "text": text[:chars_per_file] + ("\n[truncated]" if len(text) > chars_per_file else "")})
+                      "timestamp_scope": "File modification time, not project activity or release time.",
+                      "input_scope": ("Local file snapshot, " + ("bounded prefix" if truncated else "complete supplied file")
+                                      + "; files do not verify tests, publication or deployment."),
+                      "text": text[:chars_per_file] + ("\n[truncated]" if truncated else "")})
     return items
 
 
@@ -407,10 +443,11 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     archived = None
     if archive_root is not None and record.startswith("people/"):
         from .mail_archive import person_material
-        archived = person_material(archive_root, record)
+        archived = person_material(archive_root, record, handles=handles)
     elif archive_root is not None and domains:
         from .mail_archive import domain_material
-        archived = domain_material(archive_root, domains)
+        archived = domain_material(archive_root, domains, contact_addresses=[h for h in handles if is_address(h)],
+                                   include_observed=True)
     cached_by_provider, cached_start, cached_end = archived if archived else ({}, None, None)
     # A mailbox the user unsubscribed after init stays out, archive or not.
     cached_by_provider = {kind: rows for kind, rows in cached_by_provider.items()
@@ -420,12 +457,14 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     # the bodies it holds and the mailbox is still listed, but nothing saved is
     # fetched again: 2,693 of 3,152 were saved and went unread (#2042).
     complete, share = True, ""
+    complete_kinds = set(cached_by_provider)
     if archived and archive_root is not None:
         from .files import read_json, state_path
         from .mail_archive import saved_share
         manifest = read_json(state_path(archive_root, "mail/archive.json"), {})
         own_addresses.update(address.casefold() for address in manifest.get("owner_addresses", []))
         complete = manifest.get("phase") == "complete"
+        complete_kinds = set(manifest.get("providers", [])) if complete else set()
         if not complete:
             on_disk, target = saved_share(archive_root, manifest)
             share = f" ({on_disk:,} of {target:,} bodies saved so far)"
@@ -456,7 +495,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         items.extend(local)
         attached = 0
 
-        def add_attachments(message_id: str, sender: str, stamp: str, subject: str) -> None:
+        def add_attachments(message_id: str, sender: str, stamp: str, subject: str, scope: str = "") -> None:
             nonlocal attached
             if attachments_dir is None or not hasattr(client, "download_attachments"):
                 return
@@ -474,18 +513,19 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 items.append({"role": "attachment", "speaker": sender, "timestamp": stamp,
                               "subject": f"{subject} — {Path(saved).name}",
                               "text": extract_text(Path(saved), limit=None), "file": saved,
-                              "source": f"{kind}:{short}:{Path(saved).name}"})
+                              "source": f"{kind}:{short}:{Path(saved).name}",
+                              **({"relationship_scope": scope} if scope else {})})
 
         seen = {item["_mail_id"] for item in local}
         intervals = [(start, end)]
-        if archived and kind in cached_by_provider and complete:
+        if archived and kind in cached_by_provider and kind in complete_kinds:
             intervals = ([(start, min(end, cached_start))] if start < cached_start else [])
             intervals += ([(max(start, cached_end), end)] if cached_end < end else [])
             intervals = [(begin, finish) for begin, finish in intervals if begin < finish]
         if archived and kind in cached_by_provider:
             covered_kinds.add(kind)
         hit, taken = [], set(seen)
-        searched = f"{len(local)} loaded from private init archive{share}"
+        searched = f"{len(local)} loaded from private mail archive{share}"
         if client is None:
             if intervals:
                 coverage.append(f"{kind}: {searched}; {len(intervals)} uncovered interval(s), provider unavailable")
@@ -494,7 +534,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                                 "attachments unavailable without provider")
             continue
         for item in local:
-            add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""))
+            add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""), item.get("relationship_scope", ""))
         # Only a whole address goes to the server: a page line with prose or a
         # citation in it made Gmail match 677 unrelated mails (#1954). A bare
         # domain is not an address; org pages search it through `domains` above.
@@ -511,7 +551,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                     rows = [r for term in terms
                             for r in (_patient(partial(client.list_with, max_results=DOMAIN_RESULTS),
                                                term, begin.isoformat(), finish.isoformat()) or [])
-                            if _matches(r, handles, mine)]
+                            if on_domains(r, domains) or set(participants(r)).intersection(emails)]
                 except ProviderCredentialError as error:
                     # One mailbox failing is that mailbox's gap, not the page's:
                     # a Graph 500 used to end the whole investigation before
@@ -535,7 +575,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                     if progress:
                         progress(kind, stop, len(rows))
                     cursor = stop
-                rows = [r for r in rows if _matches(r, handles, mine)]
+                rows = [r for r in rows if (on_domains(r, domains) or set(participants(r)).intersection(emails)
+                        if domains else _matches(r, handles, mine))]
                 searched += f"; scanned {len(rows)} matched mails"
             for row in rows:
                 if row["id"] not in taken and (not sent_only or _address(row["from"]) in mine):
@@ -553,20 +594,37 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             mail_to_read = mail_to_read[-12:]
         for number, r in enumerate(mail_to_read, 1):
             body = _patient(client.get_email_body, r["id"])
+            provenance = {}
+            if archive_root is not None:
+                from .mail_archive import retain_message
+                saved = retain_message(archive_root, kind, r, body, fetched_at=datetime.now(timezone.utc).isoformat())
+                body = saved["body"]
+                provenance = {key: saved[key] for key in ("input_scope", "retained_at", "body_format") if saved.get(key)}
+                if saved.get("fetched_at"):
+                    provenance["captured_at"] = saved["fetched_at"]
+                r = {**r, **{key: saved[key] if key in saved else r.get(key)
+                            for key in ("date", "from", "to", "cc", "subject")}}
             head, _, rest = body.partition("--- Email Body ---")
             body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
             own = _address(r["from"]) in mine or "@" not in _address(r["from"])
             short = hashlib.sha256(r["id"].encode()).hexdigest()[:12]
+            scope = RELATED_ORG_SCOPE if domains and not on_domains(r, domains) else ""
+            thread = r.get("thread_id") or r.get("thread") or ""
             items.append({"role": "user" if own else "other", "speaker": r["from"],
                           "text": body, "timestamp": str(r["date"]),
-                          "subject": r.get("subject", ""), "source": f"{kind}:{short}"})
-            add_attachments(r["id"], r["from"], str(r["date"]), r.get("subject", ""))
+                          "participants": {key: r.get(key) or ([] if key in ("to", "cc") else "")
+                                           for key in ("from", "to", "cc")},
+                          "subject": r.get("subject", ""), "source": f"{kind}:{short}",
+                          **provenance,
+                          **({"thread": f"mail:{kind}:{thread}"} if thread else {}),
+                          **({"relationship_scope": scope} if scope else {})})
+            add_attachments(r["id"], r["from"], str(r["date"]), r.get("subject", ""), scope)
             if stage_progress and (number % 10 == 0 or number == len(mail_to_read)):
                 stage_progress(f"gathering {kind} mail", number, len(mail_to_read))
         coverage.append(f"{kind} ({', '.join(sorted(mine))}): {searched} over {days} days, "
                         f"{len(local) + len(hit)} matched, {len(local) + len(mail_to_read)} bodies read"
                         + (" (recent quick sample)" if quick else "")
-                        + (f", {len(local)} of them from the private init archive" if local else "")
+                        + (f", {len(local)} of them from the private mail archive" if local else "")
                         + f", {attached} attachments read")
     for kind in ("outlook", "gmail"):
         if kind not in clients and kind not in covered_kinds:
@@ -610,11 +668,17 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 said += " " + item.get("speaker", "") + " " + item.get("correspondent", "")
             return any(h in said.lower() for h in handles)
         try:
-            window = _window_items(read, scoped, f"{name} {'chats' if chat else 'sessions'}", stage_progress)
+            window, unfamiliar = _window_items(read, scoped, f"{name} {'chats' if chat else 'sessions'}", stage_progress)
             scanned, picked = len(window), [i for i in window if related(i)]
+            if unfamiliar:
+                coverage.append(f"{name}: {unfamiliar} user-slot message(s) in an unfamiliar format were not read")
         except RemError as error:
             coverage.append(f"{name}: unreadable ({error})")
         related = len(picked)
+        legacy = sum(bool(item.get("timestamp_scope")) for item in picked)
+        if legacy:
+            coverage.append(f"{name}: {legacy} related legacy message(s) have only a session-start date; "
+                            "individual message times were not recorded")
         if quick:
             picked = picked[-12:]
         coverage.append(f"{name}: {scanned} messages in window, {related} related to subject, "
@@ -624,6 +688,16 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                            else " (handle, sender or chat match)" if chat else " (handle or project match)"))
         items += picked
     items.sort(key=lambda i: i["timestamp"])
+    if archive_root is not None:
+        from .mail_archive import mail_metadata
+        threads = {f"{row['source']}:{hashlib.sha256(row['id'].encode()).hexdigest()[:12]}":
+                   f"mail:{row['source']}:{row['thread']}" if row.get("thread") else ""
+                   for row in mail_metadata(archive_root)}
+        for item in items:
+            if item.get("source") in threads:
+                item.pop("thread", None)
+                if threads[item["source"]]:
+                    item["thread"] = threads[item["source"]]
     for item in items:
         item.pop("_mail_id", None)
     return items, coverage
@@ -638,17 +712,21 @@ _WINDOWS_LOCK = threading.Lock()
 SESSION_REUSE_SECONDS = 600
 
 
-def _window_items(read, scoped: dict, label: str, stage_progress=None) -> list[dict]:
+def _window_items(read, scoped: dict, label: str, stage_progress=None) -> tuple[list[dict], int]:
     """All items `read` returns for `scoped`; one thread reads, the others wait for it."""
     key = (read, json.dumps({**scoped, "since": scoped["since"][:10]}, sort_keys=True, default=str))
     with _WINDOWS_LOCK:
         kept = _WINDOWS.get(key)
         if kept and time.monotonic() - kept[0] < SESSION_REUSE_SECONDS:
             return kept[1]
-        items, cursor, told = [], {}, 0
+        items, cursor, told, unfamiliar = [], {}, 0, 0
         while True:
-            batch = read(scoped, cursor, 40, 200_000)
+            # This is a full-window gather, not a model input batch. Tiny batches
+            # repeatedly re-hash large rollout prefixes while retaining the same
+            # eventual window in memory.
+            batch = read(scoped, cursor, 4_000, 20_000_000)
             items.extend(batch.items)
+            unfamiliar += getattr(batch, 'unrecognised', 0)
             if batch.progress == cursor:
                 break
             cursor = batch.progress
@@ -658,8 +736,9 @@ def _window_items(read, scoped: dict, label: str, stage_progress=None) -> list[d
             if stage_progress and len(items) > told:
                 told = len(items)
                 stage_progress(f"gathering {label}: {told:,} scanned", told)
-        _WINDOWS[key] = (time.monotonic(), items)
-        return items
+        result = items, unfamiliar
+        _WINDOWS[key] = (time.monotonic(), result)
+        return result
 
 
 SEARCH_RESULTS = 20
@@ -942,6 +1021,33 @@ def _keep_facts(notebook: Notebook, root: Path, record: str, rows: list[dict]) -
             notebook.write(record, kept)
 
 
+def _mail_comparison(root, record, handles, items, fresh, cited, subscriptions, *, sent_only=False):
+    """Previously cited originals for a newly supplied exact mail thread, including older asks."""
+    threads = {item["thread"] for item in fresh if item.get("thread")
+               and item.get("source", "").split(":")[0] in MAIL_KINDS and item.get("role") != "attachment"}
+    if not record.startswith(("people/", "orgs/")) or not threads:
+        return []
+    from .mail_archive import domain_material, person_material
+    if record.startswith("people/"):
+        archived = person_material(root, record, handles=handles)
+    else:
+        domains = [match[1] for handle in handles if (match := DOMAIN_HANDLE.fullmatch(handle))]
+        archived = domain_material(root, domains, contact_addresses=[h for h in handles if is_address(h)],
+                                   include_observed=True)
+    available = {item["source"]: item for item in items if item.get("source")}
+    for provider, saved in archived[0].items() if archived else []:
+        if not (subscriptions.get(provider) or {}).get("unsubscribed"):
+            for item in saved:
+                item.pop("_mail_id", None)
+                available.setdefault(item["source"], item)
+    return [{**item, "comparison_scope": "Previously cited original retained to compare a newly supplied "
+             "message in this exact provider thread. It may predate the requested window; it is old "
+             "evidence, not new correspondence or additional initial-window coverage."}
+            for source, item in available.items() if source in cited and item.get("thread") in threads
+            and item.get("source", "").split(":")[0] in MAIL_KINDS and item.get("role") != "attachment"
+            and (not sent_only or item.get("role") == "user")]
+
+
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
@@ -957,7 +1063,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         runner_module.check_skill(root, "investigate")
     if stage_progress:
         stage_progress("gathering sources")
-    items, coverage = gather(subject, handles, days=days, clients=clients, subscriptions=subscriptions,
+    related = org_contact_context(notebook, record)
+    own_domains = (related["domains"] or org_domains(notebook.read(record))) if record.startswith("orgs/") else []
+    search_handles = list(dict.fromkeys([*handles, *own_domains, *related["addresses"]]))
+    items, coverage = gather(subject, search_handles, days=days, clients=clients, subscriptions=subscriptions,
                              progress=progress, attachments_dir=root / ".state" / "attachments",
                              sent_only=sent_only, mail_skipped=mail_skipped, stage_progress=stage_progress,
                              quick=quick, archive_root=root, record=record)
@@ -976,31 +1085,47 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # the first contact.
     from . import facts
     from .fact_extract import extract, facts_item
+    config = read_config(root)
     fact_rows = [] if record.startswith("projects/") else [
-        row for row in extract(items, handles, owner=sent_only) if not (last and row["field"] == "First contact")]
+        row for row in extract([item for item in items if not item.get("relationship_scope")], handles,
+                               owner=sent_only, timezone=config["schedule"]["timezone"])
+        if not (last and row["field"] == "First contact")
+        and not (related["candidates"] and row["field"] in ("First contact", "Last contact"))]
     facts_before = facts.coverage(notebook.read(record), record)
     if last:
         # The window is whole days, so an investigation straight after another
         # re-gathers the mail the page already cites: 102k tokens to be told
-        # it was "already represented as source [21]" (#2015). What the page
-        # cites, it has read.
-        cited = notebook.read(record).partition("\n## Sources\n")[2]
+        # it was "already represented as source [21]" (#2015). Retain cited
+        # originals only when new exact-thread mail needs comparison.
+        from .reader_model import _source_ids
+        cited = _source_ids([{"text": notebook.read(record).partition("\n## Sources\n")[2]}])
         fresh = [item for item in items if not item.get("source") or item["source"] not in cited]
-        if len(fresh) < len(items):
-            coverage.append(f"{len(items) - len(fresh)} gathered item(s) already cited on the page, not re-read")
-        items = fresh
-    if last and not items:
+        if related["candidates"] and any(item.get("relationship_scope") for item in fresh):
+            coverage.append("Related-domain comparison: previously cited primary correspondence retained "
+                            "to check offer dates and terms against the newly gathered contact context")
+        else:
+            comparison = _mail_comparison(root, record, search_handles, items, fresh, cited, subscriptions,
+                                          sent_only=sent_only)
+            compared = {item["source"] for item in comparison}
+            skipped = sum(item.get("source") in cited and item.get("source") not in compared for item in items)
+            if skipped:
+                coverage.append(f"{skipped} gathered item(s) already cited on the page, not re-read")
+            if comparison:
+                coverage.append(f"Update material: {len(fresh)} newly supplied source(s), "
+                                f"{len(comparison)} previously cited mail source(s) retained for exact "
+                                "provider-thread comparison; comparison is old evidence, not new contact")
+            items = [*fresh, *comparison]
+    if last and not items and not record.startswith("projects/"):
         _keep_facts(notebook, root, record, fact_rows)
         raise _nothing_new(record, subject, coverage, last)
     gathered_sources = {item["source"] for item in items if item.get("source")}
     refusal = refused_for(root, record)
-    if refusal and gathered_sources and gathered_sources <= set(refusal["sources"]):
-        raise _refused_again(record, subject, refusal)
     if last:
-        # The page already reflects what came before; say so where the turn
-        # reads it, so it adds the new material instead of rewriting the page.
-        coverage.append(f"Page last updated from its sources {last.isoformat()}: it already reflects "
-                        "material before that date; add only what this material says that is new.")
+        coverage.append(f"Page last investigated {last.isoformat()}: the existing page is prior context, "
+                        "not primary evidence. Newly supplied originals may predate that run. Compare "
+                        "exact requests and replies, correct contradicted claims and preserve supported history; "
+                        "comparison originals are old evidence, not new contact. Unavailable originals or "
+                        "unknown provider threads remain unreviewed; the page is not a substitute original.")
     available_items = len(items)
     if quick:
         items = quick_evidence(items)
@@ -1025,7 +1150,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         for path in project_paths(corrected)[:4]:
             state = checkout_state(path, newest)
             if state:
-                items.append({"role": "checkout-state", "source": f"git:{path}", "text": state,
+                items.append({"role": "checkout-state", "source": f"git:{path}:checkout-state", "text": state,
                               "timestamp": datetime.now(timezone.utc).isoformat()})
     if not gathered_items and not leads:
         # Nothing about the subject, so nothing to write from: the page and the
@@ -1033,15 +1158,12 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         raise _nothing_found(record, subject, coverage, me=sent_only)
     if stage_progress:
         stage_progress("preparing evidence", len(items))
-    config = read_config(root)
     from .inquiry import routing
     original_material = None
     if routing(root):
         import uuid
 
-        from .files import state_path, write_json
         original_material = state_path(root, f"evidence/{uuid.uuid4().hex}.json")
-        write_json(original_material, items)
     # Room for the material after the page, the coverage and the Skill itself.
     from .runner import instructions, page_kind_of, run_stage
     # The instructions this page's turn is actually given (task_prompt), not
@@ -1057,7 +1179,25 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         # material travels in the one prompt, so it must fit there (#1847).
         from .runner import INLINE_LIMIT
         room = min(room, INLINE_LIMIT - overhead - len(owner_packet))
-        items += project_file_texts(leads)
+    repository_items = []
+    if record.startswith("projects/"):
+        from .project_pages import FILE_SNAPSHOT_CHARS, repository_snapshots
+        states = [item for item in items if item.get("role") == "checkout-state"]
+        items = [item for item in items if item.get("role") != "checkout-state"]
+        files = project_file_texts(leads) if summary else project_file_texts(
+            leads, max_files=len(leads), chars_per_file=FILE_SNAPSHOT_CHARS)
+        repository_items = repository_snapshots(states + files)
+        if last and not gathered_items:
+            supplied = read_json(state_path(root, f"projects/{Path(record).stem}/file-inventory.json"), {})
+            previous = supplied.get("provided_sources")
+            same = (set(previous) == {item["source"] for item in repository_items}) if previous is not None else all(
+                item["source"] in cited for item in repository_items)
+            if same:
+                raise _nothing_new(record, subject, coverage, last)
+        items += repository_items
+    gathered_sources.update(item["source"] for item in repository_items)
+    if refusal and gathered_sources and gathered_sources <= set(refusal["sources"]):
+        raise _refused_again(record, subject, refusal)
     if room <= 0:
         raise RemError("Configured input limit cannot fit the current page and investigation Skill")
     gathered_chars = sum(len(json.dumps(i, ensure_ascii=False)) for i in items)
@@ -1066,6 +1206,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     if max_calls is not None and max_calls < synthesis_calls:
         raise RemError("Insufficient call budget for investigation; page preserved")
     now = datetime.now(timezone.utc).isoformat()
+    original_items = items
     evidence_dir = None
     if gathered_chars > room and summary:
         # A summary-tier model cannot search files (#1847), so it is handed
@@ -1093,7 +1234,6 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         import uuid
 
         from .evidence import write_evidence
-        from .files import state_path
         evidence_dir = state_path(root, f"evidence/{uuid.uuid4().hex}")
         shutil.rmtree(evidence_dir, ignore_errors=True)
         laid_out = write_evidence(evidence_dir, items)
@@ -1105,7 +1245,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                   "text": (f"The gathered evidence ({len(laid_out['sources'])} items, {laid_out['chars']:,} "
                            f"characters) did not fit one turn and has NOT been summarised. It is in files under "
                            f"{evidence_dir}. Each file is a month of one mailbox, an attachment, a session or "
-                           "a chat, under 40k characters: read the files that matter whole, newest first, rather "
+                           "a chat, normally grouped near 40k characters (one large source may be longer): read the files that matter whole, newest first, rather "
                            "than many small pieces (every tool call re-sends this whole turn); use rg to find "
                            "which files. Cite the source id from the `###` heading of each entry you rely on. "
                            "In your final reply, list the files you read and the questions left open.\n\n"
@@ -1114,6 +1254,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                         f"{room:,}-char room for one turn; written to {laid_out['files']} files and searched, "
                         "not summarised first")
     from .page_review import normalize
+    if original_material:
+        write_json(original_material, original_items)
     # `sent_only` is `investigate me`: the owner's own page, with its own spec (#2008).
     current_page = normalize(record, notebook.read(record), owner=sent_only)
     prompt_items = [
@@ -1121,9 +1263,14 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
          "text": f"The page as it stands, at {record}. Fill its Unknowns, update what "
                  f"has moved, keep what is right:\n\n{current_page}",
          "timestamp": now, "source": "investigation:page"},
-        {"role": "coverage", "text": "Sources searched for handles " + ", ".join(handles) + ":\n"
+        {"role": "coverage", "text": "Sources searched for handles " + ", ".join(search_handles) + ":\n"
                                      + "\n".join(coverage), "timestamp": now, "source": "investigation:coverage"},
-    ] + ([{"role": "org-pages", "source": "investigation:org-pages", "timestamp": now,
+    ] + ([{"role": "org-contact-context", "source": "investigation:org-contact-context", "timestamp": now,
+           "candidates": related["candidates"], "text": "These domain pages share a canonical contact candidate. "
+           "The map may have grouped addresses by display name; this is not proof of common person, company "
+           "or legal identity. Compare the dated primary messages before using cross-domain terms or closing "
+           "threads. Notebook links are context, not evidence; keep distinct offers and unresolved identity explicit."}]
+         if related["candidates"] else []) + ([{"role": "org-pages", "source": "investigation:org-pages", "timestamp": now,
            "text": "Organisation pages this notebook already has"
                    + (" for the subject's mail domains" if record.startswith("people/") else "")
                    + ". Where the material shows the subject belongs to one, write its field (Company, or "
@@ -1138,7 +1285,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         [{"role": "quick-first-pass", "source": "investigation:quick-scope",
            "timestamp": now, "text": "This is a bounded, partial first pass. Use only the supplied sample; "
                                      "state the sampling limit in your final reply, not on the page."}]
-         if quick else []) + ([facts_item(fact_rows)] if fact_rows else []) + items
+         if quick else []) + ([facts_item(fact_rows, config["schedule"]["timezone"])] if fact_rows else []) + items
     if original_material:
         prompt_items.append({"role": "original_evidence", "source": "investigation:original-evidence",
                              "text": f"Original uncompressed evidence is retained at {original_material}. Read it to check summaries and counterevidence.",
@@ -1178,7 +1325,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # was reached is the Skill's to report, on the page: a real run (2026-09-14)
     # had `co browser` fail inside the thread while this line still said "web".
     record_result(root, notebook, record, result.get("review_candidates", []),
-                  searched_sources(coverage), changed=record in result.get("changed", []))
+                  searched_sources(coverage), changed=record in result.get("changed", []),
+                  repository_items=repository_items)
     return {"record": record, "items": len(items), "items_available": available_items,
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
@@ -1190,7 +1338,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
 
 
 def record_result(root, notebook, record: str, review_candidates: list, searched: list[str],
-                  *, changed: bool = False) -> None:
+                  *, changed: bool = False, repository_items=(), skill_records=()) -> None:
     """Keep what a finished investigation proposed and mark its page investigated.
 
     It waits for the lock: the model turn is already paid for, and with several
@@ -1200,7 +1348,18 @@ def record_result(root, notebook, record: str, review_candidates: list, searched
         from .reviews import ingest
         ingest(root, review_candidates)
         if changed:
+            from .project_pages import retain_repository_context
+            from .reader_model import _source_ids
+            retain_repository_context(root, repository_items, _source_ids([{"text": notebook.read(record)}]))
+            from .skill_runs import retain_skill_records
+            retain_skill_records(root, skill_records, _source_ids([{"text": notebook.read(record)}]))
             page = notebook.read(record)
             if drop_map_count(page) != page:
                 notebook.write(record, drop_map_count(page))
         notebook.note_investigation(record, ", ".join(searched))
+        if repository_items and record.startswith("projects/"):
+            write_json(state_path(root, f"projects/{Path(record).stem}/file-inventory.json"), {
+                "provided_sources": sorted({item["source"] for item in repository_items}),
+                "scope": "Material supplied in the completed investigation; not proof every file was read."})
+        from .store import refresh_safely
+        refresh_safely(root)

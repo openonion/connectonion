@@ -7,12 +7,10 @@ description: A project page with a short visual overview and evidence-backed det
 
 Why these rules: docs/rem-skills/rem-page-project.md
 
-**How to do it.** Read the page and supplied material. Do not search examples,
-logs or the repository for a format. Write once, check once, fix once, stop.
+Read the page and material. Write once, check once, fix once, stop.
+Do not search examples, logs or the repo for a format.
 
-Write for a first-time reader (designer, programmer, operator, nontechnical
-colleague): purpose and flow before implementation, plain language, terms
-explained. The map may carry every heading below as an unfinished scaffold.
+Explain purpose and flow first, for a new teammate.
 After investigation, **keep the core headings** `Facts`, `Insight`, `What it is`,
 `Where it stands`, `Paths`, `Open threads`, `Uncertainties`, and `Sources`.
 Use the other headings only when evidence fills them; omit an optional heading
@@ -64,29 +62,30 @@ whose whole body would be `Unknown`. Keep the following order for those shown:
   `value (qualifier) [n]`; dates `YYYY-MM-DD`; every value cited.
 - `Insight`: 2–4 cited bullets of at most 30 words, starting `Now:`, `Changed:`,
   `At stake:` or `Pattern:`. Lead with a verified state, mismatch or decision
-  that changes the next step, not a recap of the last request. Read the local
+  or requirement change that matters to the user. Read the local
   repository packet first. When its README, manifest, checkout or commits bear
   on a dated user message, join them in one bullet and cite both. If unrelated,
-  name the precise unknown and next verification; do not infer no fix from
-  commit subjects. `Changed:` needs a verified change. A local commit does not
+  keep them separate; do not infer no fix from commit subjects. Checkout
+  freshness alone is housekeeping, not the lead. `Changed:` needs a verified
+  change; label changed requirements as requirements. A local commit does not
   prove tests or deployment. Thin material: `- Unknown`.
+  With requests only, surface precise operating constraints; preserve branch
+  versus organization scope.
 
-**The opening: one sentence, one diagram, one entry point**
+**Opening**
 
-- `What it is`: one plain sentence: the product, who uses it, to achieve what;
-  never the most-discussed side thread, no history or stack inventory.
-- When shown, `Overview` is a compact ASCII diagram in a fenced `text` block, 3–7 labelled
-  steps, narrow-screen readable: the user's start, main actions, outcome.
-  Product flow only; modules go in `Architecture map`.
-- When shown, `Try it` is an entry point and a tiny example with its visible result, at most
-  three steps. Say if access is needed or no working entry point exists. Never
-  invent a URL, screenshot or run; never publish credentials.
+- `What it is`: one sentence: product, user, purpose; unknown product identity:
+  a session workspace and its documented tasks.
+- `Overview`, when supported: 3–7 narrow-screen ASCII steps in a `text` fence,
+  showing user start, actions and outcome. Modules go in `Architecture map`.
+- `Try it`, when supported: entry point, tiny example and visible result,
+  at most three steps. Say if access is needed. No invented URLs, runs or credentials.
 
 An unknown flow is omitted; a plausible diagram is not evidence.
 
 **Current work and joining the team**
 
-- `Where it stands`: 3–5 bullets, now, not a log: last activity date (say if
+- `Where it stands`: 3–5 bullets, now, not a log: project-relevant activity date (say if
   quiet for months); current phase and goal; latest verified run or test result
   with date, or none found. The past goes in `Key decisions`.
 - When shown, `Latest issues` lists bugs, regressions, blockers, newest first: date, symptom,
@@ -94,7 +93,7 @@ An unknown flow is omitted; a plausible diagram is not evidence.
   fix is not a resolution.
 - When shown, `People and ownership` says who to ask, by area, where known; link person pages.
   Never infer someone else's ownership from one commit or message; the user's
-  own sessions in the project's folders make the user its owner.
+  sessions identify the requester, not a project ownership role.
 - When shown, `Getting started` is per relevant role (designer, engineer, operator); commands
   and expected outputs only when verified.
 
@@ -108,11 +107,17 @@ An unknown flow is omitted; a plausible diagram is not evidence.
   inspected paths and revision outside it; label proposed apart from built.
 - `Paths`: observed repositories, directories, design/doc locations, each with
   its purpose. Never guess paths.
-- `Open threads`: next action, owner when known, date.
+- `Open threads`: confirmed pending work, owner when known, date. Missing
+  completion evidence is unknown status, not proof a historical request is open.
 - `Uncertainties`: missing, unread, stale or conflicting evidence, said once
   here rather than as a tail on every bullet elsewhere.
 - `Sources`: numbered, `- [n] <source id> — <date>`, nothing more; each inspected
   file its own entry. Mark inference; never copy facts from examples.
+  Use snapshot `project-source:` IDs; file mtime and capture time do not
+  establish project activity or release.
+  Check inherited clauses, quantities and dates against exact originals,
+  not summaries or adjacent inputs. Valid IDs are not support; cite each
+  joined clause and both messages.
 
 State a claim in one clause. How the page was made (the mapper, the collector,
 counts of matched sessions, the prior page) goes nowhere in the body.

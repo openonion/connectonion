@@ -84,6 +84,16 @@ def _zone(root):
     return notebook_zone(read_config(root))
 
 
+def _private_unwritten(root) -> int:
+    """Mapped private projects require a named-page request, not a category write (#2079)."""
+    from ...rem.files import Notebook
+    from ...rem.merge import mapped_only
+    from ...rem.project_pages import private
+    book = Notebook(root)
+    return sum(mapped_only(text := book.read(record)) and private(record, text)
+               for record in book.list("projects"))
+
+
 def next_to_write(root, counts: dict) -> tuple:
     """(what to write next, the arguments of the command that writes it), or ('', [])."""
     from ...rem.files import Notebook, read_json, state_path
@@ -96,6 +106,8 @@ def next_to_write(root, counts: dict) -> tuple:
         return "nothing mapped yet", ["init"]
     for category, label in CATEGORIES:
         left = counts[category]["mapped"] - counts[category]["written"]
+        if category == "projects":
+            left -= _private_unwritten(root)
         if left:
             return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} not written", ["investigate", category]
     return "", []
@@ -143,6 +155,8 @@ def _notebook(root, value: dict, counts: dict, spell) -> list[str]:
                                   + " " * (wide - len(f"{total:,}")) + "  " + style.muted(share.rjust(4))))
     lines.append(rem_look.follow(style.muted(f"{rem_look.WRITTEN} written  {rem_look.MAPPED} mapped, not written yet"),
                                  glyph=""))
+    if private := _private_unwritten(root):
+        lines.append(rem_look.row("Private projects", f"{private:,} unwritten; write only when you name the page"))
     what, arguments = next_to_write(root, counts)
     if what:
         lines.append(rem_look.row("To write next", what))

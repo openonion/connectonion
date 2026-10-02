@@ -26,6 +26,9 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from .files import RemError
+
+RELATED_ORG_SCOPE = ("Related contact outside the target mail domains; verify person/company/domain identity "
+                     "from primary messages before attributing this exchange to the organization.")
 from .source import TRUNCATION_NOTE, Batch, timestamp
 
 # Reservation confirmations, CI notifications and newsletters are the bulk of a
@@ -84,6 +87,17 @@ def _addresses(value) -> list[str]:
     values = value if isinstance(value, (list, tuple)) else [value]
     parts = [part for item in values for part in re.split(r"[;,]", str(item or ""))]
     return [a for a in (_address(part) for part in parts) if a]
+
+
+def participants(row: dict) -> list[str]:
+    """Canonical addresses in the actual headers, including Cc."""
+    return [_address(row.get("from", "")), *_addresses(row.get("to")), *_addresses(row.get("cc"))]
+
+
+def on_domains(row: dict, domains: list[str]) -> bool:
+    """Header domain membership; a name or a domain mentioned in prose is not membership."""
+    suffixes = tuple(f"{sep}{domain.casefold()}" for domain in domains if domain for sep in ("@", "."))
+    return bool(suffixes) and any(address.endswith(suffixes) for address in participants(row))
 
 
 def is_own(sender: str, mine: set) -> bool:

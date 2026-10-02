@@ -1,6 +1,6 @@
 ---
 name: rem-investigate-person
-description: The steps for investigating a person's page, composed after rem-investigate when the subject is under people/.
+description: Read a person’s identity, relationship and obligations from gathered evidence.
 ---
 
 # Investigating a person
@@ -23,20 +23,26 @@ Why these rules: docs/rem-skills/rem-investigate.md
 
 ## Reading the mail
 
-- **The `investigation:facts` item first**: addresses, phones, links and
-  contact dates our code read, each with its source id; every one goes in its
-  `Facts` field, cited to that id. Its `Signature` and `Calendar` lines give
-  role, company, office, location and time zone. Then each signature block
-  you read, field by field. A changed signature is a dated move or promotion.
-  Two phones are two values with their qualifiers.
-- **Address domain = employer** (`@unsw.edu.au` → UNSW), never a role;
-  gmail/outlook/qq/163 → `Company: Unknown`. An org page for the domain (listed
-  in the `investigation:org-pages` item) → `Company:` is that link,
-  `[Name](../orgs/<file>.md)`, cited to the mail that shows it.
+- **The `investigation:facts` item first**: put each extracted value in its
+  cited `Facts` field. Read `Signature`, `Calendar` and mail signatures for role,
+  company, office, location and time zone. Date signature changes; keep both
+  phones with qualifiers.
+- `Phone` means the person's contact number, never a meeting dial-in, passcode
+  or attendee's number. Calendar text is context, not their contact details.
+- A domain identifies an organisation, not employment. Student affiliation
+  is not an employer; unstated employer → `Company: Unknown`. Link a matching
+  organisation in the relationship text, citing the mail.
 - `[attachment]` entries are the file's text; the terms are there; cite their id.
   An unreadable attachment → your final reply.
 - Mail gives identity and commitments; sessions give intent. Sources disagree →
   say so; stated in one and implied in another → cite both.
+- Check asks/promises across topics before `Nothing open`; unrelated replies
+  close none. Questions promise no deadline. Invites, confirmed logistics,
+  arrival, empty forwards or samples do not prove completion.
+- Thread context can resolve a group ask after recipients drop. Match the team
+  and ask; one thread can mix both. Preserve requester, decision maker and debtor;
+  context is not this person's statement, contact date or assigned work.
+- Reread `Comparison scope` originals by exact `Provider thread`; they are not new contact.
 
 ## What to produce
 
@@ -45,6 +51,6 @@ Follow `rem-page-person` exactly, the lead above `Facts` included:
 since when.
 
 **Insight, three shapes** (never copy these facts):
-- `At stake: the user has owed Mia the revised SOW for 12 days; her signing date is 3 October [5]`
+- `At stake: Mia requested the revised SOW on 2026-09-21; it is due 2026-10-03 [5]`
 - `Changed: replies went from same-day to none since 2026-08-20, after the price went to A$15k [6][8]`
 - `Pattern: every thread since June is invoices; she chases, the user answers in 2–4 days [2][7]`

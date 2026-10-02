@@ -25,11 +25,13 @@ WORKERS = 12           # pages investigated at once after the owner's page (2026
 DEFAULTS = {"owner": {"input_tokens": 768_000, "seconds": 273},
             "person": {"input_tokens": 304_000, "seconds": 130},
             "project": {"input_tokens": 69_000, "seconds": 55},
-            "org": {"input_tokens": 129_000, "seconds": 117}}
+            "org": {"input_tokens": 129_000, "seconds": 117},
+            "skill": {"input_tokens": 100_000, "seconds": 60}}  # unmeasured planning estimate
 
 # Which run records are which kind of page: `_logged`'s phase, and the record's folder.
 _PHASES = {"owner": ("investigate me", ""), "person": ("investigate", "people/"),
-           "project": ("projects write", "projects/"), "org": ("investigate", "orgs/")}
+           "project": ("projects write", "projects/"), "org": ("investigate", "orgs/"),
+           "skill": ("investigate", "skills/catalog/")}
 
 
 def per_page(runs: list[dict], kind: str) -> dict:
@@ -51,7 +53,7 @@ def per_page(runs: list[dict], kind: str) -> dict:
             "measured": len(done)}
 
 
-def plan(runs: list[dict], *, owner: bool, people: int, projects: int, orgs: int = 0,
+def plan(runs: list[dict], *, owner: bool, people: int, projects: int, orgs: int = 0, skills: int = 0,
          workers: int = WORKERS) -> dict:
     """Selected pages, billed input and wall-clock minutes from observed medians.
 
@@ -60,10 +62,12 @@ def plan(runs: list[dict], *, owner: bool, people: int, projects: int, orgs: int
     total work by worker count misses the last slow page in a batch.
     """
     counts = {"owner": int(owner), "person": people, "project": projects, "org": orgs}
+    if skills:
+        counts["skill"] = skills
     rates = {kind: per_page(runs, kind) for kind in counts}
     queue = ([rates["owner"]["seconds"]] if owner else []) + [
         seconds for group in zip_longest(*(
-            [rates[kind]["seconds"]] * counts[kind] for kind in ("person", "project", "org")))
+            [rates[kind]["seconds"]] * counts[kind] for kind in counts if kind != "owner"))
         for seconds in group if seconds is not None]
     lanes = [0] * max(workers, 1)
     for seconds in queue:
@@ -71,7 +75,7 @@ def plan(runs: list[dict], *, owner: bool, people: int, projects: int, orgs: int
         lanes[lane] += seconds
     return {"pages": sum(counts.values()), "counts": counts,
             "input_tokens": (2 * counts["owner"] * rates["owner"]["input_tokens"]
-                             + sum(counts[k] * rates[k]["input_tokens"] for k in ("person", "project", "org"))),
+                             + sum(counts[k] * rates[k]["input_tokens"] for k in counts if k != "owner")),
             "minutes": ceil((counts["owner"] * rates["owner"]["seconds"] + max(lanes)) / 60),
             "measured": {k: rates[k]["measured"] for k in counts if counts[k]}}
 
@@ -84,8 +88,8 @@ def _pages(counts: dict) -> str:
     parts = (["your page"] if counts["owner"] else []) + [
         f"{counts[kind]} {word if counts[kind] == 1 else plural}"
         for kind, word, plural in (("person", "person", "people"), ("project", "project", "projects"),
-                                   ("org", "organisation", "organisations"))
-        if counts[kind]]
+                                   ("org", "organisation", "organisations"), ("skill", "skill", "skills"))
+        if counts.get(kind)]
     return ", ".join(parts[:-1]) + " and " + parts[-1] if len(parts) > 1 else parts[0] if parts else "nothing"
 
 
@@ -95,6 +99,8 @@ def announce(total: dict, where: str) -> str:
     basis = ("from this notebook's own runs" if measured and all(measured.values()) else
              "from runs measured on a real notebook" if not any(measured.values()) else
              "from this notebook's runs where it has them, measured defaults otherwise")
+    if total['counts'].get('skill') and not measured.get('skill'):
+        basis += "; skill time and tokens are initial planning estimates"
     return (f"About {total['pages']} page{'s' if total['pages'] != 1 else ''} ({_pages(total['counts'])}), "
             f"~{tokens(total['input_tokens'])} billed input tokens {where}, ~{total['minutes']} minutes "
             f"(an estimate {basis}).")

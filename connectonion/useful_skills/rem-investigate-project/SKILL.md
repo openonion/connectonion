@@ -17,6 +17,9 @@ Why these rules: docs/rem-skills/rem-investigate.md
 - A `project-inventory` item lists candidate files, not their contents. A
   directory name alone is not a project.
 - Old files are not recent activity.
+- A workspace may contain unrelated requests. Check their actual subject before
+  using them as project progress or activity; missing outcomes do not make old
+  requests current pending work. Check each claim against its exact source.
 
 ## What to produce
 

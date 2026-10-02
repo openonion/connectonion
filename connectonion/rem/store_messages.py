@@ -34,12 +34,14 @@ def owner_addresses(root: Path) -> set:
 
 def _mail_row(root: Path, row: dict, owner: set) -> dict:
     from .mail import _address, _addresses
-    from .mail_archive import message_path
+    from .mail_archive import message_path, observed_message_path
     provider, message_id = row["source"], row["id"]
     sender, to, cc = _address(row.get("from", "")), _addresses(row.get("to")), _addresses(row.get("cc"))
     # Who the conversation is with: From and To, never the owner, never Cc.
     counterparts = sorted(({sender, *to} - owner) - {""})
     path = message_path(root, provider, message_id)
+    if not path.is_file():
+        path = observed_message_path(root, provider, message_id)
     # The provider's thread when the inventory recorded it; before that, subject and counterparts.
     thread = (f"mail:{provider}:{row['thread']}" if row.get("thread") else
               "mail:" + thread_key(provider, subject_key(row.get("subject", "")), ",".join(counterparts)))
@@ -50,16 +52,10 @@ def _mail_row(root: Path, row: dict, owner: set) -> dict:
 
 
 def build_mail(db, root: Path) -> None:
-    inventory = state_path(root, "source-inventory.jsonl")
-    lines = inventory.read_text(encoding="utf-8").splitlines() if inventory.is_file() else []
-    found = {}
-    for line in lines:
-        row = json.loads(line) if line.strip() else {}
-        if row.get("type") == "mail" and row.get("id") and row.get("source") in ("gmail", "outlook"):
-            found[(row["source"], row["id"])] = row
+    from .mail_archive import mail_metadata
     owner = owner_addresses(root)
     db.execute("delete from messages where thread like 'mail:%'")
-    insert(db, "messages", [_mail_row(root, row, owner) for row in found.values()])
+    insert(db, "messages", [_mail_row(root, row, owner) for row in mail_metadata(root)])
 
 
 def build_sessions(db, root: Path) -> None:
@@ -95,8 +91,8 @@ def build_runs(db, root: Path) -> None:
     insert(db, "runs", rows)
 
 
-def body(root: Path, row: dict):
-    """The text of one message, read from its file; None when it was never archived."""
+def archived_message(root: Path, row: dict):
+    """The saved source record, including its input limits; None if not archived."""
     if not row.get("body_path"):
         return None
     path = state_path(root, row["body_path"])
@@ -105,5 +101,17 @@ def body(root: Path, row: dict):
     if row.get("body_line"):
         lines = path.read_text(encoding="utf-8").splitlines()
         number = row["body_line"]
-        return json.loads(lines[number - 1]).get("text") if number <= len(lines) else None
-    return read_json(path, {}).get("body")
+        saved = json.loads(lines[number - 1]) if 0 < number <= len(lines) else None
+        return saved if saved and saved.get("source") == row.get("id") else None
+    saved = read_json(path, {})
+    provider = row.get("source")
+    if provider in ("gmail", "outlook") and (
+            saved.get("provider") != provider or f"{provider}:{saved.get('id')}" != row.get("id")):
+        return None
+    return saved
+
+
+def body(root: Path, row: dict):
+    """The text of one message, read from its file; None when it was never archived."""
+    saved = archived_message(root, row)
+    return saved.get("text" if row.get("body_line") else "body") if saved else None

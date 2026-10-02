@@ -15,6 +15,47 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def test_attachment_source_keeps_filename_spaces_and_shows_extraction_limits(tmp_path, monkeypatch):
+    from patchright.sync_api import sync_playwright
+    from pypdf import PdfWriter
+    from pypdf.annotations import FreeText
+    from connectonion.rem.files import state_path
+
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    root = tmp_path / 'rem'
+    prepare(root)
+    source = 'outlook:123456789abc:Returned client agreement.pdf'
+    attachment = state_path(root, 'attachments/outlook/123456789abc/Returned client agreement.pdf')
+    attachment.parent.mkdir(parents=True)
+    writer = PdfWriter()
+    writer.add_blank_page(width=400, height=500)
+    writer.add_annotation(0, FreeText(text='Example Client Ltd', rect=(20, 350, 220, 390)))
+    writer.write(str(attachment))
+    Notebook(root).write('people/mentor.md', '# Mentor\n\nThe returned copy names a collaborator [15].\n\n'
+                        f'## Sources\n- [15] {source} — 2026-04-13\n')
+    path = write_reader(root)
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        page = browser.new_page(viewport={'width': 375, 'height': 812})
+        page.goto(path.as_uri() + '#r=people%2Fmentor.md')
+        assert page.locator('.block-sources .id').inner_text() == source
+        cite = page.locator('a.cite[href$="h=src-15"]').first
+        cite.click()
+        dialog = page.locator('#evidence-dialog')
+        assert 'Example Client Ltd' in dialog.locator('blockquote').inner_text()
+        assert 'Original capture time' in dialog.inner_text()
+        assert 'signature appearances are not verified' in dialog.inner_text()
+        assert not dialog.locator('.evidence-participants').count()
+        page.evaluate('togglePrivate()', isolated_context=False)
+        assert not dialog.locator('blockquote').is_visible()
+        page.evaluate('togglePrivate()', isolated_context=False)
+        assert dialog.locator('blockquote').is_visible()
+        page.get_by_role('button', name='Close source context').click()
+        assert cite.evaluate('e => e === document.activeElement')
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        browser.close()
+
+
 def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
     from patchright.sync_api import sync_playwright
 
@@ -43,10 +84,8 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.get_by_role("heading", name="What co rem carried forward").wait_for()
             page.screenshot(path=str(shots / "rem-desktop.png"), full_page=True)
             page.locator("#main").get_by_role("link", name="Aurora", exact=True).first.click()
-            page.locator(".deep-note > summary").click()
             page.locator("#main").get_by_role("link", name="Storage", exact=True).click()
             page.get_by_role("heading", name="Storage", exact=True).wait_for()
-            page.locator(".deep-note > summary").click()
             assert "inspectability" in page.locator("#main").inner_text()
             assert page.evaluate("window.wikiInjected === undefined")
             page.locator("input[type=search]").fill("inspectability")
@@ -164,13 +203,12 @@ def test_reader_preserves_code_and_nested_lists(reader_page):
 
 def test_private_sentences_can_be_hidden_and_restored(reader_page):
     page, _, _ = reader_page
-    page.locator(".deep-note > summary").click()
     private = page.locator(".note .private")
     assert private.count() == 1 and private.is_visible()
     assert "family plan" in private.inner_text()
-    page.get_by_role("button", name="Hide private").click()
+    page.get_by_role("button", name="Hide labelled passages").click()
     assert not private.is_visible()
-    page.get_by_role("button", name="Private hidden").click()
+    page.get_by_role("button", name="Show labelled passages").click()
     assert private.is_visible()
 
 
@@ -178,7 +216,6 @@ def test_private_sentences_can_be_hidden_and_restored(reader_page):
 def test_reader_contains_overflow_and_keeps_content_visible(reader_page, tmp_path, width, height):
     page, _, _ = reader_page
     page.set_viewport_size({"width": width, "height": height})
-    page.locator(".deep-note > summary").click()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     assert page.locator("#main").evaluate("e => e.getBoundingClientRect().top") < 260
     # Wide diagrams/tables scroll locally; inline tokens and sources wrap.
@@ -231,7 +268,6 @@ def test_reader_heading_links_and_search_state(reader_page):
     from patchright.sync_api import expect
 
     page, _, _ = reader_page
-    page.locator(".deep-note > summary").click()
     page.get_by_role("link", name="Jump within").click()
     page.wait_for_function("location.hash.includes('h=next-steps') && scrollY > 0")
     assert page.locator("#next-steps").evaluate("e => e.getBoundingClientRect().top >= 0 && e.getBoundingClientRect().top < innerHeight")
@@ -252,7 +288,6 @@ def test_reader_nested_fences_keep_literal_metadata(reader_page):
     page, _, _ = reader_page
     page.goto(page.url.split("#")[0] + "#r=projects%2Fnested.md")
     page.get_by_role("heading", name="Nested example", exact=True).wait_for()
-    page.locator(".deep-note > summary").click()
     assert page.locator("pre").text_content() == "Sources: nested literal\n\n\nRelated: nested literal"
     assert "nested literal" not in page.locator(".aside").inner_text()
     assert "codex:actual" in page.locator(".aside").inner_text()

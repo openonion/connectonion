@@ -6,6 +6,60 @@ round of a co rem investigation (#1851). This file holds the reasons, incidents 
 examples behind those rules. It is not loaded at runtime. When you change a rule
 there, update its reason here in the same change.
 
+## Group replies after a recipient is dropped
+
+A real person page still said the client owed scope approval, while another
+page recorded that client's approval and the team's later wording changes.
+The first person was copied on the request but absent from later replies.
+Address-only archive selection kept the request and missed its resolution.
+
+Person archive material now also includes saved messages with the same exact
+provider/thread identifier as direct indexed messages. There is no subject-line
+matching or transitive expansion. Missing identifiers or unsaved bodies supply
+no additional context. These messages carry a relationship-scope warning and
+are excluded from extracted personal contact facts. They do not prove the
+person wrote the reply, received it or owns the group's task.
+
+Indexed evidence now includes raw participant metadata, including Cc; a
+provider-rendered body may omit it. The writer must distinguish the requester,
+decision maker and debtor, and match the team and actual ask before closing it.
+A shared install/poll thread can contain replies from different teams.
+
+The inspected person's material grew from six direct messages to twelve:
+three later approval/wording replies and three replies on shared threads.
+Only the matching scope replies resolve the original approval. A second page's
+reversed approval obligation was manually corrected: a co-recipient is not
+automatically assigned the client's work. These manual changes do not establish
+automatic compliance. The full notebook's index adds 96 context/page pairs to
+17 of 36 person pages; these are overlapping evidence, not 96 verified findings.
+
+The focused gate also caught instruction-budget failures. Person rules and
+session-workspace wording were compacted without raising the 15,000 limit;
+all current instruction-composition checks pass. Exact rendered/source coverage
+and remaining gaps are recorded in the round's review report.
+
+## Organization context across mail domains (#2157)
+
+Domain-only investigation split a real offer/acceptance timeline across two
+organization pages. A shared canonical contact now supplies exact candidate
+addresses on the other mapped domain pages. Primary dated mail is gathered from
+those addresses, including Cc, while other correspondents on the other domain
+remain outside the comparison. This does not merge organizations or establish
+identity: the map can group people by display name, so the model must verify the
+person/company from the messages and preserve uncertain domain ownership.
+The mapped target domains keep their scope when a generated page lists a
+possible alias; that generated note cannot authorize reading the alias's whole
+domain as the same organization. Unmapped pages use their declared Domains.
+
+Outside-domain correspondence and its attachments carry an explicit relationship
+scope in inline and searchable evidence. Previously cited primary messages are
+retained when new related-contact evidence needs comparison. Domain-only and
+candidate contact dates are not forced into entity-level Facts during that
+comparison; the model must establish the entity scope from the cited messages.
+An accepted credits/startup-tier offer does not prove acceptance of a separate
+free-month offer, activation or completed setup. A later unrelated exchange
+does not close an older unanswered request.
+
 Before the split (2026-09-30) the Skill was 23.7k characters and investigate for
 one person page composed to ~31k; the rules-only version is ~9.5k.
 
@@ -111,8 +165,71 @@ first source and patching with the rest loses that.
   because the agreement is unsigned" was all on the page, spread across three
   other sections, so it read as background rather than as the thing to act on.
   It is the section the user reads first.
-- Skill catalog pages use a deterministic run-evidence path that reads retained
-  explicit slash-command invocations without opening mail or running a model.
+- Skill collection reads installed source, retained explicit slash-command eval
+  records and recent matching Codex/Claude invocation turns. The configured
+  model compares instructions with reported outputs; collection itself runs no
+  model, mailbox command or installed skill. Session sampling and missing logs
+  stay explicit, and a reported result never proves an artifact was checked.
+
+## Person event status and calendar dates
+
+Confirmed logistics and arrival do not prove an event or pack-up completed.
+Keep supported arrangements in dated History, and leave missing outcomes
+Unknown without creating a current debt from a historical gap. A copied
+recipient does not become the event organiser or the author of another
+person's confirmation.
+
+Fact extraction converts source timestamps to `schedule.timezone` before
+deriving contact and source dates. It sorts full instants, rather than date
+strings, so reversed inputs on the same UTC day still cite the correct first
+and last message. The facts packet names this timezone. A message's local send
+date remains distinct from its proposed event date.
+
+The reader uses the same notebook calendar for timestamp dates, relative
+contact age and year boundaries. Date-only facts retain their exact day; the
+browser's timezone cannot shift them. Activity is latest first and phone lists
+show complete rows. Explicit page Role and Company fields, including Unknown
+and historical qualifiers, supersede older derived index values; absent fields
+can still use the index. Other indexed fields retain their existing precedence.
+
+Four actual pages were manually corrected from reviewed current and historical
+mail. Fresh historical captures remain private audit evidence, separate from
+the 90-day init archive; this round does not prove their citations all resolve
+in the reader or that automatic generation follows the new rules. See the
+[scoped review](../design-evidence/rem-event-calendar-review-2026-10-03/REVIEW.md).
+
+## Skill original excerpts in the reader (#2174)
+
+Temporary investigation bodies are still scrubbed after a run. An accepted,
+changed skill page keeps only its cited instruction/reference excerpts in private
+local state: at most 640 characters per original or numbered part. Full-content
+hashes must match the source identifiers before retention. The first saved
+capture is preserved; conflicting full hashes are rejected. Secret-shaped or
+explicitly private content is excluded. The reader reads these saved excerpts,
+never today's installed files to substitute for a historical citation.
+
+An older instruction excerpt can be recovered only from matching content; its
+recovery time is recorded separately from the unknown original collection time.
+The UI explains that instructions describe intended behavior, not a verified
+result. Prefix excerpts may omit a claim's supporting passage; truncation and
+the unvalidated claim-span warning stay explicit. Session, eval and run-report
+references remain unavailable without retained historical evidence. No-change
+or refused investigations do not create new instruction captures.
+
+Skill activity in the reader uses recorded invocation dates. An investigation
+date cannot establish that a skill was used; file update dates stay separate.
+
+## Survey before selecting findings
+
+A two-year mailbox window does not establish two years of reading. Survey the
+whole supplied index and entry headers, then read each distinct relationship
+thread across older and newer months. This avoids rewriting the latest request
+while missing the introduction, agreement or later resolution. The coverage
+reply names actual files and months read, including relevant threads skipped.
+
+An Insight connects dated evidence to a current obligation, changed relationship
+or consequential next contact. Check later replies before calling a request
+open. Longer pages and higher token counts are not evidence of a better finding.
 
 ## Supplement sources through their own tools
 
@@ -153,6 +270,17 @@ The `Investigation:` footer is runner metadata: keep it unchanged even when it
 says `not investigated yet`; the placeholder check applies to body sections.
 The task-specific suffix uses named sections and a closed `<co_rem_task>`
 envelope so operational instructions are easier to audit.
+
+An inline packet containing an evidence index is not the complete evidence.
+A live init gathered 245 mails and 35 attachments, but its model left the
+relationship and Insight unknown because the task prohibited reading material
+files. The task now explicitly permits reading indexed bodies and names only
+the four already-inlined task packet files in its no-reread instruction (#2138).
+
+Carried facts keep their original source IDs. Citing the existing page for
+every historical statement erases the reader's route to the evidence and can
+perpetuate an earlier error. Correct a disproven fact and cite the evidence
+behind the correction; an index establishes where to read, not what happened.
 
 ## The open web
 
@@ -278,3 +406,60 @@ fold the oldest `History` into dated one-line summaries, keep the lead and the
 current state -- now applies here too, and the runner refuses a candidate over
 20,000 characters that is longer than the page it replaces
 (`page_review.size_errors`; the reasons for 20k are in `rem-maintain.md`).
+
+
+## File-only project original evidence (#2180)
+
+A project with no native messages can still have useful local source findings.
+Its candidate inventory remains bounded to 60 files. Agent investigations
+snapshot those supplied candidates up to 1,000,000 characters per file and
+use the existing evidence index when material exceeds the prompt budget.
+This can create up to roughly 60 MB of temporary local candidate text; it is
+not a claim that the agent read every file. A large individual source may
+exceed the usual 40k grouped evidence-file size. Summary investigations retain
+the existing twelve-file, 2,000-character prefix limit, explicitly truncated.
+The package manifest is included without admitting unrelated JSON data.
+
+Each supplied body and checkout-state packet receives a content identifier
+from origin plus exact supplied text. File modification time, capture time,
+complete/prefix scope and project activity are separate. Snapshot IDs identify
+the supplied body, not an uncollected full file. Exact origins and capture times
+remain available to the reader. Fixed repository packets retain their previous
+9,000-character bound; only explicitly marked local-file snapshots use the
+larger file bound. Entire retained bodies are checked for secret/private text.
+
+Original candidates remain available before digesting or writing temporary
+indexes. After a successful changed page, only cited bodies are saved privately
+under the same maintenance lock as result recording and index refresh. Rejected,
+uncited or unchanged results do not accumulate original bodies. A completed
+investigation records which identities were supplied, without claiming all were
+read: unchanged uncited candidates must not trigger another paid run. Changed
+file content can trigger a new investigation without a new coding message.
+Rejected identical file material also waits for a change.
+
+The reader still displays a 640-character prefix, not a validated claim span.
+Extra files discovered directly under Paths are not automatically historical
+snapshots. Legacy raw-path citations cannot be reconstructed from a current
+checkout. New captures and manual repairs do not prove model semantic reliability.
+
+## Mail bodies remain available after investigation
+
+Live provider reads retain the full rendering privately before quote cleaning.
+New snapshots live in `.state/mail/observed/<provider>/`; thin metadata is
+indexed separately from the initial source inventory. They do not extend the
+initial mailbox window, change its saved-body count or enter initial domain
+material. An existing initial snapshot is reused. The first retained rendering
+and its headers are also the version supplied to investigation, so a later
+provider rendering cannot silently replace the cited body.
+
+Opening archived mail checks its exact provider and native message identity.
+The short citation hash identifies a message, not a validated claim or body
+revision. Mail excerpts begin after the provider's Email Body delimiter and
+remain bounded to 640 characters; the uncleaned rendering stays on disk.
+From/To/Cc are available through a private disclosure. Sent time, retrieval
+time and later recovery-retention time have separate meanings. A recovered
+body with no recorded original retrieval time leaves it unknown; its Archived
+time does not prove the body was available during the original investigation.
+Provider-rendered text is not original MIME. Private mode hides these headers,
+clocks, limits and excerpts together. Manual recovery does not verify automatic
+writing or complete historical coverage.
