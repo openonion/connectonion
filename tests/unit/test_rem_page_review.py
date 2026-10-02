@@ -6,7 +6,40 @@ import pytest
 
 from connectonion.rem.config import default_config, prepare
 from connectonion.rem.files import Notebook
-from connectonion.rem.page_review import normalize, normalize_numbered_sources, validate
+from connectonion.rem.page_review import (drop_empty_owner_contact, drop_owner_last_contact_lead,
+                                         normalize, normalize_numbered_sources, validate)
+
+
+def test_owner_person_only_section_is_removed_only_when_empty():
+    candidate = ('# Owner\n\n## Insight\n- A cited decision [1]\n\n'
+                 '## How the user writes to them\n- Unknown\n\n'
+                 '## History\n- A dated choice [1]\n\n## Sources\n- [1] codex:choice\n')
+    cleaned = drop_empty_owner_contact(candidate)
+    assert 'How the user writes to them' not in cleaned
+    assert 'A cited decision [1]' in cleaned and 'A dated choice [1]' in cleaned
+    assert drop_empty_owner_contact(cleaned) == cleaned
+    substantive = candidate.replace('- Unknown', '- Prefers short messages [1]')
+    assert drop_empty_owner_contact(substantive) == substantive
+    errors = validate('people/owner.md', substantive, candidate, [{'source': 'codex:choice'}], owner=True)
+    assert any('Owner page must omit person-only section' in error for error in errors)
+    assert not any('Owner page must omit person-only section' in error for error in
+                   validate('people/other.md', substantive, candidate, [{'source': 'codex:choice'}]))
+
+
+def test_owner_lead_keeps_work_and_moves_contact_date_out_of_the_hero():
+    page = ('# Owner\n\nChanged: the first-run approach [1][2]. '
+            'Last contact: 2026-10-02, unrelated mail [3].\n\n'
+            '## Facts\n- Last contact: 2026-10-02 [3]\n\n'
+            '## Sources\n- [1] codex:old\n- [2] codex:new\n- [3] mail:latest\n')
+    cleaned = drop_owner_last_contact_lead(page)
+    assert 'Changed: the first-run approach [1][2].' in cleaned
+    assert cleaned.count('Last contact:') == 1
+    assert '- Last contact: 2026-10-02 [3]' in cleaned
+    assert drop_owner_last_contact_lead(cleaned) == cleaned
+    assert any('Owner lead must describe work' in error for error in
+               validate('people/owner.md', page, page, [], owner=True))
+    assert not any('Owner lead must describe work' in error for error in
+                   validate('people/owner.md', cleaned, cleaned, [], owner=True))
 from connectonion.rem.runner import RunFailed, run_stage, task_prompt
 
 

@@ -5,19 +5,18 @@ description: How the notebook owner's own page differs from a person's page — 
 
 # Your own page
 
-Write the user's own page from what they sent and typed. Keep the person
-headings and `Facts` labels except `How the user writes to them`.
+Use the user's sent mail and typed work. Keep person headings and `Facts`
+except `How the user writes to them`.
 
 ## The lead
 
 Under the title, before `Facts`, 2–4 cited sentences:
 
 - **Start with what they are working on now and why the next step matters.**
-  If `owner-work-evidence` shows an explicit reversal, lead with it and cite
-  both original messages. Newer questions are not a change. Otherwise name a
-  blocker or unresolved choice. Replace the generic quick-pass lead; put the
-  latest request in the next step. `recent-projects` ranks, not proves shipping.
-  List projects in `Who they are`.
+  A reversal in `owner-work-evidence` goes first, citing both originals; a
+  newer question is not a change. Otherwise name a blocker. Replace the generic
+  quick-pass lead. `recent-projects` ranks work but proves no shipment. Put
+  requests in the next step and projects in `Who they are`.
 - Add only a firm, due-soon commitment or one blocking that work. Distant
   optional invitations and unrelated mail belong in `Open threads`.
 - The person-page `Last contact:` lead rule does not apply here; contact dates
@@ -45,11 +44,12 @@ never a correspondent in `Cadence`.
 
 - `Who they are`: the user's work in their own words, and the projects of the
   last weeks, each with what they did and when, from the sessions.
-- `Insight`: 2–4 cited bullets. Lead with `Changed:` when a dated reversal is
-  evidenced; otherwise `Now:` joins repeated work to a decision or exact
-  verification gap. `Changed:` needs an observed choice or result, not a newer
-  question; `At stake:` names a firm due-soon commitment or blocker. Compare
-  sources when possible. A coding request proves no shipment or passing test.
+- `Insight`: 2–4 cited bullets. Lead with `Changed:` for an evidenced dated
+  choice or result, never a newer question. Otherwise `Now:` joins repeated
+  work to a decision or verification gap. Use at most one `At stake:` bullet,
+  tied to that work and a firm due-soon commitment or blocker. Put unrelated
+  work in `Open threads`; meeting requests need a dated consequence. Compare
+  sources. A coding request proves no shipment or passing test.
 - `Why they are here`: this is the owner's page; one line, cited to the map.
 - `Our relationship`: `Account owner`.
 - `History`: completed, dated milestones, newest first (launch, hire, move,

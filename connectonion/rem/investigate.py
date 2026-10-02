@@ -839,6 +839,28 @@ def window_since(page: str, default: int = 730) -> int:
 
 RECENT_PROJECT_DAYS = 28
 RECENT_PROJECT_LIMIT = 8
+OWNER_TASK_PATTERNS = (("init", r"(?<![A-Za-z0-9])init(?![A-Za-z0-9])|初始化"),
+                       ("reader", r"(?<![A-Za-z0-9])reader(?![A-Za-z0-9])"),
+                       ("sync", r"(?<![A-Za-z0-9])sync(?![A-Za-z0-9])"))
+
+
+def _recent_owner_decisions(all_sessions: list[dict], focused: list[dict], focus: str,
+                            choice: re.Pattern) -> list[dict]:
+    """Keep recent task decisions that omit a repeated product name."""
+    if not focus or focus in {name for name, _ in OWNER_TASK_PATTERNS}:
+        return []
+    tasks = [pattern for _, pattern in OWNER_TASK_PATTERNS
+             if any(re.search(pattern, item["text"], re.I) for item in focused)]
+    dates = [str(item.get("timestamp", ""))[:10] for item in all_sessions]
+    if not tasks or not any(re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) for date in dates):
+        return []
+    last = max(date for date in dates if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date))
+    cutoff = (datetime.fromisoformat(last) - timedelta(days=14)).date().isoformat()
+    return sorted((item for item in all_sessions if item not in focused
+                   and str(item.get("timestamp", ""))[:10] >= cutoff
+                   and choice.search(item["text"])
+                   and any(re.search(pattern, item["text"], re.I) for pattern in tasks)),
+                  key=lambda item: item.get("timestamp", ""), reverse=True)[:2]
 
 
 def owner_work_evidence(items: list[dict]) -> str:
@@ -855,14 +877,13 @@ def owner_work_evidence(items: list[dict]) -> str:
                 and len(str(item.get("text", "")).strip()) >= 8]
     if not sessions:
         return ""
+    all_sessions = sessions
     # A cwd can hold several unrelated jobs. A named task in the latest typed
     # messages is a safer first filter than the directory alone. Keep short
     # Chinese messages: one explicit reversal was only 184 characters.
     recent = sorted(sessions, key=lambda item: item.get("timestamp", ""))[-24:]
     focus = ""
-    for term, pattern in (("init", r"(?<![A-Za-z0-9])init(?![A-Za-z0-9])|初始化"),
-                          ("reader", r"(?<![A-Za-z0-9])reader(?![A-Za-z0-9])"),
-                          ("sync", r"(?<![A-Za-z0-9])sync(?![A-Za-z0-9])")):
+    for term, pattern in OWNER_TASK_PATTERNS:
         if any(re.search(pattern, item["text"], re.I) for item in recent[-5:]):
             matched = [item for item in sessions if re.search(pattern, item["text"], re.I)]
             if len(matched) >= 2:
@@ -883,7 +904,7 @@ def owner_work_evidence(items: list[dict]) -> str:
     counts = Counter(str(item.get("project") or "") for item in sessions)
     projects = [name for name, _ in counts.most_common(2)]
     selected = []
-    choice = re.compile(r"\b(?:choose|chose|decid(?:e|ed)|instead|switch(?:ed)?|revert(?:ed)?|stop|remove)\b|决定|选择|改成|改为|不要|撤回", re.I)
+    choice = re.compile(r"\b(?:choose|chose|decid(?:e|ed)|instead|switch(?:ed)?|revert(?:ed)?|stop|remove)\b|不对|应该|决定|选择|改成|改为|不要|撤回", re.I)
     for project in projects:
         rows = sorted((item for item in sessions if str(item.get("project") or "") == project),
                       key=lambda item: item.get("timestamp", ""))
@@ -892,6 +913,19 @@ def owner_work_evidence(items: list[dict]) -> str:
         for item in candidates:
             if item not in selected and len(selected) < 6:
                 selected.append(item)
+    bridged = _recent_owner_decisions(all_sessions, sessions, focus, choice)
+    anchors = [row for row in sessions if any(
+        re.search(pattern, row["text"], re.I) and re.search(pattern, bridge["text"], re.I)
+        for bridge in bridged for _, pattern in OWNER_TASK_PATTERNS)]
+    additions = ([max(anchors, key=lambda row: row.get("timestamp", ""))] if anchors else []) + bridged
+    for item in additions:
+        if item in selected:
+            continue
+        if len(selected) == 6:
+            middle = selected[1:-1] or selected[:-1]
+            selected.remove(min(middle, key=lambda row: (bool(choice.search(row["text"])),
+                                                         row.get("timestamp", ""))))
+        selected.append(item)
     selected.sort(key=lambda item: item.get("timestamp", ""))
     lines = ["Exact excerpts from the owner's dated coding messages, selected for temporal contrast"
              + (f" on the repeated recent topic {focus}" if focus else "") + ". "

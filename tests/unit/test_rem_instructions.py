@@ -205,6 +205,8 @@ def test_only_the_owners_investigation_carries_the_owner_page_spec_and_it_stays_
     for rule in ("what they are working on now", "coding", "Open threads", "not history",
                  "**the user states them about"):
         assert rule in owner, rule
+    assert "at most one `At stake:`" in owner
+    assert "meeting requests need a dated consequence" in owner
 
 
 def test_the_owner_flag_on_the_page_item_is_what_composes_it(tmp_path):

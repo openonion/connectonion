@@ -82,6 +82,32 @@ def normalize(record: str, text: str, owner: bool = False) -> str:
     return '\n\n'.join(output + status) + '\n'
 
 
+def drop_empty_owner_contact(text: str) -> str:
+    """Remove an empty person-only field from an owner candidate, preserving claims."""
+    matches = list(SECTION_HEADING_RE.finditer(prose(text)))
+    for index, match in enumerate(matches):
+        if match[1] != NOT_ON_OWNER_PAGE:
+            continue
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        value = text[match.end():end].strip()
+        if re.fullmatch(r'(?:-\s*)?(?:Unknown(?:\s*[—–-]\s*not investigated yet)?|Not applicable|N/A)',
+                        value, re.I) or not value:
+            return text[:match.start()].rstrip('\r\n') + '\n\n' + text[end:].lstrip('\r\n')
+    return text
+
+
+def drop_owner_last_contact_lead(text: str) -> str:
+    """Keep a correspondence date in Facts, not in the owner's work lead."""
+    facts_heading = next((match for match in SECTION_HEADING_RE.finditer(prose(text))
+                          if match[1] == 'Facts'), None)
+    if not facts_heading:
+        return text
+    lead = text[:facts_heading.start()]
+    lead = re.sub(r'(?<=\.)[ \t]+Last contact:(?: Unknown|[^\r\n]*?(?:\[W?\d+\])+)\.?[ \t]*(?=\r?\n|$)',
+                  '', lead, flags=re.I)
+    return lead + text[facts_heading.start():]
+
+
 def compact_project_page(text: str) -> str:
     """Hide empty optional headings after a project has been investigated.
 
@@ -429,6 +455,11 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     counts = Counter(re.findall(r'^## (.+)$', body, re.M))
     errors += [f'Section must occur once: {h}' for h in headings(record, owner) if counts[h] != 1]
     errors += [f'Duplicate section: {h}' for h, n in counts.items() if n > 1]
+    if owner and counts[NOT_ON_OWNER_PAGE]:
+        errors.append(f'Owner page must omit person-only section: {NOT_ON_OWNER_PAGE}')
+    facts_heading = re.search(r'(?m)^## Facts\r?$', body)
+    if owner and re.search(r'\bLast contact:', body[:facts_heading.start()] if facts_heading else body, re.I):
+        errors.append('Owner lead must describe work, not a correspondence date')
     if re.findall(r'^Investigation:.*$', body, re.M) != re.findall(r'^Investigation:.*$', original, re.M):
         errors.append('Investigation status belongs to the runner')
     content, _, sources = body.partition('\n## Sources\n')
