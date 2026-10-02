@@ -30,70 +30,70 @@ no MCP server, tool schema or skill file to set up.
      curl -s https://www.connectonion.com/connections.md
      and paste the output between these two comments. -->
 <p><b>Identity &amp; memory</b><br>
-<a href="docs/cli/init.md"><img src="https://www.connectonion.com/logos/address.svg?v=2" width="80" height="80" alt="0x address" title="0x address · co init"></a>
-<a href="docs/cli/email.md"><img src="https://www.connectonion.com/logos/mailbox.svg?v=2" width="80" height="80" alt="Agent mailbox" title="Agent mailbox · co email"></a>
-<a href="docs/cli/rem.md"><img src="https://www.connectonion.com/logos/memory.svg?v=2" width="80" height="80" alt="Memory" title="Memory · co wiki"></a>
-<a href="docs/cli/env.md"><img src="https://www.connectonion.com/logos/secrets.svg?v=2" width="80" height="80" alt="Secrets" title="Secrets · co env"></a>
-<a href="docs/cli/README.md"><img src="https://www.connectonion.com/logos/credits.svg?v=2" width="80" height="80" alt="Credits" title="Credits · co transfer"></a></p>
+<a href="docs/cli/init.md"><img src="https://www.connectonion.com/logos/address.svg?v=3" width="80" height="80" alt="0x address" title="0x address · co init"></a>
+<a href="docs/cli/email.md"><img src="https://www.connectonion.com/logos/mailbox.svg?v=3" width="80" height="80" alt="Agent mailbox" title="Agent mailbox · co email"></a>
+<a href="docs/cli/rem.md"><img src="https://www.connectonion.com/logos/memory.svg?v=3" width="80" height="80" alt="co rem" title="co rem · co rem"></a>
+<a href="docs/cli/env.md"><img src="https://www.connectonion.com/logos/secrets.svg?v=3" width="80" height="80" alt="Secrets" title="Secrets · co env"></a>
+<a href="docs/cli/README.md"><img src="https://www.connectonion.com/logos/credits.svg?v=3" width="80" height="80" alt="Credits" title="Credits · co transfer"></a></p>
 
 <p><b>Mail, calendar &amp; notes</b><br>
-<a href="docs/cli/gmail.md"><img src="https://www.connectonion.com/logos/gmail.svg?v=2" width="80" height="80" alt="Gmail" title="Gmail · co gmail"></a>
-<a href="docs/cli/outlook.md"><img src="https://www.connectonion.com/logos/outlook.svg?v=2" width="80" height="80" alt="Outlook" title="Outlook · co outlook"></a>
-<a href="docs/cli/gcalendar.md"><img src="https://www.connectonion.com/logos/gcal.svg?v=2" width="80" height="80" alt="Google Calendar" title="Google Calendar · co gcalendar"></a>
-<a href="docs/cli/gcalendar.md"><img src="https://www.connectonion.com/logos/meet.svg?v=2" width="80" height="80" alt="Google Meet" title="Google Meet · co gcalendar meet"></a>
-<a href="docs/cli/onenote.md"><img src="https://www.connectonion.com/logos/onenote.svg?v=2" width="80" height="80" alt="OneNote" title="OneNote · co onenote"></a>
-<a href="docs/cli/outlook.md"><img src="https://www.connectonion.com/logos/teams.svg?v=2" width="80" height="80" alt="Teams meetings" title="Teams meetings · co outlook calendar"></a></p>
+<a href="docs/cli/gmail.md"><img src="https://www.connectonion.com/logos/gmail.svg?v=3" width="80" height="80" alt="Gmail" title="Gmail · co gmail"></a>
+<a href="docs/cli/outlook.md"><img src="https://www.connectonion.com/logos/outlook.svg?v=3" width="80" height="80" alt="Outlook" title="Outlook · co outlook"></a>
+<a href="docs/cli/gcalendar.md"><img src="https://www.connectonion.com/logos/gcal.svg?v=3" width="80" height="80" alt="Google Calendar" title="Google Calendar · co gcalendar"></a>
+<a href="docs/cli/gcalendar.md"><img src="https://www.connectonion.com/logos/meet.svg?v=3" width="80" height="80" alt="Google Meet" title="Google Meet · co gcalendar meet"></a>
+<a href="docs/cli/onenote.md"><img src="https://www.connectonion.com/logos/onenote.svg?v=3" width="80" height="80" alt="OneNote" title="OneNote · co onenote"></a>
+<a href="docs/cli/outlook.md"><img src="https://www.connectonion.com/logos/teams.svg?v=3" width="80" height="80" alt="Teams meetings" title="Teams meetings · co outlook calendar"></a></p>
 
 <p><b>Chat apps</b><br>
-<a href="docs/cli/whatsapp.md"><img src="https://www.connectonion.com/logos/whatsapp.svg?v=2" width="80" height="80" alt="WhatsApp" title="WhatsApp · co whatsapp"></a>
-<a href="docs/cli/telegram.md"><img src="https://www.connectonion.com/logos/telegram.svg?v=2" width="80" height="80" alt="Telegram" title="Telegram · co telegram"></a>
-<a href="docs/cli/discord.md"><img src="https://www.connectonion.com/logos/discord.svg?v=2" width="80" height="80" alt="Discord" title="Discord · co discord"></a>
-<a href="docs/cli/slack.md"><img src="https://www.connectonion.com/logos/slack.svg?v=2" width="80" height="80" alt="Slack" title="Slack · co slack"></a>
-<a href="docs/cli/feishu.md"><img src="https://www.connectonion.com/logos/feishu.svg?v=2" width="80" height="80" alt="Feishu / Lark" title="Feishu / Lark · co feishu, co lark"></a>
-<a href="docs/cli/sms.md"><img src="https://www.connectonion.com/logos/sms.svg?v=2" width="80" height="80" alt="SMS" title="SMS · co sms"></a></p>
+<a href="docs/cli/whatsapp.md"><img src="https://www.connectonion.com/logos/whatsapp.svg?v=3" width="80" height="80" alt="WhatsApp" title="WhatsApp · co whatsapp"></a>
+<a href="docs/cli/telegram.md"><img src="https://www.connectonion.com/logos/telegram.svg?v=3" width="80" height="80" alt="Telegram" title="Telegram · co telegram"></a>
+<a href="docs/cli/discord.md"><img src="https://www.connectonion.com/logos/discord.svg?v=3" width="80" height="80" alt="Discord" title="Discord · co discord"></a>
+<a href="docs/cli/slack.md"><img src="https://www.connectonion.com/logos/slack.svg?v=3" width="80" height="80" alt="Slack" title="Slack · co slack"></a>
+<a href="docs/cli/feishu.md"><img src="https://www.connectonion.com/logos/feishu.svg?v=3" width="80" height="80" alt="Feishu / Lark" title="Feishu / Lark · co feishu, co lark"></a>
+<a href="docs/cli/sms.md"><img src="https://www.connectonion.com/logos/sms.svg?v=3" width="80" height="80" alt="SMS" title="SMS · co sms"></a></p>
 
 <p><b>Browser &amp; files</b><br>
-<a href="docs/cli/browser.md"><img src="https://www.connectonion.com/logos/chrome.svg?v=2" width="80" height="80" alt="Your Chrome" title="Your Chrome · co browser"></a>
-<a href="docs/cli/browser.md"><img src="https://www.connectonion.com/logos/remote.svg?v=2" width="80" height="80" alt="Remote browser" title="Remote browser · co remote-browser"></a>
-<a href="docs/cli/gdrive.md"><img src="https://www.connectonion.com/logos/gdrive.svg?v=2" width="80" height="80" alt="Google Drive" title="Google Drive · co gdrive"></a>
-<a href="docs/cli/youtube.md"><img src="https://www.connectonion.com/logos/youtube.svg?v=2" width="80" height="80" alt="YouTube" title="YouTube · co youtube"></a>
-<a href="docs/cli/synology.md"><img src="https://www.connectonion.com/logos/syno.svg?v=2" width="80" height="80" alt="Synology NAS" title="Synology NAS · co syno"></a>
-<a href="docs/cli/search.md"><img src="https://www.connectonion.com/logos/search.svg?v=2" width="80" height="80" alt="Web search" title="Web search · co search"></a>
-<a href="docs/cli/search.md"><img src="https://www.connectonion.com/logos/fetch.svg?v=2" width="80" height="80" alt="Web fetch" title="Web fetch · co fetch"></a></p>
+<a href="docs/cli/browser.md"><img src="https://www.connectonion.com/logos/chrome.svg?v=3" width="80" height="80" alt="Your Chrome" title="Your Chrome · co browser"></a>
+<a href="docs/cli/browser.md"><img src="https://www.connectonion.com/logos/remote.svg?v=3" width="80" height="80" alt="Remote browser" title="Remote browser · co remote-browser"></a>
+<a href="docs/cli/gdrive.md"><img src="https://www.connectonion.com/logos/gdrive.svg?v=3" width="80" height="80" alt="Google Drive" title="Google Drive · co gdrive"></a>
+<a href="docs/cli/youtube.md"><img src="https://www.connectonion.com/logos/youtube.svg?v=3" width="80" height="80" alt="YouTube" title="YouTube · co youtube"></a>
+<a href="docs/cli/synology.md"><img src="https://www.connectonion.com/logos/syno.svg?v=3" width="80" height="80" alt="Synology NAS" title="Synology NAS · co syno"></a>
+<a href="docs/cli/search.md"><img src="https://www.connectonion.com/logos/search.svg?v=3" width="80" height="80" alt="Web search" title="Web search · co search"></a>
+<a href="docs/cli/search.md"><img src="https://www.connectonion.com/logos/fetch.svg?v=3" width="80" height="80" alt="Web fetch" title="Web fetch · co fetch"></a></p>
 
 <p><b>Issues &amp; feedback</b><br>
-<a href="docs/cli/linear.md"><img src="https://www.connectonion.com/logos/linear.svg?v=2" width="80" height="80" alt="Linear" title="Linear · co linear"></a>
-<a href="docs/cli/canny.md"><img src="https://www.connectonion.com/logos/canny.svg?v=2" width="80" height="80" alt="Canny" title="Canny · co canny"></a></p>
+<a href="docs/cli/linear.md"><img src="https://www.connectonion.com/logos/linear.svg?v=3" width="80" height="80" alt="Linear" title="Linear · co linear"></a>
+<a href="docs/cli/canny.md"><img src="https://www.connectonion.com/logos/canny.svg?v=3" width="80" height="80" alt="Canny" title="Canny · co canny"></a></p>
 
 <p><b>Coding agents</b><br>
-<a href="docs/cli/ai.md"><img src="https://www.connectonion.com/logos/ai.svg?v=2" width="80" height="80" alt="co ai" title="co ai · co ai"></a>
-<a href="docs/claude-code-plugin.md"><img src="https://www.connectonion.com/logos/claude.svg?v=2" width="80" height="80" alt="Claude Code" title="Claude Code · co claude"></a>
-<a href="docs/cli/skills.md"><img src="https://www.connectonion.com/logos/codex.svg?v=2" width="80" height="80" alt="Codex" title="Codex · co skills link"></a>
-<a href="docs/cli/skills.md"><img src="https://www.connectonion.com/logos/skills.svg?v=2" width="80" height="80" alt="Your skills" title="Your skills · co skills"></a>
-<a href="docs/cli/sub.md"><img src="https://www.connectonion.com/logos/sub.svg?v=2" width="80" height="80" alt="Shared skills" title="Shared skills · co sub"></a>
-<a href="docs/cli/README.md"><img src="https://www.connectonion.com/logos/eval.svg?v=2" width="80" height="80" alt="Evals" title="Evals · co eval"></a>
-<a href="docs/cli/audit.md"><img src="https://www.connectonion.com/logos/audit.svg?v=2" width="80" height="80" alt="CLI audit" title="CLI audit · co audit"></a>
-<a href="docs/cli/skills.md"><img src="https://www.connectonion.com/logos/cursor.svg?v=2" width="80" height="80" alt="Cursor" title="Cursor · co skills discover"></a>
-<a href="docs/cli/skills.md"><img src="https://www.connectonion.com/logos/kiro.svg?v=2" width="80" height="80" alt="Kiro" title="Kiro · co skills discover"></a></p>
+<a href="docs/cli/ai.md"><img src="https://www.connectonion.com/logos/ai.svg?v=3" width="80" height="80" alt="co ai" title="co ai · co ai"></a>
+<a href="docs/claude-code-plugin.md"><img src="https://www.connectonion.com/logos/claude.svg?v=3" width="80" height="80" alt="Claude Code" title="Claude Code · co claude"></a>
+<a href="docs/cli/skills.md"><img src="https://www.connectonion.com/logos/codex.svg?v=3" width="80" height="80" alt="Codex" title="Codex · co skills link"></a>
+<a href="docs/cli/skills.md"><img src="https://www.connectonion.com/logos/skills.svg?v=3" width="80" height="80" alt="Your skills" title="Your skills · co skills"></a>
+<a href="docs/cli/sub.md"><img src="https://www.connectonion.com/logos/sub.svg?v=3" width="80" height="80" alt="Shared skills" title="Shared skills · co sub"></a>
+<a href="docs/cli/README.md"><img src="https://www.connectonion.com/logos/eval.svg?v=3" width="80" height="80" alt="Evals" title="Evals · co eval"></a>
+<a href="docs/cli/audit.md"><img src="https://www.connectonion.com/logos/audit.svg?v=3" width="80" height="80" alt="CLI audit" title="CLI audit · co audit"></a>
+<a href="docs/cli/skills.md"><img src="https://www.connectonion.com/logos/cursor.svg?v=3" width="80" height="80" alt="Cursor" title="Cursor · co skills discover"></a>
+<a href="docs/cli/skills.md"><img src="https://www.connectonion.com/logos/kiro.svg?v=3" width="80" height="80" alt="Kiro" title="Kiro · co skills discover"></a></p>
 
 <p><b>Models</b><br>
-<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/managed.svg?v=2" width="80" height="80" alt="Managed keys" title="Managed keys · co/… ($5 credit)"></a>
-<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/openai.svg?v=2" width="80" height="80" alt="OpenAI" title="OpenAI · gpt-…"></a>
-<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/anthropic.svg?v=2" width="80" height="80" alt="Anthropic" title="Anthropic · claude-…"></a>
-<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/gemini.svg?v=2" width="80" height="80" alt="Gemini" title="Gemini · gemini-…"></a>
-<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/mistral.svg?v=2" width="80" height="80" alt="Mistral" title="Mistral · mistral/…"></a>
-<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/groq.svg?v=2" width="80" height="80" alt="Groq" title="Groq · groq/…"></a>
-<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/grok.svg?v=2" width="80" height="80" alt="Grok" title="Grok · grok/…"></a>
-<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/openrouter.svg?v=2" width="80" height="80" alt="OpenRouter" title="OpenRouter · openrouter/…"></a>
-<a href="docs/concepts/local-models.md"><img src="https://www.connectonion.com/logos/ollama.svg?v=2" width="80" height="80" alt="Ollama (local)" title="Ollama (local) · ollama/…"></a></p>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/managed.svg?v=3" width="80" height="80" alt="Managed keys" title="Managed keys · co/… ($5 credit)"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/openai.svg?v=3" width="80" height="80" alt="OpenAI" title="OpenAI · gpt-…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/anthropic.svg?v=3" width="80" height="80" alt="Anthropic" title="Anthropic · claude-…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/gemini.svg?v=3" width="80" height="80" alt="Gemini" title="Gemini · gemini-…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/mistral.svg?v=3" width="80" height="80" alt="Mistral" title="Mistral · mistral/…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/groq.svg?v=3" width="80" height="80" alt="Groq" title="Groq · groq/…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/grok.svg?v=3" width="80" height="80" alt="Grok" title="Grok · grok/…"></a>
+<a href="docs/concepts/models.md"><img src="https://www.connectonion.com/logos/openrouter.svg?v=3" width="80" height="80" alt="OpenRouter" title="OpenRouter · openrouter/…"></a>
+<a href="docs/concepts/local-models.md"><img src="https://www.connectonion.com/logos/ollama.svg?v=3" width="80" height="80" alt="Ollama (local)" title="Ollama (local) · ollama/…"></a></p>
 
 <p><b>Agents &amp; servers</b><br>
-<a href="docs/cli/call.md"><img src="https://www.connectonion.com/logos/call.svg?v=2" width="80" height="80" alt="Remote agents" title="Remote agents · co call"></a>
-<a href="docs/features/trust.md"><img src="https://www.connectonion.com/logos/trust.svg?v=2" width="80" height="80" alt="Trust" title="Trust · co trust"></a>
-<a href="docs/cli/proxy.md"><img src="https://www.connectonion.com/logos/proxy.svg?v=2" width="80" height="80" alt="Your internet" title="Your internet · co proxy"></a>
-<a href="docs/cli/server.md"><img src="https://www.connectonion.com/logos/server.svg?v=2" width="80" height="80" alt="Your servers" title="Your servers · co deploy --to"></a>
-<a href="docs/cli/server.md"><img src="https://www.connectonion.com/logos/ssh.svg?v=2" width="80" height="80" alt="SSH" title="SSH · co server ssh"></a>
-<a href="docs/cli/schedule.md"><img src="https://www.connectonion.com/logos/schedule.svg?v=2" width="80" height="80" alt="Schedules" title="Schedules · co schedule"></a></p>
+<a href="docs/cli/call.md"><img src="https://www.connectonion.com/logos/call.svg?v=3" width="80" height="80" alt="Remote agents" title="Remote agents · co call"></a>
+<a href="docs/features/trust.md"><img src="https://www.connectonion.com/logos/trust.svg?v=3" width="80" height="80" alt="Trust" title="Trust · co trust"></a>
+<a href="docs/cli/proxy.md"><img src="https://www.connectonion.com/logos/proxy.svg?v=3" width="80" height="80" alt="Your internet" title="Your internet · co proxy"></a>
+<a href="docs/cli/server.md"><img src="https://www.connectonion.com/logos/server.svg?v=3" width="80" height="80" alt="Your servers" title="Your servers · co deploy --to"></a>
+<a href="docs/cli/server.md"><img src="https://www.connectonion.com/logos/ssh.svg?v=3" width="80" height="80" alt="SSH" title="SSH · co server ssh"></a>
+<a href="docs/cli/schedule.md"><img src="https://www.connectonion.com/logos/schedule.svg?v=3" width="80" height="80" alt="Schedules" title="Schedules · co schedule"></a></p>
 
 <p><a href="docs/cli/README.md">Every command</a> · <code>co commands</code> lists them all.</p>
 <!-- /connections -->
@@ -163,6 +163,29 @@ co commands                # everything else; add --help to any
 
 The [Quick start guide](docs/quickstart.md) covers Google, the browser, chat
 apps and project settings.
+
+## co rem — your agent's memory
+
+Like REM sleep turns a day's experience into memory, **co rem** turns your
+mail and coding sessions into local pages about the people, projects and
+skills in your work. The first run builds your map and investigates recent
+work; after you approve a schedule, it keeps that context current overnight.
+Open it in the morning to see cited facts, decisions and open threads.
+
+Available in the opt-in **1.9.0 preview**:
+
+```bash
+pip install --pre -U connectonion
+co rem init                # build your map and first pages
+co rem open                # read the local notebook
+co rem start               # approve a daily schedule (macOS)
+```
+
+The notebook stays in `~/.co/rem`. `co rem open --live` reads it from your
+online `co ai` Host at `https://chat.openonion.ai/<address>/rem`, for the Host
+owner only. [Explore co rem](https://docs.connectonion.com/rem),
+[try the sample reader](https://docs.connectonion.com/rem/demo), or read the
+[CLI guide](docs/cli/rem.md) for source controls, runner costs and limits.
 
 ## See it work
 
