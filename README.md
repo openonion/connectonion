@@ -8,8 +8,8 @@
 
 One command line, `co`, gives your AI agent the accounts and tools it works with:
 Gmail and Outlook, a logged-in browser, your files, chat apps and other agents.
-Its `--help` pages are the agent's instructions, and the agent finds them itself:
-no MCP server, tool schema or skill file to set up.
+**co rem gives that work a memory:** people, projects and decisions,
+with links back to the sources.
 
 [![PyPI](https://img.shields.io/pypi/v/connectonion?style=flat-square)](https://pypi.org/project/connectonion/)
 [![Python](https://img.shields.io/pypi/pyversions/connectonion?style=flat-square)](https://pypi.org/project/connectonion/)
@@ -17,14 +17,74 @@ no MCP server, tool schema or skill file to set up.
 [![License](https://img.shields.io/pypi/l/connectonion?style=flat-square)](LICENSE)
 [![PyPI Downloads](https://static.pepy.tech/personalized-badge/connectonion?period=total&units=international_system&left_color=black&right_color=green&left_text=downloads)](https://pepy.tech/projects/connectonion)
 
-[Website](https://www.connectonion.com) · [Docs](https://docs.connectonion.com) · [Quick start](docs/quickstart.md) · [Releases](https://github.com/openonion/connectonion/releases) · [Discord](https://discord.gg/4xfD9k8AUF)
+[Website](https://www.connectonion.com) · [Docs](https://docs.connectonion.com) · [Get started](#install-and-start) · [co rem](#co-rem--your-agents-memory) · [Releases](https://github.com/openonion/connectonion/releases) · [Discord](https://discord.gg/4xfD9k8AUF)
 
 </div>
 
-<p align="center">
-  <a href="https://www.connectonion.com/#film"><img src="https://www.connectonion.com/promo/highlight.gif?v=2" width="360" alt="Real co 1.8.10 runs: co browser reads the top Hacker News story, co search and co fetch answer with sources, co email sends from the agent's own address, and co ai hands a task to Codex and Claude Code"></a><br>
-  <sub>Real output from co 1.8.10. <a href="https://www.connectonion.com/#film">Watch the 43-second film →</a></sub>
-</p>
+## co rem — your agent's memory
+
+**Pick up where yesterday left off.** co rem turns your mail and coding
+sessions into local pages about the people, projects and skills in your work.
+Like REM sleep, it carries useful context forward.
+
+[**Explore co rem →**](https://docs.connectonion.com/rem) ·
+[Try the sample reader](https://docs.connectonion.com/rem/demo) ·
+[Setup and source controls](docs/cli/rem.md)
+
+<a href="https://docs.connectonion.com/rem/demo">
+  <picture>
+    <source media="(max-width: 600px)" srcset="docs/assets/rem-readme/reader-phone.png">
+    <img src="docs/assets/rem-readme/reader-desktop.png" alt="co rem morning overview: a changed role, its supporting source, and notebook navigation" width="960">
+  </picture>
+</a>
+
+*The 1.9.0a20 reader with invented example data. The linked sample is a frozen
+notebook you can explore without connecting an account.*
+
+- **See what changed.** Review new facts, decisions and open threads, with
+  citations you can follow back to the source.
+- **Find the context again.** Browse connected people and project pages,
+  then use recall prompts to revisit what matters.
+- **Keep it current.** The first run builds your map and investigates recent
+  work. An approved schedule updates it overnight.
+
+### Try co rem · 1.9.0 preview
+
+co rem is in the opt-in preview. Start with [the setup guide](https://docs.connectonion.com/rem#start)
+for account setup, source choices and model costs, then run:
+
+```bash
+pip install --upgrade 'connectonion==1.9.0a20'
+co rem init                # build your map and first pages
+co rem open                # read the local notebook
+co rem start               # approve a daily schedule (macOS)
+```
+
+Pages stay in `~/.co/rem`. Selected source content is sent to the configured
+model during investigation; see [source controls and costs](docs/cli/rem.md).
+For access from another device, `co rem open --live` opens your online
+`co ai` Host at `https://chat.openonion.ai/<address>/rem`, for the Host owner only.
+
+## Install and start
+
+```bash
+pip install connectonion   # Python 3.10+
+co init                    # your identity and ~/.co/keys.env
+co auth microsoft          # or: co auth google
+co outlook                 # or: co gmail
+co commands                # everything else; add --help to any
+```
+
+The [Quick start guide](docs/quickstart.md) covers Google, the browser, chat
+apps and project settings.
+
+## Your tools, one command line
+
+Use Gmail, Outlook, your browser, files and chat apps from the same `co`
+command. Your agent discovers each tool through `--help` when it needs it.
+
+<details>
+<summary><strong>Browse all connections and commands</strong></summary>
 
 <!-- connections: generated, do not edit by hand. Refresh with
      curl -s https://www.connectonion.com/connections.md
@@ -98,6 +158,11 @@ no MCP server, tool schema or skill file to set up.
 <p><a href="docs/cli/README.md">Every command</a> · <code>co commands</code> lists them all.</p>
 <!-- /connections -->
 
+</details>
+
+<details>
+<summary><strong>How the CLI works</strong></summary>
+
 ## CLI is all you need
 
 An agent's work lives in many places: your inbox, your calendar, a chat
@@ -151,43 +216,15 @@ Credentials stay on your machine, in `~/.co/keys.env` or encrypted with
 `co env set … --secret`. Writes that matter preview until `--yes`, and in
 `co ai` a risky tool call waits for your approval.
 
-## Install and start
 
-```bash
-pip install connectonion   # Python 3.10+
-co init                    # your identity and ~/.co/keys.env
-co auth microsoft          # or: co auth google
-co outlook                 # or: co gmail
-co commands                # everything else; add --help to any
-```
+</details>
 
-The [Quick start guide](docs/quickstart.md) covers Google, the browser, chat
-apps and project settings.
+## See the CLI in action
 
-## co rem — your agent's memory
+[Watch the 43-second film](https://www.connectonion.com/#film) — real runs from co 1.8.10.
 
-Like REM sleep turns a day's experience into memory, **co rem** turns your
-mail and coding sessions into local pages about the people, projects and
-skills in your work. The first run builds your map and investigates recent
-work; after you approve a schedule, it keeps that context current overnight.
-Open it in the morning to see cited facts, decisions and open threads.
-
-Available in the opt-in **1.9.0 preview**:
-
-```bash
-pip install --upgrade 'connectonion==1.9.0a20'
-co rem init                # build your map and first pages
-co rem open                # read the local notebook
-co rem start               # approve a daily schedule (macOS)
-```
-
-The notebook stays in `~/.co/rem`. `co rem open --live` reads it from your
-online `co ai` Host at `https://chat.openonion.ai/<address>/rem`, for the Host
-owner only. [Explore co rem](https://docs.connectonion.com/rem),
-[try the sample reader](https://docs.connectonion.com/rem/demo), or read the
-[CLI guide](docs/cli/rem.md) for source controls, runner costs and limits.
-
-## See it work
+<details>
+<summary><strong>See search, Linear, Slack, Canny and audit examples</strong></summary>
 
 <picture>
   <source media="(prefers-reduced-motion: reduce) and (max-width: 600px)" srcset="https://www.connectonion.com/aha-search-mobile-poster.png">
@@ -235,6 +272,8 @@ Your most-voted Canny requests, and a status change you preview before voters he
 </picture>
 
 `co audit` scores a CLI's help pages the way an agent reads them. CI runs it on every `co` page, and it works on any other CLI too.
+
+</details>
 
 ## Use it from Claude Code, Codex or Cursor
 
