@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a18
+## Current Version: 1.9.0a19
+
+1.9.0a19 completes the public co rem rename. Live reader links open
+`/<address>/rem`; the deployed O Chat reader redirects old `/wiki` links.
+The README introduces co rem and pins this opt-in preview without allowing
+pre-release dependencies. The homepage and docs use the same command name.
+Signed reader messages and existing notebook migrations remain compatible.
+Stable remains 1.8.10. See [1.9.0a19 notes](docs/releases/1.9.0a19.md).
+
+- 1.9.0a19 (#2148; canonical co rem reader URLs, shared branding and README introduction).
+
+## Previous preview: 1.9.0a18
 
 1.9.0a18 gives REM's first-run owner page a source-backed change of decision
 and a visible next step. The full pass receives bounded excerpts from the
