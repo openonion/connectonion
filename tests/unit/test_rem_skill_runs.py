@@ -182,6 +182,81 @@ def test_skill_candidate_restores_mapped_source_provenance(tmp_path):
     assert 'Invoked 20 times.' in restored and 'Invoked 99 times.' not in restored
 
 
+def test_instruction_excerpts_survive_source_removal_and_preserve_part_identity(tmp_path):
+    import hashlib
+    from connectonion.rem.evidence import FILE_CHARS
+    from connectonion.rem.reader_model import cited_context
+    from connectonion.rem.skill_runs import retain_instruction_context
+    text = 'A' * FILE_CHARS + 'Inspect the actual artifact before claiming success. ' * 30
+    source = 'skill-reference:' + hashlib.sha256(text.encode()).hexdigest()[:16]
+    cited = {source + ':part-2'}
+    assert retain_instruction_context(tmp_path, [{'source': source, 'text': text, 'recovered': True}], cited) == 1
+    context = cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + source + ':part-2'}])
+    row = context[source + ':part-2']
+    assert row['excerpt'].startswith('Inspect the actual artifact')
+    assert len(row['excerpt']) == 640 and row['truncated']
+    assert 'matches the citation hash' in row['input_scope']
+    assert 'not verified execution' in row['input_scope'] and not row['thread']
+    assert (tmp_path / '.state/skill-sources').stat().st_mode & 0o077 == 0
+    assert next((tmp_path / '.state/skill-sources').iterdir()).stat().st_mode & 0o077 == 0
+    limited = cited_context(tmp_path, [{'text': '- [1] ' + source + ':part-2'}], budget=12)
+    assert len(limited[source + ':part-2']['excerpt']) == 12
+
+
+def test_instruction_retention_rejects_uncited_mismatched_sensitive_and_session_text(tmp_path):
+    import hashlib
+    from connectonion.rem.skill_runs import retain_instruction_context
+    texts = ['Original instructions', '[personal] private instructions', 'sk-' + 'z' * 32]
+    items = [{'source': 'skill-source:' + hashlib.sha256(text.encode()).hexdigest()[:16], 'text': text}
+             for text in texts]
+    items += [{'source': 'skill-source:' + '0' * 16, 'text': 'Changed installed file'},
+              {'source': 'skill-session:codex:example:time', 'text': 'Private transcript'}]
+    cited = {item['source'] for item in items[1:]} | {items[0]['source'] + ':part-99'}
+    assert retain_instruction_context(tmp_path, items, cited) == 0
+    assert not (tmp_path / '.state/skill-sources').exists()
+
+
+def test_retained_instruction_identity_and_first_capture_cannot_be_replaced(tmp_path):
+    import hashlib
+    import pytest
+    from connectonion.rem.files import RemError
+    from connectonion.rem.skill_runs import retain_instruction_context, instruction_context, _save_instruction_context
+    text = 'Check the actual artifact.'
+    source = 'skill-source:' + hashlib.sha256(text.encode()).hexdigest()[:16]
+    item = {'source': source, 'text': text, 'timestamp': '2026-10-01'}
+    retain_instruction_context(tmp_path, [item], {source})
+    first = instruction_context(tmp_path, source)
+    retain_instruction_context(tmp_path, [{**item, 'timestamp': '2026-10-02', 'recovered': True}], {source})
+    assert instruction_context(tmp_path, source) == first
+    assert first['content_sha256'] == hashlib.sha256(text.encode()).hexdigest()
+    with pytest.raises(RemError, match='conflicting content'):
+        _save_instruction_context(tmp_path, {**first, 'content_sha256': '0' * 64})
+    assert instruction_context(tmp_path, source) == first
+
+
+def test_only_changed_skill_pages_retain_instruction_excerpts(tmp_path, monkeypatch):
+    import hashlib
+    from connectonion.rem.skill_runs import investigate_skill_page, instruction_context
+    source = tmp_path / 'SKILL.md'
+    source.write_text('Check the actual output artifact.')
+    identifier = 'skill-source:' + hashlib.sha256(source.read_bytes()).hexdigest()[:16]
+    root = tmp_path / 'rem'
+    record = 'skills/catalog/example.md'
+    Notebook(root).stub_skill(record, 'example', str(source))
+    def review(notebook, items, config, **kwargs):
+        notebook.write(record, notebook.read(record).replace('## Sources\n', '## Sources\n- [1] ' + identifier + '\n'))
+        return {'changed': []}
+    monkeypatch.setattr('connectonion.rem.runner.run_stage', review)
+    investigate_skill_page(root, record, [])
+    assert instruction_context(root, identifier) is None
+    def accepted(notebook, items, config, **kwargs):
+        return {'changed': [record]}
+    monkeypatch.setattr('connectonion.rem.runner.run_stage', accepted)
+    investigate_skill_page(root, record, [])
+    source.unlink()
+    assert instruction_context(root, identifier)['excerpt'] == 'Check the actual output artifact.'
+
+
 def test_large_retained_output_is_searchable_without_growing_the_page_or_losing_text(tmp_path, monkeypatch):
     import re
     from pathlib import Path

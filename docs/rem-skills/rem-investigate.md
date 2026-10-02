@@ -139,6 +139,27 @@ first source and patching with the rest loses that.
   model, mailbox command or installed skill. Session sampling and missing logs
   stay explicit, and a reported result never proves an artifact was checked.
 
+## Skill original excerpts in the reader (#2174)
+
+Temporary investigation bodies are still scrubbed after a run. An accepted,
+changed skill page keeps only its cited instruction/reference excerpts in private
+local state: at most 640 characters per original or numbered part. Full-content
+hashes must match the source identifiers before retention. The first saved
+capture is preserved; conflicting full hashes are rejected. Secret-shaped or
+explicitly private content is excluded. The reader reads these saved excerpts,
+never today's installed files to substitute for a historical citation.
+
+An older instruction excerpt can be recovered only from matching content; its
+recovery time is recorded separately from the unknown original collection time.
+The UI explains that instructions describe intended behavior, not a verified
+result. Prefix excerpts may omit a claim's supporting passage; truncation and
+the unvalidated claim-span warning stay explicit. Session, eval and run-report
+references remain unavailable without retained historical evidence. No-change
+or refused investigations do not create new instruction captures.
+
+Skill activity in the reader uses recorded invocation dates. An investigation
+date cannot establish that a skill was used; file update dates stay separate.
+
 ## Survey before selecting findings
 
 A two-year mailbox window does not establish two years of reading. Survey the

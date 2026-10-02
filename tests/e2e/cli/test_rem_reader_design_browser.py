@@ -304,3 +304,68 @@ def test_source_and_conversation_show_input_limits_and_hide_them_with_private_co
     page.evaluate('togglePrivate()', isolated_context=False)
     assert not note.is_visible()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_instruction_excerpt_is_not_a_verified_result_and_respects_privacy(reader):
+    page, uri = reader
+    source = 'skill-source:' + 'a' * 16
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=skills%2Fcatalog%2Fweekly-brief.md')
+    page.evaluate("""source => {
+      const r = REM.records.find(r => r.path === 'skills/catalog/weekly-brief.md');
+      r.text = '# weekly-brief\\n\\n## What it does\\nCheck the actual artifact. [1]\\n\\n## Insight\\nVerify the artifact before claiming success. [1]\\n\\n## Sources\\n- [1] ' + source;
+      REM.source_context[source] = {source: 'skill-source', excerpt: 'Check the actual artifact before claiming success.',
+        input_scope: 'Skill instructions; intended behavior, not verified execution. Recovered from a file whose content matches the citation hash.',
+        truncated: false};
+      KNOWN.delete(r.path);
+      render();
+    }""", source, isolated_context=False)
+    page.locator('.deep-note > summary').click()
+    page.locator('a.cite').first.click()
+    dialog = page.locator('#evidence-dialog')
+    assert 'instruction excerpt' in dialog.inner_text().lower()
+    assert 'not a verified result' in dialog.inner_text()
+    assert 'recovered from matching file content' in dialog.inner_text()
+    assert dialog.locator('blockquote').inner_text() == 'Check the actual artifact before claiming success.'
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert not dialog.locator('blockquote').is_visible()
+    assert not dialog.locator('.evidence-input-scope').is_visible()
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert dialog.locator('blockquote').is_visible()
+    page.get_by_role('button', name='Close source context').click()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_skill_activity_uses_invocation_dates_instead_of_investigation_dates(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=skills%2Fcatalog%2Ftalk-outline.md')
+    assert 'RECORDED INVOCATIONS\n0' in page.locator('.focus-facts').inner_text()
+    assert 'LAST ACTIVE' not in page.locator('.focus-facts').inner_text()
+    assert 'LAST INVOCATION' not in page.locator('.focus-facts').inner_text()
+    assert 'last activity' not in page.locator('.eyebrow').inner_text()
+    assert 'last invocation' not in page.locator('.eyebrow').inner_text()
+    assert 'file updated' in page.locator('.eyebrow').inner_text()
+    page.goto(uri + '#r=skills%2Fcatalog%2Fweekly-brief.md')
+    assert 'LAST INVOCATION' in page.locator('.focus-facts').inner_text()
+    assert 'last invocation' in page.locator('.eyebrow').inner_text()
+    assert page.evaluate('known(byPath("skills/catalog/weekly-brief.md")).last === skillUsage(byPath("skills/catalog/weekly-brief.md")).last', isolated_context=False)
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_written_unknown_sections_are_distinct_from_uninvestigated_pages(reader):
+    page, uri = reader
+    page.goto(uri + '#r=skills%2Fcatalog%2Fweekly-brief.md')
+    page.evaluate("""() => {
+      const r = byPath('skills/catalog/weekly-brief.md');
+      r.written = true;
+      r.text = '# weekly-brief\\n\\n## What it does\\nCheck the artifact.\\n\\n## Current status\\nUnknown — not verified\\n\\nInvestigation: investigated 2026-10-02';
+      KNOWN.delete(r.path);
+      render();
+    }""", isolated_context=False)
+    page.locator('.deep-note > summary').click()
+    assert page.locator('.missing .names').inner_text() == 'Still unknown: Current status.'
+    assert 'unresolved section' in page.locator('.missing .lead').inner_text().lower()
+    page.goto(uri + '#r=people%2Fquinn-alder.md')
+    assert page.locator('.missing .names').inner_text().startswith('Not investigated yet:')
+    assert page.locator('.missing .lead').inner_text().lower() == 'only mapped so far'

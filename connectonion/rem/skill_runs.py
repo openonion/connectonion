@@ -174,6 +174,9 @@ def investigate_skill_page(root: Path, record: str, directories: list[Path]) -> 
         if records:
             items.append(_record_index(Path(directory), records, samples, stamp))
         result = run_stage(notebook, items, config, stage='investigate')
+    if record in result.get('changed', []):
+        from .reader_model import _source_ids
+        retain_instruction_context(root, [*items, *references], _source_ids([{'text': notebook.read(record)}]))
     record_result(root, notebook, record, result.get('review_candidates', []), ['skill source', 'retained evals'],
                   changed=record in result.get('changed', []))
     return {**result, 'record': record, 'report': evidence['report'], 'items': len(items),
@@ -181,6 +184,68 @@ def investigate_skill_page(root: Path, record: str, directories: list[Path]) -> 
             'session_turns_reviewable': len(samples['items']),
             'session_invocations_indexed': samples['matched_invocations'],
             'status': 'skill page investigated; execution quality is only as verified as its cited evidence'}
+
+
+def retain_instruction_context(root: Path, items: list[dict], cited: set[str]) -> int:
+    """Keep only cited, bounded instruction excerpts whose content matches their ID."""
+    from .evidence import FILE_CHARS
+    from .files import SECRET_SHAPES
+    from .reader_model import PRIVATE
+    retained = 0
+    for item in items:
+        source, text = item.get('source', ''), item.get('text', '')
+        kind = source.split(':')[0]
+        digest = hashlib.sha256(text.encode()).hexdigest() if isinstance(text, str) else ''
+        if (kind not in ('skill-source', 'skill-reference') or not isinstance(text, str)
+                or source != kind + ':' + digest[:16]
+                or SECRET_SHAPES.search(text) or PRIVATE.search(text)):
+            continue
+        for identifier in sorted(cited):
+            part = re.fullmatch(re.escape(source) + r':part-([1-9]\d*)', identifier)
+            if identifier != source and part is None:
+                continue
+            raw = text if part is None else text[(int(part[1]) - 1) * FILE_CHARS:int(part[1]) * FILE_CHARS]
+            excerpt = raw.strip()[:640]
+            if not excerpt:
+                continue
+            scope = 'Skill instructions; intended behavior, not verified execution.'
+            if item.get('recovered'):
+                scope += ' Recovered from a file whose content matches the citation hash.'
+            value = {'id': identifier, 'excerpt': excerpt, 'truncated': len(raw.strip()) > len(excerpt),
+                     'source': kind, 'time': item.get('timestamp') or '', 'sender': '', 'thread': '',
+                     'input_scope': scope, 'content_sha256': digest, 'part': int(part[1]) if part else None,
+                     'recovered_at': datetime.now(timezone.utc).isoformat() if item.get('recovered') else ''}
+            _save_instruction_context(root, value)
+            retained += 1
+    return retained
+
+
+def _save_instruction_context(root: Path, value: dict) -> None:
+    from .files import read_json, state_path, write_json
+    path = state_path(root, 'skill-sources/' + hashlib.sha256(value['id'].encode()).hexdigest() + '.json')
+    with maintenance_lock(root, wait=60):
+        previous = read_json(path, {})
+        if previous:
+            if previous.get('content_sha256') != value['content_sha256']:
+                raise RemError('Retained instruction citation has conflicting content; preserve it for review')
+            return
+        write_json(path, value)
+
+
+def instruction_context(root: Path, source: str) -> dict | None:
+    """Read retained excerpts, never today's installed files or session transcripts."""
+    from .files import SECRET_SHAPES, read_json, state_path
+    from .reader_model import PRIVATE
+    if not re.fullmatch(r'skill-(?:source|reference):[0-9a-f]{16}(?::part-[1-9]\d*)?', source):
+        return None
+    row = read_json(state_path(root, 'skill-sources/' + hashlib.sha256(source.encode()).hexdigest() + '.json'), {})
+    text = row.get('excerpt')
+    digest = row.get('content_sha256', '')
+    if (row.get('id') != source or not isinstance(text, str) or not 0 < len(text) <= 640
+            or not re.fullmatch(r'[0-9a-f]{64}', digest) or digest[:16] != source.split(':')[1]
+            or SECRET_SHAPES.search(text) or PRIVATE.search(text)):
+        return None
+    return row
 
 
 def _source_references(path: Path, body: str, stamp: str) -> tuple[list[dict], str]:

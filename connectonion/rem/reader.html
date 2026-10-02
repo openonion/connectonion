@@ -1152,7 +1152,7 @@ function known(r) {
     : !r.written ? "Mapped" : investigated ? "Investigated" : "Some findings";
   // The page's own last activity (census.py), never the file's mtime: a map
   // rewrites every project page, and "Recently active" dated them all today.
-  const last = r.last_activity !== undefined ? r.last_activity
+  const last = r.category === "skills" ? (skillUsage(r)?.last || "") : r.last_activity !== undefined ? r.last_activity
     : (/\blast(?: contact)?:\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || String(r.updated || "").slice(0, 10);
   const summary = plainLine((intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || { text: "" }).text);
   const k = { intro, kept, missing, status, last, summary, stamp: stamp.replace(/^Investigation:\s*/, "") };
@@ -2069,7 +2069,7 @@ function sidePanels(r, k) {
   const glance = el("dl", {});
   const add = (dt, dd) => glance.append(el("dt", { text: dt }), el("dd", {}, [dd]));
   add("Status", statusPill(r));
-  if (k.last) add(r.category === "people" ? "Last contact" : "Last active", el("span", { class: "mono", text: fmtDate(k.last) }));
+  if (k.last) add(r.category === "people" ? "Last contact" : r.category === "skills" ? "Last invocation" : "Last active", el("span", { class: "mono", text: fmtDate(k.last) }));
   const mail = /Observed mail count:\s*(\d+);\s*first:\s*(\d{4}-\d{2}-\d{2});\s*last:\s*(\d{4}-\d{2}-\d{2})/.exec(r.text);
   if (mail) add("Mail", el("span", { class: "mono", text: mail[1] + " · " + shortDate(mail[2]) + "–" + shortDate(mail[3]) }));
   const sessions = /^- Sessions:\s*(\d+)/m.exec(r.text), first = /^- First seen:\s*(\S+)/m.exec(r.text);
@@ -2139,7 +2139,7 @@ function recordFocus(r) {
   const labels = r.category === "people" ? [["Role", f.role], ["Company", f.company], ["Last contact", f.last]]
     : r.category === "projects" ? [["Last active", f.last], ["Sessions", f.sessions], ["Repository", f.repo]]
       : r.category === "orgs" ? [["Domain", f.domain], ["Last contact", f.last]]
-        : r.category === "skills" ? [["Recorded invocations", skillUsage(r) ? String(skillUsage(r).count) : ""], ["Last active", f.last]] : [];
+        : r.category === "skills" ? [["Recorded invocations", skillUsage(r) ? String(skillUsage(r).count) : ""], ["Last invocation", f.last]] : [];
   const shown = labels.filter(([, value]) => value).slice(0, 3);
   if (shown.length) out.appendChild(el("dl", { class: "focus-facts" }, shown.map(([key, value]) =>
     el("div", { class: "focus-fact" }, [el("dt", { text: key }), el("dd", { html: inline(String(value), r.path), title: plainLine(String(value)) })]))));
@@ -2187,6 +2187,7 @@ function recordFocus(r) {
 function inputScopeText(scope) {
   if (/voice transcription/i.test(scope)) return "Voice transcript. Only your input is shown; other conversation context is omitted. Transcription may contain errors.";
   if (/Older native Codex Desktop turn/.test(scope)) return "Older Desktop input. The app did not record how this input was supplied.";
+  if (/^Skill instructions;/.test(scope)) return "Instructions describe intended behavior, not a verified result." + (/Recovered from/.test(scope) ? " This excerpt was recovered from matching file content." : "");
   return scope;
 }
 function openConversation(id, trigger) {
@@ -2260,7 +2261,7 @@ function record(path, heading) {
   CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#c=" + r.category }, ["← " + label(r.category)])]));
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#c=" + r.category, text: label(r.category) }), el("span", { class: "sep", text: "/" }),
-    statusPill(r), el("span", { class: "when", text: (k.last ? "last activity " + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })]));
+    statusPill(r), el("span", { class: "when", text: (k.last ? (r.category === "skills" ? "last invocation " : "last activity ") + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })]));
   const head = el("header", { class: "page-head" }, [el("h1", { text: r.title })]);
   // Keep the original prose in the full note. The first screen uses the
   // structured status, actions, facts and connections above that note.
@@ -2346,9 +2347,9 @@ function record(path, heading) {
     // A page only mapped from your sources gets one clear next step at the top;
     // a written page names its remaining gaps in one quiet line at the foot.
     const box = el("div", { class: "missing" + (mapped ? " primary" : "") }, [
-      el("span", { class: "lead", text: mapped ? "Only mapped so far" : k.missing.length + (k.missing.length === 1 ? " section" : " sections") + " still to learn" }),
+      el("span", { class: "lead", text: mapped ? "Only mapped so far" : k.missing.length + (k.missing.length === 1 ? " unresolved section" : " unresolved sections") }),
       mapped ? el("p", { class: "why", text: "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in." }) : null,
-      el("div", { class: "names", text: "Not investigated yet: " + youify(k.missing.join(", ")) + "." }),
+      el("div", { class: "names", text: (mapped ? "Not investigated yet: " : "Still unknown: ") + youify(k.missing.join(", ")) + "." }),
       el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]);
     if (mapped) deep.parentNode.insertBefore(box, deep); else column.appendChild(box);
   }
@@ -2533,11 +2534,11 @@ function openEvidence(r, number, trigger) {
     el("p", { class: "evidence-summary private", text: source.text }));
   dialog.appendChild(el("p", { class: "private-hidden-notice", text: "Source descriptions and original excerpts are hidden because their private content has not been classified. Show private content to read them." }));
   if (context) dialog.append(el("div", { class: "evidence-original private" }, [
-    el("span", { class: "focus-kicker", text: "Original source context · not a validated claim span" }),
+    el("span", { class: "focus-kicker", text: (/^skill-(source|reference)$/.test(context.source) ? "Instruction excerpt" : "Original source context") + " · not a validated claim span" }),
     el("p", { class: "evidence-meta", text: [context.source, context.sender, context.time ? fmtTime(context.time) : ""].filter(Boolean).join(" · ") }),
     ...(context.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(context.input_scope) })] : []),
     el("blockquote", { text: context.excerpt + (context.truncated ? "…" : "") })]));
-  else dialog.appendChild(el("p", { class: "evidence-unavailable", text: "The original body is not archived in this snapshot. The source description above is a generated summary, not the original message." }));
+  else dialog.appendChild(el("p", { class: "evidence-unavailable", text: "The original source is not archived in this snapshot. The source description above is a generated summary, not the original source." }));
   dialog.addEventListener("close", () => trigger.focus(), { once: true });
   if (dialog.showModal) dialog.showModal(); else dialog.setAttribute("open", "");
   close.focus();

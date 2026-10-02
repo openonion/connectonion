@@ -102,17 +102,24 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -
     """Only archived, cited excerpts enter the owner-only local snapshot."""
     ids = _source_ids(records)
     file = state_path(root, "rem.db")
-    if not ids or not file.is_file() or file.is_symlink():
+    if not ids or file.is_symlink():
         return {}
     output: dict[str, dict] = {}
-    db = sqlite3.connect(file.as_uri() + "?mode=ro", uri=True)
-    db.row_factory = sqlite3.Row
+    db = sqlite3.connect(file.as_uri() + "?mode=ro", uri=True) if file.is_file() else None
+    if db is not None:
+        db.row_factory = sqlite3.Row
     try:
         for source in sorted(ids):
             if budget <= 0:
                 break
-            row = _cited_row(db, source)
+            row = _cited_row(db, source) if db is not None else None
             if row is None:
+                from .skill_runs import instruction_context
+                context = instruction_context(root, source)
+                if context:
+                    output[source] = {**context, 'excerpt': context['excerpt'][:budget],
+                                      'truncated': context['truncated'] or len(context['excerpt']) > budget}
+                    budget -= len(output[source]['excerpt'])
                 continue
             message = dict(row)
             saved = archived_message(root, message) or {}
@@ -128,7 +135,8 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -
                               "input_scope": saved.get("input_scope") or ""}
             budget -= len(excerpt)
     finally:
-        db.close()
+        if db is not None:
+            db.close()
     return output
 
 
