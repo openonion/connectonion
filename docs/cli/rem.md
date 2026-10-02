@@ -87,7 +87,7 @@ measured on a real 7-day first run on 2026-10-02: each owner turn 768k and
 with up to two years of evidence, a project 69k and ~1 minute, an organisation
 129k and ~2 minutes. Minutes are wall clock: after the quick owner turn, the
 full turn and selected pages share up to 12 workers. The estimate simulates
-that queue so a slow last page is not hidden by an average. Roughly 20% of a weekly runner
+that queue so a slow last page is not hidden by an average. Roughly 35% of a weekly runner
 allowance is a target, not a hard stop. The selected investigation finishes
 even if it uses more, unless the configured weekly safety floor is reached;
 pages already in flight finish. Ctrl-C stops it, says which pages
@@ -383,7 +383,8 @@ older page before showing its answer. It remains a point-in-time snapshot.
   recorded decision when supported. Explicit links and unambiguous name
   mentions make cross-page cards and backlinks; their labels distinguish a
   link from a mention. The original prose, every Facts/Contact field,
-  Insight, History and Sources stay under **Full memory and sources**. A claim
+  Insight, History and Sources stay under the always-visible **Full memory and
+  sources** section. A claim
   number `[n]` opens its source description and, when locally archived, an
   original excerpt. Cited conversations show up to twelve recent archived
   messages with the total count. Missing original bodies are labeled, never
@@ -605,10 +606,10 @@ below is good to about one point.
   decimal: about a million tokens the model had to read fresh or write is one
   point. A run that did move the meter counts what the meter says.
 - **Scheduled and manual investigation has a weekly budget**, `limits.investigation_quota_points`,
-  default **20** points of the weekly window. The
+  default **35** points of the weekly window. The
   scheduled round adds up the points its investigation runs used since the
   window last reset, and starts no new page once that reaches the budget.
-- **The initial investigation uses a soft 20% target.** It finishes the
+- **The initial investigation uses a soft 35% target.** It finishes the
   selected pages beyond that target and the normal investigation
   budget. The configured safety floor still protects the rest of the week.
   Claude Code and other runners without a readable weekly meter show an
@@ -624,11 +625,11 @@ below is good to about one point.
   the round uses), until 10 points of the week are spent. `--list` shows that
   order without running a model.
 - **A floor protects your own coding.** No investigation page starts once the
-  week is at `limits.quota_floor_percent` or more, default **70%**, however much
+  week is at `limits.quota_floor_percent` or more, default **90%**, however much
   of co rem's budget is left. co rem shares this quota with your real work.
 - `co rem status` reads the meter now and says it in two lines, for example
   `Codex week: 5% used on pro; resets Sun 04 Oct 09:49` and
-  `Investigation this week: 0 of 20 points; nothing starts once the week is at 70%`.
+  `Investigation this week: 0 of 35 points; nothing starts once the week is at 90%`.
   The dashboard says what a point is under the line.
   `--json` gives the same numbers under `quota` and `investigation_quota`.
 - When the meter cannot be read (another runner, Codex not signed in, an older

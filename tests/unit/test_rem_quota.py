@@ -91,18 +91,32 @@ def test_old_notebooks_get_the_new_limits_without_rewriting_config(tmp_path):
                          if "investigation_quota_points" not in line and "quota_floor_percent" not in line)
     (root / "config.yaml").write_text(stripped + "\n")
     limits = read_config(root)["limits"]
-    assert limits["investigation_quota_points"] == 20 and limits["quota_floor_percent"] == 70
+    assert limits["investigation_quota_points"] == 35 and limits["quota_floor_percent"] == 90
+
+
+def test_old_saved_defaults_upgrade_but_explicit_quota_choices_stay(tmp_path):
+    from connectonion.rem.config import prepare, read_config, set_config
+    root = tmp_path / "rem"
+    prepare(root)
+    path = root / "config.yaml"
+    path.write_text(path.read_text().replace("investigation_quota_points: 35", "investigation_quota_points: 20")
+                    .replace("quota_floor_percent: 90", "quota_floor_percent: 70"))
+    assert read_config(root)["limits"]["investigation_quota_points"] == 35
+    assert read_config(root)["limits"]["quota_floor_percent"] == 90
+    set_config(root, ["limits.investigation_quota_points", "20", "limits.quota_floor_percent", "70"])
+    assert read_config(root)["limits"]["investigation_quota_points"] == 20
+    assert read_config(root)["limits"]["quota_floor_percent"] == 70
 
 
 def test_the_daily_round_stops_at_the_floor_and_records_why(tmp_path, monkeypatch):
     from connectonion.rem.daily import run_daily
     root = _mapped_notebook(tmp_path)
     monkeypatch.setattr(quota, "read", lambda config, request=None: {
-        "used_percent": 71, "window_minutes": WEEK, "resets_at": RESETS, "plan": "pro"})
+        "used_percent": 91, "window_minutes": WEEK, "resets_at": RESETS, "plan": "pro"})
     result = run_daily(root, scheduled=True, maintain=lambda root, scheduled: {"outcome": "no_change"},
                        investigate_one=lambda *a, **k: pytest.fail("investigated past the floor"))
     assert result["investigation"] is None
-    assert "70%" in result["reason"]
+    assert "90%" in result["reason"]
 
 
 def test_a_daily_investigation_records_the_meter_before_and_after(tmp_path, monkeypatch):

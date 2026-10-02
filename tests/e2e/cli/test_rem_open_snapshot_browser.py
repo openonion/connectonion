@@ -106,7 +106,7 @@ def test_a_mapped_page_leads_with_what_is_known(tmp_path, monkeypatch):
             assert "Unknown" not in text
             assert "Mapped" in text
             assert "Not investigated yet: Insight, Who they are" in text   # #2068
-            assert "co rem investigate 'people/quiet.md'" in text
+            assert "co rem --root '" in text and "investigate 'people/quiet.md'" in text
 
             page.goto(link + "#c=people")
             page.get_by_role("heading", name="People", exact=True).wait_for()

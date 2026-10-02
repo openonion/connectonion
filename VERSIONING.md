@@ -400,9 +400,23 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a20
+## Current Version: 1.9.0a21
 
-1.9.0a20 finishes the reader's visible co rem labels: the morning overview,
+1.9.0a21 opens Full memory and its citations without a disclosure click. On
+phones the original note precedes auxiliary Facts and Usage, source jumps and
+privacy controls have been rechecked, and the mobile rail shows its snapshot
+state with larger navigation targets. Project pages lead with a lasting
+Pattern finding when present. REM's routine investigation budget rises to 35
+points of the Codex week and stops at 90% used; the first-run target is
+advisory. Historical correspondent discovery and whole-notebook usefulness
+remain open. Stable remains 1.8.10. See
+[1.9.0a21 notes](docs/releases/1.9.0a21.md).
+
+- 1.9.0a21 (visible full memory, mobile reader review, higher REM budget).
+
+## Previous preview: 1.9.0a20
+
+1.9.0a20 corrected the reader's visible co rem labels: the morning overview,
 recall prompt, empty states and source dialogs use the command name. The
 private reader's data and signed protocol are unchanged. The paired O Chat
 fix opens bookmarked notes inside the sandbox, while the docs sample uses

@@ -191,10 +191,11 @@ class Terminal(io.StringIO):
         return True
 
 
-def test_a_terminal_sees_a_bar_per_stage_and_each_finished_stage_once():
+def test_a_terminal_sees_a_bar_per_stage_and_each_finished_stage_once(monkeypatch):
     """#1996: 90 days is thirteen seven-day windows, so listing mail is a bar that fills;
     each stage's finished line stays, once, above the next stage's bar."""
     from connectonion.cli.commands.rem_output import StageProgress
+    monkeypatch.setenv("TERM", "xterm")  # A fake TTY must simulate a terminal that supports live redraws.
 
     screen = Terminal()
     progress = StageProgress(stream=screen, days=90)
@@ -211,8 +212,9 @@ def test_a_terminal_sees_a_bar_per_stage_and_each_finished_stage_once():
     assert "✓ gmail: 52 messages listed, 3 correspondents" in shown
 
 
-def test_a_model_turn_is_a_spinner_with_its_time_in_a_terminal_and_lines_elsewhere(capsys):
+def test_a_model_turn_is_a_spinner_with_its_time_in_a_terminal_and_lines_elsewhere(capsys, monkeypatch):
     from connectonion.cli.commands.rem_output import Turn
+    monkeypatch.setenv("TERM", "xterm")
 
     screen = Terminal()
     with Turn("Writing your page…", stream=screen) as turn:
@@ -481,7 +483,7 @@ def test_the_weekly_floor_stops_project_pages(projects, monkeypatch):
     result = init()
     assert result.exit_code == 0, result.output
     assert written == []
-    assert "70% floor" in Text.from_ansi(result.output).plain
+    assert "90% floor" in Text.from_ansi(result.output).plain
 
 
 # ------------------------------------------- the people you write to, after me
@@ -517,12 +519,12 @@ def test_after_me_the_people_you_wrote_to_and_projects_four_at_a_time(people):
     assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
     text = Text.from_ansi(result.output).plain
     assert "up to two years of evidence each" in text
-    assert "12 at a time" in text and "about 20% of a weekly runner allowance is a planning target" in text
+    assert "12 at a time" in text and "about 35% of a weekly runner allowance is a planning target" in text
     assert "Written this run: your page, 5 people and 3 project pages." in text
 
 
 def test_the_first_run_finishes_selected_pages_past_target(people, monkeypatch):
-    """The 20-point target is advisory; the selected cohort finishes below the safety floor."""
+    """The 35-point target is advisory; the selected cohort finishes below the safety floor."""
     from connectonion.cli.commands.rem_commands import FIRST_RUN_TARGET_POINTS
     root, init, calls, people_written, projects_written = people
     meter = {"used_percent": 10, "window_minutes": 10080, "resets_at": 4102444800, "plan": "plus"}
@@ -542,7 +544,7 @@ def test_the_first_run_finishes_selected_pages_past_target(people, monkeypatch):
     assert data["org_pages"]["started"] is False
 
 
-def test_first_run_gate_uses_safety_floor_not_the_twenty_point_target(tmp_path, monkeypatch):
+def test_first_run_gate_uses_safety_floor_not_the_target(tmp_path, monkeypatch):
     from connectonion.cli.commands.rem_commands import _first_run_gate
 
     meter = {"used_percent": 35}

@@ -57,6 +57,21 @@ def test_private_mapped_project_explains_why_it_waits_on_desktop_and_phone(tmp_p
         browser.close()
 
 
+def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    assert 'Snapshot ' in page.locator('#mobile-status').inner_text()
+    assert page.locator('#mobile-status').is_visible()
+    for selector in ('#q', '.nav-toggle', '.mobile-back a'):
+        assert page.locator(selector).bounding_box()['height'] >= 44
+    assert page.get_by_role('heading', name='Full memory and sources').is_visible()
+    assert page.locator('.deep-note .note').is_visible()
+    assert page.locator('.deep-note .note').bounding_box()['y'] < page.locator('.deep-note .side').bounding_box()['y']
+    assert 'co\u00a0rem\u00a0start' in page.locator('#mobile-status').text_content()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
 @pytest.fixture
 def reader(tmp_path, monkeypatch):
     from patchright.sync_api import sync_playwright
@@ -158,7 +173,6 @@ def test_a_person_opens_on_a_fact_card_with_cited_values(reader):
     # Under the title: what you owe and for how long.
     lead = page.locator(".leadrow .lead-open")
     assert lead.locator(".dir").inner_text().upper() == "YOU OWE" and lead.locator(".age").inner_text() == "9 days"
-    page.locator(".deep-note > summary").click()
     card = page.locator(".factlist")
     value = lambda label: card.locator(f"dt:text-is('{label}') + dd")  # noqa: E731
     assert "Head of Partnerships" in value("Role").inner_text()
@@ -192,7 +206,6 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
     page.goto(page.url.split("#")[0] + "#r=people%2Fmara-ostrowski.md")
     main = page.locator("#main").inner_text()
     assert "the user" not in main.lower() and "you have not signed it" in main
-    page.locator(".deep-note > summary").click()
     assert page.get_by_role("heading", name="How you write to them").count() == 1
     assert page.evaluate("REM.records.find(r => r.path === 'people/mara-ostrowski.md').text.includes('the user has not signed it')", isolated_context=False)
 
@@ -218,6 +231,23 @@ def test_the_owner_focus_prefers_a_supported_change_to_a_generic_now(reader):
     assert "this month you shipped" in page.locator(".focus-statement").inner_text().lower()
 
 
+def test_owner_next_step_keeps_its_source_and_private_label(reader):
+    page, uri = reader
+    page.goto(uri + '#r=people%2Favery-lin.md')
+    page.evaluate("""() => {
+      const owner = byPath(REM.owner);
+      owner.text = owner.text.replace('## Insight\\n',
+        '## Insight\\n- Changed: The brief plan changed [2].\\n- Now: Send the confidential draft [sensitive] [2].\\n');
+      KNOWN.delete(owner.path); render();
+    }""", isolated_context=False)
+    step = page.locator('.focus-next')
+    assert step.locator('.private').is_visible()
+    assert step.locator('a.cite').count() == 1
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert not step.locator('.private').is_visible()
+    assert 'confidential draft' not in step.inner_text()
+
+
 def test_focus_connects_project_people_org_and_archived_conversation(reader):
     page, uri = reader
     page.goto(uri + "#r=projects%2Fharbour.md")
@@ -229,18 +259,17 @@ def test_focus_connects_project_people_org_and_archived_conversation(reader):
         "Mara Ostrowski", "Fernhill Labs"}
     assert page.get_by_role("heading", name="What this is").is_visible()
     assert page.get_by_role("heading", name="Recorded direction").is_visible()
+    assert page.get_by_role("heading", name="Full memory and sources").is_visible()
     page.get_by_role("link", name="View all decisions").click()
-    page.locator(".deep-note[open]").wait_for()
-    assert page.locator(".deep-note").get_attribute("open") is not None
+    assert page.locator(".deep-note #key-decisions").is_visible()
     page.goto(uri + "#r=projects%2Fharbour.md")
-    assert page.locator(".deep-note").get_attribute("open") is None
+    assert page.get_by_role("heading", name="Full memory and sources").is_visible()
     page.goto(uri + "#r=people%2Fmara-ostrowski.md")
     page.locator(".conversation-open").first.click()
     dialog = page.locator("#conversation-dialog")
     assert dialog.is_visible() and "usage export" in dialog.inner_text()
     dialog.get_by_role("button", name="Close conversation").click()
     assert page.locator(".conversation-open").first.evaluate("e => document.activeElement === e")
-    page.locator(".deep-note > summary").click()
     page.locator("a.cite[href*='src-5']").first.click()
     evidence = page.locator("#evidence-dialog")
     assert evidence.is_visible() and "I will send the usage export" in evidence.inner_text()
@@ -303,7 +332,6 @@ def test_record_dates_do_not_disagree_when_the_index_is_stale(reader):
     page.evaluate("() => { byPath('people/mara-ostrowski.md').index = {last_contact: '2001-01-01'}; FACTS.clear(); render(); }", isolated_context=False)
     assert expected in page.locator('.focus-facts').inner_text()
     assert '2001' not in page.locator('.focus-facts').inner_text()
-    page.locator('.deep-note > summary').click()
     formatted = page.evaluate('date => fmtDate(date)', expected, isolated_context=False)
     assert formatted in page.locator('.factlist dt:text-is("Last contact") + dd').inner_text()
 
@@ -317,7 +345,6 @@ def test_empty_mail_keeps_private_header_evidence_without_inventing_a_body_excer
         participants: {from: 'mara@example.org', to: ['owner@example.org'], cc: []}
       });
     }""", isolated_context=False)
-    page.locator('.deep-note > summary').click()
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 812})
         trigger = page.locator('.deep-note a.cite[href$="h=src-5"]').first
@@ -349,7 +376,6 @@ def test_project_first_seen_does_not_establish_an_unknown_start_date(reader):
       FACTS.clear(); render();
     }""", isolated_context=False)
     assert page.evaluate("facts(byPath('projects/harbour.md')).first", isolated_context=False)
-    page.locator('.deep-note > summary').click()
     started = page.locator('.factlist dt:text-is("Started") + dd')
     assert started.locator('.val').count() == 0
     assert 'not found' in started.inner_text()
@@ -382,7 +408,6 @@ def test_unknown_repository_stays_unknown_while_workspace_path_remains_visible(r
     }""", isolated_context=False)
     assert page.locator('.focus-facts dt:text-is("Local path") + dd').inner_text() == '/tmp/session-workspace'
     assert not page.locator('.focus-facts dt:text-is("Repository")').count()
-    page.locator('.deep-note > summary').click()
     repository = page.locator('.factlist dt:text-is("Repository") + dd')
     assert not repository.locator('.val').count()
     assert 'not found' in repository.inner_text()
@@ -410,7 +435,6 @@ def test_private_mode_hides_raw_sources_and_conversations_already_open(reader):
     assert not messages.first.is_visible()
     assert page.locator('#conversation-dialog .private-hidden-notice').is_visible()
     page.get_by_role('button', name='Close conversation').click()
-    page.locator('.deep-note > summary').click()
     page.locator("a.cite[href*='src-5']").first.click()
     original = page.locator('#evidence-dialog .evidence-original')
     assert original.count() == 1 and not original.is_visible()
@@ -459,7 +483,6 @@ def test_source_and_conversation_show_input_limits_and_hide_them_with_private_co
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
     page.evaluate("scope => { const c = REM.source_context['outlook:77c09ad1e3f0']; c.input_scope = scope; REM.conversations[c.thread].messages[0].input_scope = scope; }", scope, isolated_context=False)
-    page.locator('.deep-note > summary').click()
     page.locator("a.cite[href*='src-5']").first.click()
     note = page.locator('#evidence-dialog .evidence-input-scope')
     assert note.is_visible() and 'Transcription may contain errors.' in note.inner_text() and 'transcript delta' not in note.inner_text()
@@ -488,7 +511,6 @@ def test_recovered_mail_shows_participants_and_separate_archive_clock_privately(
         input_scope: 'Historical citation recovery. Original retrieval time unknown; initial window unchanged.'
       });
     }""", isolated_context=False)
-    page.locator('.deep-note > summary').click()
     cite = page.locator("a.cite[href*='src-5']").first
     cite.click()
     dialog = page.locator('#evidence-dialog')
@@ -650,7 +672,6 @@ def test_instruction_excerpt_is_not_a_verified_result_and_respects_privacy(reade
       KNOWN.delete(r.path);
       render();
     }""", source, isolated_context=False)
-    page.locator('.deep-note > summary').click()
     page.locator('a.cite').first.click()
     dialog = page.locator('#evidence-dialog')
     assert 'instruction excerpt' in dialog.inner_text().lower()
@@ -682,7 +703,7 @@ def test_skill_opens_on_its_finding_and_keeps_usage_in_full_note(reader):
     assert page.locator('.focus-head .focus-kicker').inner_text() == 'USEFUL FINDING'
     assert not page.locator('.focus-more').is_visible()
     page.get_by_role('link', name='View sources →').click()
-    assert page.locator('.deep-note').get_attribute('open') is not None
+    assert page.locator('.deep-note .block-sources').is_visible()
     assert 'Use for a weekly brief.' in page.locator('.deep-note').inner_text()
     page.locator('.deep-note a.cite').first.click()
     assert page.locator('#evidence-dialog .evidence-summary').evaluate('e => e.scrollWidth <= e.clientWidth')
@@ -716,7 +737,6 @@ def test_written_unknown_sections_are_distinct_from_uninvestigated_pages(reader)
       KNOWN.delete(r.path);
       render();
     }""", isolated_context=False)
-    page.locator('.deep-note > summary').click()
     assert page.locator('.missing .names').inner_text() == 'Still unknown: Current status.'
     assert 'unresolved section' in page.locator('.missing .lead').inner_text().lower()
     page.goto(uri + '#r=people%2Fquinn-alder.md')
@@ -735,7 +755,6 @@ def test_unknown_open_status_is_not_a_current_exchange(reader):
     }""", isolated_context=False)
     assert page.evaluate("threads(byPath('projects/harbour.md')).items.length", isolated_context=False) == 0
     assert page.get_by_role('heading', name='Next exchanges').count() == 0
-    page.locator('.deep-note > summary').click()
     note = page.locator('.deep-note')
     assert 'Historical requests do not establish currently pending work.' in note.inner_text()
     assert note.locator('a.cite[href$="h=src-1"]').is_visible()
@@ -768,7 +787,6 @@ def test_marked_sentence_with_a_markdown_link_and_code_respects_private_mode(rea
       r.text += '\n\n## Private context\nPublic setup. [Quinn](quinn-alder.md) shared confidential details in `case.txt` [sensitive] [1]. Public follow-up.\n';
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
-    page.locator('.deep-note > summary').click()
     sentence = page.locator('.deep-note .private').filter(has_text='confidential details')
     assert sentence.locator('.privacy-tag.sensitive').is_visible()
     assert sentence.locator('a:not(.cite)').inner_text() == 'Quinn'
@@ -797,7 +815,6 @@ def test_consecutive_marked_sentences_hide_in_the_lead_and_full_note(reader):
       r.text = r.text.replace('## Who they are', paragraph + '## Who they are');
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
-    page.locator('.deep-note > summary').click()
     for selector in ('.focus-statement', '.deep-note'):
         area = page.locator(selector)
         assert area.locator('.private').count() == 3

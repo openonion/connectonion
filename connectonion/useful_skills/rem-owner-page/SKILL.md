@@ -5,23 +5,22 @@ description: The owner's work, commitments and next decisions.
 
 # Your own page
 
-Write the user's own page from what they sent and typed. Keep the person
-headings and `Facts` labels except `How the user writes to them`.
+Write the user's page from their messages. Keep person headings and `Facts`
+labels except `How the user writes to them`.
 
 ## The lead
 
-Under the title, before `Facts`, 2–4 cited sentences:
+Before `Facts`, write 2–4 cited sentences:
 
 - **Start with what they are working on now and why the next step matters.**
   If `owner-work-evidence` shows an explicit reversal, lead with it and cite
-  both original messages. Newer questions are not a change. Otherwise name a
-  blocker or unresolved choice. Replace the generic quick-pass lead; put the
+  both messages. Newer questions are not a change. Otherwise name a blocker
+  or unresolved choice. Replace the generic lead; put the
   latest request in the next step. `recent-projects` ranks, not proves shipping.
   List projects in `Who they are`.
-- Add only a firm, due-soon commitment or one blocking that work. Distant
-  optional invitations and unrelated mail belong in `Open threads`.
-- The person-page `Last contact:` lead rule does not apply here; contact dates
-  stay in `Facts` and `Cadence`.
+- Add a firm, due-soon commitment or blocker. Put distant invitations and
+  unrelated mail in `Open threads`.
+- Put contact dates in `Facts` and `Cadence`, not the lead.
 
 ## Coding agents are the user's tools, not people
 

@@ -436,10 +436,10 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
 
 
 # The first run investigates the owner and the recent, relevant pages, with
-# enough allowance for roughly 20 points of the runner's week. The target is
+# enough allowance for roughly 35 points of the runner's week. The target is
 # advisory: finish the selected cohort unless the configured weekly floor is
 # reached. --first-people, --first-projects and --first-orgs cap a kind.
-FIRST_RUN_TARGET_POINTS = 20
+FIRST_RUN_TARGET_POINTS = 35
 FIRST_RUN_WORKERS = 12
 
 
@@ -447,7 +447,7 @@ def _first_run_gate(root, config):
     """Before each first-run page: why not to start it, or ''.
 
     The configured weekly floor still protects the user's work. The first run
-    targets 20 points but does not abandon its selected pages at that point.
+    targets 35 points but does not abandon its selected pages at that point.
     A runner without a meter can still finish the bounded cohort.
     """
     from ...rem import quota
