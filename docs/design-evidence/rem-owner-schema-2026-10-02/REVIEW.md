@@ -3,7 +3,7 @@
 ## Scope and evidence
 
 - Task: keep a recent, consequential owner decision in the first-run evidence packet; remove a person-only empty section and an unrelated contact date from the owner page.
-- Build: `feat/rem-owner-schema-a19` rebased onto main merge `91b32942` (the 1.9.0a20 reader-label candidate). These are candidate screenshots, not an installed release.
+- Build: `feat/rem-owner-schema-a19` rebased onto main merge `fbf669ae` (after the 1.9.0a20 reader release and blog-gate fix). These are candidate screenshots, not an installed release.
 - State: invented Avery / Harbour notebook. The before state adds the two defects seen in a private 1.9.0a18 owner page; the after state applies this branch's deterministic cleanup. Both use the same candidate reader and content otherwise.
 - Capture: `python scripts/capture_rem_owner_schema.py docs/design-evidence/rem-owner-schema-2026-10-02` in a venv with Playwright and Chrome. Chrome, light theme, 100% zoom, 1440×900 / 900×900 / 390×844; keyboard opens the full note. No network requests.
 - Source: invented fixture in `tests/fixtures/rem_reader_notebook.py`, captured locally on 2026-10-02. Private notebook text and screenshots are not included.
@@ -31,6 +31,8 @@ An isolated five-day candidate init completed with zero reported errors. Its own
 A separate isolated 14-day init failed owner promotion on an unidentifiable citation, before an owner page could be accepted. This is a real first-run failure, not a visual defect. The existing init-coverage PR #2141 includes a bounded citation-repair path but is not merged. Neither run proves reliable first-run quality across source mixes. Source text, IDs, names, and private screenshots are withheld.
 
 A third isolated five-day init, after tightening the owner writing rules, also failed at the quick owner pass on an unidentifiable citation. Its source collection reported no errors. This raises the citation-repair path above further wording changes; a better prompt alone has not made first init reliable.
+
+This branch now gives the owner quick/full candidate one bounded source-correction turn. An invalid owner citation is not silently dropped with the claim it supports. Synthetic success and failed-repair regressions pass; the original candidate is retained privately only when repair fails. A fresh five-day private run on this exact source branch completed the quick owner page (123,823 input tokens) with no collection errors. The configured 70% weekly safety floor stopped the full pass at 74% used, so that run cannot establish full first-run reliability. Its test command deliberately set `--first-people 0` and a five-day source window; it is not evidence about historical People coverage. Historical discovery and an all-person/project runtime benchmark are tracked in #2176.
 
 ## Functional and design review
 

@@ -805,6 +805,55 @@ def test_failed_history_repair_counts_both_model_turns(notebook, monkeypatch):
     assert caught.value.usage == {'input_tokens': 13}
 
 
+@pytest.mark.parametrize('repaired', [True, False])
+def test_owner_source_typo_gets_one_bounded_repair_without_silent_loss(tmp_path, monkeypatch, repaired):
+    import re as regex
+    from connectonion.rem.files import state_path, write_json
+
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    record = 'people/owner.md'
+    notebook.stub_person(record, 'Owner', [])
+    original = notebook.read(record)
+    write_json(state_path(tmp_path, 'map.json'), {'owner': {'record': record}})
+    prompts = []
+
+    def run_model(workdir, prompt, config, stage):
+        prompts.append(prompt)
+        candidate = Path(regex.search(r'(/\S+/candidate\.md)', prompt).group(1))
+        if len(prompts) == 1:
+            page = original.replace('- Unknown — not investigated yet', '- Unknown')
+            page = page.replace('## Insight\n- Unknown', '## Insight\n- A decision changed [1]')
+            page = page.replace('## Sources\n- (none yet)', '## Sources\n- [1] codex:typo')
+            candidate.write_text(page)
+        elif repaired:
+            candidate.write_text(candidate.read_text().replace('codex:typo', 'codex:choice'))
+        return {'usage': {'input_tokens': 10}, 'result': 'done'}
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
+    items = [{'role': 'page', 'record': record, 'owner': True, 'text': original,
+              'source': 'investigation:page'},
+             {'role': 'user', 'source': 'codex:choice', 'text': 'A decision changed.',
+              'timestamp': '2026-10-02'}]
+    if repaired:
+        result = run_stage(notebook, items, default_config(), stage='investigate')
+        assert 'A decision changed [1]' in notebook.read(record)
+        assert 'codex:choice' in notebook.read(record)
+        assert result['usage']['input_tokens'] == 20
+    else:
+        with pytest.raises(RunFailed, match='Citation has no identifiable source'):
+            run_stage(notebook, items, default_config(), stage='investigate')
+        assert notebook.read(record) == original
+    assert len(prompts) == 2
+    assert 'exact supplied original source ID' in prompts[1]
+    kept = list((tmp_path / '.state/tasks').glob('*/candidate-before-repair.md'))
+    if repaired:
+        assert kept == []
+    else:
+        assert len(kept) == 1 and 'codex:typo' in kept[0].read_text()
+        assert kept[0].stat().st_mode & 0o777 == 0o600
+
+
 def test_a_turn_may_ask_for_mail_searches_and_gets_one_more_turn_with_their_results(notebook, monkeypatch):
     """The model has no network (its sandbox is the defence against mail that
     carries instructions); it names searches, our code runs them read-only,

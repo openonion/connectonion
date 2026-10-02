@@ -537,8 +537,14 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         text, removed = drop_owner_addresses(text, {a.casefold() for a in owner.get("addresses", [])})
     # "web: not searched; Wiki runs are offline" is about the run, not the subject (#2058).
     text, tool_lines = drop_tool_text(record, text, original)
-    # One miscopied id drops what rests on it, not the page (#1974).
-    text, dropped = drop_unresolved(record, normalize_numbered_sources(text), original, items)
+    text = normalize_numbered_sources(text)
+    # The owner's first page is the product's orientation: losing an AHA claim
+    # silently is worse than asking for one bounded source correction (#2171).
+    # Other pages retain the established partial-salvage path (#1974).
+    if record == owner.get("record") and investigation:
+        dropped = {"citations": [], "lines": 0}
+    else:
+        text, dropped = drop_unresolved(record, text, original, items)
     text = link_company(notebook, record, drop_uncited_sources(text))
     # A phone, address, link or contact date our code read from the material
     # is not lost because the turn did not copy it (#2068).
@@ -639,7 +645,8 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
 
 # What a finished task keeps: its record, the page it proposed, the review
 # questions and the Skill text it was given. The rest is a private copy of the owner's mail and pages.
-TASK_KEEPS = ("result.json", "candidate.md", "review-candidates.json", "instructions.md")
+TASK_KEEPS = ("result.json", "candidate.md", "candidate-before-repair.md",
+              "review-candidates.json", "instructions.md")
 
 
 def scrub_task(directory: Path) -> None:
@@ -840,15 +847,30 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                 promote()
             except RunFailed:
                 errors = read_json(directory / "review.json", {}).get("errors") or []
-                if not errors or any(not error.startswith("History has ") for error in errors):
+                repairable = ("History has ", "Citation has no identifiable source: ")
+                source_error = any(error.startswith("Citation has no identifiable source: ") for error in errors)
+                # An unidentifiable sole source also causes this downstream
+                # materiality error; it becomes meaningful after source repair.
+                downstream = "Page cites only the page itself and the coverage note; nothing about the subject was read"
+                if not errors or any(not error.startswith(repairable)
+                                     and not (source_error and error == downstream) for error in errors):
                     raise
-                # A real first run wrote ten cited milestones into an empty
-                # History. Let the model fold two before discarding the whole page.
+                # A paid-for first page can be repaired once while the source
+                # check stays strict. Keep the original only if repair fails.
+                (directory / "candidate-before-repair.md").write_bytes(candidate.read_bytes())
+                if source_error:
+                    instruction = (f"Review errors: {'; '.join(errors)}. Read {directory / 'material.md'} "
+                                   "and its named evidence index. Correct each Sources definition to the exact "
+                                   "supplied original source ID only when that source supports the cited claim. "
+                                   "If none does, remove that unsupported claim and its definition. Do not invent "
+                                   "an ID or change unrelated claims. Preserve all other sections and citations.")
+                else:
+                    instruction = ("Its only review error is too many History milestones: keep at most "
+                                   "eight dated bullets, folding older events by year. Preserve all other "
+                                   "sections and citations.")
                 try:
                     repair = run_task(workdir, f"Edit the existing page at {candidate}. "
-                                      "Its only review error is too many History milestones: keep at most "
-                                      "eight dated bullets, folding older events by year. Preserve all other "
-                                      "sections and citations. Save the same file and stop.",
+                                      f"{instruction} Save the same file and stop.",
                                       selected_config, stage)
                 except RunFailed as error:
                     prior = result.get("usage") or {}
@@ -859,6 +881,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                 result["usage"] = {key: sum(part.get(key) or 0 for part in usage)
                                    for key in usage[0].keys() | usage[1].keys()} or None
                 promote()
+                (directory / "candidate-before-repair.md").unlink(missing_ok=True)
                 metrics["render_usage"] = result.get("usage")
         elif stage in ("maintain", "abstract"):
             refusals = _promote_maintenance(notebook, Notebook(task_root), before, items, directory,
