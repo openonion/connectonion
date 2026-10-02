@@ -67,6 +67,12 @@ frames are not additional pages or an all-page pass.
 
 ## Remaining limits
 
+Not inspected this round: tablet or dark-theme versions of the actual private
+pages; navigation/search/list flows; the complete set of 40 cited-source
+dialogs and their states; attachments,
+original MIME, unseen mail or current successful client execution. The
+synthetic light/dark phone checks are separate from the private-page review.
+
 The long open-request strip can duplicate the focused card on phone. Connected
 map and incidental relationship cards can precede the more useful source/history
 context. A source prefix can stop before the decisive clause, and broad history
