@@ -37,8 +37,9 @@ All images below use the invented notebook fixture and are reproducible with
 `python scripts/capture_rem_owner_aha.py docs/design-evidence/rem-owner-aha-a18`.
 The script checks horizontal overflow at 1440, 900 and 390 px. At phone width
 it focuses the project relation, activates it with Enter, and checks that the
-project page opens. The before state uses the prior owner note and reader
-hierarchy; the after state uses the new hierarchy and an invented cited change.
+project page opens. Both states use the candidate reader. The before state
+keeps the fixture's prior generic owner note; the after state adds an invented
+cited change. This isolates content hierarchy, not an exact a17 pixel diff.
 
 | Width | Before | After | Observation |
 | --- | --- | --- | --- |
