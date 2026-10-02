@@ -101,6 +101,27 @@ def test_owner_work_packet_follows_init_across_a_renamed_memory_product():
     assert 'claude-code:unrelated' not in packet
 
 
+def test_owner_work_packet_keeps_recent_init_reversal_when_latest_topic_is_rem():
+    items = [
+        {'source': 'codex:rename', 'role': 'user', 'project': '/work', 'timestamp': '2026-09-28',
+         'text': 'Decide to rename the memory product REM.'},
+        {'source': 'codex:rem-init', 'role': 'user', 'project': '/work', 'timestamp': '2026-09-30',
+         'text': 'REM init should investigate before writing a page.'},
+        {'source': 'codex:reversal', 'role': 'user', 'project': '/work', 'timestamp': '2026-10-01',
+         'text': '不对，init 不启动模型是错的，应该在 init 用模型调查。'},
+        {'source': 'codex:event', 'role': 'user', 'project': '/work', 'timestamp': '2026-10-01',
+         'text': 'Decide to move the student event to November.'},
+        *[{'source': f'codex:recent-{n}', 'role': 'user', 'project': '/work',
+           'timestamp': f'2026-10-02T0{n}:00', 'text': f'Check the REM page and sources again {n}.'}
+          for n in range(5)],
+    ]
+    packet = inv.owner_work_evidence(items)
+    assert 'topic REM' in packet
+    assert 'codex:reversal' in packet
+    assert 'codex:rem-init' in packet
+    assert 'codex:event' not in packet
+
+
 def test_full_owner_pass_compares_sources_already_cited_by_the_quick_page(tmp_path, monkeypatch):
     from datetime import date
 

@@ -518,7 +518,8 @@ PROMOTE_WAIT_SECONDS = 1800
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True):
-    from .page_review import (compact_project_page, drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
+    from .page_review import (compact_project_page, drop_empty_owner_contact, drop_owner_addresses, drop_owner_last_contact_lead,
+                              drop_tool_text, drop_uncited_sources, drop_unresolved,
                               link_company, normalize_numbered_sources, placeholder_errors, restore_runner_fields,
                               validate)
     if not candidate.is_file():
@@ -530,6 +531,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text, uncited = facts.drop_uncited(record, text, original)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {})
     removed = []
+    if record == owner.get("record"):
+        text = drop_owner_last_contact_lead(drop_empty_owner_contact(text))
     if record.startswith("people/") and record != owner.get("record"):
         text, removed = drop_owner_addresses(text, {a.casefold() for a in owner.get("addresses", [])})
     # "web: not searched; Wiki runs are offline" is about the run, not the subject (#2058).
@@ -592,10 +595,12 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
     Nothing is lost by refusing a page on its own: its candidate is kept under
     refused/, and investigating that page reads every source again.
     """
-    from .page_review import (drop_uncited_sources, drop_unresolved, headings, normalize_numbered_sources,
+    from .page_review import (drop_empty_owner_contact, drop_owner_last_contact_lead, drop_uncited_sources,
+                              drop_unresolved, headings, normalize_numbered_sources,
                               restore_runner_fields, validate)
     after = {record: working.read(record) for record in working.list()}
     changed = sorted(r for r in before.keys() | after.keys() if before.get(r) != after.get(r))
+    owner_record = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {}).get("record")
     accepted, refusals = [], []
     for record in changed:
         if record not in after:
@@ -605,9 +610,12 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
         text, _ = drop_unresolved(record, normalize_numbered_sources(facts.upgrade(record,
             restore_runner_fields(record, after[record], before.get(record, '')))), before.get(record, ''), items,
             pages=set(before))
+        if record == owner_record:
+            text = drop_owner_last_contact_lead(drop_empty_owner_contact(text))
         text = facts.drop_uncited(record, drop_uncited_sources(text), before.get(record, ''))[0]
         working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
-        errors = validate(record, text, before.get(record, ''), items, pages=set(before)) if headings(record) else []
+        errors = (validate(record, text, before.get(record, ''), items, pages=set(before),
+                           owner=record == owner_record) if headings(record) else [])
         if errors:
             refusals.append({"record": record, "errors": errors})
             kept = directory / "refused" / record

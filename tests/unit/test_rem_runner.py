@@ -386,6 +386,40 @@ def test_one_bad_page_does_not_hold_back_the_rest_of_a_maintenance_batch(tmp_pat
     assert (directory / "refused" / "people/bad.md").read_text() == bad  # the model's work is kept
 
 
+def test_owner_maintenance_enforces_the_owner_section_schema(tmp_path):
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.page_review import drop_empty_owner_contact
+    from connectonion.rem.runner import _promote_maintenance
+
+    root, work = tmp_path / "rem", tmp_path / "work"
+    prepare(root)
+    prepare(work)
+    notebook, working = Notebook(root), Notebook(work)
+    for book in (notebook, working):
+        book.stub_person("people/owner.md", "Owner", [])
+        book.write("people/owner.md", drop_empty_owner_contact(book.read("people/owner.md")))
+    write_json(state_path(root, "map.json"), {"owner": {"record": "people/owner.md"}})
+    before = {"people/owner.md": notebook.read("people/owner.md")}
+    candidate = before["people/owner.md"].replace("## Insight\n- Unknown — not investigated yet",
+                                                    "## Insight\n- A decision needs review [1]")
+    candidate = candidate.replace("## Sources\n- (none yet)", "## Sources\n- [1] codex:choice")
+    candidate = candidate.replace("## Cadence\n", "## How the user writes to them\n- Unknown\n\n## Cadence\n")
+    working.write("people/owner.md", candidate)
+    directory = tmp_path / "task"
+    directory.mkdir()
+    items = [{"source": "codex:choice"}]
+    assert _promote_maintenance(notebook, working, before, items, directory, None, False) == []
+    written = notebook.read("people/owner.md")
+    assert "## How the user writes to them" not in written
+    before = {"people/owner.md": written}
+    working.write("people/owner.md", written.replace("## Cadence\n",
+        "## How the user writes to them\n- Prefers short notes [1]\n\n## Cadence\n"))
+    refusals = _promote_maintenance(notebook, working, before, items, directory, None, False)
+    assert refusals[0]["record"] == "people/owner.md"
+    assert any("Owner page must omit person-only section" in error for error in refusals[0]["errors"])
+    assert notebook.read("people/owner.md") == written
+
+
 def test_a_small_maintenance_prompt_carries_its_instructions_and_material(tmp_path):
     """Reading them from files cost ten of nineteen turns on a real pass, each
     re-sending the whole context. Small enough, they travel in the prompt."""
@@ -651,6 +685,36 @@ def test_maintenance_adds_to_a_page_it_was_not_asked_to_finish(tmp_path):
     runner._promote_candidate(notebook, "people/mia.md", candidate, original, [{"source": "gmail:m:1"}],
                               tmp_path, None, investigation=False)
     assert "Leads the data team." in notebook.read("people/mia.md")
+
+
+def test_owner_promotion_drops_empty_person_only_section(tmp_path):
+    from connectonion.rem import runner
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.page_review import drop_empty_owner_contact
+
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_person("people/owner.md", "Owner", [])
+    original = drop_empty_owner_contact(notebook.read("people/owner.md"))
+    notebook.write("people/owner.md", original)
+    write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/owner.md"}})
+    changed = original.replace("## Insight\n- Unknown — not investigated yet",
+                               "## Insight\n- A dated decision needs review [1]")
+    changed = changed.replace("## Sources\n- (none yet)", "## Sources\n- [1] codex:choice")
+    candidate = tmp_path / "candidate.md"
+    candidate.write_text(changed.replace("## Cadence\n", "## How the user writes to them\n- Unknown\n\n## Cadence\n"))
+    runner._promote_candidate(notebook, "people/owner.md", candidate, original,
+                              [{"source": "codex:choice"}], tmp_path, None, investigation=False)
+    written = notebook.read("people/owner.md")
+    assert "## How the user writes to them" not in written
+    assert "A dated decision needs review [1]" in written
+    assert "- [1] codex:choice" in written
+    candidate.write_text(written.replace("## Cadence\n",
+                                         "## How the user writes to them\n- Prefers short notes [1]\n\n## Cadence\n"))
+    with pytest.raises(runner.RunFailed, match="Owner page must omit person-only section"):
+        runner._promote_candidate(notebook, "people/owner.md", candidate, written,
+                                  [{"source": "codex:choice"}], tmp_path, None, investigation=False)
+    assert notebook.read("people/owner.md") == written
 
 
 def test_a_turn_that_writes_no_candidate_gets_one_more_turn(notebook, monkeypatch):
