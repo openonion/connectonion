@@ -684,6 +684,7 @@
     .focus-facts { display: grid; grid-template-columns: 1fr; gap: 14px; }
     .focus-facts dd { margin: 0; }
     .activity-list li { grid-template-columns: 76px minmax(0, 1fr); gap: 3px 9px; }
+    .activity-list { max-height: none; }
     .activity-list .activity-text { grid-column: 2; }
     .activity-note { display: none; }
     .deep-note > summary { display: block; }
@@ -845,10 +846,18 @@ function listedRecords() { return REM.records.filter(r => !r.catalog_parent && !
 function inCategory(category) { return listedRecords().filter(r => r.category === category); }
 function initCommand() { return "co rem --root '" + String(REM.root).replace(/'/g, "'\\''") + "' init --mail outlook"; }
 function href(r) { return "#r=" + encodeURIComponent(r.path); }
+function calendarDay(iso) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(iso))) return String(iso);
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: REM.status?.timezone || "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+  const part = type => parts.find(p => p.type === type).value;
+  return part("year") + "-" + part("month") + "-" + part("day");
+}
 function fmtDate(iso) {
   if (!iso) return "";
-  const d = new Date(String(iso).length === 10 ? iso + "T00:00:00" : iso);
-  return isNaN(d) ? iso : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  const day = calendarDay(iso), d = new Date(day + "T00:00:00Z");
+  return isNaN(d) ? iso : d.toLocaleDateString(undefined, { timeZone: "UTC", year: "numeric", month: "short", day: "numeric" });
 }
 function fmtTime(iso) {
   if (!iso) return "—";
@@ -857,10 +866,10 @@ function fmtTime(iso) {
 }
 function shortDate(day) {
   if (!day) return "";
-  const d = new Date(day + "T00:00:00");
+  const d = new Date(day + "T00:00:00Z");
   if (isNaN(d)) return day;
-  const sameYear = d.getFullYear() === new Date(REM.as_of || Date.now()).getFullYear();
-  return d.toLocaleDateString(undefined, sameYear ? { day: "numeric", month: "short" } : { day: "numeric", month: "short", year: "numeric" });
+  const sameYear = day.slice(0, 4) === calendarDay(REM.as_of || new Date().toISOString()).slice(0, 4);
+  return d.toLocaleDateString(undefined, { timeZone: "UTC", day: "numeric", month: "short", ...(!sameYear ? { year: "numeric" } : {}) });
 }
 function num(n) { return n == null ? "unknown" : Number(n).toLocaleString(); }
 function compact(n) { return n == null ? "—" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e4 ? Math.round(n / 1e3) + "k" : String(n); }
@@ -1307,9 +1316,9 @@ function company(r) {
 const FACTS = new Map();
 function facts(r) {
   if (FACTS.has(r.path)) return FACTS.get(r.path);
-  const k = known(r), contact = {};
-  // A cell holds the values alone: qualifiers and claim numbers stay on the page.
-  for (const [label, items] of parseFacts(r)) contact[label.toLowerCase()] = items.map(i => i.value).join("; ");
+  const k = known(r), contact = {}, parsed = parseFacts(r);
+  // Preserve qualifications, especially historical roles and affiliations.
+  for (const [label, items] of parsed) contact[label.toLowerCase()] = items.map(i => i.value + (i.qualifier ? " (" + i.qualifier + ")" : "")).join("; ");
   const text = r.text.replace(COMMENT, "");
   const lineOf = name => { const s = section(r, name); return s ? plainLine(s.text) : ""; };
   const history = historyItems((section(r, "history") || { text: "" }).text).filter(i => i.day).map(i => i.day).sort();
@@ -1334,13 +1343,16 @@ function facts(r) {
     repo: (paths.find(p => /^\/|^~|^[A-Z]:\\/.test(p)) || "").replace(/\s*\[\d+\].*$/, ""),
     sessions: Number(field(/^Sessions:\s*(\d+)/)) || null
   };
-  // The notebook's index (#2067), when the snapshot carries a row for this page, is the
-  // first source for each column; the page's fields above fill whatever it leaves empty.
+  // The index (#2067) supplies derived columns; explicit page Company/Role fields
+  // remain authoritative, including Unknown and historical qualifications.
   const x = r.index;
   if (x) {
     const take = (key, value) => { if (value != null && value !== "" && !(Array.isArray(value) && !value.length)) f[key] = value; };
     take("email", Array.isArray(x.emails) ? x.emails.join("; ") : x.emails);
-    take("phone", x.phone); take("company", x.company); take("role", x.role); take("language", x.language);
+    take("phone", x.phone); take("language", x.language);
+    // Reviewed page fields, including explicit Unknown, supersede derived index values.
+    if (!parsed.has("Company")) take("company", x.company);
+    if (!parsed.has("Role")) take("role", x.role);
     take("location", [x.location, x.timezone].filter(Boolean).join(" · "));
     take("links", [x.linkedin, x.website].filter(Boolean).join(", "));
     take("how", x.how_known); take("first", x.first_contact);
@@ -2036,7 +2048,7 @@ function factList(r) {
   return panel("Facts", [el("p", { class: "fill mono", text: filled + " of " + order.length + " known" }), dl]);
 }
 function daysSince(day) {
-  const today = String(REM.as_of || new Date().toISOString()).slice(0, 10);
+  const today = calendarDay(REM.as_of || new Date().toISOString());
   const ms = new Date(today + "T00:00:00Z").getTime() - new Date(day + "T00:00:00Z").getTime();
   return isNaN(ms) ? null : Math.max(0, Math.floor(ms / DAY_MS));
 }
@@ -2228,7 +2240,7 @@ function activityPanel(r) {
     el("span", { class: "activity-note", text: "From this page's dated history" })]));
   const filters = el("div", { class: "activity-filters", role: "group", "aria-label": "Filter activity" });
   const list = el("ol", { class: "activity-list" });
-  const rows = items.slice().reverse().map(item => {
+  const rows = items.slice().sort((a, b) => b.day.localeCompare(a.day)).map(item => {
     const type = activityType(item.text);
     const row = el("li", { "data-type": type }, [el("span", { class: "activity-day", text: item.day }),
       el("span", { class: "activity-type", text: type }),

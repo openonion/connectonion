@@ -116,6 +116,23 @@ def test_first_and_last_contact_come_from_the_dates_of_the_messages_either_way()
     assert found(rows, "Last contact")[0]["source"] == "gmail:a2"
 
 
+@pytest.mark.parametrize("zone, first, last", [
+    ("Australia/Sydney", "2026-07-31", "2026-08-01"),
+    ("America/Los_Angeles", "2026-07-30", "2026-07-31"),
+    ("UTC", "2026-07-31", "2026-07-31"),
+])
+def test_contact_and_signature_dates_use_notebook_timezone_in_timestamp_order(zone, first, last):
+    # Same UTC day, reverse input order: source choice needs full instants.
+    rows = extract([mail("outlook:late", "2026-07-31T23:03:58Z", SIGNED),
+                    mail("outlook:early", "2026-07-31T00:23:51Z", "hello")],
+                   HANDLES, timezone=zone)
+    assert found(rows, "First contact")[0]["value"] == first
+    assert found(rows, "First contact")[0]["source"] == "outlook:early"
+    assert found(rows, "Last contact")[0]["value"] == last
+    assert found(rows, "Last contact")[0]["source"] == "outlook:late"
+    assert all(row["date"] == last for row in found(rows, "Phone") + found(rows, "Signature"))
+
+
 def test_numbers_that_are_not_phones_are_left_alone():
     text = "Invoice 2026-08-04 total 123456789 ref 4412 9934 0011 2299\nMia Chen\n"
     assert not found(extract([mail("gmail:e5", "2026-08-04T01:00:00+00:00", text)], HANDLES), "Phone")
@@ -186,14 +203,18 @@ class Signed:
 def test_the_turn_is_handed_the_facts_and_the_dropped_phone_comes_back(tmp_path, monkeypatch):
     from connectonion.rem import investigate as inv
     from connectonion.rem import runner
-    from connectonion.rem.config import prepare
+    from connectonion.rem.config import prepare, set_config
     monkeypatch.setattr("connectonion.rem.runner.check_skill", lambda root, stage: None)
     root = tmp_path / "rem"
     prepare(root)
+    set_config(root, ["schedule.timezone", "Australia/Sydney"])
     notebook = inv.Notebook(root)
     notebook.stub_person("people/vern.md", "Vern Chan", ["vern"], email="vern.chan@unsw.edu.au")
     original = notebook.read("people/vern.md")
     seen = {}
+    monkeypatch.setattr(Signed, "list_between", lambda self, s, e, n: [
+        {"id": "s1", "from": "Vern Chan <vern.chan@unsw.edu.au>", "to": ["me@x.y"],
+         "subject": "Hello", "date": "2026-09-30T23:03:58Z"}])
 
     def write(nb, items, config, stage):
         seen["facts"] = next(i for i in items if i["role"] == "facts")
@@ -211,6 +232,8 @@ def test_the_turn_is_handed_the_facts_and_the_dropped_phone_comes_back(tmp_path,
     result = inv.investigate(root, "people/vern.md", "Vern Chan", ["vern", "vern.chan@unsw.edu.au"], days=5,
                              clients={"outlook": Signed()}, subscriptions={}, runner=write)
     assert "Phone: +61 412 000 111 (mobile)" in seen["facts"]["text"]
+    assert found(seen["facts"]["facts"], "Last contact")[0]["value"] == "2026-10-01"
+    assert "Contact and source dates use Australia/Sydney" in seen["facts"]["text"]
     page = notebook.read("people/vern.md")
     assert "- Phone: +61 412 000 111 (mobile) [1]" in page        # same message, same number
     assert result["facts"]["after"]["filled"] > result["facts"]["before"]["filled"]

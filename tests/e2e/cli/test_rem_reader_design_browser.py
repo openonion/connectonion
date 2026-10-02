@@ -391,6 +391,64 @@ def test_source_times_use_notebook_timezone_on_another_browser_timezone(reader):
     other.close()
 
 
+def test_dates_and_contact_age_use_notebook_calendar_on_another_browser_timezone(reader):
+    page, uri = reader
+    other = page.context.browser.new_page(timezone_id='America/Los_Angeles', locale='en-US')
+    other.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    other.evaluate("""() => {
+      REM.status.timezone = 'Australia/Sydney';
+      REM.as_of = '2026-10-02T22:00:00Z';
+      const r = REM.records.find(r => r.path === 'people/mara-ostrowski.md');
+      r.last_activity = '2026-10-02';
+      r.text = r.text.replace(/Last contact:[^\\n]+/g, 'Last contact: 2026-10-02 [1]');
+      KNOWN.delete(r.path); render();
+    }""", isolated_context=False)
+    assert '1 day ago' in other.locator('.lead-meta').all_inner_texts()[-1]
+    assert other.evaluate("fmtDate('2026-07-31T23:03:58Z')", isolated_context=False) == 'Aug 1, 2026'
+    assert other.evaluate("fmtDate('2026-07-31')", isolated_context=False) == 'Jul 31, 2026'
+    other.evaluate("REM.as_of = '2026-12-31T14:00:00Z'", isolated_context=False)
+    assert other.evaluate("shortDate('2026-12-31')", isolated_context=False) == 'Dec 31, 2026'
+    other.evaluate("REM.as_of = '2026-10-03T15:30:00Z'", isolated_context=False)
+    assert other.evaluate("daysSince('2026-10-03')", isolated_context=False) == 1
+    other.close()
+
+
+def test_phone_activity_shows_complete_rows_with_latest_first(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""() => {
+      const r = REM.records.find(r => r.path === 'people/mara-ostrowski.md');
+      const start = r.text.indexOf('## History'), end = r.text.indexOf('## ', start + 3);
+      const rows = [2, 1, 4, 3].map(n => '- 2026-09-0' + n + ': ' + 'Confirmed the venue plan, with event completion unknown. '.repeat(5) + '[1]');
+      r.text = r.text.slice(0, start) + '## History\\n' + rows.join('\\n') + '\\n' + r.text.slice(end);
+      KNOWN.delete(r.path); render();
+    }""", isolated_context=False)
+    assert page.locator('.activity-day').all_inner_texts() == ['2026-09-04', '2026-09-03', '2026-09-02', '2026-09-01']
+    assert page.locator('.activity-list').evaluate('e => e.scrollHeight <= e.clientHeight')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_reviewed_role_and_unknown_company_override_older_index(reader):
+    page, uri = reader
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""() => {
+      const r = REM.records.find(r => r.path === 'people/mara-ostrowski.md');
+      r.text = r.text.replace(/^- Role:[^\\n]+/m, '- Role: Programme manager (historical current unknown) [1]')
+        .replace(/^- Company:[^\\n]+/m, '- Company: Unknown');
+      r.index = {...r.index, role: 'Current CEO', company: 'Old employer'};
+      KNOWN.delete(r.path); FACTS.delete(r.path); render();
+    }""", isolated_context=False)
+    assert page.locator('.focus-facts dt:text-is("Role") + dd').inner_text() == 'Programme manager (historical current unknown)'
+    assert not page.locator('.focus-facts dt:text-is("Company")').count()
+    page.evaluate("""() => {
+      const r = REM.records.find(r => r.path === 'people/mara-ostrowski.md');
+      r.text = r.text.replace(/^- Company:[^\\n]+\\n/m, '');
+      KNOWN.delete(r.path); FACTS.delete(r.path); render();
+    }""", isolated_context=False)
+    assert page.locator('.focus-facts dt:text-is("Company") + dd').inner_text() == 'Old employer'
+
+
 def test_instruction_excerpt_is_not_a_verified_result_and_respects_privacy(reader):
     page, uri = reader
     source = 'skill-source:' + 'a' * 16

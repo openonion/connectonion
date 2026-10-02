@@ -962,8 +962,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # the first contact.
     from . import facts
     from .fact_extract import extract, facts_item
+    config = read_config(root)
     fact_rows = [] if record.startswith("projects/") else [
-        row for row in extract([item for item in items if not item.get("relationship_scope")], handles, owner=sent_only)
+        row for row in extract([item for item in items if not item.get("relationship_scope")], handles,
+                               owner=sent_only, timezone=config["schedule"]["timezone"])
         if not (last and row["field"] == "First contact")
         and not (related["candidates"] and row["field"] in ("First contact", "Last contact"))]
     facts_before = facts.coverage(notebook.read(record), record)
@@ -1023,7 +1025,6 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         raise _nothing_found(record, subject, coverage, me=sent_only)
     if stage_progress:
         stage_progress("preparing evidence", len(items))
-    config = read_config(root)
     from .inquiry import routing
     original_material = None
     if routing(root):
@@ -1148,7 +1149,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         [{"role": "quick-first-pass", "source": "investigation:quick-scope",
            "timestamp": now, "text": "This is a bounded, partial first pass. Use only the supplied sample; "
                                      "state the sampling limit in your final reply, not on the page."}]
-         if quick else []) + ([facts_item(fact_rows)] if fact_rows else []) + items
+         if quick else []) + ([facts_item(fact_rows, config["schedule"]["timezone"])] if fact_rows else []) + items
     if original_material:
         prompt_items.append({"role": "original_evidence", "source": "investigation:original-evidence",
                              "text": f"Original uncompressed evidence is retained at {original_material}. Read it to check summaries and counterevidence.",

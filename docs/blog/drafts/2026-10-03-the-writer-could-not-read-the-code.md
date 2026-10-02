@@ -61,6 +61,23 @@ unrelated discussions; even one genuine thread can contain different teams, so
 the writer still has to match the actual ask. Two page corrections remain
 manual evidence work, rather than proof of automatic reconciliation.
 
+A four-person event audit found that access was only part of the problem.
+Confirmed seating and an arrival reply had become “Nothing open,” although
+neither proved delivery or pack-up. The corrections preserve the actual venue
+conditions and leave missing outcomes unknown, without turning old plans into
+new tasks. Historical signatures and copied mail retain their dated scope.
+
+The same audit found a UTC evening reply displayed a day early in Sydney, and
+contact age used the UTC day while source time used the notebook timezone.
+The candidate now derives contact dates from full instants in the named notebook
+timezone and formats timestamp dates and age on that calendar. Date-only facts
+remain exact. Actual phone review also found Activity rows hidden inside a
+scrolling card and older index roles overriding corrected page fields. Activity
+is latest first with complete phone rows; explicit Role and Company, including
+Unknown and historical qualifications, supersede those derived values. These
+four page corrections remain manual, and selected source-dialog checks do not
+prove every historical citation is retained in the init archive.
+
 This trades a small initial index for additional, variable source reads. The cost
 estimate says so; the quota guard remains in place. It also leaves real limits:
 60 files cannot cover every repository, and the reader's short source prefix may
@@ -78,3 +95,6 @@ The [session-workspace review](../../design-evidence/rem-remaining-workspaces-re
 records four manual pages, reader corrections and remaining automatic-write limits.
 The [person-thread review](../../design-evidence/rem-person-thread-review-2026-10-03/REVIEW.md)
 records the missing group reply and responsibility corrections, with exact scope.
+The [event/calendar review](../../design-evidence/rem-event-calendar-review-2026-10-03/REVIEW.md)
+records four manual pages, date and summary corrections, and the remaining
+automatic-generation and historical-source availability limits.

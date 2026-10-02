@@ -37,8 +37,8 @@ Why these rules: docs/rem-skills/rem-investigate.md
 - Mail gives identity and commitments; sessions give intent. Sources disagree →
   say so; stated in one and implied in another → cite both.
 - Check asks/promises across topics before `Nothing open`; unrelated replies
-  close none. Questions promise no deadline. Invites, empty forwards or quick
-  samples leave completion Unknown.
+  close none. Questions promise no deadline. Invites, confirmed logistics,
+  arrival, empty forwards or samples do not prove completion.
 - Thread context can resolve a group ask after recipients drop. Match the team
   and ask; one thread can mix both. Preserve requester, decision maker and debtor;
   context is not this person's statement, contact date or assigned work.

@@ -171,6 +171,33 @@ first source and patching with the rest loses that.
   model, mailbox command or installed skill. Session sampling and missing logs
   stay explicit, and a reported result never proves an artifact was checked.
 
+## Person event status and calendar dates
+
+Confirmed logistics and arrival do not prove an event or pack-up completed.
+Keep supported arrangements in dated History, and leave missing outcomes
+Unknown without creating a current debt from a historical gap. A copied
+recipient does not become the event organiser or the author of another
+person's confirmation.
+
+Fact extraction converts source timestamps to `schedule.timezone` before
+deriving contact and source dates. It sorts full instants, rather than date
+strings, so reversed inputs on the same UTC day still cite the correct first
+and last message. The facts packet names this timezone. A message's local send
+date remains distinct from its proposed event date.
+
+The reader uses the same notebook calendar for timestamp dates, relative
+contact age and year boundaries. Date-only facts retain their exact day; the
+browser's timezone cannot shift them. Activity is latest first and phone lists
+show complete rows. Explicit page Role and Company fields, including Unknown
+and historical qualifiers, supersede older derived index values; absent fields
+can still use the index. Other indexed fields retain their existing precedence.
+
+Four actual pages were manually corrected from reviewed current and historical
+mail. Fresh historical captures remain private audit evidence, separate from
+the 90-day init archive; this round does not prove their citations all resolve
+in the reader or that automatic generation follows the new rules. See the
+[scoped review](../design-evidence/rem-event-calendar-review-2026-10-03/REVIEW.md).
+
 ## Skill original excerpts in the reader (#2174)
 
 Temporary investigation bodies are still scrubbed after a run. An accepted,
