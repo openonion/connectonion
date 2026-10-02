@@ -1,14 +1,14 @@
 ---
 name: rem-page-person
-description: What a person's page in the notebook is made of — the fixed sections, the labels the roster reads back, and the rules a thin page always breaks. Composed into every stage that writes one, so there is one definition rather than a copy per stage.
+description: Fixed sections, roster labels and evidence rules for a person's page; composed into every stage that writes one.
 ---
 
 # A person's page
 
 Why these rules: docs/rem-skills/rem-page-person.md
 
-Read the page and all supplied material. Write once, check once, fix once,
-stop. Do not search examples, outputs, logs, skills or the repo for a format.
+Read the page and supplied material. Write, check, fix once, stop.
+Do not search elsewhere for a format.
 
 This is a growing relationship memory; never shrink it to a summary. Keep
 every section in this order; missing evidence says `Unknown` or
@@ -84,6 +84,7 @@ Rules:
   changed> [n]`: agreed, signed, delivered, met. Not a send or a newsletter.
   Past 8, fold the oldest into one line per year.
 - **An open thread keeps the exact requested action**, not an invented reply; reports alone create none.
+  Keep different terms/forms separate. Check later replies before naming a debt; optional offers create none.
   Name debtor, request date and explicit due date; never hardcode its age.
   Preserve permission to proceed without a reply. Supported closure:
   `Nothing open as of <date>` and next expected contact; missing evidence:

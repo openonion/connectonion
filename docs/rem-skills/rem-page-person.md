@@ -129,6 +129,27 @@ It is the section most often missing and the one the user asks for most.
 "Discussion status is not recorded" is not an open thread; it is a gap dressed
 up as a finding.
 
+Two professional-contact pages exposed a second boundary: an invitation was
+still classified as an owed reply after an outgoing request for times, while a
+next-cohort survey was treated as permission to complete an earlier term's
+per-group assessment forms. Later replies must be read before naming a debt;
+optional offers create none, and different terms/forms need separate closure.
+Unknown booking or historical completion stays an explained gap, not a current
+obligation inferred from age.
+
+The same review found filled PDF FreeText annotations absent from ordinary
+page text extraction. The candidate reads their text with page/type provenance
+and marks non-text stamp appearances unread and unverified. A named collaborator
+on the owner's side is not the copied liaison's personal signing entity. The
+attachment source dialog identifies a current local file with unknown original
+capture time and historical writer version. Text extraction does not validate
+signatures or legal execution.
+
+The [professional-contact review](../design-evidence/rem-professional-contact-review-2026-10-03/REVIEW.md)
+records 53 full mail originals, two manual page corrections, selected PDF visual
+pages and actual rendered coverage. It does not establish automatic reliability
+or all-page acceptance.
+
 ## Marking inference
 
 A judgment drawn from how someone writes is worth keeping, and worth labelling,

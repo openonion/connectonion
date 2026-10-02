@@ -9,6 +9,40 @@ from connectonion.rem.reader import snapshot
 from connectonion.rem.reader_model import relationships
 
 
+def test_attachment_citation_with_spaces_reads_current_file_without_claiming_old_capture(tmp_path):
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import state_path
+    from connectonion.rem.reader_model import cited_context
+
+    prepare(tmp_path)
+    source = 'outlook:123456789abc:Returned client agreement.txt'
+    path = state_path(tmp_path, 'attachments/outlook/123456789abc/Returned client agreement.txt')
+    path.parent.mkdir(parents=True)
+    path.write_text('Example Client Ltd is the collaborator.')
+    context = cited_context(tmp_path, [{'text': f'## Sources\n- [15] {source} — 2026-04-13'}])
+    assert list(context) == [source]
+    assert 'Example Client Ltd' in context[source]['excerpt']
+    assert 'Original capture time' in context[source]['input_scope']
+    assert 'unknown' in context[source]['input_scope']
+    assert not context[source].get('captured_at')
+
+
+def test_attachment_citation_rejects_a_linked_attachment(tmp_path):
+    from connectonion.rem.attachments import attachment_context
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import RemError, state_path
+
+    prepare(tmp_path)
+    outside = tmp_path / 'outside.txt'
+    outside.write_text('Not an archived attachment')
+    path = state_path(tmp_path, 'attachments/outlook/123456789abc/linked.txt')
+    path.parent.mkdir(parents=True)
+    path.symlink_to(outside)
+    with pytest.raises(RemError, match='Symlinks'):
+        attachment_context(tmp_path, 'outlook:123456789abc:linked.txt')
+    assert attachment_context(tmp_path, 'outlook:123456789abc:../outside.txt') is None
+
+
 def test_short_mentions_link_only_when_the_alias_is_unique():
     records = [
         {"path": "people/mara.md", "category": "people", "title": "Mara Ostrowski", "text": "# Mara"},

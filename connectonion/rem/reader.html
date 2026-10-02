@@ -1148,7 +1148,12 @@ function known(r) {
     const head = /^## ([^\n]*)\n?/.exec(part);
     // A mapped lead now carries the last contact (#2059): show that, not the placeholder before it.
     if (!head) { intro = UNFILLED_LEAD.test(part.trim()) ? "" : part.trim().replace(/^Unknown\s*—\s*not investigated yet\.\s*/i, ""); continue; }
-    const text = part.slice(head[0].length).split("\n").filter(l => !UNKNOWN_LINE.test(l) && !PLACEHOLDER.test(l) && !repeatsTitle(l)).join("\n").trim();
+    const text = part.slice(head[0].length).split("\n").filter(line => {
+      // Keep a specific missing outcome readable, without promoting it to a task.
+      const explanation = /^\s*(?:[-*]\s*)?Unknown\s*[—:.()]\s*\S/i.test(line)
+        && !UNKNOWN_TEXT.test(line.replace(/^\s*[-*]\s*/, ""));
+      return (!UNKNOWN_LINE.test(line) || explanation) && !PLACEHOLDER.test(line) && !repeatsTitle(line);
+    }).join("\n").trim();
     if (text) kept.push({ title: head[1].trim(), text });
     else if (!MECHANICAL.has(head[1].trim().toLowerCase())) missing.push(head[1].trim());
   }
@@ -1227,7 +1232,7 @@ function threads(r) {
   const all = listItems(s.text);
   const calm = all.find(t => /^nothing open\b/i.test(t.replace(/\*/g, ""))) || "";
   const today = calendarDay(REM.as_of);
-  const items = all.filter(t => t !== calm).map(text => {
+  const items = all.filter(t => t !== calm && !/^unknown\b/i.test(t)).map(text => {
     const days = text.match(/\d{4}-\d{2}-\d{2}/g) || [];
     // A stated deadline stays a deadline after it passes. Other event dates
     // do not establish a due date merely because they are in the future.
@@ -1257,6 +1262,9 @@ function sourceList(r) {
     if (m && !UNKNOWN_TEXT.test(m[2])) out.push({ n: m[1], text: m[2].replace(/[*`]/g, "") });
   }
   return out;
+}
+function sourceId(text) {
+  return /^([a-z][\w-]*:[^\n]+?)(?=\s+[—–]\s+|\s*$)/i.exec(text)?.[1] || "";
 }
 const CONTACT_FIELDS = ["Email", "Phone", "Company", "Role", "Signing entity", "Handles", "Language", "Also known as"];
 // A page's fact lines (#2068): `## Facts`, or `## Contact` on a page written before it.
@@ -1987,10 +1995,10 @@ function sectionBody(r, s) {
     const list = sourceList(r);
     if (list.length) {
       return el("div", { class: "block-sources" }, [el("ol", {}, list.map(src => {
-        const id = /\b([a-z][a-z-]*:[\w./-]{4,})/i.exec(src.text);
-        const rest = id ? src.text.replace(id[1], "").replace(/^\s*[—–-]\s*/, "") : src.text;
+        const id = sourceId(src.text);
+        const rest = id ? src.text.replace(id, "").replace(/^\s*[—–-]\s*/, "") : src.text;
         return el("li", { id: "src-" + src.n.toLowerCase() }, [el("span", { class: "n", text: "[" + src.n + "]" }),
-          el("span", {}, [id ? el("span", { class: "id", text: id[1] }) : null, id ? " " : "", rest])]);
+          el("span", {}, [id ? el("span", { class: "id", text: id }) : null, id ? " " : "", rest])]);
       }))]);
     }
   }
@@ -2179,7 +2187,7 @@ function recordFocus(r) {
           el("strong", { text: other.title }), el("span", { class: "relation-basis", text: youify(link.basis || "Linked from another record") })]);
       }))]) : null]));
   const conversations = [...new Set(sourceList(r).map(source => {
-    const id = /\b([a-z][a-z-]*:[\w./:-]{4,})/i.exec(source.text)?.[1];
+    const id = sourceId(source.text);
     return id && (REM.source_context || {})[id]?.thread;
   }).filter(Boolean))].map(id => [id, (REM.conversations || {})[id]]).filter(([, value]) => value);
   if (conversations.length) out.appendChild(el("div", { class: "focus-section conversation-view" }, [
@@ -2545,7 +2553,7 @@ function render() {
 function openEvidence(r, number, trigger) {
   const source = sourceList(r).find(item => item.n.toLowerCase() === number.toLowerCase());
   if (!source) return false;
-  const id = /\b([a-z][a-z-]*:[\w./:-]{4,})/i.exec(source.text)?.[1] || "";
+  const id = sourceId(source.text);
   const context = (REM.source_context || {})[id];
   const mail = /^(gmail|outlook)$/.test(context?.source || "");
   const headers = context?.participants;

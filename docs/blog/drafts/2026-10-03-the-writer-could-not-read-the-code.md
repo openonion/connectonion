@@ -116,6 +116,21 @@ estimate says so; the quota guard remains in place. It also leaves real limits:
 60 files cannot cover every repository, and the reader's short source prefix may
 stop before the decisive clause.
 
+Another two-person review found a replied-to invitation still presented as an
+owed reply, and different terms' forms treated as one process. Reading the later
+originals changed what was open. The page now separates the sent request from an
+unknown booking and a next-round survey from earlier group feedback. The phone's
+first finding carries those boundaries before text clamping.
+
+Even an attached file being “read” was not enough. The PDF's filled text lived in
+annotations, which the extractor omitted. The candidate includes annotation
+text and explicitly leaves a stamp's appearance and authenticity unverified.
+The source dialog now resolves a filename containing spaces, labels it as the
+current local attachment and keeps unknown original capture/version limits
+visible. Concrete Unknown explanations also remain readable in the full note
+without becoming current debts. These are manual corrections and candidate
+input/reader fixes; they do not prove automatic reconciliation.
+
 The real page was manually corrected and independently reviewed. The related
 unit and browser checks pass. A live automatic first write and all-page semantic
 review remain unverified. The next question is whether the writer uses this access
@@ -133,3 +148,6 @@ records four manual pages, date and summary corrections, and the remaining
 automatic-generation and historical-source availability limits.
 The [mail-retention review](../../design-evidence/rem-mail-retention-review-2026-10-03/REVIEW.md)
 records the isolated recovery, source-dialog states and remaining excerpt limits.
+The [professional-contact review](../../design-evidence/rem-professional-contact-review-2026-10-03/REVIEW.md)
+records later replies, distinct forms, annotation extraction and selected actual
+desktop/phone states, with the remaining observed-mail gather gap.

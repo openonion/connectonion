@@ -15,6 +15,48 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def test_attachment_source_keeps_filename_spaces_and_shows_extraction_limits(tmp_path, monkeypatch):
+    from patchright.sync_api import sync_playwright
+    from pypdf import PdfWriter
+    from pypdf.annotations import FreeText
+    from connectonion.rem.files import state_path
+
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    root = tmp_path / 'rem'
+    prepare(root)
+    source = 'outlook:123456789abc:Returned client agreement.pdf'
+    attachment = state_path(root, 'attachments/outlook/123456789abc/Returned client agreement.pdf')
+    attachment.parent.mkdir(parents=True)
+    writer = PdfWriter()
+    writer.add_blank_page(width=400, height=500)
+    writer.add_annotation(0, FreeText(text='Example Client Ltd', rect=(20, 350, 220, 390)))
+    writer.write(str(attachment))
+    Notebook(root).write('people/mentor.md', '# Mentor\n\nThe returned copy names a collaborator [15].\n\n'
+                        f'## Sources\n- [15] {source} — 2026-04-13\n')
+    path = write_reader(root)
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        page = browser.new_page(viewport={'width': 375, 'height': 812})
+        page.goto(path.as_uri() + '#r=people%2Fmentor.md')
+        page.locator('.deep-note > summary').click()
+        assert page.locator('.block-sources .id').inner_text() == source
+        cite = page.locator('a.cite[href$="h=src-15"]').first
+        cite.click()
+        dialog = page.locator('#evidence-dialog')
+        assert 'Example Client Ltd' in dialog.locator('blockquote').inner_text()
+        assert 'Original capture time' in dialog.inner_text()
+        assert 'signature appearances are not verified' in dialog.inner_text()
+        assert not dialog.locator('.evidence-participants').count()
+        page.evaluate('togglePrivate()', isolated_context=False)
+        assert not dialog.locator('blockquote').is_visible()
+        page.evaluate('togglePrivate()', isolated_context=False)
+        assert dialog.locator('blockquote').is_visible()
+        page.get_by_role('button', name='Close source context').click()
+        assert cite.evaluate('e => e === document.activeElement')
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        browser.close()
+
+
 def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
     from patchright.sync_api import sync_playwright
 

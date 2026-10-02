@@ -617,6 +617,10 @@ def test_unknown_open_status_is_not_a_current_exchange(reader):
     }""", isolated_context=False)
     assert page.evaluate("threads(byPath('projects/harbour.md')).items.length", isolated_context=False) == 0
     assert page.get_by_role('heading', name='Next exchanges').count() == 0
+    page.locator('.deep-note > summary').click()
+    note = page.locator('.deep-note')
+    assert 'Historical requests do not establish currently pending work.' in note.inner_text()
+    assert note.locator('a.cite[href$="h=src-1"]').is_visible()
 
 
 def test_completed_delivery_is_conversation_instead_of_a_commitment(reader):

@@ -17,7 +17,7 @@ from .store_messages import archived_message
 
 REFERENCE = re.compile(r"\[([^\]]+)\]\(([^)]+\.md)\)")
 CITATION = re.compile(r"\[(W?\d{1,3})\]")
-SOURCE = re.compile(r"^\s*[-*]\s*\[(W?\d{1,3})\]\s+([a-z][\w-]*:[^\s—–]+)", re.I | re.M)
+SOURCE = re.compile(r"^[ \t]*[-*][ \t]*\[(W?\d{1,3})\][ \t]+([a-z][\w-]*:[^\n]+?)(?=[ \t]+[—–][ \t]+|[ \t]*$)", re.I | re.M)
 ARCHIVED = re.compile(r"^## Sources\b", re.I | re.M)
 PRIVATE = re.compile(r"\[(?:sensitive|personal)\]", re.I)
 
@@ -123,7 +123,9 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -
             if row is None:
                 from .skill_runs import instruction_context, skill_record_context
                 from .project_pages import repository_context
-                context = instruction_context(root, source) or skill_record_context(root, source) or repository_context(root, source)
+                from .attachments import attachment_context
+                context = (instruction_context(root, source) or skill_record_context(root, source)
+                           or repository_context(root, source) or attachment_context(root, source))
                 if context:
                     output[source] = {**context, 'excerpt': context['excerpt'][:budget],
                                       'truncated': context['truncated'] or len(context['excerpt']) > budget}
