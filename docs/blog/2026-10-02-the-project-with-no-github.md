@@ -1,3 +1,8 @@
+---
+description: A 58-second GitHub scan exposed the cost of finding reviews on old PRs. Why Co’s first listener reuses gh and keeps collection separate from task routing.
+tags: [GitHub, Inbox, CLI]
+---
+
 # The first GitHub scan took almost a minute
 
 The owner was reading a REM project page and noticed that GitHub was missing. An issue or a PR discussion had no route into the project's context; someone still had to notice it. He wanted the same first step as WhatsApp: a listener that puts messages in the inbox, then lets a consumer wake Codex or route the work.
