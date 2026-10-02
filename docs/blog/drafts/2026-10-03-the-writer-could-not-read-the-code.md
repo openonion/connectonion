@@ -191,3 +191,26 @@ fully visible. This is sampled action-clarity verification, not an automatic
 writer or all-page usefulness pass.
 
 [Private project status review](../../design-evidence/rem-private-project-status-review-2026-10-03/REVIEW.md) records the inspected states and remaining gaps.
+
+
+A contact-date triage led to four more original-source reviews. It exposed UTC
+versus notebook-calendar mistakes, a newer copied introduction missing from a
+page, a screening prerequisite presented as a current debt, and an old promise
+whose age had been mistaken for proof that work was still owed. The pages were
+corrected manually. The candidate adds a narrow same-original Facts date repair
+and teaches the writer to preserve conditional and historical uncertainty.
+An empty calendar reply now shows saved headers and subject rather than claiming
+that its original is unavailable.
+
+An independent AI review from a founder/marketing/UI perspective also found
+a privacy defect that tests had missed: a marked linked sentence and its reused
+connection-card basis stayed
+visible after hiding private content. The candidate protects Markdown links
+before privacy matching and carries the original line's privacy flag into
+connection summaries. The marked page History was corrected manually. Desktop
+and phone hide/restore checks cover the observed failures, without claiming
+that unmarked private information is automatically classified.
+
+The [contact-freshness review](../../design-evidence/rem-contact-freshness-review-2026-10-03/REVIEW.md)
+records the exact sources, rendered states and remaining automatic-generation
+and all-page limits. This remains an unpublished draft.

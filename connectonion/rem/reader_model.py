@@ -67,13 +67,14 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
             line = body[start:end if end >= 0 else len(body)].strip()
             cites = CITATION.findall(line)
             linked = target in explicit
+            private = bool(PRIVATE.search(line))
             basis = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
             basis = CITATION.sub("", basis).lstrip("- ").strip()[:220]
             relation = {"path": target, "kind": "linked" if linked else "cited mention" if cites else "mentioned",
-                        "basis": basis, "sources": cites[:4], "via": origin}
+                        "basis": basis, "private": private, "sources": cites[:4], "via": origin}
             found[origin][target] = relation
             found[target].setdefault(origin, {"path": origin, "kind": "mentioned by", "basis": basis,
-                                              "sources": cites[:4], "via": origin})
+                                              "private": private, "sources": cites[:4], "via": origin})
     rank = {"linked": 0, "mentioned by": 1, "cited mention": 2, "mentioned": 3}
     return {path: sorted(rows.values(), key=lambda rel: (rank.get(rel["kind"], 4), rel["path"]))
             for path, rows in found.items()}
@@ -140,14 +141,15 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -
             if mail and "--- Email Body ---" in raw:
                 raw = raw.partition("--- Email Body ---")[2]
             excerpt = raw.strip()[: min(640, budget)]
-            if not excerpt:
+            if not excerpt and not mail:
                 continue
             output[source] = {"excerpt": excerpt, "truncated": len(raw.strip()) > len(excerpt),
                               "time": message.get("time") or "", "sender": message.get("sender") or "",
                               "thread": message.get("thread") or "", "source": message.get("source") or "",
                               "input_scope": input_scope(saved, message)}
             if mail:
-                output[source].update({"participants": {key: saved.get(key) or ([] if key in ("to", "cc") else "")
+                output[source].update({"body_empty": not excerpt, "subject": saved.get("subject") or "",
+                    "participants": {key: saved.get(key) or ([] if key in ("to", "cc") else "")
                                                         for key in ("from", "to", "cc")},
                     "captured_at": saved.get("fetched_at") or "", "retained_at": saved.get("retained_at") or "",
                     "body_format": saved.get("body_format") or ""})

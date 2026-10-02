@@ -253,6 +253,38 @@ def test_record_dates_do_not_disagree_when_the_index_is_stale(reader):
     assert formatted in page.locator('.factlist dt:text-is("Last contact") + dd').inner_text()
 
 
+def test_empty_mail_keeps_private_header_evidence_without_inventing_a_body_excerpt(reader):
+    page, uri = reader
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""() => {
+      Object.assign(REM.source_context['outlook:77c09ad1e3f0'], {
+        source: 'outlook', excerpt: '', body_empty: true, truncated: false, subject: 'Accepted: Workshop',
+        participants: {from: 'mara@example.org', to: ['owner@example.org'], cc: []}
+      });
+    }""", isolated_context=False)
+    page.locator('.deep-note > summary').click()
+    for width in (1440, 375):
+        page.set_viewport_size({'width': width, 'height': 812})
+        trigger = page.locator('.deep-note a.cite[href$="h=src-5"]').first
+        trigger.click()
+        dialog = page.locator('#evidence-dialog')
+        assert 'MAIL HEADERS' in dialog.inner_text()
+        assert dialog.locator('.evidence-empty-body').is_visible()
+        assert 'Subject: Accepted: Workshop' in dialog.locator('.evidence-subject').inner_text()
+        assert not dialog.locator('blockquote').count()
+        assert not dialog.locator('.evidence-unavailable').count()
+        dialog.get_by_text('From, To and Cc', exact=True).click()
+        assert 'mara@example.org' in dialog.locator('.evidence-participants').inner_text()
+        page.evaluate('togglePrivate()', isolated_context=False)
+        assert not dialog.locator('.evidence-original').is_visible()
+        assert not dialog.locator('.evidence-subject').is_visible()
+        page.evaluate('togglePrivate()', isolated_context=False)
+        assert dialog.locator('.evidence-empty-body').is_visible()
+        page.get_by_role('button', name='Close source context').click()
+        assert trigger.evaluate('e => e === document.activeElement')
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
 def test_project_first_seen_does_not_establish_an_unknown_start_date(reader):
     page, uri = reader
     page.goto(uri + "#r=projects%2Fharbour.md")
@@ -671,3 +703,49 @@ def test_completed_delivery_is_conversation_instead_of_a_commitment(reader):
     assert promised.get_attribute('data-type') == 'Commitment'
     page.get_by_role('button', name='Commitment 1', exact=True).click()
     assert not delivered.is_visible() and promised.is_visible()
+
+
+def test_marked_sentence_with_a_markdown_link_and_code_respects_private_mode(reader):
+    page, uri = reader
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate(r"""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.text += '\n\n## Private context\nPublic setup. [Quinn](quinn-alder.md) shared confidential details in `case.txt` [sensitive] [1]. Public follow-up.\n';
+      KNOWN.delete(r.path); render();
+    }""", isolated_context=False)
+    page.locator('.deep-note > summary').click()
+    sentence = page.locator('.deep-note .private').filter(has_text='confidential details')
+    assert sentence.locator('.privacy-tag.sensitive').is_visible()
+    assert sentence.locator('a:not(.cite)').inner_text() == 'Quinn'
+    assert sentence.locator('code').inner_text() == 'case.txt'
+    assert sentence.locator('a.cite').count() == 1
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert not sentence.is_visible()
+    assert not page.locator('.deep-note a').filter(has_text='Quinn').is_visible()
+    assert not page.locator('.deep-note code').filter(has_text='case.txt').is_visible()
+    assert page.get_by_text('Public setup.', exact=False).is_visible()
+    assert 'Public follow-up.' in page.locator('.deep-note').inner_text()
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert sentence.is_visible()
+
+
+def test_connected_context_hides_private_bases_including_expanded_connections(reader):
+    page, uri = reader
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate(r"""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.relations = Array.from({length: 7}, (_, n) => ({path: 'projects/harbour.md',
+        kind: n === 6 ? 'mentioned by' : 'linked', private: n === 0 || n === 6,
+        basis: n === 0 || n === 6 ? 'Confidential background' : 'Public pilot context'}));
+      render();
+    }""", isolated_context=False)
+    page.locator('.more-relations > summary').first.click()
+    bases = page.locator('.relation-basis').filter(has_text='Confidential background')
+    assert bases.count() == 2
+    assert all(bases.nth(n).is_visible() for n in range(2))
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert all(not bases.nth(n).is_visible() for n in range(2))
+    assert page.locator('.relation-basis').filter(has_text='Public pilot context').first.is_visible()
+    assert page.locator('.relation-card strong').first.is_visible()
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert all(bases.nth(n).is_visible() for n in range(2))

@@ -948,10 +948,6 @@ function youify(text) {
 }
 function inline(text, from) {
   let s = esc(text);
-  // Keep a labelled sentence and its citations together for the privacy toggle.
-  s = s.replace(/(^|[.!?。](?:\s*\[\d+\])*\s+)([^.!?。]*?[.!?。]?)\s*\[(personal|sensitive)\]((?:\s*\[\d+\])*)/g,
-    (m, lead, sentence, level, cites) => lead + '<span class="private" data-level="' + level + '">' + sentence +
-      ' <span class="privacy-tag ' + level + '">' + level + '</span>' + cites + '</span>');
   const codes = [];
   s = s.replace(/`([^`]+)`/g, (m, c) => { codes.push(c); return "\u0001" + (codes.length - 1) + "\u0001"; });
   const links = [];
@@ -963,6 +959,11 @@ function inline(text, from) {
     links.push('<a href="' + esc(link.href) + '"' + attrs + ">" + lbl + "</a>");
     return "\u0002" + (links.length - 1) + "\u0002";
   });
+  // Link targets and inline code can contain dots without ending a sentence.
+  // Keep a labelled sentence and its citations together for the privacy toggle.
+  s = s.replace(/(^|[.!?。](?:\s*\[\d+\])*\s+)([^.!?。]*?[.!?。]?)\s*\[(personal|sensitive)\]((?:\s*\[\d+\])*)/g,
+    (m, lead, sentence, level, cites) => lead + '<span class="private" data-level="' + level + '">' + sentence +
+      ' <span class="privacy-tag ' + level + '">' + level + '</span>' + cites + '</span>');
   // Three or more claim numbers in a row read as noise: one chip says how many, and names them on hover.
   s = youify(s);
   const runs = [];
@@ -2179,14 +2180,14 @@ function recordFocus(r) {
       const other = byPath(link.path);
       return el("a", { class: "relation-card", href: href(other) }, [
         el("span", { class: "relation-kind", text: singular(other.category) + " · " + link.kind }),
-        el("strong", { text: other.title }), el("span", { class: "relation-basis", text: youify(link.basis || "Linked from another record") })]);
+        el("strong", { text: other.title }), el("span", { class: "relation-basis" + (link.private ? " private" : ""), text: youify(link.basis || "Linked from another record") })]);
     })), related.length > 6 ? el("details", { class: "more-relations" }, [
       el("summary", { text: "Show " + (related.length - 6) + " more connections" }),
       el("div", { class: "relation-list" }, related.slice(6).map(link => {
         const other = byPath(link.path);
         return el("a", { class: "relation-card", href: href(other) }, [
           el("span", { class: "relation-kind", text: singular(other.category) + " · " + link.kind }),
-          el("strong", { text: other.title }), el("span", { class: "relation-basis", text: youify(link.basis || "Linked from another record") })]);
+          el("strong", { text: other.title }), el("span", { class: "relation-basis" + (link.private ? " private" : ""), text: youify(link.basis || "Linked from another record") })]);
       }))]) : null]));
   const conversations = [...new Set(sourceList(r).map(source => {
     const id = sourceId(source.text);
@@ -2575,7 +2576,7 @@ function openEvidence(r, number, trigger) {
     el("p", { class: "evidence-summary private", text: source.text }));
   dialog.appendChild(el("p", { class: "private-hidden-notice", text: "Source descriptions and original excerpts are hidden because their private content has not been classified. Show private content to read them." }));
   if (context) dialog.append(el("div", { class: "evidence-original private" }, [
-    el("span", { class: "focus-kicker", text: (/^skill-(source|reference)$/.test(context.source) ? "Instruction excerpt" : context.source === "project-source" ? "Repository snapshot" : mail ? "Mail body excerpt" : "Original source context") + " · not a validated claim span" }),
+    el("span", { class: "focus-kicker", text: (/^skill-(source|reference)$/.test(context.source) ? "Instruction excerpt" : context.source === "project-source" ? "Repository snapshot" : mail ? context.body_empty ? "Mail headers" : "Mail body excerpt" : "Original source context") + " · not a validated claim span" }),
     ...(origin ? [el("p", { class: "evidence-meta", text: origin })] : []),
     el("p", { class: "evidence-meta", text: [context.source, context.sender,
       context.time ? (mail ? "Sent " : "") + fmtTime(context.time) : "",
@@ -2585,8 +2586,10 @@ function openEvidence(r, number, trigger) {
       el("summary", { text: "From, To and Cc" }),
       ...["from", "to", "cc"].map(key => el("p", { class: "evidence-meta", text: ({from: "From", to: "To", cc: "Cc"}[key]) + ": " + headerText(headers[key]) }))])] : []),
     ...(context.body_format ? [el("p", { class: "evidence-meta", text: context.body_format })] : []),
+    ...(mail && context.subject ? [el("p", { class: "evidence-meta evidence-subject", text: "Subject: " + context.subject })] : []),
     ...(context.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(context.input_scope) })] : []),
-    el("blockquote", { text: context.excerpt + (context.truncated ? "…" : "") })]));
+    context.body_empty ? el("p", { class: "evidence-empty-body", text: "The retained message has no body text. Its headers are available." })
+      : el("blockquote", { text: context.excerpt + (context.truncated ? "…" : "") })]));
   else dialog.appendChild(el("p", { class: "evidence-unavailable", text: "The original source is not archived in this snapshot. The citation above identifies a source; it does not show its original text." }));
   dialog.addEventListener("close", () => trigger.focus(), { once: true });
   if (dialog.showModal) dialog.showModal(); else dialog.setAttribute("open", "");

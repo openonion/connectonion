@@ -83,8 +83,9 @@ Rules:
 - **`History` is at most 8 milestones**, newest first, `- YYYY-MM-DD: <what
   changed> [n]`: agreed, signed, delivered, met. Not a send or a newsletter.
   Past 8, fold the oldest into one line per year.
-- **An open thread keeps the exact requested action**, not an invented reply; reports alone create none.
-  Keep different terms/forms separate. Check later replies before naming a debt; optional offers create none.
+- **Open threads keep exact asks.** Check later replies; separate terms/forms.
+  Reports/optional offers create none. Prerequisites aren't agreed commitments;
+  missing historical outcomes aren't current debts.
   Name debtor, request date and explicit due date; never hardcode its age.
   Preserve permission to proceed without a reply. Supported closure:
   `Nothing open as of <date>` and next expected contact; missing evidence:

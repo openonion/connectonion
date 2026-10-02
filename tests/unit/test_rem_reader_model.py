@@ -58,6 +58,21 @@ def test_short_mentions_link_only_when_the_alias_is_unique():
     assert {link["path"] for link in links["projects/harbour.md"]} == {"orgs/fernhill.md"}
 
 
+def test_relationship_basis_keeps_privacy_after_its_text_is_clipped():
+    text = 'Mara Ostrowski discussed confidential background ' + 'detail ' * 40 + '[sensitive] [1].'
+    records = [
+        {"path": "people/mara.md", "category": "people", "title": "Mara Ostrowski", "text": "# Mara"},
+        {"path": "projects/harbour.md", "category": "projects", "title": "Harbour", "text": text},
+    ]
+    links = relationships(records)
+    forward = links['projects/harbour.md'][0]
+    reverse = links['people/mara.md'][0]
+    assert '[sensitive]' not in forward['basis']
+    assert forward['private'] and reverse['private']
+    records[1]['text'] = 'Mara Ostrowski discussed the public pilot [1].'
+    assert not relationships(records)['projects/harbour.md'][0]['private']
+
+
 def test_claim_changes_require_a_cited_new_value_and_do_not_count_formatting():
     before = {"people/mara.md": "# Mara\n\n## Facts\n- Role: Partnerships Lead [1]\n- Phone: Unknown\n"}
     after = {"people/mara.md": "# Mara\n\n## Facts\n- Role: partnerships-lead [2]\n- Phone: +64 21 123 [3]\n- Company: Fernhill\n\n## Sources\n- [2] mail:role — role\n- [3] mail:phone — phone\n"}
@@ -105,6 +120,30 @@ def test_hashed_mail_citations_resolve_native_provider_ids_without_migrating_the
     assert context[source]['excerpt'] == 'I accept the credits.'
     assert context[source]['sender'] == 'me@owner.example'
     assert context[source]['thread']
+
+
+def test_an_empty_retained_calendar_reply_keeps_its_header_evidence(tmp_path):
+    import hashlib
+    from connectonion.rem.config import prepare
+    from connectonion.rem.mail_archive import retain_message
+    from connectonion.rem.reader_model import cited_context
+    from connectonion.rem.store import refresh
+
+    prepare(tmp_path)
+    row = {'id': 'empty-acceptance', 'from': 'me@owner.example', 'to': ['events@example.org'],
+           'cc': [], 'date': '2026-08-28T23:34:32Z', 'subject': 'Accepted: Workshop',
+           'thread_id': 'calendar-thread'}
+    raw = 'From: me@owner.example\nTo: events@example.org\nSubject: Accepted: Workshop\nDate: 2026-08-28T23:34:32Z\n\n--- Email Body ---\n\n'
+    retain_message(tmp_path, 'outlook', row, raw, fetched_at='2026-10-02T10:00:00Z')
+    refresh(tmp_path)
+    source = 'outlook:' + hashlib.sha256(row['id'].encode()).hexdigest()[:12]
+    context = cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + source}])[source]
+    assert context['body_empty'] and context['excerpt'] == '' and not context['truncated']
+    assert context['subject'] == row['subject']
+    assert datetime.fromisoformat(context['time']) == datetime.fromisoformat(row['date'].replace('Z', '+00:00'))
+    assert context['participants']['from'] == row['from']
+    assert context['participants']['to'] == row['to']
+    assert context['captured_at'] == '2026-10-02T10:00:00Z'
 
 
 def test_hashed_mail_citation_rejects_a_body_pointer_for_a_different_native_id(tmp_path):

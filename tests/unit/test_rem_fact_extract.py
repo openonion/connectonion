@@ -190,6 +190,37 @@ def test_a_date_the_model_corrected_is_not_overwritten():
     assert facts.keep_extracted("people/mia.md", PAGE, rows) == (PAGE, [])
 
 
+@pytest.mark.parametrize('label', ['First contact', 'Last contact'])
+def test_a_contact_date_uses_the_notebook_calendar_when_it_cites_the_same_original(label):
+    item = mail('gmail:a2', '2026-09-09T23:30:00Z', SIGNED)
+    rows = [r for r in extract([item], HANDLES, timezone='Australia/Sydney') if r['field'] == label]
+    page = PAGE.replace('- Last contact: 2026-09-10 [1]', f'- {label}: 2026-09-09 [1]')
+    page += '\n## History\n- 2026-09-10: A separate milestone already has the right date [1].\n'
+    kept, changed = facts.keep_extracted('people/mia.md', page, rows)
+    assert f'- {label}: 2026-09-10 [1]' in kept
+    assert changed == rows
+    assert facts.keep_extracted('people/mia.md', kept, rows) == (kept, [])
+
+
+@pytest.mark.parametrize('current', ['2026-09-09 (approximate) [1]', '2026-09-09 [1][2]'])
+def test_contact_calendar_repair_keeps_qualified_or_multiple_source_interpretations(current):
+    rows = [{'field': 'Last contact', 'value': '2026-09-10', 'qualifier': '', 'source': 'gmail:a2',
+             'date': '2026-09-10'}]
+    page = PAGE.replace('- Last contact: 2026-09-10 [1]', '- Last contact: ' + current)
+    assert facts.keep_extracted('people/mia.md', page, rows) == (page, [])
+
+
+def test_a_fact_from_the_carrier_email_does_not_cite_its_attachment_instead():
+    page = PAGE.replace('gmail:a2 —', 'gmail:a2:Signed contract.pdf —')
+    row = {'field': 'Phone', 'value': '+61 2 5550 0142', 'qualifier': 'work', 'source': 'gmail:a2',
+           'date': '2026-09-10'}
+    kept, restored = facts.keep_extracted('people/mia.md', page, [row])
+    assert '- Phone: +61 2 5550 0142 (work) [2]' in kept
+    assert '- [1] gmail:a2:Signed contract.pdf —' in kept
+    assert '- [2] gmail:a2 — 2026-09-10' in kept
+    assert restored == [row]
+
+
 class Signed:
     """One mail from Vern whose phone is only in his signature."""
     def my_addresses(self): return {"me@x.y"}

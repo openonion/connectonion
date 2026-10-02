@@ -216,3 +216,22 @@ for them, and cited 3 of 1,477 session messages. The map already knows each
 project's sessions and dates, so the owner's turn now gets them as a
 `recent-projects` item (the four weeks before the map's own date, newest
 first), and the lead names the busiest, dated.
+
+## Current obligations need current evidence
+
+Screening prerequisites are not agreed commitments. A conditional offer is not
+an accepted paid engagement. An old promise with a missing recorded outcome
+remains a historical uncertainty until reviewed evidence supports a current
+obligation; its age alone cannot establish an overdue task.
+
+Contact dates need the notebook calendar and exact cited original. The narrow
+Facts repair corrects only a bare date with one citation to that original; it
+does not choose a newer correspondent or rewrite qualified interpretations.
+Carrier mail and attachments retain separate source identities. Empty mail
+bodies can still supply subject/header evidence, without proving attendance or
+completion. Marked private evidence must remain private when reused in
+connected-context summaries.
+
+The [contact-freshness review](../design-evidence/rem-contact-freshness-review-2026-10-03/REVIEW.md)
+records four manual pages, bounded original-source coverage, actual privacy
+failures and remaining automatic-writer and broader page-review gaps.
