@@ -174,6 +174,8 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
                                               "mails": 0, "sent": 0,
                                               "received": 0, "first": "", "last": "", "boxes": set(),
                                               "subjects": collections.Counter()})
+    # Co-recipient headers can name an existing contact without being mail from them.
+    recipient_names = collections.defaultdict(collections.Counter)
     for kind, client in clients.items():
         cursor = start
         while cursor < end:
@@ -191,6 +193,10 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
                 # One sent message can be relevant to several people. Map each
                 # recipient, while the body archive still stores it only once.
                 recipients = _addresses(row.get("to")) + _addresses(row.get("cc"))
+                for address in dict.fromkeys(recipients):
+                    name = _display_name(row, address)
+                    if name and address not in mine:
+                        recipient_names[address][name] += 1
                 whos = dict.fromkeys(recipients if own and recipients else [correspondent(row, mine)])
                 for who in whos:
                     if "@" not in who or who in mine:
@@ -219,8 +225,9 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
     saved = _contact_names(clients)
     out = []
     for address, e in people.items():
-        # Their own name first, then the owner's saved contact, then the owner's greeting.
+        # Direct header name, saved contact, co-recipient header, then greeting.
         name = (e["names"].most_common(1)[0][0] if e["names"] else "") or saved.get(address, "") \
+            or (recipient_names[address].most_common(1)[0][0] if recipient_names[address] else "") \
             or (e["greetings"].most_common(1)[0][0] if e["greetings"] else "")
         out.append({"address": address,
                     "name": name,

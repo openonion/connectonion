@@ -39,6 +39,22 @@ def test_one_sent_mail_maps_every_recipient_without_duplicate_person_counts():
     assert {p["address"]: p["mails"] for p in people} == {"a@g.com": 1, "b@g.com": 1}
 
 
+@pytest.mark.parametrize("reply_first", [False, True])
+def test_a_named_corecipient_can_identify_an_existing_outgoing_contact(reply_first):
+    sent = [{"id": str(n), "from": "me@x.y", "to": ["a@school.example"], "cc": [],
+             "date": "2026-09-10", "subject": "project"} for n in (1, 2)]
+    reply = {"id": "reply", "from": "Mentor <mentor@school.example>",
+             "to": ["me@x.y", "Alex Chen <a@school.example>"],
+             "cc": ["Unrelated Guest <guest@school.example>"], "date": "2026-09-11", "subject": "Re: project"}
+    rows = [reply, *sent] if reply_first else [*sent, reply]
+    people = {p["address"]: p for p in scan_people({"outlook": Box("me@x.y", rows)}, 30, set())}
+    assert people["a@school.example"]["name"] == "Alex Chen"
+    assert (people["a@school.example"]["mails"], people["a@school.example"]["sent"],
+            people["a@school.example"]["received"]) == (2, 2, 0)
+    assert "guest@school.example" not in people
+    assert "me@x.y" not in people
+
+
 def test_signals_are_handed_over_and_verdicts_are_not():
     rows = [{"id": "1", "from": "no-reply.products@edm.bank.au", "to": ["me@x.y"], "cc": [], "date": "2026-09-10", "subject": "Statement"},
             {"id": "2", "from": "no-reply.products@edm.bank.au", "to": ["me@x.y"], "cc": [], "date": "2026-09-11", "subject": "Statement"},

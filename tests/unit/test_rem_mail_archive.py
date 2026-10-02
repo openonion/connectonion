@@ -11,6 +11,21 @@ from connectonion.rem.mail_archive import archive_init, person_index_path, proje
 from connectonion.rem.map import build_map
 
 
+def test_material_keeps_named_corecipients_separate_from_the_reply_author():
+    from connectonion.rem.mail_archive import _material_item
+    from connectonion.rem.runner import readable_material
+    snapshot = {"provider": "outlook", "id": "group-reply", "from": "Mentor <mentor@school.example>",
+                "to": ["Me <me@example.org>", "Alex Chen <a@school.example>"],
+                "cc": ["Guest <guest@school.example>"], "date": "2026-09-11T12:00:00Z",
+                "body": "--- Email Body ---\nIt is not too late to submit.\nMentor", "subject": "Re: project"}
+    item = _material_item(snapshot, {"me@example.org"})
+    assert item["role"] == "other" and item["speaker"] == snapshot["from"]
+    assert item["participants"] == {key: snapshot[key] for key in ("from", "to", "cc")}
+    supplied = readable_material([item])
+    assert 'Alex Chen <a@school.example>' in supplied and 'Guest <guest@school.example>' in supplied
+    assert item["text"] == snapshot["body"]
+
+
 def test_init_archive_is_private_resumable_and_people_read_it_without_listing(tmp_path):
     prepare(tmp_path)
     skills = tmp_path / "source-skills"

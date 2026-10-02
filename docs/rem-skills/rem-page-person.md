@@ -55,6 +55,26 @@ Conference dial-ins are not contact numbers. Calendar invitations remain context
 for the reader, but their telephone numbers are not automatically restored into
 `Phone`. Genuine direct numbers need evidence of attribution to the subject.
 
+## Held outgoing contacts and group authorship
+
+Three real pages stayed as placeholders because direct metadata showed only
+outgoing mail and no name. One contact's name was already in another sender's
+To header, while his direct counts still correctly showed no mail from him.
+Scanning now retains exact recipient-header names independently of direct
+mail counts, including when the naming message occurs before the direct mail.
+Co-recipients with no direct correspondence do not gain pages from this step;
+nameless write-only addresses and possible owner addresses retain their guards.
+
+The private archive hands over exact From/To/Cc metadata alongside the body.
+The sender's reply or signature belongs to that sender, not every copied
+contact. A joint greeting to two people cannot bind names to addresses by
+their order. An owner's phone in an outgoing signature must not fill the
+recipient's Phone, and outgoing English does not establish their Language.
+
+The three observed pages were manually filled after primary-source review;
+this does not establish future model reliability or verify referenced files,
+business metrics, travel plans or current completion of historical handoffs.
+
 ## `Insight` is labelled
 
 Two to four lines starting `Now:`, `Changed:`, `At stake:` or `Pattern:`. A

@@ -7,16 +7,13 @@ description: What a person's page in the notebook is made of — the fixed secti
 
 Why these rules: docs/rem-skills/rem-page-person.md
 
-**How to do it.** Read the existing page and all supplied material. Write the
-whole page, check it once against the rules below, fix errors in one edit, and
-stop. Do not copy a format from other pages, outputs, logs, skills or the repo.
+Read the page and all supplied material. Write once, check once, fix once,
+stop. Do not search examples, outputs, logs, skills or the repo for a format.
 
-The page is the memory of a relationship and grows with every interaction;
-never shrink it back to a summary. **Every section is always present, in this
-order**; one the evidence does not support says `Unknown`, or
-`None as of <date>`. **Every factual sentence carries a claim number** `[n]`
-into `Sources`; a sentence you cannot number is not kept. Placeholders are
-never evidence.
+This is a growing relationship memory; never shrink it to a summary. Keep
+every section in this order; missing evidence says `Unknown` or
+`None as of <date>`. Every factual sentence cites `[n]` into `Sources`.
+Placeholders are not evidence.
 
 ```markdown
 # <observed name>
@@ -72,6 +69,10 @@ Rules:
   ("key stakeholder", "valuable relationship", "maintains regular
   communication"); thin material: `- Unknown`.
 - **`Language` is observed**: the language they write to the user in.
+- Attribute group replies to their sender using exact From/To/Cc metadata.
+  Greetings do not bind names by recipient order; the owner's phone is not
+  the contact's. Date historical plans and handoffs; missing completion
+  evidence does not make them current pending work.
 - **`Company` comes from the address domain and the signature block.** A
   mailbox provider (gmail, outlook, qq) is not a company. Where an organisation
   page exists, link it: `- Company: [UNSW](../orgs/unsw.md) [2]`.

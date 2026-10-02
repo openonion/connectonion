@@ -191,6 +191,7 @@ def _material_item(snapshot: dict, own: set) -> dict:
     sender_address = _address(sender)
     return {"role": "user" if sender_address in own or "@" not in sender_address else "other",
             "speaker": sender, "text": text, "timestamp": snapshot.get("date", ""),
+            "participants": {"from": sender, "to": snapshot.get("to") or [], "cc": snapshot.get("cc") or []},
             "subject": snapshot.get("subject", ""), "source": f"{provider}:{_key(message_id)[:12]}",
             "_mail_id": message_id,
             **({"relationship_scope": snapshot["relationship_scope"]} if snapshot.get("relationship_scope") else {})}

@@ -2214,7 +2214,7 @@ function openConversation(id, trigger) {
 }
 function activityType(text) {
   if (/\b(decid|agreed|chose|approved|rejected)\w*/i.test(text)) return "Decision";
-  if (/\b(promis|owe|waiting|due|sent)\w*/i.test(text)) return "Commitment";
+  if (/\b(promis|owe|waiting|due)\w*/i.test(text)) return "Commitment";
   return "Conversation";
 }
 function activityPanel(r) {

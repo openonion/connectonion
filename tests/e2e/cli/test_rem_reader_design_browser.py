@@ -418,3 +418,22 @@ def test_written_unknown_sections_are_distinct_from_uninvestigated_pages(reader)
     page.goto(uri + '#r=people%2Fquinn-alder.md')
     assert page.locator('.missing .names').inner_text().startswith('Not investigated yet:')
     assert page.locator('.missing .lead').inner_text().lower() == 'only mapped so far'
+
+
+def test_completed_delivery_is_conversation_instead_of_a_commitment(reader):
+    page, url = reader
+    page.evaluate(r"""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      const start = r.text.indexOf('## History');
+      const end = r.text.indexOf('\n## ', start + 1);
+      r.text = r.text.slice(0, start) + '## History\n- 2026-09-25: You sent company introductions [1].\n- 2026-09-26: You promised to send the revised overview [1].\n' + r.text.slice(end);
+      KNOWN.clear(); FACTS.clear();
+    }""", isolated_context=False)
+    page.goto(url + '#r=people%2Fmara-ostrowski.md')
+    rows = page.locator('.activity-list li')
+    delivered = rows.filter(has_text='You sent company introductions')
+    promised = rows.filter(has_text='You promised to send')
+    assert delivered.get_attribute('data-type') == 'Conversation'
+    assert promised.get_attribute('data-type') == 'Commitment'
+    page.get_by_role('button', name='Commitment 1', exact=True).click()
+    assert not delivered.is_visible() and promised.is_visible()
