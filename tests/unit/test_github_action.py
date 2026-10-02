@@ -120,7 +120,7 @@ def test_review_resolves_the_canonical_skill_with_one_read_only_tool():
         loaded = agent.current_session["messages"][-1]["content"]
         assert "# PR Review Skill" in loaded
         assert "## Arguments\n12" in loaded
-        return '{"session_id":"session-1","result":"Looks good","error":null}', 0
+        return '{"session_id":"session-1","result":"Looks good","outcome":"natural","error":null,"usage":null}', 0
 
     assert run_review(12, "co/test-model", client, invoke) == (
         "Looks good",
@@ -133,9 +133,10 @@ def test_review_resolves_the_canonical_skill_with_one_read_only_tool():
     ("stdout", "returncode", "message"),
     [
         ("progress, not json", 0, "JSON result envelope"),
-        ('{"session_id":null,"result":null,"error":"provider down"}', 1, "provider down"),
-        ('{"session_id":null,"result":null,"error":null}', 0, "no review result"),
-        ('{"session_id":null,"result":"   ","error":null}', 0, "no review result"),
+        ('{"session_id":null,"result":null,"outcome":"error","error":"provider down","usage":null}', 1, "provider down"),
+        ('{"session_id":null,"result":null,"outcome":"natural","error":null,"usage":null}', 0, "no review result"),
+        ('{"session_id":null,"result":"   ","outcome":"natural","error":null,"usage":null}', 0, "no review result"),
+        ('{"session_id":null,"result":"partial","outcome":"max_iterations","error":null,"usage":null}', 0, "process exited unsuccessfully"),
     ],
 )
 def test_review_fails_closed(stdout, returncode, message):
@@ -152,7 +153,8 @@ def test_review_fails_closed(stdout, returncode, message):
     "envelope",
     [
         {"result": "missing fields"},
-        {"session_id": "s", "result": "extra field", "error": None, "trace": []},
+        {"session_id": "s", "result": "extra field", "outcome": "natural", "error": None, "usage": None, "trace": []},
+        {"session_id": "s", "result": "bad usage", "outcome": "natural", "error": None, "usage": "oops"},
     ],
 )
 def test_review_requires_the_exact_json_envelope(envelope):
@@ -166,7 +168,7 @@ def test_review_requires_the_exact_json_envelope(envelope):
 
 
 def test_review_error_is_bounded_before_it_reaches_logs():
-    envelope = json.dumps({"session_id": None, "result": None, "error": "x" * 2_000})
+    envelope = json.dumps({"session_id": None, "result": None, "outcome": "error", "error": "x" * 2_000, "usage": None})
 
     with pytest.raises(ActionError) as caught:
         run_review(

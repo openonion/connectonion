@@ -166,11 +166,15 @@ def run_review(
 
     if not isinstance(envelope, dict):
         raise ActionError("co ai returned an invalid JSON result envelope.")
-    if set(envelope) != {"session_id", "result", "error"}:
+    if set(envelope) != {"session_id", "result", "outcome", "error", "usage"}:
+        raise ActionError("co ai returned an invalid JSON result envelope.")
+    if envelope["outcome"] not in {"natural", "max_iterations", "error"}:
+        raise ActionError("co ai returned an invalid JSON result envelope.")
+    if envelope["usage"] is not None and not isinstance(envelope["usage"], dict):
         raise ActionError("co ai returned an invalid JSON result envelope.")
     error = envelope.get("error")
     result = envelope.get("result")
-    if returncode or error is not None:
+    if returncode or error is not None or envelope["outcome"] != "natural":
         detail = str(error).strip() if error else "process exited unsuccessfully"
         detail = detail[:500]
         raise ActionError(f"co ai review failed: {detail}")
