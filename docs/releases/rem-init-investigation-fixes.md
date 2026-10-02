@@ -25,8 +25,11 @@ contact phones, including older flattened Zoom invitations.
 Before declaring nothing open, person reviews check requests and promises
 across topics: an unrelated recent reply does not close an earlier request.
 Skill pages use notebook links rather than copying source-relative links.
+If a source typo would erase a lead, Insight, Current status or Open threads
+finding, promotion gives the candidate one citation repair turn. A second
+failure preserves the original page; both turns' usage is counted.
 
-These changes address #2133, #2135, #2136, #2137, #2138 and #2143. They do not establish
+These changes address #2133, #2135, #2136, #2137, #2138, #2143 and #2144. They do not establish
 that every generated insight is useful or that a reported skill outcome was
 independently verified. Live page review is still in progress; no package has
 been published for these changes.

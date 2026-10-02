@@ -741,6 +741,43 @@ def test_failed_history_repair_counts_both_model_turns(notebook, monkeypatch):
     assert caught.value.usage == {'input_tokens': 13}
 
 
+@pytest.mark.parametrize('repaired', [True, False])
+def test_mistyped_skill_citation_repairs_the_finding_once_instead_of_losing_it(notebook, monkeypatch, repaired):
+    import re
+    record = 'skills/catalog/editor.md'
+    notebook.stub_skill(record, 'editor', '/source/SKILL.md')
+    original = notebook.read(record)
+    source = 'skill-session:claude-code:21836ac9-0d71-4a16-b9e5:2026-10-01T13:01:48.392Z'
+    mistyped = source.replace('b9e5', '9b5e')
+    claim = 'The reported English check skipped the full language pass. [1]'
+    base = original.replace('Unknown — not investigated yet', 'Unknown')
+    base = base.replace('## Insight\nUnknown', '## Insight\n- ' + claim)
+    base = base.replace('## Current status\nUnknown — not verified; no run evidence reviewed',
+                        '## Current status\n' + claim)
+    prompts = []
+
+    def run_model(workdir, prompt, config, stage):
+        prompts.append(prompt)
+        candidate = Path(re.search(r'(/\S+/candidate\.md)', prompt).group(1))
+        citation = source if repaired and len(prompts) == 2 else mistyped
+        candidate.write_text(base.replace('- Skill metadata: /source/SKILL.md', '- [1] ' + citation))
+        return {'usage': {'input_tokens': 10}, 'result': 'done'}
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
+    items = [{'role': 'page', 'record': record, 'text': original, 'source': 'investigation:page'},
+             {'role': 'evidence-index', 'sources': [source + ':part-1'], 'text': 'Reported partial check.'}]
+    if repaired:
+        result = run_stage(notebook, items, default_config(), stage='investigate')
+        assert claim in notebook.read(record) and source in notebook.read(record)
+        assert result['usage'] == {'input_tokens': 20}
+    else:
+        with pytest.raises(RunFailed, match='Finding has unresolved citations') as caught:
+            run_stage(notebook, items, default_config(), stage='investigate')
+        assert notebook.read(record) == original
+        assert caught.value.usage == {'input_tokens': 20}
+    assert len(prompts) == 2 and 'copy the exact source ids' in prompts[1]
+
+
 def test_a_turn_may_ask_for_mail_searches_and_gets_one_more_turn_with_their_results(notebook, monkeypatch):
     """The model has no network (its sandbox is the defence against mail that
     carries instructions); it names searches, our code runs them read-only,

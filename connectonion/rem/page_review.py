@@ -508,6 +508,19 @@ CONTACT_LINE = re.compile(r'^- (' + '|'.join(re.escape(label) for labels in fact
                                              for label in labels) + r'):')
 
 
+def unresolved_findings(text: str, citations: list[str]) -> list[str]:
+    """Do not silently discard the findings the user came to read."""
+    bad, section, found = set(citations), 'Lead', {}
+    for line in prose(text).splitlines():
+        if line.startswith('## '):
+            section = line[3:].strip()
+        marks = set(CITATION.findall(line))
+        if section in ('Lead', 'Insight', 'Current status', 'Open threads') and marks and marks <= bad:
+            found.setdefault(section, set()).update(marks)
+    return [f'Finding has unresolved citations in {section}: ' + ', '.join(f'[{n}]' for n in sorted(marks))
+            for section, marks in found.items()]
+
+
 def drop_unresolved(record: str, text: str, original: str, items: list[dict],
                     pages=frozenset()) -> tuple[str, dict]:
     """Remove only what rests on a citation that cannot be traced, instead of refusing the page (#1974).
