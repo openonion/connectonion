@@ -13,7 +13,7 @@ The live failure in [#1628](https://github.com/openonion/connectonion/issues/162
 | Issue | Role in 1.9.0 |
 | --- | --- |
 | [#1443](https://github.com/openonion/connectonion/issues/1443) | Feature umbrella and release decision. |
-| [#1523](https://github.com/openonion/connectonion/issues/1523), [#1616](https://github.com/openonion/connectonion/issues/1616) | Lifecycle and current init contract. Where the older lifecycle sketch conflicts with the later decision, init builds the map with no model; since [#1943](https://github.com/openonion/connectonion/issues/1943) it then investigates only the owner's own page, in a terminal, after saying what it will spend. |
+| [#1523](https://github.com/openonion/connectonion/issues/1523), [#1616](https://github.com/openonion/connectonion/issues/1616) | Lifecycle and current init contract. The map phase uses no model; init then investigates the owner, recent important people, active projects and related organizations in terminals, scripts and JSON runs. About 20% of a weekly runner allowance is a soft target; the selected cohort completes unless the configured safety floor is reached. See [the updated init contract](rem-init-contract.md). |
 | [#1580](https://github.com/openonion/connectonion/issues/1580) | Product scenarios and experience criteria; not proof that every proposed interface is implemented. |
 | [#1610](https://github.com/openonion/connectonion/issues/1610) | Question-driven investigation and model routing; validate actual result quality and cost. |
 | [#1611](https://github.com/openonion/connectonion/issues/1611) | Attributed reflections, corrections, and incremental updates. |

@@ -30,10 +30,20 @@ VIEWS = ["", "#c=people", "#c=orgs", "#c=projects", "#c=skills", "#r=people%2Fma
 def reader(tmp_path, monkeypatch):
     from patchright.sync_api import sync_playwright
     from rem_reader_notebook import build
-    from connectonion.rem.reader import render
+    from connectonion.rem import reader as rem_reader
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
     path = tmp_path / "reader.html"
-    path.write_text(render(build(tmp_path / "rem", datetime.now(timezone.utc))), encoding="utf-8")
+    # Freeze the invented notebook so an age near a timezone day boundary is stable.
+    frozen = datetime(2026, 10, 1, 12, tzinfo=timezone.utc)
+    snapshot = rem_reader.snapshot
+
+    def fixed_snapshot(root):
+        data = snapshot(root)
+        data["as_of"] = frozen.isoformat()
+        return data
+
+    monkeypatch.setattr(rem_reader, "snapshot", fixed_snapshot)
+    path.write_text(rem_reader.render(build(tmp_path / "rem", frozen)), encoding="utf-8")
     with sync_playwright() as api:
         browser = api.chromium.launch(channel="chrome", headless=True)
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
@@ -42,15 +52,30 @@ def reader(tmp_path, monkeypatch):
         page.on("request", lambda request: requests.append(request.url) if request.url.startswith("http") else None)
         page.route("http*://**/*", lambda route: route.abort())
         page.goto(path.as_uri())
-        page.get_by_role("heading", name="What your assistant knows").wait_for()
+        page.get_by_role("heading", name="What REM carried forward").wait_for()
         yield page, path.as_uri()
         browser.close()
         assert not errors, errors
         assert not requests, requests
 
 
-def test_home_opens_on_the_night_and_what_is_owed(reader):
+def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     page, _ = reader
+    memories = page.locator(".memory-card")
+    assert memories.count() >= 3
+    assert "Mara Ostrowski" in memories.all_inner_texts()[0]
+    assert "pilot" in " ".join(memories.all_inner_texts()).lower()
+    assert page.locator(".memory-connection a").count() >= 2
+    recall = page.locator(".recall")
+    assert recall.count() == 1
+    assert not recall.locator(".recall-answer").is_visible()
+    recall.get_by_role("button", name="Reveal the context").focus()
+    page.keyboard.press("Enter")
+    assert recall.locator(".recall-answer").is_visible()
+    assert recall.get_by_role("button", name="Hide the context").get_attribute("aria-expanded") == "true"
+    assert recall.get_by_role("button", name="Hide the context").get_attribute("aria-controls") == "recall-answer"
+    assert page.locator(".night-details").count() == 1
+    page.locator(".night-details summary").click()
     night = page.locator(".night")
     assert "46 items" in night.inner_text() and "4 pages" in night.inner_text()
     assert night.locator(".hypno .dot.woke").count() == 1  # the night that stopped early
@@ -102,6 +127,7 @@ def test_a_person_opens_on_a_fact_card_with_cited_values(reader):
     # Under the title: what you owe and for how long.
     lead = page.locator(".leadrow .lead-open")
     assert lead.locator(".dir").inner_text().upper() == "YOU OWE" and lead.locator(".age").inner_text() == "9 days"
+    page.locator(".deep-note > summary").click()
     card = page.locator(".factlist")
     value = lambda label: card.locator(f"dt:text-is('{label}') + dd")  # noqa: E731
     assert "Head of Partnerships" in value("Role").inner_text()
@@ -135,8 +161,45 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
     page.goto(page.url.split("#")[0] + "#r=people%2Fmara-ostrowski.md")
     main = page.locator("#main").inner_text()
     assert "the user" not in main.lower() and "you have not signed it" in main
+    page.locator(".deep-note > summary").click()
     assert page.get_by_role("heading", name="How you write to them").count() == 1
     assert page.evaluate("REM.records.find(r => r.path === 'people/mara-ostrowski.md').text.includes('the user has not signed it')", isolated_context=False)
+
+
+def test_focus_connects_project_people_org_and_archived_conversation(reader):
+    page, uri = reader
+    page.goto(uri + "#r=projects%2Fharbour.md")
+    connected = page.locator(".related-records .relation-card")
+    assert {name.strip() for name in connected.locator("strong").all_inner_texts()} >= {
+        "Mara Ostrowski", "Fernhill Labs"}
+    assert page.get_by_role("heading", name="What this is").is_visible()
+    assert page.get_by_role("heading", name="A recorded decision").is_visible()
+    page.get_by_role("link", name="View all decisions").click()
+    assert page.locator(".deep-note").get_attribute("open") is not None
+    page.goto(uri + "#r=projects%2Fharbour.md")
+    assert page.locator(".deep-note").get_attribute("open") is None
+    page.goto(uri + "#r=people%2Fmara-ostrowski.md")
+    page.locator(".conversation-open").first.click()
+    dialog = page.locator("#conversation-dialog")
+    assert dialog.is_visible() and "usage export" in dialog.inner_text()
+    dialog.get_by_role("button", name="Close conversation").click()
+    assert page.locator(".conversation-open").first.evaluate("e => document.activeElement === e")
+    page.locator(".deep-note > summary").click()
+    page.locator("a.cite[href*='src-5']").first.click()
+    evidence = page.locator("#evidence-dialog")
+    assert evidence.is_visible() and "I will send the usage export" in evidence.inner_text()
+
+
+def test_changes_and_open_threads_are_actionable_destinations(reader):
+    page, uri = reader
+    page.goto(uri + "#view=changes")
+    assert "Head of Partnerships" in page.locator(".claim-card").first.inner_text()
+    page.locator(".claim-card a").first.click()
+    page.get_by_role("heading", name="Mara Ostrowski", exact=True).wait_for()
+    page.goto(uri + "#view=open")
+    assert page.get_by_role("heading", name="Open threads").is_visible()
+    assert page.locator(".task-band .thread").count() >= 2
+    assert page.locator(".task-band a[href*='people']").count() >= 1
 
 
 @pytest.mark.parametrize("theme", ["light", "dark"])

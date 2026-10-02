@@ -400,7 +400,85 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a9
+## Current Version: 1.9.0a15
+
+1.9.0a15 keeps REM's first-run project count consistent with the map shown
+before model work. Session folders discovered afterward remain candidates;
+only mapped projects enter the first-run writing queue. The larger project
+eligibility and overnight-memory issues remain open. Stable remains 1.8.10.
+See [1.9.0a15 notes](docs/releases/1.9.0a15.md).
+
+- 1.9.0a15 (#2079; first-run project map consistency).
+
+## Previous preview: 1.9.0a14
+
+1.9.0a14 makes REM's first run investigate the owner's page and a selected
+recent cohort of people, projects and related organizations by default. The
+20% weekly allowance target is advisory; the selected investigation can finish
+beyond it, subject to the configured safety floor. It carries parallel-run
+reliability fixes, two-year person searches and privacy labels in the reader,
+alongside the connected memory reader from 1.9.0a13.
+The first-run estimate now counts both owner turns and parallel tail latency.
+Stable remains 1.8.10. See [1.9.0a14 notes](docs/releases/1.9.0a14.md).
+
+- 1.9.0a14 (#1943, #1972, #2008, #2040; first-run investigation and privacy labels).
+
+## Previous preview: 1.9.0a13
+
+1.9.0a13 turns the REM snapshot into a connected, task-first reader: compact
+record views, source-aware links, open threads, archived source and conversation
+drilldown, and cited field changes kept distinct from page rewrites. The
+read-only snapshot remains an opt-in preview; stable is 1.8.10. See
+[1.9.0a13 notes](docs/releases/1.9.0a13.md).
+
+- 1.9.0a13 (#2060, #2065, #2066, #2096, #2098, #2103–#2107; connected reader preview).
+
+## Earlier preview: 1.9.0a12
+
+1.9.0a12 repairs local REM snapshot opening on Windows. The reader writes a
+private temporary file and replaces the predictable snapshot name without
+opening a planted link's target. Its Windows CI checks `co rem open` twice from
+an installed wheel outside the source checkout. It carries the morning reader
+introduced in 1.9.0a11. Stable remains 1.8.10. See
+[1.9.0a12 notes](docs/releases/1.9.0a12.md).
+
+- 1.9.0a12 (#1941, #2101; Windows reader snapshot and installed-wheel gate).
+
+## Previous preview: 1.9.0a11
+
+1.9.0a11 makes the overnight memory the first screen of the REM reader. It
+shows current context from pages touched by the latest pass, an explicit
+cross-page link, and a recall prompt from an older page. Open threads remain
+visible while run counts move into a disclosure. The ranked audit records ten
+product and design problems; this preview is a first slice, not their closure.
+The reader remains an offline, read-only snapshot, and a changed page is not
+presented as a newly discovered fact. Stable is 1.8.10. See
+[1.9.0a11 notes](docs/releases/1.9.0a11.md).
+
+- 1.9.0a11 (#2065, #2066, #2095, #2096, #2097, #2098; product audit).
+
+## Previous preview: 1.9.0a10
+
+1.9.0a10 is the first published preview of the redesigned REM reader. It
+includes the a9 reader, terminal and SQLite work, plus cited Facts and Insight
+written by investigation (#2068), the owner's identity and project fixes
+(#2078, #2079), and the 1.8.10 features forward-ported to main (#2086).
+The REM runner now loads each stage Skill once rather than repeating its core
+inside the task arguments (#1972). Desktop and 390px phone screenshots of the
+reader were reviewed. Stable is 1.8.10. See
+[1.9.0a10 notes](docs/releases/1.9.0a10.md).
+
+- 1.9.0a10 (#1972, #2068, #2078, #2079, #2086; includes a9's unpublished changes.)
+
+## Stable line: 1.8.10
+
+1.8.10 is the published stable patch carrying `co linear`, `co canny`, Slack
+reads, and `environment.setting()` from the reviewed 1.8 work (#2087, #2088).
+See the [v1.8.10 GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.8.10).
+
+- 1.8.10 (#2087, #2088).
+
+## Unpublished preview tag: 1.9.0a9
 
 1.9.0a9 is the redesign the owner asked for: the reader opens on the night
 (what the last pass read and rewrote) and on what is owed; People, Orgs and

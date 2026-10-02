@@ -14,8 +14,6 @@ Why these rules: docs/rem-skills/rem-investigate.md
 - Every handle you were given, wrong spellings too, goes in `Also known as:`;
   add the ones you discover (signature, second address, other script). Company
   names go in their own field.
-- A page titled by a handle gets the person's name once known (`# vern.chan` →
-  `# Vern Chan`, handle kept in aliases).
 - The subject is the owner of a coverage mailbox → the user's own page: follow
   `rem-owner-page`.
 - **A role in a list the user writes about someone else is that person's, not

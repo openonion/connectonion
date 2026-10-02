@@ -1,5 +1,11 @@
 # co rem 1.8.7 requirement and verification map
 
+> Historical checklist for the 1.8.7 map phase. As of the 1.9.0a13 preview,
+> `co rem init` runs model investigations after mapping by default. It selects
+> recent important people, active projects, and related organizations, with
+> roughly 20% of a weekly runner allowance as a planning target rather than a
+> hard stop. See [the current init contract](rem-init-contract.md).
+
 Main review: #1454. Lifecycle: #1523. Product discussion: #1580.
 Reader fixes from #1587 are included in the main PR. No release or merge is performed.
 

@@ -97,9 +97,9 @@ def test_the_weekly_budget_already_spent_stops_a_category_run(tmp_path, monkeypa
     week = {"window_minutes": WEEK, "resets_at": resets}
     write_json(state_path(root, "runs/run_earlier.json"), {
         "id": "run_earlier", "started_at": "2099-01-01T00:00:00+00:00", "phase": "investigate",
-        "quota": {"before": {**week, "used_percent": 10}, "after": {**week, "used_percent": 20}}})
+        "quota": {"before": {**week, "used_percent": 10}, "after": {**week, "used_percent": 30}}})
     result = invoke(root, "--json", "investigate", "people", "--days", "5")
-    assert state["done"] == []
+    assert state["done"] == []  # 20 points spent: the default weekly budget (raised from 10, 2026-10-01)
     assert "weekly budget" in json.loads(result.stdout)["data"]["stopped"]
 
 

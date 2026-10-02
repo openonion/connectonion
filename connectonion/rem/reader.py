@@ -105,8 +105,14 @@ def snapshot(root: Path) -> dict:
         first["installations"] = [{"path": r["path"], "source": r["installation"]} for r in group]
         for other in group[1:]:
             other["catalog_parent"] = first["path"]
+    from .reader_model import cited_context, cited_conversations, relationships
+    links = relationships(records)
+    for record in records:
+        record["relations"] = links.get(record["path"], [])
+    contexts = cited_context(root, records)
     return {"as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "categories": list(CATEGORIES), "records": records,
+            "source_context": contexts, "conversations": cited_conversations(root, contexts),
             "status": status(root), "subscriptions": subscriptions(root),
             "logs": run_logs(root)[:20], "reviews": listing(root), "counts": counts(root, found),
             "owner": owner_record(root)}
@@ -139,11 +145,24 @@ def reader_path(root: Path) -> Path:
 def write_reader(root: Path) -> Path:
     page = render(root)
     path = reader_path(root)
-    # The name is predictable; refuse to write through a link someone planted there.
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as output:
-        output.write(page)
-    os.chmod(path, 0o600)
+    # The public name is predictable. Write a private random file, then replace
+    # the directory entry atomically so a planted link can never be truncated.
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", prefix="co-rem-", suffix=".html",
+            dir=path.parent, delete=False,
+        ) as output:
+            temporary = Path(output.name)
+            output.write(page)
+        if path.is_symlink():
+            raise OSError(f"refusing to replace a planted reader link: {path}")
+        if os.name != "nt":
+            os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     return path
 
 

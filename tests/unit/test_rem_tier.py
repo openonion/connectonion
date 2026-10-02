@@ -63,7 +63,7 @@ def test_a_model_that_cannot_drive_tools_is_the_summary_tier(model):
     result = tier.check(default_config())
     assert result["agent"]["passed"] is False
     assert result["tier"] == "summary" and result["summary"]["passed"]
-    assert len(calls) == 2
+    assert len(calls) == 3  # agent turn, its one more turn for the missing candidate, summary turn
 
 
 def test_the_fixture_page_is_filled_in_both_tiers(model):

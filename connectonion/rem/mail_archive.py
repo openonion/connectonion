@@ -166,6 +166,7 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seco
                         if error.get("source") in ("gmail", "outlook")]
     result["phase"] = ("partial" if result["failed"] or mail_scan_errors else
                        "unavailable" if not clients else "complete")
+    result["listed_all"] = bool(clients) and not mail_scan_errors
     result["finished"] = result["updated"] = now().isoformat()
     write_json(state, result)
     summary = state_path(root, "mail/summary.md")

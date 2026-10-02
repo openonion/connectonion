@@ -1,29 +1,35 @@
-"""What the first run will write and spend, said once before anything is spent (#2008).
+"""Estimate the first run's selected recent investigations before they start (#2008).
 
 1.9.0a5 announced "~90k billed input per project page, about a minute" and
 measured 614k and 922k, four to five minutes each, with every project active
-in the window queued and no total. The first run is now capped (FIRST_PEOPLE,
-FIRST_PROJECTS; init's --first-people / --first-projects raise it), and its
+in the window queued and no total. The first run now selects recent people,
+projects and their organizations (init's --first-* flags cap each kind), and its
 cost is one sum stated before the first page: pages x the median of this
 notebook's own completed runs of that kind, or, before there are any, the
 defaults below. Either way it is an estimate, and the line says so.
 """
 
+from itertools import zip_longest
+from math import ceil
 from statistics import median
 
-FIRST_PEOPLE = 3
-FIRST_PROJECTS = 3
+FIRST_PEOPLE = None    # None: every recent page of the kind; init's flags cap it
+FIRST_PROJECTS = None
+FIRST_ORGS = None
+WORKERS = 12           # pages investigated at once after the owner's page (2026-10-01)
 
-# Measured on the owner's real notebook, 2026-10-01 (#2008): your page 678k
-# billed input in 6m17s; project pages 614k and 922k, 4-5 minutes each;
-# people 150k-700k (one stopped by hand at 1.93M). The middle of each range.
-DEFAULTS = {"owner": {"input_tokens": 680_000, "seconds": 380},
-            "person": {"input_tokens": 425_000, "seconds": 300},
-            "project": {"input_tokens": 750_000, "seconds": 270}}
+# Real 7-day first run on 2026-10-02: 27 selected pages, 7.66M billed input,
+# ~13 minutes including mapping. Medians below include two-year person searches.
+# An owner's first page takes two model turns: quick, then full. Notebook-local
+# completed runs replace these defaults as soon as they exist.
+DEFAULTS = {"owner": {"input_tokens": 768_000, "seconds": 273},
+            "person": {"input_tokens": 304_000, "seconds": 130},
+            "project": {"input_tokens": 69_000, "seconds": 55},
+            "org": {"input_tokens": 129_000, "seconds": 117}}
 
 # Which run records are which kind of page: `_logged`'s phase, and the record's folder.
 _PHASES = {"owner": ("investigate me", ""), "person": ("investigate", "people/"),
-           "project": ("projects write", "projects/")}
+           "project": ("projects write", "projects/"), "org": ("investigate", "orgs/")}
 
 
 def per_page(runs: list[dict], kind: str) -> dict:
@@ -45,13 +51,28 @@ def per_page(runs: list[dict], kind: str) -> dict:
             "measured": len(done)}
 
 
-def plan(runs: list[dict], *, owner: bool, people: int, projects: int) -> dict:
-    """The whole first run's pages, billed input and minutes, from `per_page`."""
-    counts = {"owner": int(owner), "person": people, "project": projects}
+def plan(runs: list[dict], *, owner: bool, people: int, projects: int, orgs: int = 0,
+         workers: int = WORKERS) -> dict:
+    """Selected pages, billed input and wall-clock minutes from observed medians.
+
+    The owner's quick turn runs alone, then its full turn shares workers with
+    interleaved people, projects and organizations. Simulate that queue; dividing
+    total work by worker count misses the last slow page in a batch.
+    """
+    counts = {"owner": int(owner), "person": people, "project": projects, "org": orgs}
     rates = {kind: per_page(runs, kind) for kind in counts}
+    queue = ([rates["owner"]["seconds"]] if owner else []) + [
+        seconds for group in zip_longest(*(
+            [rates[kind]["seconds"]] * counts[kind] for kind in ("person", "project", "org")))
+        for seconds in group if seconds is not None]
+    lanes = [0] * max(workers, 1)
+    for seconds in queue:
+        lane = min(range(len(lanes)), key=lanes.__getitem__)
+        lanes[lane] += seconds
     return {"pages": sum(counts.values()), "counts": counts,
-            "input_tokens": sum(counts[k] * rates[k]["input_tokens"] for k in counts),
-            "minutes": round(sum(counts[k] * rates[k]["seconds"] for k in counts) / 60),
+            "input_tokens": (2 * counts["owner"] * rates["owner"]["input_tokens"]
+                             + sum(counts[k] * rates[k]["input_tokens"] for k in ("person", "project", "org"))),
+            "minutes": ceil((counts["owner"] * rates["owner"]["seconds"] + max(lanes)) / 60),
             "measured": {k: rates[k]["measured"] for k in counts if counts[k]}}
 
 
@@ -62,7 +83,8 @@ def tokens(number: int) -> str:
 def _pages(counts: dict) -> str:
     parts = (["your page"] if counts["owner"] else []) + [
         f"{counts[kind]} {word if counts[kind] == 1 else plural}"
-        for kind, word, plural in (("person", "person", "people"), ("project", "project", "projects"))
+        for kind, word, plural in (("person", "person", "people"), ("project", "project", "projects"),
+                                   ("org", "organisation", "organisations"))
         if counts[kind]]
     return ", ".join(parts[:-1]) + " and " + parts[-1] if len(parts) > 1 else parts[0] if parts else "nothing"
 

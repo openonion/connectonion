@@ -44,9 +44,9 @@ Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, 
 ## co rem init
 
 ```
-Build the notebook, then write your own page. One command, two parts.
+Build the notebook and investigate what matters now. One command.
 
-First a script, no model: a page for each person you write to, each organization,
+First the map is made without a model: a page for each person you write to, each organization,
 each coding project and each installed Skill, plus your own page, titled with your
 name and filled with who you write to most and where you work. init prints that
 page when the map is done. It lists 90 days of mail headers, the preview line your
@@ -54,18 +54,22 @@ provider lists with each message (to name people by your greeting), saved
 contacts, and session metadata, then saves a private copy of each listed message
 body, once, so investigating a person later reads it from disk.
 
-Then, in a terminal, it writes your own page by itself from everything you sent
-and your coding sessions of the last 30 days (co rem investigate me), then the 3
-people you wrote to most in the last 14 days, reading the run's --days of their
-mail (co rem investigate people), then your 3 most recently active projects from
-the messages you typed in their sessions. Before the first page it says one
-total: about how many pages, ~how many billed input tokens on your plan and ~how
-many minutes, an estimate from the median of this notebook's own runs (before
-there are any: 680k and ~6 minutes for your page, 425k and ~5 minutes a person,
-750k and ~4.5 minutes a project, measured on a real notebook). It names the
-runner and model, and stops at 5 points of the Codex week, or at the weekly
-budget or floor; Ctrl-C stops it, says which pages were written, and keeps the
-map and every page. It is skipped, with the reason, when the runner is missing
+Then it writes your own page by itself from everything you sent
+and your coding sessions of the last 30 days (co rem investigate me): a quick
+first pass in about 4 minutes, then the whole page alongside the rest. It also
+investigates people active in the last 14 days (each from up to two years of
+their mail), recently active projects, and organizations linked to those people,
+12 pages at a time. The result should let you recognize useful relationships
+and work immediately, with evidence cited on each page.
+--first-people, --first-projects and --first-orgs cap a kind (0 for none).
+Before the first page it says one total: about how many pages, ~how many billed
+input tokens on your plan and ~how many minutes, an estimate from the median of
+this notebook's own runs (before there are any, measured defaults). It names the
+runner and model. Around 20% of a weekly runner allowance is a target,
+not a hard limit: the selected investigation finishes even if it uses more.
+The configured weekly safety floor still stops new pages when measurable.
+Ctrl-C stops it, says which pages were written, and
+keeps the map and every page. It is skipped, with the reason, when the runner is missing
 or signed out, when no mailbox gave an address of yours, or when your page was
 already written. More people: co rem investigate people. More projects: co rem
 projects write.
@@ -79,10 +83,11 @@ Inputs:   Connected mailboxes (co auth google, co auth microsoft) and local Code
           Claude Code sessions. --mine adds addresses that are yours (commas, or
           repeat it). Addresses that look like yours are listed on one line, with
           one command that confirms the ones you keep.
-Options:  --investigate     Write your page even without a terminal (scripts, --json).
+Options:  --investigate     Explicitly request the default investigation.
           --no-investigate  Build the map only.
-          --first-people N    People the first run writes (default 3; 0 for none).
-          --first-projects N  Projects the first run writes (default 3; 0 for none).
+          --first-people N    Cap recent people (default all selected; 0 for none).
+          --first-projects N  Cap recent projects (default all selected; 0 for none).
+          --first-orgs N     Cap related organizations (default all selected; 0 for none).
 Output:   Your page's facts and where it is; one progress line per stage on stderr
           (every step in .state/init-progress.log); pages under ~/.co/rem (or
           --root); private files under .state/: source-inventory.md and .jsonl
@@ -94,10 +99,10 @@ Output:   Your page's facts and where it is; one progress line per stage on stde
 Effects:  Writes pages and private files (owner-only). Reads mail bodies unless
           --no-mail-archive. Mailboxes it read are subscribed for the daily round;
           nothing is read in the background until co rem start is approved. The
-          map costs nothing; your page is one model turn, each recent project one
-          more. No schedule.
+          map costs nothing; the subsequent investigation uses the configured
+          model for the selected people, projects and organizations. No schedule.
 Takes:    About 10 minutes to map 90 days of two mailboxes; saving bodies takes
-          longer; your page about 10 more, then about a minute per recent project.
+          longer; investigation time depends on the selected pages and runner.
           An interrupted run resumes where it stopped.
 
 Next:     co rem open   (read your page), then co rem start (keep it current)
@@ -167,7 +172,7 @@ page unmarked.
 
 Budget: with the Codex runner every investigation records your Codex week before
 and after, and counts toward investigation's weekly budget (limits.
-investigation_quota_points, default 10). A CATEGORY run stops starting pages when
+investigation_quota_points, default 20). A CATEGORY run stops starting pages when
 that budget is spent, when --budget is spent, or once the week is at
 limits.quota_floor_percent (default 70%), and says which. The page in flight
 finishes. Without a meter (another runner, Codex signed out) --limit is the bound.
@@ -179,10 +184,10 @@ Effects:  Reads message bodies and files. Calls the model configured in co rem c
           run one after another, not in parallel. The mailbox servers throttle
           parallel reads.
 
-For the model writing a page: the Skill covers the common case. The material
-is the only source; a field it does not answer stays Unknown. Cite the source
-id in each evidence entry's heading. Offline runs use no web and no other
-command.
+For the model writing a page: the Skill covers the common case. Use supplied
+material and, for projects, bounded files under the page's Paths. Unsupported
+fields stay Unknown. Cite source IDs from evidence headings. Runs are offline;
+the runner may offer one read-only mail follow-up outside a quick first pass.
 Requires: co rem init.
 Output:   The updated pages, and one line per page: accepted, refused (and why), or skipped.
 
