@@ -175,12 +175,10 @@ def open_reader(root: Path, *, launch: bool = True) -> Path:
 
 # The live view: O Chat reads the default notebook from the owner's `co ai` Host
 # over OIP (`WIKI_READ`, #1637). The route and whether it exists live here only.
-LIVE_WIKI_URL = "https://chat.openonion.ai/{address}/wiki"
+LIVE_REM_URL = "https://chat.openonion.ai/{address}/rem"
 
-# Does O Chat serve LIVE_WIKI_URL? Yes since openonion/oo-chat#246 was deployed
-# (2026-09-27); before that /<address>/wiki was read as a chat session named
-# "rem", which is how `co rem open` came to open a page that never loads (#1828).
-LIVE_WIKI_SERVED = True
+# The /rem route is paired with O Chat; old /wiki links redirect there.
+LIVE_REM_SERVED = True
 
 # Is the live view what a bare `co rem open` opens? No, by the owner's decision
 # (2026-09-27, #1828): opening locally is the default and works offline; the
@@ -237,11 +235,11 @@ def live_or_snapshot(root: Path, address, *, live: bool, launch: bool) -> dict:
         return open_snapshot(root, launch=launch, live=(
             f"your Host {address[:10]}... is not online, so the live view would not load. "
             "Start it with `co ai`, then run `co rem open --live` again"))
-    url = LIVE_WIKI_URL.format(address=address)
+    url = LIVE_REM_URL.format(address=address)
     if launch:
         webbrowser.open(url)
     result = {"page": url, "link": url, "launched": launch}
-    if not LIVE_WIKI_SERVED:
+    if not LIVE_REM_SERVED:
         result["warning"] = ("O Chat does not serve this route yet (openonion/oo-chat#246); "
                              "until it is deployed the page opens as an empty chat")
     return result

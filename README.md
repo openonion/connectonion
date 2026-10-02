@@ -32,7 +32,7 @@ no MCP server, tool schema or skill file to set up.
 <p><b>Identity &amp; memory</b><br>
 <a href="docs/cli/init.md"><img src="https://www.connectonion.com/logos/address.svg?v=3" width="80" height="80" alt="0x address" title="0x address · co init"></a>
 <a href="docs/cli/email.md"><img src="https://www.connectonion.com/logos/mailbox.svg?v=3" width="80" height="80" alt="Agent mailbox" title="Agent mailbox · co email"></a>
-<a href="docs/cli/rem.md"><img src="https://www.connectonion.com/logos/memory.svg?v=3" width="80" height="80" alt="Memory" title="Memory · co rem"></a>
+<a href="docs/cli/rem.md"><img src="https://www.connectonion.com/logos/memory.svg?v=3" width="80" height="80" alt="co rem" title="co rem · co rem"></a>
 <a href="docs/cli/env.md"><img src="https://www.connectonion.com/logos/secrets.svg?v=3" width="80" height="80" alt="Secrets" title="Secrets · co env"></a>
 <a href="docs/cli/README.md"><img src="https://www.connectonion.com/logos/credits.svg?v=3" width="80" height="80" alt="Credits" title="Credits · co transfer"></a></p>
 
@@ -165,6 +165,29 @@ co commands                # everything else; add --help to any
 
 The [Quick start guide](docs/quickstart.md) covers Google, the browser, chat
 apps and project settings.
+
+## co rem — your agent's memory
+
+Like REM sleep turns a day's experience into memory, **co rem** turns your
+mail and coding sessions into local pages about the people, projects and
+skills in your work. The first run builds your map and investigates recent
+work; after you approve a schedule, it keeps that context current overnight.
+Open it in the morning to see cited facts, decisions and open threads.
+
+Available in the opt-in **1.9.0 preview**:
+
+```bash
+pip install --upgrade 'connectonion==1.9.0a19'
+co rem init                # build your map and first pages
+co rem open                # read the local notebook
+co rem start               # approve a daily schedule (macOS)
+```
+
+The notebook stays in `~/.co/rem`. `co rem open --live` reads it from your
+online `co ai` Host at `https://chat.openonion.ai/<address>/rem`, for the Host
+owner only. [Explore co rem](https://docs.connectonion.com/rem),
+[try the sample reader](https://docs.connectonion.com/rem/demo), or read the
+[CLI guide](docs/cli/rem.md) for source controls, runner costs and limits.
 
 ## See it work
 
