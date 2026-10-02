@@ -61,12 +61,15 @@ sections are usually:
 
 - `What it is`: one plain sentence about the project as a whole, using its own
   README or manifest when supplied, not the most-discussed side thread.
-- `Insight`: compare at least two different source items when possible. Say
-  what the owner may have missed: a request still open despite a newer commit,
-  a changed choice across dates, or a current version that lags the requested
-  goal. The reader should learn something beyond the last message. If the
-  supplied evidence cannot verify a change, say `- Unknown` rather than turn
-  a request into a claimed outcome.
+- `Insight`: read the repository packet first, then compare at least two
+  different source items when possible. Say what the owner may have missed:
+  a local change alongside a separate unverified request, a changed choice
+  across dates, or a current version that lags a stated goal. Put the
+  consequence or next verification in the first bullet. A sequence of dated
+  requests plus a separate stale-checkout warning is still a timeline, not an
+  insight. If the supplied evidence cannot verify a change, name the exact
+  decision that still needs verification; do not turn a request into a claimed
+  outcome or infer absence of work from commit subjects alone.
 - `Where it stands`: 3–5 bullets about now, not history: the date of the latest
   message (the last activity), the phase and what is being worked on, and the
   latest result the user reported, with its date. A project quiet for weeks

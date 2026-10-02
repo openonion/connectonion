@@ -62,16 +62,14 @@ whose whole body would be `Unknown`. Keep the following order for those shown:
   `Unknown`: `Repository`, `Stack`, `Status`, `People`, `Organisation`,
   `Started`, `Last activity`. Several values `; ` between, each
   `value (qualifier) [n]`; dates `YYYY-MM-DD`; every value cited.
-- `Insight`: 2–4 cited bullets of at most 30 words, each starting `Now:`, `Changed:`, `At stake:`
-  or `Pattern:`. The first is the resume card: where the user stopped, what is
-  next, what blocks it (`Now: stopped 2026-09-28 mid Outlook import; next the
-  attachment retry; blocked on Graph 500s [4][6]`). At least one later bullet
-  should join two independent observations when the material supports it:
-  a request against current checkout evidence, two dated choices, or a repeated
-  failure and its consequence. Cite both. A single request paraphrased as
-  `Changed:` is not a change. A commit is evidence of a local commit, not of
-  passing tests or a deployment. Never generic ("an important initiative");
-  thin material: `- Unknown`.
+- `Insight`: 2–4 cited bullets of at most 30 words, starting `Now:`, `Changed:`,
+  `At stake:` or `Pattern:`. Lead with a verified state, mismatch or decision
+  that changes the next step, not a recap of the last request. Read the local
+  repository packet first. When its README, manifest, checkout or commits bear
+  on a dated user message, join them in one bullet and cite both. If unrelated,
+  name the precise unknown and next verification; do not infer no fix from
+  commit subjects. `Changed:` needs a verified change. A local commit does not
+  prove tests or deployment. Thin material: `- Unknown`.
 
 **The opening: one sentence, one diagram, one entry point**
 

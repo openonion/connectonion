@@ -58,6 +58,18 @@ User-only coding transcripts record what the user wanted. The separately
 cited repository packet can establish project identity, manifest version and
 local commits. Neither source alone proves a public release or passing test.
 
+## An insight must change the next decision
+
+An isolated real five-day candidate run produced a shorter, cited project
+page, but its lead still restated the owner's latest request. A second bullet
+listed another request and a third warned that the checkout was stale. The
+packet had repository evidence, yet none of those bullets joined it to the
+owner's question. The page was accurate but offered no new decision. The writer
+now reads the repository packet first and uses a relevant cross-source
+comparison in the lead when evidence permits one. If the sources do not
+establish an outcome, it says what to verify instead of implying success or
+failure from a commit title.
+
 ## Mapped `Paths` fields
 
 `Sessions`, `First seen` and `Last seen` are window-scoped counts and dates

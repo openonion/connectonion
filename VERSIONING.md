@@ -404,7 +404,7 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 
 1.9.0a17 gives REM's first written project page bounded, separately citable
 local repository evidence and removes unsupported optional fields. A private
-five-day candidate init wrote one project page with 12 headings, no `Unknown`
+five-day candidate init wrote one project page with 14 headings, one `Unknown`
 fields and three cited Insight bullets. This is a project-page quality slice;
 cross-page links and owner-page history remain open. Stable remains 1.8.10.
 See [1.9.0a17 notes](docs/releases/1.9.0a17.md).
