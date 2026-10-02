@@ -131,6 +131,15 @@ visible. Concrete Unknown explanations also remain readable in the full note
 without becoming current debts. These are manual corrections and candidate
 input/reader fixes; they do not prove automatic reconciliation.
 
+Retaining mail for the reader exposed one more boundary: the next investigation
+still selected only initial-window person references. A later reply could open
+from a citation without reaching the writer. The candidate now shares metadata
+selection and uses exact saved participants plus labelled provider-thread context.
+The initial coverage interval stays unchanged. Two offline contact packets grew
+from 17 and six messages to 39 and 29, but the pages themselves did not change.
+One still carries an older contact date. More available evidence is a necessary
+input to reconciliation; it is not proof that reconciliation happened.
+
 The real page was manually corrected and independently reviewed. The related
 unit and browser checks pass. A live automatic first write and all-page semantic
 review remain unverified. The next question is whether the writer uses this access
@@ -151,3 +160,6 @@ records the isolated recovery, source-dialog states and remaining excerpt limits
 The [professional-contact review](../../design-evidence/rem-professional-contact-review-2026-10-03/REVIEW.md)
 records later replies, distinct forms, annotation extraction and selected actual
 desktop/phone states, with the remaining observed-mail gather gap.
+The [observed-mail review](../../design-evidence/rem-observed-person-gather-review-2026-10-03/REVIEW.md)
+records the candidate gather correction, unchanged initial coverage and pages,
+and remaining automatic reconciliation and broader review limits.

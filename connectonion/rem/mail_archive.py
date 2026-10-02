@@ -8,7 +8,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .files import RemError, atomic_write, maintenance_lock, read_json, state_path, write_json
+from .files import RemError, atomic_write, is_address, maintenance_lock, read_json, state_path, write_json
 from .mail import _address, _addresses, on_domains, participants, RELATED_ORG_SCOPE
 
 
@@ -234,6 +234,8 @@ def _material_item(snapshot: dict, own: set) -> dict:
             "participants": {"from": sender, "to": snapshot.get("to") or [], "cc": snapshot.get("cc") or []},
             "subject": snapshot.get("subject", ""), "source": f"{provider}:{_key(message_id)[:12]}",
             "_mail_id": message_id,
+            **{key: snapshot[key] for key in ("input_scope", "retained_at", "body_format") if snapshot.get(key)},
+            **({"captured_at": snapshot["fetched_at"]} if snapshot.get("fetched_at") else {}),
             **({"relationship_scope": snapshot["relationship_scope"]} if snapshot.get("relationship_scope") else {})}
 
 
@@ -251,34 +253,65 @@ def _material(manifest: dict, snapshots: list[dict]) -> tuple[dict[str, list[dic
 READABLE = ("complete", "partial", "running", "paused")
 
 
-def _thread_context(root: Path, refs: list[dict]) -> list[dict]:
+def mail_metadata(root: Path) -> list[dict]:
+    """Retained observations plus initial metadata, with the initial row taking precedence."""
+    found = {}
+    for path in sorted(state_path(root, "mail/observed-metadata").glob("*/*.json")):
+        row = read_json(state_path(root, str(path.relative_to(root / ".state"))), {})
+        if row.get("type") == "mail" and row.get("id") and row.get("source") in ("gmail", "outlook"):
+            found[(row["source"], row["id"])] = row
     inventory = state_path(root, "source-inventory.jsonl")
-    if not inventory.is_file():
-        return []
-    rows = [json.loads(line) for line in inventory.read_text(encoding="utf-8").splitlines() if line]
+    for line in inventory.read_text(encoding="utf-8").splitlines() if inventory.is_file() else []:
+        row = json.loads(line) if line.strip() else {}
+        if row.get("type") == "mail" and row.get("id") and row.get("source") in ("gmail", "outlook"):
+            found[(row["source"], row["id"])] = row
+    return list(found.values())
+
+
+def _saved_ref(root: Path, row: dict, *, addresses: set | None = None) -> dict | None:
+    provider, native = row["source"], row["id"]
+    path = message_path(root, provider, native)
+    if not path.is_file():
+        path = observed_message_path(root, provider, native)
+    if not path.is_file():
+        return None
+    saved = read_json(path, {})
+    if saved.get("provider") != provider or saved.get("id") != native:
+        raise RemError("Retained mail identity does not match its metadata")
+    if addresses is not None and not addresses.intersection(participants(saved)):
+        return None
+    return {"provider": provider, "id": native, "message": str(path.relative_to(root))}
+
+
+def _thread_context(root: Path, refs: list[dict], rows: list[dict]) -> list[dict]:
     direct = {(ref["provider"], ref["id"]) for ref in refs}
-    threads = {(row["source"], row["thread"]) for row in rows if row.get("type") == "mail"
-               and row.get("thread") and (row["source"], row.get("id")) in direct}
-    return [{"provider": row["source"], "id": row["id"],
-             "message": str(message_path(root, row["source"], row["id"]).relative_to(root)),
+    threads = {(row["source"], row["thread"]) for row in rows
+               if row.get("thread") and (row["source"], row["id"]) in direct}
+    return [{**ref,
              "relationship_scope": "Same provider thread as a message involving this person, "
                  "but this message is not addressed to this person. Use as thread context, not their "
                  "statement, contact date or personal obligation."}
-            for row in rows if row.get("type") == "mail" and row.get("id") and row.get("thread")
+            for row in rows if row.get("thread")
             and (row["source"], row["thread"]) in threads and (row["source"], row["id"]) not in direct
-            and message_path(root, row["source"], row["id"]).is_file()]
+            and (ref := _saved_ref(root, row))]
 
 
-def person_material(root: Path, record: str) -> tuple[dict[str, list[dict]], datetime, datetime] | None:
+def person_material(root: Path, record: str, *, handles=()) -> tuple[dict[str, list[dict]], datetime, datetime] | None:
     """One mapped page's saved mail, without a provider query; while the archive
-    is unfinished, only the bodies saved so far."""
+    is unfinished, only the bodies saved so far. Observations add messages,
+    not continuous coverage beyond the manifest's initial window."""
     manifest = read_json(state_path(root, "mail/archive.json"), {})
     index = person_index_path(root, record)
-    if manifest.get("phase") not in READABLE or not index.is_file():
+    addresses = {handle.casefold() for handle in handles if is_address(handle)}
+    if manifest.get("phase") not in READABLE or (not index.is_file() and not addresses):
         return None
     snapshots = []
-    refs = [json.loads(line) for line in index.read_text(encoding="utf-8").splitlines() if line]
-    for ref in [*refs, *_thread_context(root, refs)]:
+    refs = [json.loads(line) for line in index.read_text(encoding="utf-8").splitlines() if line] if index.is_file() else []
+    rows = mail_metadata(root)
+    direct = {(ref["provider"], ref["id"]) for ref in refs}
+    refs += [ref for row in rows if (row["source"], row["id"]) not in direct
+             and addresses.intersection(participants(row)) and (ref := _saved_ref(root, row, addresses=addresses))]
+    for ref in [*refs, *_thread_context(root, refs, rows)]:
         path = state_path(root, ref["message"].removeprefix(".state/"))
         if manifest["phase"] != "complete" and not path.is_file():
             continue   # not saved yet: the investigation fetches it

@@ -1206,7 +1206,7 @@ def test_one_saved_mail_with_an_unreadable_date_is_skipped_not_the_whole_run(tmp
             "text": "kept", "source": "gmail:a"}
     naive = {**good, "_mail_id": "b", "timestamp": "2026-07-09T01:50:17", "text": "undated", "source": "gmail:b"}
     monkeypatch.setattr("connectonion.rem.mail_archive.person_material",
-                        lambda root, record: ({"gmail": [good, naive]}, now - timedelta(days=30), now))
+                        lambda root, record, *, handles=(): ({"gmail": [good, naive]}, now - timedelta(days=30), now))
 
     items, coverage = inv.gather("Me", ["me@x.y"], days=7, clients={}, subscriptions={},
                                  archive_root=tmp_path, record="people/me.md")

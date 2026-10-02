@@ -71,6 +71,19 @@ contact. A joint greeting to two people cannot bind names to addresses by
 their order. An owner's phone in an outgoing signature must not fill the
 recipient's Phone, and outgoing English does not establish their Language.
 
+The candidate also selects later retained messages for the next investigation,
+using exact known email addresses in saved headers. A readable initial manifest
+is still required; an old per-person index is not required when the address is
+explicit. Exact provider/thread matches add labelled context when a recipient
+drops out. Same subjects and empty threads do not establish that connection.
+Initial coverage remains its original interval; observations do not cover gaps.
+Capture and retention limits accompany the supplied material.
+
+An offline source assay and selected reader review establish this access path,
+not automatic reconciliation or fresh page dates. See the
+[observed-mail review](../design-evidence/rem-observed-person-gather-review-2026-10-03/REVIEW.md)
+for exact source, runtime and rendering coverage.
+
 The three observed pages were manually filled after primary-source review;
 this does not establish future model reliability or verify referenced files,
 business metrics, travel plans or current completion of historical handoffs.

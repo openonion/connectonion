@@ -65,6 +65,8 @@ def _entry(item: dict) -> str:
                                                        ("timestamp_scope", "Timestamp scope"),
                                                        ("origin", "Snapshot origin"),
                                                        ("captured_at", "Captured at"),
+                                                       ("retained_at", "Retained at"),
+                                                       ("body_format", "Body format"),
                                                        ("input_scope", "Input scope"),
                                                        ("relationship_scope", "Relationship scope"))
               if item.get(key)]

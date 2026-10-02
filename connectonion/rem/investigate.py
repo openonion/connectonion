@@ -443,7 +443,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     archived = None
     if archive_root is not None and record.startswith("people/"):
         from .mail_archive import person_material
-        archived = person_material(archive_root, record)
+        archived = person_material(archive_root, record, handles=handles)
     elif archive_root is not None and domains:
         from .mail_archive import domain_material
         archived = domain_material(archive_root, domains, contact_addresses=[h for h in handles if is_address(h)])
@@ -522,7 +522,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         if archived and kind in cached_by_provider:
             covered_kinds.add(kind)
         hit, taken = [], set(seen)
-        searched = f"{len(local)} loaded from private init archive{share}"
+        searched = f"{len(local)} loaded from private mail archive{share}"
         if client is None:
             if intervals:
                 coverage.append(f"{kind}: {searched}; {len(intervals)} uncovered interval(s), provider unavailable")
@@ -614,7 +614,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         coverage.append(f"{kind} ({', '.join(sorted(mine))}): {searched} over {days} days, "
                         f"{len(local) + len(hit)} matched, {len(local) + len(mail_to_read)} bodies read"
                         + (" (recent quick sample)" if quick else "")
-                        + (f", {len(local)} of them from the private init archive" if local else "")
+                        + (f", {len(local)} of them from the private mail archive" if local else "")
                         + f", {attached} attachments read")
     for kind in ("outlook", "gmail"):
         if kind not in clients and kind not in covered_kinds:

@@ -52,20 +52,10 @@ def _mail_row(root: Path, row: dict, owner: set) -> dict:
 
 
 def build_mail(db, root: Path) -> None:
-    inventory = state_path(root, "source-inventory.jsonl")
-    lines = inventory.read_text(encoding="utf-8").splitlines() if inventory.is_file() else []
-    found = {}
-    for path in sorted(state_path(root, "mail/observed-metadata").glob("*/*.json")):
-        row = read_json(path, {})
-        if row.get("type") == "mail" and row.get("id") and row.get("source") in ("gmail", "outlook"):
-            found[(row["source"], row["id"])] = row
-    for line in lines:
-        row = json.loads(line) if line.strip() else {}
-        if row.get("type") == "mail" and row.get("id") and row.get("source") in ("gmail", "outlook"):
-            found[(row["source"], row["id"])] = row
+    from .mail_archive import mail_metadata
     owner = owner_addresses(root)
     db.execute("delete from messages where thread like 'mail:%'")
-    insert(db, "messages", [_mail_row(root, row, owner) for row in found.values()])
+    insert(db, "messages", [_mail_row(root, row, owner) for row in mail_metadata(root)])
 
 
 def build_sessions(db, root: Path) -> None:
