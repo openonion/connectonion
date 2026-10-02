@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a15
+## Current Version: 1.9.0a16
+
+1.9.0a16 makes REM's first investigated project page compare the owner's
+requests with bounded, citable local project evidence. Empty optional sections
+drop away after writing, while the map's unfinished scaffold remains visible.
+This preview does not solve cross-page links or owner-page history. Stable
+remains 1.8.10. See [1.9.0a16 notes](docs/releases/1.9.0a16.md).
+
+- 1.9.0a16 (#2122; project-page evidence and compact written notes).
+
+## Previous preview: 1.9.0a15
 
 1.9.0a15 keeps REM's first-run project count consistent with the map shown
 before model work. Session folders discovered afterward remain candidates;
