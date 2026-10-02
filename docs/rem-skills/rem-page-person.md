@@ -105,9 +105,10 @@ business metrics, travel plans or current completion of historical handoffs.
 Two to four lines starting `Now:`, `Changed:`, `At stake:` or `Pattern:`. A
 label makes the line say something of that kind; without one, a real page
 filled the slot with "a key stakeholder who maintains regular communication",
-which the inbox already said. The lead's first sentence is the balance (#2065):
-who requested what, when, and any stated deadline. The reader derives age from
-dates; a literal number of days in the page would become stale.
+which the inbox already said. A supported current balance can lead (#2065):
+who requested what, when, and any stated deadline. Without established current
+work, use the concrete relationship finding; historical gaps do not become
+debts. The reader derives age from dates; a literal day count would become stale.
 
 ## `Language` is observed
 
@@ -161,6 +162,18 @@ per-group assessment forms. Later replies must be read before naming a debt;
 optional offers create none, and different terms/forms need separate closure.
 Unknown booking or historical completion stays an explained gap, not a current
 obligation inferred from age.
+
+A canonical page census and finding triage found 224 written pages among 225 semantic pages;
+written status was not a usefulness result. Two source-backed person reviews
+showed the difference: a warm introduction produced an accepted invitation,
+while dated interest in a trial did not establish activation. Missing attendance
+and meeting-link outcomes had become current OPEN/THEY OWE items. The writer's
+lead can now begin with the concrete relationship finding, keeping historical
+gaps in Uncertainties. Linked events stay on their own physical lines, so a
+connection card does not borrow a neighboring event's citations. The
+[all-page triage and interaction review](../design-evidence/rem-page-usefulness-review-2026-10-03/REVIEW.md)
+records the full-original reading, two manual corrections and automatic/all-page
+acceptance limits.
 
 The same review found filled PDF FreeText annotations absent from ordinary
 page text extraction. The candidate reads their text with page/type provenance

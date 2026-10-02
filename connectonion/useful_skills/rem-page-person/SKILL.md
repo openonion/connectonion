@@ -7,8 +7,7 @@ description: Fixed sections, roster labels and evidence rules for a person's pag
 
 Why these rules: docs/rem-skills/rem-page-person.md
 
-Read the page and supplied material. Write, check, fix once, stop.
-Do not search elsewhere for a format.
+Read supplied page/material. Write, check, fix once, stop; use this format.
 
 This is a growing relationship memory; never shrink it to a summary. Keep
 every section in this order; missing evidence says `Unknown` or
@@ -51,10 +50,9 @@ Placeholders are not evidence.
 
 Rules:
 
-- **The lead comes first**, 2–3 cited sentences: balance (who owes what since
-  when), then their relationship and `Last contact: <date>` with its channel.
-  `Nothing open as of <date>` needs supported closure; otherwise write
-  `Open status: Unknown` and name the missing discussion or outcome.
+- **Lead**: 2–3 cited sentences. Start with a supported current obligation or
+  relationship finding; end with `Last contact: <date>` and channel. Historical
+  gaps go in `Uncertainties`. `Nothing open as of <date>` needs closure evidence.
 - **`Facts` is data, written first.** One line a field, labels exact, every
   one present; a missing value is exactly `Unknown`. Several values: `; `
   between, each `value (qualifier) [n]` (`+61 2 5550 0142 (work) [3];
@@ -80,20 +78,24 @@ Rules:
   world, who approached whom, what each side wants.
 - **`Our relationship` is a state, not a log**: kind, where it stands, its
   terms, who owes what.
+  Keep each local link with its relationship, citations and privacy markers;
+  separate different events onto separate lines.
 - **`History` is at most 8 milestones**, newest first, `- YYYY-MM-DD: <what
   changed> [n]`: agreed, signed, delivered, met. Not a send or a newsletter.
   Past 8, fold the oldest into one line per year.
 - **Open threads keep exact asks.** Check later replies; separate terms/forms.
   Reports/optional offers create none. Prerequisites aren't agreed commitments;
   missing historical outcomes aren't current debts.
+  Accepting an invitation or trial proves intent; attendance/activation need
+  separate evidence.
   Name debtor, request date and explicit due date; never hardcode its age.
   Preserve permission to proceed without a reply. Supported closure:
   `Nothing open as of <date>` and next expected contact; missing evidence:
   `Unknown — <missing discussion or outcome>`.
-- **Say a thing once.** Doubt belongs in `Uncertainties`, not every bullet.
-  Mapping, collection counts and prior-page metadata stay out of the body.
-- **Label inference.** Never infer "no prior history" or "cannot be assessed";
-  empty sections stay `Unknown`.
+- **Say things once.** Doubt goes in `Uncertainties`; omit collection counts
+  and prior-page metadata.
+- **Label inference.** Empty sections stay `Unknown`; don't infer "no prior
+  history" or "cannot be assessed".
 - **Keep what the map already knew.** `Email`, `Handles`, `Also known as`
   arrive filled; keep them. Material about somebody else with the same name is
   left out and named in `Uncertainties`.
@@ -102,8 +104,7 @@ Rules:
 - **Sources**: `- [n] <source id> — <date>`; claims stay in sentences.
   Reuse numbers and list only cited sources.
 
-## The headings are copied exactly
+## Exact headings
 
-Nothing else goes on a heading line; never rename or annotate a `Facts` label.
-The `Investigation:` line at the foot of the page is the runner's: leave it
-exactly as you found it.
+Never annotate headings or rename `Facts` labels. Preserve the runner's
+`Investigation:` line unchanged.

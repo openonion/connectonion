@@ -252,3 +252,22 @@ clip the linked sentence, and one entry per page pair does not expose every
 incoming link separately. The [connected context review](../../design-evidence/rem-connected-context-review-2026-10-03/REVIEW.md)
 records the actual inspected scope and remaining gaps. This remains an
 unpublished draft.
+
+A full finding census made the acceptance gap explicit: 224 pages were written,
+but that did not mean 224 useful findings. Independent AI review from a
+founder/marketing/UI perspective still found historical outcomes presented as
+current debts, generic project reminders and a calendar-only Unknown finding.
+Two full-original person reviews replaced false current-debt framing with
+supported interactions: an acknowledged warm handoff and dated evaluation
+interest, with attendance and activation still unknown. Separate offers and
+provider threads stayed separate. One introduction's UTC date also needed the
+notebook calendar.
+
+The person writer now allows a concrete relationship finding to lead, and keeps
+each linked event with its own citations on its own line. Actual phone review
+caught another small failure: generic opening words hid the accepted invitation
+or adoption uncertainty behind the fold. Shorter findings preserve those points
+before expansion. This improves the selected manual pages and the instructions;
+it does not prove automatic generation. The [triage and interaction review](../../design-evidence/rem-page-usefulness-review-2026-10-03/REVIEW.md)
+records the exact read, rendered and remaining scope. This draft remains
+unpublished.
