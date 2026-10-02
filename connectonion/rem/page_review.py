@@ -101,7 +101,7 @@ def compact_project_page(text: str) -> str:
                 and re.fullmatch(r'(?:- )?(?:Unknown|未知|尚未确认)[^\n]*', content)):
             spans.append((match.start(), end))
     for start, end in reversed(spans):
-        text = text[:start].rstrip('\n') + '\n\n' + text[end:].lstrip('\n')
+        text = text[:start].rstrip('\r\n') + '\n\n' + text[end:].lstrip('\r\n')
     return text
 
 

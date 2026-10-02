@@ -59,6 +59,8 @@ def test_compact_project_preserves_fenced_diagram_and_later_sections(newline):
     assert '```text' + newline + '## This is a diagram, not a section' + newline + 'box -> arrow' in compact
     assert '## Paths' + newline + '- /tmp/atlas' in compact
     assert '## Sources' + newline + '- [1] fixture:readme' in compact
+    if newline == '\r\n':
+        assert '\r\n\n## Paths' not in compact
 
 
 def test_long_material_is_readable_and_the_exact_copy_is_kept(tmp_path):
