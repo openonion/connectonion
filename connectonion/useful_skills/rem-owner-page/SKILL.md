@@ -1,6 +1,6 @@
 ---
 name: rem-owner-page
-description: How the notebook owner's own page differs from a person's page — who the user is and what they are working on now, their roles only as stated, and what they owe and are owed. Composed after rem-page-person only when `co rem investigate me` writes the owner's page.
+description: The owner's work, commitments and next decisions.
 ---
 
 # Your own page
@@ -41,15 +41,15 @@ owes it nothing), never `Last contact`, and never a correspondent in `Cadence`.
 - **A role in a list the user writes about someone else is that person's, not
   the user's.** "Ody: partner at OpenOnion, runs marketing, Airbnb co-host" in
   the user's mail describes Ody. Leave it off this page.
-- Several stated roles → all of them, each cited and dated. None stated →
-  `Unknown`.
+- List stated roles with citations and dates; otherwise `Unknown`.
 
 ## The sections
 
 - `Who they are`: the user's work in their own words, and the projects of the
   last weeks, each with what they did and when, from the sessions.
-- `Insight`: the user's month — `Now:` what shipped across how many projects;
-  `At stake:` who is waiting on the user, for what, since when.
+- `Insight`: connect projects and commitments to the next decision: what must
+  happen first, who waits, or a recurring tradeoff. Summarized requests alone
+  are not insight; only artifact evidence proves shipping. Cite the dependency.
 - `Why they are here`: this is the owner's page; one line, cited to the map.
 - `Our relationship`: `Account owner`.
 - `History`: dated events, newest first (a launch, a hire, a move, a release,

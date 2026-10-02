@@ -5,6 +5,19 @@ description: Rules for investigating someone other than the user — composed af
 
 # Investigating someone the user corresponds with
 
+- Before choosing milestones, survey the whole supplied date range. For an
+  evidence index, scan all entry headers and subjects in one bounded shell
+  read, then open the messages behind each distinct relationship thread across
+  older and newer months. Search for introductions, agreements, changes,
+  unanswered requests and changed signatures. Do not stop at the newest mail
+  or read every repeated notice in full. Report the files and months actually
+  read and any skipped relevant thread in the final reply.
+- An `Insight` must connect evidence to a decision: an obligation still owed,
+  a role or relationship that changed, a repeated response pattern, or a
+  consequential next contact. Cite the underlying dated messages, mark
+  inference, and check later replies before calling anything open. More tokens
+  and more bullets do not make an insight better; stop when the relevant
+  threads support the finding and the remaining unknowns are explicit.
 - **A page titled by an address is renamed** once the material names the
   person (signature, or the user's greeting): `# mei.l1990@outlook.com` →
   `# 李梅`, the address kept in `Also known as:`.

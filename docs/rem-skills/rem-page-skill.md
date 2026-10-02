@@ -36,10 +36,13 @@ because a filled-in dashboard reads as verified whether or not it is.
 ## Why the eval collector is limited
 
 `co rem investigate skills/catalog/<page>.md` reads retained co eval summaries
-without a model or mail. It matches explicit slash-command names, so a
-tool-based invocation or another harness's run is not seen, and a summary
-record says nothing about which source version ran or whether the goal was
-achieved.
+before the model reviews the source and retained records; it never reads mail
+or executes the skill. The eval collector matches explicit slash-command names.
+The map's invocation cache also identifies recent matching Codex and Claude
+turns: the review can search raw requests, tool results and replies for up to
+three latest invocations. The supplied index states sample size, matched count
+and missing files. Neither path establishes which installed version ran or
+independently verifies an artifact or achieved goal.
 
 ## One page per name, the source linked (#1974)
 
@@ -72,3 +75,18 @@ Pages from before are folded into the name's page by the map: written lines are
 merged section by section, the old page is moved to `.state/archived/`, and its
 record stays resolvable as an alias. The same mechanism merges a repository's
 split project pages.
+
+## A useful first page
+
+Init investigates installed skills alongside people, projects and organizations.
+The opening connects source instructions to a concrete starting point and a
+cited finding that changes the reader's choice. A source-only review can explain
+the required output and its verification step, while keeping execution
+unverified. Optional Unknown-only sections disappear from investigated pages;
+source provenance and observed invocation counts remain available.
+
+Large eval records and invocation turns are split losslessly for file tools.
+Both a numbered part and its exact original record ID are traceable citations;
+arbitrary shorter prefixes are not. A real review lost its reported-outcome
+findings when promotion rejected a whole-record citation merely because the
+index named its numbered parts (#2137).

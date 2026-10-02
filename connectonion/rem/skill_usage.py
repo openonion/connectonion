@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import re
+from itertools import chain
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -182,3 +183,64 @@ def usage_line(row: dict | None, report: dict | None) -> str:
     return (f"- Invoked {times} in your coding sessions {window}, last on {row['last']} ({tools}). "
             "Counted by co rem from Skill tool calls, /name commands, $name mentions and SKILL.md loads; "
             "an invocation is not a completed run.")
+
+
+def session_samples(root: Path, name: str, limit: int = 3) -> dict:
+    """Read recent invocation turns identified by the map; never scan unrelated sessions."""
+    cached = read_json(state_path(root, CACHE), {})
+    matches = []
+    since = (datetime.now(timezone.utc) - timedelta(days=180)).isoformat()[:19]
+    for file, entry in (cached.get("files", {}) if cached.get("version") == VERSION else {}).items():
+        for invoked, when, kind, cwd in entry.get("events", []):
+            if invoked.casefold().rsplit(":", 1)[-1] != name.casefold().rsplit(":", 1)[-1]:
+                continue
+            if when and when[:19] < since:
+                continue
+            if cwd and ("/.state/tasks/" in cwd + "/" or _inside(cwd, root)):
+                continue
+            matches.append((when, file, kind, cwd))
+    selected = sorted(set(matches), reverse=True)[:limit]
+    items, missing = [], []
+    for when, file, kind, cwd in selected:
+        path = Path(file)
+        text = _invocation_turn(path, kind, when) if path.is_file() else ""
+        if not text:
+            missing.append({"file": file, "timestamp": when})
+            continue
+        items.append({"source": f"skill-session:{kind}:{path.stem}:{when}", "timestamp": when,
+                      "project": cwd, "reference": path.as_uri(), "text": text})
+    return {"items": items, "matched_invocations": len(set(matches)), "sample_limit": limit,
+            "missing": missing, "cache_available": cached.get("version") == VERSION}
+
+
+def _invocation_turn(path: Path, kind: str, when: str) -> str:
+    """Raw request, invocation, tool results and replies until the next typed request."""
+    from .files import SECRET_SHAPES
+    selected, request, active = [], None, False
+    with path.open() as handle:
+        first = json.loads(handle.readline())
+        meta = KINDS[kind]["meta"](first)
+        for row in chain([first], (json.loads(line) for line in handle)):
+            spoken = KINDS[kind]["message"](row, EVER, meta)
+            if isinstance(spoken, dict) and spoken.get("role") == "user":
+                if active:
+                    break
+                request = row
+            if not active and row.get("timestamp") == when:
+                active = True
+                selected += [request] if request is not None and request is not row else []
+            payload = row.get("payload") or row.get("message") or {}
+            event = payload.get("type")
+            if row.get('type') == 'assistant' and all(p.get('type') == 'thinking' for p in payload.get('content', [])):
+                continue
+            if active and ((row.get("type") in ("user", "assistant") and not row.get("isMeta")) or
+                           (row.get("type") == "response_item" and event != "reasoning" and
+                            (event != "message" or payload.get("role") == "assistant" or
+                             isinstance(spoken, dict)))):
+                selected.append(row)
+            if active and row.get("type") == "event_msg" and event in ("task_complete", "turn_aborted"):
+                selected.append(row)
+                break
+            if active and kind == 'claude-code' and payload.get('stop_reason') == 'end_turn':
+                break
+    return SECRET_SHAPES.sub("[REDACTED]", "\n".join(json.dumps(row, ensure_ascii=False) for row in selected))

@@ -62,7 +62,7 @@ def _entry(item: dict) -> str:
     detail = [f"{label}: {item[key]}" for key, label in (("subject", "Subject"), ("correspondent", "With"),
                                                        ("project", "Project"), ("reference", "Reference"))
               if item.get(key)]
-    return "\n".join([head, *detail, "", str(item.get("text", "")).rstrip(), ""])
+    return "\n".join([head, *detail, "", str(item.get("text", "")), ""])
 
 
 def _split(group: str, entries: list[dict]):

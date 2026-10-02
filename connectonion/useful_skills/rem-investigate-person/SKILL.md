@@ -1,6 +1,6 @@
 ---
 name: rem-investigate-person
-description: The steps for investigating a person's page, composed after rem-investigate when the subject is under people/.
+description: Read a person’s identity, relationship and obligations from gathered evidence.
 ---
 
 # Investigating a person
@@ -29,6 +29,8 @@ Why these rules: docs/rem-skills/rem-investigate.md
   role, company, office, location and time zone. Then each signature block
   you read, field by field. A changed signature is a dated move or promotion.
   Two phones are two values with their qualifiers.
+- `Phone` means the person's contact number, never a meeting dial-in, passcode
+  or attendee's number. Calendar text is context, not their contact details.
 - **Address domain = employer** (`@unsw.edu.au` → UNSW), never a role;
   gmail/outlook/qq/163 → `Company: Unknown`. An org page for the domain (listed
   in the `investigation:org-pages` item) → `Company:` is that link,

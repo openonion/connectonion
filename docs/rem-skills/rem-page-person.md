@@ -51,6 +51,10 @@ value cited, written first and rendered as a card; code reads the certain ones
 (addresses, phones, links, dates) from the material before the turn and puts
 back any the turn leaves off. The grammar is in `connectonion/rem/facts.py`.
 
+Conference dial-ins are not contact numbers. Calendar invitations remain context
+for the reader, but their telephone numbers are not automatically restored into
+`Phone`. Genuine direct numbers need evidence of attribution to the subject.
+
 ## `Insight` is labelled
 
 Two to four lines starting `Now:`, `Changed:`, `At stake:` or `Pattern:`. A

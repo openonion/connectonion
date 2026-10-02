@@ -30,10 +30,41 @@ def test_a_phone_only_in_a_signature_is_found_with_its_label():
     assert found(rows, "Links")[0]["value"] == "https://www.linkedin.com/in/mia-chen-data"
 
 
+@pytest.mark.parametrize('flattened', [False, True])
+def test_meeting_dial_in_numbers_are_not_restorable_contact_phones(flattened):
+    text = ('Mia Chen\nJoin Zoom Meeting\nOne tap mobile\n+61 2 5550 0188\n'
+            'Dial by your location\n+61 8 5550 0177\nMeeting ID: 123 456 789\n')
+    text = ('Coaching session invitation details. ' * 5 + text.replace('\n', ' ')) if flattened else text
+    rows = extract([mail('outlook:meeting', '2026-08-04T01:00:00+00:00', text)], HANDLES)
+    assert not found(rows, 'Phone')
+    assert found(rows, 'Calendar')
+    both = extract([mail('outlook:meeting', '2026-08-04T01:00:00+00:00', text),
+                    mail('outlook:direct', '2026-08-05T01:00:00+00:00', SIGNED)], HANDLES)
+    assert all(row['source'] == 'outlook:direct' for row in found(both, 'Phone'))
+    assert len(found(both, 'Phone')) == 2
+
+
 def test_the_signature_block_is_handed_over_for_role_and_company():
     rows = extract([mail("gmail:a1", "2026-08-04T01:00:00+00:00", SIGNED)], HANDLES)
     block = found(rows, "Signature")[0]["value"]
     assert "Head of Data Platform | Harbour Analytics" in block and "Thanks" not in block
+
+
+def test_legacy_flattened_zoom_invitation_does_not_restore_a_rejected_phone():
+    text = ('Purpose of this meeting is to understand the pilot vision. ' * 4
+            + 'Mia Chen is inviting you to a scheduled Zoom meeting.'
+            + 'Join from PC, Mac, Linux, iOS or Android: https://harbour.zoom.us/j/123456789'
+            + 'Or iPhone one-tap :Australia: +61255500188,,123456789# or +61855500177,,123456789#'
+            + 'Or Telephone:Dial(for higher quality, dial a number based on your current location)')
+    rows = extract([mail('outlook:legacy', '2026-08-04T01:00:00+00:00', text,
+                         subject='Pilot support | Alex')], HANDLES)
+    assert not found(rows, 'Phone')
+    assert found(rows, 'Calendar')
+    candidate = PAGE.replace('Mia leads the pilot [1].',
+                             'Mia leads the pilot; previously listed numbers were meeting dial-ins [1].')
+    kept, restored = facts.keep_extracted('people/mia.md', candidate, rows)
+    assert '- Phone: Unknown' in kept
+    assert not any(row['field'] == 'Phone' for row in restored)
 
 
 def test_a_body_the_provider_flattened_to_one_line_still_gives_its_signature_and_phone():

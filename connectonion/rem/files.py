@@ -322,7 +322,7 @@ class Notebook:
             return False
         lines = [f"# {name}", "", "## What it does",
                  description or "Unknown — description not provided"]
-        for section in ("When to use", "Current status", "Example result", "How to use",
+        for section in ("Insight", "When to use", "Current status", "Example result", "How to use",
                         "Inputs and outputs", "Usage history", "Performance",
                         "Limitations", "Maintenance", "Related projects", "Open threads",
                         "Uncertainties"):

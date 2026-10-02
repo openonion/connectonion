@@ -1,6 +1,6 @@
 ---
 name: rem-init
-description: Run the first REM notebook investigation so the owner immediately sees useful, cited memory about recent important people, projects and organizations.
+description: Run REM initialization and check useful, cited findings about people, projects, organizations and installed skills.
 ---
 
 # Initialize REM
@@ -12,8 +12,9 @@ mapping or investigation logic in a long prompt.
 
 Run `co rem --root '<absolute-notebook-root>' init --days 90`. It maps connected
 sources, saves their private evidence, then uses the configured runner to write
-the owner's page and investigate recent important people, projects and related
-organizations. The command announces an estimate before model work. Roughly
+the owner's page and investigate eligible people, queued projects, related
+organizations and installed skills, recent first. It announces the model-work
+estimate. Roughly
 20% of a weekly runner allowance is a **target**, not a stopping point: finish
 the selected investigation even when it takes more, unless the configured
 weekly safety floor, runner failure, or interruption stops it. Do not pass

@@ -57,11 +57,12 @@ body, once, so investigating a person later reads it from disk.
 Then it writes your own page by itself from everything you sent
 and your coding sessions of the last 30 days (co rem investigate me): a quick
 first pass in about 4 minutes, then the whole page alongside the rest. It also
-investigates people active in the last 14 days (each from up to two years of
-their mail), recently active projects, and organizations linked to those people,
+investigates eligible people, those active in the last 14 days first (up to two years of
+their mail), projects (recent first), organizations linked to those people,
+and installed skills from their source instructions and retained run evidence,
 12 pages at a time. The result should let you recognize useful relationships
 and work immediately, with evidence cited on each page.
---first-people, --first-projects and --first-orgs cap a kind (0 for none).
+--first-people, --first-projects, --first-orgs and --first-skills cap a kind (0 for none).
 Before the first page it says one total: about how many pages, ~how many billed
 input tokens on your plan and ~how many minutes, an estimate from the median of
 this notebook's own runs (before there are any, measured defaults). It names the
@@ -76,7 +77,7 @@ projects write.
 
 Usage:    co rem init [--days N] [--mine ADDRESS[,ADDRESS...]] [--name NAME] [--mail gmail|outlook]...
                        [--no-mail-archive] [--investigate | --no-investigate]
-                       [--first-people N] [--first-projects N]
+                       [--first-people N] [--first-projects N] [--first-orgs N] [--first-skills N]
 Example:  co rem init --days 90 --name "Aaron Xie" --mine aaron@mail.openonion.ai,aaron@openonion.ai
 
 Inputs:   Connected mailboxes (co auth google, co auth microsoft) and local Codex /
@@ -85,9 +86,10 @@ Inputs:   Connected mailboxes (co auth google, co auth microsoft) and local Code
           one command that confirms the ones you keep.
 Options:  --investigate     Explicitly request the default investigation.
           --no-investigate  Build the map only.
-          --first-people N    Cap recent people (default all selected; 0 for none).
-          --first-projects N  Cap recent projects (default all selected; 0 for none).
+          --first-people N    Cap eligible people (default all selected; 0 for none).
+          --first-projects N  Cap queued projects (default all selected; 0 for none).
           --first-orgs N     Cap related organizations (default all selected; 0 for none).
+          --first-skills N   Cap installed skill investigations (default all mapped; 0 for none).
 Output:   Your page's facts and where it is; one progress line per stage on stderr
           (every step in .state/init-progress.log); pages under ~/.co/rem (or
           --root); private files under .state/: source-inventory.md and .jsonl
@@ -129,7 +131,7 @@ Usage:
   co rem investigate all --budget 10          The whole queue, highest first, until 10 points
                                                of your Codex week are spent.
 
-  CATEGORY is one of: people, projects, orgs, skills, all (people, projects and orgs
+  CATEGORY is one of: people, projects, orgs, skills, all (people, projects, orgs and skills
   in one queue, by weight)
 
 Examples:
@@ -146,7 +148,9 @@ What each kind reads:
             investigated before reads only the mail since then.
   projects  The coding sessions run in the project's folders, and the project's own files.
   orgs      Mail from the organisation's domains, and the people pages under it.
-  skills    Recorded runs of the Skill (co eval results; --eval-dir to choose where).
+  skills    Installed source and recorded runs (co eval results; --eval-dir to choose where).
+            A model writes a cited page; the skill itself is never executed.
+            Missing runs remain unverified; invocation counts are not successes.
   me        Your own sent mail and coding sessions from the last --days (default 30).
 
 Options:

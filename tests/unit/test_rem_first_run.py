@@ -84,6 +84,30 @@ def owner_record(root):
     return json.loads((root / ".state/map.json").read_text())["owner"]["record"]
 
 
+def test_init_investigates_skills_and_reports_them_in_plan_and_summary(first_run, monkeypatch):
+    root, init, _ = first_run
+    folder = root.parent / 'empty-skills' / 'example'
+    folder.mkdir()
+    (folder / 'SKILL.md').write_text('---\nname: example\ndescription: Review one artifact.\n---\nRead the artifact and cite an issue.')
+    reviewed = []
+    def investigate(root, record, directories):
+        reviewed.append(record)
+        return {'record': record, 'changed': [record], 'usage': {'input_tokens': 100}}
+    monkeypatch.setattr('connectonion.rem.skill_runs.investigate_skill_page', investigate)
+    result = init('--json', '--first-people', '0', '--first-projects', '0', '--first-orgs', '0', '--first-skills', '1')
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)['data']
+    assert reviewed == ['skills/catalog/example.md']
+    assert data['first_run']['counts']['skill'] == 1
+    assert data['first_run']['skills'] == reviewed
+    assert data['skill_pages']['left'] == 0
+    assert data['skill_pages']['pages'][0]['outcome'] == 'accepted'
+    reviewed.clear()
+    result = init('--json', '--first-people', '0', '--first-projects', '0', '--first-orgs', '0', '--first-skills', '0')
+    assert result.exit_code == 0, result.output
+    assert reviewed == []
+
+
 # ------------------------------------------------------------ value first
 
 
@@ -347,6 +371,32 @@ def test_runner_preflight_checks_path_and_sign_in_without_a_model(tmp_path, monk
 # ------------------------------------------- recent projects, after me
 
 
+def test_init_recovers_older_messages_for_a_newly_mapped_project(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.project_material import extract, stored
+    from connectonion.cli.commands.rem_commands import _first_project_rows
+    root = tmp_path / 'rem'
+    prepare(root)
+    when = datetime.now(timezone.utc) - timedelta(days=30)
+    folder = str(tmp_path / 'older-project')
+    message = {'source': 'codex:old:100', 'tool': 'codex', 'timestamp': when.isoformat(),
+               'cwd': folder, 'text': 'The release needs a migration check before publishing.'}
+    monkeypatch.setattr('connectonion.rem.project_material.session_messages',
+                        lambda subs, *, since, **kw: ([message] if since < when else [],
+                                                     {'files': 1, 'harness': 0, 'unfamiliar': 0, 'excluded': {}}))
+    monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
+    extract(root, {}, create_pages=False)
+    record = 'projects/older.md'
+    Notebook(root).stub_project(record, 'Older', [folder], sessions=1)
+    rows = _first_project_rows(root, None)
+    assert [row['record'] for row in rows] == [record]
+    assert stored(root, record) == [message]
+    _first_project_rows(root, None)
+    assert stored(root, record) == [message]
+
+
 @pytest.fixture
 def projects(first_run, monkeypatch):
     """Two projects active this fortnight and one older, with a spy where the model would write."""
@@ -367,16 +417,16 @@ def projects(first_run, monkeypatch):
     return first_run, written
 
 
-def test_after_me_the_recent_projects_are_written_one_line_each(projects):
+def test_after_me_all_queued_projects_are_written_one_line_each(projects):
     (root, init, calls), written = projects
     result = init()
     assert result.exit_code == 0, result.output
     assert calls[0]["record"] == owner_record(root)  # me first, then the people
-    assert sorted(written) == ["projects/alpha.md", "projects/beta.md"]
+    assert sorted(written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
     text = Text.from_ansi(result.output).plain
-    # One total before the first page (#2008), for the recent cohort.
+    # One total before the first page (#2008), for all selected pages.
     assert text.count("billed input tokens") == 1 and "Ctrl-C" in text
-    assert "projects/old.md: written" not in text
+    assert "projects/old.md: written" in text
 
 
 def test_projects_follow_explicit_skip_and_runner_readiness(projects, monkeypatch):
@@ -389,7 +439,7 @@ def test_projects_follow_explicit_skip_and_runner_readiness(projects, monkeypatc
     monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("Codex is not signed in", "codex login"))
     missing = init("--investigate")
     assert Text.from_ansi(missing.output).plain.count("Codex is not signed in") == 1
-    assert sorted(written) == ["projects/alpha.md", "projects/beta.md"]
+    assert sorted(written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
 
 
 def test_json_with_investigate_writes_projects_and_reports_them(projects):
@@ -398,7 +448,7 @@ def test_json_with_investigate_writes_projects_and_reports_them(projects):
     assert result.exit_code == 0, result.output
     pages = json.loads(result.stdout)["data"]["project_pages"]
     assert pages["started"] and sorted(row["page"] for row in pages["pages"]) == sorted(written) == [
-        "projects/alpha.md", "projects/beta.md"]
+        "projects/alpha.md", "projects/beta.md", "projects/old.md"]
 
 
 def test_the_weekly_floor_stops_project_pages(projects, monkeypatch):
@@ -419,7 +469,7 @@ def people(projects, monkeypatch):
     """Five people in the queue, most-written-to first, and a spy where each person's turn would be."""
     (root, init, calls), written = projects
     rows = [{"record": f"people/p{n}.md", "mode": "full", "days": 150, "last_activity": "2026-09-29T00:00:00Z",
-             "recent": True, "mails": 10 - n, "sent": 3, "received": 3, "last_investigated": None}
+             "recent": n < 4, "mails": 10 - n, "sent": 3, "received": 3, "last_investigated": None}
             for n in range(5)]
     people_written = []
     monkeypatch.setattr("connectonion.rem.people_pages.queue",
@@ -441,11 +491,11 @@ def test_after_me_the_people_you_wrote_to_and_projects_four_at_a_time(people):
     assert result.exit_code == 0, result.output
     assert calls[0]["record"] == owner_record(root)  # then the organisations, alongside
     assert sorted(people_written) == [f"people/p{n}.md" for n in range(5)]
-    assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md"]
+    assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
     text = Text.from_ansi(result.output).plain
     assert "up to two years of evidence each" in text
     assert "12 at a time" in text and "about 20% of a weekly runner allowance is a planning target" in text
-    assert "Written this run: your page, 5 people and 2 project pages." in text
+    assert "Written this run: your page, 5 people and 3 project pages." in text
 
 
 def test_the_first_run_finishes_selected_pages_past_target(people, monkeypatch):
@@ -464,7 +514,7 @@ def test_the_first_run_finishes_selected_pages_past_target(people, monkeypatch):
     result = init("--json")
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)["data"]
-    assert len(people_written) == 5 and len(projects_written) == 2
+    assert len(people_written) == 5 and len(projects_written) == 3
     assert data["people_pages"]["left"] == 0
     assert data["org_pages"]["started"] is False
 
@@ -506,7 +556,7 @@ def test_ctrl_c_during_people_keeps_the_pages_and_names_the_rest(people, monkeyp
 
 
 def test_the_first_run_writes_every_page_and_a_flag_caps_a_kind(people, monkeypatch):
-    """The recent cohort runs by default; --first-* caps a kind (0 for none)."""
+    """The eligible queue runs by default; --first-* caps a kind (0 for none)."""
     root, init, calls, people_written, projects_written = people
     rows = [{"record": f"projects/p{n}.md", "mode": "first", "last_activity": "2026-09-29T00:00:00Z",
              "recent": True, "new_messages": 1, "chars": 100, "left_out": 0} for n in range(5)]
@@ -588,12 +638,12 @@ def test_the_first_run_writes_people_and_projects_several_at_once(people, monkey
     assert [row["outcome"] for row in data["people_pages"]["pages"]][:4] == ["accepted"] * 4
 
 
-def test_the_first_run_covers_every_recent_correspondent_not_three(people):
+def test_the_first_run_covers_eligible_correspondents_including_older(people):
     root, init, calls, people_written, projects_written = people
     result = init()
     assert result.exit_code == 0, result.output
     assert sorted(people_written) == [f"people/p{n}.md" for n in range(5)]
-    assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md"]
+    assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
 
 
 def test_marking_people_investigated_at_once_loses_none(tmp_path, monkeypatch):
@@ -646,12 +696,12 @@ def test_a_finished_investigation_waits_for_the_lock_instead_of_losing_the_page(
     assert "investigated" in notebook.read("people/p0.md")
 
 
-def test_the_first_run_selects_recent_projects_and_related_organisations(people):
-    """The first run covers recent projects and organizations linked to selected people."""
+def test_the_first_run_selects_older_projects_and_related_organisations(people):
+    """Older eligible pages remain in init after the recent pages."""
     root, init, calls, people_written, projects_written = people
     result = init()
     assert result.exit_code == 0, result.output
-    assert "projects/old.md" not in projects_written
+    assert "projects/old.md" in projects_written
     assert not any(call["record"].startswith("orgs/") for call in calls)
 
 

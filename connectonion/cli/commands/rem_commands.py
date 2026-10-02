@@ -402,8 +402,9 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
     from ...rem.files import RemError, split_handles
     from ...rem.service import subscriptions
     if record.startswith("skills/"):
-        from ...rem.skill_runs import investigate_skill_runs
-        return investigate_skill_runs(root, record, eval_dir or [Path.home() / ".co/evals"])
+        from ...rem.skill_runs import investigate_skill_page
+        return _logged(root, record, "investigate", lambda update: investigate_skill_page(
+            root, record, eval_dir or [Path.home() / ".co/evals"]), quiet=quiet)
     if eval_dir:
         raise RemError("--eval-dir applies only to skills pages")
     text = notebook.read(record)
@@ -460,25 +461,27 @@ def _capped(rows: list, cap) -> list:
 
 
 def _first_people_rows(root, cap, recent_days: int) -> list[dict]:
-    """Recent people in the established queue, with automated and own addresses excluded."""
+    """Eligible people in queue order, recent first; automated and own addresses excluded."""
     from ...rem.people_pages import queue
-    return _capped([row for row in queue(root, recent_days=recent_days) if row["recent"]], cap)
+    return _capped(queue(root, recent_days=recent_days), cap)
 
 
 def _first_project_rows(root, cap) -> list[dict]:
-    """Recently active mapped projects with unwritten messages, in priority order."""
+    """Mapped projects with unwritten messages, recent first."""
     from ...rem.project_material import extract
     from ...rem.project_pages import queue
     from ...rem.service import subscriptions
     # The map summary was already shown. Keep missed session folders as
     # candidates instead of creating project pages during init.
-    extract(root, subscriptions(root), create_pages=False)
+    # A wider map can add older folders after the extraction cursor advanced.
+    # Rebind the retained window to all mapped pages; message ids deduplicate it.
+    extract(root, subscriptions(root), create_pages=False, full=True)
     rows = queue(root)
-    return _capped([row for row in rows if row["recent"]], cap)
+    return _capped(rows, cap)
 
 
 def _first_org_rows(root, cap, people: list[dict]) -> list[dict]:
-    """Organizations linked to the selected recent people, most relevant first."""
+    """Organizations linked to the selected people, most relevant first."""
     from ...rem.files import read_json, state_path
     from ...rem.queue import order
     selected = {row["record"] for row in people}
@@ -562,11 +565,12 @@ def _owner_full_job(root, days) -> dict:
             "run": lambda: _investigate_me(root, days=days, quick=False, quiet=True)}
 
 
-KEYS = {"me": "owner_full", "people": "people_pages", "projects": "project_pages", "orgs": "org_pages"}
-LABELS = {"me": "Your full", "people": "People", "projects": "Project", "orgs": "Organisation"}
+KEYS = {"me": "owner_full", "people": "people_pages", "projects": "project_pages", "orgs": "org_pages",
+        "skills": "skill_pages"}
+LABELS = {"me": "Your full", "people": "People", "projects": "Project", "orgs": "Organisation", "skills": "Skill"}
 
 
-def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, me_days=None, owner_full=False) -> dict:
+def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills=(), me_days=None, owner_full=False) -> dict:
     """After your own page: your whole page, people, projects and organisations, FIRST_RUN_WORKERS at a time.
 
     One line per page as it finishes. Returns owner_full, people_pages,
@@ -574,7 +578,7 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, me_day
     """
     kinds = {"me": [_owner_full_job(root, me_days)] if owner_full else [],
              "people": _people_jobs(root, people), "projects": _project_jobs(root, config, projects),
-             "orgs": _org_jobs(root, orgs)}
+             "orgs": _org_jobs(root, orgs), "skills": _skill_jobs(root, skills)}
 
     def done(job, outcome):
         why = f" ({outcome['why'][:120]})" if outcome["outcome"] != "accepted" else ""
@@ -582,12 +586,21 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, me_day
 
     from itertools import zip_longest
     jobs = [*kinds["me"], *(job for group in zip_longest(kinds["people"], kinds["projects"],
-                                                        kinds["orgs"]) for job in group if job)]
+                                                        kinds["orgs"], kinds["skills"]) for job in group if job)]
     outcomes, stopped = _in_parallel(jobs, workers=FIRST_RUN_WORKERS, gate=gate, done=done)
     if stopped:
         say(f"Stopped before the rest: {stopped}. Write them later with "
             f"{_next(ctx, ['investigate', 'all'])} and {_next(ctx, ['projects', 'write'])}.")
     return {KEYS[kind]: _kind_result(kind, jobs, outcomes, stopped) for kind, jobs in kinds.items()}
+
+
+def _skill_jobs(root, rows) -> list[dict]:
+    from ...rem.files import Notebook
+
+    def job(row):
+        return {"kind": "skills", "record": row["path"], "mode": "full", "row": row,
+                "run": lambda: _investigate_page(root, Notebook(root), row["path"], quiet=True)}
+    return [job(row) for row in rows]
 
 
 def _kind_result(kind, jobs, outcomes, stopped) -> dict:
@@ -619,6 +632,8 @@ def _init_done(ctx, result) -> str:
     written += [f"{projects} project page{'s' if projects != 1 else ''}"] if projects else []
     orgs = sum(page.get("outcome") == "accepted" for page in (result.get("org_pages") or {}).get("pages") or [])
     written += [f"{orgs} organisation page{'s' if orgs != 1 else ''}"] if orgs else []
+    reviewed = sum(page.get("outcome") == "accepted" for page in (result.get("skill_pages") or {}).get("pages") or [])
+    written += [f"{reviewed} skill page{'s' if reviewed != 1 else ''}"] if reviewed else []
     owner = (result.get("owner_page") or {}).get("path") or ""
     return "\n".join([
         "",
@@ -695,7 +710,8 @@ def make_rem_app(factory):
                   write_mine: Optional[bool] = typer.Option(None, "--investigate/--no-investigate"),
                   first_people: Optional[int] = typer.Option(None, "--first-people", min=0),
                   first_projects: Optional[int] = typer.Option(None, "--first-projects", min=0),
-                  first_orgs: Optional[int] = typer.Option(None, "--first-orgs", min=0)):
+                  first_orgs: Optional[int] = typer.Option(None, "--first-orgs", min=0),
+                  first_skills: Optional[int] = typer.Option(None, "--first-skills", min=0)):
         from ...rem.config import prepare, read_config
         from ...rem.files import Notebook, state_path
         from ...rem.map import build_map, owner_summary
@@ -837,18 +853,23 @@ def make_rem_app(factory):
             people_rows = _first_people_rows(root, first_people, recent)
             project_rows = _first_project_rows(root, first_projects) if first_projects != 0 else []
             org_rows = _first_org_rows(root, first_orgs, people_rows)
+            from ...rem.queue import order
+            skill_rows = _capped([row for row in order(root, "skills") if not row["recent"]], first_skills)
             total = first_run.plan(run_logs(root), owner=not reason, people=len(people_rows),
-                                   projects=len(project_rows), orgs=len(org_rows), workers=FIRST_RUN_WORKERS)
+                                   projects=len(project_rows), orgs=len(org_rows), skills=len(skill_rows),
+                                   workers=FIRST_RUN_WORKERS)
             result["first_run"] = {**total, "people": [row["record"] for row in people_rows],
                                    "projects": [row["record"] for row in project_rows],
-                                   "orgs": [row["path"] for row in org_rows]}
+                                   "orgs": [row["path"] for row in org_rows],
+                                   "skills": [row["path"] for row in skill_rows]}
             me_days = days if window else 30  # what `investigate me` reads without --days
             steps = ([f"your page (quick first, then full; {me_days} days of your mail and sessions)"]
                      if not reason else [])
-            steps += ([f"{counted(len(people_rows), 'recent person', 'recent people')} "
-                       f"(active within {recent} days; up to two years of evidence each)"] if people_rows else [])
-            steps += ([f"{counted(len(project_rows), 'active project')}"] if project_rows else [])
+            steps += ([f"{counted(len(people_rows), 'person', 'people')} "
+                       f"(recent first; up to two years of evidence each)"] if people_rows else [])
+            steps += ([f"{counted(len(project_rows), 'project')} (recent first)"] if project_rows else [])
             steps += ([f"{counted(len(org_rows), 'related organisation')}"] if org_rows else [])
+            steps += ([f"{counted(len(skill_rows), 'installed skill')} (source and retained run evidence)"] if skill_rows else [])
             if not steps:
                 return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
             cost = (f"First run with {config['runner']} ({config['model']}): "
@@ -857,7 +878,7 @@ def make_rem_app(factory):
                     + f"Budget: about {FIRST_RUN_TARGET_POINTS}% of a weekly runner allowance is a planning "
                     "target, not a stop. The selected investigation finishes even if it uses more; "
                     "a runner without a weekly meter cannot verify the percentage.\n"
-                    "Controls: --first-people, --first-projects and --first-orgs cap a kind; Ctrl-C "
+                    "Controls: --first-people, --first-projects, --first-orgs and --first-skills cap a kind; Ctrl-C "
                     "keeps the map and completed pages; --no-investigate skips model work.")
             rem_look.say(rem_look.highlight(cost, counts=True), err=ctx.obj["json"], plain=cost)
             gate = _first_run_gate(root, config)
@@ -884,7 +905,7 @@ def make_rem_app(factory):
                     say("Your page is written: " + str(Notebook(root).path(record)))
             try:
                 result.update(_first_pages(ctx, root, config, say, gate, people=people_rows,
-                                           projects=project_rows, orgs=org_rows,
+                                           projects=project_rows, orgs=org_rows, skills=skill_rows,
                                            me_days=days if window else None,
                                            owner_full=result.get("investigation") == "completed"))
             except KeyboardInterrupt:

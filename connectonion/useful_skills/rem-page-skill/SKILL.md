@@ -7,17 +7,22 @@ description: A skill page for judging usefulness, observed reliability and how t
 
 Why these rules: docs/rem-skills/rem-page-skill.md
 
-Help a reader decide: is this useful for my task, is it reliable for it, and how
-do I start? Keep the opening short and understandable without company or
-technical context. Link the executable source near the end; do not reproduce its
-instructions as the main content.
+Help a reader choose a task, judge reliability and start. Keep the opening
+short and plain. Link the source near the end; do not paste its instructions.
+State missing execution evidence once in `Current status`; do not repeat it in
+every section. Omit optional sections that would only restate that gap.
 
-Copy headings exactly:
+Keep the core headings `What it does`, `Insight`, `When to use`, `Current status`,
+`How to use`, `Inputs and outputs`, `Usage history`, `Limitations`, `Uncertainties`,
+`Source` and `Sources`. Keep other headings only when evidence fills them; omit
+an optional section whose whole body would be Unknown. Keep the order below:
 
 ```markdown
 # <Name>
 
 ## What it does
+
+## Insight
 
 ## When to use
 
@@ -50,6 +55,11 @@ Copy headings exactly:
 
 **The short opening**
 
+- `Insight`: 1–3 cited findings changing task choice, setup or verification.
+  Compare instructions with recorded outputs; name the mismatch, capability or
+  failure condition, consequence and next check. Prefer a specific trap or
+  conflicting rule over listing prerequisites. Put the execution-evidence
+  caveat in `Current status`, not in each Insight. Counts do not prove success.
 - `What it does`: one plain sentence: the task and useful outcome. Metadata is
   advertised capability, not verified behaviour.
 - `When to use`: a concrete suitable task and an important unsuitable case, when
@@ -107,19 +117,11 @@ Link older records when numerous.
 
 **Mapping and later review**
 
-Mapping creates one page per skill name from metadata, leaving unsupported
-sections Unknown, and opens `Usage history` with the invocation count and
-last-used date from the user's sessions; reruns refresh only those map-owned
-lines and never overwrite other content. Later review adds source-file
-and execution evidence, adds missing sections to older pages, and preserves
-identity, useful prior content and the runner-owned `Investigation:` line. Never
-execute a skill merely to document it.
+Mapping owns installed copies and session counts. Review adds evidence and
+preserves those markers, identity, useful prior content and `Investigation:`.
+Never execute a skill merely to document it.
 
-Catalog pages go in `skills/catalog/`, not `skills/candidates/` or
-`skills/approved/`. `co rem investigate skills/catalog/<page>.md` collects
-retained co eval summary records into a linked run-evidence note, without a
-model or mail access; add `--eval-dir` (repeatable) for more summary
-directories. It matches explicit slash-command invocation names only (not
-tool-based invocation or all harnesses), and establishes neither source-version
-identity nor goal achievement. Review the linked tasks, outputs and evaluations
-before claiming success or verified changes; missing evidence stays unverified.
+Catalog pages go in `skills/catalog/`. Review source and retained eval summaries;
+never read mail or execute the skill for this review.
+Only explicit slash-command records are matched; attribution to an installed
+version and goal achievement stay unverified without artifact evidence.

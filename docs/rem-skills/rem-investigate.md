@@ -111,8 +111,23 @@ first source and patching with the rest loses that.
   because the agreement is unsigned" was all on the page, spread across three
   other sections, so it read as background rather than as the thing to act on.
   It is the section the user reads first.
-- Skill catalog pages use a deterministic run-evidence path that reads retained
-  explicit slash-command invocations without opening mail or running a model.
+- Skill collection reads installed source, retained explicit slash-command eval
+  records and recent matching Codex/Claude invocation turns. The configured
+  model compares instructions with reported outputs; collection itself runs no
+  model, mailbox command or installed skill. Session sampling and missing logs
+  stay explicit, and a reported result never proves an artifact was checked.
+
+## Survey before selecting findings
+
+A two-year mailbox window does not establish two years of reading. Survey the
+whole supplied index and entry headers, then read each distinct relationship
+thread across older and newer months. This avoids rewriting the latest request
+while missing the introduction, agreement or later resolution. The coverage
+reply names actual files and months read, including relevant threads skipped.
+
+An Insight connects dated evidence to a current obligation, changed relationship
+or consequential next contact. Check later replies before calling a request
+open. Longer pages and higher token counts are not evidence of a better finding.
 
 ## Supplement sources through their own tools
 
@@ -153,6 +168,17 @@ The `Investigation:` footer is runner metadata: keep it unchanged even when it
 says `not investigated yet`; the placeholder check applies to body sections.
 The task-specific suffix uses named sections and a closed `<co_rem_task>`
 envelope so operational instructions are easier to audit.
+
+An inline packet containing an evidence index is not the complete evidence.
+A live init gathered 245 mails and 35 attachments, but its model left the
+relationship and Insight unknown because the task prohibited reading material
+files. The task now explicitly permits reading indexed bodies and names only
+the four already-inlined task packet files in its no-reread instruction (#2138).
+
+Carried facts keep their original source IDs. Citing the existing page for
+every historical statement erases the reader's route to the evidence and can
+perpetuate an earlier error. Correct a disproven fact and cite the evidence
+behind the correction; an index establishes where to read, not what happened.
 
 ## The open web
 

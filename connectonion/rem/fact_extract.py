@@ -27,7 +27,9 @@ MOBILE = re.compile(r"\b(m|mob|mobile|cell|手机)\b\s*[:.]?", re.I)
 WORK = re.compile(r"\b(t|tel|ph|phone|p|w|work|office|direct|d|电话)\b\s*[:.]?", re.I)
 LINKEDIN = re.compile(r"(?:https?://)?(?:[\w-]+\.)?linkedin\.com/in/[\w%-]+/?", re.I)
 INVITE = re.compile(r"^(invitation|updated invitation|invitation updated|accepted|meeting)\b|BEGIN:VCALENDAR|"
-                    r"Join with Google Meet|Microsoft Teams meeting", re.I | re.M)
+                    r"Join with Google Meet|Microsoft Teams meeting|Join Zoom Meeting|One tap mobile|"
+                    r"Dial by your location|dial[ -]?in|scheduled Zoom meeting|"
+                    r"iPhone one[ -]tap|(?:[\w-]+\.)?zoom\.us/j/|Australian Toll number", re.I | re.M)
 MAIL_SOURCES = ("gmail:", "outlook:", "email:")
 
 
@@ -129,8 +131,11 @@ def extract(items: list[dict], handles: list[str], *, owner: bool = False) -> li
         block = signature(_body(item), names)
         if block and sum(1 for r in rows if r["field"] == "Signature") < 3:
             add(_row("Signature", " | ".join(block)[:300], item))
-        for row in _phones(block, item):
-            add(row)
+        # An organiser's name above dial-in instructions looks like a signature.
+        # Invitation numbers need attribution by the reader, not automatic restoration.
+        if not INVITE.search(item.get("subject", "") + "\n" + (item.get("text") or "")):
+            for row in _phones(block, item):
+                add(row)
         for link in LINKEDIN.findall("\n".join(block)):
             add(_row("Links", link if link.startswith("http") else "https://" + link, item))
     for item in reversed(mail):
