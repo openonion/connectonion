@@ -467,9 +467,12 @@ def _first_people_rows(root, cap, recent_days: int) -> list[dict]:
 
 
 def _first_project_rows(root, cap) -> list[dict]:
-    """Mapped projects with unwritten messages, recent first."""
+    """Unwritten messages, then mapped projects with readable local evidence."""
+    from ...rem.files import Notebook
+    from ...rem.investigate import project_file_inventory
     from ...rem.project_material import extract
     from ...rem.project_pages import queue
+    from ...rem.queue import order
     from ...rem.service import subscriptions
     # The map summary was already shown. Keep missed session folders as
     # candidates instead of creating project pages during init.
@@ -477,6 +480,16 @@ def _first_project_rows(root, cap) -> list[dict]:
     # Rebind the retained window to all mapped pages; message ids deduplicate it.
     extract(root, subscriptions(root), create_pages=False, full=True)
     rows = queue(root)
+    selected = {row['record'] for row in rows}
+    notebook = Notebook(root)
+    for row in order(root, 'projects'):
+        record = row['path']
+        if record in selected or row['last_investigated']:
+            continue
+        page = notebook.read(record)
+        if project_file_inventory(page):
+            rows.append({'record': record, 'mode': 'full', 'recent': False,
+                         'new_messages': 0, 'chars': len(page), 'left_out': 0})
     return _capped(rows, cap)
 
 
@@ -539,9 +552,13 @@ def _people_jobs(root, rows) -> list[dict]:
 
 
 def _project_jobs(root, config, rows) -> list[dict]:
+    from ...rem.files import Notebook
     from ...rem import project_pages
 
     def job(row):
+        if row['mode'] == 'full':
+            return {'kind': 'projects', 'record': row['record'], 'mode': 'full', 'row': row,
+                    'run': lambda: _investigate_page(root, Notebook(root), row['record'], quiet=True)}
         write = lambda update: project_pages.write_page(root, row["record"], config=config)  # noqa: E731
         return {"kind": "projects", "record": row["record"], "mode": row["mode"], "row": row,
                 "run": lambda: _logged(root, row["record"], "projects write", write, quiet=True)}

@@ -64,6 +64,27 @@ def test_investigation_preserves_page_and_status_and_is_repeatable(tmp_path):
     assert first.count('<!-- rem-skill-runs:start -->') == 1
 
 
+def test_evidence_refresh_repairs_missing_markers_and_duplicate_owned_sections(tmp_path):
+    logs = tmp_path / 'evals'
+    summaries(logs)
+    root = tmp_path / 'rem'
+    n = Notebook(root)
+    record = 'skills/catalog/example.md'
+    n.stub_skill(record, 'example', '/source/SKILL.md')
+    investigate_skill_runs(root, record, [logs])
+    page = n.read(record).replace('<!-- rem-skill-runs:start -->', '')
+    page = page.replace('## Sources\n', '## Run evidence\n\nOld duplicate.\n\n## Sources\n')
+    n.write(record, page)
+    investigate_skill_runs(root, record, [logs])
+    from connectonion.rem.page_review import normalize
+    page = n.read(record)
+    assert page.count('## Run evidence\n') == 1
+    assert 'Old duplicate.' not in page
+    assert page.count('<!-- rem-skill-runs:start -->') == 1
+    assert page.count('<!-- rem-skill-runs:end -->') == 1
+    assert normalize(record, page)
+
+
 def test_cli_skill_investigation_reads_source_without_executing_or_opening_mail(tmp_path, monkeypatch):
     import connectonion.rem.service as service
     import connectonion.rem.runner as runner

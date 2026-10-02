@@ -108,19 +108,20 @@ def investigate_skill_runs(root: Path, record: str, directories: list[Path]) -> 
         notebook.write(report, text)
         page = notebook.read(record)
         start, end = '<!-- rem-skill-runs:start -->', '<!-- rem-skill-runs:end -->'
+        # A model or section normalization can move or drop the marker while
+        # retaining the heading. The collector owns this section; replace all
+        # old copies before adding the current evidence, not a second heading.
+        page = re.sub(r'(?ms)^## Run evidence\n.*?(?=^## |^Investigation:|\Z)', '', page)
+        page = page.replace(start, '').replace(end, '')
         block = (f'{start}\n## Run evidence\n\n'
                  f'- Observed invocation attempts: {result["invocation_attempts"]}; '
                  f'outputs retained: {result["outputs_retained"]}; goal achievement unassessed: '
                  f'{result["completion_unassessed"]}.\n'
                  f'- [Run-by-run evidence and coverage](../../{report})\n'
                  f'- Name-based attribution only; not a verified count for this installed version.\n{end}')
-        if start in page and end in page:
-            page = page[:page.index(start)] + block + page[page.index(end) + len(end):]
-        else:
-            marker = 'Investigation:'
-            position = page.rfind(marker)
-            position = position if position >= 0 else len(page)
-            page = page[:position].rstrip() + '\n\n' + block + '\n\n' + page[position:]
+        position = page.rfind('Investigation:')
+        position = position if position >= 0 else len(page)
+        page = page[:position].rstrip() + '\n\n' + block + '\n\n' + page[position:]
         notebook.write(record, page)
     return {**result, "record": record, "report": report,
             "status": "run evidence collected; goals, changes and quality require review"}

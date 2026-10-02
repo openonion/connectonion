@@ -397,6 +397,29 @@ def test_init_recovers_older_messages_for_a_newly_mapped_project(tmp_path, monke
     assert stored(root, record) == [message]
 
 
+def test_init_investigates_readable_project_files_when_typed_messages_are_missing(tmp_path, monkeypatch):
+    from connectonion.rem.config import prepare, default_config
+    from connectonion.rem.files import Notebook
+    from connectonion.cli.commands.rem_commands import _first_project_rows, _project_jobs
+    root = tmp_path / 'rem'
+    prepare(root)
+    folder = tmp_path / 'library'
+    folder.mkdir()
+    (folder / 'README.md').write_text('A local library awaiting its first release.')
+    notebook = Notebook(root)
+    notebook.stub_project('projects/library.md', 'Library', [str(folder)], sessions=1)
+    notebook.stub_project('projects/gone.md', 'Gone', [str(tmp_path / 'gone')], sessions=1)
+    monkeypatch.setattr('connectonion.rem.project_material.extract', lambda *a, **kw: {})
+    calls = []
+    monkeypatch.setattr('connectonion.cli.commands.rem_commands._investigate_page',
+                        lambda root, nb, record, **kw: calls.append(record))
+    rows = _first_project_rows(root, None)
+    assert [row['record'] for row in rows] == ['projects/library.md']
+    assert rows[0]['mode'] == 'full' and rows[0]['new_messages'] == 0
+    _project_jobs(root, default_config(), rows)[0]['run']()
+    assert calls == ['projects/library.md']
+
+
 @pytest.fixture
 def projects(first_run, monkeypatch):
     """Two projects active this fortnight and one older, with a spy where the model would write."""

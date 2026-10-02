@@ -106,6 +106,9 @@ Link older records when numerous.
 - `Maintenance`: verified maintainer/contact, recent dated changes and whether
   they were validated. Earlier successes do not verify a newer version.
 - `Related projects`: observed associations and valid links only.
+- Notebook links use notebook paths. Do not copy source-relative
+  `../name/SKILL.md` links into the catalog; use a verified catalog link or
+  the plain skill name.
 - `Open threads`: concrete next actions, owners/dates when known.
 - `Uncertainties`: missing logs, unread sources, stale results, unresolved
   identity/version attribution. Do not manufacture a complete-looking dashboard.
