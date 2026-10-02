@@ -46,6 +46,16 @@ def test_the_reader_and_status_share_the_census(tmp_path):
     assert records["projects/atlas.md"]["last_activity"] == "2026-08-02"
 
 
+def test_explicit_project_activity_is_not_replaced_by_older_mapped_last_seen():
+    from connectonion.rem.census import last_activity
+    page = ("# Atlas\n\n## Facts\n- Last activity: 2026-09-26 [1]\n\n"
+            "## Paths\n- Last seen: 2026-08-15\n\n"
+            "Investigation: mapped 2026-10-01 · written 2026-10-02\n")
+    assert last_activity(page) == "2026-09-26"
+    # A newer workspace input can concern another project; keep the explicit scoped date.
+    assert last_activity(page.replace("Last activity: 2026-09-26", "Last activity: 2026-08-01")) == "2026-08-01"
+
+
 def test_a_run_whose_process_is_gone_reads_interrupted_at_once(tmp_path, monkeypatch):
     import socket
     from connectonion.rem import service

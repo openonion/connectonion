@@ -219,20 +219,24 @@ def test_first_write_has_bounded_citable_checkout_evidence_without_secret_files(
                                     "Example key sk-live-51Hq8ZzExampleSecretKey0042\n")
     (repo / "pyproject.toml").write_text('[project]\nname = "tide"\nversion = "0.2.0"\n')
     (repo / ".env").write_text("PRIVATE_PASSWORD=never-read-this")
+    workflows = repo / ".github/workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "seo-gate.yml").write_text("name: SEO\njobs:\n  check:\n    steps:\n      - run: node scripts/check-seo.mjs\n")
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    subprocess.run(["git", "-C", str(repo), "add", "README.md", "pyproject.toml"], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "README.md", "pyproject.toml", ".github/workflows/seo-gate.yml"], check=True)
     subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.org",
                     "commit", "-qm", "Add swell warning prototype"], check=True)
     root = tmp_path / "rem"
     prepare(root)
     Notebook(root).stub_project("projects/tide.md", "Tide", [str(repo)])
     source = tmp_path / "codex" / "2026/10/02/rollout-a.jsonl"
-    codex(source, str(repo), [("user", "Did the swell warning ship?", 1)])
+    codex(source, str(repo), [("user", "Did the swell warning ship? Check SEO in CI/CD.", 1)])
     extract(root, {"codex": {"kind": "codex", "root": str(tmp_path / "codex"), "enabled": True}})
 
     items, _ = project_pages.material(root, "projects/tide.md")
     files = [item for item in items if item["role"] == "project-file"]
-    assert any(item["source"].endswith(":pyproject.toml") for item in files)
+    assert any(item["origin"].endswith(":pyproject.toml") for item in files)
+    assert all(item["source"].startswith("project-source:") for item in files)
     assert any(item["role"] == "readme" and "Warn surfers" in item["text"] for item in items)
     assert all(item["source"] and len(item["text"]) <= 2_100 for item in files)
     assert any(item["role"] == "checkout-state" for item in items)
@@ -240,6 +244,32 @@ def test_first_write_has_bounded_citable_checkout_evidence_without_secret_files(
                for item in items)
     assert "never-read-this" not in json.dumps(items)
     assert "sk-live" not in json.dumps(items)
+    assert any(item.get("origin", "").endswith(":.github/workflows/seo-gate.yml") for item in items)
+    assert sum(len(item["text"]) for item in items if item["source"].startswith("project-source:")) <= project_pages.REPOSITORY_EVIDENCE_CHARS
+    packet = project_pages._repository_evidence(Notebook(root).read("projects/tide.md"), NOW.isoformat(), NOW.isoformat())
+    assert not any(".github/workflows" in item["source"] for item in packet)
+    # A moving ref must not relabel newer contents as the already-resolved commit.
+    from connectonion.rem import investigate
+    git = investigate._git
+    original = git(str(repo), "rev-parse", "HEAD")
+    (repo / "README.md").write_text("# Tide\nA later unrelated direction.\n")
+    subprocess.run(["git", "-C", str(repo), "add", "README.md"], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.org",
+                    "commit", "-qm", "Change direction later"], check=True)
+    later = git(str(repo), "rev-parse", "HEAD")
+    subprocess.run(["git", "-C", str(repo), "reset", "--hard", original], check=True, capture_output=True)
+
+    def moving_ref(folder, *args):
+        result = git(folder, *args)
+        if args == ("rev-parse", "HEAD^{commit}"):
+            subprocess.run(["git", "-C", folder, "reset", "--hard", later], check=True, capture_output=True)
+        return result
+
+    monkeypatch.setattr(investigate, "_git", moving_ref)
+    packet = project_pages._repository_evidence(Notebook(root).read("projects/tide.md"), NOW.isoformat(), NOW.isoformat())
+    assert next(item for item in packet if item["role"] == "readme")["source"].endswith(f":{original}:README.md")
+    assert "Warn surfers" in next(item for item in packet if item["role"] == "readme")["text"]
+    assert "Change direction later" not in next(item for item in packet if item["role"] == "recent-commits")["text"]
 
 
 def _fake_runner(page_from):
@@ -253,6 +283,27 @@ def _fake_runner(page_from):
         return {"outcome": "natural", "result": "read 1 message", "usage": {"input_tokens": 100}}
     run.calls = calls
     return run
+
+
+def test_repository_context_survives_mutable_file_changes_and_rejects_tampering(tmp_path):
+    from connectonion.rem.reader_model import cited_context
+    from connectonion.rem.files import maintenance_lock
+    item = project_pages.repository_snapshots([{"role": "readme", "source": "file:/repo/README.md",
+        "text": "# Tide\nWarn surfers.", "timestamp": "2026-10-02T01:00:00Z"}])[0]
+    with maintenance_lock(tmp_path):
+        assert project_pages.retain_repository_context(tmp_path, [item], set()) == 0
+        assert project_pages.retain_repository_context(tmp_path, [item], {item["source"]}) == 1
+    later = project_pages.repository_snapshots([{**item, "source": item["origin"], "text": "# Tide\nNew direction."}])[0]
+    assert later["source"] != item["source"]
+    context = cited_context(tmp_path, [{"text": "- [1] " + item["source"]}])[item["source"]]
+    assert context["excerpt"] == "# Tide\nWarn surfers."
+    assert context["time"] == "" and context["captured_at"] == item["timestamp"]
+    assert context["origin"] == item["origin"]
+    path = tmp_path / ".state/project-sources" / (item["source"].split(":")[1] + ".json")
+    assert path.stat().st_mode & 0o777 == 0o600
+    saved = json.loads(path.read_text())
+    path.write_text(json.dumps({**saved, "text": "Wrong body."}))
+    assert cited_context(tmp_path, [{"text": "- [1] " + item["source"]}]) == {}
 
 
 def _page_citing(source):
@@ -442,7 +493,33 @@ def test_the_material_carries_the_readme_beside_the_messages(world, monkeypatch)
     readme = {"role": "readme", "source": "file:/work/tide/README.md", "timestamp": "t", "text": "Tide."}
     monkeypatch.setattr(project_pages, "_readme", lambda page, stamp: [readme])
     items, _ = project_pages.material(world.root, "projects/tide.md")
-    assert readme in items and sum(1 for item in items if item["role"] == "user") == 1
+    packet = next(item for item in items if item["role"] == "readme")
+    assert packet["origin"] == readme["source"] and packet["text"] == readme["text"]
+    assert sum(1 for item in items if item["role"] == "user") == 1
+
+
+@pytest.mark.parametrize("accepted", [False, True])
+def test_only_an_accepted_project_keeps_its_cited_repository_packet(world, monkeypatch, accepted):
+    codex(world.codex / "rollout-packet.jsonl", "/work/tide", [("user", "What does Tide do?", 1)])
+    extract(world.root, world.subs)
+    item = {"role": "readme", "source": "file:/work/tide/README.md", "timestamp": "2026-10-02T01:00:00Z",
+            "text": "A swell warning tool for surfers."}
+    monkeypatch.setattr(project_pages, "_repository_evidence", lambda *args, **kwargs: [item])
+    source = project_pages.repository_snapshots([item])[0]["source"]
+    run = _fake_runner(lambda prompt: _page_citing(source if accepted else "codex:made-up:1"))
+    if accepted:
+        write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
+        assert project_pages.repository_context(world.root, source)["excerpt"] == item["text"]
+    else:
+        with pytest.raises(RemError, match="rejected"):
+            write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
+        assert not list((world.root / ".state/project-sources").glob("*.json"))
+
+
+def test_project_items_keep_where_workspace_input_was_supplied():
+    item = project_pages._message_items([{"source": "codex:test:1", "timestamp": "2026-10-02T01:00:00Z",
+        "tool": "codex", "cwd": "/work/docs-site", "typed_in": "/work/platform", "text": "Add a backend API."}])[0]
+    assert item["folder"] == "/work/docs-site" and item["typed_in"] == "/work/platform"
 
 
 def test_the_busiest_project_comes_first_and_recency_only_breaks_ties(world):

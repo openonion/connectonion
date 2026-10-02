@@ -15,6 +15,19 @@ package version, checkout ref and recent commits without an unbounded search.
 A commit is not evidence of passing tests or deployment. The Skill still says
 write once, check once, fix once.
 
+CI/SEO requests also select at most two tracked workflow files, prioritizing
+matching filenames within the same 9,000-character text budget. All Git reads
+use one resolved commit SHA. This gathers configuration, without executing a
+workflow or inferring the result of a run.
+
+Accepted session-writer pages retain the cited repository packets privately
+under `.state/project-sources`, keyed by a hash of origin and exact bounded
+text. The reader uses that captured text rather than reopening a changed file
+or mutable Git ref. Capture time is separate from event time. Existing pages
+whose packets were never retained cannot recover historical evidence from a
+new checkout; the broader file-only investigation path is not covered by this
+retention step.
+
 ## The first-time reader
 
 This remains a project page, not a separately named onboarding page. Reading it
@@ -85,3 +98,27 @@ offers a decision instead of several unverified completion questions.
 `Sessions`, `First seen` and `Last seen` are window-scoped counts and dates
 that belong to mapping. The risk is investigation dropping them while expanding
 the prose, or substituting the investigation date for mapping's dates.
+
+## Project scope and pending work
+
+An actual documentation page cited a merge reminder for a remote-browser
+architecture discussion and an adjacent framework-status input for an SEO
+proposal. All IDs existed: identity-safe retrieval did not validate the claims.
+The lead also adopted a backend GPU/model request from the same workspace as
+the site's latest progress. Each claim must be checked against its exact input
+and actual subject, including inherited content; cwd and tool attribution only
+explain where material was found.
+
+The previous session rule put a request in `Open threads` whenever no later
+input said it was complete. User-only archives omit replies and results, so
+that rule converted missing evidence into a current task. Only confirmed
+pending status belongs there. Requirements can still yield useful findings:
+for example, repeated rendered-code checks followed by proposed publication
+checks reveal a concrete quality need without claiming CI was implemented.
+
+An explicit `Facts` activity date is included in the shared census; mapped
+`Last seen` remains its original mapping window, not a replacement for later
+supported activity. Writers must exclude unrelated workspace topics from that
+date. Reader and CLI counts use the same census, without file modification time.
+The reader labels the mapping count `Mapped sessions` to distinguish it from
+the fuller archived input coverage used during investigation.

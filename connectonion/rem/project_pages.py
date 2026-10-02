@@ -10,6 +10,7 @@ an investigated page before it replaces the old one.
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import tempfile
 import time
@@ -17,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import read_config
-from .files import SECRET_SHAPES, Notebook, RemError, maintenance_lock, write_json
+from .files import SECRET_SHAPES, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .project_material import RECENT_DAYS, mark_refused, mark_written, page_state, stored, timestamp
 
 # Projects active in the last RECENT_DAYS (14, from project_material) are written first.
@@ -139,9 +140,10 @@ def material(root: Path, record: str, *, now: datetime | None = None) -> tuple[l
     state = page_state(root, record)
     tools = ", ".join(sorted({m["tool"] for m in sent}))
     note = (f"{len(sent)} user inputs in {tools} sessions in this project's folders, "
-            f"{sent[0]['timestamp'][:10]} to {sent[-1]['timestamp'][:10]}. The last activity is "
-            f"{sent[-1]['timestamp'][:10]}. Only the user's own messages: no assistant replies, "
-            "no tool output, no repository files.")
+            f"{sent[0]['timestamp'][:10]} to {sent[-1]['timestamp'][:10]}. The latest supplied input is "
+            f"{sent[-1]['timestamp'][:10]}; it may concern another project. Coding transcripts contain only user inputs: "
+            "no assistant replies or tool output. A separate bounded repository packet is supplied.")
+    note += f" Use notebook timezone {read_config(root)['schedule']['timezone']} consistently for page and Sources dates."
     if any(m.get('input_scope') for m in sent):
         note += " Read each input_scope: older client provenance or voice transcription limits are preserved; a session folder does not prove a software project."
     if mode == "update":
@@ -156,11 +158,57 @@ def material(root: Path, record: str, *, now: datetime | None = None) -> tuple[l
               "text": f"The page as it stands, at {record}:\n\n{normalize(record, notebook.read(record))}"},
              {"role": "coverage", "source": "investigation:coverage", "timestamp": stamp, "text": note}]
     page = notebook.read(record)
-    evidence = _repository_evidence(page, stamp, sent[-1]["timestamp"])
-    return items + evidence + _message_items(sent), sent[-1]["timestamp"]
+    evidence = _repository_evidence(page, stamp, sent[-1]["timestamp"], requests="\n".join(m["text"] for m in sent))
+    return items + repository_snapshots(evidence) + _message_items(sent), sent[-1]["timestamp"]
 
 
 README_CHARS = 3_000
+
+
+def repository_snapshots(items: list[dict]) -> list[dict]:
+    """Give bounded repository packets immutable content identities before a turn."""
+    return [{**item, "origin": item["source"], "source": "project-source:" + hashlib.sha256(
+        (item["source"] + "\0" + item["text"]).encode()).hexdigest()} for item in items]
+
+
+def retain_repository_context(root: Path, items: list[dict], cited: set[str]) -> int:
+    """Keep cited packet bodies under the caller's maintenance lock, after acceptance."""
+    from .reader_model import PRIVATE
+    count = 0
+    for item in items:
+        source, origin, text = item.get("source", ""), item.get("origin", ""), item.get("text", "")
+        if (source not in cited or not re.fullmatch(r"project-source:[0-9a-f]{64}", source)
+                or item.get("role") not in ("readme", "project-file", "checkout-state", "recent-commits")
+                or not isinstance(origin, str) or not origin.startswith(("git:", "file:"))
+                or not isinstance(text, str) or not 0 < len(text) <= REPOSITORY_EVIDENCE_CHARS
+                or SECRET_SHAPES.search(text) or PRIVATE.search(text)
+                or source != "project-source:" + hashlib.sha256((origin + "\0" + text).encode()).hexdigest()):
+            continue
+        path = state_path(root, "project-sources/" + source.split(":")[1] + ".json")
+        previous = read_json(path, {})
+        if previous and (previous.get("text") != text or previous.get("origin") != origin):
+            raise RemError("Retained repository citation has conflicting content")
+        if not previous:
+            write_json(path, {"id": source, "origin": origin, "text": text, "captured_at": item.get("timestamp") or ""})
+        count += 1
+    return count
+
+
+def repository_context(root: Path, source: str) -> dict | None:
+    """Use the retained packet only; never reread a mutable Git ref or working file."""
+    from .reader_model import PRIVATE
+    if not re.fullmatch(r"project-source:[0-9a-f]{64}", source):
+        return None
+    saved = read_json(state_path(root, "project-sources/" + source.split(":")[1] + ".json"), {})
+    text, origin = saved.get("text"), saved.get("origin", "")
+    if (saved.get("id") != source or not isinstance(text, str) or not isinstance(origin, str)
+            or not 0 < len(text) <= REPOSITORY_EVIDENCE_CHARS or SECRET_SHAPES.search(text) or PRIVATE.search(text)
+            or source != "project-source:" + hashlib.sha256((origin + "\0" + text).encode()).hexdigest()):
+        return None
+    return {"excerpt": text.strip()[:640], "truncated": len(text.strip()) > 640, "source": "project-source",
+            "time": "", "sender": "", "thread": "", "origin": origin,
+            "captured_at": saved.get("captured_at") or "",
+            "input_scope": "Local repository snapshot. Files and commit records do not verify tests or deployment."}
 
 
 def _excerpt(value: str, limit: int) -> str:
@@ -185,7 +233,7 @@ def _readme(page: str, stamp: str) -> list[dict]:
     return []
 
 
-def _repository_evidence(page: str, stamp: str, newest_session: str) -> list[dict]:
+def _repository_evidence(page: str, stamp: str, newest_session: str, *, requests: str = "") -> list[dict]:
     """A small local packet that can verify more than the owner's requests."""
     from .investigate import (CURRENT_REFS, _git, checkout_state, collapse_worktree_paths,
                               project_file_inventory, project_file_texts, project_paths)
@@ -194,17 +242,18 @@ def _repository_evidence(page: str, stamp: str, newest_session: str) -> list[dic
             continue
         ref = next((name for name in CURRENT_REFS if _git(folder, "rev-parse", "--verify", "--quiet",
                                                          name + "^{commit}")), "HEAD")
+        revision = _git(folder, "rev-parse", ref + "^{commit}")
         items = []
         for name in ("README.md", "README.rst", "README.txt", "README"):
-            content = _git(folder, "show", f"{ref}:{name}")
+            content = _git(folder, "show", f"{revision}:{name}")
             if content:
-                items.append({"role": "readme", "source": f"git:{folder}:{ref}:{name}",
+                items.append({"role": "readme", "source": f"git:{folder}:{revision}:{name}",
                               "timestamp": stamp, "text": _excerpt(content, README_CHARS)})
                 break
         for name in ("pyproject.toml", "package.json", "Cargo.toml", "Package.swift"):
-            content = _git(folder, "show", f"{ref}:{name}")
+            content = _git(folder, "show", f"{revision}:{name}")
             if content:
-                items.append({"role": "project-file", "source": f"git:{folder}:{ref}:{name}",
+                items.append({"role": "project-file", "source": f"git:{folder}:{revision}:{name}",
                               "timestamp": stamp, "text": _excerpt(content, 1_500)})
             if len(items) >= 3:
                 break
@@ -212,11 +261,14 @@ def _repository_evidence(page: str, stamp: str, newest_session: str) -> list[dic
         if state:
             items.append({"role": "checkout-state", "source": f"git:{folder}:checkout-state",
                           "timestamp": stamp, "text": state[:1_000]})
-        commits = _git(folder, "log", "-5", "--date=short", "--format=%h %ad %s", ref)
+        commits = _git(folder, "log", "-5", "--date=short", "--format=%h %ad %s", revision)
         if commits:
-            items.append({"role": "recent-commits", "source": f"git:{folder}:{ref}:recent-commits",
+            items.append({"role": "recent-commits", "source": f"git:{folder}:{revision}:recent-commits",
                           "timestamp": stamp, "text": "Local commits, not proof of tests or deployment:\n"
                           + _excerpt(commits, 1_500)})
+        if re.search(r"\b(?:CI|CICD|SEO)\b|CI/CD|workflow|GitHub Actions", requests, re.I):
+            budget = REPOSITORY_EVIDENCE_CHARS - sum(len(item["text"]) for item in items)
+            items += _workflow_evidence(folder, revision, stamp, requests, budget)
         return items
     items = _readme(page, stamp)
     files = [path for path in project_file_inventory(page, max_files=30)
@@ -227,9 +279,29 @@ def _repository_evidence(page: str, stamp: str, newest_session: str) -> list[dic
     return items
 
 
+def _workflow_evidence(folder: str, revision: str, stamp: str, requests: str, budget: int) -> list[dict]:
+    """At most two tracked CI configs when the user's request concerns publication checks."""
+    from .investigate import _git
+    paths = _git(folder, "ls-tree", "-r", "--name-only", revision, ".github/workflows").splitlines()
+    paths = [path for path in paths if path.endswith((".yml", ".yaml"))]
+    def mentioned(path):
+        return any(re.search(r"\b" + re.escape(word) + r"\b", requests, re.I)
+                   for word in re.split(r"[-_.]", Path(path).stem) if len(word) > 2)
+    items = []
+    for name in sorted(paths, key=lambda path: (not mentioned(path), path))[:2]:
+        content = _git(folder, "show", f"{revision}:{name}")
+        if content and budget > 100:
+            text = _excerpt(content, budget - 20)
+            items.append({"role": "project-file", "source": f"git:{folder}:{revision}:{name}",
+                          "timestamp": stamp, "text": text})
+            budget -= len(text)
+    return items
+
+
 def _message_items(messages: list[dict]) -> list[dict]:
     return [{"role": "user", "source": m["source"], "timestamp": m["timestamp"], "tool": m["tool"],
              "folder": m["cwd"], "text": m["text"],
+             **({"typed_in": m["typed_in"]} if m.get("typed_in") else {}),
              **({"input_scope": m["input_scope"]} if m.get("input_scope") else {})} for m in messages]
 
 
@@ -299,6 +371,8 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
     messages = sum(1 for item in items if item["role"] == "user")
     tools = sorted({i["tool"] for i in items if i.get("tool")})
     with maintenance_lock(root, wait=60):
+        from .reader_model import _source_ids
+        retain_repository_context(root, items, _source_ids([{"text": notebook.read(record)}]))
         notebook.note_pass(record, "written", "own messages: " + ", ".join(tools))
         mark_written(root, record, through, now=now)
         from .store import refresh_safely

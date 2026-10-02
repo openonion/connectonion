@@ -222,6 +222,21 @@ def test_record_dates_do_not_disagree_when_the_index_is_stale(reader):
     assert formatted in page.locator('.factlist dt:text-is("Last contact") + dd').inner_text()
 
 
+def test_project_first_seen_does_not_establish_an_unknown_start_date(reader):
+    page, uri = reader
+    page.goto(uri + "#r=projects%2Fharbour.md")
+    page.evaluate("""() => {
+      const r = byPath('projects/harbour.md');
+      r.text = r.text.replace('# Harbour', '# Harbour\\n\\n## Facts\\n- Started: Unknown');
+      FACTS.clear(); render();
+    }""", isolated_context=False)
+    assert page.evaluate("facts(byPath('projects/harbour.md')).first", isolated_context=False)
+    page.locator('.deep-note > summary').click()
+    started = page.locator('.factlist dt:text-is("Started") + dd')
+    assert started.locator('.val').count() == 0
+    assert 'not found' in started.inner_text()
+
+
 def test_investigation_command_targets_the_notebook_being_viewed(reader):
     page, uri = reader
     page.goto(uri + "#r=people%2Fquinn-alder.md")
@@ -328,6 +343,16 @@ def test_native_conversation_shares_common_limits_and_keeps_voice_limits(reader)
     assert not dialog.locator(':scope > .evidence-input-scope').is_visible()
     assert not dialog.locator('.conversation-message').first.is_visible()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_source_times_use_notebook_timezone_on_another_browser_timezone(reader):
+    page, uri = reader
+    other = page.context.browser.new_page(timezone_id='America/Los_Angeles', locale='en-US')
+    other.goto(uri)
+    other.evaluate("REM.status.timezone = 'Australia/Sydney'", isolated_context=False)
+    assert 'Jul 31' in other.evaluate("fmtTime('2026-07-30T21:04:03Z')", isolated_context=False)
+    assert 'Jul 30' in other.evaluate("new Date('2026-07-30T21:04:03Z').toLocaleDateString('en-US', {month:'short',day:'numeric'})")
+    other.close()
 
 
 def test_instruction_excerpt_is_not_a_verified_result_and_respects_privacy(reader):

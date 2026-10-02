@@ -121,7 +121,8 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -
             row = _cited_row(db, source) if db is not None else None
             if row is None:
                 from .skill_runs import instruction_context
-                context = instruction_context(root, source)
+                from .project_pages import repository_context
+                context = instruction_context(root, source) or repository_context(root, source)
                 if context:
                     output[source] = {**context, 'excerpt': context['excerpt'][:budget],
                                       'truncated': context['truncated'] or len(context['excerpt']) > budget}

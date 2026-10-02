@@ -852,7 +852,7 @@ function fmtDate(iso) {
 function fmtTime(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
-  return isNaN(d) ? iso : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return isNaN(d) ? iso : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: REM.status?.timezone || undefined });
 }
 function shortDate(day) {
   if (!day) return "";
@@ -1392,7 +1392,7 @@ const COLUMNS = {
     { key: "name", label: "Name", cls: "name", sort: r => r.title.toLowerCase(), cell: (r, f) => nameCell(r, f, false) },
     { key: "what", label: "What it is", cls: "wide", sort: (r, f) => f.what || "￿", cell: (r, f) => textCell(f.what) },
     { key: "last", label: "Last active", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last), desc: true },
-    { key: "sessions", label: "Sessions", num: true, sort: (r, f) => f.sessions ?? -1, cell: (r, f) => el("span", { class: "mono", text: f.sessions ? String(f.sessions) : "—" }), desc: true },
+    { key: "sessions", label: "Mapped sessions", num: true, sort: (r, f) => f.sessions ?? -1, cell: (r, f) => el("span", { class: "mono", title: "Sessions in the mapping window; archived input coverage can differ.", text: f.sessions ? String(f.sessions) : "—" }), desc: true },
     { key: "open", label: "What's open", cls: "open-col", sort: (r, f) => f.open.length ? OPEN_RANK[f.open[0].dir] : 9, cell: (r, f) => openCell(f) },
     { key: "status", label: "Status", sort: r => ({ "Investigated": 0, "Some findings": 1 })[known(r).status] ?? 2, cell: r => statusPill(r) }]
 };
@@ -1994,7 +1994,7 @@ function legacyFact(r, label) {
   const f = facts(r), k = known(r);
   const v = {
     "How we know them": f.how, "First contact": f.first, "Last contact": r.category !== "projects" ? f.last : "", "Email": f.email,
-    "Last activity": r.category === "projects" ? k.last : "", "Started": r.category === "projects" ? f.first : "",
+    "Last activity": r.category === "projects" ? k.last : "",
     "Repository": f.repo, "What they do": r.category === "orgs" ? f.what : "", "Website": r.category === "orgs" ? f.domain : "",
     "Your contacts": f.people ? f.people + (f.people === 1 ? " person" : " people") : "", "Links": f.links
   }[label];
@@ -2073,7 +2073,7 @@ function sidePanels(r, k) {
   const mail = /Observed mail count:\s*(\d+);\s*first:\s*(\d{4}-\d{2}-\d{2});\s*last:\s*(\d{4}-\d{2}-\d{2})/.exec(r.text);
   if (mail) add("Mail", el("span", { class: "mono", text: mail[1] + " · " + shortDate(mail[2]) + "–" + shortDate(mail[3]) }));
   const sessions = /^- Sessions:\s*(\d+)/m.exec(r.text), first = /^- First seen:\s*(\S+)/m.exec(r.text);
-  if (sessions) add("Sessions", el("span", { class: "mono", text: sessions[1] + (first ? " since " + shortDate(first[1]) : "") }));
+  if (sessions) add(r.category === "projects" ? "Mapped sessions" : "Sessions", el("span", { class: "mono", title: "Sessions in the mapping window; archived input coverage can differ.", text: sessions[1] + (first ? " since " + shortDate(first[1]) : "") }));
   if (r.category === "skills") {
     const u = skillUsage(r);
     if (u) panels.push(panel("Usage", [el("div", { class: "bigstat" }, [el("span", { class: "v", text: String(u.count) }), el("span", { class: "k", text: (u.count === 1 ? "invocation" : "invocations") + " in " + u.days + " days" })]),
@@ -2130,14 +2130,14 @@ function recordFocus(r) {
     const blocks = [];
     if (purpose) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: "What this is" }),
       el("p", { html: inline(listItems(purpose.text)[0] || purpose.text, r.path) })]));
-    if (decisions) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: "A recorded decision" }),
+    if (decisions) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: "Recorded direction" }),
       el("ul", {}, listItems(decisions.text).slice(-1).map(item => el("li", { html: inline(item, r.path) }))),
       el("a", { class: "open-note", href: href(r) + "&h=key-decisions", text: "View all decisions →" })]));
     if (blocks.length) out.appendChild(el("div", { class: "project-workspace" }, blocks));
   }
   const f = facts(r);
   const labels = r.category === "people" ? [["Role", f.role], ["Company", f.company], ["Last contact", f.last]]
-    : r.category === "projects" ? [["Last active", f.last], ["Sessions", f.sessions], ["Repository", f.repo]]
+    : r.category === "projects" ? [["Last active", f.last], ["Mapped sessions", f.sessions], ["Repository", f.repo]]
       : r.category === "orgs" ? [["Domain", f.domain], ["Last contact", f.last]]
         : r.category === "skills" ? [["Recorded invocations", skillUsage(r) ? String(skillUsage(r).count) : ""], ["Last invocation", f.last]] : [];
   const shown = labels.filter(([, value]) => value).slice(0, 3);
@@ -2526,6 +2526,9 @@ function openEvidence(r, number, trigger) {
   if (!source) return false;
   const id = /\b([a-z][a-z-]*:[\w./:-]{4,})/i.exec(source.text)?.[1] || "";
   const context = (REM.source_context || {})[id];
+  const revision = /:([0-9a-f]{40}):(.+)$/.exec(context?.origin || "");
+  const origin = revision ? revision[2] + " @ " + revision[1].slice(0, 8)
+    : context?.origin ? context.origin.split("/").at(-1).replace(/.*:checkout-state$/, "Checkout state") : "";
   let dialog = document.getElementById("evidence-dialog");
   if (!dialog) { dialog = el("dialog", { id: "evidence-dialog", class: "evidence-dialog", "aria-label": "Source context" }); document.body.appendChild(dialog); }
   dialog.textContent = "";
@@ -2536,8 +2539,9 @@ function openEvidence(r, number, trigger) {
     el("p", { class: "evidence-summary private", text: source.text }));
   dialog.appendChild(el("p", { class: "private-hidden-notice", text: "Source descriptions and original excerpts are hidden because their private content has not been classified. Show private content to read them." }));
   if (context) dialog.append(el("div", { class: "evidence-original private" }, [
-    el("span", { class: "focus-kicker", text: (/^skill-(source|reference)$/.test(context.source) ? "Instruction excerpt" : "Original source context") + " · not a validated claim span" }),
-    el("p", { class: "evidence-meta", text: [context.source, context.sender, context.time ? fmtTime(context.time) : ""].filter(Boolean).join(" · ") }),
+    el("span", { class: "focus-kicker", text: (/^skill-(source|reference)$/.test(context.source) ? "Instruction excerpt" : context.source === "project-source" ? "Repository snapshot" : "Original source context") + " · not a validated claim span" }),
+    ...(origin ? [el("p", { class: "evidence-meta", text: origin })] : []),
+    el("p", { class: "evidence-meta", text: [context.source, context.sender, context.time ? fmtTime(context.time) : "", context.captured_at ? "Captured " + fmtTime(context.captured_at) : ""].filter(Boolean).join(" · ") }),
     ...(context.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(context.input_scope) })] : []),
     el("blockquote", { text: context.excerpt + (context.truncated ? "…" : "") })]));
   else dialog.appendChild(el("p", { class: "evidence-unavailable", text: "The original source is not archived in this snapshot. The source description above is a generated summary, not the original source." }));
