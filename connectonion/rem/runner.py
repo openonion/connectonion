@@ -518,7 +518,7 @@ PROMOTE_WAIT_SECONDS = 1800
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True):
-    from .page_review import (drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
+    from .page_review import (compact_project_page, drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
                               link_company, normalize_numbered_sources, placeholder_errors, restore_runner_fields,
                               validate)
     if not candidate.is_file():
@@ -545,6 +545,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text = link_people(record, text, person_names(notebook, owner.get("record", "")))
     if record.startswith("projects/"):
         text = _project_window_notice(text, items)
+        if investigation:
+            text = compact_project_page(text)
     errors = validate(record, text, original, items, owner=record == owner.get("record"))
     # Only a page's own investigation must finish its sections. Applied to a
     # one-page maintenance turn, it refused every page not investigated yet:

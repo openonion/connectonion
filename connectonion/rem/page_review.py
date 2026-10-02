@@ -12,6 +12,8 @@ from .files import Notebook, RemError
 # The owner's own page has no "How the user writes to them" (#2008): it said
 # "Not applicable" on a real owner page, a heading for nothing.
 NOT_ON_OWNER_PAGE = 'How the user writes to them'
+PROJECT_CORE = ('Facts', 'Insight', 'What it is', 'Where it stands', 'Paths',
+                'Open threads', 'Uncertainties', 'Sources')
 
 
 def headings(record: str, owner: bool = False) -> tuple[str, ...]:
@@ -19,10 +21,16 @@ def headings(record: str, owner: bool = False) -> tuple[str, ...]:
         return ('Facts', 'Insight',
                 *(h for h in Notebook.PERSON_SECTIONS if not (owner and h == NOT_ON_OWNER_PAGE)), 'Sources')
     if record.startswith('projects/'):
-        return ('Facts', 'Insight', *Notebook.PROJECT_SECTIONS, 'Sources')
+        return PROJECT_CORE
     if record.startswith('orgs/'):
         return ('Domains', 'Facts', *Notebook.ORG_SECTIONS, 'Sources')
     return ()
+
+
+def _canonical_headings(record: str, owner: bool = False) -> tuple[str, ...]:
+    if record.startswith('projects/'):
+        return ('Facts', 'Insight', *Notebook.PROJECT_SECTIONS, 'Sources')
+    return headings(record, owner)
 
 
 def prose(text: str) -> str:
@@ -54,7 +62,10 @@ def normalize(record: str, text: str, owner: bool = False) -> str:
     found = [m[1] for m in matches]
     if len(found) != len(set(found)):
         raise RemError('Existing page has duplicate sections; reconcile them before investigation')
-    if found == list(required):
+    canonical = _canonical_headings(record, owner)
+    expected = [h for h in canonical if h in found or h in required]
+    expected[-1:-1] = [h for h in found if h not in canonical]
+    if found == expected:
         return text
     prefix = text[:matches[0].start()] if matches else text
     status = re.findall(r'^Investigation:.*$', text, re.M)
@@ -63,11 +74,34 @@ def normalize(record: str, text: str, owner: bool = False) -> str:
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
         sections[match[1]] = re.sub(r'^Investigation:.*$', '', text[match.end():end], flags=re.M).strip()
     prefix = re.sub(r'^Investigation:.*$', '', prefix, flags=re.M).strip()
-    order = [*required[:-1], *(h for h in found if h not in required), 'Sources']
+    order = expected
     output = [prefix]
     for heading in order:
         output += [f'## {heading}', sections.get(heading, '- Unknown — not investigated yet')]
     return '\n\n'.join(output + status) + '\n'
+
+
+def compact_project_page(text: str) -> str:
+    """Hide empty optional headings after a project has been investigated.
+
+    The map keeps its full scaffold until a write. A written page carries only
+    supported detail plus the core needed to resume and audit it (#2122).
+    """
+    visible = prose(text)
+    matches = list(re.finditer(r'^## (.+)$', visible, re.M))
+    if not matches:
+        return text
+    removable = set(_canonical_headings('projects/x.md')) - set(PROJECT_CORE)
+    spans = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        content = re.sub(r'^Investigation:.*$', '', text[match.end():end], flags=re.M).strip()
+        if (match[1] in removable and not re.search(r'\[W?\d+\]', content)
+                and re.fullmatch(r'(?:- )?(?:Unknown|未知|尚未确认)[^\n]*', content)):
+            spans.append((match.start(), end))
+    for start, end in reversed(spans):
+        text = text[:start].rstrip('\n') + '\n\n' + text[end:].lstrip('\n')
+    return text
 
 
 def _local_reference(value: str, original: str, items: list[dict]) -> bool:

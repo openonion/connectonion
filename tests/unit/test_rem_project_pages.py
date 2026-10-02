@@ -8,6 +8,7 @@ import json
 import os
 import re
 import stat
+import subprocess
 import types
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -190,6 +191,37 @@ def test_one_call_carries_the_newest_messages_that_fit_and_says_what_it_left_out
     assert "1 older messages did not fit" in items[1]["text"]
     assert through == stored(world.root, "projects/tide.md")[-1]["timestamp"]
     assert PROMPT_CHARS == 60_000  # the documented cap
+
+
+def test_first_write_has_bounded_citable_checkout_evidence_without_secret_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(project_material, "project_exclusion", lambda path: "")
+    repo = tmp_path / "tide"
+    repo.mkdir()
+    (repo / "README.md").write_text("# Tide\nWarn surfers when the swell rises.\n"
+                                    "Example key sk-live-51Hq8ZzExampleSecretKey0042\n")
+    (repo / "pyproject.toml").write_text('[project]\nname = "tide"\nversion = "0.2.0"\n')
+    (repo / ".env").write_text("PRIVATE_PASSWORD=never-read-this")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "README.md", "pyproject.toml"], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.org",
+                    "commit", "-qm", "Add swell warning prototype"], check=True)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).stub_project("projects/tide.md", "Tide", [str(repo)])
+    source = tmp_path / "codex" / "2026/10/02/rollout-a.jsonl"
+    codex(source, str(repo), [("user", "Did the swell warning ship?", 1)])
+    extract(root, {"codex": {"kind": "codex", "root": str(tmp_path / "codex"), "enabled": True}})
+
+    items, _ = project_pages.material(root, "projects/tide.md")
+    files = [item for item in items if item["role"] == "project-file"]
+    assert any(item["source"].endswith(":pyproject.toml") for item in files)
+    assert any(item["role"] == "readme" and "Warn surfers" in item["text"] for item in items)
+    assert all(item["source"] and len(item["text"]) <= 2_100 for item in files)
+    assert any(item["role"] == "checkout-state" for item in items)
+    assert any(item["role"] == "recent-commits" and "Add swell warning prototype" in item["text"]
+               for item in items)
+    assert "never-read-this" not in json.dumps(items)
+    assert "sk-live" not in json.dumps(items)
 
 
 def _fake_runner(page_from):

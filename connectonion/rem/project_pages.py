@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import read_config
-from .files import Notebook, RemError, maintenance_lock, write_json
+from .files import SECRET_SHAPES, Notebook, RemError, maintenance_lock, write_json
 from .project_material import RECENT_DAYS, mark_refused, mark_written, page_state, stored, timestamp
 
 # Projects active in the last RECENT_DAYS (14, from project_material) are written first.
@@ -28,6 +28,8 @@ PROMPT_CHARS = 60_000
 SKILL = "rem-project-sessions"
 # The task wording around the skills and the material, for the stated estimate.
 PROMPT_CHARS_FIXED = 1_500
+# README, package metadata and local Git state stay below this per project.
+REPOSITORY_EVIDENCE_CHARS = 9_000
 
 
 def pending(root: Path, record: str) -> tuple[list[dict], str]:
@@ -111,7 +113,8 @@ def estimate(rows: list[dict]) -> dict:
     turn, so billed input is several times this: a 47,000-character prompt
     took 86,710 input tokens (52,736 of them cached) on 2026-09-30.
     """
-    chars = sum(row["chars"] for row in rows) + (len(instructions()) + PROMPT_CHARS_FIXED) * len(rows)
+    chars = sum(row["chars"] for row in rows) + (len(instructions()) + PROMPT_CHARS_FIXED
+                                                + REPOSITORY_EVIDENCE_CHARS) * len(rows)
     return {"pages": len(rows), "model_calls": len(rows), "recent": sum(1 for r in rows if r["recent"]),
             "chars": chars, "tokens_estimated_in": chars // 4}
 
@@ -150,10 +153,17 @@ def material(root: Path, record: str, *, now: datetime | None = None) -> tuple[l
     items = [{"role": "page", "record": record, "source": "investigation:page", "timestamp": stamp,
               "text": f"The page as it stands, at {record}:\n\n{normalize(record, notebook.read(record))}"},
              {"role": "coverage", "source": "investigation:coverage", "timestamp": stamp, "text": note}]
-    return items + _readme(notebook.read(record), stamp) + _message_items(sent), sent[-1]["timestamp"]
+    page = notebook.read(record)
+    evidence = _repository_evidence(page, stamp, sent[-1]["timestamp"])
+    return items + evidence + _message_items(sent), sent[-1]["timestamp"]
 
 
 README_CHARS = 3_000
+
+
+def _excerpt(value: str, limit: int) -> str:
+    clean = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]", value)
+    return clean[:limit] + ("\n[truncated]" if len(clean) > limit else "")
 
 
 def _readme(page: str, stamp: str) -> list[dict]:
@@ -167,10 +177,52 @@ def _readme(page: str, stamp: str) -> list[dict]:
         for name in ("README.md", "README.rst", "README.txt", "README"):
             path = Path(folder) / name
             if path.is_file():
-                text = path.read_text(encoding="utf-8", errors="replace")[:README_CHARS]
+                text = _excerpt(path.read_text(encoding="utf-8", errors="replace"), README_CHARS)
                 return [{"role": "readme", "source": f"file:{path}", "timestamp": stamp,
                          "text": f"The start of {path}, the project's own description:\n\n{text}"}]
     return []
+
+
+def _repository_evidence(page: str, stamp: str, newest_session: str) -> list[dict]:
+    """A small local packet that can verify more than the owner's requests."""
+    from .investigate import (CURRENT_REFS, _git, checkout_state, collapse_worktree_paths,
+                              project_file_inventory, project_file_texts, project_paths)
+    for folder in project_paths(collapse_worktree_paths(page))[:2]:
+        if not (Path(folder) / ".git").exists():
+            continue
+        ref = next((name for name in CURRENT_REFS if _git(folder, "rev-parse", "--verify", "--quiet",
+                                                         name + "^{commit}")), "HEAD")
+        items = []
+        for name in ("README.md", "README.rst", "README.txt", "README"):
+            content = _git(folder, "show", f"{ref}:{name}")
+            if content:
+                items.append({"role": "readme", "source": f"git:{folder}:{ref}:{name}",
+                              "timestamp": stamp, "text": _excerpt(content, README_CHARS)})
+                break
+        for name in ("pyproject.toml", "package.json", "Cargo.toml", "Package.swift"):
+            content = _git(folder, "show", f"{ref}:{name}")
+            if content:
+                items.append({"role": "project-file", "source": f"git:{folder}:{ref}:{name}",
+                              "timestamp": stamp, "text": _excerpt(content, 1_500)})
+            if len(items) >= 3:
+                break
+        state = checkout_state(folder, newest_session)
+        if state:
+            items.append({"role": "checkout-state", "source": f"git:{folder}:checkout-state",
+                          "timestamp": stamp, "text": state[:1_000]})
+        commits = _git(folder, "log", "-5", "--date=short", "--format=%h %ad %s", ref)
+        if commits:
+            items.append({"role": "recent-commits", "source": f"git:{folder}:{ref}:recent-commits",
+                          "timestamp": stamp, "text": "Local commits, not proof of tests or deployment:\n"
+                          + _excerpt(commits, 1_500)})
+        return items
+    items = _readme(page, stamp)
+    files = [path for path in project_file_inventory(page, max_files=30)
+             if Path(path).name in ("pyproject.toml", "package.json", "Cargo.toml", "Package.swift")][:2]
+    for item in project_file_texts(files, max_files=2, chars_per_file=1_500):
+        item["text"] = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]", item["text"])
+        items.append(item)
+    return items
 
 
 def _message_items(messages: list[dict]) -> list[dict]:
