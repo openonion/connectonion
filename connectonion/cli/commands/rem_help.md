@@ -647,12 +647,12 @@ Back:     co rem advanced --help
 ## co rem projects
 
 ```
-Write each project's page from the messages you typed to Codex and Claude Code in
-its folders, most recently active projects first. This shows what would be written
+Write each project's page from your typed or explicitly transcribed voice input
+to Codex and Claude Code in its folders, most recently active projects first. This shows what would be written
 and what it would cost; it does not call a model.
 
-It first files your new messages under their project pages (a script: only what
-you typed, never the assistant's replies or tool output), in the notebook's private
+It first files your new messages under their project pages (a script: only your input,
+never assistant replies, mixed transcript deltas or tool output), in the notebook's private
 .state/projects/, then lists the pages with messages they were not written from.
 A message typed in a workspace holding several repositories (like ~/projects) is
 filed under the repository its session worked in, judged from the paths its tool

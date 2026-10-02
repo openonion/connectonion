@@ -95,8 +95,8 @@ def build_runs(db, root: Path) -> None:
     insert(db, "runs", rows)
 
 
-def body(root: Path, row: dict):
-    """The text of one message, read from its file; None when it was never archived."""
+def archived_message(root: Path, row: dict):
+    """The saved source record, including its input limits; None if not archived."""
     if not row.get("body_path"):
         return None
     path = state_path(root, row["body_path"])
@@ -105,5 +105,11 @@ def body(root: Path, row: dict):
     if row.get("body_line"):
         lines = path.read_text(encoding="utf-8").splitlines()
         number = row["body_line"]
-        return json.loads(lines[number - 1]).get("text") if number <= len(lines) else None
-    return read_json(path, {}).get("body")
+        return json.loads(lines[number - 1]) if number <= len(lines) else None
+    return read_json(path, {})
+
+
+def body(root: Path, row: dict):
+    """The text of one message, read from its file; None when it was never archived."""
+    saved = archived_message(root, row)
+    return saved.get("text" if row.get("body_line") else "body") if saved else None

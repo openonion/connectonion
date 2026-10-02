@@ -138,10 +138,12 @@ def material(root: Path, record: str, *, now: datetime | None = None) -> tuple[l
     sent, left_out = _fit(messages)
     state = page_state(root, record)
     tools = ", ".join(sorted({m["tool"] for m in sent}))
-    note = (f"{len(sent)} messages the user typed in {tools} sessions in this project's folders, "
+    note = (f"{len(sent)} user inputs in {tools} sessions in this project's folders, "
             f"{sent[0]['timestamp'][:10]} to {sent[-1]['timestamp'][:10]}. The last activity is "
             f"{sent[-1]['timestamp'][:10]}. Only the user's own messages: no assistant replies, "
             "no tool output, no repository files.")
+    if any(m.get('input_scope') for m in sent):
+        note += " Read each input_scope: older client provenance or voice transcription limits are preserved; a session folder does not prove a software project."
     if mode == "update":
         note += (f" This is an update: the page was last written from messages up to "
                  f"{state['written_through'][:10]}, and these are only the messages after that.")
@@ -227,7 +229,8 @@ def _repository_evidence(page: str, stamp: str, newest_session: str) -> list[dic
 
 def _message_items(messages: list[dict]) -> list[dict]:
     return [{"role": "user", "source": m["source"], "timestamp": m["timestamp"], "tool": m["tool"],
-             "folder": m["cwd"], "text": m["text"]} for m in messages]
+             "folder": m["cwd"], "text": m["text"],
+             **({"input_scope": m["input_scope"]} if m.get("input_scope") else {})} for m in messages]
 
 
 def prompt(directory: Path, items: list[dict], candidate: Path, page_chars: int = 0) -> str:

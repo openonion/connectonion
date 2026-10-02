@@ -13,7 +13,7 @@ import sqlite3
 from pathlib import Path
 
 from .files import state_path
-from .store_messages import body as message_body
+from .store_messages import archived_message
 
 REFERENCE = re.compile(r"\[([^\]]+)\]\(([^)]+\.md)\)")
 CITATION = re.compile(r"\[(W?\d{1,3})\]")
@@ -115,7 +115,8 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -
             if row is None:
                 continue
             message = dict(row)
-            raw = message_body(root, message)
+            saved = archived_message(root, message) or {}
+            raw = saved.get("text" if message.get("body_line") else "body")
             if not isinstance(raw, str) or PRIVATE.search(raw):
                 continue
             excerpt = raw.strip()[: min(640, budget)]
@@ -123,7 +124,8 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -
                 continue
             output[source] = {"excerpt": excerpt, "truncated": len(raw.strip()) > len(excerpt),
                               "time": message.get("time") or "", "sender": message.get("sender") or "",
-                              "thread": message.get("thread") or "", "source": message.get("source") or ""}
+                              "thread": message.get("thread") or "", "source": message.get("source") or "",
+                              "input_scope": saved.get("input_scope") or ""}
             budget -= len(excerpt)
     finally:
         db.close()
@@ -159,7 +161,8 @@ def cited_conversations(root: Path, contexts: dict[str, dict], *, max_threads: i
             messages = []
             for row in reversed(rows):
                 message = dict(row)
-                raw = message_body(root, message)
+                saved = archived_message(root, message) or {}
+                raw = saved.get("text" if message.get("body_line") else "body")
                 if not isinstance(raw, str) or PRIVATE.search(raw):
                     continue
                 excerpt = raw.strip()[:min(900, budget)]
@@ -167,7 +170,8 @@ def cited_conversations(root: Path, contexts: dict[str, dict], *, max_threads: i
                     continue
                 messages.append({"id": message["id"], "sender": message.get("sender") or "",
                                  "time": message.get("time") or "", "excerpt": excerpt,
-                                 "truncated": len(raw.strip()) > len(excerpt)})
+                                 "truncated": len(raw.strip()) > len(excerpt),
+                                 "input_scope": saved.get("input_scope") or ""})
                 budget -= len(excerpt)
             if messages:
                 output[thread] = {"subject": rows[0]["subject"] or "Conversation",

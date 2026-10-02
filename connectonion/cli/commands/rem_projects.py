@@ -67,7 +67,7 @@ def _left_line(report: dict, recent_days: int) -> list[str]:
             f"(older than {recent_days} days)"] if left else []
 
 
-NOTHING = "Every project page is written from all of your messages. Nothing to write."
+NOTHING = "No new retained user input to write. Pages without usable evidence remain uninvestigated."
 NO_PAGES = "No project pages yet: the map makes them from your session folders."
 
 

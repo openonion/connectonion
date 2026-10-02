@@ -131,7 +131,8 @@ def _file_messages(path, kind, parse, read_meta, since, rem_root, counts, owner)
             message = {"source": f"{kind}:{session}:{at}", "tool": kind,
                        # One spelling, so times from both tools compare as text.
                        "timestamp": timestamp(item["timestamp"]).isoformat(),
-                       "cwd": cwd, "text": SECRET_SHAPES.sub(REDACTED, item["text"])}
+                       "cwd": cwd, "text": SECRET_SHAPES.sub(REDACTED, item["text"]),
+                       **({"input_scope": item["input_scope"]} if item.get("input_scope") else {})}
             if why == CONTAINER:
                 held.append((at, message))
             elif why:
@@ -276,7 +277,8 @@ def page_for(cwd: str, folders: dict[str, str]) -> str | None:
 
 def render(messages: list[dict]) -> str:
     """Plain text to read: one heading per message, its date and tool, its words."""
-    blocks = [f"### {m['source']} · {m['timestamp']} — user ({m['tool']}, {m['cwd']})\n\n{m['text'].rstrip()}"
+    blocks = [f"### {m['source']} · {m['timestamp']} — user ({m['tool']}, {m['cwd']})\n\n"
+              + (f"Input scope: {m['input_scope']}\n\n" if m.get('input_scope') else '') + m['text'].rstrip()
               for m in messages]
     return "\n\n".join(blocks) + ("\n" if blocks else "")
 

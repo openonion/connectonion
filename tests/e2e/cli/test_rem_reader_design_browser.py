@@ -282,3 +282,25 @@ def test_every_view_fits_a_phone(reader, theme):
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), view
         background = page.evaluate("getComputedStyle(document.body).backgroundColor")
         assert (background == "rgb(13, 16, 26)") == (theme == "dark"), (view, background)
+
+
+def test_source_and_conversation_show_input_limits_and_hide_them_with_private_content(reader):
+    page, uri = reader
+    scope = 'Codex Desktop voice transcription; only explicit input, transcript delta omitted; recognition errors possible'
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("scope => { const c = REM.source_context['outlook:77c09ad1e3f0']; c.input_scope = scope; REM.conversations[c.thread].messages[0].input_scope = scope; }", scope, isolated_context=False)
+    page.locator('.deep-note > summary').click()
+    page.locator("a.cite[href*='src-5']").first.click()
+    note = page.locator('#evidence-dialog .evidence-input-scope')
+    assert note.is_visible() and 'Transcription may contain errors.' in note.inner_text() and 'transcript delta' not in note.inner_text()
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert not note.is_visible()
+    page.get_by_role('button', name='Close source context').click()
+    page.evaluate('togglePrivate()', isolated_context=False)
+    page.locator('.conversation-open').first.click()
+    note = page.locator('#conversation-dialog .evidence-input-scope')
+    assert note.is_visible() and 'Transcription may contain errors.' in note.inner_text() and 'transcript delta' not in note.inner_text()
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert not note.is_visible()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')

@@ -35,7 +35,8 @@ INJECTED_BLOCK = re.compile(
     r"|Caveat: The messages below"
     r"|This session is being continued from a previous conversation"
     r"|Follow these instructions exactly\. They are the skill `"
-    r"|Base directory for this skill:)")
+    r"|Base directory for this skill:"
+    r"|Automation: [^\n]+\nAutomation ID: [^\n]+)")
 # What a typed Codex CLI message looks like: over 30 real days the CLI's `role: user`
 # slot held 688 typed messages with exactly these three keys (median 172 characters)
 # and 9,103 injected ones carrying `id` and a metadata passthrough as well (median
@@ -50,9 +51,9 @@ CODEX_INJECTED_KEY = "internal_chat_message_metadata_passthrough"
 # typed is all `user.*` (`user.text`, `user.image`); what the client adds names itself
 # (`agents_md.instructions`, `environments.environment_context`,
 # `plugins.recommendations`, `goal.internal_context`, `skills.selected_skill_instructions`,
-# `generic.turn_aborted`). A message with no kinds is the client's too: over the same
-# 90 days, 13% of those that open with no tag hold Chinese against 64% of the typed
-# ones -- the owner writes in Chinese, the harness does not.
+# `generic.turn_aborted`). Older native Desktop turns recorded only turn_id;
+# those also contain direct requests, alongside injected and scheduled prompts.
+# Language alone cannot establish who supplied a message.
 # Older native CLI records serialize turn metadata without an optional id. The same
 # speaker, client-kind and injected-text checks still apply to that shape.
 CODEX_TYPED_SHAPES = (TYPED_CODEX_KEYS, TYPED_CODEX_KEYS | {CODEX_INJECTED_KEY},
@@ -62,6 +63,9 @@ CODEX_DESKTOP = "Codex Desktop"
 # Desktop puts the page open in its in-app browser in front of what was typed, as one
 # block. The block goes and the typed words stay (122 messages in the 90 days).
 BROWSER_CONTEXT = re.compile(r"\s*<in-app-browser-context>.*?</in-app-browser-context>\s*", re.S)
+VOICE_INPUT = re.compile(
+    r"\s*<realtime_delegation>\s*<input>([^<>]*)</input>\s*"
+    r"<transcript_delta>.*?</transcript_delta>\s*</realtime_delegation>\s*", re.S)
 # Unfamiliar user-slot messages in one pass before the run says the format moved.
 UNRECOGNISED_ALARM = 20
 SKIPPED = object()     # a user-slot message not read: the client's own machinery, expected
@@ -128,7 +132,8 @@ def _codex_meta(first: dict) -> dict:
     return {"id": payload.get("id"), "cwd": payload.get("cwd", ""),
             "subagent": isinstance(source, dict) and "subagent" in source,
             "interactive_cli": source == "cli" and payload.get("originator") in ("codex-tui", "codex_cli_rs"),
-            "desktop": payload.get("originator") == CODEX_DESKTOP}
+            "desktop": payload.get("originator") == CODEX_DESKTOP,
+            "native_desktop": payload.get("originator") == CODEX_DESKTOP and source == "vscode"}
 
 
 def _codex_message(row: dict, since: datetime, meta: dict | None = None) -> dict | None:
@@ -163,10 +168,10 @@ def _codex_message(row: dict, since: datetime, meta: dict | None = None) -> dict
         kinds = passthrough.get("content_item_kinds") if isinstance(passthrough, dict) else ()
         if not isinstance(passthrough, dict) or not isinstance(kinds, (list, type(None))):
             return UNFAMILIAR
-        # Earlier interactive CLI records only named their turn, before client
-        # content kinds were recorded. Exec wrappers and Desktop imports do not
-        # establish direct user intent from that same shape.
-        native_turn = (meta.get("interactive_cli") and set(passthrough) == {"turn_id"}
+        # Native CLI and older Desktop turns recorded only their turn id.
+        # Exec wrappers, bare imported history and injected text remain excluded.
+        native_turn = ((meta.get("interactive_cli") or meta.get("native_desktop"))
+                       and set(passthrough) == {"turn_id"}
                        and isinstance(passthrough["turn_id"], str) and bool(passthrough["turn_id"]))
         if not kinds and not native_turn:
             return SKIPPED
@@ -178,7 +183,16 @@ def _codex_message(row: dict, since: datetime, meta: dict | None = None) -> dict
                      and isinstance(part.get("text"), str))
     if passthrough is not None and BROWSER_CONTEXT.match(text):
         text = BROWSER_CONTEXT.sub("", text, count=1)
-    return _spoken(payload["role"], text, row["timestamp"]) or SKIPPED
+    scope = ""
+    if meta.get("native_desktop") and (voice := VOICE_INPUT.fullmatch(text)):
+        text = voice[1]
+        scope = "Codex Desktop voice transcription; only explicit input, transcript delta omitted; wording may contain recognition errors"
+    elif passthrough is not None and meta.get("native_desktop") and set(passthrough) == {"turn_id"}:
+        scope = "Older native Codex Desktop turn; client content kinds were not recorded"
+    item = _spoken(payload["role"], text, row["timestamp"])
+    if item and scope:
+        item["input_scope"] = scope
+    return item or SKIPPED
 
 
 def _legacy_codex_message(row: dict, since: datetime, meta: dict):

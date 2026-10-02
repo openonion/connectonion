@@ -2184,6 +2184,11 @@ function recordFocus(r) {
   return out;
 }
 
+function inputScopeText(scope) {
+  if (/voice transcription/i.test(scope)) return "Voice transcript. Only your input is shown; other conversation context is omitted. Transcription may contain errors.";
+  if (/Older native Codex Desktop turn/.test(scope)) return "Older Desktop input. The app did not record how this input was supplied.";
+  return scope;
+}
 function openConversation(id, trigger) {
   const conversation = (REM.conversations || {})[id];
   if (!conversation) return;
@@ -2198,6 +2203,7 @@ function openConversation(id, trigger) {
   dialog.appendChild(el("p", { class: "private-hidden-notice", text: "Archived messages are hidden because their private content has not been classified. Show private content to read them." }));
   for (const message of conversation.messages) dialog.appendChild(el("div", { class: "conversation-message private" }, [
     el("span", { class: "evidence-meta", text: [message.sender, message.time ? fmtTime(message.time) : ""].filter(Boolean).join(" · ") }),
+    ...(message.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(message.input_scope) })] : []),
     el("p", { text: message.excerpt + (message.truncated ? "…" : "") })]));
   dialog.addEventListener("close", () => trigger.focus(), { once: true });
   if (dialog.showModal) dialog.showModal(); else dialog.setAttribute("open", "");
@@ -2529,6 +2535,7 @@ function openEvidence(r, number, trigger) {
   if (context) dialog.append(el("div", { class: "evidence-original private" }, [
     el("span", { class: "focus-kicker", text: "Original source context · not a validated claim span" }),
     el("p", { class: "evidence-meta", text: [context.source, context.sender, context.time ? fmtTime(context.time) : ""].filter(Boolean).join(" · ") }),
+    ...(context.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(context.input_scope) })] : []),
     el("blockquote", { text: context.excerpt + (context.truncated ? "…" : "") })]));
   else dialog.appendChild(el("p", { class: "evidence-unavailable", text: "The original body is not archived in this snapshot. The source description above is a generated summary, not the original message." }));
   dialog.addEventListener("close", () => trigger.focus(), { once: true });
