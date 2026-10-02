@@ -21,6 +21,9 @@ Why these rules: docs/rem-skills/rem-investigate.md
   a limitation that changes the user's choice. If no runs were retained, give
   the source-backed starting point and the specific output to verify; do not
   imply that the skill failed or succeeded.
+- With no reviewed runs, find a source-specific default, API boundary or
+  conflicting rule and its consequence. Put prerequisites in `How to use`;
+  a generic instruction to authenticate or verify is not an Insight.
 - Survey supplied record headers; inspect requests, tool outcomes, final replies
   and corrections across each sampled turn. Large records have numbered parts;
   read relevant parts, without repeated tool dumps. State sample coverage.

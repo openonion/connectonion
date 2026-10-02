@@ -50,6 +50,20 @@ def test_the_signature_block_is_handed_over_for_role_and_company():
     assert "Head of Data Platform | Harbour Analytics" in block and "Thanks" not in block
 
 
+@pytest.mark.timeout(2)
+def test_long_non_invitation_mail_does_not_backtrack_over_every_possible_zoom_subdomain():
+    rows = extract([mail("outlook:long", "2026-08-04T00:00:00Z", "x" * 30_000)], HANDLES)
+    assert not found(rows, "Calendar")
+    assert found(rows, "Last contact")[0]["value"] == "2026-08-04"
+
+
+@pytest.mark.parametrize("url", ["https://zoom.us/j/123", "https://harbour.zoom.us/j/123"])
+def test_zoom_link_alone_keeps_invitation_numbers_out_of_phone(url):
+    rows = extract([mail("outlook:link", "2026-08-04T00:00:00Z", SIGNED + url)], HANDLES)
+    assert not found(rows, "Phone")
+    assert found(rows, "Calendar")
+
+
 def test_legacy_flattened_zoom_invitation_does_not_restore_a_rejected_phone():
     text = ('Purpose of this meeting is to understand the pilot vision. ' * 4
             + 'Mia Chen is inviting you to a scheduled Zoom meeting.'

@@ -39,9 +39,9 @@ Why these rules: docs/rem-skills/rem-investigate.md
   An unreadable attachment → your final reply.
 - Mail gives identity and commitments; sessions give intent. Sources disagree →
   say so; stated in one and implied in another → cite both.
-- Before `Nothing open`, check asks/promises across topics and later replies.
-  Unrelated mail closes none. An unanswered question is no promise/deadline;
-  a quick sample cannot prove all closed.
+- Check asks/promises across topics before `Nothing open`; unrelated replies
+  close none. Questions promise no deadline. Invites, empty forwards or quick
+  samples leave completion Unknown.
 
 ## What to produce
 

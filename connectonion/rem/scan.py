@@ -274,7 +274,7 @@ def project_exclusion(path: Path) -> str:
                         return "multi-repository workspace container"
         except OSError:
             pass
-    if normalized.startswith(("/private/tmp/", "/tmp/", "/private/var/folders/", "/var/folders/")):
+    if (normalized.rstrip('/') + '/').startswith(("/private/tmp/", "/tmp/", "/private/var/folders/", "/var/folders/")):
         return "temporary execution directory"
     if not path.is_dir() and "/.codex/worktrees/" in normalized:
         return "removed Codex worktree"

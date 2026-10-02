@@ -29,7 +29,7 @@ LINKEDIN = re.compile(r"(?:https?://)?(?:[\w-]+\.)?linkedin\.com/in/[\w%-]+/?", 
 INVITE = re.compile(r"^(invitation|updated invitation|invitation updated|accepted|meeting)\b|BEGIN:VCALENDAR|"
                     r"Join with Google Meet|Microsoft Teams meeting|Join Zoom Meeting|One tap mobile|"
                     r"Dial by your location|dial[ -]?in|scheduled Zoom meeting|"
-                    r"iPhone one[ -]tap|(?:[\w-]+\.)?zoom\.us/j/|Australian Toll number", re.I | re.M)
+                    r"iPhone one[ -]tap|\bzoom\.us/j/|Australian Toll number", re.I | re.M)
 MAIL_SOURCES = ("gmail:", "outlook:", "email:")
 
 

@@ -160,8 +160,14 @@ def upgrade(record: str, text: str, insight: str = "- Unknown") -> str:
         text = text[:at].rstrip("\n") + "\n\n## Facts\n" + _block(record, []) + "\n\n" + text[at:].lstrip("\n")
     else:
         body = text[span[0]:span[1]]
+        original = body
+        for label in labels:
+            plain = rf"(?m)^{re.escape(label)}:[ \t]*(.*)$"
+            if re.search(plain, body):
+                body = re.sub(rf"(?m)^- {re.escape(label)}:[ \t]*Unknown[ \t]*\n?", "", body)
+                body = re.sub(plain, rf"- {label}: \1", body)
         present = set(re.findall(r"(?m)^- ([^:\n]{1,40}):", body))
-        if not set(labels) <= present:
+        if body != original or not set(labels) <= present:
             block = _block(record, body.strip("\n").splitlines())
             text = text[:span[0]] + "\n" + block + "\n\n" + text[span[1]:].lstrip("\n")
     if kind(record) in ("people", "projects") and _bounds(text, "Insight") is None:

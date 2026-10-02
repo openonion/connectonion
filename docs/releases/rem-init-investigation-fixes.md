@@ -28,8 +28,15 @@ Skill pages use notebook links rather than copying source-relative links.
 If a source typo would erase a lead, Insight, Current status or Open threads
 finding, promotion gives the candidate one citation repair turn. A second
 failure preserves the original page; both turns' usage is counted.
+Temporary directory roots are excluded as well as their descendants. Known
+Facts labels without list markers are normalized before missing fields become
+Unknown, so their cited values appear in the reader's summaries. Invitation-only
+evidence cannot establish completed obligations. Skill reviews without runs
+look for a source-specific default, boundary or conflict and its consequence.
+Zoom detection avoids retrying an unbounded subdomain match at every character
+of a long mail body.
 
-These changes address #2133, #2135, #2136, #2137, #2138, #2143 and #2144. They do not establish
+These changes address #2133, #2135, #2136, #2137, #2138, #2143, #2144, #2149, #2150 and #2151. They do not establish
 that every generated insight is useful or that a reported skill outcome was
 independently verified. Live page review is still in progress; no package has
 been published for these changes.

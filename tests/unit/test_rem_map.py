@@ -135,15 +135,16 @@ def test_project_scan_excludes_sandboxes_and_removed_worktrees(tmp_path):
     from connectonion.rem.scan import scan_projects
     sessions = tmp_path / 'sessions'
     sessions.mkdir()
-    paths = ['/private/tmp/wiki187/notebook', '/tmp/co-rem-extract-demo',
+    paths = ['/private/tmp', '/tmp', '/private/var/folders', '/var/folders',
+             '/private/tmp/wiki187/notebook', '/tmp/co-rem-extract-demo',
              '/private/var/folders/xx/session/T/pytest-123/rem',
              '/Users/fictional/.codex/worktrees/1234/browser',
-             '/projects/team-a/browser', '/projects/team-b/browser']
+             '/projects/team-a/browser', '/projects/team-b/browser', '/projects/team/tmp']
     for i, cwd in enumerate(paths):
         (sessions / f'rollout-{i}.jsonl').write_text(json.dumps({
             'type': 'session_meta', 'payload': {'id': str(i), 'cwd': cwd}}) + '\n')
     rows = scan_projects({'local': {'kind': 'codex', 'root': str(sessions)}}, 1)
-    assert {r['path'] for r in rows} == set(paths[-2:])
+    assert {r['path'] for r in rows} == set(paths[-3:])
 
 
 def test_project_scan_does_not_turn_rem_runs_into_a_project(tmp_path, monkeypatch):
