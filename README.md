@@ -22,7 +22,7 @@ no MCP server, tool schema or skill file to set up.
 </div>
 
 <p align="center">
-  <a href="https://www.connectonion.com/#film"><img src="https://www.connectonion.com/promo/highlight.gif" width="360" alt="Real co 1.8.10 runs: co browser reads the top Hacker News story, co search and co fetch answer with sources, co email sends from the agent's own address, and co ai hands a task to Codex and Claude Code"></a><br>
+  <a href="https://www.connectonion.com/#film"><img src="https://www.connectonion.com/promo/highlight.gif?v=2" width="360" alt="Real co 1.8.10 runs: co browser reads the top Hacker News story, co search and co fetch answer with sources, co email sends from the agent's own address, and co ai hands a task to Codex and Claude Code"></a><br>
   <sub>Real output from co 1.8.10. <a href="https://www.connectonion.com/#film">Watch the 43-second film →</a></sub>
 </p>
 
