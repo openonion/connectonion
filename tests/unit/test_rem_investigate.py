@@ -989,7 +989,8 @@ def test_a_project_turn_is_given_the_checkout_state_as_citable_evidence(tmp_path
                     runner=lambda notebook, items, config, stage: received.extend(items) or
                     {'changed': [], 'usage': None})
     state = next(item for item in received if item['role'] == 'checkout-state')
-    assert state['source'] == f'git:{repo}' and 'older than the newest session' in state['text']
+    assert state['origin'] == f'git:{repo}:checkout-state' and state['source'].startswith('project-source:')
+    assert 'older than the newest session' in state['text']
 
 
 # ------------------------------------------------ #1984: an empty since-window calls no model
@@ -1038,14 +1039,17 @@ def test_mail_the_page_already_cites_is_not_new_material(tmp_path, monkeypatch):
 
 
 def test_a_project_s_file_list_alone_is_not_new_material_for_a_page_investigated_before(tmp_path, monkeypatch):
-    """A project page always has files to list; with no session or mail since
-    its last investigation the turn would only re-read what the page reflects."""
+    """A file list is not new when its captured contents are already represented."""
     root = _notebook(tmp_path, 'codex')
     folder = tmp_path / 'work' / 'tide'
     folder.mkdir(parents=True)
     (folder / 'README.md').write_text('# Tide\n')
     inv.Notebook(root).stub_project('projects/tide.md', 'Tide', [str(folder)])
     _investigated(root, 'projects/tide.md', 5)
+    from connectonion.rem.project_pages import repository_snapshots
+    source = repository_snapshots(inv.project_file_texts([str(folder / 'README.md')]))[0]['source']
+    notebook = inv.Notebook(root)
+    notebook.write('projects/tide.md', notebook.read('projects/tide.md').replace('gmail:0123456789ab', source))
     monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([], ['codex: 0 sessions in window']))
     with pytest.raises(inv.NothingNew):
         inv.investigate(root, 'projects/tide.md', 'Tide', [str(folder)], days=6, clients={}, subscriptions={},
@@ -1325,3 +1329,116 @@ def test_historical_person_gather_keeps_legacy_and_current_codex_messages(tmp_pa
     assert any("1 related legacy message(s)" in line and "individual message times" in line for line in coverage)
     assert any("1 user-slot message(s) in an unfamiliar format were not read" in line for line in coverage)
     assert not any("unreadable" in line for line in coverage)
+
+
+@pytest.mark.parametrize('tier', ['agent', 'summary'])
+def test_file_only_investigation_keeps_exact_cited_snapshot_after_live_file_changes(tmp_path, monkeypatch, tier):
+    from connectonion.rem import project_pages
+    from connectonion.rem.reader_model import cited_context
+    root = _notebook(tmp_path, 'codex')
+    repo = tmp_path / 'project'
+    repo.mkdir()
+    original = '# Tide\n' + 'a' * 300000 + '\nThe full source ends here.'
+    live = repo / 'README.md'
+    live.write_text(original)
+    notebook = inv.Notebook(root)
+    record = 'projects/tide.md'
+    notebook.stub_project(record, 'Tide', [str(repo)])
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([], ['codex: 0 sessions']))
+    monkeypatch.setattr('connectonion.rem.tier.current', lambda *a: tier)
+    seen = {}
+
+    def runner(book, items, config, stage):
+        index = next((i for i in items if i['role'] == 'evidence-index'), None)
+        if tier == 'agent':
+            assert index is not None
+            source = next(s for s in index['sources'] if s.startswith('project-source:'))
+            material = '\n'.join(p.read_text() for p in Path(index['file']).parent.rglob('*.md'))
+            assert 'The full source ends here.' in material
+        else:
+            item = next(i for i in items if i['role'] == 'project-file')
+            source = item['source']
+            assert item['text'].endswith('[truncated]') and 'The full source ends here.' not in item['text']
+        seen['source'] = source
+        live.write_text('# Tide\nChanged while the page is written.')
+        page = book.read(record).replace('- (none yet)', '- [1] ' + source)
+        book.write(record, page)
+        return {'changed': [record], 'usage': None}
+
+    inv.investigate(root, record, 'Tide', [str(repo)], days=30, clients={}, subscriptions={}, runner=runner)
+    saved = project_pages.repository_context(root, seen['source'])
+    assert saved and saved['excerpt'] == original.strip()[:640]
+    retained = next((root / '.state/project-sources').glob('*.json'))
+    body = json.loads(retained.read_text())
+    expected = original if tier == 'agent' else original[:2000] + '\n[truncated]'
+    assert body['text'] == expected and body['origin'] == 'file:' + str(live)
+    assert body['captured_at'] and body['file_modified_at']
+    assert retained.stat().st_mode & 0o777 == 0o600
+    assert cited_context(root, [{'text': '- [1] ' + seen['source']}])[seen['source']]['excerpt'] == saved['excerpt']
+    assert not list((root / '.state/evidence').rglob('*.md'))
+
+
+def test_file_inventory_includes_package_manifest_without_all_json_data(tmp_path):
+    (tmp_path / 'package.json').write_text('{"name":"tide"}')
+    (tmp_path / 'customers.json').write_text('{"private":"data"}')
+    page = '# Tide\n\n## Paths\n- ' + str(tmp_path)
+    assert inv.project_file_inventory(page) == [str(tmp_path / 'package.json')]
+
+
+@pytest.mark.parametrize('outcome', ['unchanged', 'rejected', 'digest'])
+def test_file_snapshot_retention_follows_the_successful_run_and_keeps_original_before_digest(tmp_path, monkeypatch, outcome):
+    root = _notebook(tmp_path, 'codex')
+    folder = tmp_path / 'work' / 'tide'
+    folder.mkdir(parents=True)
+    (folder / 'README.md').write_text('# Tide\nThe original README body.')
+    (folder / 'uncited.md').write_text('This was supplied but not cited.')
+    record = 'projects/tide.md'
+    notebook = inv.Notebook(root)
+    notebook.stub_project(record, 'Tide', [str(folder)])
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([], ['codex: 0 sessions']))
+    seen = {}
+    if outcome == 'digest':
+        monkeypatch.setattr('connectonion.rem.tier.current', lambda *a: 'summary')
+        from connectonion.rem.runner import instructions
+        overhead = len(instructions('investigate', page_kind='project')) + len(notebook.read(record)) + 4000
+        monkeypatch.setattr('connectonion.rem.runner.INLINE_LIMIT', overhead + 1500)
+        (folder / 'README.md').write_text('# Tide\nThe original README body.' + 'a' * 1900)
+        (folder / 'uncited.md').write_text('b' * 1900)
+
+    def extractor(items, config, kind):
+        source = next(i['source'] for i in items if i.get('origin') == 'file:' + str(folder / 'README.md'))
+        seen['source'] = source
+        return {'notes': 'A summary-only claim [' + source + ']', 'usage': None}
+
+    def runner(book, items, config, stage):
+        if outcome == 'rejected':
+            raise inv.RemError('candidate rejected')
+        if outcome == 'digest':
+            assert any('summary-only' in i['text'] for i in items)
+            book.write(record, book.read(record).replace('- (none yet)', '- [1] ' + seen['source']))
+            return {'changed': [record], 'usage': None}
+        return {'changed': [], 'usage': None}
+
+    if outcome == 'rejected':
+        with pytest.raises(inv.RemError, match='rejected'):
+            inv.investigate(root, record, 'Tide', [str(folder)], days=30, clients={}, subscriptions={}, runner=runner)
+        with pytest.raises(inv.NothingNew):
+            inv.investigate(root, record, 'Tide', [str(folder)], days=30, clients={}, subscriptions={},
+                            runner=lambda *a, **kw: pytest.fail('same rejected file material'))
+    else:
+        inv.investigate(root, record, 'Tide', [str(folder)], days=30, clients={}, subscriptions={}, runner=runner,
+                        extractor=extractor)
+    saved = list((root / '.state/project-sources').glob('*.json'))
+    if outcome == 'digest':
+        assert len(saved) == 1
+        body = json.loads(saved[0].read_text())
+        assert 'original README body' in body['text'] and 'summary-only' not in body['text']
+    else:
+        assert saved == []
+    if outcome == 'unchanged':
+        # Even uncited, previously supplied files must not trigger repeated paid investigations.
+        with pytest.raises(inv.NothingNew):
+            inv.investigate(root, record, 'Tide', [str(folder)], days=30, clients={}, subscriptions={},
+                            runner=lambda *a, **kw: pytest.fail('identical supplied material'))
+        (folder / 'README.md').write_text('# Tide\nChanged without any new session.')
+        inv.investigate(root, record, 'Tide', [str(folder)], days=30, clients={}, subscriptions={}, runner=runner)

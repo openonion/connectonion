@@ -62,6 +62,8 @@ def _entry(item: dict) -> str:
     detail = [f"{label}: {item[key]}" for key, label in (("subject", "Subject"), ("correspondent", "With"),
                                                        ("project", "Project"), ("reference", "Reference"),
                                                        ("timestamp_scope", "Timestamp scope"),
+                                                       ("origin", "Snapshot origin"),
+                                                       ("captured_at", "Captured at"),
                                                        ("input_scope", "Input scope"),
                                                        ("relationship_scope", "Relationship scope"))
               if item.get(key)]

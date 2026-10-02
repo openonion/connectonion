@@ -7,10 +7,10 @@ description: A project page with a short visual overview and evidence-backed det
 
 Why these rules: docs/rem-skills/rem-page-project.md
 
-**How to do it.** Read the page and supplied material. Do not search examples,
-logs or the repository for a format. Write once, check once, fix once, stop.
+Read the page and material. Write once, check once, fix once, stop.
+Do not search examples, logs or the repo for a format.
 
-Write purpose and flow before implementation, plainly for a new teammate.
+Explain purpose and flow first, for a new teammate.
 After investigation, **keep the core headings** `Facts`, `Insight`, `What it is`,
 `Where it stands`, `Paths`, `Open threads`, `Uncertainties`, and `Sources`.
 Use the other headings only when evidence fills them; omit an optional heading
@@ -113,9 +113,11 @@ An unknown flow is omitted; a plausible diagram is not evidence.
   here rather than as a tail on every bullet elsewhere.
 - `Sources`: numbered, `- [n] <source id> — <date>`, nothing more; each inspected
   file its own entry. Mark inference; never copy facts from examples.
-  Recheck inherited clauses, quantities and dates against exact original
-  inputs, not source descriptions or adjacent messages. A valid id is not support.
-  Joined claims need both messages; cite each clause.
+  Use snapshot `project-source:` IDs; file mtime and capture time do not
+  establish project activity or release.
+  Check inherited clauses, quantities and dates against exact originals,
+  not summaries or adjacent inputs. Valid IDs are not support; cite each
+  joined clause and both messages.
 
 State a claim in one clause. How the page was made (the mapper, the collector,
 counts of matched sessions, the prior page) goes nowhere in the body.

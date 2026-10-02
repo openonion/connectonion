@@ -25,8 +25,11 @@ under `.state/project-sources`, keyed by a hash of origin and exact bounded
 text. The reader uses that captured text rather than reopening a changed file
 or mutable Git ref. Capture time is separate from event time. Existing pages
 whose packets were never retained cannot recover historical evidence from a
-new checkout; the broader file-only investigation path is not covered by this
-retention step.
+new checkout. File-only investigation now also snapshots supplied files and
+checkout state before digesting or arranging temporary evidence. It retains
+only accepted, cited originals under the recording lock, then refreshes the
+reader. Extra files discovered outside the supplied inventory have no
+automatic historical capture; current files never substitute for old citations.
 
 ## The first-time reader
 

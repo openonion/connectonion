@@ -31,6 +31,7 @@ SKILL = "rem-project-sessions"
 PROMPT_CHARS_FIXED = 1_500
 # README, package metadata and local Git state stay below this per project.
 REPOSITORY_EVIDENCE_CHARS = 9_000
+FILE_SNAPSHOT_CHARS = 1_000_000
 
 
 def pending(root: Path, record: str) -> tuple[list[dict], str]:
@@ -177,10 +178,13 @@ def retain_repository_context(root: Path, items: list[dict], cited: set[str]) ->
     count = 0
     for item in items:
         source, origin, text = item.get("source", ""), item.get("origin", ""), item.get("text", "")
+        local_file = (item.get("snapshot_kind") == "local-file" and item.get("role") == "project-file"
+                      and isinstance(origin, str) and origin.startswith("file:"))
+        limit = FILE_SNAPSHOT_CHARS + len("\n[truncated]") if local_file else REPOSITORY_EVIDENCE_CHARS
         if (source not in cited or not re.fullmatch(r"project-source:[0-9a-f]{64}", source)
                 or item.get("role") not in ("readme", "project-file", "checkout-state", "recent-commits")
                 or not isinstance(origin, str) or not origin.startswith(("git:", "file:"))
-                or not isinstance(text, str) or not 0 < len(text) <= REPOSITORY_EVIDENCE_CHARS
+                or not isinstance(text, str) or not 0 < len(text) <= limit
                 or SECRET_SHAPES.search(text) or PRIVATE.search(text)
                 or source != "project-source:" + hashlib.sha256((origin + "\0" + text).encode()).hexdigest()):
             continue
@@ -189,7 +193,11 @@ def retain_repository_context(root: Path, items: list[dict], cited: set[str]) ->
         if previous and (previous.get("text") != text or previous.get("origin") != origin):
             raise RemError("Retained repository citation has conflicting content")
         if not previous:
-            write_json(path, {"id": source, "origin": origin, "text": text, "captured_at": item.get("timestamp") or ""})
+            write_json(path, {"id": source, "origin": origin, "text": text,
+                             "snapshot_kind": "local-file" if local_file else "repository-packet",
+                             "captured_at": item.get("captured_at") or item.get("timestamp") or "",
+                             "file_modified_at": item.get("timestamp") if local_file else "",
+                             "input_scope": item.get("input_scope") or ""})
         count += 1
     return count
 
@@ -201,14 +209,16 @@ def repository_context(root: Path, source: str) -> dict | None:
         return None
     saved = read_json(state_path(root, "project-sources/" + source.split(":")[1] + ".json"), {})
     text, origin = saved.get("text"), saved.get("origin", "")
+    local_file = saved.get("snapshot_kind") == "local-file" and isinstance(origin, str) and origin.startswith("file:")
+    limit = FILE_SNAPSHOT_CHARS + len("\n[truncated]") if local_file else REPOSITORY_EVIDENCE_CHARS
     if (saved.get("id") != source or not isinstance(text, str) or not isinstance(origin, str)
-            or not 0 < len(text) <= REPOSITORY_EVIDENCE_CHARS or SECRET_SHAPES.search(text) or PRIVATE.search(text)
+            or not 0 < len(text) <= limit or SECRET_SHAPES.search(text) or PRIVATE.search(text)
             or source != "project-source:" + hashlib.sha256((origin + "\0" + text).encode()).hexdigest()):
         return None
     return {"excerpt": text.strip()[:640], "truncated": len(text.strip()) > 640, "source": "project-source",
             "time": "", "sender": "", "thread": "", "origin": origin,
             "captured_at": saved.get("captured_at") or "",
-            "input_scope": "Local repository snapshot. Files and commit records do not verify tests or deployment."}
+            "input_scope": saved.get("input_scope") or "Local repository snapshot. Files and commit records do not verify tests or deployment."}
 
 
 def _excerpt(value: str, limit: int) -> str:

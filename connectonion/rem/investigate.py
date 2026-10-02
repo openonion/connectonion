@@ -18,7 +18,7 @@ from pathlib import Path
 
 from .config import read_config
 from ..provider_credentials import ProviderCredentialError
-from .files import Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
+from .files import SECRET_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
 from .mail import _address, _list_all, correspondent, on_domains, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
 from .source import KINDS, collect, timestamp
 
@@ -247,7 +247,7 @@ def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
             dirs[:] = sorted(d for d in dirs if d not in excluded and not d.startswith(".")
                              and not (Path(current) / d).is_symlink()) if depth < 4 else []
             for name in sorted(files):
-                if name.startswith(".") or Path(name).suffix.lower() not in suffixes:
+                if name.startswith(".") or (Path(name).suffix.lower() not in suffixes and name != "package.json"):
                     continue
                 if any(word in name.lower() for word in ("secret", "password", "credential", "private", "token")):
                     continue
@@ -269,19 +269,22 @@ def project_file_inventory(page: str, *, max_files: int = 60) -> list[str]:
 
 
 def project_file_texts(paths: list[str], *, max_files: int = 12, chars_per_file: int = 2000) -> list[dict]:
-    """The summary tier's project evidence: Python reads the files an agent would open.
-
-    A plain model cannot open the inventory's files itself, so their text is
-    handed over, within the agent's own bound of twelve files. Each file is
-    its own source, cited by its path.
-    """
+    """Bounded file snapshots; capture time is separate from file modification time."""
     items = []
     for name in paths[:max_files]:
         path = Path(name)
-        text = path.read_text(encoding="utf-8", errors="replace")
-        items.append({"role": "project-file", "source": name, "file": name,
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            raw = handle.read(chars_per_file + 1)
+        text = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]", raw[:chars_per_file])
+        truncated = len(raw) > chars_per_file or len(text) > chars_per_file
+        captured = datetime.now(timezone.utc).isoformat()
+        items.append({"role": "project-file", "source": "file:" + name, "file": name,
+                      "snapshot_kind": "local-file", "captured_at": captured,
                       "timestamp": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
-                      "text": text[:chars_per_file] + ("\n[truncated]" if len(text) > chars_per_file else "")})
+                      "timestamp_scope": "File modification time, not project activity or release time.",
+                      "input_scope": ("Local file snapshot, " + ("bounded prefix" if truncated else "complete supplied file")
+                                      + "; files do not verify tests, publication or deployment."),
+                      "text": text[:chars_per_file] + ("\n[truncated]" if truncated else "")})
     return items
 
 
@@ -975,13 +978,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             if len(fresh) < len(items):
                 coverage.append(f"{len(items) - len(fresh)} gathered item(s) already cited on the page, not re-read")
             items = fresh
-    if last and not items:
+    if last and not items and not record.startswith("projects/"):
         _keep_facts(notebook, root, record, fact_rows)
         raise _nothing_new(record, subject, coverage, last)
     gathered_sources = {item["source"] for item in items if item.get("source")}
     refusal = refused_for(root, record)
-    if refusal and gathered_sources and gathered_sources <= set(refusal["sources"]):
-        raise _refused_again(record, subject, refusal)
     if last:
         # The page already reflects what came before; say so where the turn
         # reads it, so it adds the new material instead of rewriting the page.
@@ -1011,7 +1012,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         for path in project_paths(corrected)[:4]:
             state = checkout_state(path, newest)
             if state:
-                items.append({"role": "checkout-state", "source": f"git:{path}", "text": state,
+                items.append({"role": "checkout-state", "source": f"git:{path}:checkout-state", "text": state,
                               "timestamp": datetime.now(timezone.utc).isoformat()})
     if not gathered_items and not leads:
         # Nothing about the subject, so nothing to write from: the page and the
@@ -1025,9 +1026,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     if routing(root):
         import uuid
 
-        from .files import state_path, write_json
         original_material = state_path(root, f"evidence/{uuid.uuid4().hex}.json")
-        write_json(original_material, items)
     # Room for the material after the page, the coverage and the Skill itself.
     from .runner import instructions, page_kind_of, run_stage
     # The instructions this page's turn is actually given (task_prompt), not
@@ -1043,7 +1042,25 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         # material travels in the one prompt, so it must fit there (#1847).
         from .runner import INLINE_LIMIT
         room = min(room, INLINE_LIMIT - overhead)
-        items += project_file_texts(leads)
+    repository_items = []
+    if record.startswith("projects/"):
+        from .project_pages import FILE_SNAPSHOT_CHARS, repository_snapshots
+        states = [item for item in items if item.get("role") == "checkout-state"]
+        items = [item for item in items if item.get("role") != "checkout-state"]
+        files = project_file_texts(leads) if summary else project_file_texts(
+            leads, max_files=len(leads), chars_per_file=FILE_SNAPSHOT_CHARS)
+        repository_items = repository_snapshots(states + files)
+        if last and not gathered_items:
+            supplied = read_json(state_path(root, f"projects/{Path(record).stem}/file-inventory.json"), {})
+            previous = supplied.get("provided_sources")
+            same = (set(previous) == {item["source"] for item in repository_items}) if previous is not None else all(
+                item["source"] in cited for item in repository_items)
+            if same:
+                raise _nothing_new(record, subject, coverage, last)
+        items += repository_items
+    gathered_sources.update(item["source"] for item in repository_items)
+    if refusal and gathered_sources and gathered_sources <= set(refusal["sources"]):
+        raise _refused_again(record, subject, refusal)
     if room <= 0:
         raise RemError("Configured input limit cannot fit the current page and investigation Skill")
     gathered_chars = sum(len(json.dumps(i, ensure_ascii=False)) for i in items)
@@ -1052,6 +1069,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     if max_calls is not None and max_calls < synthesis_calls:
         raise RemError("Insufficient call budget for investigation; page preserved")
     now = datetime.now(timezone.utc).isoformat()
+    original_items = items
     evidence_dir = None
     if gathered_chars > room and summary:
         # A summary-tier model cannot search files (#1847), so it is handed
@@ -1079,7 +1097,6 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         import uuid
 
         from .evidence import write_evidence
-        from .files import state_path
         evidence_dir = state_path(root, f"evidence/{uuid.uuid4().hex}")
         shutil.rmtree(evidence_dir, ignore_errors=True)
         laid_out = write_evidence(evidence_dir, items)
@@ -1091,7 +1108,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                   "text": (f"The gathered evidence ({len(laid_out['sources'])} items, {laid_out['chars']:,} "
                            f"characters) did not fit one turn and has NOT been summarised. It is in files under "
                            f"{evidence_dir}. Each file is a month of one mailbox, an attachment, a session or "
-                           "a chat, under 40k characters: read the files that matter whole, newest first, rather "
+                           "a chat, normally grouped near 40k characters (one large source may be longer): read the files that matter whole, newest first, rather "
                            "than many small pieces (every tool call re-sends this whole turn); use rg to find "
                            "which files. Cite the source id from the `###` heading of each entry you rely on. "
                            "In your final reply, list the files you read and the questions left open.\n\n"
@@ -1100,6 +1117,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                         f"{room:,}-char room for one turn; written to {laid_out['files']} files and searched, "
                         "not summarised first")
     from .page_review import normalize
+    if original_material:
+        write_json(original_material, original_items)
     # `sent_only` is `investigate me`: the owner's own page, with its own spec (#2008).
     current_page = normalize(record, notebook.read(record), owner=sent_only)
     prompt_items = [
@@ -1166,7 +1185,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # was reached is the Skill's to report, on the page: a real run (2026-09-14)
     # had `co browser` fail inside the thread while this line still said "web".
     record_result(root, notebook, record, result.get("review_candidates", []),
-                  searched_sources(coverage), changed=record in result.get("changed", []))
+                  searched_sources(coverage), changed=record in result.get("changed", []),
+                  repository_items=repository_items)
     return {"record": record, "items": len(items), "items_available": available_items,
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
@@ -1178,7 +1198,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
 
 
 def record_result(root, notebook, record: str, review_candidates: list, searched: list[str],
-                  *, changed: bool = False) -> None:
+                  *, changed: bool = False, repository_items=()) -> None:
     """Keep what a finished investigation proposed and mark its page investigated.
 
     It waits for the lock: the model turn is already paid for, and with several
@@ -1188,9 +1208,16 @@ def record_result(root, notebook, record: str, review_candidates: list, searched
         from .reviews import ingest
         ingest(root, review_candidates)
         if changed:
+            from .project_pages import retain_repository_context
+            from .reader_model import _source_ids
+            retain_repository_context(root, repository_items, _source_ids([{"text": notebook.read(record)}]))
             page = notebook.read(record)
             if drop_map_count(page) != page:
                 notebook.write(record, drop_map_count(page))
         notebook.note_investigation(record, ", ".join(searched))
+        if repository_items and record.startswith("projects/"):
+            write_json(state_path(root, f"projects/{Path(record).stem}/file-inventory.json"), {
+                "provided_sources": sorted({item["source"] for item in repository_items}),
+                "scope": "Material supplied in the completed investigation; not proof every file was read."})
         from .store import refresh_safely
         refresh_safely(root)

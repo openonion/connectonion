@@ -566,3 +566,15 @@ def test_a_project_turn_that_writes_no_candidate_gets_one_more_turn(world):
     write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"}, run=run)
     assert len(calls) == 2 and "writable" in calls[1]
     assert "A swell warning tool for surfers. [1]" in world.notebook.read("projects/tide.md")
+
+
+def test_full_file_retention_does_not_expand_packet_bound_or_ignore_private_tail(tmp_path):
+    from connectonion.rem.files import maintenance_lock
+    items = project_pages.repository_snapshots([
+        {'role': 'readme', 'source': 'file:/repo/README.md', 'text': 'a' * 9001},
+        {'role': 'project-file', 'source': 'file:/repo/api.ts', 'snapshot_kind': 'local-file',
+         'text': 'a' * 12000 + '\nA private plan [personal]'},
+    ])
+    with maintenance_lock(tmp_path):
+        assert project_pages.retain_repository_context(tmp_path, items, {i['source'] for i in items}) == 0
+    assert not list((tmp_path / '.state/project-sources').glob('*.json'))

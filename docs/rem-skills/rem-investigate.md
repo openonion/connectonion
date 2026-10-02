@@ -347,3 +347,38 @@ fold the oldest `History` into dated one-line summaries, keep the lead and the
 current state -- now applies here too, and the runner refuses a candidate over
 20,000 characters that is longer than the page it replaces
 (`page_review.size_errors`; the reasons for 20k are in `rem-maintain.md`).
+
+
+## File-only project original evidence (#2180)
+
+A project with no native messages can still have useful local source findings.
+Its candidate inventory remains bounded to 60 files. Agent investigations
+snapshot those supplied candidates up to 1,000,000 characters per file and
+use the existing evidence index when material exceeds the prompt budget.
+This can create up to roughly 60 MB of temporary local candidate text; it is
+not a claim that the agent read every file. A large individual source may
+exceed the usual 40k grouped evidence-file size. Summary investigations retain
+the existing twelve-file, 2,000-character prefix limit, explicitly truncated.
+The package manifest is included without admitting unrelated JSON data.
+
+Each supplied body and checkout-state packet receives a content identifier
+from origin plus exact supplied text. File modification time, capture time,
+complete/prefix scope and project activity are separate. Snapshot IDs identify
+the supplied body, not an uncollected full file. Exact origins and capture times
+remain available to the reader. Fixed repository packets retain their previous
+9,000-character bound; only explicitly marked local-file snapshots use the
+larger file bound. Entire retained bodies are checked for secret/private text.
+
+Original candidates remain available before digesting or writing temporary
+indexes. After a successful changed page, only cited bodies are saved privately
+under the same maintenance lock as result recording and index refresh. Rejected,
+uncited or unchanged results do not accumulate original bodies. A completed
+investigation records which identities were supplied, without claiming all were
+read: unchanged uncited candidates must not trigger another paid run. Changed
+file content can trigger a new investigation without a new coding message.
+Rejected identical file material also waits for a change.
+
+The reader still displays a 640-character prefix, not a validated claim span.
+Extra files discovered directly under Paths are not automatically historical
+snapshots. Legacy raw-path citations cannot be reconstructed from a current
+checkout. New captures and manual repairs do not prove model semantic reliability.
