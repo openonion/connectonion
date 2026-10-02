@@ -66,9 +66,10 @@ def create_inbox_lifespan(co_dir: Path, create_agent, storage, result_ttl: int,
 
             from .http_router import input_handler
 
+            local = getattr(provider, "read_only", False)
             session_id = session_id_for(channel.provider, message)
             result = input_handler(
-                create_agent, storage, message.text, result_ttl,
+                create_agent, storage, message.to_json() if local else message.text, result_ttl,
                 session={
                     "session_id": session_id,
                     # Recorded, not checked: 1.8.5 answers anyone who can
@@ -78,6 +79,9 @@ def create_inbox_lifespan(co_dir: Path, create_agent, storage, result_ttl: int,
                     "via": channel.provider,
                 },
             )
+            if local:
+                inbox.log(f"{message.id} handled locally; no platform reply")
+                return
             reply = (result.get("result") or "").strip()
             if not reply:
                 inbox.log(f"nothing to say for {message.id}")

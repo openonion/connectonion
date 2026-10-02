@@ -1719,6 +1719,7 @@ def telegram_send(
 
 # The ids each provider's help examples use: (chat, message).
 _INBOX_IDS = {
+    "github": ("openonion/connectonion#2147", "openonion/connectonion:issue:1:abc123"),
     "feishu": ("oc_5ce6d572455d361153b7cb51da133945", "om_dc13264520392913993dd051dba21dcf"),
     "lark": ("oc_5ce6d572455d361153b7cb51da133945", "om_dc13264520392913993dd051dba21dcf"),
     "whatsapp": ("61412345678@s.whatsapp.net", "3EB0C127D8F1A2B4E5F6"),
@@ -1732,7 +1733,7 @@ _INBOX_IDS = {
 # ~/.co/inbox/, the same nine verbs on each. The tool knows nothing about
 # agents; anything that can read a file consumes it (DD-063).
 def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = None,
-                 with_send: bool = True, writes: bool = False) -> typer.Typer:
+                 with_send: bool = True, writes: bool = False, read_only: bool = False) -> typer.Typer:
     """The inbox verbs on a fresh group, or on an existing one that already has
     its own `send`: `co telegram send` shipped first, and its output is part of
     its contract, so Telegram gains the other verbs beside it.
@@ -1743,7 +1744,8 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
     co, chat, msg = f"co {name}", *_INBOX_IDS[name]
     group = group if group is not None else _typer_app(
         help=help_text,
-        epilog=f'Example:  {co} check  |  {co} receive -t 60  |  {co} reply {msg} "On it"')
+        epilog=(f"Example:  {co} watch openonion/connectonion  |  {co} receive -t 60" if read_only else
+                f'Example:  {co} check  |  {co} receive -t 60  |  {co} reply {msg} "On it"'))
     def refuses(what: str) -> Optional[str]:
         return None if writes else (f"{what} Not implemented for {name.capitalize()} yet: it refuses, "
                                     "names the API endpoint that would do it, and sends nothing. Read-only.")
@@ -1878,8 +1880,9 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
                    epilog=f"Example:  {co} consume python3 bot.py  |  {co} consume --once ./answer.sh  |  "
                           f"{co} consume --workers 4 --context 5 python3 bot.py")
     def _consume(
-        command: List[str] = typer.Argument(..., help="Command run per message: message on stdin, reply on stdout"),
+        command: List[str] = typer.Argument(..., help=("Command run per event: JSON on stdin, stdout stays local" if read_only else "Command run per message: message on stdin, reply on stdout")),
         once: bool = typer.Option(False, "--once", help="Handle one message and exit"),
+        no_reply: bool = typer.Option(read_only, "--no-reply", help="Run locally; print stdout locally instead of sending a reply"),
         workers: int = typer.Option(1, "--workers", min=1,
                                     help="Conversations to answer at once (default 1, one after another)"),
         context: int = typer.Option(0, "--context", min=0, max=200, metavar="N",
@@ -1887,11 +1890,48 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
     ):
         """Answer incoming messages with your own program: for each one, run COMMAND with the message on stdin and send its stdout as the reply. Runs until Ctrl-C, or for one message with --once."""
         from .commands.listen_commands import handle_consume
-        handle_consume(name, command, once=once, workers=workers, context=context)
+        handle_consume(name, command, once=once, workers=workers, context=context, no_reply=no_reply)
 
+    if read_only:
+        supported = {"listen", "receive", "done", "check", "ls", "chats", "log", "consume"}
+        group.registered_commands = [c for c in group.registered_commands if c.name in supported]
+        for command in group.registered_commands:
+            if command.name == "consume":
+                command.help = "Run a local program for each event: JSON on stdin, stdout stays local. Runs until Ctrl-C; --once handles one. Changes the inbox, never GitHub."
+                command.epilog = f"Example:  {co} consume --once --no-reply cat  |  {co} consume --no-reply ./route-github-event"
     return group
 
 
+_github_app = _inbox_group("github", "Experimental: GitHub issues, PRs and discussion as an inbox. Reuses gh login; Read-only on GitHub, Writes a local queue. Setup: gh auth login, then co github watch OWNER/REPO.", read_only=True)
+
+
+@_github_app.command("watch", epilog="Example:  co github watch openonion/connectonion  |  co github watch openonion/connectonion --interval 120 --since 2026-10-02T00:00:00Z")
+def _github_watch(
+    repo: str = typer.Argument(..., help="Repository OWNER/REPO; only named repositories are read"),
+    host: Optional[str] = typer.Option(None, "--host", help="GitHub hostname (default github.com)"),
+    interval: Optional[int] = typer.Option(None, "--interval", min=60, help="Polling seconds, at least 60 (default 60)"),
+    since: Optional[str] = typer.Option(None, "--since", help="Backfill from an ISO timestamp with timezone; default starts now"),
+):
+    """Save a repository to watch. Writes local configuration; the next listener scan picks it up. Repeated calls are idempotent."""
+    from .commands.github_commands import handle_watch
+    handle_watch(repo, host=host, interval=interval, since=since)
+
+
+@_github_app.command("unwatch", epilog="Example:  co github unwatch openonion/connectonion")
+def _github_unwatch(repo: str = typer.Argument(..., help="Repository OWNER/REPO, from co github watches")):
+    """Remove a watched repository. Writes local configuration; keeps its queued messages and checkpoint."""
+    from .commands.github_commands import handle_watch
+    handle_watch(repo, remove=True)
+
+
+@_github_app.command("watches", epilog="Example:  co github watches")
+def _github_watches():
+    """List watched repositories, host, polling interval and saved checkpoints as JSON. Read-only."""
+    from .commands.github_commands import handle_watches
+    handle_watches()
+
+
+app.add_typer(_github_app, name="github")
 app.add_typer(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="feishu")
 app.add_typer(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="lark")
 # Discord too: its Gateway client is `websockets`, already a core dependency.
