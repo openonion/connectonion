@@ -88,6 +88,12 @@ hook input, reactive callbacks and low-level response semantics remain separate.
 No new blocking P1 was found in this reviewed sample. Review includes rendered
 structure, content and design; it does not validate other project pages.
 
+Source dialogs [4]–[12], dark mode, keyboard navigation, manual restoration
+flow and other pages were not inspected. Close/focus checks come from the
+capture script; the independent reviewer inspected screenshots and artifacts
+and did not perform those interactions. Runtime and automatic model success
+remain unverified.
+
 ## Verification
 
 - Initial file-only source retention regressions: three failed before the fix.
