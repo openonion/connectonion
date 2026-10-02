@@ -7,8 +7,8 @@ CLI and the stable installation instructions. Someone visiting to understand
 the memory feature had to read through the rest of the product first.
 
 Adding another paragraph would have made that journey longer. The useful
-change was to move the decision earlier. The opening now names co rem, and
-the first feature section shows what a person can come back to: a changed
+change was to move the decision earlier. The opening names co rem, and
+its feature section shows what a person can come back to: a changed
 fact, the previous value and a link to the supporting source. The preview
 commands follow that example. The ordinary installation still has its own
 heading and a direct link from the top, because trying the CLI and opting
@@ -21,13 +21,20 @@ reader with invented data. The caption says so. A screenshot can explain
 what the interface offers; it cannot prove that a real overnight run found
 something useful.
 
-The full integration catalog is still there, behind a disclosure. Its
-generated block stays intact so the website and repository can keep sharing
-it. Longer command examples sit behind another disclosure. This trades
-immediate visibility of every connection for a shorter path from a question
-about memory to an example and a way to try it.
+The next feedback exposed a mistake in that tradeoff: the logo wall looked
+gone. Its links still existed inside a disclosure, but that missed its job
+on the homepage. The visible wall communicates the breadth of the product
+before anyone reads a manual. Hiding it changed the presentation the owner
+wanted to keep.
 
-The next check is the rendered GitHub page, including its narrow layout and
-expanded disclosures. A Markdown diff can show the new order, but it cannot
-tell us whether GitHub loads the responsive image or leaves a mobile reader
-scrolling sideways.
+The correction restores the complete wall directly below the opening, with
+no click required. The generated block is unchanged. co rem keeps its top
+navigation link, reader screenshot and preview instructions immediately
+after the wall; the long CLI explanation and command examples can still
+expand on demand.
+
+Progressive disclosure needs a reason tied to the reader's task. A detailed
+command walkthrough can wait for a click. A visual introduction that makes
+the product recognizable should not disappear just because another feature
+needs attention. The browser recheck now needs to verify both promises:
+visible integrations on arrival, and a direct path to co rem.
