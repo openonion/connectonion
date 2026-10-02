@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from connectonion import llm_do
-from connectonion.core.exceptions import ProviderServiceError
+from connectonion.core.exceptions import InsufficientCreditsError, ProviderServiceError
 
 RUBRIC = (
     "You are the quality gate for a team's dev blog. Judge ONLY whether this "
@@ -41,6 +41,10 @@ def _judge(text: str, attempts: int = 3) -> str | None:
                 RUBRIC + "\n---\n" + text,
                 model="co/gemini-3.7-flash",
             ).strip()
+        except InsufficientCreditsError:
+            print("::warning::blog story model has insufficient credits; the story check did not run. "
+                  "The post shipped and still needs a human read.")
+            return None
         except ProviderServiceError as exc:
             if attempt == attempts - 1:
                 print(f"::warning::could not reach the model to judge this post ({exc.__class__.__name__}); "
