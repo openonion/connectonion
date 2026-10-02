@@ -281,7 +281,7 @@ def test_large_retained_output_is_searchable_without_growing_the_page_or_losing_
             text = path.read_text()
             if 'X ' * 100 not in text:
                 continue
-            key = int(re.search(r':part-(\d+) ·', text)[1])
+            key = int(re.search(r'Snapshot origin: skill-eval:.*:part-(\d+)', text)[1])
             parts[key] = text.split('\n\n', 1)[1][:-1]
         assert 'X ' * 550_000 in ''.join(parts[key] for key in sorted(parts))
         assert len(notebook.read(next(i['record'] for i in items if i.get('role') == 'page'))) < 10_000
@@ -290,3 +290,97 @@ def test_large_retained_output_is_searchable_without_growing_the_page_or_losing_
     result = investigate_skill_page(root, 'skills/catalog/example.md', [logs])
     assert len(n.read(result['report'])) < 10_000
     assert directories and not directories[0].exists()
+
+
+def test_skill_record_original_survives_cleanup_and_mutable_run_report(tmp_path, monkeypatch):
+    import re
+    from pathlib import Path
+    from connectonion.rem import skill_runs
+    from connectonion.rem.reader_model import cited_context
+    source = tmp_path / 'SKILL.md'
+    source.write_text('Inspect the resulting artifact.')
+    root = tmp_path / 'rem'
+    record = 'skills/catalog/example.md'
+    Notebook(root).stub_skill(record, 'example', str(source))
+    original = 'A reported result, not independently verified. ' * 1000
+    monkeypatch.setattr('connectonion.rem.skill_usage.session_samples', lambda *a: {
+        'items': [{'source': 'skill-session:codex:record:2026-09-30', 'text': original,
+                   'timestamp': '2026-09-30T23:40:00Z', 'reference': 'file:///canonical/session.jsonl'}],
+        'matched_invocations': 1, 'sample_limit': 3, 'missing': []})
+    captured = {}
+    def review(notebook, items, config, **kwargs):
+        index = next(i for i in items if i.get('role') == 'evidence-index')
+        files = list(Path(index['file']).parent.rglob('*.md'))
+        packet_file = next(p for p in files if 'Snapshot origin: skill-session:codex:record:2026-09-30:part-1' in p.read_text())
+        text = packet_file.read_text()
+        captured['id'] = re.search(r'### (skill-record:[0-9a-f]{64})', text)[1]
+        captured['directory'] = packet_file.parent.parent
+        notebook.write(record, notebook.read(record).replace('## Sources\n',
+                       '## Sources\n- [1] ' + captured['id'] + '\n'))
+        notebook.write('notes/skill-runs-a142673335bc.md', 'The report changed after the turn.')
+        return {'changed': [record]}
+    monkeypatch.setattr('connectonion.rem.runner.run_stage', review)
+    skill_runs.investigate_skill_page(root, record, [])
+    assert not captured['directory'].exists()
+    source.unlink()
+    context = cited_context(root, [{'text': '- [1] ' + captured['id']}])[captured['id']]
+    assert context['excerpt'] == original[:640]
+    assert context['time'] == '2026-09-30T23:40:00Z'
+    assert context['captured_at'] != context['time']
+    assert 'not independently verified' in context['input_scope']
+    saved = next((root / '.state/skill-records').glob('*.json'))
+    assert len(list((root / '.state/skill-records').glob('*.json'))) == 1
+    assert saved.stat().st_mode & 0o077 == 0
+    body = json.loads(saved.read_text())
+    assert body['text'] == original[:40_000]
+    assert body['origin'].endswith(':part-1')
+
+
+def test_skill_record_snapshot_bounds_privacy_and_identity(tmp_path):
+    from connectonion.rem.skill_runs import skill_record_snapshots, retain_skill_records, skill_record_context
+    from connectonion.rem.files import maintenance_lock, read_json, write_json, state_path
+    rows = [
+        {'source': 'skill-eval:example', 'text': 'public result ' * 100 + '[personal] private tail', 'timestamp': ''},
+        {'source': 'skill-session:codex:example:time', 'text': 'Useful ' * 6000, 'timestamp': '2026-09-01'},
+        {'source': 'skill-runs:example', 'text': 'Aggregate coverage, not a new invocation.', 'timestamp': ''},
+    ]
+    packets = skill_record_snapshots(rows, '2026-10-02T00:00:00Z')
+    assert len(packets) == 4 and all(len(p['text']) <= 40_000 for p in packets)
+    assert ''.join(p['text'] for p in packets[1:3]) == rows[1]['text']
+    assert [p['source'] for p in skill_record_snapshots(rows, '2026-10-03')] == [p['source'] for p in packets]
+    with maintenance_lock(tmp_path):
+        assert retain_skill_records(tmp_path, packets, {p['source'] for p in packets[:2]}) == 1
+    assert skill_record_context(tmp_path, packets[0]['source']) is None
+    good = packets[1]
+    context = skill_record_context(tmp_path, good['source'])
+    assert context['time'] == '2026-09-01' and context['captured_at'] == '2026-10-02T00:00:00Z'
+    assert 'part 1 of 2' in context['input_scope'] and context['truncated']
+    assert skill_record_context(tmp_path, packets[2]['source']) is None
+    path = state_path(tmp_path, 'skill-records/' + good['source'].split(':')[1] + '.json')
+    saved = read_json(path, {})
+    write_json(path, {**saved, 'text': saved['text'] + 'altered'})
+    assert skill_record_context(tmp_path, good['source']) is None
+
+
+def test_unchanged_or_failed_skill_turn_keeps_no_record_bodies(tmp_path, monkeypatch):
+    import pytest
+    from connectonion.rem.skill_runs import investigate_skill_page
+    source = tmp_path / 'SKILL.md'
+    source.write_text('Check the output artifact.')
+    root = tmp_path / 'rem'
+    record = 'skills/catalog/example.md'
+    Notebook(root).stub_skill(record, 'example', str(source))
+    def unchanged(notebook, items, config, **kwargs):
+        packet = next(i for i in items if i.get('source', '').startswith('skill-record:'))
+        notebook.write(record, notebook.read(record).replace('## Sources\n', '## Sources\n- [1] ' + packet['source'] + '\n'))
+        return {'changed': []}
+    monkeypatch.setattr('connectonion.rem.runner.run_stage', unchanged)
+    investigate_skill_page(root, record, [])
+    assert not (root / '.state/skill-records').exists()
+    def failed(*args, **kwargs):
+        raise RuntimeError('Rejected candidate')
+    monkeypatch.setattr('connectonion.rem.runner.run_stage', failed)
+    with pytest.raises(RuntimeError, match='Rejected candidate'):
+        investigate_skill_page(root, record, [])
+    assert not (root / '.state/skill-records').exists()
+    assert not list((root / '.state/evidence').glob('skill-*'))

@@ -1198,7 +1198,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
 
 
 def record_result(root, notebook, record: str, review_candidates: list, searched: list[str],
-                  *, changed: bool = False, repository_items=()) -> None:
+                  *, changed: bool = False, repository_items=(), skill_records=()) -> None:
     """Keep what a finished investigation proposed and mark its page investigated.
 
     It waits for the lock: the model turn is already paid for, and with several
@@ -1211,6 +1211,8 @@ def record_result(root, notebook, record: str, review_candidates: list, searched
             from .project_pages import retain_repository_context
             from .reader_model import _source_ids
             retain_repository_context(root, repository_items, _source_ids([{"text": notebook.read(record)}]))
+            from .skill_runs import retain_skill_records
+            retain_skill_records(root, skill_records, _source_ids([{"text": notebook.read(record)}]))
             page = notebook.read(record)
             if drop_map_count(page) != page:
                 notebook.write(record, drop_map_count(page))

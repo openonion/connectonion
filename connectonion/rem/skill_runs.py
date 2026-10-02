@@ -151,18 +151,21 @@ def investigate_skill_page(root: Path, record: str, directories: list[Path]) -> 
          'text': normalize(record, page)},
         {'source': source_id, 'timestamp': stamp, 'text': body,
          'reference': path.resolve().as_uri()},
-        {'source': 'skill-runs:' + evidence['skill'], 'timestamp': stamp,
-         'text': notebook.read(evidence['report']).partition('## Run ')[0]},
     ]
     config = read_config(root)
-    if sum(len(item['text']) for item in items) > config['limits']['input_chars_per_batch']:
-        raise RemError('Skill source and run evidence exceed the input budget; narrow --eval-dir before retrying')
     from .skill_usage import session_samples
     samples = session_samples(root, evidence['skill'])
     records = [{'source': 'skill-eval:' + hashlib.sha256(row['id'].encode()).hexdigest()[:12],
-                'timestamp': row['timestamp'] or stamp, 'reference': Path(row['source']).as_uri(),
+                'timestamp': row['timestamp'] or '', 'reference': Path(row['source']).as_uri(),
                 'text': json.dumps(row, ensure_ascii=False, indent=2)} for row in evidence['runs']]
     records += samples['items']
+    run_summary = {'source': 'skill-runs:' + evidence['skill'], 'timestamp': '',
+                   'text': notebook.read(evidence['report']).partition('## Run ')[0]}
+    record_items = skill_record_snapshots([run_summary, *records], stamp)
+    items += [item for item in record_items if item['origin'].startswith('skill-runs:')]
+    records = [item for item in record_items if not item['origin'].startswith('skill-runs:')]
+    if sum(len(item['text']) for item in items) > config['limits']['input_chars_per_batch']:
+        raise RemError('Skill source and run evidence exceed the input budget; narrow --eval-dir before retrying')
     references, reference_coverage = _source_references(path, body, stamp)
     records += references
     if reference_coverage:
@@ -178,12 +181,83 @@ def investigate_skill_page(root: Path, record: str, directories: list[Path]) -> 
         from .reader_model import _source_ids
         retain_instruction_context(root, [*items, *references], _source_ids([{'text': notebook.read(record)}]))
     record_result(root, notebook, record, result.get('review_candidates', []), ['skill source', 'retained evals'],
-                  changed=record in result.get('changed', []))
+                  changed=record in result.get('changed', []), skill_records=record_items)
     return {**result, 'record': record, 'report': evidence['report'], 'items': len(items),
             'invocation_attempts': evidence['invocation_attempts'],
             'session_turns_reviewable': len(samples['items']),
             'session_invocations_indexed': samples['matched_invocations'],
             'status': 'skill page investigated; execution quality is only as verified as its cited evidence'}
+
+
+def skill_record_snapshots(items: list[dict], stamp: str) -> list[dict]:
+    """Identify exact bounded run material before temporary evidence is laid out."""
+    from .evidence import FILE_CHARS
+    from .files import SECRET_SHAPES
+    output = []
+    for item in items:
+        kind = item['source'].split(':')[0]
+        if kind not in ('skill-session', 'skill-eval', 'skill-runs'):
+            continue
+        text = SECRET_SHAPES.sub('[secret-shaped text removed by co rem]', item['text'])
+        count = (len(text) + FILE_CHARS - 1) // FILE_CHARS
+        for offset in range(0, len(text), FILE_CHARS):
+            number = offset // FILE_CHARS + 1
+            origin, body = f"{item['source']}:part-{number}", text[offset:offset + FILE_CHARS]
+            identity = hashlib.sha256((origin + '\0' + body).encode()).hexdigest()
+            label = {'skill-session': 'session', 'skill-eval': 'evaluation summary', 'skill-runs': 'run coverage'}[kind]
+            scope = (f"Recorded skill {label}; "
+                     f"part {number} of {count} of the supplied record. "
+                     "Tool and assistant outputs are reports, not independently verified task success. "
+                     "Installed-version attribution is unverified.")
+            if kind == 'skill-session':
+                scope += ' Text-only context; image attachments and provider thinking are omitted.'
+            output.append({**item, 'source': 'skill-record:' + identity, 'origin': origin,
+                           'text': body, 'captured_at': stamp, 'input_scope': scope})
+    return output
+
+
+def retain_skill_records(root: Path, items: list[dict], cited: set[str]) -> int:
+    """Save only cited immutable pieces; caller holds the result-recording lock."""
+    from .files import read_json, state_path, write_json
+    count = 0
+    for item in items:
+        source = item.get('source', '')
+        if source not in cited or not _valid_skill_record(item):
+            continue
+        path = state_path(root, 'skill-records/' + source.split(':')[1] + '.json')
+        previous = read_json(path, {})
+        if previous and (previous['text'] != item['text'] or previous['origin'] != item['origin']):
+            raise RemError('Retained skill record has conflicting content')
+        if not previous:
+            write_json(path, item)
+        count += 1
+    return count
+
+
+def _valid_skill_record(item: dict) -> bool:
+    from .evidence import FILE_CHARS
+    from .files import SECRET_SHAPES
+    from .reader_model import PRIVATE
+    source, origin, text = item.get('source', ''), item.get('origin', ''), item.get('text')
+    return (isinstance(source, str) and re.fullmatch(r'skill-record:[0-9a-f]{64}', source) is not None
+            and isinstance(origin, str) and re.fullmatch(r'skill-(?:session|eval|runs):.+:part-[1-9]\d*', origin) is not None
+            and isinstance(text, str) and 0 < len(text) <= FILE_CHARS
+            and not SECRET_SHAPES.search(text) and not PRIVATE.search(text)
+            and source == 'skill-record:' + hashlib.sha256((origin + '\0' + text).encode()).hexdigest())
+
+
+def skill_record_context(root: Path, source: str) -> dict | None:
+    """Read saved record pieces; never reopen today's mutable logs or reports."""
+    from .files import read_json, state_path
+    if not re.fullmatch(r'skill-record:[0-9a-f]{64}', source):
+        return None
+    saved = read_json(state_path(root, 'skill-records/' + source.split(':')[1] + '.json'), {})
+    if saved.get('source') != source or not _valid_skill_record(saved):
+        return None
+    text = saved['text'].strip()
+    return {'excerpt': text[:640], 'truncated': len(text) > 640, 'source': 'skill-record',
+            'time': saved.get('timestamp') or '', 'captured_at': saved.get('captured_at') or '',
+            'origin': saved['origin'], 'sender': '', 'thread': '', 'input_scope': saved['input_scope']}
 
 
 def retain_instruction_context(root: Path, items: list[dict], cited: set[str]) -> int:
@@ -279,7 +353,8 @@ def _source_references(path: Path, body: str, stamp: str) -> tuple[list[dict], s
 
 def _record_index(directory: Path, records: list[dict], samples: dict, stamp: str) -> dict:
     from .evidence import FILE_CHARS, write_evidence
-    pieces = [{**record, 'source': f"{record['source']}:part-{offset // FILE_CHARS + 1}",
+    pieces = [{**record, 'source': record['source'] if record['source'].startswith('skill-record:') else
+               f"{record['source']}:part-{offset // FILE_CHARS + 1}",
                'text': record['text'][offset:offset + FILE_CHARS]}
               for record in records for offset in range(0, len(record['text']), FILE_CHARS)]
     laid_out = write_evidence(directory, pieces)

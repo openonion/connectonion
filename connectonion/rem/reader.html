@@ -657,6 +657,7 @@
   .evidence-close { border: 1px solid var(--line); background: var(--paper); color: var(--ink); padding: 7px 10px; border-radius: 6px; cursor: pointer; }
   .evidence-dialog h2 { font: 25px var(--display); margin: 14px 0; }
   .evidence-summary { color: var(--ink-2); }
+  .evidence-summary, .evidence-meta { overflow-wrap: anywhere; }
   .evidence-original { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 18px; }
   .evidence-original .focus-kicker { color: var(--blue); }
   .evidence-meta { font: 11px var(--mono); color: var(--ink-3); }
@@ -2102,9 +2103,10 @@ function recordFocus(r) {
   const k = known(r), out = el("section", { class: "record-focus " + r.category,
     "aria-label": "At a glance" });
   const purpose = section(r, r.category === "orgs" ? "our relationship" : r.category === "skills" ? "when to use" : "");
-  const statement = plainLine(purpose?.text || "") || memoryStatement(r) || facts(r).what || k.summary;
+  const finding = r.category === "skills" ? plainLine(section(r, "insight")?.text || "") : "";
+  const statement = finding || plainLine(purpose?.text || "") || memoryStatement(r) || facts(r).what || k.summary;
   const question = ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
-    skills: "When this helps" })[r.category] || "What matters now";
+    skills: finding ? "Useful finding" : "When this helps" })[r.category] || "What matters now";
   const focusHead = el("div", { class: "focus-head" }, [el("span", { class: "focus-kicker", text: question })]);
   const statementNode = el("p", { class: "focus-statement clamped", html: inline(statement || (k.status === "Mapped"
     ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet."), r.path) });

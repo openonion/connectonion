@@ -385,6 +385,29 @@ def test_instruction_excerpt_is_not_a_verified_result_and_respects_privacy(reade
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
+def test_skill_opens_on_its_finding_and_keeps_usage_in_full_note(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=skills%2Fcatalog%2Fweekly-brief.md')
+    page.evaluate("""() => {
+      const r = byPath('skills/catalog/weekly-brief.md');
+      const source = 'skill-record:' + 'a'.repeat(64);
+      r.text = '# weekly-brief\\n\\n## Insight\\nA saved draft still needs a queue readback. [1]\\n\\nMore detail belongs in the note. [1]\\n\\n## When to use\\nUse for a weekly brief. [1]\\n\\n## Sources\\n- [1] ' + source;
+      REM.source_context[source] = {source: 'skill-record', excerpt: 'Recorded queue readback.', truncated: false};
+      KNOWN.delete(r.path);
+      render();
+    }""", isolated_context=False)
+    assert page.locator('.focus-statement').inner_text() == 'A saved draft still needs a queue readback.'
+    assert page.locator('.focus-head .focus-kicker').inner_text() == 'USEFUL FINDING'
+    assert not page.locator('.focus-more').is_visible()
+    page.get_by_role('link', name='View sources →').click()
+    assert page.locator('.deep-note').get_attribute('open') is not None
+    assert 'Use for a weekly brief.' in page.locator('.deep-note').inner_text()
+    page.locator('.deep-note a.cite').first.click()
+    assert page.locator('#evidence-dialog .evidence-summary').evaluate('e => e.scrollWidth <= e.clientWidth')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
 def test_skill_activity_uses_invocation_dates_instead_of_investigation_dates(reader):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})

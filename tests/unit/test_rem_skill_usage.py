@@ -65,3 +65,56 @@ def test_missing_session_and_sampling_limit_are_explicit(tmp_path):
     result = session_samples(tmp_path, 'example', limit=1)
     assert result['matched_invocations'] == 2 and result['sample_limit'] == 1
     assert len(result['missing']) == 1 and not result['items']
+
+
+def test_skill_session_excludes_mixed_thinking_and_analysis_but_keeps_result(tmp_path):
+    from connectonion.rem.skill_usage import _invocation_turn
+    stamp = '2026-10-02T00:00:00Z'
+    path = tmp_path / 'claude.jsonl'
+    rows = [
+        {'type': 'assistant', 'timestamp': '2026-10-01', 'message': {'role': 'assistant', 'stop_reason': 'end_turn',
+            'content': [{'type': 'thinking', 'thinking': 'Earlier hidden end turn'}]}},
+        {'type': 'assistant', 'timestamp': stamp, 'message': {'role': 'assistant', 'content': [
+            {'type': 'thinking', 'thinking': 'Hidden provider reasoning'},
+            {'type': 'redacted_thinking', 'data': 'Encrypted hidden block'},
+            {'type': 'tool_use', 'name': 'Skill', 'input': {'skill': 'example'}}]}},
+        {'type': 'assistant', 'timestamp': stamp, 'message': {'role': 'assistant', 'stop_reason': 'end_turn',
+            'content': [{'type': 'text', 'text': 'Reported outcome'}]}},
+    ]
+    path.write_text('\n'.join(json.dumps(r) for r in rows))
+    text = _invocation_turn(path, 'claude-code', stamp)
+    assert 'Hidden provider reasoning' not in text and 'Encrypted hidden block' not in text
+    assert 'Skill' in text and 'Reported outcome' in text
+    rows = [
+        {'type': 'session_meta', 'payload': {'id': 'session', 'cwd': '/work'}},
+        {'type': 'response_item', 'timestamp': stamp, 'payload': {'type': 'function_call', 'name': 'Skill', 'channel': 'analysis'}},
+        {'type': 'response_item', 'timestamp': stamp, 'payload': {'type': 'message', 'role': 'assistant',
+            'channel': 'analysis', 'content': [{'type': 'output_text', 'text': 'Internal analysis'}]}},
+        {'type': 'response_item', 'timestamp': stamp, 'payload': {'type': 'message', 'role': 'assistant',
+            'channel': 'final', 'content': [{'type': 'output_text', 'text': 'Final result'}]}},
+    ]
+    path.write_text('\n'.join(json.dumps(r) for r in rows))
+    text = _invocation_turn(path, 'codex', stamp)
+    assert 'Internal analysis' not in text and 'Final result' in text and 'function_call' in text
+
+
+def test_skill_session_omits_binary_images_with_explicit_text_only_scope(tmp_path):
+    from connectonion.rem.skill_usage import _invocation_turn
+    stamp = '2026-10-02T00:00:00Z'
+    path = tmp_path / 'claude.jsonl'
+    rows = [
+        {'type': 'assistant', 'timestamp': stamp, 'message': {'role': 'assistant', 'content': [
+            {'type': 'tool_use', 'name': 'Skill', 'input': {'skill': 'example'}}]}},
+        {'type': 'user', 'timestamp': stamp, 'toolUseResult': {'type': 'image', 'file': {'base64': 'duplicated-image-data'}},
+         'message': {'role': 'user', 'content': [
+            {'type': 'tool_result', 'tool_use_id': 'check', 'content': [
+                {'type': 'text', 'text': 'Saved screenshot: /artifact.png'},
+                {'type': 'image', 'source': {'type': 'base64', 'data': 'encoded-image-data'}}]}]}},
+        {'type': 'assistant', 'timestamp': stamp, 'message': {'role': 'assistant', 'stop_reason': 'end_turn',
+            'content': [{'type': 'text', 'text': 'Reported result'}]}},
+    ]
+    path.write_text('\n'.join(json.dumps(r) for r in rows))
+    text = _invocation_turn(path, 'claude-code', stamp)
+    assert 'encoded-image-data' not in text and 'duplicated-image-data' not in text
+    assert 'image attachment omitted' in text.lower() and 'not visually reviewed' in text
+    assert 'Saved screenshot: /artifact.png' in text and 'Reported result' in text

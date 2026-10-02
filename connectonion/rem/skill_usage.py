@@ -221,6 +221,20 @@ def _invocation_turn(path: Path, kind: str, when: str) -> str:
         first = json.loads(handle.readline())
         meta = KINDS[kind]["meta"](first)
         for row in chain([first], (json.loads(line) for line in handle)):
+            payload = row.get("payload") or row.get("message") or {}
+            if payload.get('type') == 'message' and payload.get('channel') == 'analysis':
+                continue
+            if isinstance(payload.get('content'), list):
+                content = _text_skill_content(payload['content'])
+                if not content and row.get('type') == 'assistant':
+                    if active and payload.get('stop_reason') == 'end_turn':
+                        break
+                    continue
+                payload = {**payload, 'content': content}
+                row = {**row, 'payload' if row.get('type') == 'response_item' else 'message': payload}
+            result = row.get('toolUseResult')
+            if isinstance(result, dict) and result.get('type') == 'image':
+                row = {**row, 'toolUseResult': {'type': 'image', 'omitted': 'Text-only evidence; image not visually reviewed.'}}
             spoken = KINDS[kind]["message"](row, EVER, meta)
             if isinstance(spoken, dict) and spoken.get("role") == "user":
                 if active:
@@ -229,10 +243,7 @@ def _invocation_turn(path: Path, kind: str, when: str) -> str:
             if not active and row.get("timestamp") == when:
                 active = True
                 selected += [request] if request is not None and request is not row else []
-            payload = row.get("payload") or row.get("message") or {}
             event = payload.get("type")
-            if row.get('type') == 'assistant' and all(p.get('type') == 'thinking' for p in payload.get('content', [])):
-                continue
             if active and ((row.get("type") in ("user", "assistant") and not row.get("isMeta")) or
                            (row.get("type") == "response_item" and event != "reasoning" and
                             (event != "message" or payload.get("role") == "assistant" or
@@ -244,3 +255,19 @@ def _invocation_turn(path: Path, kind: str, when: str) -> str:
             if active and kind == 'claude-code' and payload.get('stop_reason') == 'end_turn':
                 break
     return SECRET_SHAPES.sub("[REDACTED]", "\n".join(json.dumps(row, ensure_ascii=False) for row in selected))
+
+
+def _text_skill_content(content: list) -> list:
+    """Keep public text/tool reports; binary images and provider thinking are not text evidence."""
+    output = []
+    for part in content:
+        kind = part.get('type')
+        if kind in ('thinking', 'redacted_thinking'):
+            continue
+        if kind in ('image', 'input_image', 'output_image'):
+            output.append({'type': 'text', 'text': '[Image attachment omitted from text-only skill evidence; not visually reviewed.]'})
+        elif kind == 'tool_result' and isinstance(part.get('content'), list):
+            output.append({**part, 'content': _text_skill_content(part['content'])})
+        else:
+            output.append(part)
+    return output

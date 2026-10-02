@@ -85,8 +85,28 @@ the required output and its verification step, while keeping execution
 unverified. Optional Unknown-only sections disappear from investigated pages;
 source provenance and observed invocation counts remain available.
 
-Large eval records and invocation turns are split losslessly for file tools.
-Both a numbered part and its exact original record ID are traceable citations;
-arbitrary shorter prefixes are not. A real review lost its reported-outcome
-findings when promotion rejected a whole-record citation merely because the
-index named its numbered parts (#2137).
+Large text eval records and invocation turns are split into 40,000-character
+pieces for file tools. Each new piece has an identity derived from its origin
+and exact supplied body before digesting or arranging the evidence. Only cited
+pieces from accepted changed pages persist in private state under the result
+recording lock. Unchanged, refused and failed results do not accumulate bodies.
+Original record time and capture time remain separate; a coverage summary has
+no invented execution timestamp.
+
+The reader shows a 640-character prefix, with truncation and record scope.
+It never reopens today's mutable log to replace a lost old citation. Legacy
+identifiers without retained body hashes remain unavailable; a newly inspected
+capture is new evidence, not recovery of the old supplied packet. Identity and
+source access do not validate the attached claim.
+
+Invocation context contains public text, tool reports and final replies.
+Provider thinking, analysis-channel messages and binary image attachments are
+omitted; an image marker explicitly says it was not visually reviewed. A
+screenshot path or assistant report is not visual proof. Any separate inspection
+of an archived image must be described with its actual scope.
+
+The skill reader opens on the first Insight line when available, with the usage
+explanation in the full note. Recheck inherited claims against their exact task,
+date and original result: adjacent runs can have different counts, failures and
+outcomes. A manually corrected page does not demonstrate that the model will
+reliably make the same correction.

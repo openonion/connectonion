@@ -7,10 +7,8 @@ description: A skill page for judging usefulness, observed reliability and how t
 
 Why these rules: docs/rem-skills/rem-page-skill.md
 
-Help a reader choose a task, judge reliability and start. Keep the opening
-short and plain. Link the source near the end; do not paste its instructions.
-State missing execution evidence once in `Current status`; do not repeat it in
-every section. Omit optional sections that would only restate that gap.
+Help a reader choose and start a task. Keep the lead short; link, don't paste,
+the source. State missing execution evidence once in `Current status`.
 
 Keep the core headings `What it does`, `Insight`, `When to use`, `Current status`,
 `How to use`, `Inputs and outputs`, `Usage history`, `Limitations`, `Uncertainties`,
@@ -95,9 +93,8 @@ Link older records when numerous.
 - Elapsed time and input/output tokens with units and per-metric sample sizes;
   per-run totals apart from per-call usage. Never infer tokens/second from task
   duration; use generation timing. Never invent cost or token telemetry.
-- Separate skill versions, models/context settings and comparable task types or
-  difficulty; label cache conditions if relevant; never pool unlike runs. Small
-  samples are observations, not guarantees.
+- Separate versions, models/context and task types/difficulty; label cache
+  conditions. Never pool unlike runs. Small samples are not guarantees.
 
 **Limits and maintenance**
 
@@ -126,5 +123,9 @@ Never execute a skill merely to document it.
 
 Catalog pages go in `skills/catalog/`. Review source and retained eval summaries;
 never read mail or execute the skill for this review.
-Only explicit slash-command records are matched; attribution to an installed
-version and goal achievement stay unverified without artifact evidence.
+Eval counts explicit /skill inputs; sessions also include file loads/direct CLI.
+Neither proves installed version or goal achievement without artifacts.
+
+Match inherited claims to their exact task, date and original; cite supplied
+snapshot IDs. Treat outputs/handbacks as reports until artifact review.
+Open threads need a current, source-backed pending request.
