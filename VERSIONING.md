@@ -400,7 +400,42 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a17
+## Current Version: 1.9.0a20
+
+1.9.0a20 finishes the reader's visible co rem labels: the morning overview,
+recall prompt, empty states and source dialogs use the command name. The
+private reader's data and signed protocol are unchanged. The paired O Chat
+fix opens bookmarked notes inside the sandbox, while the docs sample uses
+current labels and keeps trial installation steps clear of promotions.
+Stable remains 1.8.10. See [1.9.0a20 notes](docs/releases/1.9.0a20.md).
+
+- 1.9.0a20 (reader labels found by independent rendered-page review).
+
+## Previous preview: 1.9.0a19
+
+1.9.0a19 completes the public co rem rename. Live reader links open
+`/<address>/rem`; the deployed O Chat reader redirects old `/wiki` links.
+The README introduces co rem and pins this opt-in preview without allowing
+pre-release dependencies. The homepage and docs use the same command name.
+Signed reader messages and existing notebook migrations remain compatible.
+Stable remains 1.8.10. See [1.9.0a19 notes](docs/releases/1.9.0a19.md).
+
+- 1.9.0a19 (#2148; canonical co rem reader URLs, shared branding and README introduction).
+
+## Previous preview: 1.9.0a18
+
+1.9.0a18 gives REM's first-run owner page a source-backed change of decision
+and a visible next step. The full pass receives bounded excerpts from the
+owner's dated coding messages, including items used by the quick pass. The
+reader puts the owner change and next step first and links cited project
+mentions. A fresh private five-day init completed both passes; the owner page
+had three cited Insight bullets and six internal links. This is one AHA slice,
+not completion of the owner-page or REM maturity gates. Stable remains 1.8.10.
+See [1.9.0a18 notes](docs/releases/1.9.0a18.md).
+
+- 1.9.0a18 (#2128, #2130; owner decision evidence, reader hierarchy and fact citation reliability).
+
+## Previous preview: 1.9.0a17
 
 1.9.0a17 gives REM's first written project page bounded, separately citable
 local repository evidence and removes unsupported optional fields. A private

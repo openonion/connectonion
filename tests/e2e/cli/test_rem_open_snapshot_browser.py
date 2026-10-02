@@ -63,7 +63,7 @@ def test_default_open_page_loads_navigates_and_goes_back(tmp_path, monkeypatch):
             page.route("http://**/*", lambda route: route.abort())
             page.route("https://**/*", lambda route: route.abort())
             page.goto(data["link"])
-            contents = page.get_by_role("heading", name="What REM carried forward")
+            contents = page.get_by_role("heading", name="What co rem carried forward")
             contents.wait_for()
             page.locator("a[href='#c=people']").first.click()
             page.get_by_role("heading", name="People", exact=True).wait_for()

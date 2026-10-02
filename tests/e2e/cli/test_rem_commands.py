@@ -292,7 +292,7 @@ def test_live_with_the_host_online_opens_the_live_url(tmp_path, monkeypatch):
     result = runner.invoke(app, ["rem", "open", "--live", "--no-launch"])
     assert result.exit_code == 0, result.output
     assert asked == [OWNER] and opened == []
-    assert f"https://chat.openonion.ai/{OWNER}/wiki" in _plain(result.output)
+    assert f"https://chat.openonion.ai/{OWNER}/rem" in _plain(result.output)
 
 
 def test_live_with_the_host_reachable_only_through_the_relay_opens_the_live_url(tmp_path, monkeypatch):
@@ -302,7 +302,7 @@ def test_live_with_the_host_reachable_only_through_the_relay_opens_the_live_url(
     result = runner.invoke(app, ["rem", "open", "--live", "--no-launch"])
     assert result.exit_code == 0, result.output
     assert asked == [OWNER] and opened == []
-    assert f"https://chat.openonion.ai/{OWNER}/wiki" in _plain(result.output)
+    assert f"https://chat.openonion.ai/{OWNER}/rem" in _plain(result.output)
 
 
 def test_live_on_a_custom_root_says_why_and_opens_the_snapshot(tmp_path, monkeypatch):

@@ -1,0 +1,30 @@
+version: v1.9.0a19
+images:
+- file: reader-desktop.png
+  alt: co rem reader showing an invented owner notebook
+  caption: co rem reader showing an invented owner notebook
+  scenario: Synthetic Host and invented Ada notebook; signed reader acceptance
+  viewport: 1440x900, light
+  commit: 0ccf8d6e660d76fe8b6afadd61482b0f0d69bea2
+  source_run: https://github.com/openonion/oo-chat/actions/runs/36985350500
+- file: reader-phone.png
+  alt: co rem reader at phone width
+  caption: co rem reader at phone width
+  scenario: Synthetic Host and invented Ada notebook; signed reader acceptance
+  viewport: 390x844, light
+  commit: 0ccf8d6e660d76fe8b6afadd61482b0f0d69bea2
+  source_run: https://github.com/openonion/oo-chat/actions/runs/36985350500
+- file: offline-desktop.png
+  alt: Offline host guidance names co rem
+  caption: Offline host guidance names co rem
+  scenario: Synthetic Host and invented Ada notebook; signed reader acceptance
+  viewport: 1440x900, light
+  commit: 0ccf8d6e660d76fe8b6afadd61482b0f0d69bea2
+  source_run: https://github.com/openonion/oo-chat/actions/runs/36985350500
+- file: denied-desktop.png
+  alt: Owner-only co rem reader refuses a different browser
+  caption: Owner-only co rem reader refuses a different browser
+  scenario: Synthetic Host and invented Ada notebook; signed reader acceptance
+  viewport: 1440x900, light
+  commit: 0ccf8d6e660d76fe8b6afadd61482b0f0d69bea2
+  source_run: https://github.com/openonion/oo-chat/actions/runs/36985350500

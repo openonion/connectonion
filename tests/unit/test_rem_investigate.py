@@ -50,6 +50,83 @@ def test_quick_evidence_bounds_the_first_turn_and_keeps_source_diversity():
     assert all(item['text'].endswith('[truncated for quick first-pass review]') for item in selected)
 
 
+def test_owner_work_packet_exposes_dated_decision_sources_without_claiming_completion():
+    items = [
+        {'source': 'codex:old', 'role': 'user', 'project': '/work/rem', 'timestamp': '2026-09-28',
+         'text': 'Use a static owner page for this first pass.'},
+        {'source': 'codex:choice', 'role': 'user', 'project': '/work/rem', 'timestamp': '2026-10-01',
+         'text': 'Instead, switch to a cited model investigation after the quick pass.'},
+        {'source': 'codex:new', 'role': 'user', 'project': '/work/rem', 'timestamp': '2026-10-02',
+         'text': 'Check the owner page with real source material before releasing.'},
+        {'source': 'outlook:invite', 'role': 'user', 'project': '', 'timestamp': '2026-10-02',
+         'text': 'Maybe attend a talk in November.'},
+    ]
+    packet = inv.owner_work_evidence(items)
+    assert packet.index('codex:old') < packet.index('codex:choice') < packet.index('codex:new')
+    assert 'outlook:invite' not in packet
+    assert 'not a digest or evidence of completion' in packet
+
+
+def test_owner_work_packet_follows_a_repeated_topic_inside_a_mixed_workspace():
+    items = [
+        {'source': 'codex:unrelated', 'role': 'user', 'project': '/work', 'timestamp': '2026-09-27',
+         'text': 'Choose the event venue and send the invitation.'},
+        {'source': 'codex:old', 'role': 'user', 'project': '/work', 'timestamp': '2026-09-28',
+         'text': 'REM先不要让模型写首次页面，保留静态模板。'},
+        {'source': 'codex:new', 'role': 'user', 'project': '/work', 'timestamp': '2026-10-01',
+         'text': '现在REM应该用模型写有来源的首次页面。'},
+        {'source': 'codex:latest', 'role': 'user', 'project': '/work', 'timestamp': '2026-10-02',
+         'text': 'Check the REM init page against the real notebook.'},
+    ]
+    packet = inv.owner_work_evidence(items)
+    assert 'topic REM' in packet
+    assert all(source in packet for source in ('codex:old', 'codex:new', 'codex:latest'))
+    assert 'codex:unrelated' not in packet
+
+
+def test_owner_work_packet_follows_init_across_a_renamed_memory_product():
+    items = [
+        {'source': 'claude-code:old', 'role': 'user', 'project': '/work/connectonion',
+         'timestamp': '2026-09-27', 'text': 'Maybe co wiki init should start from a static page.'},
+        {'source': 'codex:reversal', 'role': 'user', 'project': '/work',
+         'timestamp': '2026-10-01', 'text': '不对，init 不启动模型是错的，应该在 init 用模型调查。'},
+        {'source': 'codex:latest', 'role': 'user', 'project': '/work',
+         'timestamp': '2026-10-02', 'text': 'Check the REM init page against real data.'},
+        {'source': 'claude-code:unrelated', 'role': 'user', 'project': '/work/connectonion',
+         'timestamp': '2026-10-01', 'text': 'Choose a venue for the student event.'},
+    ]
+    packet = inv.owner_work_evidence(items)
+    assert 'topic init' in packet
+    assert all(source in packet for source in ('claude-code:old', 'codex:reversal', 'codex:latest'))
+    assert 'claude-code:unrelated' not in packet
+
+
+def test_full_owner_pass_compares_sources_already_cited_by_the_quick_page(tmp_path, monkeypatch):
+    from datetime import date
+
+    root = _notebook(tmp_path, 'codex')
+    book = inv.Notebook(root)
+    page = book.read('people/vern.md').replace('· not investigated yet',
+                                               f'· investigated {date.today().isoformat()} (codex)')
+    page = page.replace('## Sources\n- (none yet)', '## Sources\n- [1] codex:old')
+    book.write('people/vern.md', page)
+    messages = [
+        {'source': 'codex:old', 'role': 'user', 'project': '/work', 'timestamp': '2026-09-29',
+         'text': 'Maybe init should keep the static page for now.'},
+        {'source': 'codex:new', 'role': 'user', 'project': '/work', 'timestamp': '2026-10-02',
+         'text': 'No, init should investigate with a model before the first page.'},
+    ]
+    monkeypatch.setattr(inv, 'gather', lambda *args, **kwargs: (messages, ['codex: 2 messages']))
+    seen = []
+    inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], days=5,
+                    clients={}, subscriptions={}, sent_only=True,
+                    runner=lambda notebook, items, config, stage: seen.extend(items) or {'changed': []})
+    assert not any(item.get('source') == 'codex:old' for item in seen)
+    packet = next(item for item in seen if item['role'] == 'owner-work-evidence')
+    assert packet['sources'] == ['codex:old', 'codex:new']
+    assert 'Maybe init' in packet['text'] and 'No, init' in packet['text']
+
+
 def test_quick_owner_run_uses_one_turn_and_reports_partial_coverage(tmp_path, monkeypatch):
     root = _notebook(tmp_path, 'codex')
     rows = [{'source': f'gmail:{i}', 'timestamp': f'2026-09-{(i % 25) + 1:02d}',
@@ -1325,7 +1402,8 @@ def test_the_owners_turn_is_handed_the_recent_projects_dated_and_a_persons_is_no
         {"name": "old-thing", "record": "projects/old.md", "sessions": 40, "first": "2026-06-01",
          "last": "2026-07-01"}]})
     monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: ([
-        {"source": "codex:s:1", "role": "user", "timestamp": "2026-09-01", "text": "ship the reader"}], ["codex: 1"]))
+        {"source": "codex:s:1", "role": "user", "project": "/work/connectonion",
+         "timestamp": "2026-09-01", "text": "Decide how the reader presents a verified change."}], ["codex: 1"]))
     seen = []
 
     def runner(notebook, items, config, stage):
@@ -1339,10 +1417,12 @@ def test_the_owners_turn_is_handed_the_recent_projects_dated_and_a_persons_is_no
     assert lines == ["- connectonion (projects/connectonion.md): 158 sessions, 2026-09-07 to 2026-09-30",
                      "- browser (projects/browser.md): 17 sessions, 2026-08-30 to 2026-09-27"]
     assert "old-thing" not in recent and "working on now" in recent
+    assert "codex:s:1" in next(item for item in seen if item["role"] == "owner-work-evidence")["text"]
     seen.clear()
     inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=5, clients={}, subscriptions={},
                     runner=runner)
     assert not any(item["role"] == "recent-projects" for item in seen)
+    assert not any(item["role"] == "owner-work-evidence" for item in seen)
 
 
 def test_a_daily_run_says_each_pages_outcome_and_records_its_stage_and_seconds(tmp_path, co_ai, monkeypatch):

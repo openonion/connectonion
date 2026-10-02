@@ -481,6 +481,7 @@ def test_a_project_page_is_also_given_the_start_of_its_readme(tmp_path):
     Notebook(root).stub_project("projects/tide.md", "tide", [str(folder)])
     [readme] = project_pages._readme(Notebook(root).read("projects/tide.md"), NOW.isoformat())
     assert readme["source"] == f"file:{folder / 'README.md'}"                # citable by its path
+    assert "README.md" in readme["text"] and str(folder) not in readme["text"]
     assert "A swell warning tool for surfers." in readme["text"]
     assert len(readme["text"]) < project_pages.README_CHARS + 200            # the start, not the file
     Notebook(root).stub_project("projects/bare.md", "bare", [str(tmp_path / "work" / "bare")])

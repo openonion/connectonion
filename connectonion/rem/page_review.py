@@ -289,7 +289,12 @@ CONTEXT_SOURCES = ("investigation:page", "investigation:coverage", "investigatio
 
 def _known_sources(items: list[dict]) -> set:
     known = {i['source'] for i in items if i.get('source') and i['source'] != 'investigation:page'}
-    derived = [source for i in items if i.get("role") in ("reflection-summary", "extract", "evidence-index")
+    # Fact extraction reads all gathered mail before a quick turn samples it.
+    # A restored field may cite mail outside that sample; its provenance is in
+    # the facts item even though the raw mail is absent from this turn.
+    known.update(row['source'] for item in items if item.get('role') == 'facts'
+                 for row in item.get('facts', []) if row.get('source'))
+    derived = [source for i in items if i.get("role") in ("reflection-summary", "extract", "evidence-index", "owner-work-evidence")
                for source in i.get("sources", [])]
     known.update(derived)
     # Numbered pieces are one original record. A citation to the whole record
@@ -623,6 +628,39 @@ def link_people(record: str, text: str, names: dict) -> str:
                           if not any(a <= m.start() < b for a, b in spans)), None)
             if found:
                 lines[i] = line[:found.start()] + f'[{name}](../{target})' + line[found.end():]
+                break
+    return '\n'.join(lines) + marker + tail
+
+
+def project_names(notebook) -> dict[str, str]:
+    """Only unique, specific project titles are safe to link from the owner's page."""
+    seen = {}
+    for record in notebook.list('projects'):
+        title = next((line[2:].strip() for line in notebook.read(record).splitlines()
+                      if line.startswith('# ')), '')
+        if len(title) >= 4 or (len(title) >= 2 and title.isupper()):
+            seen.setdefault(title.casefold(), []).append((title, record))
+    return {title: records[0][1] for title, records in seen.items() if len(records) == 1}
+
+
+def link_projects(text: str, names: dict[str, str]) -> str:
+    """Link the first exact project name on the owner's page, outside fields and sources."""
+    head, marker, tail = text.partition('\n## Sources\n')
+    lines = head.split('\n')
+    for title, target in sorted(names.items(), key=lambda item: -len(item[0])):
+        pattern = re.compile(r'(?<![\w\[/])' + re.escape(title) + r'(?![\w\]])', re.I)
+        if re.search(r'\]\(\.\./' + re.escape(target) + r'\)', head):
+            continue
+        for index, line in enumerate(lines):
+            if (line.startswith(('#', 'Investigation:')) or CONTACT_LINE.match(line)
+                    or not re.search(r'\[W?\d+\]', line)):
+                continue
+            linked = [match.span() for match in re.finditer(r'\[[^\]]*\]\([^)]*\)', line)]
+            found = next((match for match in pattern.finditer(line)
+                          if not any(start <= match.start() < end for start, end in linked)), None)
+            if found:
+                name = line[found.start():found.end()]
+                lines[index] = line[:found.start()] + f'[{name}](../{target})' + line[found.end():]
                 break
     return '\n'.join(lines) + marker + tail
 

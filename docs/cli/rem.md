@@ -1,6 +1,6 @@
 # co rem — current branch contract
 
-Updated 2026-09-24. co rem ships in the opt-in 1.8.8 previews and becomes
+Updated 2026-10-02. co rem ships in the opt-in 1.9.0 previews and becomes
 long-term supported in 1.9.0 (#1664 names it first). The command surface and
 every `--help` page are the agreed design in #1656; the pages themselves live
 in `connectonion/cli/commands/rem_help.md` and a test holds them to the code.
@@ -335,9 +335,10 @@ Every command returns a next command, including in JSON and through a pipe.
 Until 1.8.9 the default opened `https://chat.openonion.ai/<address>/wiki` before
 O Chat served that route, so the page never loaded (#1828). O Chat serves it
 since openonion/oo-chat#246; opening locally stays the default because it works
-offline and needs no Host, and the live view is asked for with `--live`. The
-route and both switches live in `connectonion/rem/reader.py` (`LIVE_WIKI_URL`,
-`LIVE_WIKI_SERVED`, `LIVE_IS_DEFAULT`). `--local` is still accepted and always
+offline and needs no Host, and the live view is asked for with `--live`.
+New live links use `https://chat.openonion.ai/<address>/rem`; old `/wiki` links
+redirect to `/rem`. The route and both switches live in `connectonion/rem/reader.py` (`LIVE_REM_URL`,
+`LIVE_REM_SERVED`, `LIVE_IS_DEFAULT`). `--local` is still accepted and always
 means the snapshot. If the live view says co rem is not yours, add the
 browser's address as an admin of the Host: `co trust admin add <address>`.
 

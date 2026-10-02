@@ -580,6 +580,9 @@
   .focus-kicker { display: block; font: 600 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--night-2); }
   .focus-statement { max-width: 64ch; position: relative; z-index: 1; font: 26px/1.28 var(--display); margin: 16px 0 0; }
   .focus-statement.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+  .focus-next { position: relative; z-index: 1; max-width: 68ch; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--night-line); }
+  .focus-next .k { display: block; font: 600 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--night-2); }
+  .focus-next p { margin: 5px 0 0; font: 15px/1.45 var(--text); }
   .focus-more { position: relative; z-index: 1; border: 0; background: transparent; color: var(--night-ink); cursor: pointer; margin: 4px 0 0; padding: 0; min-height: 44px; font: 600 12px var(--ui); text-decoration: underline; text-underline-offset: 3px; }
   .focus-section.next-exchanges { grid-column: 1 / -1; }
   .project-workspace { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
@@ -1697,7 +1700,11 @@ function sectionHead(title, note) {
 function memoryStatement(r) {
   const insight = section(r, "insight");
   const lines = insight ? listItems(insight.text) : [];
-  const line = lines[0];
+  // The owner opens this page to recall what changed; a generic "Now" often
+  // restates the latest request. Other records keep their current-state lead.
+  const preferred = r.path === REM.owner ? ["Changed", "Now"] : ["Now", "Changed"];
+  const line = preferred.map(kind => lines.find(item => new RegExp("^" + kind + ":", "i").test(item))).find(Boolean)
+    || lines.find(item => /^At stake:/i.test(item)) || lines[0];
   const current = section(r, "where it stands");
   const statement = plainLine(line ? line.replace(/^(?:Changed|Now|At stake|Pattern):\s*/i, "") : current?.text || known(r).summary);
   return statement ? statement[0].toUpperCase() + statement.slice(1) : "";
@@ -1735,9 +1742,9 @@ function morningBrief() {
   const changed = (pass?.changed || []).filter(r => r.path !== REM.owner && known(r).status !== "Mapped");
   const rank = r => ({ people: 0, projects: 1, orgs: 2 })[r.category] ?? 3;
   changed.sort((a, b) => rank(a) - rank(b) || byActivity(a, b));
-  const brief = el("section", { class: "morning", "aria-label": "What REM carried forward" });
+  const brief = el("section", { class: "morning", "aria-label": "What co rem carried forward" });
   const top = el("div", { class: "morning-top" }, [
-    el("div", {}, [el("span", { class: "morning-kicker", text: "REM / latest pass" }),
+    el("div", {}, [el("span", { class: "morning-kicker", text: "co rem / latest pass" }),
       el("h2", { text: changed.length ? (new Date(REM.as_of).getTime() - pass.latest < DAY_MS
         ? "The context to carry into today" : "The context from the last pass") : "Ready when there is something new" })]),
     el("span", { class: "morning-time", text: pass ? fmtTime(new Date(pass.latest).toISOString()) : "No pass yet" })]);
@@ -1750,7 +1757,7 @@ function morningBrief() {
   if (!changed.length) {
     brief.appendChild(el("p", { class: "memory-empty", text: pass
       ? "The last pass did not update a page. Your existing context is still in the library below."
-      : "REM has not completed a pass yet. Once it has, the pages it updates will appear here." }));
+      : "co rem has not completed a pass yet. Once it has, the pages it updates will appear here." }));
     return brief;
   }
   const cards = el("div", { class: "memory-grid" });
@@ -1767,7 +1774,7 @@ function morningBrief() {
 function taskView(kind) {
   const main = document.getElementById("main");
   main.textContent = "";
-  main.appendChild(el("div", { class: "eyebrow", text: "REM / Today" }));
+  main.appendChild(el("div", { class: "eyebrow", text: "co rem / Today" }));
   if (kind === "changes") {
     const pass = lastPass();
     main.appendChild(el("h1", { text: "Memory changes" }));
@@ -1811,9 +1818,9 @@ function recallPrompt() {
     button.setAttribute("aria-expanded", String(!answer.hidden));
     button.textContent = answer.hidden ? "Reveal the context" : "Hide the context";
   };
-  card.append(el("span", { class: "label", text: "Remember with REM" }),
+  card.append(el("span", { class: "label", text: "Remember with co rem" }),
     el("h2", { text: relationship ? "How do you know " + r.title + "?" : "What should you remember about " + r.title + "?" }),
-    el("p", { class: "why", text: "Pause before revealing. The answer comes from a page REM already wrote." }), button, answer);
+    el("p", { class: "why", text: "Pause before revealing. The answer comes from a page co rem already wrote." }), button, answer);
   return card;
 }
 function connectionReview() {
@@ -1831,11 +1838,11 @@ function overview() {
   const s = REM.status || {};
   const main = document.getElementById("main");
   main.textContent = "";
-  main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "REM / Today" }), el("span", { class: "sep", text: "/" }), el("span", { class: "when", text: fmtDate(REM.as_of) })]));
-  main.appendChild(el("h1", { text: "What REM carried forward" }));
+  main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "co rem / Today" }), el("span", { class: "sep", text: "/" }), el("span", { class: "when", text: fmtDate(REM.as_of) })]));
+  main.appendChild(el("h1", { text: "What co rem carried forward" }));
   const n = listedRecords().length;
   const mapped = listedRecords().filter(r => known(r).status === "Mapped").length;
-  main.appendChild(el("p", { class: "lede", text: n === 0 ? "Once REM has read your permitted sources, it will bring back the context worth keeping." :
+  main.appendChild(el("p", { class: "lede", text: n === 0 ? "Once co rem has read your permitted sources, it will bring back the context worth keeping." :
     "A short return to what changed, what is still open, and what is worth remembering." }));
   main.appendChild(morningBrief());
   const recall = recallPrompt();
@@ -1873,7 +1880,7 @@ function overview() {
         known(r).summary ? el("span", { class: "s", text: known(r).summary }) : null])]))));
   }
 
-  const processing = el("details", { class: "night-details" }, [el("summary", { text: "How REM processed the last pass" }), nightBand()]);
+  const processing = el("details", { class: "night-details" }, [el("summary", { text: "How co rem processed the last pass" }), nightBand()]);
   main.appendChild(processing);
 
   const recent = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category) && known(r).status !== "Mapped" && !/\(automated candidate\)$/.test(r.title))
@@ -2088,7 +2095,7 @@ function leadRow(r) {
       threadAge(first) ? el("span", { class: "age mono" + (threadAge(first).endsWith("today") ? " today" : ""), text: threadAge(first) }) : null,
       t.items.length > 1 ? el("span", { class: "more mono", text: "+" + (t.items.length - 1) + " more" }) : null]));
   } else if (t.calm) row.appendChild(el("span", { class: "lead-calm", text: "Nothing open" }));
-  if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "people" ? "Last contact " : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
+  if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "people" && r.path !== REM.owner ? "Last contact " : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u) row.appendChild(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: usageCaption(u) + (u.tools ? " · " + u.tools : "") })]));
   if (section(r, "uncertainties")) row.appendChild(el("a", { class: "unsure", href: "#r=" + encodeURIComponent(r.path) + "&h=uncertainties", title: "What this page is not sure of" }, ["?", el("span", { text: " Uncertain points" })]));
@@ -2182,6 +2189,18 @@ function recordFocus(r) {
   const statementNode = el("p", { class: "focus-statement" + (privateMapped ? "" : " clamped"), html: inline(statement || (k.status === "Mapped"
     ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet."), r.path) });
   focusHead.appendChild(statementNode);
+  if (r.path === REM.owner) {
+    const insight = section(r, "insight");
+    const items = insight ? listItems(insight.text) : [];
+    const changed = items.some(item => /^Changed:/i.test(item));
+    const next = changed && items.find(item => /^Now:/i.test(item));
+    if (next) {
+      const step = next.replace(/^Now:\s*/i, "");
+      focusHead.appendChild(el("div", { class: "focus-next" }, [
+        el("span", { class: "k", text: "Next step" }),
+        el("p", { html: inline(step[0].toUpperCase() + step.slice(1), r.path) })]));
+    }
+  }
   if (statement && !privateMapped) {
     const more = el("button", { type: "button", class: "focus-more", "aria-expanded": "false", text: "Read full context", hidden: "" });
     more.onclick = () => {
@@ -2209,7 +2228,8 @@ function recordFocus(r) {
     if (blocks.length) out.appendChild(el("div", { class: "project-workspace" }, blocks));
   }
   const f = facts(r);
-  const labels = r.category === "people" ? [["Role", f.role], ["Company", f.company], ["Last contact", f.last]]
+  const labels = r.path === REM.owner ? [["Role", f.role], ["Location", f.location], ["Company", f.company]]
+    : r.category === "people" ? [["Role", f.role], ["Company", f.company], ["Last contact", f.last]]
     : r.category === "projects" ? [["Last active", f.last], ["Mapped sessions", f.sessions], ["Local path", f.repo]]
       : r.category === "orgs" ? [["Domain", f.domain], ["Last contact", f.last]]
         : r.category === "skills" ? [["Recorded invocations", skillUsage(r) ? String(skillUsage(r).count) : ""], ["Last invocation", f.last]] : [];
@@ -2259,7 +2279,7 @@ function openConversation(id, trigger) {
   dialog.textContent = "";
   const close = el("button", { type: "button", class: "evidence-close", text: "Close ×", "aria-label": "Close conversation" });
   close.onclick = () => dialog.close();
-  dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "REM / archived conversation" }), close]),
+  dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "co rem / archived conversation" }), close]),
     el("h2", { text: byPath(conversation.subject)?.title || conversation.subject }),
     el("p", { class: "evidence-summary", text: "Latest " + conversation.messages.length + " of " + conversation.total + " archived messages in this cited thread. Some messages may not have an archived body." }));
   const commonScope = conversation.messages.find(message => /^Your input only\./.test(message.input_scope || ""))?.input_scope || "";
@@ -2600,7 +2620,7 @@ function openEvidence(r, number, trigger) {
   dialog.textContent = "";
   const close = el("button", { type: "button", class: "evidence-close", text: "Close ×", "aria-label": "Close source context" });
   close.onclick = () => dialog.close();
-  dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "REM / source " + number }), close]),
+  dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "co rem / source " + number }), close]),
     el("h2", { text: "Why this appears on " + r.title }),
     el("p", { class: "evidence-summary private", text: source.text }));
   dialog.appendChild(el("p", { class: "private-hidden-notice", text: "Source descriptions and original excerpts are hidden because their private content has not been classified. Show private content to read them." }));

@@ -10,6 +10,47 @@ from connectonion.rem.page_review import normalize, normalize_numbered_sources, 
 from connectonion.rem.runner import RunFailed, run_stage, task_prompt
 
 
+def test_a_fact_restored_from_mail_outside_the_quick_sample_keeps_its_source():
+    candidate = '# Owner\n\nA dated fact [1].\n\n## Sources\n- [1] outlook:older — 2026-09-29\n'
+    items = [{'role': 'facts', 'source': 'investigation:facts',
+              'facts': [{'field': 'Time zone', 'value': 'Australia/Sydney',
+                         'source': 'outlook:older', 'date': '2026-09-29'}]}]
+    errors = validate('people/owner.md', candidate, '# Owner\n', items, owner=True)
+    assert not any('Citation has no identifiable source' in error for error in errors)
+    invented = candidate.replace('outlook:older', 'outlook:invented')
+    assert any('Citation has no identifiable source' in error for error in
+               validate('people/owner.md', invented, '# Owner\n', items, owner=True))
+
+
+def test_an_owner_work_excerpt_keeps_its_original_citation_after_quick_filtering():
+    candidate = '# Owner\n\nA decision was reversed [1].\n\n## Sources\n- [1] codex:old — 2026-09-29\n'
+    items = [{'role': 'owner-work-evidence', 'source': 'investigation:owner-work-evidence',
+              'sources': ['codex:old'], 'text': '### codex:old — 2026-09-29\nEarlier choice'}]
+    errors = validate('people/owner.md', candidate, '# Owner\n', items, owner=True)
+    assert not any('Citation has no identifiable source' in error for error in errors)
+
+
+def test_owner_links_a_unique_project_name_without_linking_sources_or_partial_words(tmp_path):
+    from connectonion.rem.page_review import link_projects, project_names
+
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_project('projects/harbour.md', 'Harbour', sessions=2,
+                          first_seen='2026-09-01', last_seen='2026-10-01')
+    notebook.stub_project('projects/rem.md', 'REM', sessions=2,
+                          first_seen='2026-09-01', last_seen='2026-10-01')
+    page = ('# Owner\n\nHarbour is an uncited mention.\nHarbour has an open format decision [1].\n'
+            'REM has an open recall decision [1].\nHarbouring is unrelated.\n'
+            '\n## Sources\n- [1] codex:harbour — Harbour discussion\n')
+    linked = link_projects(page, project_names(notebook))
+    assert 'Harbour is an uncited mention' in linked
+    assert '[Harbour](../projects/harbour.md) has' in linked
+    assert '[REM](../projects/rem.md) has' in linked
+    assert 'Harbouring is unrelated' in linked
+    assert '- [1] codex:harbour — Harbour discussion' in linked
+    assert link_projects(linked, project_names(notebook)) == linked
+
+
 def test_legacy_project_gets_missing_sections_without_losing_content():
     old = '# Atlas\n\n## What it is\nA demo.\n\n## Sources\n- [1] source:1\n\nInvestigation: mapped today\n'
     new = normalize('projects/atlas.md', old)

@@ -920,6 +920,70 @@ RECENT_PROJECT_DAYS = 28
 RECENT_PROJECT_LIMIT = 8
 
 
+def owner_work_evidence(items: list[dict]) -> str:
+    """Put a few dated, citable coding messages beside the owner's full source index.
+
+    A large first run lays out the rest in files. Without these anchors the
+    investigation can follow the quick page into recent mail and never compare
+    earlier work with later choices. These are excerpts, not conclusions.
+    """
+    from collections import Counter
+
+    sessions = [item for item in items if item.get("role") == "user"
+                and str(item.get("source", "")).split(":", 1)[0] in ("codex", "claude-code")
+                and len(str(item.get("text", "")).strip()) >= 8]
+    if not sessions:
+        return ""
+    # A cwd can hold several unrelated jobs. A named task in the latest typed
+    # messages is a safer first filter than the directory alone. Keep short
+    # Chinese messages: one explicit reversal was only 184 characters.
+    recent = sorted(sessions, key=lambda item: item.get("timestamp", ""))[-24:]
+    focus = ""
+    for term, pattern in (("init", r"(?<![A-Za-z0-9])init(?![A-Za-z0-9])|初始化"),
+                          ("reader", r"(?<![A-Za-z0-9])reader(?![A-Za-z0-9])"),
+                          ("sync", r"(?<![A-Za-z0-9])sync(?![A-Za-z0-9])")):
+        if any(re.search(pattern, item["text"], re.I) for item in recent[-5:]):
+            matched = [item for item in sessions if re.search(pattern, item["text"], re.I)]
+            if len(matched) >= 2:
+                focus, sessions = term, matched
+                break
+    noise = {"AI", "UI", "PR", "CI", "API", "CLI", "JSON", "URL", "PDF", "AHA"}
+    names = Counter(name for item in recent
+                    for name in set(re.findall(r"(?<![A-Za-z0-9])[A-Z][A-Z0-9]{1,7}(?![A-Za-z0-9])",
+                                               item["text"]))
+                    if name not in noise)
+    if not focus:
+        focus = next((name for name, count in names.most_common() if count >= 2), "")
+    if focus and focus not in ("init", "reader", "sync"):
+        matched = [item for item in sessions if re.search(r"(?<![A-Za-z0-9])" + re.escape(focus) + r"(?![A-Za-z0-9])",
+                                                       item["text"], re.I)]
+        if len(matched) >= 2:
+            sessions = matched
+    counts = Counter(str(item.get("project") or "") for item in sessions)
+    projects = [name for name, _ in counts.most_common(2)]
+    selected = []
+    choice = re.compile(r"\b(?:choose|chose|decid(?:e|ed)|instead|switch(?:ed)?|revert(?:ed)?|stop|remove)\b|决定|选择|改成|改为|不要|撤回", re.I)
+    for project in projects:
+        rows = sorted((item for item in sessions if str(item.get("project") or "") == project),
+                      key=lambda item: item.get("timestamp", ""))
+        candidates = [rows[0], rows[len(rows) // 2],
+                      *[item for item in rows if choice.search(item["text"])][-2:], rows[-1]]
+        for item in candidates:
+            if item not in selected and len(selected) < 6:
+                selected.append(item)
+    selected.sort(key=lambda item: item.get("timestamp", ""))
+    lines = ["Exact excerpts from the owner's dated coding messages, selected for temporal contrast"
+             + (f" on the repeated recent topic {focus}" if focus else "") + ". "
+             "They are candidate leads, not a digest or evidence of completion; verify against the "
+             "original sources before claiming a change. Compare earlier and later choices before "
+             "writing the lead. Cite the original source IDs:"]
+    for item in selected:
+        body = str(item["text"]).strip()
+        excerpt = body[:1200] + (" [excerpt truncated]" if len(body) > 1200 else "")
+        lines.append(f"### {item['source']} — {str(item.get('timestamp', ''))[:10]} — {item.get('project', '')}\n{excerpt}")
+    return "\n\n".join(lines)
+
+
 def recent_projects(root: Path) -> str:
     """The owner's projects of the last four weeks, from the map, for the owner's turn (#2027).
 
@@ -1006,6 +1070,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                              progress=progress, attachments_dir=root / ".state" / "attachments",
                              sent_only=sent_only, mail_skipped=mail_skipped, stage_progress=stage_progress,
                              quick=quick, archive_root=root, record=record)
+    # Build the bounded comparison before a full pass drops items already cited
+    # by its quick page. That citation only says the first pass saw them; the
+    # final writer still needs the earlier and later words side by side.
+    owner_packet = owner_work_evidence(items) if sent_only and not quick else ""
     coverage.append(f"Requested investigation window: {days} days ending "
                     f"{datetime.now(timezone.utc).date().isoformat()}")
     last = last_investigated(notebook.read(record))
@@ -1103,14 +1171,14 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # reference and left ~33k characters less room for material.
     overhead = (len(instructions("investigate", page_kind=page_kind_of(record), owner=sent_only))
                 + len(notebook.read(record)) + 4000)
-    room = config["limits"]["input_chars_per_batch"] - overhead
+    room = config["limits"]["input_chars_per_batch"] - overhead - len(owner_packet)
     from .tier import current
     summary = current(root, config) == "summary"
     if summary:
         # A plain model reads nothing it is not handed: the page's whole
         # material travels in the one prompt, so it must fit there (#1847).
         from .runner import INLINE_LIMIT
-        room = min(room, INLINE_LIMIT - overhead)
+        room = min(room, INLINE_LIMIT - overhead - len(owner_packet))
     repository_items = []
     if record.startswith("projects/"):
         from .project_pages import FILE_SNAPSHOT_CHARS, repository_snapshots
@@ -1211,6 +1279,9 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
          if (linkable := org_pages(notebook, record, handles)) else []) + (
         [{"role": "recent-projects", "source": "investigation:recent-projects", "timestamp": now, "text": recent}]
          if sent_only and (recent := recent_projects(root)) else []) + (
+        [{"role": "owner-work-evidence", "source": "investigation:owner-work-evidence",
+          "timestamp": now, "text": owner_packet,
+          "sources": re.findall(r"(?m)^### (\S+) —", owner_packet)}] if owner_packet else []) + (
         [{"role": "quick-first-pass", "source": "investigation:quick-scope",
            "timestamp": now, "text": "This is a bounded, partial first pass. Use only the supplied sample; "
                                      "state the sampling limit in your final reply, not on the page."}]

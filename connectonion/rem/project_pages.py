@@ -246,7 +246,7 @@ def _readme(page: str, stamp: str) -> list[dict]:
             if path.is_file():
                 text = _excerpt(path.read_text(encoding="utf-8", errors="replace"), README_CHARS)
                 return [{"role": "readme", "source": f"file:{path}", "timestamp": stamp,
-                         "text": f"The start of {path}, the project's own description:\n\n{text}"}]
+                         "text": f"The start of {path.name}, the project's own description:\n\n{text}"}]
     return []
 
 
