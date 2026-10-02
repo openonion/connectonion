@@ -24,6 +24,31 @@ with links back to the sources.
 <!-- connections: generated, do not edit by hand. Refresh with
      curl -s https://www.connectonion.com/connections.md
      and paste the output between these two comments. -->
+<p><b>Experimental integrations</b><br>Preview branch; <a href="docs/cli/experimental-integrations.md">install instructions and account requirements</a>.<br>
+<a href="docs/cli/experimental-integrations.md#gdocs"><img src="https://www.connectonion.com/logos/gdocs.svg?v=3" width="80" height="80" alt="Google Docs" title="Google Docs · co gdocs · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#gsheets"><img src="https://www.connectonion.com/logos/gsheets.svg?v=3" width="80" height="80" alt="Google Sheets" title="Google Sheets · co gsheets · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#gslides"><img src="https://www.connectonion.com/logos/gslides.svg?v=3" width="80" height="80" alt="Google Slides" title="Google Slides · co gslides · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#gforms"><img src="https://www.connectonion.com/logos/gforms.svg?v=3" width="80" height="80" alt="Google Forms" title="Google Forms · co gforms · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#onedrive"><img src="https://www.connectonion.com/logos/onedrive.svg?v=3" width="80" height="80" alt="OneDrive" title="OneDrive · co onedrive · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#sharepoint"><img src="https://www.connectonion.com/logos/sharepoint.svg?v=3" width="80" height="80" alt="SharePoint" title="SharePoint · co sharepoint · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#excel"><img src="https://www.connectonion.com/logos/excel.svg?v=3" width="80" height="80" alt="Excel" title="Excel · co excel · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#todo"><img src="https://www.connectonion.com/logos/todo.svg?v=3" width="80" height="80" alt="Microsoft To Do" title="Microsoft To Do · co todo · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#notion"><img src="https://www.connectonion.com/logos/notion.svg?v=3" width="80" height="80" alt="Notion" title="Notion · co notion · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#airtable"><img src="https://www.connectonion.com/logos/airtable.svg?v=3" width="80" height="80" alt="Airtable" title="Airtable · co airtable · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#todoist"><img src="https://www.connectonion.com/logos/todoist.svg?v=3" width="80" height="80" alt="Todoist" title="Todoist · co todoist · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#trello"><img src="https://www.connectonion.com/logos/trello.svg?v=3" width="80" height="80" alt="Trello" title="Trello · co trello · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#asana"><img src="https://www.connectonion.com/logos/asana.svg?v=3" width="80" height="80" alt="Asana" title="Asana · co asana · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#hubspot"><img src="https://www.connectonion.com/logos/hubspot.svg?v=3" width="80" height="80" alt="HubSpot" title="HubSpot · co hubspot · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#stripe"><img src="https://www.connectonion.com/logos/stripe.svg?v=3" width="80" height="80" alt="Stripe" title="Stripe · co stripe · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#jira"><img src="https://www.connectonion.com/logos/jira.svg?v=3" width="80" height="80" alt="Jira" title="Jira · co jira · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#confluence"><img src="https://www.connectonion.com/logos/confluence.svg?v=3" width="80" height="80" alt="Confluence" title="Confluence · co confluence · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#zendesk"><img src="https://www.connectonion.com/logos/zendesk.svg?v=3" width="80" height="80" alt="Zendesk" title="Zendesk · co zendesk · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#dropbox"><img src="https://www.connectonion.com/logos/dropbox.svg?v=3" width="80" height="80" alt="Dropbox" title="Dropbox · co dropbox · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#figma"><img src="https://www.connectonion.com/logos/figma.svg?v=3" width="80" height="80" alt="Figma" title="Figma · co figma · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#shopify"><img src="https://www.connectonion.com/logos/shopify.svg?v=3" width="80" height="80" alt="Shopify" title="Shopify · co shopify · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#github"><img src="https://www.connectonion.com/logos/github.svg?v=3" width="80" height="80" alt="GitHub" title="GitHub · co github · experimental preview"></a>
+<a href="docs/cli/experimental-integrations.md#dingtalk"><img src="https://www.connectonion.com/logos/dingtalk.svg?v=3" width="80" height="80" alt="DingTalk" title="DingTalk · co dingtalk · experimental preview"></a></p>
+
 <p><b>Identity &amp; memory</b><br>
 <a href="docs/cli/init.md"><img src="https://www.connectonion.com/logos/address.svg?v=3" width="80" height="80" alt="0x address" title="0x address · co init"></a>
 <a href="docs/cli/email.md"><img src="https://www.connectonion.com/logos/mailbox.svg?v=3" width="80" height="80" alt="Agent mailbox" title="Agent mailbox · co email"></a>
@@ -91,6 +116,7 @@ with links back to the sources.
 <a href="docs/cli/schedule.md"><img src="https://www.connectonion.com/logos/schedule.svg?v=3" width="80" height="80" alt="Schedules" title="Schedules · co schedule"></a></p>
 
 <p><a href="docs/cli/README.md">Every command</a> · <code>co commands</code> lists them all.</p>
+
 <!-- /connections -->
 
 ## co rem — your agent's memory
