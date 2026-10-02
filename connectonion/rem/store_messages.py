@@ -34,12 +34,14 @@ def owner_addresses(root: Path) -> set:
 
 def _mail_row(root: Path, row: dict, owner: set) -> dict:
     from .mail import _address, _addresses
-    from .mail_archive import message_path
+    from .mail_archive import message_path, observed_message_path
     provider, message_id = row["source"], row["id"]
     sender, to, cc = _address(row.get("from", "")), _addresses(row.get("to")), _addresses(row.get("cc"))
     # Who the conversation is with: From and To, never the owner, never Cc.
     counterparts = sorted(({sender, *to} - owner) - {""})
     path = message_path(root, provider, message_id)
+    if not path.is_file():
+        path = observed_message_path(root, provider, message_id)
     # The provider's thread when the inventory recorded it; before that, subject and counterparts.
     thread = (f"mail:{provider}:{row['thread']}" if row.get("thread") else
               "mail:" + thread_key(provider, subject_key(row.get("subject", "")), ",".join(counterparts)))
@@ -53,6 +55,10 @@ def build_mail(db, root: Path) -> None:
     inventory = state_path(root, "source-inventory.jsonl")
     lines = inventory.read_text(encoding="utf-8").splitlines() if inventory.is_file() else []
     found = {}
+    for path in sorted(state_path(root, "mail/observed-metadata").glob("*/*.json")):
+        row = read_json(path, {})
+        if row.get("type") == "mail" and row.get("id") and row.get("source") in ("gmail", "outlook"):
+            found[(row["source"], row["id"])] = row
     for line in lines:
         row = json.loads(line) if line.strip() else {}
         if row.get("type") == "mail" and row.get("id") and row.get("source") in ("gmail", "outlook"):
@@ -107,7 +113,12 @@ def archived_message(root: Path, row: dict):
         number = row["body_line"]
         saved = json.loads(lines[number - 1]) if 0 < number <= len(lines) else None
         return saved if saved and saved.get("source") == row.get("id") else None
-    return read_json(path, {})
+    saved = read_json(path, {})
+    provider = row.get("source")
+    if provider in ("gmail", "outlook") and (
+            saved.get("provider") != provider or f"{provider}:{saved.get('id')}" != row.get("id")):
+        return None
+    return saved
 
 
 def body(root: Path, row: dict):

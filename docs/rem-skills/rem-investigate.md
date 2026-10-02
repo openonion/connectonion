@@ -441,3 +441,25 @@ The reader still displays a 640-character prefix, not a validated claim span.
 Extra files discovered directly under Paths are not automatically historical
 snapshots. Legacy raw-path citations cannot be reconstructed from a current
 checkout. New captures and manual repairs do not prove model semantic reliability.
+
+## Mail bodies remain available after investigation
+
+Live provider reads retain the full rendering privately before quote cleaning.
+New snapshots live in `.state/mail/observed/<provider>/`; thin metadata is
+indexed separately from the initial source inventory. They do not extend the
+initial mailbox window, change its saved-body count or enter initial domain
+material. An existing initial snapshot is reused. The first retained rendering
+and its headers are also the version supplied to investigation, so a later
+provider rendering cannot silently replace the cited body.
+
+Opening archived mail checks its exact provider and native message identity.
+The short citation hash identifies a message, not a validated claim or body
+revision. Mail excerpts begin after the provider's Email Body delimiter and
+remain bounded to 640 characters; the uncleaned rendering stays on disk.
+From/To/Cc are available through a private disclosure. Sent time, retrieval
+time and later recovery-retention time have separate meanings. A recovered
+body with no recorded original retrieval time leaves it unknown; its Archived
+time does not prove the body was available during the original investigation.
+Provider-rendered text is not original MIME. Private mode hides these headers,
+clocks, limits and excerpts together. Manual recovery does not verify automatic
+writing or complete historical coverage.

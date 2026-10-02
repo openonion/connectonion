@@ -53,7 +53,9 @@ def inputs(root: Path) -> dict:
     return {
         "pages": pages + [state / "map.json"],
         # The snapshot folders' own mtimes move when a body is added.
-        "mail": [state / "source-inventory.jsonl", state / "mail/messages/gmail", state / "mail/messages/outlook"],
+        "mail": [state / "source-inventory.jsonl", state / "mail/messages/gmail", state / "mail/messages/outlook",
+                 state / "mail/observed/gmail", state / "mail/observed/outlook",
+                 state / "mail/observed-metadata/gmail", state / "mail/observed-metadata/outlook"],
         "sessions": sorted(state.glob("projects/*/messages.jsonl")),
         "runs": sorted(state.glob("runs/*.json")),
     }

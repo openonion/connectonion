@@ -78,6 +78,23 @@ Unknown and historical qualifications, supersede those derived values. These
 four page corrections remain manual, and selected source-dialog checks do not
 prove every historical citation is retained in the init archive.
 
+A follow-up found 14 older cited messages absent from the reader even though
+their provider renderings had been retrieved for the audit. They were recovered
+privately with exact body hashes, without changing the initial inventory,
+coverage manifest or original page text. Live gathering now retains full mail
+renderings separately from the initial-window archive and supplies the same
+retained version to the writer. This avoids treating a newly read rendering as
+the original behind an older citation.
+
+The source dialog starts its short excerpt at the mail body and offers From,
+To and Cc through a disclosure. Retrieval and later archiving have distinct
+labels; unknown original retrieval time remains unknown. Independent desktop
+and phone review led to shorter provenance wording and a larger disclosure
+target. Scrolling also keeps Close accessible on phone. These changes make the
+selected citations inspectable, while a prefix still cannot guarantee that it
+contains the decisive clause. Recovery is not
+evidence that the original investigation read those bodies.
+
 This trades a small initial index for additional, variable source reads. The cost
 estimate says so; the quota guard remains in place. It also leaves real limits:
 60 files cannot cover every repository, and the reader's short source prefix may
@@ -98,3 +115,5 @@ records the missing group reply and responsibility corrections, with exact scope
 The [event/calendar review](../../design-evidence/rem-event-calendar-review-2026-10-03/REVIEW.md)
 records four manual pages, date and summary corrections, and the remaining
 automatic-generation and historical-source availability limits.
+The [mail-retention review](../../design-evidence/rem-mail-retention-review-2026-10-03/REVIEW.md)
+records the isolated recovery, source-dialog states and remaining excerpt limits.

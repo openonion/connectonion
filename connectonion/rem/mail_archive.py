@@ -8,7 +8,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .files import RemError, atomic_write, read_json, state_path, write_json
+from .files import RemError, atomic_write, maintenance_lock, read_json, state_path, write_json
 from .mail import _address, _addresses, on_domains, participants, RELATED_ORG_SCOPE
 
 
@@ -20,6 +20,46 @@ def message_path(root: Path, provider: str, message_id: str) -> Path:
     if provider not in ("gmail", "outlook") or not message_id:
         raise RemError("Mail archive needs a provider and message ID")
     return state_path(root, f"mail/messages/{provider}/{_key(message_id)}.json")
+
+
+def observed_message_path(root: Path, provider: str, message_id: str) -> Path:
+    original = message_path(root, provider, message_id)
+    return state_path(root, f"mail/observed/{provider}/{original.name}")
+
+
+def retain_message(root: Path, provider: str, row: dict, body: str, *, fetched_at: str,
+                   input_scope: str = "Provider read during investigation; not initial-window coverage.") -> dict:
+    """Keep the first full provider rendering and its metadata outside the init inventory.
+
+    A recovered body uses an empty fetched_at when its original retrieval time
+    was not recorded. retained_at always names this archive operation.
+    """
+    original = message_path(root, provider, row["id"])
+    if not isinstance(body, str):
+        raise RemError("Mail provider returned no text body")
+    metadata = state_path(root, f"mail/observed-metadata/{provider}/{_key(row['id'])}.json")
+    with maintenance_lock(root, wait=30):
+        path = original if original.is_file() else observed_message_path(root, provider, row["id"])
+        for folder in ("mail", "mail/observed", f"mail/observed/{provider}",
+                       "mail/observed-metadata", f"mail/observed-metadata/{provider}"):
+            state_path(root, folder).mkdir(parents=True, exist_ok=True, mode=0o700)
+        saved = read_json(path, {}) if path.is_file() else {
+            "provider": provider, "id": row["id"], "body": body,
+            **{key: row.get(key) or ([] if key in ("to", "cc") else "")
+               for key in ("date", "from", "to", "cc", "subject")},
+            "body_format": "provider-rendered text, not original MIME",
+            "fetched_at": fetched_at, "retained_at": _utcnow().isoformat(), "input_scope": input_scope}
+        if saved.get("provider") != provider or saved.get("id") != row["id"]:
+            raise RemError("Existing mail snapshot does not match its source ID")
+        if not isinstance(saved.get("body"), str):
+            raise RemError("Existing mail snapshot has no text body")
+        if not path.is_file():
+            write_json(path, saved)
+        if not metadata.is_file():
+            write_json(metadata, {"type": "mail", "source": provider, "id": row["id"],
+                **{key: saved.get(key) for key in ("date", "from", "to", "cc", "subject")},
+                "thread": row.get("thread_id") or row.get("thread") or ""})
+    return saved
 
 
 def person_index_path(root: Path, record: str) -> Path:

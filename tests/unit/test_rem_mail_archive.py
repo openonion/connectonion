@@ -11,6 +11,80 @@ from connectonion.rem.mail_archive import archive_init, person_index_path, proje
 from connectonion.rem.map import build_map
 
 
+def test_live_gather_retains_full_mail_and_recipients_outside_init_inventory(tmp_path):
+    from connectonion.rem.files import read_json, state_path
+    from connectonion.rem.mail_archive import observed_message_path
+    from connectonion.rem.reader_model import cited_context
+    from connectonion.rem.store import refresh
+    prepare(tmp_path)
+    raw = 'From: Mentor\n--- Email Body ---\nAccepted.\n\nOn Tuesday wrote:\nPrevious proposal.'
+    row = {'id': 'live-native', 'from': 'Mentor <mentor@example.org>',
+           'to': ['Me <me@owner.example>'], 'cc': ['Guest <guest@example.org>'],
+           'date': '2026-09-30T10:00:00Z', 'subject': 'Re: offer', 'thread_id': 'provider-thread'}
+
+    class Mail:
+        def my_addresses(self): return {'me@owner.example'}
+        def list_with(self, *args): return [row]
+        def get_email_body(self, message_id): return raw
+
+    items, _ = gather('Mentor', ['mentor@example.org'], days=30, clients={'outlook': Mail()},
+                      subscriptions={}, archive_root=tmp_path, record='people/mentor.md')
+    assert len(items) == 1 and 'Previous proposal.' not in items[0]['text']
+    assert items[0]['participants'] == {key: row[key] for key in ('from', 'to', 'cc')}
+    saved = read_json(observed_message_path(tmp_path, 'outlook', row['id']), {})
+    assert saved['body'] == raw and saved['fetched_at'] and saved['retained_at']
+    assert not state_path(tmp_path, 'source-inventory.jsonl').exists()
+    refresh(tmp_path)
+    context = cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + items[0]['source']}])[items[0]['source']]
+    assert context['excerpt'].startswith('Accepted.') and 'Previous proposal.' in context['excerpt']
+    assert context['thread'] == 'mail:outlook:provider-thread'
+    assert context['participants'] == items[0]['participants']
+    assert context['captured_at'] == saved['fetched_at']
+    raw = 'Later provider rendering; different headers.'
+    row['cc'] = ['a-new-recipient@example.org']
+    again, _ = gather('Mentor', ['mentor@example.org'], days=30, clients={'outlook': Mail()},
+                      subscriptions={}, archive_root=tmp_path, record='people/mentor.md')
+    assert again[0]['text'] == items[0]['text']
+    assert again[0]['participants'] == items[0]['participants']
+
+
+def test_recovered_citation_keeps_unknown_retrieval_and_initial_coverage(tmp_path):
+    import hashlib
+    from connectonion.rem.files import atomic_write, read_json, state_path, write_json
+    from connectonion.rem.mail_archive import observed_message_path, retain_message, saved_share, domain_material
+    from connectonion.rem.reader_model import cited_context
+    from connectonion.rem.store import refresh
+    prepare(tmp_path)
+    inventory = '{"type":"session","path":"original-window"}\n'
+    atomic_write(state_path(tmp_path, 'source-inventory.jsonl'), inventory)
+    manifest = {'phase': 'complete', 'target': 10, 'saved': 10, 'providers': ['outlook'],
+                'range_start': '2026-07-01T00:00:00+00:00', 'range_end': '2026-10-01T00:00:00+00:00'}
+    write_json(state_path(tmp_path, 'mail/archive.json'), manifest)
+    row = {'id': 'older-native', 'from': 'Mentor <mentor@example.org>', 'to': ['me@owner.example'],
+           'cc': ['guest@example.org'], 'date': '2025-01-01T10:00:00Z', 'subject': 'Terms'}
+    raw = 'Long provider header ' * 60 + '\n--- Email Body ---\nOne occasion only.'
+    scope = 'Historical citation recovery. Original retrieval time unknown; initial window unchanged.'
+    retain_message(tmp_path, 'outlook', row, raw, fetched_at='', input_scope=scope)
+    assert saved_share(tmp_path) == (0, 10)
+    assert domain_material(tmp_path, ['example.org'])[0]['outlook'] == []
+    first = read_json(observed_message_path(tmp_path, 'outlook', row['id']), {})
+    retain_message(tmp_path, 'outlook', row, 'Later provider rendering', fetched_at='2026-10-03T10:00:00Z')
+    assert read_json(observed_message_path(tmp_path, 'outlook', row['id']), {}) == first
+    assert first['body'] == raw and first['fetched_at'] == '' and first['retained_at']
+    assert state_path(tmp_path, 'source-inventory.jsonl').read_text() == inventory
+    assert read_json(state_path(tmp_path, 'mail/archive.json'), {}) == manifest
+    refresh(tmp_path)
+    source = 'outlook:' + hashlib.sha256(row['id'].encode()).hexdigest()[:12]
+    context = cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + source}])[source]
+    assert context['excerpt'] == 'One occasion only.'
+    assert not context['truncated'] and not context['captured_at']
+    assert context['retained_at'] == first['retained_at']
+    assert context['input_scope'] == scope and context['body_format'] == first['body_format']
+    assert cited_context(tmp_path, [{'text': 'No citations'}]) == {}
+    assert os.stat(observed_message_path(tmp_path, 'outlook', row['id'])).st_mode & 0o777 == 0o600
+    assert os.stat(state_path(tmp_path, 'mail/observed/outlook')).st_mode & 0o777 == 0o700
+
+
 def test_material_keeps_named_corecipients_separate_from_the_reply_author():
     from connectonion.rem.mail_archive import _material_item
     from connectonion.rem.runner import readable_material

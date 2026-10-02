@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
+import pytest
 
 from connectonion.rem.claim_changes import material_changes
 from connectonion.rem.reader import snapshot
@@ -84,3 +85,21 @@ def test_hashed_mail_citation_rejects_a_body_pointer_for_a_different_native_id(t
         db.execute("insert into messages (id, source, body_path) values (?, ?, ?)",
                    ('outlook:wrong-id', 'outlook', 'mail/messages/outlook/123456789abc0000.json'))
     assert cited_context(tmp_path, [{'text': '## Sources\n- [1] outlook:123456789abc'}]) == {}
+
+
+@pytest.mark.parametrize('saved_provider,saved_id', [('outlook', 'different-native'), ('gmail', 'native')])
+def test_mail_citation_rejects_mismatched_snapshot_identity(tmp_path, saved_provider, saved_id):
+    import hashlib, json
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import atomic_write, state_path, write_json
+    from connectonion.rem.mail_archive import message_path
+    from connectonion.rem.reader_model import cited_context
+    from connectonion.rem.store import refresh
+    prepare(tmp_path)
+    write_json(message_path(tmp_path, 'outlook', 'native'), {
+        'provider': saved_provider, 'id': saved_id, 'body': 'Another message, not the cited original.'})
+    atomic_write(state_path(tmp_path, 'source-inventory.jsonl'), json.dumps({
+        'type': 'mail', 'source': 'outlook', 'id': 'native', 'date': '2026-09-30T10:00:00Z'}) + '\n')
+    refresh(tmp_path)
+    source = 'outlook:' + hashlib.sha256(b'native').hexdigest()[:12]
+    assert cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + source}]) == {}

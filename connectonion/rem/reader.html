@@ -652,15 +652,16 @@
   .task-band .threads { padding: 0; }
   .evidence-dialog { width: min(680px, calc(100vw - 24px)); max-height: min(760px, calc(100vh - 24px)); overflow: auto; padding: 26px; border: 1px solid var(--blue-line); border-radius: 14px; background: var(--sheet); color: var(--ink); box-shadow: 0 24px 80px rgba(0,0,0,.28); }
   .evidence-dialog::backdrop { background: rgba(5, 9, 25, .7); }
-  .evidence-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+  .evidence-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; position: sticky; top: 0; z-index: 1; background: var(--sheet); box-shadow: 0 -26px 0 var(--sheet), 0 8px 0 var(--sheet); }
   .evidence-top .focus-kicker { color: var(--blue); }
-  .evidence-close { border: 1px solid var(--line); background: var(--paper); color: var(--ink); padding: 7px 10px; border-radius: 6px; cursor: pointer; }
+  .evidence-close { border: 1px solid var(--line); background: var(--paper); color: var(--ink); padding: 7px 10px; min-height: 44px; border-radius: 6px; cursor: pointer; }
   .evidence-dialog h2 { font: 25px var(--display); margin: 14px 0; }
   .evidence-summary { color: var(--ink-2); }
   .evidence-summary, .evidence-meta { overflow-wrap: anywhere; }
   .evidence-original { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 18px; }
   .evidence-original .focus-kicker { color: var(--blue); }
   .evidence-meta { font: 11px var(--mono); color: var(--ink-3); }
+  .evidence-participants > summary { cursor: pointer; padding: 12px 0; }
   .evidence-original blockquote { margin: 12px 0 0; padding: 14px 18px; border-left: 3px solid var(--blue); background: var(--blue-soft); font: 16px/1.55 var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
   .evidence-unavailable { color: var(--ink-2); }
   @media (prefers-reduced-motion: reduce) { .relation-card { transition: none; } .relation-card:hover, .relation-card:focus-visible { transform: none; } }
@@ -2198,6 +2199,7 @@ function recordFocus(r) {
 }
 
 function inputScopeText(scope) {
+  if (/^Historical citation recovery/.test(scope)) return "Recovered later. Original retrieval time unknown; Archived marks retention, not original investigation coverage. Initial window unchanged; provider thread unknown.";
   if (/voice transcription/i.test(scope)) return "Voice transcript. Only your input is shown; other conversation context is omitted. Transcription may contain errors.";
   if (/Older native Codex Desktop turn/.test(scope)) return "Older Desktop input. The app did not record how this input was supplied.";
   if (/^Skill instructions;/.test(scope)) return "Instructions describe intended behavior, not a verified result." + (/Recovered from/.test(scope) ? " This excerpt was recovered from matching file content." : "");
@@ -2539,6 +2541,9 @@ function openEvidence(r, number, trigger) {
   if (!source) return false;
   const id = /\b([a-z][a-z-]*:[\w./:-]{4,})/i.exec(source.text)?.[1] || "";
   const context = (REM.source_context || {})[id];
+  const mail = /^(gmail|outlook)$/.test(context?.source || "");
+  const headers = context?.participants;
+  const headerText = value => Array.isArray(value) ? value.join(", ") : value || "Not recorded";
   const revision = /:([0-9a-f]{40}):(.+)$/.exec(context?.origin || "");
   const origin = revision ? revision[2] + " @ " + revision[1].slice(0, 8)
     : context?.origin ? context.origin.split("/").at(-1).replace(/.*:checkout-state$/, "Checkout state") : "";
@@ -2552,12 +2557,19 @@ function openEvidence(r, number, trigger) {
     el("p", { class: "evidence-summary private", text: source.text }));
   dialog.appendChild(el("p", { class: "private-hidden-notice", text: "Source descriptions and original excerpts are hidden because their private content has not been classified. Show private content to read them." }));
   if (context) dialog.append(el("div", { class: "evidence-original private" }, [
-    el("span", { class: "focus-kicker", text: (/^skill-(source|reference)$/.test(context.source) ? "Instruction excerpt" : context.source === "project-source" ? "Repository snapshot" : "Original source context") + " · not a validated claim span" }),
+    el("span", { class: "focus-kicker", text: (/^skill-(source|reference)$/.test(context.source) ? "Instruction excerpt" : context.source === "project-source" ? "Repository snapshot" : mail ? "Mail body excerpt" : "Original source context") + " · not a validated claim span" }),
     ...(origin ? [el("p", { class: "evidence-meta", text: origin })] : []),
-    el("p", { class: "evidence-meta", text: [context.source, context.sender, context.time ? fmtTime(context.time) : "", context.captured_at ? "Captured " + fmtTime(context.captured_at) : ""].filter(Boolean).join(" · ") }),
+    el("p", { class: "evidence-meta", text: [context.source, context.sender,
+      context.time ? (mail ? "Sent " : "") + fmtTime(context.time) : "",
+      context.captured_at ? (mail ? "Retrieved " : "Captured ") + fmtTime(context.captured_at) : "",
+      context.retained_at && !context.captured_at ? "Archived " + fmtTime(context.retained_at) : ""].filter(Boolean).join(" · ") }),
+    ...(mail && headers ? [el("details", { class: "evidence-participants" }, [
+      el("summary", { text: "From, To and Cc" }),
+      ...["from", "to", "cc"].map(key => el("p", { class: "evidence-meta", text: ({from: "From", to: "To", cc: "Cc"}[key]) + ": " + headerText(headers[key]) }))])] : []),
+    ...(context.body_format ? [el("p", { class: "evidence-meta", text: context.body_format })] : []),
     ...(context.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(context.input_scope) })] : []),
     el("blockquote", { text: context.excerpt + (context.truncated ? "…" : "") })]));
-  else dialog.appendChild(el("p", { class: "evidence-unavailable", text: "The original source is not archived in this snapshot. The source description above is a generated summary, not the original source." }));
+  else dialog.appendChild(el("p", { class: "evidence-unavailable", text: "The original source is not archived in this snapshot. The citation above identifies a source; it does not show its original text." }));
   dialog.addEventListener("close", () => trigger.focus(), { once: true });
   if (dialog.showModal) dialog.showModal(); else dialog.setAttribute("open", "");
   close.focus();

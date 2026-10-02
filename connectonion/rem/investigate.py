@@ -591,6 +591,12 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             mail_to_read = mail_to_read[-12:]
         for number, r in enumerate(mail_to_read, 1):
             body = _patient(client.get_email_body, r["id"])
+            if archive_root is not None:
+                from .mail_archive import retain_message
+                saved = retain_message(archive_root, kind, r, body, fetched_at=datetime.now(timezone.utc).isoformat())
+                body = saved["body"]
+                r = {**r, **{key: saved[key] if key in saved else r.get(key)
+                            for key in ("date", "from", "to", "cc", "subject")}}
             head, _, rest = body.partition("--- Email Body ---")
             body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
             own = _address(r["from"]) in mine or "@" not in _address(r["from"])
@@ -598,6 +604,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             scope = RELATED_ORG_SCOPE if domains and not on_domains(r, domains) else ""
             items.append({"role": "user" if own else "other", "speaker": r["from"],
                           "text": body, "timestamp": str(r["date"]),
+                          "participants": {key: r.get(key) or ([] if key in ("to", "cc") else "")
+                                           for key in ("from", "to", "cc")},
                           "subject": r.get("subject", ""), "source": f"{kind}:{short}",
                           **({"relationship_scope": scope} if scope else {})})
             add_attachments(r["id"], r["from"], str(r["date"]), r.get("subject", ""), scope)

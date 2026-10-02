@@ -357,6 +357,49 @@ def test_source_and_conversation_show_input_limits_and_hide_them_with_private_co
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
+def test_recovered_mail_shows_participants_and_separate_archive_clock_privately(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""() => {
+      Object.assign(REM.source_context['outlook:77c09ad1e3f0'], {
+        participants: {from: 'Mentor <mentor@example.org>', to: ['me@example.org'], cc: ['Guest <guest@example.org>']},
+        captured_at: '', retained_at: '2026-10-01T10:00:00Z',
+        body_format: 'provider-rendered text, not original MIME',
+        excerpt: ('Mail body excerpt.' + String.fromCharCode(10)).repeat(30), truncated: true,
+        input_scope: 'Historical citation recovery. Original retrieval time unknown; initial window unchanged.'
+      });
+    }""", isolated_context=False)
+    page.locator('.deep-note > summary').click()
+    cite = page.locator("a.cite[href*='src-5']").first
+    cite.click()
+    dialog = page.locator('#evidence-dialog')
+    participants = dialog.locator('.evidence-participants')
+    assert participants.is_visible()
+    assert participants.locator('summary').bounding_box()['height'] >= 44
+    participants.locator('summary').click()
+    assert 'From: Mentor <mentor@example.org>' in participants.inner_text()
+    assert 'Cc: Guest <guest@example.org>' in participants.inner_text()
+    assert 'Sent ' in dialog.inner_text() and 'Archived ' in dialog.inner_text()
+    assert 'Original retrieval time unknown' in dialog.inner_text()
+    assert 'Retrieved ' not in dialog.inner_text()
+    assert 'provider-rendered text, not original MIME' in dialog.inner_text()
+    assert not participants.locator('mentor').count()
+    for private in (True, False):
+        page.evaluate('togglePrivate()', isolated_context=False)
+        assert participants.is_visible() == (not private)
+        assert dialog.locator('blockquote').is_visible() == (not private)
+        assert dialog.locator('.evidence-input-scope').is_visible() == (not private)
+    assert dialog.evaluate('e => e.scrollWidth <= e.clientWidth')
+    dialog.locator('blockquote').scroll_into_view_if_needed()
+    close = page.get_by_role('button', name='Close source context')
+    box = close.bounding_box()
+    assert box['height'] >= 44
+    assert 0 <= box['y'] <= 812 - box['height']
+    close.click()
+    assert cite.evaluate('e => e === document.activeElement')
+
+
 def test_native_conversation_shares_common_limits_and_keeps_voice_limits(reader):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})

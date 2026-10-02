@@ -91,8 +91,9 @@ def _cited_row(db, source: str):
     if not match:
         return None
     provider, digest = match.groups()
-    rows = db.execute("select * from messages where source = ? and body_path like ?",
-                      (provider, f"mail/messages/{provider}/{digest}%.json")).fetchall()
+    rows = db.execute("select * from messages where source = ? and (body_path like ? or body_path like ?)",
+                      (provider, f"mail/messages/{provider}/{digest}%.json",
+                       f"mail/observed/{provider}/{digest}%.json")).fetchall()
     if len(rows) == 1 and hashlib.sha256(rows[0]["id"].removeprefix(provider + ":").encode()).hexdigest().startswith(digest):
         return rows[0]
     return None
@@ -133,6 +134,9 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -
             raw = saved.get("text" if message.get("body_line") else "body")
             if not isinstance(raw, str) or PRIVATE.search(raw):
                 continue
+            mail = message.get("source") in ("gmail", "outlook") and not message.get("body_line")
+            if mail and "--- Email Body ---" in raw:
+                raw = raw.partition("--- Email Body ---")[2]
             excerpt = raw.strip()[: min(640, budget)]
             if not excerpt:
                 continue
@@ -140,6 +144,11 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -
                               "time": message.get("time") or "", "sender": message.get("sender") or "",
                               "thread": message.get("thread") or "", "source": message.get("source") or "",
                               "input_scope": input_scope(saved, message)}
+            if mail:
+                output[source].update({"participants": {key: saved.get(key) or ([] if key in ("to", "cc") else "")
+                                                        for key in ("from", "to", "cc")},
+                    "captured_at": saved.get("fetched_at") or "", "retained_at": saved.get("retained_at") or "",
+                    "body_format": saved.get("body_format") or ""})
             budget -= len(excerpt)
     finally:
         if db is not None:
