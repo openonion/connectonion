@@ -147,7 +147,8 @@ What each kind reads:
             readable attachments; coding sessions that mention them. A person
             investigated before reads only the mail since then.
   projects  The coding sessions run in the project's folders, and the project's own files.
-  orgs      Mail from the organisation's domains, and the people pages under it.
+  orgs      Mail on the organisation's domains; primary correspondence from shared
+            contact candidates on other domain pages, with identity left to verify.
   skills    Installed source and recorded runs (co eval results; --eval-dir to choose where).
             A model writes a cited page; the skill itself is never executed.
             Missing runs remain unverified; invocation counts are not successes.

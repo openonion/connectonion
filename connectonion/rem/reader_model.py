@@ -7,6 +7,7 @@ without rewriting a person's notes just to change the interface.
 from __future__ import annotations
 
 import posixpath
+import hashlib
 import re
 import sqlite3
 from pathlib import Path
@@ -82,6 +83,21 @@ def _source_ids(records: list[dict]) -> set[str]:
     return {source for row in records for _, source in SOURCE.findall(row["text"])}
 
 
+def _cited_row(db, source: str):
+    row = db.execute("select * from messages where id = ?", (source,)).fetchone()
+    if row is not None:
+        return row
+    match = re.fullmatch(r"(gmail|outlook):([0-9a-f]{12})", source)
+    if not match:
+        return None
+    provider, digest = match.groups()
+    rows = db.execute("select * from messages where source = ? and body_path like ?",
+                      (provider, f"mail/messages/{provider}/{digest}%.json")).fetchall()
+    if len(rows) == 1 and hashlib.sha256(rows[0]["id"].removeprefix(provider + ":").encode()).hexdigest().startswith(digest):
+        return rows[0]
+    return None
+
+
 def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -> dict[str, dict]:
     """Only archived, cited excerpts enter the owner-only local snapshot."""
     ids = _source_ids(records)
@@ -95,7 +111,7 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -
         for source in sorted(ids):
             if budget <= 0:
                 break
-            row = db.execute("select * from messages where id = ?", (source,)).fetchone()
+            row = _cited_row(db, source)
             if row is None:
                 continue
             message = dict(row)

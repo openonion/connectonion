@@ -6,6 +6,28 @@ round of a co rem investigation (#1851). This file holds the reasons, incidents 
 examples behind those rules. It is not loaded at runtime. When you change a rule
 there, update its reason here in the same change.
 
+## Organization context across mail domains (#2157)
+
+Domain-only investigation split a real offer/acceptance timeline across two
+organization pages. A shared canonical contact now supplies exact candidate
+addresses on the other mapped domain pages. Primary dated mail is gathered from
+those addresses, including Cc, while other correspondents on the other domain
+remain outside the comparison. This does not merge organizations or establish
+identity: the map can group people by display name, so the model must verify the
+person/company from the messages and preserve uncertain domain ownership.
+The mapped target domains keep their scope when a generated page lists a
+possible alias; that generated note cannot authorize reading the alias's whole
+domain as the same organization. Unmapped pages use their declared Domains.
+
+Outside-domain correspondence and its attachments carry an explicit relationship
+scope in inline and searchable evidence. Previously cited primary messages are
+retained when new related-contact evidence needs comparison. Domain-only and
+candidate contact dates are not forced into entity-level Facts during that
+comparison; the model must establish the entity scope from the cited messages.
+An accepted credits/startup-tier offer does not prove acceptance of a separate
+free-month offer, activation or completed setup. A later unrelated exchange
+does not close an older unanswered request.
+
 Before the split (2026-09-30) the Skill was 23.7k characters and investigate for
 one person page composed to ~31k; the rules-only version is ~9.5k.
 

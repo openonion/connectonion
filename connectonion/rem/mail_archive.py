@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import RemError, atomic_write, read_json, state_path, write_json
-from .mail import _address, _addresses
+from .mail import _address, _addresses, on_domains, participants, RELATED_ORG_SCOPE
 
 
 def _key(value: str) -> str:
@@ -192,7 +192,8 @@ def _material_item(snapshot: dict, own: set) -> dict:
     return {"role": "user" if sender_address in own or "@" not in sender_address else "other",
             "speaker": sender, "text": text, "timestamp": snapshot.get("date", ""),
             "subject": snapshot.get("subject", ""), "source": f"{provider}:{_key(message_id)[:12]}",
-            "_mail_id": message_id}
+            "_mail_id": message_id,
+            **({"relationship_scope": snapshot["relationship_scope"]} if snapshot.get("relationship_scope") else {})}
 
 
 def _material(manifest: dict, snapshots: list[dict]) -> tuple[dict[str, list[dict]], datetime, datetime]:
@@ -230,7 +231,7 @@ def person_material(root: Path, record: str) -> tuple[dict[str, list[dict]], dat
     return _material(manifest, snapshots)
 
 
-def domain_material(root: Path, domains: list[str]) -> tuple[dict[str, list[dict]], datetime, datetime] | None:
+def domain_material(root: Path, domains: list[str], *, contact_addresses=()) -> tuple[dict[str, list[dict]], datetime, datetime] | None:
     """An org's mail from the complete local archive: every snapshot a domain is on.
 
     People get an index at init; an org has none, so UNSW's page said "0 loaded
@@ -238,20 +239,23 @@ def domain_material(root: Path, domains: list[str]) -> tuple[dict[str, list[dict
     instead (#1963). Each snapshot carries its own from/to/cc, so reading them
     is the index: a few thousand small local files, not a mailbox walked a week
     at a time. `.sub.domain` counts too -- student.unsw.edu.au is UNSW.
+    Exact shared-contact addresses can add primary correspondence from another
+    domain; those entries are marked for identity/scope verification.
     """
     manifest = read_json(state_path(root, "mail/archive.json"), {})
     if manifest.get("phase") not in READABLE or not domains:
         return None
-    suffixes = tuple(f"{sep}{domain}" for domain in domains for sep in ("@", "."))
+    contacts = {address.casefold() for address in contact_addresses}
     snapshots = []
     for provider in manifest.get("providers", []):
         for path in sorted(state_path(root, f"mail/messages/{provider}").glob("*.json")):
             snapshot = read_json(path, {})
             if not isinstance(snapshot, dict) or snapshot.get("provider") != provider or "body" not in snapshot:
                 return None
-            addresses = [_address(snapshot.get("from", "")), *_addresses(snapshot.get("to")),
-                         *_addresses(snapshot.get("cc"))]
-            if any(address.endswith(suffixes) for address in addresses):
+            own_domain = on_domains(snapshot, domains)
+            if own_domain or contacts.intersection(participants(snapshot)):
+                if not own_domain:
+                    snapshot["relationship_scope"] = RELATED_ORG_SCOPE
                 snapshots.append(snapshot)
     return _material(manifest, snapshots)
 

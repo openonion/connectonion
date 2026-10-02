@@ -47,3 +47,40 @@ def test_fixture_carries_original_source_and_bounded_conversation(tmp_path, monk
     assert [message["id"] for message in thread["messages"]] == [
         "outlook:e4a2c1907bd3", "outlook:77c09ad1e3f0", "gmail:0f9be4c12a55"]
     assert "outlook:9a03f1c2be77" not in data["source_context"]
+
+
+def test_hashed_mail_citations_resolve_native_provider_ids_without_migrating_them(tmp_path):
+    import hashlib
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import atomic_write, state_path, write_json
+    from connectonion.rem.mail_archive import message_path
+    from connectonion.rem.reader_model import cited_context
+    from connectonion.rem.store import refresh
+
+    prepare(tmp_path)
+    native = 'native/provider-message-id'
+    source = 'outlook:' + hashlib.sha256(native.encode()).hexdigest()[:12]
+    write_json(message_path(tmp_path, 'outlook', native), {'id': native, 'provider': 'outlook', 'body': 'I accept the credits.'})
+    inventory = {'type': 'mail', 'source': 'outlook', 'id': native, 'from': 'me@owner.example',
+                 'to': ['alex@example.org'], 'date': '2026-09-30T10:00:00+00:00', 'subject': 'Offer'}
+    import json
+    atomic_write(state_path(tmp_path, 'source-inventory.jsonl'), json.dumps(inventory) + '\n')
+    refresh(tmp_path)
+    context = cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + source}])
+    assert context[source]['excerpt'] == 'I accept the credits.'
+    assert context[source]['sender'] == 'me@owner.example'
+    assert context[source]['thread']
+
+
+def test_hashed_mail_citation_rejects_a_body_pointer_for_a_different_native_id(tmp_path):
+    import sqlite3
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import state_path
+    from connectonion.rem.reader_model import cited_context
+    from connectonion.rem.store import refresh
+    prepare(tmp_path)
+    refresh(tmp_path)
+    with sqlite3.connect(state_path(tmp_path, 'rem.db')) as db:
+        db.execute("insert into messages (id, source, body_path) values (?, ?, ?)",
+                   ('outlook:wrong-id', 'outlook', 'mail/messages/outlook/123456789abc0000.json'))
+    assert cited_context(tmp_path, [{'text': '## Sources\n- [1] outlook:123456789abc'}]) == {}

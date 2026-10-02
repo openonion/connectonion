@@ -19,7 +19,7 @@ from pathlib import Path
 from .config import read_config
 from ..provider_credentials import ProviderCredentialError
 from .files import Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
-from .mail import _address, _list_all, correspondent, strip_noise, strip_quoted
+from .mail import _address, _list_all, correspondent, on_domains, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
 from .source import KINDS, collect, timestamp
 
 MAIL_KINDS = ("outlook", "gmail")
@@ -104,6 +104,13 @@ def _nothing_found(record: str, subject: str, coverage: list[str], *, me: bool =
                         f"`co rem investigate {target} --handle {handle}`.", usage)
 
 
+def org_domains(text: str) -> list[str]:
+    """Mail domains from the page, even after its title becomes a company name."""
+    section = text.partition("## Domains\n")[2].split("\n## ", 1)[0]
+    values = [line[2:].split()[0].casefold() for line in section.splitlines() if line.startswith("- ") and line[2:].strip()]
+    return sorted({match[1] for value in values if (match := DOMAIN_HANDLE.fullmatch(value))})
+
+
 def org_pages(notebook: Notebook, record: str, handles: list[str], *, limit: int = 40) -> list[str]:
     """Organisation pages the subject's Company (a project's Organisation) can link to (#1974).
 
@@ -119,9 +126,7 @@ def org_pages(notebook: Notebook, record: str, handles: list[str], *, limit: int
     for org in notebook.list("orgs"):
         text = notebook.read(org)
         title = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), org)
-        section = text.partition("## Domains\n")[2].split("\n## ", 1)[0]
-        domains = [re.sub(r"\s*\[W?\d+\].*$", "", line[2:]).strip().casefold()
-                   for line in section.splitlines() if line.startswith("- ")]
+        domains = org_domains(text)
         if record.startswith("projects/"):
             found.append(f"{org} — {title}")
             continue
@@ -130,6 +135,31 @@ def org_pages(notebook: Notebook, record: str, handles: list[str], *, limit: int
         if matched:
             found.append(f"{org} — {title} ({', '.join(matched)})")
     return found[:limit]
+
+
+def org_contact_context(notebook: Notebook, record: str) -> dict:
+    """Other domain pages sharing a canonical contact: leads to verify, not identity proof."""
+    if not record.startswith("orgs/"):
+        return {"domains": [], "addresses": [], "candidates": []}
+    rows = read_json(state_path(notebook.root, "map.json"), {}).get("orgs", [])
+    own = next((row for row in rows if row.get("record") == record), {})
+    people = set(own.get("people", []))
+    roster = {person["path"]: person for person in notebook.people()} if people else {}
+    candidates, addresses = [], set()
+    for row in rows:
+        shared = people.intersection(row.get("people", []))
+        other = row.get("record")
+        if not shared or not other or other == record or not notebook.path(other).is_file():
+            continue
+        domains = row.get("domains") or [row.get("domain", "")]
+        contacts = [{"record": person, "addresses": [email for email in roster.get(person, {}).get("emails", [])
+                     if on_domains({"from": email}, domains)]} for person in sorted(shared)]
+        found = {email for contact in contacts for email in contact["addresses"]}
+        if found:
+            addresses.update(found)
+            candidates.append({"record": other, "domains": domains, "shared_contacts": contacts})
+    return {"domains": own.get("domains") or ([own["domain"]] if own.get("domain") else []),
+            "addresses": sorted(addresses), "candidates": candidates}
 
 
 def quick_evidence(items: list[dict], *, max_items: int = 24,
@@ -410,7 +440,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         archived = person_material(archive_root, record)
     elif archive_root is not None and domains:
         from .mail_archive import domain_material
-        archived = domain_material(archive_root, domains)
+        archived = domain_material(archive_root, domains, contact_addresses=[h for h in handles if is_address(h)])
     cached_by_provider, cached_start, cached_end = archived if archived else ({}, None, None)
     # A mailbox the user unsubscribed after init stays out, archive or not.
     cached_by_provider = {kind: rows for kind, rows in cached_by_provider.items()
@@ -456,7 +486,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         items.extend(local)
         attached = 0
 
-        def add_attachments(message_id: str, sender: str, stamp: str, subject: str) -> None:
+        def add_attachments(message_id: str, sender: str, stamp: str, subject: str, scope: str = "") -> None:
             nonlocal attached
             if attachments_dir is None or not hasattr(client, "download_attachments"):
                 return
@@ -474,7 +504,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 items.append({"role": "attachment", "speaker": sender, "timestamp": stamp,
                               "subject": f"{subject} — {Path(saved).name}",
                               "text": extract_text(Path(saved), limit=None), "file": saved,
-                              "source": f"{kind}:{short}:{Path(saved).name}"})
+                              "source": f"{kind}:{short}:{Path(saved).name}",
+                              **({"relationship_scope": scope} if scope else {})})
 
         seen = {item["_mail_id"] for item in local}
         intervals = [(start, end)]
@@ -494,7 +525,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                                 "attachments unavailable without provider")
             continue
         for item in local:
-            add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""))
+            add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""), item.get("relationship_scope", ""))
         # Only a whole address goes to the server: a page line with prose or a
         # citation in it made Gmail match 677 unrelated mails (#1954). A bare
         # domain is not an address; org pages search it through `domains` above.
@@ -511,7 +542,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                     rows = [r for term in terms
                             for r in (_patient(partial(client.list_with, max_results=DOMAIN_RESULTS),
                                                term, begin.isoformat(), finish.isoformat()) or [])
-                            if _matches(r, handles, mine)]
+                            if on_domains(r, domains) or set(participants(r)).intersection(emails)]
                 except ProviderCredentialError as error:
                     # One mailbox failing is that mailbox's gap, not the page's:
                     # a Graph 500 used to end the whole investigation before
@@ -535,7 +566,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                     if progress:
                         progress(kind, stop, len(rows))
                     cursor = stop
-                rows = [r for r in rows if _matches(r, handles, mine)]
+                rows = [r for r in rows if (on_domains(r, domains) or set(participants(r)).intersection(emails)
+                        if domains else _matches(r, handles, mine))]
                 searched += f"; scanned {len(rows)} matched mails"
             for row in rows:
                 if row["id"] not in taken and (not sent_only or _address(row["from"]) in mine):
@@ -557,10 +589,12 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
             own = _address(r["from"]) in mine or "@" not in _address(r["from"])
             short = hashlib.sha256(r["id"].encode()).hexdigest()[:12]
+            scope = RELATED_ORG_SCOPE if domains and not on_domains(r, domains) else ""
             items.append({"role": "user" if own else "other", "speaker": r["from"],
                           "text": body, "timestamp": str(r["date"]),
-                          "subject": r.get("subject", ""), "source": f"{kind}:{short}"})
-            add_attachments(r["id"], r["from"], str(r["date"]), r.get("subject", ""))
+                          "subject": r.get("subject", ""), "source": f"{kind}:{short}",
+                          **({"relationship_scope": scope} if scope else {})})
+            add_attachments(r["id"], r["from"], str(r["date"]), r.get("subject", ""), scope)
             if stage_progress and (number % 10 == 0 or number == len(mail_to_read)):
                 stage_progress(f"gathering {kind} mail", number, len(mail_to_read))
         coverage.append(f"{kind} ({', '.join(sorted(mine))}): {searched} over {days} days, "
@@ -904,7 +938,10 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         runner_module.check_skill(root, "investigate")
     if stage_progress:
         stage_progress("gathering sources")
-    items, coverage = gather(subject, handles, days=days, clients=clients, subscriptions=subscriptions,
+    related = org_contact_context(notebook, record)
+    own_domains = (related["domains"] or org_domains(notebook.read(record))) if record.startswith("orgs/") else []
+    search_handles = list(dict.fromkeys([*handles, *own_domains, *related["addresses"]]))
+    items, coverage = gather(subject, search_handles, days=days, clients=clients, subscriptions=subscriptions,
                              progress=progress, attachments_dir=root / ".state" / "attachments",
                              sent_only=sent_only, mail_skipped=mail_skipped, stage_progress=stage_progress,
                              quick=quick, archive_root=root, record=record)
@@ -920,7 +957,9 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     from . import facts
     from .fact_extract import extract, facts_item
     fact_rows = [] if record.startswith("projects/") else [
-        row for row in extract(items, handles, owner=sent_only) if not (last and row["field"] == "First contact")]
+        row for row in extract([item for item in items if not item.get("relationship_scope")], handles, owner=sent_only)
+        if not (last and row["field"] == "First contact")
+        and not (related["candidates"] and row["field"] in ("First contact", "Last contact"))]
     facts_before = facts.coverage(notebook.read(record), record)
     if last:
         # The window is whole days, so an investigation straight after another
@@ -929,9 +968,13 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         # cites, it has read.
         cited = notebook.read(record).partition("\n## Sources\n")[2]
         fresh = [item for item in items if not item.get("source") or item["source"] not in cited]
-        if len(fresh) < len(items):
-            coverage.append(f"{len(items) - len(fresh)} gathered item(s) already cited on the page, not re-read")
-        items = fresh
+        if related["candidates"] and any(item.get("relationship_scope") for item in fresh):
+            coverage.append("Related-domain comparison: previously cited primary correspondence retained "
+                            "to check offer dates and terms against the newly gathered contact context")
+        else:
+            if len(fresh) < len(items):
+                coverage.append(f"{len(items) - len(fresh)} gathered item(s) already cited on the page, not re-read")
+            items = fresh
     if last and not items:
         _keep_facts(notebook, root, record, fact_rows)
         raise _nothing_new(record, subject, coverage, last)
@@ -1064,9 +1107,14 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
          "text": f"The page as it stands, at {record}. Fill its Unknowns, update what "
                  f"has moved, keep what is right:\n\n{current_page}",
          "timestamp": now, "source": "investigation:page"},
-        {"role": "coverage", "text": "Sources searched for handles " + ", ".join(handles) + ":\n"
+        {"role": "coverage", "text": "Sources searched for handles " + ", ".join(search_handles) + ":\n"
                                      + "\n".join(coverage), "timestamp": now, "source": "investigation:coverage"},
-    ] + ([{"role": "org-pages", "source": "investigation:org-pages", "timestamp": now,
+    ] + ([{"role": "org-contact-context", "source": "investigation:org-contact-context", "timestamp": now,
+           "candidates": related["candidates"], "text": "These domain pages share a canonical contact candidate. "
+           "The map may have grouped addresses by display name; this is not proof of common person, company "
+           "or legal identity. Compare the dated primary messages before using cross-domain terms or closing "
+           "threads. Notebook links are context, not evidence; keep distinct offers and unresolved identity explicit."}]
+         if related["candidates"] else []) + ([{"role": "org-pages", "source": "investigation:org-pages", "timestamp": now,
            "text": "Organisation pages this notebook already has"
                    + (" for the subject's mail domains" if record.startswith("people/") else "")
                    + ". Where the material shows the subject belongs to one, write its field (Company, or "
