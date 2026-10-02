@@ -125,6 +125,8 @@
   .privacy-tag { font: 10px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; padding: 0 5px; margin: 0 2px; border-radius: 4px; border: 1px solid var(--line); color: var(--ink-3); background: var(--well); white-space: nowrap; }
   .privacy-tag.sensitive { border-color: var(--ink-3); color: var(--ink); font-weight: 600; }
   :root.hide-private .private, :root.hide-private li.private-item { display: none; }
+  .private-hidden-notice { display: none; }
+  :root.hide-private .private-hidden-notice { display: block; }
 
   /* ---- main ---- */
   main { min-width: 0; width: 100%; overflow-wrap: anywhere; padding: 40px 56px 96px; max-width: 1180px; }
@@ -230,6 +232,7 @@
   .week .s { flex-basis: 100%; font: 14px/1.45 var(--text); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* ---- open threads: who owes whom ---- */
   .bands { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 28px; margin-top: 12px; }
+  .bands > .band:last-child:nth-child(3) { grid-column: 1 / -1; }
   .band h3 { display: flex; justify-content: space-between; align-items: baseline; font: 600 11px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 10px; padding-bottom: 7px; border-bottom: 1px solid var(--line); }
   .band .threads .thread { grid-template-columns: 76px minmax(0, 1fr) auto; padding: 11px 14px; }
   .band-none { color: var(--ink-3); font-size: 13.5px; margin: 8px 0 0; }
@@ -577,7 +580,7 @@
   .focus-kicker { display: block; font: 600 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--night-2); }
   .focus-statement { max-width: 64ch; position: relative; z-index: 1; font: 26px/1.28 var(--display); margin: 16px 0 0; }
   .focus-statement.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
-  .focus-more { position: relative; z-index: 1; border: 0; background: transparent; color: var(--night-ink); cursor: pointer; margin: 12px 0 0; padding: 0; font: 600 12px var(--ui); text-decoration: underline; text-underline-offset: 3px; }
+  .focus-more { position: relative; z-index: 1; border: 0; background: transparent; color: var(--night-ink); cursor: pointer; margin: 4px 0 0; padding: 0; min-height: 44px; font: 600 12px var(--ui); text-decoration: underline; text-underline-offset: 3px; }
   .focus-section.next-exchanges { grid-column: 1 / -1; }
   .project-workspace { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
   .project-workspace .focus-section { min-width: 0; }
@@ -1277,6 +1280,10 @@ function skillUsage(r) {
   const none = /No invocation found[^\n]*?last (\d+) days/.exec(r.text);
   return none ? { count: 0, days: Number(none[1]), last: "", tools: "" } : null;
 }
+function usageCaption(u) {
+  return u.count ? u.count + " recorded " + (u.count === 1 ? "invocation" : "invocations") + " in " + u.days + " days · last " + fmtDate(u.last)
+    : "no invocation found in " + u.days + " days";
+}
 let MAX_USAGE = null;
 function maxUsage() {
   if (MAX_USAGE === null) MAX_USAGE = Math.max(1, ...inCategory("skills").map(r => (skillUsage(r) || { count: 0 }).count));
@@ -1335,7 +1342,9 @@ function facts(r) {
     take("phone", x.phone); take("company", x.company); take("role", x.role); take("language", x.language);
     take("location", [x.location, x.timezone].filter(Boolean).join(" · "));
     take("links", [x.linkedin, x.website].filter(Boolean).join(", "));
-    take("how", x.how_known); take("first", x.first_contact); take("last", x.last_contact);
+    take("how", x.how_known); take("first", x.first_contact);
+    // The page census owns activity dates; an older index must not contradict it.
+    take("last", r.last_activity === undefined ? x.last_contact : k.last);
     take("mails", x.mails); take("sent", x.sent); take("received", x.received);
   }
   FACTS.set(r.path, f);
@@ -1618,7 +1627,7 @@ function renderRail(active) {
   const hidden = document.documentElement.classList.contains("hide-private");
   const privacy = el("button", { class: "theme-btn" + (hidden ? " active" : ""), type: "button",
     text: hidden ? "Private hidden" : "Hide private",
-    title: "Hide sentences labelled personal or sensitive before sharing your screen" });
+    title: "Hide labelled private sentences and unclassified source/conversation excerpts before sharing your screen" });
   privacy.onclick = togglePrivate;
   foot.appendChild(privacy);
   foot.appendChild(el("div", { text: "Snapshot " + fmtTime(REM.as_of) }));
@@ -1640,7 +1649,7 @@ function row(r, opts) {
   const open = threads(r).items[0];
   if (open) li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: DIRECTION_LABEL[open.dir] }), el("span", { text: plainLine(open.text) })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
-  if (u) li.appendChild(el("div", { class: "usage" }, [usageBar(u), el("span", { text: u.count ? (u.count === 1 ? "used once" : "used " + u.count + "×") + " in " + u.days + " days · last " + shortDate(u.last) : "not used in " + u.days + " days" })]));
+  if (u) li.appendChild(el("div", { class: "usage" }, [usageBar(u), el("span", { text: usageCaption(u) })]));
   if (r.installations && r.installations.length > 1) li.appendChild(el("div", { class: "hit ui", text: r.installations.length + " installed copies — open to compare sources" }));
   return li;
 }
@@ -1719,7 +1728,7 @@ function morningBrief() {
   for (const r of changed.slice(0, 3)) cards.appendChild(el("article", { class: "memory-card" }, [
     el("span", { class: "kind", text: singular(r.category) + " · Current context on an updated page" }),
     el("h3", {}, [el("a", { href: href(r), text: r.title })]),
-    el("p", { text: memoryStatement(r) || "This page was updated. Open it to see the current context." }),
+    el("p", { html: inline(memoryStatement(r) || "This page was updated. Open it to see the current context.", r.path) }),
     el("a", { class: "open", href: href(r), text: "Read the page and sources →" })]));
   brief.appendChild(cards);
   const connection = memoryConnection(changed);
@@ -1811,16 +1820,18 @@ function overview() {
     for (const t of threads(r).items) open.push({ r, t });
   open.sort((a, b) => ({ mine: 0, theirs: 1, plain: 2 })[a.t.dir] - ({ mine: 0, theirs: 1, plain: 2 })[b.t.dir] || byActivity(a.r, b.r));
   if (open.length) {
-    // Two bands: what you owe (oldest first), and what others owe you.
+    // Keep unassigned context separate from obligations in either direction.
     const oldest = (x, y) => (x.t.since || "9999").localeCompare(y.t.since || "9999") || byActivity(x.r, y.r);
     const mine = open.filter(o => o.t.dir === "mine").sort(oldest);
-    const others = [...open.filter(o => o.t.dir === "theirs").sort(oldest), ...open.filter(o => o.t.dir === "plain")];
+    const others = open.filter(o => o.t.dir === "theirs").sort(oldest);
+    const plain = open.filter(o => o.t.dir === "plain");
     main.appendChild(sectionHead("Open threads", open.length + " open · " + mine.length + " waiting on you"));
     const band = (title, note, rows) => el("section", { class: "band" }, [el("h3", {}, [el("span", { text: title }), el("span", { class: "mono", text: note })]),
       rows.length ? el("ul", { class: "threads" }, rows.slice(0, 3).map(o => threadRow(o.r, o.t, true)))
         : el("p", { class: "band-none", text: "Nothing here." }),
       rows.length > 3 ? el("p", { class: "band-none" }, [el("a", { href: "#view=open", text: "View all " + rows.length + " open threads →" })]) : null]);
-    main.appendChild(el("div", { class: "bands" }, [band("Waiting on you", String(mine.length), mine), band("Waiting on others", String(others.length), others)]));
+    main.appendChild(el("div", { class: "bands" }, [band("Waiting on you", String(mine.length), mine), band("Waiting on others", String(others.length), others),
+      plain.length ? band("Other open context", String(plain.length), plain) : null]));
   }
 
   // This week: what the nightly passes rewrote, newest first, each with its one line.
@@ -2047,7 +2058,7 @@ function leadRow(r) {
   } else if (t.calm) row.appendChild(el("span", { class: "lead-calm", text: "Nothing open" }));
   if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "people" ? "Last contact " : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
-  if (u) row.appendChild(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: u.count ? "used " + (u.count === 1 ? "once" : u.count + "×") + " in " + u.days + " days · last " + fmtDate(u.last) + (u.tools ? " · " + u.tools : "") : "not used in " + u.days + " days" })]));
+  if (u) row.appendChild(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: usageCaption(u) + (u.tools ? " · " + u.tools : "") })]));
   if (section(r, "uncertainties")) row.appendChild(el("a", { class: "unsure", href: "#r=" + encodeURIComponent(r.path) + "&h=uncertainties", title: "What this page is not sure of" }, ["?", el("span", { text: " Uncertain points" })]));
   return row;
 }
@@ -2066,7 +2077,7 @@ function sidePanels(r, k) {
   if (r.category === "skills") {
     const u = skillUsage(r);
     if (u) panels.push(panel("Usage", [el("div", { class: "bigstat" }, [el("span", { class: "v", text: String(u.count) }), el("span", { class: "k", text: (u.count === 1 ? "invocation" : "invocations") + " in " + u.days + " days" })]),
-      el("div", { class: "usage" }, [usageBar(u)]), el("p", { class: "mono", text: u.last ? "last " + fmtDate(u.last) + (u.tools ? " · " + u.tools : "") : "no recent use" })]));
+      el("div", { class: "usage" }, [usageBar(u)]), el("p", { class: "mono", text: u.last ? "last " + fmtDate(u.last) + (u.tools ? " · " + u.tools : "") : "no invocation found" })]));
     if (r.installation) {
       const file = el("dl", {});
       file.append(el("dt", { text: "File" }), el("dd", { class: "mono" }, [el("a", { href: "file://" + encodeURI(r.installation), title: r.installation, text: r.installation.split("/").slice(-3).join("/") })]));
@@ -2081,26 +2092,35 @@ function sidePanels(r, k) {
   return panels;
 }
 
+function refreshFocusExpansion() {
+  const statement = document.querySelector(".focus-statement");
+  const more = document.querySelector(".focus-more");
+  if (!statement || !more) return;
+  more.hidden = statement.classList.contains("clamped") && statement.scrollHeight <= statement.clientHeight + 1;
+}
 function recordFocus(r) {
   const k = known(r), out = el("section", { class: "record-focus " + r.category,
     "aria-label": "At a glance" });
-  const statement = memoryStatement(r) || facts(r).what || k.summary;
+  const purpose = section(r, r.category === "orgs" ? "our relationship" : r.category === "skills" ? "when to use" : "");
+  const statement = plainLine(purpose?.text || "") || memoryStatement(r) || facts(r).what || k.summary;
   const question = ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
     skills: "When this helps" })[r.category] || "What matters now";
   const focusHead = el("div", { class: "focus-head" }, [el("span", { class: "focus-kicker", text: question })]);
-  const statementNode = el("p", { class: "focus-statement clamped", text: statement || (k.status === "Mapped"
-    ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet.") });
+  const statementNode = el("p", { class: "focus-statement clamped", html: inline(statement || (k.status === "Mapped"
+    ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet."), r.path) });
   focusHead.appendChild(statementNode);
-  if ((statement || "").length > 180) {
-    const more = el("button", { type: "button", class: "focus-more", "aria-expanded": "false", text: "Read full context" });
+  if (statement) {
+    const more = el("button", { type: "button", class: "focus-more", "aria-expanded": "false", text: "Read full context", hidden: "" });
     more.onclick = () => {
       const expanded = statementNode.classList.toggle("clamped");
       more.setAttribute("aria-expanded", String(!expanded));
       more.textContent = expanded ? "Read full context" : "Show less";
+      refreshFocusExpansion();
     };
     focusHead.appendChild(more);
   }
   out.appendChild(focusHead);
+  if (sourceList(r).length) out.appendChild(el("a", { class: "open-note", href: href(r) + "&h=sources", text: "View sources →" }));
   const open = threads(r).items;
   if (open.length) out.appendChild(el("div", { class: "focus-section next-exchanges" }, [
     el("h2", { text: "Next exchanges" }), el("ul", { class: "threads", "aria-label": "Open threads on this record" },
@@ -2119,7 +2139,7 @@ function recordFocus(r) {
   const labels = r.category === "people" ? [["Role", f.role], ["Company", f.company], ["Last contact", f.last]]
     : r.category === "projects" ? [["Last active", f.last], ["Sessions", f.sessions], ["Repository", f.repo]]
       : r.category === "orgs" ? [["Domain", f.domain], ["Last contact", f.last]]
-        : r.category === "skills" ? [["Usage", skillUsage(r) ? skillUsage(r).count + " uses" : ""], ["Last active", f.last]] : [];
+        : r.category === "skills" ? [["Recorded invocations", skillUsage(r) ? String(skillUsage(r).count) : ""], ["Last active", f.last]] : [];
   const shown = labels.filter(([, value]) => value).slice(0, 3);
   if (shown.length) out.appendChild(el("dl", { class: "focus-facts" }, shown.map(([key, value]) =>
     el("div", { class: "focus-fact" }, [el("dt", { text: key }), el("dd", { html: inline(String(value), r.path), title: plainLine(String(value)) })]))));
@@ -2175,7 +2195,8 @@ function openConversation(id, trigger) {
   dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "REM / archived conversation" }), close]),
     el("h2", { text: byPath(conversation.subject)?.title || conversation.subject }),
     el("p", { class: "evidence-summary", text: "Latest " + conversation.messages.length + " of " + conversation.total + " archived messages in this cited thread. Some messages may not have an archived body." }));
-  for (const message of conversation.messages) dialog.appendChild(el("div", { class: "conversation-message" }, [
+  dialog.appendChild(el("p", { class: "private-hidden-notice", text: "Archived messages are hidden because their private content has not been classified. Show private content to read them." }));
+  for (const message of conversation.messages) dialog.appendChild(el("div", { class: "conversation-message private" }, [
     el("span", { class: "evidence-meta", text: [message.sender, message.time ? fmtTime(message.time) : ""].filter(Boolean).join(" · ") }),
     el("p", { text: message.excerpt + (message.truncated ? "…" : "") })]));
   dialog.addEventListener("close", () => trigger.focus(), { once: true });
@@ -2312,7 +2333,7 @@ function record(path, heading) {
   }
 
   if (k.missing.length) {
-    const command = "co rem investigate '" + r.path.replace(/'/g, "'\\''") + "'";
+    const command = "co rem --root '" + String(REM.root).replace(/'/g, "'\\''") + "' investigate '" + r.path.replace(/'/g, "'\\''") + "'";
     const mapped = k.status === "Mapped";
     const copyCmd = el("button", { class: mapped ? "btn-primary" : "btn-action", type: "button", text: mapped ? "Copy the command" : "Copy" });
     copyCmd.onclick = () => copyToClipboard(command, copyCmd, "Copied — paste it in a terminal");
@@ -2488,6 +2509,7 @@ function render() {
   document.title = (reviews ? "Questions & connections" : r ? (byPath(r)?.title || "Missing page") : query ? "Search: " + query :
     view === "open" ? "Open threads" : view === "changes" ? "Memory changes" : c ? (c === "all" ? "Explore" : label(c)) : "Today") + " · co rem";
   for (const link of document.querySelectorAll("#nav a.active")) link.setAttribute("aria-current", "page");
+  refreshFocusExpansion();
 }
 
 function openEvidence(r, number, trigger) {
@@ -2502,8 +2524,9 @@ function openEvidence(r, number, trigger) {
   close.onclick = () => dialog.close();
   dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "REM / source " + number }), close]),
     el("h2", { text: "Why this appears on " + r.title }),
-    el("p", { class: "evidence-summary", text: source.text }));
-  if (context) dialog.append(el("div", { class: "evidence-original" }, [
+    el("p", { class: "evidence-summary private", text: source.text }));
+  dialog.appendChild(el("p", { class: "private-hidden-notice", text: "Source descriptions and original excerpts are hidden because their private content has not been classified. Show private content to read them." }));
+  if (context) dialog.append(el("div", { class: "evidence-original private" }, [
     el("span", { class: "focus-kicker", text: "Original source context · not a validated claim span" }),
     el("p", { class: "evidence-meta", text: [context.source, context.sender, context.time ? fmtTime(context.time) : ""].filter(Boolean).join(" · ") }),
     el("blockquote", { text: context.excerpt + (context.truncated ? "…" : "") })]));
@@ -2556,6 +2579,7 @@ document.addEventListener("keydown", e => {
   }
 });
 window.addEventListener("hashchange", render);
+window.addEventListener("resize", refreshFocusExpansion);
 render();
 </script>
 </body>

@@ -190,6 +190,75 @@ def test_focus_connects_project_people_org_and_archived_conversation(reader):
     assert evidence.is_visible() and "I will send the usage export" in evidence.inner_text()
 
 
+def test_short_focus_text_clipped_on_phone_can_expand_and_collapse(reader):
+    page, uri = reader
+    page.set_viewport_size({"width": 375, "height": 812})
+    page.goto(uri + "#r=people%2Fmara-ostrowski.md")
+    statement = "Mara needs the revised pilot agreement before deciding whether her team can renew, including the usage export and the pricing proposal."
+    assert len(statement) < 180
+    page.evaluate("text => { const r = byPath('people/mara-ostrowski.md'); r.text = '# Mara Ostrowski\\n\\n' + text; KNOWN.clear(); FACTS.clear(); render(); }", statement, isolated_context=False)
+    lead = page.locator('.focus-statement')
+    assert lead.evaluate('e => e.scrollHeight > e.clientHeight')
+    more = page.locator('.focus-more')
+    assert more.is_visible()
+    more.click()
+    assert more.get_attribute('aria-expanded') == 'true'
+    assert lead.evaluate('e => e.scrollHeight <= e.clientHeight + 1')
+    page.get_by_role('button', name='Show less', exact=True).click()
+    assert more.get_attribute('aria-expanded') == 'false'
+    page.set_viewport_size({"width": 1440, "height": 1000})
+    page.wait_for_function("document.querySelector('.focus-more').hidden")
+
+
+def test_record_dates_do_not_disagree_when_the_index_is_stale(reader):
+    page, uri = reader
+    page.goto(uri + "#r=people%2Fmara-ostrowski.md")
+    expected = page.evaluate("known(byPath('people/mara-ostrowski.md')).last", isolated_context=False)
+    page.evaluate("() => { byPath('people/mara-ostrowski.md').index = {last_contact: '2001-01-01'}; FACTS.clear(); render(); }", isolated_context=False)
+    assert expected in page.locator('.focus-facts').inner_text()
+    assert '2001' not in page.locator('.focus-facts').inner_text()
+    page.locator('.deep-note > summary').click()
+    formatted = page.evaluate('date => fmtDate(date)', expected, isolated_context=False)
+    assert formatted in page.locator('.factlist dt:text-is("Last contact") + dd').inner_text()
+
+
+def test_investigation_command_targets_the_notebook_being_viewed(reader):
+    page, uri = reader
+    page.goto(uri + "#r=people%2Fquinn-alder.md")
+    root = page.evaluate('REM.root', isolated_context=False)
+    command = page.locator('.missing .cmd code').inner_text()
+    assert '--root' in command and root in command
+    assert "investigate 'people/quinn-alder.md'" in command
+
+
+def test_private_mode_hides_raw_sources_and_conversations_already_open(reader):
+    page, uri = reader
+    page.goto(uri + "#r=people%2Fmara-ostrowski.md")
+    page.locator('.conversation-open').first.click()
+    messages = page.locator('#conversation-dialog .conversation-message')
+    assert messages.first.is_visible()
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert not messages.first.is_visible()
+    assert page.locator('#conversation-dialog .private-hidden-notice').is_visible()
+    page.get_by_role('button', name='Close conversation').click()
+    page.locator('.deep-note > summary').click()
+    page.locator("a.cite[href*='src-5']").first.click()
+    original = page.locator('#evidence-dialog .evidence-original')
+    assert original.count() == 1 and not original.is_visible()
+    assert page.locator('#evidence-dialog .private-hidden-notice').is_visible()
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert original.is_visible() and 'I will send the usage export' in original.inner_text()
+
+
+def test_open_context_is_not_counted_as_waiting_on_other_people(reader):
+    page, _ = reader
+    page.evaluate("() => { const r = byPath('people/mara-ostrowski.md'); r.text = r.text.replace('## Open threads\\n', '## Open threads\\n- Completion evidence not recorded.\\n'); KNOWN.clear(); render(); }", isolated_context=False)
+    others = page.locator('.band', has=page.locator('h3 span:text-is("Waiting on others")'))
+    plain = page.locator('.band', has=page.locator('h3 span:text-is("Other open context")'))
+    assert others.locator('.thread.plain').count() == 0
+    assert 'Completion evidence not recorded' in plain.inner_text()
+
+
 def test_changes_and_open_threads_are_actionable_destinations(reader):
     page, uri = reader
     page.goto(uri + "#view=changes")
