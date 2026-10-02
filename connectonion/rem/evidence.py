@@ -60,7 +60,8 @@ def _entry(item: dict) -> str:
     who = item.get("speaker") or item.get("role") or ""
     head = f"### {item.get('source', '')} · {item.get('timestamp', '')} · {who}"
     detail = [f"{label}: {item[key]}" for key, label in (("subject", "Subject"), ("correspondent", "With"),
-                                                       ("project", "Project"), ("reference", "Reference"))
+                                                       ("project", "Project"), ("reference", "Reference"),
+                                                       ("timestamp_scope", "Timestamp scope"))
               if item.get(key)]
     return "\n".join([head, *detail, "", str(item.get("text", "")), ""])
 

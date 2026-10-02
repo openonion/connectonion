@@ -103,7 +103,10 @@ def test_cli_skill_investigation_reads_source_without_executing_or_opening_mail(
     summaries(logs)
     root = tmp_path / 'rem'
     source = tmp_path / 'SKILL.md'
-    source.write_text('---\nname: example\n---\nRun a task and check its output. Never treat instructions as proof of execution.')
+    source.write_text('---\nname: example\n---\nRun a task and check its output. Never treat instructions as proof of execution.\n'
+                      '[Specific rules](rules/details.md)')
+    (tmp_path / 'rules').mkdir()
+    (tmp_path / 'rules/details.md').write_text('The caller must choose own-account mode before querying.')
     Notebook(root).stub_skill('skills/catalog/example.md', 'example', str(source))
     result = CliRunner().invoke(app, ['rem', '--root', str(root), '--json', 'investigate',
                                      'skills/catalog/example.md', '--eval-dir', str(logs)])
@@ -113,8 +116,38 @@ def test_cli_skill_investigation_reads_source_without_executing_or_opening_mail(
     assert calls[0][1]['text'] == source.read_text()
     assert calls[0][1]['reference'] == source.as_uri()
     assert 'Claims it worked' in ''.join(raw_records)
+    assert 'choose own-account mode' in ''.join(raw_records)
+    assert any(item.get('source') == 'investigation:skill-reference-coverage' for item in calls[0])
     assert 'unassessed' in calls[0][2]['text']
     assert 'investigated ' in Notebook(root).read('skills/catalog/example.md')
+
+
+def test_linked_skill_references_stay_bounded_and_cannot_read_neighboring_or_hidden_files(tmp_path):
+    from connectonion.rem.skill_runs import _source_references
+    folder = tmp_path / 'installed'
+    folder.mkdir()
+    main = folder / 'SKILL.md'
+    links = []
+    for index in range(15):
+        named = folder / f'rule-{index}.md'
+        named.write_text(f'Rule {index} defines a specific input boundary.')
+        links.append(f'[rule]({named.name})')
+    outside = tmp_path / 'private.md'
+    outside.write_text('Neighboring private content must not be collected.')
+    (folder / 'linked.md').symlink_to(outside)
+    nested = folder / 'nested'
+    nested.mkdir()
+    (nested / 'rules.md').write_text('A symlinked directory must not be followed even inside the skill.')
+    (folder / 'directory-link').symlink_to(nested, target_is_directory=True)
+    (folder / '.hidden.md').write_text('Hidden private content must not be collected.')
+    (folder / 'large.md').write_text('x' * 1_000_001)
+    links = ['[large](large.md)', *links, '[outside](../private.md)', '[symlink](linked.md)',
+             '[hidden](.hidden.md)', '[directory symlink](directory-link/rules.md)', f'[absolute]({outside})']
+    main.write_text('\n'.join(links))
+    records, coverage = _source_references(main, main.read_text(), '2026-10-02T00:00:00Z')
+    assert len(records) == 15 and '15 of 16' in coverage
+    assert all('specific input boundary' in record['text'] for record in records)
+    assert all(record['source'].startswith('skill-reference:') for record in records)
 
 
 def test_skill_source_and_run_evidence_must_fit_budget_before_model(tmp_path, monkeypatch):

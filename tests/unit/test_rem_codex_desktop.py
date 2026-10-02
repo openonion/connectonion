@@ -127,6 +127,65 @@ def test_claude_code_history_imported_into_desktop_is_not_read_twice():
     assert _codex_message(bare("Merge it once CI is green."), EVER, cli)["text"] == "Merge it once CI is green."
 
 
+def test_null_passthrough_without_id_retains_cli_requests_but_not_imports_or_workers(tmp_path):
+    def nullable(text):
+        row = bare(text)
+        row['payload']['internal_chat_message_metadata_passthrough'] = None
+        return row
+
+    rollout(tmp_path / 'rollout-cli.jsonl', [nullable('Ask Vern about the revised placement.'),
+            nullable('<environment_context>Injected repository context')],
+            meta={'originator': 'codex_cli_rs'})
+    rollout(tmp_path / 'rollout-import.jsonl', [nullable('Imported Claude history')])
+    rollout(tmp_path / 'rollout-worker.jsonl', [nullable('Parent assigned this task')],
+            meta={'source': SPAWNED})
+    batch = collect(subscription(tmp_path), {}, 20, 100_000)
+    assert [item['text'] for item in batch.items] == ['Ask Vern about the revised placement.']
+    assert batch.skipped == 3 and batch.unrecognised == 0
+
+
+def test_desktop_kinds_still_classify_messages_without_optional_id():
+    typed, injected = desktop('Keep the investor introduction.'), desktop('Injected', ('goal.internal_context',))
+    del typed['payload']['id']
+    del injected['payload']['id']
+    assert read(typed)['text'] == 'Keep the investor introduction.'
+    assert read(injected) is SKIPPED
+
+
+def test_skill_mentions_missed_by_the_old_optional_id_reader_are_recounted(tmp_path):
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.skill_usage import usage
+
+    row = bare('Use $ship-feature for this release.')
+    row['payload']['internal_chat_message_metadata_passthrough'] = None
+    path = rollout(tmp_path / 'sessions/rollout-cli.jsonl', [row], meta={'originator': 'codex_cli_rs'})
+    root = tmp_path / 'rem'
+    stat = path.stat()
+    write_json(state_path(root, 'skill-usage.json'), {'version': 2, 'files': {
+        str(path): {'stamp': [stat.st_size, stat.st_mtime_ns], 'events': []}}})
+    report = usage({'codex': {'kind': 'codex', 'root': str(path.parent), 'enabled': True}},
+                   ['ship-feature'], root=root, days=30)
+    assert report['counts']['ship-feature']['count'] == 1
+
+
+def test_old_interactive_cli_turn_metadata_retains_intent_but_not_exec_or_desktop_input(tmp_path):
+    def turn(text):
+        row = bare(text)
+        row['payload']['internal_chat_message_metadata_passthrough'] = {'turn_id': 'turn-1'}
+        return row
+
+    rollout(tmp_path / 'rollout-tui.jsonl', [turn('Ask Vern about the revised placement.'),
+            turn('<environment_context>Injected context')], meta={'originator': 'codex-tui', 'source': 'cli'})
+    rollout(tmp_path / 'rollout-exec.jsonl', [turn('Agent-generated worker prompt')],
+            meta={'originator': 'codex_exec', 'source': 'exec'})
+    rollout(tmp_path / 'rollout-import.jsonl', [turn('Imported client input')])
+    rollout(tmp_path / 'rollout-worker.jsonl', [turn('Parent-assigned task')],
+            meta={'originator': 'codex-tui', 'source': SPAWNED})
+    batch = collect(subscription(tmp_path), {}, 20, 100_000)
+    assert [item['text'] for item in batch.items] == ['Ask Vern about the revised placement.']
+    assert batch.skipped == 4 and batch.unrecognised == 0
+
+
 def test_a_row_judged_without_its_file_is_read_as_the_cli_would_write_it():
     assert _codex_message(bare("Ship it on Friday."), EVER)["text"] == "Ship it on Friday."
     assert _codex_message(desktop("Ship it on Friday."), EVER)["text"] == "Ship it on Friday."
@@ -185,4 +244,4 @@ def test_skill_usage_counts_a_mention_the_way_sync_reads_the_message(tmp_path):
                    root=tmp_path / "rem", days=30)
     assert report["counts"]["ship-feature"]["count"] == 2  # the typed mention and the worker's load
     cache = json.loads((tmp_path / "rem/.state/skill-usage.json").read_text())
-    assert cache["version"] == 2  # counts cached under the old reading are recounted
+    assert cache["version"] == 3  # counts cached under the old reading are recounted

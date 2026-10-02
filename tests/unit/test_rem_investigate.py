@@ -1281,3 +1281,34 @@ def test_one_run_reads_the_sessions_once_for_every_subject(tmp_path, monkeypatch
     assert [i["source"] for i in ody] == ["codex:1"] and [i["source"] for i in vern] == ["codex:2"]
     assert seen == [{}, {"offset": 40}, {"offset": 80}]
     assert "2 messages" in next(line for line in coverage if line.startswith("codex"))
+
+
+def test_historical_person_gather_keeps_legacy_and_current_codex_messages(tmp_path, monkeypatch):
+    legacy = [{"id": "legacy", "timestamp": "2025-11-04T15:24:50Z", "instructions": "Harness"},
+              {"type": "message", "id": "old-user", "role": "user",
+               "content": [{"type": "input_text", "text": "Vern asked about the placement"}]}]
+    current = [{"type": "session_meta", "payload": {"id": "current", "cwd": "/work/demo"}},
+               {"type": "response_item", "timestamp": "2026-09-07T05:00:00Z",
+                "payload": {"type": "message", "role": "user",
+                            "content": [{"type": "input_text", "text": "Vern needs revised scope"}]}}]
+    current += [{"type": "response_item", "timestamp": "2026-09-07T05:00:00Z",
+                 "payload": {"type": "message", "role": "user", "content": [
+                     {"type": "input_text", "text": f"Vern follow-up {index}"}]}} for index in range(450)]
+    current.append({"type": "response_item", "timestamp": "2026-09-07T05:00:00Z",
+                    "payload": {"type": "message", "role": "user", "future_field": True,
+                                "content": [{"type": "input_text", "text": "Vern hidden by unknown format"}]}})
+    for name, rows in (("legacy", legacy), ("current", current)):
+        (tmp_path / f"rollout-{name}.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+    calls, original = [], inv.collect
+    def counted(*args):
+        calls.append(1)
+        return original(*args)
+    monkeypatch.setattr(inv, 'collect', counted)
+    items, coverage = inv.gather("Vern", ["Vern"], days=730, clients={}, subscriptions={
+        "codex": {"kind": "codex", "root": str(tmp_path)}})
+    assert {item["text"] for item in items} == {"Vern asked about the placement", "Vern needs revised scope",
+                                               *(f"Vern follow-up {index}" for index in range(450))}
+    assert len(calls) <= 3, "full-window gathering must not repeatedly re-hash hundreds of tiny batches"
+    assert any("1 related legacy message(s)" in line and "individual message times" in line for line in coverage)
+    assert any("1 user-slot message(s) in an unfamiliar format were not read" in line for line in coverage)
+    assert not any("unreadable" in line for line in coverage)

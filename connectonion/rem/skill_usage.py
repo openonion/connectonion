@@ -32,8 +32,8 @@ from .files import RemError, read_json, state_path, write_json
 from .source import KINDS, source_files
 
 CACHE = "skill-usage.json"
-# 2: Codex messages are read as `sync` reads them (#1978); older caches are recounted.
-VERSION = 2
+# 3: Recount messages whose optional Codex id was omitted; older caches missed them.
+VERSION = 3
 EVER = datetime(1970, 1, 1, tzinfo=timezone.utc)
 COMMAND = re.compile(r"<command-name>/([^<\s]+)</command-name>")
 MENTION = re.compile(r"(?<![\w$])\$([A-Za-z][\w.:-]*)")

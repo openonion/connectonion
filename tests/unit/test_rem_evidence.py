@@ -40,6 +40,15 @@ def test_an_odd_source_id_cannot_escape_the_evidence_directory(tmp_path):
     assert all((tmp_path / "ev") in p.parents for p in written) and out["files"] == 1
 
 
+def test_legacy_timestamp_scope_survives_an_indexed_evidence_packet(tmp_path):
+    out = write_evidence(tmp_path / "ev", [item(
+        "codex:legacy:100", "2025-11-04T15:24:50Z", "Vern asked about the placement",
+        timestamp_scope="Legacy session start only; individual message time was not recorded")])
+    body = next(p.read_text() for p in (tmp_path / "ev").rglob("*.md") if p.name != "index.md")
+    assert "Timestamp scope: Legacy session start only; individual message time was not recorded" in body
+    assert out["sources"] == ["codex:legacy:100"]
+
+
 def test_a_month_of_one_mailbox_is_one_file_split_when_large(tmp_path):
     """#2080: Ody Zhou's 98k characters of mail were 373 files, one tool call each,
     and the turn re-sent its context every time: 2.77M input tokens."""

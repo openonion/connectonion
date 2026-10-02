@@ -110,7 +110,7 @@ def _file_messages(path, kind, parse, read_meta, since, rem_root, counts, owner)
         offset = len(first)
         for line in source:
             at, offset = offset, offset + len(line)
-            if not line.endswith(b"\n") or b"message" not in line or b"role" not in line:
+            if not line.endswith(b"\n") or b'"message"' not in line or b'"role"' not in line:
                 continue
             try:
                 row = json.loads(line)

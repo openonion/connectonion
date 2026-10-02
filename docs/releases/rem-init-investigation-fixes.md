@@ -9,7 +9,11 @@ session messages were retained. Missing or deleted folders do not count as
 investigated evidence.
 
 Skill reviews compare installed instructions with retained eval records and
-up to three matching invocation turns. Large records are searchable, lossless
+up to three matching invocation turns. They also read linked Markdown, text
+and XML references inside the skill's own folder, up to 1 MB total. Links to
+other folders, hidden paths and symlinks are excluded; omitted references are
+reported as unreviewed. Reference instructions establish intended behavior,
+not successful execution. Large records are searchable, lossless
 numbered parts. Promotion preserves citations to their exact original record
 IDs, mapped source provenance and invocation counts. Optional empty sections
 are omitted; a cited Insight leads the skill page.
@@ -36,7 +40,20 @@ look for a source-specific default, boundary or conflict and its consequence.
 Zoom detection avoids retrying an unbounded subdomain match at every character
 of a long mail body.
 
-These changes address #2133, #2135, #2136, #2137, #2138, #2143, #2144, #2149, #2150 and #2151. They do not establish
+Historical Codex windows support older native headers. Legacy messages retain
+their session-start date with an explicit note that individual message times
+were not recorded. Current native messages with a null metadata passthrough
+and no optional id are recognized using the existing speaker and injected-text
+filters. Older interactive native CLI messages whose metadata only records
+`turn_id` also retain their typed requests. That compatibility requires native
+interactive CLI metadata; an exec wrapper or Desktop import does not qualify.
+Subagent messages and imported Desktop history remain excluded, and
+the skill-usage cache is recounted under the corrected reader. Investigation
+coverage reports unfamiliar user-slot formats instead of silently omitting
+them. Full-window gathering uses larger read batches to avoid repeatedly
+hashing the same large transcript prefixes; the evidence window is unchanged.
+
+These changes address #2133, #2135, #2136, #2137, #2138, #2143, #2144, #2149, #2150, #2151, #2152 and #2154. They do not establish
 that every generated insight is useful or that a reported skill outcome was
 independently verified. Live page review is still in progress; no package has
 been published for these changes.

@@ -163,6 +163,11 @@ def investigate_skill_page(root: Path, record: str, directories: list[Path]) -> 
                 'timestamp': row['timestamp'] or stamp, 'reference': Path(row['source']).as_uri(),
                 'text': json.dumps(row, ensure_ascii=False, indent=2)} for row in evidence['runs']]
     records += samples['items']
+    references, reference_coverage = _source_references(path, body, stamp)
+    records += references
+    if reference_coverage:
+        items.append({'role': 'coverage', 'source': 'investigation:skill-reference-coverage',
+                      'timestamp': stamp, 'text': reference_coverage})
     evidence_root = root / '.state' / 'evidence'
     evidence_root.mkdir(parents=True, exist_ok=True, mode=0o700)
     with tempfile.TemporaryDirectory(prefix='skill-', dir=evidence_root) as directory:
@@ -178,6 +183,35 @@ def investigate_skill_page(root: Path, record: str, directories: list[Path]) -> 
             'status': 'skill page investigated; execution quality is only as verified as its cited evidence'}
 
 
+def _source_references(path: Path, body: str, stamp: str) -> tuple[list[dict], str]:
+    """Bounded text linked from this skill's own folder; no sibling skills or symlinks."""
+    folder, candidates = path.resolve().parent, []
+    for target in dict.fromkeys(re.findall(r'\]\(([^)]+)\)', body)):
+        relative = target.split('#')[0]
+        named = folder / relative
+        if (relative.startswith(('/', '.', 'http:', 'https:')) and not relative.startswith('./')):
+            continue
+        if (named.suffix not in ('.md', '.txt', '.xml') or named.is_symlink()
+                or any((folder / parent).is_symlink() for parent in named.relative_to(folder).parents)
+                or not named.resolve().is_relative_to(folder) or not named.is_file()
+                or any(part.startswith('.') for part in Path(relative).parts)):
+            continue
+        if named.resolve() != path.resolve() and named.resolve() not in candidates:
+            candidates.append(named.resolve())
+    records, size = [], 0
+    for named in candidates:
+        if size + named.stat().st_size > 1_000_000:
+            continue
+        text = named.read_text(encoding='utf-8')
+        records.append({'source': 'skill-reference:' + hashlib.sha256(text.encode()).hexdigest()[:16],
+                        'role': 'skill-reference', 'timestamp': stamp, 'reference': named.as_uri(), 'text': text})
+        size += named.stat().st_size
+    coverage = (f"Linked skill reference files: {len(records)} of {len(candidates)} readable files retained; "
+                "limit 1 MB, inside this skill's folder only. Unretained reference contents "
+                "were not reviewed. These files describe intended behavior, not observed execution.") if candidates else ''
+    return records, coverage
+
+
 def _record_index(directory: Path, records: list[dict], samples: dict, stamp: str) -> dict:
     from .evidence import FILE_CHARS, write_evidence
     pieces = [{**record, 'source': f"{record['source']}:part-{offset // FILE_CHARS + 1}",
@@ -186,7 +220,7 @@ def _record_index(directory: Path, records: list[dict], samples: dict, stamp: st
     laid_out = write_evidence(directory, pieces)
     return {'role': 'evidence-index', 'source': 'investigation:skill-records', 'timestamp': stamp,
             'file': str(laid_out['index']), 'sources': laid_out['sources'],
-            'text': f"Raw eval records and matching invocation turns are under {directory}. "
+            'text': f"Referenced skill files, raw eval records and matching invocation turns are under {directory}. "
                     f"Large records are split losslessly into numbered parts; inspect all relevant parts. "
                     f"Session sample: {len(samples['items'])} of {samples['matched_invocations']} indexed invocations, "
                     f"latest first, limit {samples['sample_limit']}; missing: {samples['missing']}. "

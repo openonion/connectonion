@@ -610,11 +610,17 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 said += " " + item.get("speaker", "") + " " + item.get("correspondent", "")
             return any(h in said.lower() for h in handles)
         try:
-            window = _window_items(read, scoped, f"{name} {'chats' if chat else 'sessions'}", stage_progress)
+            window, unfamiliar = _window_items(read, scoped, f"{name} {'chats' if chat else 'sessions'}", stage_progress)
             scanned, picked = len(window), [i for i in window if related(i)]
+            if unfamiliar:
+                coverage.append(f"{name}: {unfamiliar} user-slot message(s) in an unfamiliar format were not read")
         except RemError as error:
             coverage.append(f"{name}: unreadable ({error})")
         related = len(picked)
+        legacy = sum(bool(item.get("timestamp_scope")) for item in picked)
+        if legacy:
+            coverage.append(f"{name}: {legacy} related legacy message(s) have only a session-start date; "
+                            "individual message times were not recorded")
         if quick:
             picked = picked[-12:]
         coverage.append(f"{name}: {scanned} messages in window, {related} related to subject, "
@@ -638,17 +644,21 @@ _WINDOWS_LOCK = threading.Lock()
 SESSION_REUSE_SECONDS = 600
 
 
-def _window_items(read, scoped: dict, label: str, stage_progress=None) -> list[dict]:
+def _window_items(read, scoped: dict, label: str, stage_progress=None) -> tuple[list[dict], int]:
     """All items `read` returns for `scoped`; one thread reads, the others wait for it."""
     key = (read, json.dumps({**scoped, "since": scoped["since"][:10]}, sort_keys=True, default=str))
     with _WINDOWS_LOCK:
         kept = _WINDOWS.get(key)
         if kept and time.monotonic() - kept[0] < SESSION_REUSE_SECONDS:
             return kept[1]
-        items, cursor, told = [], {}, 0
+        items, cursor, told, unfamiliar = [], {}, 0, 0
         while True:
-            batch = read(scoped, cursor, 40, 200_000)
+            # This is a full-window gather, not a model input batch. Tiny batches
+            # repeatedly re-hash large rollout prefixes while retaining the same
+            # eventual window in memory.
+            batch = read(scoped, cursor, 4_000, 20_000_000)
             items.extend(batch.items)
+            unfamiliar += getattr(batch, 'unrecognised', 0)
             if batch.progress == cursor:
                 break
             cursor = batch.progress
@@ -658,8 +668,9 @@ def _window_items(read, scoped: dict, label: str, stage_progress=None) -> list[d
             if stage_progress and len(items) > told:
                 told = len(items)
                 stage_progress(f"gathering {label}: {told:,} scanned", told)
-        _WINDOWS[key] = (time.monotonic(), items)
-        return items
+        result = items, unfamiliar
+        _WINDOWS[key] = (time.monotonic(), result)
+        return result
 
 
 SEARCH_RESULTS = 20
