@@ -11,6 +11,30 @@ from connectonion.rem.mail import collect_mail
 NOW = datetime(2026, 9, 7, tzinfo=timezone.utc)
 
 
+def test_rem_uses_deferred_full_window_and_lists_each_mail_after_split(monkeypatch):
+    from connectonion.rem import mail as rem_mail
+
+    monkeypatch.setattr(rem_mail, "LISTING_LIMIT", 2)
+    calls = []
+
+    class Client:
+        def list_between(self, start, end, limit):
+            raise AssertionError("REM should use its cap-aware listing")
+
+        def list_between_for_rem(self, start, end, limit):
+            calls.append((start, end))
+            if end[:10] == "2026-09-03":
+                return [{"id": "a", "date": "2026-09-01T12:00:00+00:00"}]
+            if start[:10] == "2026-09-03":
+                return [{"id": "b", "date": "2026-09-04T12:00:00+00:00"}]
+            return [{"id": "a"}, {"id": "b"}]
+
+    rows = rem_mail._list_all(Client(), datetime(2026, 9, 1, tzinfo=timezone.utc),
+                              datetime(2026, 9, 5, tzinfo=timezone.utc))
+    assert {row["id"] for row in rows} == {"a", "b"}
+    assert len(calls) == 3
+
+
 class FakeMail:
     """The two calls an adapter needs: a date-bounded ascending listing and one body."""
 

@@ -112,6 +112,7 @@ class TestGmailGetService:
 
         assert service == mock_service
         mock_build.assert_called_once()
+        assert mock_build.call_args.kwargs["http"].http.timeout == 30
 
     @patch.dict(os.environ, {
         "GOOGLE_SCOPES": "gmail.readonly gmail.send",
@@ -155,7 +156,7 @@ class TestGmailGetService:
         Gmail()._get_service()
 
         assert calls == [None]
-        assert mock_build.call_args.kwargs["credentials"].token == "fresh_token"
+        assert mock_build.call_args.kwargs["http"].credentials.token == "fresh_token"
 
     @pytest.mark.real_refresh
     @patch.dict(os.environ, {
@@ -172,7 +173,7 @@ class TestGmailGetService:
 
         Gmail()._get_service()
 
-        assert mock_build.call_args.kwargs["credentials"].token == "fresh_token"
+        assert mock_build.call_args.kwargs["http"].credentials.token == "fresh_token"
 
     @pytest.mark.real_refresh
     @patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}, clear=True)
@@ -205,7 +206,7 @@ class TestGmailGetService:
         )
         gmail = Gmail()
         gmail._get_service()
-        credentials = mock_build.call_args.kwargs["credentials"]
+        credentials = mock_build.call_args.kwargs["http"].credentials
 
         credentials.refresh(None)
 

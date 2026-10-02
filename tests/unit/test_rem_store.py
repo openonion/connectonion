@@ -274,6 +274,37 @@ def test_co_rem_list_people_table_prints_the_crm_columns(tmp_path):
     assert data["data"][0]["record"] == "people/ody.md" and data["data"][0]["company"] == "Acme"
 
 
+def test_rem_full_gmail_window_defers_headers_until_after_split():
+    from connectonion.useful_tools.gmail import Gmail
+
+    gets = []
+
+    class Call:
+        def __init__(self, result): self.result = result
+        def execute(self, num_retries=0): return self.result
+
+    class Messages:
+        def list(self, **kw): return Call({"messages": [{"id": "a"}, {"id": "b"}]})
+        def get(self, **kw):
+            gets.append(kw["id"])
+            return Call({"payload": {"headers": []}})
+
+    class Users:
+        def messages(self): return Messages()
+
+    class Service:
+        def users(self): return Users()
+
+    gmail = Gmail.__new__(Gmail)
+    gmail._get_service = lambda: Service()
+    window = gmail.list_between_for_rem("2026-09-01T00:00:00+00:00",
+                                        "2026-09-08T00:00:00+00:00", 2)
+    assert window == [{"id": "a"}, {"id": "b"}]
+    assert gets == []
+    gmail.list_between("2026-09-01T00:00:00+00:00", "2026-09-08T00:00:00+00:00", 2)
+    assert gets == ["a", "b"]
+
+
 def test_the_provider_thread_id_reaches_the_inventory(monkeypatch):
     """Gmail's threadId and Graph's conversationId, kept from the listing on (owner's decision, #2067)."""
     from connectonion.rem.source_inventory import SourceInventory

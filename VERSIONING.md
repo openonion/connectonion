@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a15
+## Current Version: 1.9.0a16
+
+1.9.0a16 bounds Gmail API reads and avoids fetching message headers in a full
+listing window that REM must split. A real 90-day first run listed and archived
+3,202 messages, then completed all 36 selected pages with citations. Stable
+remains 1.8.10. See [1.9.0a16 notes](docs/releases/1.9.0a16.md).
+
+- 1.9.0a16 (Gmail first-run scan reliability and performance).
+
+## Previous preview: 1.9.0a15
 
 1.9.0a15 keeps REM's first-run project count consistent with the map shown
 before model work. Session folders discovered afterward remain candidates;
