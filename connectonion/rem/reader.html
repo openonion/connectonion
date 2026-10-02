@@ -890,6 +890,7 @@ function copyToClipboard(text, btn, successMsg) {
 // Status as a moon phase: full when investigated, half with some findings, new when only mapped.
 const MOON = {
   "Investigated": '<circle cx="6" cy="6" r="5" fill="currentColor"/>',
+  "Quick sample": '<circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 1a5 5 0 0 1 0 10z" fill="currentColor"/>',
   "Some findings": '<circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 1a5 5 0 0 1 0 10z" fill="currentColor"/>',
   "Mapped": '<circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2"/>'
 };
@@ -1145,11 +1146,12 @@ function known(r) {
   // The page's own status line (files.py note_pass) says whether an
   // investigation pass ran; a page can still hold findings from before one.
   const investigated = /\binvestigated\b/.test(stamp.replace(/not investigated yet/, "")) || (!stamp && !missing.length);
+  const quick = r.path === REM.owner && /\bquick sample\b/.test(stamp) && !investigated;
   // Written or not is the census's answer (census.py), the one co rem status
   // counts with: a mapped skill's description or a project's paths read here
   // as findings, and "174 with findings" meant three written pages (#2008).
-  const status = r.written === undefined ? (investigated ? "Investigated" : learned ? "Some findings" : "Mapped")
-    : !r.written ? "Mapped" : investigated ? "Investigated" : "Some findings";
+  const status = r.written === undefined ? (investigated ? "Investigated" : quick ? "Quick sample" : learned ? "Some findings" : "Mapped")
+    : !r.written ? "Mapped" : investigated ? "Investigated" : quick ? "Quick sample" : "Some findings";
   // The page's own last activity (census.py), never the file's mtime: a map
   // rewrites every project page, and "Recently active" dated them all today.
   const last = r.last_activity !== undefined ? r.last_activity
@@ -1170,7 +1172,7 @@ function byActivity(a, b) {
   const auto = r => /\(automated candidate\)$/.test(r.title) ? 1 : 0;
   // Pages with findings before outlines: a mapped page's date is when the
   // mapper wrote it, which would otherwise outrank a real last contact.
-  const rank = r => ({ "Investigated": 0, "Some findings": 1 })[known(r).status] ?? 2;
+  const rank = r => ({ "Investigated": 0, "Quick sample": 1, "Some findings": 1 })[known(r).status] ?? 2;
   return auto(a) - auto(b) || rank(a) - rank(b) || known(b).last.localeCompare(known(a).last) || a.title.localeCompare(b.title);
 }
 function statusPill(r) {
@@ -2259,6 +2261,16 @@ function record(path, heading) {
   head.appendChild(leadRow(r));
   main.appendChild(head);
   main.appendChild(recordFocus(r));
+  if (r.path === REM.owner && k.status === "Quick sample") {
+    const days = /\bquick sample\s+\d{4}-\d{2}-\d{2}\s+\((\d+) days;/.exec(k.stamp);
+    const command = "co rem investigate me" + (days ? " --days " + days[1] : "");
+    const copyCmd = el("button", { class: "btn-action", type: "button", text: "Copy command" });
+    copyCmd.onclick = () => copyToClipboard(command, copyCmd, "Copied — paste it in a terminal");
+    main.appendChild(el("section", { class: "missing primary", role: "status" }, [
+      el("span", { class: "lead", text: "Quick sample · full investigation pending" }),
+      el("p", { class: "why", text: "This page uses a recent sample of your sources. The full pass has not reviewed all gathered material; some facts and decisions may still be missing." }),
+      el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]));
+  }
 
   const catalog = r.catalog_parent ? byPath(r.catalog_parent) : r;
   if (catalog && catalog.installations && catalog.installations.length > 1) {
@@ -2329,7 +2341,7 @@ function record(path, heading) {
     column.appendChild(aside);
   }
 
-  if (k.missing.length) {
+  if (k.missing.length && k.status !== "Quick sample") {
     const command = "co rem investigate '" + r.path.replace(/'/g, "'\\''") + "'";
     const mapped = k.status === "Mapped";
     const copyCmd = el("button", { class: mapped ? "btn-primary" : "btn-action", type: "button", text: mapped ? "Copy the command" : "Copy" });

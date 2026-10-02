@@ -356,6 +356,13 @@ def _investigate_me(root, *, days, quick, handle=(), quiet=False):
     return result, record
 
 
+def _owner_page_status(root, owner) -> str:
+    from ...rem.files import Notebook
+    page = Notebook(root).path(owner["record"])
+    return next((line for line in page.read_text(encoding="utf-8").splitlines()
+                 if line.startswith("Investigation:")), "") if page.is_file() else ""
+
+
 def _first_page_skipped(ctx, root, result, *, want, problem, fix, retry, init) -> str:
     """Why init does not go on to write the owner's page, in one line, or ''.
 
@@ -364,7 +371,6 @@ def _first_page_skipped(ctx, root, result, *, want, problem, fix, retry, init) -
     cannot succeed (no runner, no address of yours), when it would pay twice (the
     page is already written), or when --no-investigate was explicitly requested.
     """
-    from ...rem.files import Notebook
     manual = _next(ctx, retry)
     if want is False or problem:
         return f"Your page was not written: {_spending_skipped(ctx, want=want, problem=problem, fix=fix)} " \
@@ -374,10 +380,8 @@ def _first_page_skipped(ctx, root, result, *, want, problem, fix, retry, init) -
         return ("Your page was not written: no mailbox gave an address of yours, and it is written from "
                 "what you sent. Connect one with co auth google or co auth microsoft, then run "
                 + _next(ctx, init) + ".")
-    page = Notebook(root).path(owner["record"])
-    status = next((line for line in page.read_text(encoding="utf-8").splitlines()
-                   if line.startswith("Investigation:")), "") if page.is_file() else ""
-    if status and "not investigated" not in status:
+    from ...rem.queue import last_investigated
+    if last_investigated(_owner_page_status(root, owner)) is not None:
         return f"Your page was already written; nothing spent. Refresh it with {manual}."
     shared = _spending_skipped(ctx, want=want, problem=problem, fix=fix)
     return f"Your page was not written: {shared} Write it with {manual}." if shared else ""
@@ -612,7 +616,9 @@ def _init_done(ctx, result) -> str:
     names = len({str(row.get("name", "")).casefold() for row in skills.get("skills") or []})
     counts = [f"{len(result.get(kind) or [])} {label}" for kind, label in
               (("people", "people"), ("orgs", "organizations"), ("projects", "projects"))]
-    written = (["your page"] if (result.get("investigate_me") or {}).get("outcome") == "completed" else [])
+    owner_outcome = (result.get("investigate_me") or {}).get("outcome")
+    written = (["your page"] if owner_outcome == "completed" else
+               ["your page (quick sample)"] if owner_outcome == "partial" else [])
     people = sum(page.get("outcome") == "accepted" for page in (result.get("people_pages") or {}).get("pages") or [])
     written += [f"{people} {'person' if people == 1 else 'people'}"] if people else []
     projects = sum(page.get("outcome") == "accepted" for page in (result.get("project_pages") or {}).get("pages") or [])
@@ -626,6 +632,9 @@ def _init_done(ctx, result) -> str:
         "Written this run: " + (", ".join(written[:-1]) + " and " + written[-1] if len(written) > 1
                                 else written[0] if written else "nothing yet") + ".",
         *([f"Your page: {owner}"] if owner else []),
+        *(["Your page is based on a quick sample. Finish it when ready: "
+           + _next(ctx, ["investigate", "me", "--days", str(result["investigate_me"]["days"])]) + "."]
+          if owner_outcome == "partial" else []),
         "Then keep it current: " + _next(ctx, ["start"]) + " (it asks before anything is read in the background)."])
 
 
@@ -807,6 +816,7 @@ def make_rem_app(factory):
             retry_me = ["investigate", "me", *window]
             reason = _first_page_skipped(ctx, root, result, want=write_mine, problem=problem, fix=fix,
                                          retry=retry_me, init=["init", *window])
+            quick_saved = not reason and "quick sample" in _owner_page_status(root, result["owner"])
             if not ctx.obj["json"]:
                 # The map's summary and your page's facts first: value before any spending.
                 text = render(result, "init")
@@ -837,13 +847,15 @@ def make_rem_app(factory):
             people_rows = _first_people_rows(root, first_people, recent)
             project_rows = _first_project_rows(root, first_projects) if first_projects != 0 else []
             org_rows = _first_org_rows(root, first_orgs, people_rows)
-            total = first_run.plan(run_logs(root), owner=not reason, people=len(people_rows),
-                                   projects=len(project_rows), orgs=len(org_rows), workers=FIRST_RUN_WORKERS)
+            total = first_run.plan(run_logs(root), owner=not reason, owner_quick=not quick_saved,
+                                   people=len(people_rows), projects=len(project_rows),
+                                   orgs=len(org_rows), workers=FIRST_RUN_WORKERS)
             result["first_run"] = {**total, "people": [row["record"] for row in people_rows],
                                    "projects": [row["record"] for row in project_rows],
                                    "orgs": [row["path"] for row in org_rows]}
             me_days = days if window else 30  # what `investigate me` reads without --days
-            steps = ([f"your page (quick first, then full; {me_days} days of your mail and sessions)"]
+            steps = ([f"your page ({'finish the saved quick sample' if quick_saved else 'quick first, then full'}; "
+                      f"{me_days} days of your mail and sessions)"]
                      if not reason else [])
             steps += ([f"{counted(len(people_rows), 'recent person', 'recent people')} "
                        f"(active within {recent} days; up to two years of evidence each)"] if people_rows else [])
@@ -861,7 +873,14 @@ def make_rem_app(factory):
                     "keeps the map and completed pages; --no-investigate skips model work.")
             rem_look.say(rem_look.highlight(cost, counts=True), err=ctx.obj["json"], plain=cost)
             gate = _first_run_gate(root, config)
-            if not reason:
+            if quick_saved:
+                record = result["owner"]["record"]
+                result.update(investigation="partial",
+                              investigate_me={"started": False, "outcome": "partial", "coverage": "quick",
+                                              "page": record, "days": me_days,
+                                              "reason": "Reusing the saved quick sample."})
+                say("Your quick sample is already written; continuing with the full owner investigation.")
+            elif not reason:
                 try:
                     # Quick first, so your page is there in minutes; the whole page runs
                     # with the others (2026-10-01: the full pass alone was refused in two
@@ -879,23 +898,30 @@ def make_rem_app(factory):
                         f"retry your page with {_next(ctx, retry_me)}.")
                 else:
                     record = summary["record"] if summary else result["owner"]["record"]
-                    result.update(investigation="completed",
-                                  investigate_me={"started": True, "outcome": "completed", "page": record})
-                    say("Your page is written: " + str(Notebook(root).path(record)))
+                    result.update(investigation="partial",
+                                  investigate_me={"started": True, "outcome": "partial", "coverage": "quick",
+                                                  "page": record, "days": me_days})
+                    say("Your quick sample is written: " + str(Notebook(root).path(record))
+                        + ". The full owner investigation is still pending.")
             try:
                 result.update(_first_pages(ctx, root, config, say, gate, people=people_rows,
                                            projects=project_rows, orgs=org_rows,
                                            me_days=days if window else None,
-                                           owner_full=result.get("investigation") == "completed"))
+                                           owner_full=result.get("investigation") == "partial"))
             except KeyboardInterrupt:
                 result.update({key: {"started": True, "outcome": "interrupted"} for key in KEYS.values()})
                 _interrupted(ctx, ["investigate", "all"], result)
             for key in KEYS.values():
                 if result[key].get("reason"):
                     say(result[key]["reason"])
+            full_pages = (result.get("owner_full") or {}).get("pages") or []
+            if any(page.get("outcome") == "accepted" for page in full_pages):
+                result["investigation"] = "completed"
+                result["investigate_me"].update(outcome="completed", coverage="full")
             if result.get("investigation") == "failed":
                 return (result if ctx.obj["json"] else _init_done(ctx, result)), retry_me, True
-            return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
+            next_command = retry_me if result.get("investigation") == "partial" else ["open"]
+            return (result if ctx.obj["json"] else _init_done(ctx, result)), next_command
         _handle(ctx, run, ["sources"])
 
     @rem.command("investigate", cls=V("co rem investigate"))

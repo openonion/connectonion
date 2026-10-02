@@ -84,6 +84,54 @@ def test_reader_runs_inside_opaque_rem_iframe(tmp_path, monkeypatch):
         browser.close()
 
 
+def test_quick_owner_page_shows_partial_coverage_and_resume_on_phone(tmp_path, monkeypatch):
+    from patchright.sync_api import sync_playwright
+    from connectonion.rem.files import state_path, write_json
+
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    root = tmp_path / "rem"
+    prepare(root)
+    notebook = Notebook(root)
+    record = "people/owner.md"
+    notebook.stub_person(record, "Alex Example", ["alex@example.org"])
+    write_json(state_path(root, "map.json"), {"owner": {"record": record, "addresses": ["alex@example.org"]}})
+    quick = (notebook.read(record)
+             .replace("## Insight\n- Unknown — not investigated yet",
+                      "## Insight\n- A dated decision needs follow-up. [1]")
+             .replace("## Sources\n- (none yet)", "## Sources\n- [1] codex:fixture-choice")
+             .replace("· not investigated yet", "· quick sample 2026-10-02 (5 days; codex)"))
+    notebook.write(record, quick)
+    page_path = write_reader(root)
+    shots = Path(os.environ.get("CO_REM_SHOTS", str(tmp_path / "shots")))
+    shots.mkdir(parents=True, exist_ok=True)
+    errors, network = [], []
+    with sync_playwright() as browser_api:
+        browser = browser_api.chromium.launch(channel="chrome", headless=True)
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 900})
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.on("request", lambda request: network.append(request.url)
+                    if request.url.startswith(("http:", "https:")) else None)
+            page.goto(page_path.as_uri() + "#r=people%2Fowner.md")
+            page.get_by_text("Quick sample · full investigation pending").wait_for()
+            assert page.locator("#main").get_by_text("co rem investigate me --days 5").is_visible()
+            assert page.locator("#main").get_by_text("Investigated", exact=True).count() == 0
+            page.screenshot(path=str(shots / "quick-owner-desktop.png"), full_page=True)
+            page.set_viewport_size({"width": 390, "height": 844})
+            page.screenshot(path=str(shots / "quick-owner-phone.png"), full_page=True)
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            notebook.write(record, quick.replace("quick sample 2026-10-02 (5 days; codex)",
+                                                 "quick sample 2026-10-02 (5 days; codex) · investigated 2026-10-02 (codex)"))
+            page.goto("about:blank")
+            page.goto(write_reader(root).as_uri() + "#r=people%2Fowner.md")
+            assert page.get_by_text("Quick sample · full investigation pending").count() == 0
+            assert page.locator("#main").get_by_text("Investigated", exact=True).first.is_visible()
+            assert not errors, errors
+            assert not network, network
+        finally:
+            browser.close()
+
+
 @pytest.fixture
 def reader_page(tmp_path):
     """Synthetic snapshot, real offline template; no user notebooks or services."""

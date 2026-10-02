@@ -542,6 +542,9 @@ def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
     owner_only = fr.plan(runs, owner=True, people=0, projects=0, workers=12)
     assert owner_only["input_tokens"] == 2 * fr.DEFAULTS["owner"]["input_tokens"]
     assert owner_only["minutes"] == 10  # quick and full are two turns, not one
+    resumed = fr.plan(runs, owner=True, owner_quick=False, people=0, projects=0, workers=12)
+    assert resumed["input_tokens"] == fr.DEFAULTS["owner"]["input_tokens"]
+    assert resumed["minutes"] == 5
     line = fr.announce(total, "on your Codex plan")
     assert line == ("About 2 pages (2 projects), ~1.4M billed input tokens on your Codex plan, ~9 minutes "
                     "(an estimate from this notebook's own runs).")
@@ -713,5 +716,47 @@ def test_a_refused_full_owner_page_keeps_the_quick_first_pass(first_run, monkeyp
     assert result.exit_code == 0, result.output
     assert tried == [True, False]
     data = json.loads(result.stdout)["data"]
-    assert data["investigate_me"]["outcome"] == "completed"
+    assert data["investigate_me"]["outcome"] == "partial"
     assert data["owner_full"]["pages"][0]["outcome"] == "refused"
+
+
+def test_quota_blocked_owner_init_reports_partial_and_preserves_resume_window(first_run, monkeypatch):
+    root, init, calls = first_run
+    monkeypatch.setattr("connectonion.cli.commands.rem_commands._first_run_gate",
+                        lambda root, config: lambda: "weekly safety floor")
+    result = init("--json", "--days", "5", "--first-people", "0",
+                  "--first-projects", "0", "--first-orgs", "0")
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert [call["quick"] for call in calls if call["record"] == owner_record(root)] == [True]
+    assert payload["data"]["investigation"] == "partial"
+    assert payload["data"]["investigate_me"]["coverage"] == "quick"
+    assert payload["data"]["owner_full"]["started"] is False
+    assert "weekly safety floor" in payload["data"]["owner_full"]["reason"]
+    assert payload["next"].endswith("investigate me --days 5")
+    plain = init("--days", "5", "--first-people", "0", "--first-projects", "0", "--first-orgs", "0")
+    assert plain.exit_code == 0, plain.output
+    assert "Your page is based on a quick sample" in Text.from_ansi(plain.output).plain
+    assert "investigate me --days 5" in Text.from_ansi(plain.output).plain
+
+
+def test_repeated_init_reuses_quick_sample_and_finishes_full_owner(first_run, monkeypatch):
+    from connectonion.rem.files import Notebook
+
+    root, init, calls = first_run
+    blocked = True
+    monkeypatch.setattr("connectonion.cli.commands.rem_commands._first_run_gate",
+                        lambda root, config: lambda: "weekly safety floor" if blocked else "")
+    args = ("--json", "--days", "5", "--first-people", "0", "--first-projects", "0", "--first-orgs", "0")
+    first = init(*args)
+    assert first.exit_code == 0, first.output
+    Notebook(root).note_pass(owner_record(root), "quick sample", "5 days; gmail")
+    blocked = False
+    second = init(*args)
+    assert second.exit_code == 0, second.output
+    assert [call["quick"] for call in calls if call["record"] == owner_record(root)] == [True, False]
+    data = json.loads(second.stdout)["data"]
+    assert data["investigation"] == "completed"
+    assert data["investigate_me"]["started"] is False
+    assert data["investigate_me"]["coverage"] == "full"
+    assert data["owner_full"]["pages"][0]["outcome"] == "accepted"
