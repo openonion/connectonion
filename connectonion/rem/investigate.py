@@ -1178,7 +1178,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # was reached is the Skill's to report, on the page: a real run (2026-09-14)
     # had `co browser` fail inside the thread while this line still said "web".
     record_result(root, notebook, record, result.get("review_candidates", []),
-                  searched_sources(coverage), changed=record in result.get("changed", []))
+                  searched_sources(coverage), changed=record in result.get("changed", []),
+                  quick_days=days if quick else None)
     return {"record": record, "items": len(items), "items_available": available_items,
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
@@ -1190,8 +1191,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
 
 
 def record_result(root, notebook, record: str, review_candidates: list, searched: list[str],
-                  *, changed: bool = False) -> None:
-    """Keep what a finished investigation proposed and mark its page investigated.
+                  *, changed: bool = False, quick_days: int | None = None) -> None:
+    """Keep what a finished investigation proposed and mark its actual coverage.
 
     It waits for the lock: the model turn is already paid for, and with several
     pages in flight (the first run writes four at once) two finish together.
@@ -1203,4 +1204,7 @@ def record_result(root, notebook, record: str, review_candidates: list, searched
             page = notebook.read(record)
             if drop_map_count(page) != page:
                 notebook.write(record, drop_map_count(page))
-        notebook.note_investigation(record, ", ".join(searched))
+        if quick_days is not None:
+            notebook.note_pass(record, "quick sample", f"{quick_days} days; {', '.join(searched)}")
+        else:
+            notebook.note_investigation(record, ", ".join(searched))

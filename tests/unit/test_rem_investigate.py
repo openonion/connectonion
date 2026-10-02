@@ -128,6 +128,8 @@ def test_full_owner_pass_compares_sources_already_cited_by_the_quick_page(tmp_pa
 
 
 def test_quick_owner_run_uses_one_turn_and_reports_partial_coverage(tmp_path, monkeypatch):
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.queue import last_investigated
     root = _notebook(tmp_path, 'codex')
     rows = [{'source': f'gmail:{i}', 'timestamp': f'2026-09-{(i % 25) + 1:02d}',
              'text': 'A' * 9000} for i in range(30)]
@@ -146,6 +148,10 @@ def test_quick_owner_run_uses_one_turn_and_reports_partial_coverage(tmp_path, mo
     assert any('Quick first pass' in text for text in result['coverage'])
     assert len(received) == 27  # page, coverage, quick-scope marker, 24 source items
     assert received[2]['role'] == 'quick-first-pass'
+    status = next(line for line in Notebook(root).read('people/vern.md').splitlines()
+                  if line.startswith('Investigation:'))
+    assert 'quick sample' in status and '5 days' in status
+    assert last_investigated(status) is None
 
 
 def test_quick_owner_fetches_only_recent_mail_bodies():

@@ -32,7 +32,7 @@ ACTIVITY = re.compile(
     rf"|^- Last seen:\s*{DAY}"                        # a project's last session
     rf"|\blast on\s*{DAY}", re.I | re.M)               # a skill's last invocation
 # When the notebook last worked on the page: the date to show only when the page names no activity.
-WORKED = re.compile(rf"^Investigation:.*?\b(?:investigated|written|updated)\s+{DAY}", re.M)
+WORKED = re.compile(rf"^Investigation:.*?\b(?:investigated|written|updated|quick sample)\s+{DAY}", re.M)
 
 
 def written(page: str) -> bool:

@@ -52,7 +52,7 @@ def per_page(runs: list[dict], kind: str) -> dict:
 
 
 def plan(runs: list[dict], *, owner: bool, people: int, projects: int, orgs: int = 0,
-         workers: int = WORKERS) -> dict:
+         workers: int = WORKERS, owner_quick: bool = True) -> dict:
     """Selected pages, billed input and wall-clock minutes from observed medians.
 
     The owner's quick turn runs alone, then its full turn shares workers with
@@ -70,9 +70,9 @@ def plan(runs: list[dict], *, owner: bool, people: int, projects: int, orgs: int
         lane = min(range(len(lanes)), key=lanes.__getitem__)
         lanes[lane] += seconds
     return {"pages": sum(counts.values()), "counts": counts,
-            "input_tokens": (2 * counts["owner"] * rates["owner"]["input_tokens"]
+            "input_tokens": ((1 + int(owner_quick)) * counts["owner"] * rates["owner"]["input_tokens"]
                              + sum(counts[k] * rates[k]["input_tokens"] for k in ("person", "project", "org"))),
-            "minutes": ceil((counts["owner"] * rates["owner"]["seconds"] + max(lanes)) / 60),
+            "minutes": ceil((int(owner and owner_quick) * rates["owner"]["seconds"] + max(lanes)) / 60),
             "measured": {k: rates[k]["measured"] for k in counts if counts[k]}}
 
 
