@@ -23,6 +23,17 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a20** finishes the visible **co rem** reader labels in its morning
+overview, recall prompt, empty states and source dialogs. See
+[1.9.0a20 notes](releases/1.9.0a20.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a20'
+co rem open --live
+```
+
+Earlier alpha previews remain available:
+
 Alpha **1.9.0a19** completes the public **co rem** rename: live reader links
 use `/rem`, old `/wiki` addresses redirect, and the README, homepage and docs
 share the same command name. See [1.9.0a19 notes](releases/1.9.0a19.md).
@@ -31,8 +42,6 @@ share the same command name. See [1.9.0a19 notes](releases/1.9.0a19.md).
 python -m pip install --upgrade 'connectonion==1.9.0a19'
 co rem init --days 5
 ```
-
-Earlier alpha previews remain available:
 
 Alpha **1.9.0a18**: REM's first-run owner page can lead with a cited change
 of decision and its next step. The reader shows that change before the full

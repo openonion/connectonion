@@ -1703,9 +1703,9 @@ function morningBrief() {
   const changed = (pass?.changed || []).filter(r => r.path !== REM.owner && known(r).status !== "Mapped");
   const rank = r => ({ people: 0, projects: 1, orgs: 2 })[r.category] ?? 3;
   changed.sort((a, b) => rank(a) - rank(b) || byActivity(a, b));
-  const brief = el("section", { class: "morning", "aria-label": "What REM carried forward" });
+  const brief = el("section", { class: "morning", "aria-label": "What co rem carried forward" });
   const top = el("div", { class: "morning-top" }, [
-    el("div", {}, [el("span", { class: "morning-kicker", text: "REM / latest pass" }),
+    el("div", {}, [el("span", { class: "morning-kicker", text: "co rem / latest pass" }),
       el("h2", { text: changed.length ? (new Date(REM.as_of).getTime() - pass.latest < DAY_MS
         ? "The context to carry into today" : "The context from the last pass") : "Ready when there is something new" })]),
     el("span", { class: "morning-time", text: pass ? fmtTime(new Date(pass.latest).toISOString()) : "No pass yet" })]);
@@ -1718,7 +1718,7 @@ function morningBrief() {
   if (!changed.length) {
     brief.appendChild(el("p", { class: "memory-empty", text: pass
       ? "The last pass did not update a page. Your existing context is still in the library below."
-      : "REM has not completed a pass yet. Once it has, the pages it updates will appear here." }));
+      : "co rem has not completed a pass yet. Once it has, the pages it updates will appear here." }));
     return brief;
   }
   const cards = el("div", { class: "memory-grid" });
@@ -1735,7 +1735,7 @@ function morningBrief() {
 function taskView(kind) {
   const main = document.getElementById("main");
   main.textContent = "";
-  main.appendChild(el("div", { class: "eyebrow", text: "REM / Today" }));
+  main.appendChild(el("div", { class: "eyebrow", text: "co rem / Today" }));
   if (kind === "changes") {
     const pass = lastPass();
     main.appendChild(el("h1", { text: "Memory changes" }));
@@ -1779,9 +1779,9 @@ function recallPrompt() {
     button.setAttribute("aria-expanded", String(!answer.hidden));
     button.textContent = answer.hidden ? "Reveal the context" : "Hide the context";
   };
-  card.append(el("span", { class: "label", text: "Remember with REM" }),
+  card.append(el("span", { class: "label", text: "Remember with co rem" }),
     el("h2", { text: relationship ? "How do you know " + r.title + "?" : "What should you remember about " + r.title + "?" }),
-    el("p", { class: "why", text: "Pause before revealing. The answer comes from a page REM already wrote." }), button, answer);
+    el("p", { class: "why", text: "Pause before revealing. The answer comes from a page co rem already wrote." }), button, answer);
   return card;
 }
 function connectionReview() {
@@ -1799,11 +1799,11 @@ function overview() {
   const s = REM.status || {};
   const main = document.getElementById("main");
   main.textContent = "";
-  main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "REM / Today" }), el("span", { class: "sep", text: "/" }), el("span", { class: "when", text: fmtDate(REM.as_of) })]));
-  main.appendChild(el("h1", { text: "What REM carried forward" }));
+  main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "co rem / Today" }), el("span", { class: "sep", text: "/" }), el("span", { class: "when", text: fmtDate(REM.as_of) })]));
+  main.appendChild(el("h1", { text: "What co rem carried forward" }));
   const n = listedRecords().length;
   const mapped = listedRecords().filter(r => known(r).status === "Mapped").length;
-  main.appendChild(el("p", { class: "lede", text: n === 0 ? "Once REM has read your permitted sources, it will bring back the context worth keeping." :
+  main.appendChild(el("p", { class: "lede", text: n === 0 ? "Once co rem has read your permitted sources, it will bring back the context worth keeping." :
     "A short return to what changed, what is still open, and what is worth remembering." }));
   main.appendChild(morningBrief());
   const recall = recallPrompt();
@@ -1839,7 +1839,7 @@ function overview() {
         known(r).summary ? el("span", { class: "s", text: known(r).summary }) : null])]))));
   }
 
-  const processing = el("details", { class: "night-details" }, [el("summary", { text: "How REM processed the last pass" }), nightBand()]);
+  const processing = el("details", { class: "night-details" }, [el("summary", { text: "How co rem processed the last pass" }), nightBand()]);
   main.appendChild(processing);
 
   const recent = listedRecords().filter(r => ["people", "orgs", "projects"].includes(r.category) && known(r).status !== "Mapped" && !/\(automated candidate\)$/.test(r.title))
@@ -2094,7 +2094,7 @@ function recordFocus(r) {
     skills: "When this helps" })[r.category] || "What matters now";
   const focusHead = el("div", { class: "focus-head" }, [el("span", { class: "focus-kicker", text: question })]);
   const statementNode = el("p", { class: "focus-statement clamped", text: statement || (k.status === "Mapped"
-    ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet.") });
+    ? "Mapped from source metadata. co rem has not investigated this record yet." : "No supported summary yet.") });
   focusHead.appendChild(statementNode);
   if (r.path === REM.owner) {
     const insight = section(r, "insight");
@@ -2190,7 +2190,7 @@ function openConversation(id, trigger) {
   dialog.textContent = "";
   const close = el("button", { type: "button", class: "evidence-close", text: "Close ×", "aria-label": "Close conversation" });
   close.onclick = () => dialog.close();
-  dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "REM / archived conversation" }), close]),
+  dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "co rem / archived conversation" }), close]),
     el("h2", { text: byPath(conversation.subject)?.title || conversation.subject }),
     el("p", { class: "evidence-summary", text: "Latest " + conversation.messages.length + " of " + conversation.total + " archived messages in this cited thread. Some messages may not have an archived body." }));
   for (const message of conversation.messages) dialog.appendChild(el("div", { class: "conversation-message" }, [
@@ -2518,7 +2518,7 @@ function openEvidence(r, number, trigger) {
   dialog.textContent = "";
   const close = el("button", { type: "button", class: "evidence-close", text: "Close ×", "aria-label": "Close source context" });
   close.onclick = () => dialog.close();
-  dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "REM / source " + number }), close]),
+  dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "co rem / source " + number }), close]),
     el("h2", { text: "Why this appears on " + r.title }),
     el("p", { class: "evidence-summary", text: source.text }));
   if (context) dialog.append(el("div", { class: "evidence-original" }, [
