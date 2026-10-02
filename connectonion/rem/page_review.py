@@ -14,6 +14,7 @@ from .files import Notebook, RemError
 NOT_ON_OWNER_PAGE = 'How the user writes to them'
 PROJECT_CORE = ('Facts', 'Insight', 'What it is', 'Where it stands', 'Paths',
                 'Open threads', 'Uncertainties', 'Sources')
+SECTION_HEADING_RE = re.compile(r'^## ([^\r\n]+)\r?$', re.M)
 
 
 def headings(record: str, owner: bool = False) -> tuple[str, ...]:
@@ -36,7 +37,7 @@ def _canonical_headings(record: str, owner: bool = False) -> tuple[str, ...]:
 def prose(text: str) -> str:
     """Ignore headings and citation-looking text inside fenced examples."""
     lines, fence = [], None
-    for line in text.splitlines():
+    for line in text.splitlines(keepends=True):
         match = re.match(r'^\s*(`{3,}|~{3,})', line)
         if match:
             token = match[1]
@@ -44,10 +45,10 @@ def prose(text: str) -> str:
                 fence = token
             elif token[0] == fence[0] and len(token) >= len(fence):
                 fence = None
-            lines.append(' ' * len(line))
+            lines.append(re.sub(r'[^\r\n]', ' ', line))
             continue
-        lines.append(line if fence is None else ' ' * len(line))
-    return '\n'.join(lines)
+        lines.append(line if fence is None else re.sub(r'[^\r\n]', ' ', line))
+    return ''.join(lines)
 
 
 def normalize(record: str, text: str, owner: bool = False) -> str:
@@ -58,7 +59,7 @@ def normalize(record: str, text: str, owner: bool = False) -> str:
     # A page from before #2068: `## Contact` becomes `## Facts`, and the turn is
     # handed an Insight it must fill, not a bare Unknown it may leave.
     text = facts.upgrade(record, text, insight=f'- {PLACEHOLDER}')
-    matches = list(re.finditer(r'^## (.+)$', prose(text), re.M))
+    matches = list(SECTION_HEADING_RE.finditer(prose(text)))
     found = [m[1] for m in matches]
     if len(found) != len(set(found)):
         raise RemError('Existing page has duplicate sections; reconcile them before investigation')
@@ -88,7 +89,7 @@ def compact_project_page(text: str) -> str:
     supported detail plus the core needed to resume and audit it (#2122).
     """
     visible = prose(text)
-    matches = list(re.finditer(r'^## (.+)$', visible, re.M))
+    matches = list(SECTION_HEADING_RE.finditer(visible))
     if not matches:
         return text
     removable = set(_canonical_headings('projects/x.md')) - set(PROJECT_CORE)

@@ -43,6 +43,24 @@ def test_written_project_drops_empty_optional_sections_and_keeps_supported_detai
     assert not [error for error in errors if 'Section must occur once' in error]
 
 
+@pytest.mark.parametrize('newline', ['\n', '\r\n'])
+def test_compact_project_preserves_fenced_diagram_and_later_sections(newline):
+    from connectonion.rem.page_review import compact_project_page, prose
+    page = newline.join([
+        '# Atlas', '## Facts', '- Local project [1]', '## Insight', '- A decision is open [1]',
+        '## What it is', 'A local demo [1]', '## Where it stands', '- Active [1]',
+        '## Overview', '```text', '## This is a diagram, not a section', 'box -> arrow', '```',
+        '## Try it', '- Unknown', '## Paths', '- /tmp/atlas', '## Open threads', '- None known [1]',
+        '## Uncertainties', '- Outcome unverified [1]', '## Sources', '- [1] fixture:readme', '',
+    ])
+    assert len(prose(page)) == len(page)
+    compact = compact_project_page(page)
+    assert '## Try it' not in compact
+    assert '```text' + newline + '## This is a diagram, not a section' + newline + 'box -> arrow' in compact
+    assert '## Paths' + newline + '- /tmp/atlas' in compact
+    assert '## Sources' + newline + '- [1] fixture:readme' in compact
+
+
 def test_long_material_is_readable_and_the_exact_copy_is_kept(tmp_path):
     item = {'text': 'x\\"\n中' * 3000, 'source': 'fixture:1'}
     prompt = task_prompt(tmp_path, [item], 'investigate')
