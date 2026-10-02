@@ -7,11 +7,9 @@ description: What a person's page in the notebook is made of — the fixed secti
 
 Why these rules: docs/rem-skills/rem-page-person.md
 
-**How to do it.** Your whole input is the page as it stands and the material
-about this person: read both in full, then write the page. Do not look for
-example pages, earlier outputs, logs, other skills or the repository to copy a
-format from; the shape is below. Write the whole page in one go, check it once
-against the rules, fix what is wrong in one edit, and stop.
+**How to do it.** Read the existing page and all supplied material. Write the
+whole page, check it once against the rules below, fix errors in one edit, and
+stop. Do not copy a format from other pages, outputs, logs, skills or the repo.
 
 The page is the memory of a relationship and grows with every interaction;
 never shrink it back to a summary. **Every section is always present, in this
@@ -56,10 +54,10 @@ never evidence.
 
 Rules:
 
-- **The lead comes first**, 2–3 cited sentences, no heading: the balance
-  first — who owes whom what, for how many days ("You owe Mia the revised SOW —
-  12 days"), or `Nothing open as of <date>` — then who they are to the user,
-  then `Last contact: <date>` (newest message either way, with its channel).
+- **The lead comes first**, 2–3 cited sentences: balance (who owes what since
+  when), then their relationship and `Last contact: <date>` with its channel.
+  `Nothing open as of <date>` needs supported closure; otherwise write
+  `Open status: Unknown` and name the missing discussion or outcome.
 - **`Facts` is data, written first.** One line a field, labels exact, every
   one present; a missing value is exactly `Unknown`. Several values: `; `
   between, each `value (qualifier) [n]` (`+61 2 5550 0142 (work) [3];
@@ -84,8 +82,9 @@ Rules:
 - **`History` is at most 8 milestones**, newest first, `- YYYY-MM-DD: <what
   changed> [n]`: agreed, signed, delivered, met. Not a send or a newsletter.
   Past 8, fold the oldest into one line per year.
-- **An open thread names who owes whom what, and since when.** Nothing open:
-  `Nothing open as of <date>`, plus the next expected contact.
+- **An open thread names who owes whom what, and since when.** Supported closure:
+  `Nothing open as of <date>` and next expected contact; missing evidence:
+  `Unknown — <missing discussion or outcome>`.
 - **Say a thing once, in one clause.** Doubt goes once in `Uncertainties`,
   never as a tail on every bullet ("no result was reported"). How the page was
   made — the mapper, the collector, how many mails matched, the prior page —
