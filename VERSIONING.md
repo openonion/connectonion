@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a20
+## Current Version: 1.9.0a21
+
+1.9.0a21 makes Lark and Feishu work on a fresh install: `lark-oapi` now ships
+with connectonion, so `co lark listen` and `co auth lark` need no second
+install step (#2163). `co auth lark` / `co auth feishu` print the approval link
+before the QR and flush it, so an agent, tmux pane or log sees the link while
+the scan is waiting on it (#2162). Stable remains 1.8.10. See
+[1.9.0a21 notes](docs/releases/1.9.0a21.md).
+
+- 1.9.0a21 (lark-oapi as a dependency; Lark/Feishu auth link printed first and flushed.)
+
+## Previous preview: 1.9.0a20
 
 1.9.0a20 finishes the reader's visible co rem labels: the morning overview,
 recall prompt, empty states and source dialogs use the command name. The

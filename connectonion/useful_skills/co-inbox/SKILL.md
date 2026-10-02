@@ -360,7 +360,7 @@ the bot already exists and is already in the groups you need,
 `co auth feishu --app-id cli_…` authorizes that one instead, keeping its groups
 and permissions — a freshly created application is in no group at all.
 
-`listen` additionally needs the SDK, and says so: `pip install lark-oapi`.
+`listen` uses the Feishu SDK (`lark-oapi`), which ships with connectonion; an environment that lost it says so: `pip install lark-oapi`.
 
 ## What this does not do
 

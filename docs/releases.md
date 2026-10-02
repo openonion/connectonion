@@ -23,6 +23,16 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a21** makes **co lark** and **co feishu** work on a fresh
+install: the Feishu SDK ships with connectonion, and `co auth lark` prints its
+approval link first, even when the output is not a terminal. See
+[1.9.0a21 notes](releases/1.9.0a21.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a21'
+co auth lark --app-id cli_…
+```
+
 Alpha **1.9.0a20** finishes the visible **co rem** reader labels in its morning
 overview, recall prompt, empty states and source dialogs. See
 [1.9.0a20 notes](releases/1.9.0a20.md).

@@ -59,6 +59,25 @@ class TestTheScan:
         out = capsys.readouterr().out
         assert "https://open.feishu.cn/page/cli?user_code=ABC" in out
 
+    def test_the_link_is_readable_off_a_tty_before_approval(self, rig, monkeypatch):
+        # Off a TTY stdout is block-buffered; the QR alone fills the buffer, so
+        # an unflushed link stayed invisible while the scan waited on it (#2162).
+        import io
+        raw = io.BytesIO()
+        monkeypatch.setattr("sys.stdout", io.TextIOWrapper(io.BufferedWriter(raw, 8192), encoding="utf-8"))
+        seen_while_waiting = []
+
+        class Waits(FakeRegistration):
+            def __call__(self, on_qr_code, on_status_change=None, **kwargs):
+                on_qr_code({"url": "https://open.feishu.cn/page/cli?user_code=ABC", "expire_in": 600})
+                seen_while_waiting.append(raw.getvalue().decode("utf-8", "replace"))
+                return self.result
+
+        run(Waits(), monkeypatch)
+        waiting = seen_while_waiting[0]
+        assert "user_code=ABC" in waiting
+        assert waiting.index("user_code=ABC") < waiting.index("█")
+
     def test_a_qr_code_is_drawn(self, rig, monkeypatch, capsys):
         register = FakeRegistration()
         run(register, monkeypatch)
