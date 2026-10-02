@@ -20,7 +20,13 @@ page led with stale Git dates while its committed download link had no matching
 route in that revision. README and metadata alone could not verify that mismatch.
 The writer now receives the fixed tracked tree and at most 60 eligible source
 snapshots, including declared package CLI entry points, implementation, configuration
-and tests. Files over 1 MB are omitted; hidden paths, symlinks, dependency/build
+and tests. Complete root descriptions/manifests and supported declared CLI targets
+are prioritized before literal path/name hints in sent inputs. Implementation comes
+before supporting docs/tests among hinted files; later mentions rank first. These
+hints guide discovery and do not establish the request's subject. Python target
+discovery supports ordinary unquoted `[project.scripts]` declarations mapped to
+root package modules; src layouts and other declaration forms are not guaranteed.
+Files over 1 MB are omitted; hidden paths, symlinks, dependency/build
 trees, sensitive names, lockfiles and unsupported suffixes have no supplied bodies.
 The tree states these limits; an omitted body is not evidence of missing code.
 Non-Git projects use the existing safe local inventory and bounded file snapshots;

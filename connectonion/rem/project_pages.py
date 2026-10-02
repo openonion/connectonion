@@ -34,6 +34,8 @@ REPOSITORY_EVIDENCE_CHARS = 9_000
 FILE_SNAPSHOT_CHARS = 1_000_000
 IMPLEMENTATION_FILES = 60
 SOURCE_INDEX_ESTIMATE_CHARS = 20_000
+ROOT_DESCRIPTIONS = {"README.md", "README.rst", "README.txt", "README", "pyproject.toml",
+                     "package.json", "Cargo.toml", "Package.swift"}
 
 
 def pending(root: Path, record: str) -> tuple[list[dict], str]:
@@ -285,7 +287,7 @@ def _repository_evidence(page: str, stamp: str, newest_session: str, *, requests
         if re.search(r"\b(?:CI|CICD|SEO)\b|CI/CD|workflow|GitHub Actions", requests, re.I):
             budget = REPOSITORY_EVIDENCE_CHARS - sum(len(item["text"]) for item in items)
             items += _workflow_evidence(folder, revision, stamp, requests, budget)
-        return items + _implementation_evidence(folder, revision, stamp)
+        return items + _implementation_evidence(folder, revision, stamp, requests=requests)
     items = _readme(page, stamp)
     files = [path for path in project_file_inventory(page, max_files=30)
              if Path(path).name in ("pyproject.toml", "package.json", "Cargo.toml", "Package.swift")][:2]
@@ -298,26 +300,21 @@ def _repository_evidence(page: str, stamp: str, newest_session: str, *, requests
     return items
 
 
-def _implementation_evidence(folder: str, revision: str, stamp: str) -> list[dict]:
+def _implementation_evidence(folder: str, revision: str, stamp: str, *, requests: str = "") -> list[dict]:
     """Tracked source snapshots at one resolved revision, searched rather than read wholesale."""
     from .investigate import _git
     import subprocess
     tree = _git(folder, "ls-tree", "-r", revision).splitlines()
     files = [line.split("\t", 1)[1] for line in tree if line.startswith(("100644 ", "100755 "))]
-    manifest = _git(folder, "show", f"{revision}:package.json")
-    bins = json.loads(manifest).get("bin", {}) if manifest else {}
-    entrypoints = [bins] if isinstance(bins, str) else list(bins.values()) if isinstance(bins, dict) else []
-    entrypoints = {name.removeprefix("./") for name in entrypoints if isinstance(name, str)}
+    entrypoints = _declared_entrypoints(folder, revision)
     suffixes = {".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rs", ".swift", ".kt",
                 ".html", ".css", ".toml", ".md", ".txt", ".json", ".sh", ".yaml", ".yml"}
     excluded = {"node_modules", "dist", "build", "vendor", "venv", "__pycache__"}
-    eligible = [name for name in files if (Path(name).suffix in suffixes or name in entrypoints)
+    eligible = [name for name in files if (Path(name).suffix in suffixes or name in entrypoints or name in ROOT_DESCRIPTIONS)
                 and not any(part.startswith(".") or part in excluded for part in Path(name).parts)
                 and not any(word in name.lower() for word in ("secret", "password", "credential", "private", "token"))
-                and Path(name).name not in ("README.md", "README.txt", "pyproject.toml", "Cargo.toml", "Package.swift",
-                                           "package.json", "package-lock.json", "composer.lock")]
-    ordered = sorted(eligible, key=lambda name: (name not in entrypoints,
-        Path(name).suffix in {".md", ".txt"}, name.startswith(("tests/", "test/")), name))
+                and Path(name).name not in ("package-lock.json", "composer.lock")]
+    ordered = _implementation_order(eligible, entrypoints, requests)
     items = []
     for name in ordered[:IMPLEMENTATION_FILES]:
         size = int(_git(folder, "cat-file", "-s", f"{revision}:{name}"))
@@ -330,10 +327,47 @@ def _implementation_evidence(folder: str, revision: str, stamp: str) -> list[dic
     listing = (f"Tracked tree at {revision}; {len(tree)} entries. Contents supplied for {len(items)} of "
                f"{len(eligible)} eligible source files (limit {IMPLEMENTATION_FILES}, files over {FILE_SNAPSHOT_CHARS} bytes omitted). "
                "Names alone do not verify implementation. Symlinks, hidden paths, dependency/build trees, sensitive names, lockfiles "
-               "and unsupported suffixes have no supplied bodies; selected README/manifests are in the main packet. "
+               "and unsupported suffixes have no supplied bodies. Full root descriptions/manifests and declared CLI entries are prioritized, "
+               "then literal sent-input path/name hints (implementation before support files, later mentions first). "
+               "Hints do not establish a request's subject. "
                "A body omitted from this index does not establish missing implementation.\n\n"
                + "\n".join(tree))
     return [_implementation_item(folder, revision, "tracked-files", listing, stamp), *items]
+
+
+def _declared_entrypoints(folder: str, revision: str) -> set[str]:
+    """Read the two supported CLI declaration shapes, without importing project code."""
+    from .investigate import _git
+    manifests = {}
+    for name in ("package.json", "pyproject.toml"):
+        size = _git(folder, "cat-file", "-s", f"{revision}:{name}")
+        manifests[name] = _git(folder, "show", f"{revision}:{name}") if size and int(size) <= FILE_SNAPSHOT_CHARS else ""
+    bins = json.loads(manifests["package.json"]).get("bin", {}) if manifests["package.json"] else {}
+    paths = [bins] if isinstance(bins, str) else list(bins.values()) if isinstance(bins, dict) else []
+    section = re.search(r"(?ms)^\[project\.scripts\]\s*\n(.*?)(?=^\[|\Z)", manifests["pyproject.toml"])
+    modules = re.findall(r"(?m)^\s*[\w-]+\s*=\s*['\"]([\w.]+):[\w.]+['\"]", section[1]) if section else []
+    for module in modules:
+        paths += [module.replace(".", "/") + ".py", module.replace(".", "/") + "/__init__.py"]
+    return {name.removeprefix("./") for name in paths if isinstance(name, str)}
+
+
+def _implementation_order(names: list[str], entrypoints: set[str], requests: str) -> list[str]:
+    """Literal name hints guide bounded capture; they are not semantic evidence."""
+    requests = requests.casefold()
+    hints = {m[0]: m.start() for m in re.finditer(r"[a-z][a-z0-9_-]{2,}", requests)}
+    hints.update({m[1]: m.start() for m in re.finditer(r"(?<![a-z0-9_])co\s+([a-z][a-z0-9_-]*)", requests)})
+    generic = {"main", "index", "init", "config", "test", "tests", "unit", "src", "app", "lib", "cli", "api",
+               "commands", "components", "scripts", "the", "and", "for", "all", "new", "you", "our", "use"}
+    def priority(name):
+        path = Path(name)
+        parts = {path.stem.casefold(), path.parent.name.casefold(), *re.split(r"[-_]", path.stem.casefold())} - generic
+        last = max((hints[word] for word in parts if word in hints), default=-1)
+        explicit = requests.rfind(name.casefold())
+        last = max(last, explicit)
+        support = path.suffix in {".md", ".txt"} or name.startswith(("tests/", "test/"))
+        return (name not in ROOT_DESCRIPTIONS, name not in entrypoints, explicit < 0, last < 0,
+                support, -last, name)
+    return sorted(names, key=priority)
 
 
 def _implementation_item(folder: str, revision: str, name: str, content: str, stamp: str) -> dict:

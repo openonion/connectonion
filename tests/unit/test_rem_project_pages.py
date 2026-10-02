@@ -575,6 +575,33 @@ def test_written_project_paths_still_resolve_after_markdown_formatting():
     assert project_paths(page) == ["/work/invoice project", "/work/other"]
 
 
+def test_large_project_selection_keeps_full_descriptions_entry_and_requested_feature(tmp_path, monkeypatch):
+    repo = tmp_path / "large"
+    (repo / "pkg/rem").mkdir(parents=True)
+    for name in ("a.py", "b.py", "c.py"):
+        (repo / name).write_text("print('unrelated')\n")
+    (repo / "README.md").write_text("# Large\n" + "logo wall\n" * 400 + "Important product flow below the first prefix.\n")
+    (repo / "pyproject.toml").write_text('[project]\nname="large"\n' + "# dependencies\n" * 140
+        + '[project.scripts]\nco="pkg.main:cli"\n')
+    (repo / "pkg/main.py").write_text("def cli():\n    return 'entry'\n")
+    (repo / "pkg/rem/writer.py").write_text("def write():\n    return 'requested'\n")
+    (repo / "docs").mkdir()
+    (repo / "docs/lock.md").write_text("Later mention, supporting documentation.\n")
+    (repo / "tests").mkdir()
+    (repo / "tests/test_lock.py").write_text("def test_lock():\n    assert True\n")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.org",
+                    "commit", "-qm", "Large source index"], check=True)
+    monkeypatch.setattr(project_pages, "IMPLEMENTATION_FILES", 4)
+    items = project_pages._repository_evidence("## Paths\n- " + str(repo) + "\n", NOW.isoformat(), NOW.isoformat(),
+                                              requests="Check REM, then lock.")
+    indexed = [item for item in items if item.get("snapshot_kind") == "git-file" and item["subject"] != "tracked-files"]
+    assert {item["subject"] for item in indexed} == {"README.md", "pyproject.toml", "pkg/main.py", "pkg/rem/writer.py"}
+    assert "Important product flow" in next(item["text"] for item in indexed if item["subject"] == "README.md")
+    assert '[project.scripts]' in next(item["text"] for item in indexed if item["subject"] == "pyproject.toml")
+
+
 def test_initial_source_index_states_omissions_and_preserves_complete_tree(tmp_path, monkeypatch):
     repo = tmp_path / "bounded"
     repo.mkdir()

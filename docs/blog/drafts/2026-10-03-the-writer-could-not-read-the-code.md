@@ -25,6 +25,16 @@ The candidate instead supplies a fixed tracked tree and an index of at most
 context. Size and path exclusions are explicit, and an omitted body does not
 mean missing implementation. Accepted citations retain the supplied original.
 
+A second inspection exposed another limit: alphabetical selection in a large
+repository omitted its Python CLI and REM implementation. Short README and
+manifest prefixes stopped before the product explanation and CLI declaration.
+The candidate now prioritizes complete root descriptions/manifests, supported
+declared entries and literal names/paths in the sent request window. Implementation
+comes before supporting documents/tests among those hints. This brought the CLI
+and 24 REM files into the inspected seven-input pool without raising the 60-file
+limit. Hints remain discovery aids, not proof of what a request concerns; Python
+entrypoint syntax and package layouts still have narrow coverage.
+
 This trades a small initial index for additional, variable source reads. The cost
 estimate says so; the quota guard remains in place. It also leaves real limits:
 60 files cannot cover every repository, and the reader's short source prefix may
@@ -36,3 +46,5 @@ review remain unverified. The next question is whether the writer uses this acce
 to produce supported findings, rather than another list of verification requests.
 
 See the [review and exact coverage](../../design-evidence/rem-initial-project-source-review-2026-10-03/REVIEW.md).
+The follow-up [large-project review](../../design-evidence/rem-large-project-source-review-2026-10-03/REVIEW.md)
+records the bounded selection change and the second manually corrected sample.
