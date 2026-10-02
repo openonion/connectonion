@@ -128,8 +128,10 @@ a line in its shell, and the output of one is the input of the next.
   the agent did, and run it yourself.
 
 ```console
-$ co                       # every command group
-$ co linear --help         # what it does, what it changes, an example
+# every command group
+$ co
+# what it does, what it changes, an example
+$ co linear --help
 $ co linear issues -n 3
 3 open issues
 CON-3  Todo  No priority  -  2026-10-01  Import your data
@@ -154,11 +156,16 @@ Credentials stay on your machine, in `~/.co/keys.env` or encrypted with
 ## Install and start
 
 ```bash
-pip install connectonion   # Python 3.10+
-co init                    # your identity and ~/.co/keys.env
-co auth microsoft          # or: co auth google
-co outlook                 # or: co gmail
-co commands                # everything else; add --help to any
+# Python 3.10+
+pip install connectonion
+# your identity and ~/.co/keys.env
+co init
+# connect Outlook (or: co auth google)
+co auth microsoft
+# read your inbox (or: co gmail)
+co outlook
+# everything else; add --help to any
+co commands
 ```
 
 The [Quick start guide](docs/quickstart.md) covers Google, the browser, chat
