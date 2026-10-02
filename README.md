@@ -175,7 +175,7 @@ Open it in the morning to see cited facts, decisions and open threads.
 Available in the opt-in **1.9.0 preview**:
 
 ```bash
-pip install --upgrade 'connectonion==1.9.0a19'
+pip install --upgrade 'connectonion==1.9.0a20'
 co rem init                # build your map and first pages
 co rem open                # read the local notebook
 co rem start               # approve a daily schedule (macOS)
