@@ -446,7 +446,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         archived = person_material(archive_root, record, handles=handles)
     elif archive_root is not None and domains:
         from .mail_archive import domain_material
-        archived = domain_material(archive_root, domains, contact_addresses=[h for h in handles if is_address(h)])
+        archived = domain_material(archive_root, domains, contact_addresses=[h for h in handles if is_address(h)],
+                                   include_observed=True)
     cached_by_provider, cached_start, cached_end = archived if archived else ({}, None, None)
     # A mailbox the user unsubscribed after init stays out, archive or not.
     cached_by_provider = {kind: rows for kind, rows in cached_by_provider.items()
@@ -456,12 +457,14 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     # the bodies it holds and the mailbox is still listed, but nothing saved is
     # fetched again: 2,693 of 3,152 were saved and went unread (#2042).
     complete, share = True, ""
+    complete_kinds = set(cached_by_provider)
     if archived and archive_root is not None:
         from .files import read_json, state_path
         from .mail_archive import saved_share
         manifest = read_json(state_path(archive_root, "mail/archive.json"), {})
         own_addresses.update(address.casefold() for address in manifest.get("owner_addresses", []))
         complete = manifest.get("phase") == "complete"
+        complete_kinds = set(manifest.get("providers", [])) if complete else set()
         if not complete:
             on_disk, target = saved_share(archive_root, manifest)
             share = f" ({on_disk:,} of {target:,} bodies saved so far)"
@@ -515,7 +518,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
 
         seen = {item["_mail_id"] for item in local}
         intervals = [(start, end)]
-        if archived and kind in cached_by_provider and complete:
+        if archived and kind in cached_by_provider and kind in complete_kinds:
             intervals = ([(start, min(end, cached_start))] if start < cached_start else [])
             intervals += ([(max(start, cached_end), end)] if cached_end < end else [])
             intervals = [(begin, finish) for begin, finish in intervals if begin < finish]
@@ -958,10 +961,15 @@ def _mail_comparison(root, record, handles, items, fresh, cited, subscriptions, 
     """Previously cited originals for a newly supplied exact mail thread, including older asks."""
     threads = {item["thread"] for item in fresh if item.get("thread")
                and item.get("source", "").split(":")[0] in MAIL_KINDS and item.get("role") != "attachment"}
-    if not record.startswith("people/") or not threads:
+    if not record.startswith(("people/", "orgs/")) or not threads:
         return []
-    from .mail_archive import person_material
-    archived = person_material(root, record, handles=handles)
+    from .mail_archive import domain_material, person_material
+    if record.startswith("people/"):
+        archived = person_material(root, record, handles=handles)
+    else:
+        domains = [match[1] for handle in handles if (match := DOMAIN_HANDLE.fullmatch(handle))]
+        archived = domain_material(root, domains, contact_addresses=[h for h in handles if is_address(h)],
+                                   include_observed=True)
     available = {item["source"]: item for item in items if item.get("source")}
     for provider, saved in archived[0].items() if archived else []:
         if not (subscriptions.get(provider) or {}).get("unsubscribed"):
@@ -1028,7 +1036,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             coverage.append("Related-domain comparison: previously cited primary correspondence retained "
                             "to check offer dates and terms against the newly gathered contact context")
         else:
-            comparison = _mail_comparison(root, record, handles, items, fresh, cited, subscriptions,
+            comparison = _mail_comparison(root, record, search_handles, items, fresh, cited, subscriptions,
                                           sent_only=sent_only)
             compared = {item["source"] for item in comparison}
             skipped = sum(item.get("source") in cited and item.get("source") not in compared for item in items)

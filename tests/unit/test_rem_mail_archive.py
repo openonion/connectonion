@@ -11,6 +11,67 @@ from connectonion.rem.mail_archive import archive_init, person_index_path, proje
 from connectonion.rem.map import build_map
 
 
+def test_retained_domain_and_shared_contact_mail_reach_org_gather_without_extending_init(tmp_path):
+    import hashlib
+    from connectonion.rem.files import read_json, state_path, write_json
+    from connectonion.rem.mail_archive import retain_message, saved_share, domain_material
+    from connectonion.rem.mail import RELATED_ORG_SCOPE
+
+    prepare(tmp_path)
+    end = datetime.now(timezone.utc)
+    manifest = {'phase': 'complete', 'providers': ['outlook'], 'target': 0,
+                'owner_addresses': ['me@owner.example'],
+                'range_start': (end - timedelta(days=30)).isoformat(),
+                'range_end': (end - timedelta(days=1)).isoformat()}
+    write_json(state_path(tmp_path, 'mail/archive.json'), manifest)
+    inventory = state_path(tmp_path, 'source-inventory.jsonl')
+    inventory.write_text('')
+    rows = [
+        ('outlook', 'staff', 'Staff <staff@sub.school.example>', ['me@owner.example']),
+        ('outlook', 'owner', 'Me <me@owner.example>', ['Staff <staff@school.example>']),
+        ('outlook', 'related', 'Alex <alex@related.example>', ['me@owner.example']),
+        ('outlook', 'prefix', 'Staff <staff@not-school.example>', ['me@owner.example']),
+        ('gmail', 'extra-provider', 'Staff <staff@school.example>', ['me@owner.example']),
+    ]
+    for provider, native, sender, recipients in rows:
+        row = {'id': native, 'thread_id': 'same-subject', 'from': sender, 'to': recipients,
+               'subject': 'Terms', 'date': (end - timedelta(days=5)).isoformat()}
+        retain_message(tmp_path, provider, row, native + ' original', fetched_at=end.isoformat())
+
+    items, coverage = gather('School', ['school.example', 'alex@related.example'], days=20,
+                             clients={}, subscriptions={}, archive_root=tmp_path, record='orgs/school.md')
+    short = lambda provider, native: provider + ':' + hashlib.sha256(native.encode()).hexdigest()[:12]
+    by_source = {item['source']: item for item in items}
+    assert set(by_source) == {short(provider, native) for provider, native, _, _ in rows if native != 'prefix'}
+    assert by_source[short('outlook', 'owner')]['role'] == 'user'
+    assert by_source[short('outlook', 'related')]['relationship_scope'] == RELATED_ORG_SCOPE
+    assert not by_source[short('outlook', 'staff')].get('relationship_scope')
+    assert by_source[short('outlook', 'staff')]['thread'] == 'mail:outlook:same-subject'
+    assert by_source[short('gmail', 'extra-provider')]['captured_at'] == end.isoformat()
+    assert any(note.startswith('gmail:') and '1 uncovered interval(s)' in note for note in coverage)
+    assert all('requested body interval covered' not in note for note in coverage if note.startswith('gmail:'))
+    assert domain_material(tmp_path, ['school.example'])[0]['outlook'] == []
+    assert saved_share(tmp_path) == (0, 0)
+    assert read_json(state_path(tmp_path, 'mail/archive.json'), {}) == manifest
+    assert inventory.read_text() == ''
+    intervals = []
+
+    class Gmail:
+        def my_addresses(self): return {'me@owner.example'}
+        def list_with(self, domain, start, finish, max_results=1000):
+            intervals.append((start, finish))
+            return []
+
+    gather('School', ['school.example'], days=20, clients={'gmail': Gmail()}, subscriptions={},
+           archive_root=tmp_path, record='orgs/school.md')
+    assert len(intervals) == 1
+    assert datetime.fromisoformat(intervals[0][0]) < end - timedelta(days=19)
+    withheld, _ = gather('School', ['school.example'], days=20, clients={},
+                         subscriptions={'gmail': {'unsubscribed': True}}, archive_root=tmp_path,
+                         record='orgs/school.md')
+    assert all(not item['source'].startswith('gmail:') for item in withheld)
+
+
 def test_observed_reply_reaches_next_person_gather_without_extending_init_coverage(tmp_path):
     import hashlib
     from connectonion.rem.files import state_path, write_json
@@ -75,6 +136,35 @@ def test_observed_reply_reaches_next_person_gather_without_extending_init_covera
     unsubscribed, _ = gather('Member', ['member@school.example'], days=60, clients={},
                             subscriptions={'outlook': {'unsubscribed': True}}, archive_root=tmp_path, record=record)
     assert unsubscribed == []
+
+
+def test_org_new_exact_thread_reply_keeps_the_cited_older_original(tmp_path):
+    import hashlib
+    from connectonion.rem.files import Notebook, state_path, write_json
+    from connectonion.rem.investigate import _mail_comparison
+    from connectonion.rem.mail_archive import retain_message
+
+    prepare(tmp_path)
+    end = datetime.now(timezone.utc)
+    write_json(state_path(tmp_path, 'mail/archive.json'), {
+        'phase': 'complete', 'providers': ['outlook'], 'owner_addresses': ['me@owner.example'],
+        'range_start': (end - timedelta(days=2)).isoformat(), 'range_end': (end - timedelta(days=1)).isoformat()})
+    for native, days, thread in [('old-ask', 40, 'terms'), ('new-reply', 5, 'terms'), ('other-ask', 45, 'other')]:
+        row = {'id': native, 'thread_id': thread, 'from': 'staff@school.example', 'to': ['me@owner.example'],
+               'subject': 'Same subject', 'date': (end - timedelta(days=days)).isoformat()}
+        retain_message(tmp_path, 'outlook', row, native + ' original', fetched_at=end.isoformat())
+    source = lambda native: 'outlook:' + hashlib.sha256(native.encode()).hexdigest()[:12]
+    book = Notebook(tmp_path)
+    book.stub_org('orgs/school.md', 'School', ['school.example'])
+    page = book.read('orgs/school.md').replace('- (none yet)', '- [1] ' + source('old-ask'))
+    book.write('orgs/school.md', page)
+    items, _ = gather('School', ['school.example'], days=20, clients={}, subscriptions={},
+                      archive_root=tmp_path, record='orgs/school.md')
+    compared = _mail_comparison(tmp_path, 'orgs/school.md', ['school.example'], items, items,
+                                {source('old-ask'), source('other-ask')}, {})
+    assert [item['source'] for item in compared] == [source('old-ask')]
+    assert compared[0]['text'] == 'old-ask original'
+    assert 'may predate the requested window' in compared[0]['comparison_scope']
 
 
 def test_live_gather_retains_full_mail_and_recipients_outside_init_inventory(tmp_path):

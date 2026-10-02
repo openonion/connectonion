@@ -960,9 +960,9 @@ function inline(text, from) {
     return "\u0002" + (links.length - 1) + "\u0002";
   });
   // Link targets and inline code can contain dots without ending a sentence.
-  // Keep a labelled sentence and its citations together for the privacy toggle.
-  s = s.replace(/(^|[.!?。](?:\s*\[\d+\])*\s+)([^.!?。]*?[.!?。]?)\s*\[(personal|sensitive)\]((?:\s*\[\d+\])*)/g,
-    (m, lead, sentence, level, cites) => lead + '<span class="private" data-level="' + level + '">' + sentence +
+  // Do not consume the preceding boundary: adjacent labelled sentences share it.
+  s = s.replace(/(?<=^|[.!?。](?:\s*\[(?:personal|sensitive|W?\d+)\])*\s+)(?!\s|\[(?:personal|sensitive|W?\d+)\])([^.!?。]*?[.!?。]?)\s*\[(personal|sensitive)\]((?:\s*\[W?\d+\])*)/g,
+    (m, sentence, level, cites) => '<span class="private" data-level="' + level + '">' + sentence +
       ' <span class="privacy-tag ' + level + '">' + level + '</span>' + cites + '</span>');
   // Three or more claim numbers in a row read as noise: one chip says how many, and names them on hover.
   s = youify(s);

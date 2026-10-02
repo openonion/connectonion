@@ -47,62 +47,42 @@ not support says `Unknown`. **Every factual sentence carries a claim number**
 `[n]` into `Sources`.
 
 ```markdown
-# UNSW
+# ExampleCo
 
 ## Domains
-- unsw.edu.au [1]
-- student.unsw.edu.au — the student body, not staff [4]
+- example.test [1]
 
 ## Facts
-- What they do: public research university [1]
+- What they do: Unknown
 - Website: Unknown
-- Location: Sydney [1]
-- Legal entity: The University of New South Wales, ABN 57 195 873 179 [7]
-- Your contacts: [Vern Chan](../people/vern-chan.md) [2]
+- Location: Unknown
+- Legal entity: Unknown
+- Your contacts: [Alex](../people/alex.md) [1]
 - First contact: 2026-07-10 [1]
-- Last contact: Unknown
+- Last contact: 2026-07-24 [2]
 
 ## Who they are
-Public research university in Sydney. The user deals with two parts of it that
-do not otherwise touch: UNSW Founders (the startup arm, Unit of
-Entrepreneurship) and the Office of Global Affairs. [1][3]
+The named programme contact writes from example.test; legal identity is unknown. [1]
 
 ## Our relationship
-Startup partner to the Practice of WorkXStartup programme since July 2026 —
-the user mentors a student team, UNSW handles administration and academic
-support. Not a paid engagement; the return is access to the founder network
-and to students. [2][3]
-
-**Where it stands:** one team of 4–6 students agreed after the user pushed
-back on two or three; sessions requested 3–5 pm; WIL agreement still with
-Helena. [5][6]
+The user requested one team; the programme has a two-team minimum. An exception
+is not confirmed in the reviewed replies. [1][2]
 
 ## People here
-- [Vern Chan](../people/vern-chan.md) — Global Program Manager; the way in,
-  and who reroutes to whoever owns the next step [2]
-- [Karen da Lapa-Soares](../people/karen-da-lapa-soares.md) — Senior
-  Partnerships Officer; owns the programme's terms [5]
-- Helena Asher — contract; no page yet [5]
+- [Alex](../people/alex.md) — programme contact [1]
 
 ## Terms
-- Summer 2027 cohort: 11 Jan – 5 Feb 2027, six touchpoints, CBD campus [2]
-- WIL agreement requested by 17 July 2026; IP/confidentiality arrangements
-  were named as a next step and their outcome is not recorded here [2]
+- Two-team minimum; the one-team request is not accepted terms. [1][2]
 
 ## Open threads
-- **WIL agreement** — with Helena since 2026-07-21; the user has not signed [5]
-- **3–5 pm slot** — asked of Natalie 2026-07-21, unanswered in this material [5]
+Unknown — historical requests alone do not establish a current obligation. [2]
 
 ## Uncertainties
-- Whether the one-team exception was formally accepted, or only discussed.
-- `student.unsw.edu.au` correspondents are course contacts and may belong to a
-  different relationship entirely; not investigated.
+- Whether the exception was later accepted. [2]
 
 ## Sources
-- [1] Domain of every staff address seen — high — observed 2026-07-10 —
-  outlook:d337e0e0d09c
-- [2] Programme dates, campus, WIL deadline — high — observed 2026-07-10 —
-  outlook:ec65e5ff6168
+- [1] outlook:123456789abc — observed 2026-07-10
+- [2] outlook:abcdef123456 — observed 2026-07-24
 ```
 
 ## Rules
@@ -122,3 +102,17 @@ Helena. [5][6]
   `Uncertainties`; split only when the mail shows separate relationships.
 - **A company's own marketing is not knowledge about it.** Keep what the user
   learned by dealing with them.
+- **Lead with the entity-level finding** in `Our relationship`: accepted terms,
+  a capacity constraint or an explicit condition, with sources. Keep programmes,
+  offers and teams distinct; one team's reply does not close another's request.
+- **Templates are not executed terms.** Compare the actual mail and documents:
+  default ownership and an optional assignment can coexist. Keep version,
+  conditions and execution unknown when unsupported; do not invent a conflict.
+- **Record sourced current requests or agreed obligations.** Prerequisites,
+  conditional offers and missing historical outcomes alone create no owed debt.
+  Use `Nothing open as of YYYY-MM-DD [n].` for a supported closure; otherwise
+  use `Unknown` with the evidence gap, rather than a task to settle history.
+- **Dates use the notebook calendar.** A bulk notice or calendar acceptance does
+  not establish first direct contact, employment, attendance or completion.
+- **Notebook pages are context, not primary evidence.** Cite original headers
+  for domains and named contacts; do not cite `investigation:page` as proof.

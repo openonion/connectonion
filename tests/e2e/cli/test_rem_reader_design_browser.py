@@ -729,6 +729,36 @@ def test_marked_sentence_with_a_markdown_link_and_code_respects_private_mode(rea
     assert sentence.is_visible()
 
 
+def test_consecutive_marked_sentences_hide_in_the_lead_and_full_note(reader):
+    page, uri = reader
+    page.goto(uri + '#r=orgs%2Ffernhill-labs.md')
+    page.evaluate(r"""() => {
+      const r = byPath('orgs/fernhill-labs.md');
+      const paragraph = '## Our relationship\n' +
+        'First confidential finding. [sensitive] [1][2][3] ' +
+        'Second confidential finding. [sensitive] [1][2][3] ' +
+        'Public result. [1] ' +
+        '[Quinn](../people/quinn-alder.md) sent `secret-value`. [personal] [1]\n\n';
+      r.text = r.text.replace('## Who they are', paragraph + '## Who they are');
+      KNOWN.delete(r.path); render();
+    }""", isolated_context=False)
+    page.locator('.deep-note > summary').click()
+    for selector in ('.focus-statement', '.deep-note'):
+        area = page.locator(selector)
+        assert area.locator('.private').count() == 3
+        assert area.locator('.private').filter(has_text='Second confidential finding').count() == 1
+    assert page.locator('.deep-note .private a.cite').count() == 3
+    page.evaluate('togglePrivate()', isolated_context=False)
+    for selector in ('.focus-statement', '.deep-note'):
+        text = page.locator(selector).inner_text()
+        assert 'confidential finding' not in text
+        assert 'secret-value' not in text
+        assert 'Public result.' in text
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert 'Second confidential finding' in page.locator('.focus-statement').inner_text()
+    assert page.locator('.deep-note .private code').is_visible()
+
+
 def test_connected_context_hides_private_bases_including_expanded_connections(reader):
     page, uri = reader
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')

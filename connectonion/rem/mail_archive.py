@@ -327,7 +327,28 @@ def person_material(root: Path, record: str, *, handles=()) -> tuple[dict[str, l
     return _material(manifest, snapshots)
 
 
-def domain_material(root: Path, domains: list[str], *, contact_addresses=()) -> tuple[dict[str, list[dict]], datetime, datetime] | None:
+def _domain_observations(root: Path, domains: list[str], contacts: set, snapshots: list[dict]) -> list[dict]:
+    """Saved observations add originals; the manifest still describes only init."""
+    rows = mail_metadata(root)
+    seen = {(saved['provider'], saved['id']) for saved in snapshots}
+    threads = {(row['source'], row['id']): row.get('thread') or '' for row in rows}
+    output = [{**saved, 'thread': threads.get((saved['provider'], saved['id']), '')} for saved in snapshots]
+    for row in rows:
+        if (row['source'], row['id']) in seen:
+            continue
+        ref = _saved_ref(root, row)
+        if not ref:
+            continue
+        saved = read_json(root / ref['message'], {})
+        own_domain = on_domains(saved, domains)
+        if own_domain or contacts.intersection(participants(saved)):
+            output.append({**saved, 'thread': threads[(row['source'], row['id'])],
+                           **({'relationship_scope': RELATED_ORG_SCOPE} if not own_domain else {})})
+    return output
+
+
+def domain_material(root: Path, domains: list[str], *, contact_addresses=(),
+                    include_observed: bool = False) -> tuple[dict[str, list[dict]], datetime, datetime] | None:
     """An org's mail from the complete local archive: every snapshot a domain is on.
 
     People get an index at init; an org has none, so UNSW's page said "0 loaded
@@ -337,6 +358,8 @@ def domain_material(root: Path, domains: list[str], *, contact_addresses=()) -> 
     at a time. `.sub.domain` counts too -- student.unsw.edu.au is UNSW.
     Exact shared-contact addresses can add primary correspondence from another
     domain; those entries are marked for identity/scope verification.
+    Investigations opt into separately retained observations; those do not
+    extend the initial archive's continuous coverage.
     """
     manifest = read_json(state_path(root, "mail/archive.json"), {})
     if manifest.get("phase") not in READABLE or not domains:
@@ -353,6 +376,8 @@ def domain_material(root: Path, domains: list[str], *, contact_addresses=()) -> 
                 if not own_domain:
                     snapshot["relationship_scope"] = RELATED_ORG_SCOPE
                 snapshots.append(snapshot)
+    if include_observed:
+        snapshots = _domain_observations(root, domains, contacts, snapshots)
     return _material(manifest, snapshots)
 
 

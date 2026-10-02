@@ -214,3 +214,23 @@ that unmarked private information is automatically classified.
 The [contact-freshness review](../../design-evidence/rem-contact-freshness-review-2026-10-03/REVIEW.md)
 records the exact sources, rendered states and remaining automatic-generation
 and all-page limits. This remains an unpublished draft.
+
+Organization review exposed the same access boundary: separately retained mail
+reached person investigations but not organization investigations. The candidate
+includes those saved originals while preserving initial-window coverage and
+provider identity. Nine organization pages were then corrected manually against
+selected originals. The important findings were programme capacity, distinct
+offers and conditional outcomes, rather than another list of missing fields.
+
+The source review also caught agreement templates written as executed terms and
+an optional assignment written as an IP conflict. Historical gaps had become
+current tasks. Actual phone review showed several qualifications folded away,
+and a recent scope request was labelled as a debt. Shorter leads and neutral
+request wording were rechecked. Explicit private labels were corrected sentence
+by sentence. Actual hidden-state review then caught a matcher defect: a second
+marked sentence could leave its text visible while hiding only its label. The
+candidate preserves the shared boundary and public neighboring citations; the
+regression and targeted desktop/phone hide/restore checks cover that failure.
+This still does not prove automatic reconciliation or all-page
+usefulness. The [organization review](../../design-evidence/rem-org-observed-review-2026-10-03/REVIEW.md)
+records the source, rendered-state and verification limits.
