@@ -78,3 +78,18 @@ symlinked to the existing installation outside the Turbopack root. Landing
 at 1440×1200 and 390×844 with no horizontal overflow, and screenshots are
 attached in the companion PRs. The Design Journal uses the docs site's existing
 Markdown publication pipeline and its source/build checks.
+
+Installed-wheel acceptance was run outside the source checkout, with dependencies
+from the existing test venv and the built wheel installed into an isolated target:
+
+```bash
+python -m pip install --no-deps --target /tmp/co-github-installed-2147 \
+  dist/connectonion-1.9.0a18-py3-none-any.whl
+PYTHONPATH=/tmp/co-github-installed-2147 python \
+  docs/design-evidence/github-inbox-2147/installed-wheel-smoke.py
+```
+
+Output: `Installed wheel: watch → fixture scan → receive → done; consume --once
+cat completes locally, no sent records`. The script asserts imports come from
+the installed target and uses an isolated inbox with issue fixtures. Live REST
+coverage remains the separate adapter read/scan described above.
