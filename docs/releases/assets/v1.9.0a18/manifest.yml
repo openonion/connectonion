@@ -1,0 +1,51 @@
+version: v1.9.0a18
+images:
+  - file: before-desktop.png
+    alt: "Earlier owner page at desktop width, led by a generic current summary"
+    caption: "Before: the owner note reads as a long person page."
+    scenario: "Invented owner notebook fixture, before state"
+    viewport: "1440x1000, light"
+    commit: e450aae6
+    source_run: "python scripts/capture_rem_owner_aha.py docs/design-evidence/rem-owner-aha-a18"
+  - file: after-desktop.png
+    alt: "Owner page at desktop width showing a decision change and next step"
+    caption: "After: the change and next step lead the owner page."
+    scenario: "Invented owner notebook fixture, after state"
+    viewport: "1440x1000, light"
+    commit: e450aae6
+    source_run: "python scripts/capture_rem_owner_aha.py docs/design-evidence/rem-owner-aha-a18"
+  - file: before-intermediate.png
+    alt: "Earlier owner page at intermediate width"
+    caption: "Before: the 900 px owner layout."
+    scenario: "Invented owner notebook fixture, before state"
+    viewport: "900x900, light"
+    commit: e450aae6
+    source_run: "python scripts/capture_rem_owner_aha.py docs/design-evidence/rem-owner-aha-a18"
+  - file: after-intermediate.png
+    alt: "Owner page at intermediate width with a visible change and next step"
+    caption: "After: the 900 px layout keeps the owner hierarchy."
+    scenario: "Invented owner notebook fixture, after state"
+    viewport: "900x900, light"
+    commit: e450aae6
+    source_run: "python scripts/capture_rem_owner_aha.py docs/design-evidence/rem-owner-aha-a18"
+  - file: before-phone.png
+    alt: "Earlier owner page at 390 px phone width"
+    caption: "Before: the phone leads with the generic person summary."
+    scenario: "Invented owner notebook fixture, before state"
+    viewport: "390x844, light"
+    commit: e450aae6
+    source_run: "python scripts/capture_rem_owner_aha.py docs/design-evidence/rem-owner-aha-a18"
+  - file: after-phone.png
+    alt: "Phone owner page with a cited change, next step and linked project"
+    caption: "After: change, next step and project context appear on the phone."
+    scenario: "Invented owner notebook fixture, after state"
+    viewport: "390x844, light"
+    commit: e450aae6
+    source_run: "python scripts/capture_rem_owner_aha.py docs/design-evidence/rem-owner-aha-a18"
+  - file: after-project-phone.png
+    alt: "Related project page opened from the owner card by keyboard on a phone"
+    caption: "Enter on the project card opens the destination."
+    scenario: "Invented owner notebook fixture, keyboard link navigation"
+    viewport: "390x844, light"
+    commit: e450aae6
+    source_run: "python scripts/capture_rem_owner_aha.py docs/design-evidence/rem-owner-aha-a18"

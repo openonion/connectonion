@@ -541,8 +541,10 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # is not lost because the turn did not copy it (#2068).
     extracted = next((item.get("facts") or [] for item in items if item.get("role") == "facts"), [])
     text, restored = facts.keep_extracted(record, text, extracted)
-    from .page_review import link_people, person_names
+    from .page_review import link_people, link_projects, person_names, project_names
     text = link_people(record, text, person_names(notebook, owner.get("record", "")))
+    if record == owner.get("record"):
+        text = link_projects(text, project_names(notebook))
     if record.startswith("projects/"):
         text = _project_window_notice(text, items)
         if investigation:

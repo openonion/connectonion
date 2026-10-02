@@ -166,6 +166,27 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
     assert page.evaluate("REM.records.find(r => r.path === 'people/mara-ostrowski.md').text.includes('the user has not signed it')", isolated_context=False)
 
 
+def test_the_owner_focus_prefers_a_supported_change_to_a_generic_now(reader):
+    page, uri = reader
+    page.goto(uri + "#r=people%2Favery-lin.md")
+    assert "Last active" in page.locator(".leadrow").inner_text()
+    assert "Last contact" not in page.locator(".focus-facts").inner_text()
+    assert "Wellington" in page.locator(".focus-facts").inner_text()
+    selected = page.evaluate("""() => {
+      const owner = REM.records.find(r => r.path === REM.owner);
+      const insight = section(owner, 'insight');
+      const original = insight.text;
+      insight.text = '- Changed: Avery reversed the one-brief-per-person plan [2].\\n' + original;
+      try {
+        const focus = recordFocus(owner);
+        return [memoryStatement(owner), focus.querySelector('.focus-next')?.textContent];
+      } finally { insight.text = original; }
+    }""", isolated_context=False)
+    assert selected[0] == "Avery reversed the one-brief-per-person plan."
+    assert "Next step" in selected[1] and "This month you shipped" in selected[1]
+    assert "this month you shipped" in page.locator(".focus-statement").inner_text().lower()
+
+
 def test_focus_connects_project_people_org_and_archived_conversation(reader):
     page, uri = reader
     page.goto(uri + "#r=projects%2Fharbour.md")
@@ -175,6 +196,7 @@ def test_focus_connects_project_people_org_and_archived_conversation(reader):
     assert page.get_by_role("heading", name="What this is").is_visible()
     assert page.get_by_role("heading", name="A recorded decision").is_visible()
     page.get_by_role("link", name="View all decisions").click()
+    page.locator(".deep-note[open]").wait_for()
     assert page.locator(".deep-note").get_attribute("open") is not None
     page.goto(uri + "#r=projects%2Fharbour.md")
     assert page.locator(".deep-note").get_attribute("open") is None
