@@ -306,6 +306,30 @@ def test_source_and_conversation_show_input_limits_and_hide_them_with_private_co
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
+def test_native_conversation_shares_common_limits_and_keeps_voice_limits(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""() => {
+      const c = REM.conversations[REM.source_context['outlook:77c09ad1e3f0'].thread];
+      const common = 'Your input only. Assistant replies and tool results are not included, so this does not verify what was completed.';
+      c.messages = [{excerpt: 'Approve the design.', input_scope: common},
+        {excerpt: 'Make the title shorter.', input_scope: common},
+        {excerpt: 'Voice request.', input_scope: 'Codex Desktop voice transcription; recognition errors possible'}];
+      c.total = 3;
+    }""", isolated_context=False)
+    page.locator('.conversation-open').first.click()
+    dialog = page.locator('#conversation-dialog')
+    assert dialog.locator(':scope > .evidence-input-scope').count() == 1
+    assert dialog.locator('.conversation-message .evidence-input-scope').count() == 1
+    assert 'Transcription may contain errors.' in dialog.inner_text()
+    assert 'Approve the design.' in dialog.inner_text()
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert not dialog.locator(':scope > .evidence-input-scope').is_visible()
+    assert not dialog.locator('.conversation-message').first.is_visible()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
 def test_instruction_excerpt_is_not_a_verified_result_and_respects_privacy(reader):
     page, uri = reader
     source = 'skill-source:' + 'a' * 16

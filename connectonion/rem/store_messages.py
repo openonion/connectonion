@@ -105,7 +105,8 @@ def archived_message(root: Path, row: dict):
     if row.get("body_line"):
         lines = path.read_text(encoding="utf-8").splitlines()
         number = row["body_line"]
-        return json.loads(lines[number - 1]) if number <= len(lines) else None
+        saved = json.loads(lines[number - 1]) if 0 < number <= len(lines) else None
+        return saved if saved and saved.get("source") == row.get("id") else None
     return read_json(path, {})
 
 

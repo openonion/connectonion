@@ -2201,10 +2201,12 @@ function openConversation(id, trigger) {
   dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "REM / archived conversation" }), close]),
     el("h2", { text: byPath(conversation.subject)?.title || conversation.subject }),
     el("p", { class: "evidence-summary", text: "Latest " + conversation.messages.length + " of " + conversation.total + " archived messages in this cited thread. Some messages may not have an archived body." }));
+  const commonScope = conversation.messages.find(message => /^Your input only\./.test(message.input_scope || ""))?.input_scope || "";
+  if (commonScope) dialog.appendChild(el("p", { class: "evidence-input-scope private", text: inputScopeText(commonScope) }));
   dialog.appendChild(el("p", { class: "private-hidden-notice", text: "Archived messages are hidden because their private content has not been classified. Show private content to read them." }));
   for (const message of conversation.messages) dialog.appendChild(el("div", { class: "conversation-message private" }, [
     el("span", { class: "evidence-meta", text: [message.sender, message.time ? fmtTime(message.time) : ""].filter(Boolean).join(" · ") }),
-    ...(message.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(message.input_scope) })] : []),
+    ...(message.input_scope && message.input_scope !== commonScope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(message.input_scope) })] : []),
     el("p", { text: message.excerpt + (message.truncated ? "…" : "") })]));
   dialog.addEventListener("close", () => trigger.focus(), { once: true });
   if (dialog.showModal) dialog.showModal(); else dialog.setAttribute("open", "");

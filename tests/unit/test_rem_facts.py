@@ -165,3 +165,13 @@ def test_a_link_is_linkedin_by_its_host_not_by_a_substring():
     row = columns({"Links": "https://evil.example/?u=linkedin.com; https://www.linkedin.com/in/mia"})
     assert row["linkedin"] == "https://www.linkedin.com/in/mia"
     assert row["website"] == "https://evil.example/?u=linkedin.com"
+
+
+def test_markdown_and_malformed_links_do_not_block_the_index():
+    from connectonion.rem.store_build import columns
+    row = columns({"Links": "[Personal site](https://harbour.example); "
+                           "[LinkedIn profile](https://www.linkedin.com/in/mia); https://[broken"})
+    assert row["linkedin"] == "[LinkedIn profile](https://www.linkedin.com/in/mia)"
+    assert row["website"] == "[Personal site](https://harbour.example); https://[broken"
+    disguised = columns({"Links": "https://linkedin.com@evil.example/in/mia; https://linkedin.com.evil.example"})
+    assert disguised["linkedin"] == ""

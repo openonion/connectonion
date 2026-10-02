@@ -342,19 +342,21 @@ def extract(root: Path, subscriptions: dict, *, since: datetime | None = None, f
         record = page_for(message["cwd"], folders)
         if record:
             by_page.setdefault(record, []).append(message)
-    pages = []
-    for record in sorted(set(folders.values())):
-        pages.append(_merge(root, record, by_page.get(record, []), full=full, now=now))
     moved = [m for m in messages if m.get("typed_in")]
     workspace = {"attributed": len(moved), "folders": len({m["cwd"] for m in moved}),
                  "stayed_out": counts["excluded"].get(CONTAINER, 0)}
     index = {"extracted_at": now.isoformat(), "since": since.isoformat(), "created": created,
              "workspace": workspace, "unmapped": _unmapped(messages, folders)}
-    write_json(base / "index.json", index)
+    with nullcontext() if lock_held else maintenance_lock(root, wait=60):
+        pages = [_merge(root, record, by_page.get(record, []), full=full, now=now)
+                 for record in sorted(set(folders.values()))]
+        write_json(base / "index.json", index)
+        from .store import refresh_safely
+        indexed = refresh_safely(root)
     return {"since": since.isoformat(), "files_read": counts["files"], "messages": len(messages),
             "pages": pages, "created": created, "workspace": workspace, "unmapped": index["unmapped"],
             "excluded": counts["excluded"], "harness_blocks_skipped": counts["harness"],
-            "unfamiliar_skipped": counts["unfamiliar"]}
+            "unfamiliar_skipped": counts["unfamiliar"], "store": indexed}
 
 
 def _unmapped(messages: list[dict], folders: dict) -> list[dict]:

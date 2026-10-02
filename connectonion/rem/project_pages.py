@@ -300,7 +300,9 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
     tools = sorted({i["tool"] for i in items if i.get("tool")})
     with maintenance_lock(root, wait=60):
         notebook.note_pass(record, "written", "own messages: " + ", ".join(tools))
-    mark_written(root, record, through, now=now)
+        mark_written(root, record, through, now=now)
+        from .store import refresh_safely
+        refresh_safely(root)
     write_json(directory / "result.json", {**metrics, "status": "candidate_accepted", "usage": result.get("usage"),
                                             "duration_seconds": time.monotonic() - started})
     return {"record": record, "changed": [record], "items": messages, "through": through,

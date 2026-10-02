@@ -104,6 +104,24 @@ def test_only_what_the_user_typed_is_kept_and_filed_under_its_page(world):
     assert "swell" not in json.dumps(report)
 
 
+@pytest.mark.parametrize('lock_held', [False, True])
+def test_full_project_refresh_reindexes_older_insertions_before_source_read(world, lock_held):
+    from contextlib import nullcontext
+    from connectonion.rem import store
+    from connectonion.rem.files import maintenance_lock
+    from connectonion.rem.reader_model import cited_context
+    path = world.codex / 'rollout-index.jsonl'
+    codex(path, '/work/tide', [('user', 'Original cited request.', 1)])
+    extract(world.root, world.subs, full=True)
+    store.refresh(world.root)
+    source = stored(world.root, 'projects/tide.md')[0]['source']
+    codex(path, '/work/tide', [('user', 'Earlier newly recovered request.', 2)])
+    with maintenance_lock(world.root) if lock_held else nullcontext():
+        report = extract(world.root, world.subs, full=True, lock_held=lock_held)
+    assert cited_context(world.root, [{'text': '- [1] ' + source}])[source]['excerpt'] == 'Original cited request.'
+    assert 'sessions' in report['store']['rebuilt']
+
+
 def test_the_material_is_private(world):
     codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide", [("user", "private words", 1)])
     extract(world.root, world.subs)
@@ -263,6 +281,10 @@ def test_a_page_is_written_once_from_the_material_and_the_status_line_says_so(wo
     assert "A swell warning tool for surfers. [1]" in page
     assert re.search(r"^Investigation: .*written \d{4}-\d\d-\d\d \(own messages: codex\)$", page, re.M)
     assert page_state(world.root, "projects/tide.md")["written_through"] == out["through"]
+    from connectonion.rem import store
+    indexed = store._rows(world.root, "select * from projects where record = ?", ("projects/tide.md",))
+    assert indexed[0]["written"] is True
+    assert indexed[0]["name"] == "tide"
     assert queue(world.root) == [] or "projects/tide.md" not in [r["record"] for r in queue(world.root)]
     prompt = run.calls[0]
     assert "# A project page from the user's own messages" in prompt and "# A project's page" in prompt

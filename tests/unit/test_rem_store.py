@@ -171,6 +171,24 @@ def test_a_coding_session_is_a_thread_too(tmp_path):
     assert [m["body"] for m in messages] == ["build the parser", "now the tests"]
 
 
+def test_stale_session_line_never_returns_another_messages_body(tmp_path):
+    from connectonion.rem import store
+    from connectonion.rem.reader_model import cited_context, cited_conversations
+    root = notebook(tmp_path)
+    store.refresh(root)
+    context = cited_context(root, [{'text': '- [1] codex:s1:1'}])
+    assert context['codex:s1:1']['excerpt'] == 'build the parser'
+    assert 'Assistant replies and tool results are not included' in context['codex:s1:1']['input_scope']
+    conversation = cited_conversations(root, context)['session:codex:s1']
+    assert all('does not verify what was completed' in row['input_scope'] for row in conversation['messages'])
+    path = state_path(root, 'projects/atlas/messages.jsonl')
+    saved = [json.loads(line) for line in path.read_text().splitlines()]
+    _jsonl(path, [{'source': 'codex:s1:new', 'text': 'Unrelated earlier input'}, *saved])
+    assert all(row['body'] is None for row in store.thread(root, 'session:codex:s1', bodies=True))
+    assert cited_context(root, [{'text': '- [1] codex:s1:1'}]) == {}
+    assert cited_conversations(root, context) == {}
+
+
 def test_edges_join_people_to_orgs_and_projects(tmp_path):
     from connectonion.rem import store
     root = notebook(tmp_path)

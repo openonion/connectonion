@@ -747,6 +747,19 @@ def test_the_status_line_never_names_the_evidence_layout_as_a_source():
     assert inv.searched_sources(coverage) == ["outlook", "gmail", "codex", "claude-code"]
 
 
+def test_an_accepted_investigation_refreshes_the_index(tmp_path):
+    from connectonion.rem import store
+    notebook = inv.Notebook(tmp_path)
+    notebook.stub_person("people/river.md", "River", ["river@example.test"], email="river@example.test")
+    store.refresh(tmp_path)
+    assert not store.person(tmp_path, "people/river.md")["written"]
+    notebook.write("people/river.md", notebook.read("people/river.md").replace("- Role: Unknown", "- Role: Designer [1]"))
+    inv.record_result(tmp_path, notebook, "people/river.md", [], ["gmail"], changed=True)
+    indexed = store.person(tmp_path, "people/river.md")
+    assert indexed["written"]
+    assert indexed["role"] == "Designer"
+
+
 def test_an_accepted_investigation_drops_the_map_s_mail_count_from_history():
     """#2045: after reading 32 of Jiexuan Deng's mails the page still said
     "Observed mail count: 2", the map's window-limited count."""

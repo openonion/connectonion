@@ -1192,3 +1192,5 @@ def record_result(root, notebook, record: str, review_candidates: list, searched
             if drop_map_count(page) != page:
                 notebook.write(record, drop_map_count(page))
         notebook.note_investigation(record, ", ".join(searched))
+        from .store import refresh_safely
+        refresh_safely(root)

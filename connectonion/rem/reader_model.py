@@ -98,6 +98,12 @@ def _cited_row(db, source: str):
     return None
 
 
+def input_scope(saved: dict, message: dict) -> str:
+    return saved.get("input_scope") or (
+        "Your input only. Assistant replies and tool results are not included, so this does not verify what was completed."
+        if message.get("body_line") else "")
+
+
 def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -> dict[str, dict]:
     """Only archived, cited excerpts enter the owner-only local snapshot."""
     ids = _source_ids(records)
@@ -132,7 +138,7 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -
             output[source] = {"excerpt": excerpt, "truncated": len(raw.strip()) > len(excerpt),
                               "time": message.get("time") or "", "sender": message.get("sender") or "",
                               "thread": message.get("thread") or "", "source": message.get("source") or "",
-                              "input_scope": saved.get("input_scope") or ""}
+                              "input_scope": input_scope(saved, message)}
             budget -= len(excerpt)
     finally:
         if db is not None:
@@ -179,7 +185,7 @@ def cited_conversations(root: Path, contexts: dict[str, dict], *, max_threads: i
                 messages.append({"id": message["id"], "sender": message.get("sender") or "",
                                  "time": message.get("time") or "", "excerpt": excerpt,
                                  "truncated": len(raw.strip()) > len(excerpt),
-                                 "input_scope": saved.get("input_scope") or ""})
+                                 "input_scope": input_scope(saved, message)})
                 budget -= len(excerpt)
             if messages:
                 output[thread] = {"subject": rows[0]["subject"] or "Conversation",
