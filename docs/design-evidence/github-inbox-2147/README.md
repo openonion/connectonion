@@ -93,3 +93,18 @@ Output: `Installed wheel: watch → fixture scan → receive → done; consume -
 cat completes locally, no sent records`. The script asserts imports come from
 the installed target and uses an isolated inbox with issue fixtures. Live REST
 coverage remains the separate adapter read/scan described above.
+
+## Updated base before review
+
+Main advanced to `c8b556d8` (1.9.0a19) while the PR was being prepared. Merged
+that release without rewriting history, preserving its `co rem` branding and
+canonical docs route across the three walls. The CLI/inbox implementation was
+unchanged. Re-ran the 11 related inbox/listener/consumer/Host/discovery test
+files: **239 passed, 1 existing fixture warning in 33.63s**. Rebuilt both
+1.9.0a19 artifacts and repeated the installed-wheel smoke successfully in a
+fresh `/tmp/co-github-installed-final-2147` target. These are validation builds,
+not a GitHub-feature release. The target is the next unassigned alpha after a19.
+
+Both websites were rebuilt after their main merges. Blog source/build checks
+now cover 121 Markdown files, 137 canonical/feed/sitemap entries and 113
+generated articles. Screenshot evidence was refreshed against those builds.
