@@ -95,6 +95,22 @@ selected citations inspectable, while a prefix still cannot guarantee that it
 contains the decisive clause. Recovery is not
 evidence that the original investigation read those bodies.
 
+A five-person student-team review then found errors even where the originals
+were available. A request to update internal records became an owed reply;
+approval of two integrations was confused with approval of a later full scope.
+A reply-cutoff headline hid the team's stated plan to proceed without an answer.
+Institutional email addresses became employers, and UTC evening messages
+became the wrong contact day. The candidate asks for the exact action and
+approval boundary, keeps affiliation separate from employment, and preserves
+request, deadline and missing outcome as different facts.
+
+The reader also hid a stated deadline behind request age and changed its
+meaning once the date passed. It now shows the explicit due date first and
+keeps that date on the notebook calendar. It does not infer a missed deadline
+or completion from the clock. These five pages were manually corrected against
+saved originals; prompt edits and passing browser checks do not prove that an
+automatic first write will make the same distinctions.
+
 This trades a small initial index for additional, variable source reads. The cost
 estimate says so; the quota guard remains in place. It also leaves real limits:
 60 files cannot cover every repository, and the reader's short source prefix may

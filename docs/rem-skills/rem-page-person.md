@@ -81,19 +81,44 @@ Two to four lines starting `Now:`, `Changed:`, `At stake:` or `Pattern:`. A
 label makes the line say something of that kind; without one, a real page
 filled the slot with "a key stakeholder who maintains regular communication",
 which the inbox already said. The lead's first sentence is the balance (#2065):
-who owes whom what, and for how many days.
+who requested what, when, and any stated deadline. The reader derives age from
+dates; a literal number of days in the page would become stale.
 
 ## `Language` is observed
 
 Nobody states their working language in a signature. Waiting for them to is how
 every English-speaking colleague came out `Language: Unknown`.
 
-## `Company` from the domain and signature
+## Employment and affiliation are different facts
 
-Both are already in the material: the address domain names the institution and
-the four lines under "Thank you," give the department, the office and the
-direct line. Institutional facts are kept on the organisation page so they are
-written once rather than drifting across every person who works there.
+An address domain can identify an institution without establishing employment.
+Five reviewed student collaborators had their university in `Company` even
+though their messages established coursework affiliation. The candidate keeps
+unstated employment `Unknown` and links the institution in relationship text.
+Signatures can establish employment when they actually state it.
+
+## Requests, approval boundaries and missing outcomes
+
+The same five-page review found an instruction to update internal records
+rewritten as an obligation to send a reply. A failure report acquired an owed
+response without an explicit request or promise. Preserve the actual action;
+these different messages do not establish the same obligation.
+
+Approval of an integration pair does not approve a subsequent full scope
+statement. Messages in a shared thread can concern different teams; match the
+group and proposal before using an approval to close an ask. A request date,
+reply cutoff and permission to proceed without a response are separate facts.
+That permission does not prove the team proceeded, and a missing later outcome
+does not establish a current blocker.
+
+Source timestamps are converted on the notebook calendar. Explicit event and
+deadline dates remain as stated. The reader gives an explicit due date priority
+over request age and keeps it a due date after passage, without asserting that
+the deadline was missed. A future meeting date alone is not a deadline.
+
+These five corrections were manual reviews of 40 cited originals and 74 saved
+messages across 28 exact provider threads. They do not verify automatic writer
+reliability or complete correspondence outside those saved threads.
 
 ## `Why they are here`
 

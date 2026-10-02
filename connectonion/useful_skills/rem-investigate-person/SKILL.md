@@ -29,9 +29,9 @@ Why these rules: docs/rem-skills/rem-investigate.md
   phones with qualifiers.
 - `Phone` means the person's contact number, never a meeting dial-in, passcode
   or attendee's number. Calendar text is context, not their contact details.
-- **Address domain = employer**, never a role; gmail/outlook/qq/163 →
-  `Company: Unknown`. Link a matching `investigation:org-pages` entry as
-  `[Name](../orgs/<file>.md)`, citing the mail.
+- A domain identifies an organisation, not employment. Student affiliation
+  is not an employer; unstated employer → `Company: Unknown`. Link a matching
+  organisation in the relationship text, citing the mail.
 - `[attachment]` entries are the file's text; the terms are there; cite their id.
   An unreadable attachment → your final reply.
 - Mail gives identity and commitments; sessions give intent. Sources disagree →
@@ -50,6 +50,6 @@ Follow `rem-page-person` exactly, the lead above `Facts` included:
 since when.
 
 **Insight, three shapes** (never copy these facts):
-- `At stake: the user has owed Mia the revised SOW for 12 days; her signing date is 3 October [5]`
+- `At stake: Mia requested the revised SOW on 2026-09-21; it is due 2026-10-03 [5]`
 - `Changed: replies went from same-day to none since 2026-08-20, after the price went to A$15k [6][8]`
 - `Pattern: every thread since June is invoices; she chases, the user answers in 2–4 days [2][7]`

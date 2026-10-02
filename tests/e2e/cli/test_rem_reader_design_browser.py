@@ -434,6 +434,32 @@ def test_source_times_use_notebook_timezone_on_another_browser_timezone(reader):
     other.close()
 
 
+def test_open_request_dates_keep_explicit_deadlines_on_the_notebook_calendar(reader):
+    page, uri = reader
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate(r"""() => {
+      REM.status.timezone = 'Australia/Sydney'; REM.as_of = '2026-10-02T14:30:00Z';
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace(/## Open threads[\s\S]*?(?=\n## )/, '## Open threads' + String.fromCharCode(10) +
+        '- You owe Mara a scope decision, requested 2026-10-01; due 2026-10-03 [5].' + String.fromCharCode(10));
+      KNOWN.clear(); render();
+    }""", isolated_context=False)
+    row = page.locator('.next-exchanges .thread').first
+    assert row.locator('.when').inner_text() == 'due today'
+    assert 'since Oct 1, 2026' in row.locator('.when').get_attribute('title')
+    assert 'due Oct 3, 2026' in row.locator('.when').get_attribute('title')
+    page.evaluate("REM.as_of = '2026-10-03T14:30:00Z'; render()", isolated_context=False)
+    assert page.locator('.next-exchanges .when').first.inner_text() == 'due Oct 3'
+    dates = page.evaluate("threads(byPath('people/mara-ostrowski.md')).items[0]", isolated_context=False)
+    assert dates['since'] == '2026-10-01' and dates['due'] == '2026-10-03'
+    dates = page.evaluate(r"""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace('requested 2026-10-01; due 2026-10-03', 'requested 2026-10-01; meeting 2026-10-05');
+      KNOWN.clear(); return threads(r).items[0];
+    }""", isolated_context=False)
+    assert dates['since'] == '2026-10-01' and dates['due'] == ''
+
+
 def test_dates_and_contact_age_use_notebook_calendar_on_another_browser_timezone(reader):
     page, uri = reader
     other = page.context.browser.new_page(timezone_id='America/Los_Angeles', locale='en-US')
