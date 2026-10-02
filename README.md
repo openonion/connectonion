@@ -51,7 +51,8 @@ notebook you can explore without connecting an account.*
 ### Try co rem · 1.9.0 preview
 
 co rem is in the opt-in preview. Start with [the setup guide](https://docs.connectonion.com/rem#start)
-for account setup, source choices and model costs, then run:
+for account setup, source choices and model costs. Daily scheduling currently
+requires **macOS**. Then run:
 
 ```bash
 pip install --upgrade 'connectonion==1.9.0a20'
