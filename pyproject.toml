@@ -83,6 +83,11 @@ dependencies = [
     # `co browser import` decrypts Chrome's cookies (AES-128-CBC, PBKDF2) and
     # address.py already used it; it arrived only transitively until then.
     "cryptography>=42.0.0",
+    # co lark / co feishu (listen, co auth) speak through the official SDK's long
+    # connection. Pure Python and light, so it ships with everyone rather than as
+    # an extra: an inbox that needs a second install step failed on a fresh
+    # machine with the next step pointing at a command that needs it too (#2163).
+    "lark-oapi>=1.7.3",
     # uv.lock protects this repository, but it is not installed with the library.
     # Publish the audited transitive floors too, so an existing user environment
     # cannot satisfy ConnectOnion with versions that retain known vulnerabilities.

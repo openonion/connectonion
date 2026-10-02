@@ -317,12 +317,15 @@ def handle_feishu_auth(brand: str = "feishu", app_id: Optional[str] = None) -> N
 
     def show(info) -> None:
         url = cli_page_url(info.get("url", ""), brand)
-        print(_qr(url))
+        # The link first and flushed: off a TTY (an agent, tmux, a log) stdout is
+        # block-buffered, the QR alone fills the 8 KB buffer, and the link would
+        # sit unseen until approval, which needs the link (#2162).
         print(url)
+        print(_qr(url))
         print()
         print(_link_life(info.get("expire_in")))
         print()
-        print("Waiting for approval. Ctrl-C to stop.")
+        print("Waiting for approval. Ctrl-C to stop.", flush=True)
 
     try:
         options = {"source": "connectonion"}
