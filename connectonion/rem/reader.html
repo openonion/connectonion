@@ -414,6 +414,7 @@
   .missing .lead, .empty .lead { display: block; font: 600 10.5px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--blue); margin-bottom: 4px; }
   .missing:not(.primary) { padding: 10px 14px; border-style: dashed; background: transparent; font-size: 13px; }
   .missing:not(.primary) .names { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-3); }
+  .missing:not(.primary) .why { margin: 6px 0 0; }
   .missing:not(.primary) .cmd { margin-top: 6px; }
   .missing.primary { margin: 0 0 30px; border: 1px solid var(--blue-line); background: var(--blue-soft); padding: 20px 22px; }
   .missing.primary .lead { font-size: 11px; }
@@ -607,6 +608,7 @@
   .focus-next .k { display: block; font: 600 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--night-2); }
   .focus-next p { margin: 5px 0 0; font: 15px/1.45 var(--text); }
   .focus-more { position: relative; z-index: 1; border: 0; background: transparent; color: var(--night-ink); cursor: pointer; margin: 4px 0 0; padding: 0; min-height: 44px; font: 600 12px var(--ui); text-decoration: underline; text-underline-offset: 3px; }
+  .record-focus > .open-note { display: flex; align-items: center; min-height: 44px; }
   .focus-section.next-exchanges { grid-column: 1 / -1; }
   .project-workspace { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
   .project-workspace.single { grid-template-columns: 1fr; }
@@ -710,6 +712,7 @@
     .record-focus { grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
     .focus-head { padding: 20px; min-height: 0; }
     .focus-statement { font-size: 22px; }
+    .focus-statement.clamped { -webkit-line-clamp: 5; }
     .focus-section { padding: 16px; }
     .focus-facts, .related-records, .activity-view, .conversation-view, .project-workspace { grid-column: 1; }
     .project-workspace { grid-template-columns: 1fr; }
@@ -1213,17 +1216,24 @@ function known(r) {
   // as findings, and "174 with findings" meant three written pages (#2008).
   const status = r.written === undefined ? (investigated ? "Investigated" : learned ? "Some findings" : "Mapped")
     : !r.written ? "Mapped" : investigated ? "Investigated" : "Some findings";
-  // The page's own last activity (census.py), never the file's mtime: a map
-  // rewrites every project page, and "Recently active" dated them all today.
-  const mapLast = r.category === "people" ? (r.mail?.last || "") : "";
-  const last = r.category === "skills" ? (skillUsage(r)?.last || "") : r.last_activity !== undefined ? (r.last_activity || mapLast)
-    : (/\blast(?: contact)?:\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || mapLast || String(r.updated || "").slice(0, 10);
+  // A person's investigation date is not a contact date. The owner instead
+  // uses session activity, labelled "Last active" in the reader.
+  const person = r.category === "people" && r.path !== REM.owner;
+  const mapLast = person ? (r.mail?.last || (status === "Mapped" ? r.last_activity || "" : "")) : "";
+  const contactFacts = rawSection(r, "Facts") || rawSection(r, "Contact");
+  const factUnknown = /^- Last contact:\s*Unknown\b/im.test(contactFacts);
+  const statedContact = factUnknown ? "" : (/^- Last contact:\s*(\d{4}-\d{2}-\d{2})/im.exec(contactFacts)
+    || /\bLast contact:\s*(\d{4}-\d{2}-\d{2})/i.exec(body) || [])[1] || "";
+  const contactFromMap = person && status !== "Investigated" && !statedContact && !!mapLast;
+  const last = person ? (statedContact || (contactFromMap ? mapLast : ""))
+    : r.category === "skills" ? (skillUsage(r)?.last || "") : r.last_activity !== undefined ? (r.last_activity || "")
+    : (/\blast(?: contact)?:\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || String(r.updated || "").slice(0, 10);
   const summary = plainLine((intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || { text: "" }).text);
-  const k = { intro, kept, missing, status, last, summary, stamp: stamp.replace(/^Investigation:\s*/, "") };
+  const k = { intro, kept, missing, status, last, contactFromMap, summary, stamp: stamp.replace(/^Investigation:\s*/, "") };
   KNOWN.set(r.path, k);
   return k;
 }
-function mappedContact(r) { return r.category === "people" && r.path !== REM.owner && known(r).status === "Mapped" && !!(r.last_activity || r.mail?.last); }
+function mappedContact(r) { return r.category === "people" && r.path !== REM.owner && known(r).contactFromMap; }
 // The first readable line of some Markdown, without its markup or claim numbers.
 function plainLine(text) {
   const line = String(text).split("\n").map(l => l.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
@@ -1388,14 +1398,15 @@ function facts(r) {
   const field = re => (paths.map(p => re.exec(p)).find(Boolean) || [])[1] || "";
   const t = threads(r);
   const f = {
-    email: contact.email || ((text.match(/[\w.+-]+@[\w-]+\.[\w.-]+/) || [])[0] || ""),
+    email: parsed.has("Email") ? contact.email || "" : ((text.match(/[\w.+-]+@[\w-]+\.[\w.-]+/) || [])[0] || ""),
     company: contact.company || "", role: contact.role || "", phone: contact.phone || "",
     location: contact.location || contact["time zone"] || contact.timezone || "",
     links: [...new Set((rawSection(r, "Contact").match(/https?:\/\/[^\s)\]]+/g) || []))].join(", "),
     language: contact.language || "",
     how: lineOf("why they are here") || lineOf("our relationship"),
     first: (r.mail && r.mail.first) || (observed && observed[2]) || history[0] || field(/^First seen:\s*(\S+)/),
-    last: k.last || (r.mail && r.mail.last) || "", mails: r.mail ? r.mail.mails : observed ? Number(observed[1]) : null,
+    last: r.category === "people" ? k.last : k.last || (r.mail && r.mail.last) || "",
+    mails: r.mail ? r.mail.mails : observed ? Number(observed[1]) : null,
     sent: r.mail ? r.mail.sent : null, received: r.mail ? r.mail.received : null,
     open: t.items, calm: t.calm,
     what: lineOf("what it is") || lineOf("who they are") || lineOf("what it does"),
@@ -1410,7 +1421,7 @@ function facts(r) {
   const x = r.index;
   if (x) {
     const take = (key, value) => { if (value != null && value !== "" && !(Array.isArray(value) && !value.length)) f[key] = value; };
-    take("email", Array.isArray(x.emails) ? x.emails.join("; ") : x.emails);
+    if (!parsed.has("Email")) take("email", Array.isArray(x.emails) ? x.emails.join("; ") : x.emails);
     take("phone", x.phone); take("language", x.language);
     // Reviewed page fields, including explicit Unknown, supersede derived index values.
     if (!parsed.has("Company")) take("company", x.company);
@@ -1419,7 +1430,7 @@ function facts(r) {
     take("links", [x.linkedin, x.website].filter(Boolean).join(", "));
     take("how", x.how_known); take("first", x.first_contact);
     // The page census owns activity dates; an older index must not contradict it.
-    take("last", r.last_activity === undefined ? x.last_contact : k.last);
+    take("last", r.category === "people" ? k.last : r.last_activity === undefined ? x.last_contact : k.last);
     take("mails", x.mails); take("sent", x.sent); take("received", x.received);
   }
   FACTS.set(r.path, f);
@@ -2631,6 +2642,7 @@ function record(path, heading) {
         : refused ? "The latest draft was rejected by citation review. Read the audit above before running this command again."
         : "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in." }) : null,
       el("div", { class: "names", text: (mapped ? "Not investigated yet: " : "Still unknown: ") + youify(k.missing.join(", ")) + "." }),
+      mapped ? null : el("p", { class: "why", text: "More source evidence may be needed; reading the same material again may leave these sections unresolved." }),
       mapped ? null : el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]);
     if (mapped) deep.parentNode.insertBefore(box, deep); else column.appendChild(box);
   }

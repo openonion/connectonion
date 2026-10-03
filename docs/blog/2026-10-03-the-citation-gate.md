@@ -59,8 +59,53 @@ the touch adjustment, with no sampled overflow or script error. This is a
 two-record UI check, not evidence that the records belong to different people
 or that every person page has been reviewed.
 
+The same cited packet was used to repair the failing page in protected copies
+of the notebook. An early revision passed a 15-original audit at 44,803 input
+and 3,003 output tokens, yet independent review and later audit attempts found
+more unsupported identity links and actor claims. A team-signed company mailbox
+invitation had been attributed to a person; a quoted signature was read as
+proof of who operated the sending account. The auditor also differed between
+attempts on whether a corrected question had been closed. These are material
+limits of a single model verdict, even when it has every cited original. The
+page was rewritten to distinguish signed personal mail from associated company
+mailboxes and leave reply status qualified.
+
+An intermediate nine-original revision passed the gate at 35,576 input tokens
+(20,224 cached) and 2,854 output tokens. Independent review then found that its
+first-fold emphasis hid the latest directly attributable personal reply, and
+that two records presented as one university address had conflicting envelope
+and forwarded-header addresses. A later audit of shorter first-fold wording
+also required an unlinked historical self-description to be qualified in the
+Role field. The final manual nine-original candidate passed the protected
+promotion gate at 35,684 input tokens (20,224 cached) and 2,271 output tokens.
+Only the copied trial notebook was changed. Multiple passes followed by
+independent corrections show why an accepted verdict is one selected sample,
+not a measured reliability rate or evidence that the automatic writer will
+make the same distinctions.
+
+The repaired page also exposed a reader bug: its investigation/file-update date
+was shown as `Last contact` despite an explicit unknown contact fact. The reader
+now uses a person's stated contact date and leaves the date empty when the page
+says it is unknown. An older derived index cannot fill that empty value, and
+an uncertainty elsewhere cannot erase an explicit dated Fact. In the protected
+trial, actual desktop and phone renders show no false `Last contact` or `Open`
+indicator. The first-fold source link now has a 44-pixel target. The reviewed
+Email field also wins over an older derived index so a company mailbox cannot
+reappear as a person's address after source review. The phone hero exposes more
+of the identity qualification, and an unresolved-section command now says that
+reading the same sources again may leave the gap unresolved. This is
+selected-page coverage, not a review of the whole notebook.
+
+Independent role-based AI founder/UI review of the final protected render at
+1440×900 and 375×812 opened all nine cited original dialogs, checked the
+Home card, People row, person summary, unknown contact and open states,
+source navigation, and hide/show privacy. The phone source link and dialog
+rows met the 44-pixel target; no sampled horizontal overflow or script error
+appeared. It found no P1/P2 in that page. This was a manual repair and a UI
+rerender, not a fresh full writer trial; sentence-level private-marker
+redaction was not exercised by this final content.
+
 This is a conservative gate for the evidence cited on a person page, not proof
 that the selected originals cover every address or all contact history. The
-broader people batch remains draft until a repaired page and further live
-samples pass exact-source review, including identity and date scope, at desktop
-and phone widths.
+broader people batch remains draft until fresh generated pages pass exact-source
+review, including identity and date scope, at desktop and phone widths.
