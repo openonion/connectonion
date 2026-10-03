@@ -553,6 +553,7 @@
   .lead-open .more { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
   .lead-calm { font: 600 10.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); background: var(--well); padding: 5px 9px; border-radius: 4px; }
   .lead-meta { font-size: 12.5px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 8px; }
+  .lead-meta.project-purpose-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 100%; font: 500 15px/1.4 var(--text); color: var(--ink); }
   .lead-meta .k { color: var(--ink-3); }
   .lead-meta.usage .bar { width: 120px; height: 5px; border-radius: 3px; background: var(--well); overflow: hidden; display: inline-block; }
   .lead-meta.usage .bar i { display: block; height: 100%; background: var(--blue); }
@@ -829,7 +830,10 @@ function togglePrivate() {
   try {
     if (location.protocol === "file:") localStorage.setItem("co-rem-private", hidden ? "hidden" : "shown");
   } catch (_) { /* choice lasts this view only */ }
-  renderRail(railActive());
+  const button = document.getElementById("privacy-toggle");
+  button.classList.toggle("active", hidden);
+  button.setAttribute("aria-pressed", String(hidden));
+  button.textContent = hidden ? "Show labelled passages" : "Hide labelled passages";
 }
 
 // Theme: auto follows the system; light or dark is remembered for file:// only.
@@ -1728,7 +1732,7 @@ function renderRail(active) {
   }
   foot.appendChild(themeSwitch);
   const hidden = document.documentElement.classList.contains("hide-private");
-  const privacy = el("button", { class: "theme-btn" + (hidden ? " active" : ""), type: "button",
+  const privacy = el("button", { id: "privacy-toggle", class: "theme-btn" + (hidden ? " active" : ""), type: "button",
     "aria-pressed": String(hidden), text: hidden ? "Show labelled passages" : "Hide labelled passages",
     title: "Also hides raw source and conversation excerpts. Names and unlabelled text stay visible." });
   privacy.onclick = togglePrivate;
@@ -2253,7 +2257,11 @@ function leadRow(r) {
       threadAge(first) ? el("span", { class: "age mono" + (threadAge(first).endsWith("today") ? " today" : ""), text: threadAge(first) }) : null,
       t.items.length > 1 ? el("span", { class: "more mono", text: "+" + (t.items.length - 1) + " more" }) : null]));
   } else if (t.calm) row.appendChild(el("span", { class: "lead-calm", text: "Nothing open" }));
-  if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "projects" ? "Last mapped session " : r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map " : "Last contact ") : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
+  const purpose = r.category === "projects" && k.status !== "Mapped" ? section(r, "what it is") : null;
+  const projectLead = purpose ? listItems(purpose.text)[0] || purpose.text : "";
+  if (projectLead && !/^\s*-?\s*Unknown\b/i.test(projectLead))
+    row.appendChild(privateFallback(el("span", { class: "lead-meta project-purpose-preview", html: inline(projectLead, r.path) })));
+  else if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "projects" ? "Last mapped session " : r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map " : "Last contact ") : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u) row.appendChild(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: usageCaption(u) + (u.tools ? " · " + u.tools : "") })]));
   if (section(r, "uncertainties")) row.appendChild(el("a", { class: "unsure", href: "#r=" + encodeURIComponent(r.path) + "&h=uncertainties", title: "What this page is not sure of" }, ["?", el("span", { text: " Uncertain points" })]));
@@ -2385,8 +2393,8 @@ function recordFocus(r) {
   }
   out.appendChild(focusHead);
   const coverage = r.category === "projects" ? r.project_coverage : null;
-  if (coverage && coverage.inputs_available > coverage.inputs_read)
-    out.appendChild(el("p", { class: "scope-note", text: coverage.scope === "queued"
+  const coverageNote = coverage && coverage.inputs_available > coverage.inputs_read
+    ? el("p", { class: "scope-note", text: coverage.scope === "queued"
       ? "Partial project update: " + coverage.inputs_read + " of " + coverage.inputs_available +
         " queued inputs were supplied. Older queued inputs were left out."
       : coverage.inputs_read === 0
@@ -2395,7 +2403,7 @@ function recordFocus(r) {
         "Current project activity is unknown."
       : "Partial project history: " + coverage.inputs_read + " session inputs were supplied in this " +
         (coverage.days ? coverage.days + "-day " : "") + "investigation; " + coverage.inputs_available +
-        " inputs are archived for this workspace. Earlier inputs may be outside this pass." }));
+        " inputs are archived for this workspace. Earlier inputs may be outside this pass." }) : null;
   if (sourceList(r).length) out.appendChild(el("a", { class: "open-note", href: href(r) + "&h=sources", text: "View sources →" }));
   const open = threads(r).items;
   if (open.length) out.appendChild(el("div", { class: "focus-section next-exchanges" }, [
@@ -2411,6 +2419,7 @@ function recordFocus(r) {
       el("a", { class: "open-note", href: href(r) + "&h=key-decisions", text: "View all decisions →" })]));
     if (blocks.length) out.appendChild(el("div", { class: "project-workspace" + (blocks.length === 1 ? " single" : "") }, blocks));
   }
+  if (coverageNote) out.appendChild(coverageNote);
   const f = facts(r);
   const labels = r.path === REM.owner ? [["Role", f.role], ["Location", f.location], ["Company", f.company]]
     : r.category === "people" ? [["Role", f.role], ["Company", f.company], ...(mappedContact(r) ? [] : [["Last contact", f.last]])]

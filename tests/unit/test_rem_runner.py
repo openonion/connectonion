@@ -80,8 +80,8 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
         run_stage(notebook, [{'role': 'page', 'record': 'projects/reader.md',
                               'text': notebook.read('projects/reader.md'),
                               'source': 'investigation:page'}], default_config(), stage='investigate')
-    assert 'Inspect mapped repositories' in prompts[0]
-    assert 'git log, git show' in prompts[0]
+    assert 'Inspect the live repository paths supplied' in prompts[0]
+    assert 'git log' in prompts[0] and 'git show' in prompts[0]
     assert 'A branch, commit date or' in prompts[0] and 'belongs elsewhere' in prompts[0]
     assert 'local mail archives and project repositories' in prompts[0]
     assert 'stop using tools and return a brief coverage summary' in prompts[0]

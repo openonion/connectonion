@@ -37,7 +37,7 @@ def packet(notebook, candidate: str, record: str | None = None) -> tuple[dict, l
     from .project_material import stored
 
     folders = {row["source"]: row["cwd"] for row in stored(notebook.root, record)} if record else {}
-    contexts = cited_context(notebook.root, [{"text": candidate}], budget=100_000)
+    contexts = cited_context(notebook.root, [{"text": candidate}])
     sources, missing = [], []
     for line in candidate.partition("\n## Sources\n")[2].splitlines():
         match = SOURCE.match(line)
@@ -72,6 +72,9 @@ def review(notebook, candidate: str, config: dict, workspace: Path, run,
         "inputs under the page, but proves neither implementation nor that earlier work belongs "
         "to a later named subfolder. Do not require a folder name in each user message to describe "
         "the requests as folder-scoped conversation history. "
+        "A confirmed Website Fact requires an adjacent original explicitly connecting that URL "
+        "to this Project. A generic 'official website' message in a mapped session is only a "
+        "mention; the mapped folder and domain do not prove project ownership. "
         "Do not infer a project purpose, location, architecture, command, URL, recipient or permission from "
         "nearby but different work. A source elsewhere in the packet does not fix a wrong adjacent citation. "
         "The Paths section preserves runner-mapped path and session metadata; structural validation checks it, "
@@ -82,7 +85,7 @@ def review(notebook, candidate: str, config: dict, workspace: Path, run,
         "required_correction. No markdown fences.\n\n"
     )
     prompt = instruction + json.dumps(material, ensure_ascii=False)
-    if len(prompt.encode("utf-8")) > 100_000:
+    if len(prompt.encode("utf-8")) > 250_000:
         return {"verdict": "insufficient", "findings": [], "reason": "Cited originals exceed the audit bound"}, {}
     result = run(workspace, prompt, config, "claim-audit")
     report = json.loads(result["result"])

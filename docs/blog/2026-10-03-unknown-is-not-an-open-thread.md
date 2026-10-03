@@ -35,6 +35,6 @@ and a synthetic browser case at desktop and phone widths. The final Project
 recheck and Person pages still need source review; other written types also
 showed attribution limits in the sampled audit.
 
-Read the [a30 preview notes](https://docs.connectonion.com/releases/1.9.0a30)
+Read the [a31 preview notes](https://docs.connectonion.com/releases/1.9.0a31)
 for the exact install pin and trial scope, or [explore co rem](https://docs.connectonion.com/rem)
 with an invented sample notebook.

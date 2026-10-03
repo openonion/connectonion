@@ -400,12 +400,25 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a30
+## Current Version: 1.9.0a31
+
+1.9.0a31 checks Project claims against retained originals before a page is
+replaced, adds a deliberate retry for refused pages, and improves the reader's
+first screen. It includes the full-cohort concurrency work tagged as a30.
+Stable remains 1.8.10. See [1.9.0a31 notes](docs/releases/1.9.0a31.md).
+
+- 1.9.0a31 (Project source audit, explicit retry, reader evidence clarity).
+
+## Previous tag: 1.9.0a30
 
 1.9.0a30 implements full-cohort concurrent onboarding and CLI investigations,
 running across a 10-worker thread pool with thread-safe client isolation and
 zero dry-run capping. Stable remains 1.8.10. See
 [1.9.0a30 notes](docs/releases/1.9.0a30.md).
+
+The a30 release workflow failed before publishing GitHub Release or PyPI;
+[#2253](https://github.com/openonion/connectonion/issues/2253) tracks the
+order-sensitive concurrent fetch test. The a30 tag remains unchanged.
 
 - 1.9.0a30 (full-cohort onboarding, 10-worker thread pool, thread-safe mail client isolation).
 

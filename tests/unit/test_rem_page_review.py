@@ -690,7 +690,7 @@ def test_project_page_keeps_unretained_file_citation_for_review(tmp_path):
     path.write_text(candidate)
     items = [{'role': 'page', 'record': 'projects/atlas.md', 'text': old},
              {'source': 'codex:abc', 'text': 'Collect first.'}]
-    with pytest.raises(runner.RunFailed, match='Cited local file needs its current SHA-256 and a mapped path'):
+    with pytest.raises(runner.RunFailed, match='Cited file needs a hash or exact Git commit in a mapped repository'):
         runner._promote_candidate(nb, 'projects/atlas.md', path, old, items, tmp_path, None)
     assert nb.read('projects/atlas.md') == old
     assert path.read_text() == candidate

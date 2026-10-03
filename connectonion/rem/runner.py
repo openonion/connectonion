@@ -928,9 +928,12 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                     elif source_failed:
                         instruction = (f"Review errors: {'; '.join(errors)}. Read {directory / 'material.md'} "
                                        "and its evidence index. Replace invented `git:` or `file:` citations with "
-                                       "exact supplied source IDs only when those originals support the same claims. "
+                                       "exact supplied source IDs when those originals support the same claims, or "
+                                       "with verified, pinned local source IDs. "
                                        "A new `file:` citation requires an existing file under mapped Paths and its "
-                                       "current SHA-256; remove unsupported claims. Preserve the page and save it.")
+                                       "current SHA-256. A new `git:` citation requires a mapped repository, full "
+                                       "commit SHA and inspected relative file at that commit. Remove unsupported "
+                                       "claims. Preserve the page and save it.")
                     else:
                         instruction = (f"Review errors: {'; '.join(errors)}. "
                                        "Keep at most eight dated bullets in History, folding older events by year. "

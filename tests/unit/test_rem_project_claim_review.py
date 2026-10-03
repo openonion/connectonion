@@ -57,6 +57,33 @@ def test_new_cited_session_and_repo_packets_are_openable_before_audit(tmp_path):
     assert {row['source_id'] for row in material['sources']} == {session, repository}
 
 
+def test_audit_keeps_all_cited_originals_when_several_source_files_are_long(tmp_path):
+    prepare(tmp_path)
+    candidate = '# Atlas\n\nFour cited source files.\n\n## Sources\n'
+    for number in range(1, 5):
+        source = f'git:/mapped/repo:{"a" * 40}:src/file-{number}.py'
+        body = f'File {number} explains the project.\n' + 'source detail\n' * 4_400
+        path = state_path(tmp_path, 'project-sources/live-' + hashlib.sha256(source.encode()).hexdigest() + '.json')
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({'id': source, 'text': body,
+                                    'sha256': hashlib.sha256(body.encode()).hexdigest(),
+                                    'commit': 'a' * 40, 'commit_at': '2026-10-01',
+                                    'captured_at': '2026-10-02'}))
+        candidate += f'- [{number}] {source} — 2026-10-01\n'
+
+    material, missing = project_claim_review.packet(Notebook(tmp_path), candidate)
+    assert missing == []
+    assert len(material['sources']) == 4
+    assert all('explains the project' in row['context']['excerpt'] for row in material['sources'])
+
+    def should_not_run(*args):
+        raise AssertionError('An over-budget audit cannot ask the model to guess')
+
+    report, _usage = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, should_not_run)
+    assert report['verdict'] == 'insufficient'
+    assert report['reason'] == 'Cited originals exceed the audit bound'
+
+
 def test_runner_status_is_excluded_from_prose_audit(tmp_path, monkeypatch):
     monkeypatch.setattr(project_claim_review, 'cited_context', lambda *_args, **_kwargs: {
         'codex:session': {'excerpt': 'Filtering was discussed', 'truncated': False}})
@@ -95,6 +122,7 @@ def test_audit_sees_session_folder_without_promoting_it_to_subfolder_purpose(tmp
     assert report['verdict'] == 'pass'
     assert seen['packet']['sources'][0]['context']['mapped_session_folder'] == str(folder)
     assert 'proves neither implementation nor that earlier work belongs' in seen['instruction']
+    assert 'A confirmed Website Fact requires an adjacent original' in seen['instruction']
 
 
 def test_failed_project_claim_review_preserves_previous_page(tmp_path, monkeypatch):

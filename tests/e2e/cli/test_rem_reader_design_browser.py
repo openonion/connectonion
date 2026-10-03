@@ -93,6 +93,9 @@ def test_mobile_browse_privacy_control_remains_a_full_touch_target(reader):
     shown = page.get_by_role('button', name='Show labelled passages')
     assert shown.get_attribute('aria-pressed') == 'true'
     assert shown.evaluate('(node) => node === document.activeElement')
+    shown.press('Space')
+    assert privacy.get_attribute('aria-pressed') == 'false'
+    assert privacy.evaluate('(node) => node === document.activeElement')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -599,6 +602,7 @@ def test_private_project_summary_and_partial_scope_are_clear_on_desktop_and_phon
         assert 'clamped' not in page.locator('.focus-statement').get_attribute('class')
         page.evaluate('togglePrivate()', isolated_context=False)
         assert page.locator('.focus-statement').inner_text() == 'Hidden labelled passage'
+        assert page.locator('.project-purpose-preview').inner_text() == 'Hidden labelled passage'
         assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').count() == 2
         assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').first.is_visible()
         page.evaluate("() => { location.hash = '#c=projects'; render(); }", isolated_context=False)
@@ -642,6 +646,31 @@ def test_project_without_a_current_insight_leads_with_purpose_and_scope(reader):
         assert 'No coding-session input was assigned' in page.locator('.focus-limit').inner_text()
         assert '5 inputs are archived for this workspace' in page.locator('.scope-note').inner_text()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_written_project_purpose_precedes_partial_scope_on_phone(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.evaluate("""() => {
+      const r = byPath('projects/harbour.md');
+      r.text = '# Harbour\\n\\n## Insight\\n- Now: The user asked to organize a folder in August; whether the requested work was completed is unknown. [1]\\n'
+        + '\\n## What it is\\nA property lead workflow to collect contacts and ask owners whether they permit short stays. [1]\\n'
+        + '\\n## Key decisions\\n- Collect property details before filtering. [1]\\n'
+        + '\\n## Sources\\n- [1] codex:example — 2026-08-02\\n'
+        + '\\nInvestigation: mapped 2026-10-03 · investigated 2026-10-04 (codex)';
+      r.project_coverage = {inputs_read: 114, inputs_available: 116, days: 90, scope: 'archived'};
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    purpose = page.locator('.project-purpose-preview')
+    scope = page.locator('.scope-note')
+    assert 'property lead workflow' in purpose.inner_text()
+    assert purpose.bounding_box()['y'] < 812
+    assert purpose.bounding_box()['y'] < scope.bounding_box()['y']
+    assert '114 session inputs' in scope.inner_text()
+    sources = page.locator('.record-focus > .open-note').bounding_box()
+    assert sources['height'] >= 44 and sources['y'] + sources['height'] <= 812
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
 def test_open_context_is_not_counted_as_waiting_on_other_people(reader):
