@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a23
+## Current Version: 1.9.0a24
+
+1.9.0a24 adds `co rem merge KEPT OLD` to fold duplicate pages and preserve
+aliases. Written sections are merged, citations are renumbered, OLD is archived,
+and references across all pages are relinked. Stable remains 1.8.10. See
+[1.9.0a24 notes](docs/releases/1.9.0a24.md).
+
+- 1.9.0a24 (#2200; manual page merge and alias relinking).
+
+## Previous preview: 1.9.0a23
 
 1.9.0a23 clarifies map-derived contact dates in the reader and keeps table
 headers visible beside the sticky Name column during horizontal scroll on
