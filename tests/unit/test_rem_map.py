@@ -207,7 +207,7 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
         {'name': 'Ody Zhou', 'address': 'zhouodywork@gmail.com', 'mails': 30, 'sent': 12, 'received': 18,
          'one_way': False, 'first': '2026-07-17', 'last': '2026-09-14', 'boxes': ['gmail']},
         {'name': 'Ody Zhou', 'address': 'zhouody@gmail.com', 'mails': 3, 'sent': 1, 'received': 2,
-         'one_way': False, 'first': '2026-08-01', 'last': '2026-08-02', 'boxes': ['gmail']},
+         'one_way': False, 'first': '2024-08-01', 'last': '2026-09-29', 'boxes': ['gmail']},
         {'name': 'Ody Zhou', 'address': 'usr-abc@user.luma-mail.com', 'mails': 1, 'one_way': True},
         {'name': 'Ody Zhou (via Google Drive)', 'address': 'drive-shares-dm-noreply@google.com', 'mails': 2,
          'one_way': True},
@@ -231,7 +231,12 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
     ody = next(row for row in result['people'] if row['name'] == 'Ody Zhou')
     assert ody['addresses'] == ['zhouodywork@gmail.com', 'zhouody@gmail.com', 'usr-abc@user.luma-mail.com']
     assert ody['mails'] == 34
+    assert (ody['first'], ody['last']) == ('2024-08-01', '2026-09-29')
+    from connectonion.rem.reader import mail_facts
+    facts = mail_facts(tmp_path)[ody['record']]
+    assert (facts['first'], facts['last']) == ('2024-08-01', '2026-09-29')
     page = Notebook(tmp_path).read(ody['record'])
+    assert 'Last contact: 2026-09-29' in page
     assert 'zhouody@gmail.com' in page and 'Confirm they are one person' in page
     assert len(pages) == 5               # Ody, the two Johns, Misa, and a mail.com person
     listed = {row['address'] for row in result['automated_correspondents']}
@@ -499,19 +504,22 @@ def test_pages_an_older_map_made_are_archived_when_this_map_would_not_make_them(
     investigated = notebook.read('projects/notebook-2.md').replace(
         'not investigated yet', 'investigated 2026-09-20 (codex)')
     notebook.write('projects/notebook-2.md', investigated)                     # someone's work: kept
-    notebook.stub_project('projects/rvc-a.md', 'realtime-voice-chat',
-                          ['/Users/x/Documents/Codex/2026-08-17/realtime-voice-chat'])
-    notebook.stub_project('projects/rvc-b.md', 'realtime-voice-chat-2',
-                          ['/Users/x/Documents/Codex/2026-08-22/realtime-voice-chat-2'])
+    scratch_a = tmp_path / 'Documents/Codex/2026-08-17/acme-project'
+    scratch_b = tmp_path / 'Documents/Codex/2026-08-22/acme-project-2'
+    for path in (scratch_a, scratch_b):
+        path.mkdir(parents=True)
+        (path / 'package.json').write_text('{"name": "acme-project"}')
+    notebook.stub_project('projects/rvc-a.md', 'acme-project', [str(scratch_a)])
+    notebook.stub_project('projects/rvc-b.md', 'acme-project-2', [str(scratch_b)])
     notebook.stub_person('people/dora-by-address.md', 'dora@example.org', ['dora@example.org'],
                          email='dora@example.org')
     people = [{'name': 'Dora Chen', 'address': 'dora@example.org', 'mails': 40, 'sent': 20, 'received': 20,
                'one_way': False, 'boxes': ['gmail']}]
     monkeypatch.setattr('connectonion.rem.map._mail_rows', lambda *a, **kw: (people, set()))
     monkeypatch.setattr('connectonion.rem.map.scan_projects', lambda *a: [
-        {'origin': '', 'repo': '', 'path': '/Users/x/Documents/Codex/2026-08-17/realtime-voice-chat',
+        {'origin': '', 'repo': '', 'path': str(scratch_a),
          'sessions': 2, 'first': '2026-08-17', 'last': '2026-08-17'},
-        {'origin': '', 'repo': '', 'path': '/Users/x/Documents/Codex/2026-08-22/realtime-voice-chat-2',
+        {'origin': '', 'repo': '', 'path': str(scratch_b),
          'sessions': 2, 'first': '2026-08-22', 'last': '2026-08-22'}])
     result = build_map(tmp_path, {}, {}, skill_directories=[skills])
     assert len(result['projects']) == 1                                       # one scratch project, not two
@@ -1064,19 +1072,22 @@ def test_a_new_person_page_states_the_last_contact_in_its_lead_and_leaves_histor
     assert '## History\n- Unknown — not investigated yet' in page
 
 
-def test_a_one_off_codex_task_folder_is_not_a_project_and_returning_work_is():
-    """#2079: `Documents/Codex/2026-08-17/install-github-cli-gh-on-this`, 2 sessions,
-    became a project page; realtime-voice-chat's dated folders held 23."""
+def test_a_one_off_codex_task_folder_is_not_a_project_and_manifest_work_is(tmp_path):
     from connectonion.rem.map import ONE_OFF_TASK, project_groups
 
     def row(path, sessions):
-        return {'path': path, 'sessions': sessions, 'turns': sessions * 5, 'first': '2026-08-01',
+        return {'path': str(path), 'sessions': sessions, 'turns': sessions * 5, 'first': '2026-08-01',
                 'last': '2026-09-01', 'repo': '', 'origin': ''}
+    base = tmp_path / 'Documents/Codex'
+    for date in ('2026-08-22', '2026-08-26'):
+        path = base / date / 'acme-project'
+        path.mkdir(parents=True)
+        (path / 'pyproject.toml').write_text('[project]\nname = "acme-project"\n')
     dropped = []
-    groups = project_groups([row('/Users/me/Documents/Codex/2026-08-17/install-github-cli-gh-on-this', 2),
-                             row('/Users/me/Documents/Codex/2026-08-22/realtime-voice-chat', 12),
-                             row('/Users/me/Documents/Codex/2026-08-26/realtime-voice-chat', 11)], dropped)
-    assert [group['name'] for group in groups.values()] == ['realtime-voice-chat']
+    groups = project_groups([row(base / '2026-08-17/install-a-tool-for-me', 2),
+                             row(base / '2026-08-22/acme-project', 12),
+                             row(base / '2026-08-26/acme-project', 11)], dropped)
+    assert [group['name'] for group in groups.values()] == ['acme-project']
     assert [entry['reason'] for entry in dropped] == [ONE_OFF_TASK]
 
 

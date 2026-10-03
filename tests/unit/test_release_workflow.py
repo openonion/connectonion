@@ -31,7 +31,7 @@ def test_every_pull_request_runs_the_test_workflow():
 
 
 def test_pytest_jobs_install_the_declared_dev_extra():
-    pytest_jobs = ("test", "remote-browser-egress", "windows-browser")
+    pytest_jobs = ("test", "cli-help-audit", "remote-browser-egress", "windows-browser")
     lines = TESTS.splitlines()
     for job in pytest_jobs:
         start = lines.index(f"  {job}:")

@@ -34,6 +34,15 @@ AUTOMATED_HINT = re.compile(r"no-?reply|noreply|notification|newsletter|mailer|c
                             r"|accounts?|orders?|welcome|members?)@",
                             re.IGNORECASE)
 
+INSTITUTIONAL_NAME = re.compile(
+    r"(?:Centre|Center|Institute|Foundation|Hub|Labs?|Department|Society|Association|"
+    r"Initiative|Council|Office|Team|Club)(?![A-Za-z])|中心|会议|学院|学会|委员会", re.I)
+
+
+def institutional_name(name: str) -> bool:
+    """A display name for an institution or desk rather than a person."""
+    return bool(INSTITUTIONAL_NAME.search(name))
+
 # Mailbox providers, not employers. A domain here says where someone keeps their
 # mail; every other domain says who they answer to, which is why 168 of 182 real
 # correspondents over 180 days carried one.
@@ -339,6 +348,21 @@ def _beside(parent: str, name: str) -> str:
 # A turn of one short session: a one-off chat, not a project (#1974).
 SHORT_SESSION_TURNS = 3
 SHORT_SESSION = "one short session outside a repository"
+ONE_OFF_TASK = "a one-off scratch task folder without a project manifest"
+DATED_SCRATCH = re.compile(r"(?:^|/)(?:Documents/Codex|[Ss]cratchpad|[Ss]cratch)/\d{4}-\d{2}-\d{2}/")
+PROJECT_MANIFESTS = ("pyproject.toml", "package.json", "Cargo.toml", "go.mod", "Makefile")
+PROMPT_FRAGMENT = re.compile(r"(?:create|make|install|set-up|fix|add|update|write|build|please|pls)(?:-[a-z0-9]+)+", re.I)
+
+
+def scratch_without_manifest(path: Path) -> bool:
+    """A dated scratch task has no project file in its folder or dated parent."""
+    match = DATED_SCRATCH.search(path.as_posix())
+    if not match:
+        return False
+    dated = Path(path.as_posix()[:match.end() - 1])
+    return not any((folder / manifest).is_file()
+                   for folder in (path, *path.parents) if folder.is_relative_to(dated)
+                   for manifest in PROJECT_MANIFESTS)
 
 
 def home_or_above(path: Path) -> bool:
@@ -357,7 +381,8 @@ def not_a_project(row: dict) -> str:
     first prompt ("create-a-scheduled-task-called-weekday"), for plugin-install
     folders, and for build output under a hidden folder -- each with one session
     and no repository. A repository is always a project; so is a folder the user
-    came back to, or talked in for more than a few turns. `row` is a
+    came back to, or talked in for more than a few turns. Dated scratch task
+    folders also need a project manifest. `row` is a
     `scan_projects` row: `path`, `repo`, `sessions`, and `turns` when counted.
     """
     path = Path(row["path"])
@@ -365,6 +390,10 @@ def not_a_project(row: dict) -> str:
         return "home directory"
     if row.get("repo") or main_checkout(row["path"]) or (path / ".git").exists():
         return ""
+    if DATED_SCRATCH.search(path.as_posix()):
+        return ONE_OFF_TASK if scratch_without_manifest(path) else ""
+    if PROMPT_FRAGMENT.fullmatch(path.name) and not any((path / name).is_file() for name in PROJECT_MANIFESTS):
+        return "prompt-fragment folder without a project manifest"
     parts = path.parts
     if any(part in ("scheduled-tasks", "scheduled_tasks") for part in parts):
         return "scheduled-task folder"

@@ -62,6 +62,8 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
     assert 'Snapshot ' in page.locator('#mobile-status').inner_text()
+    assert 'Background updates off' in page.locator('#mobile-status').inner_text()
+    assert 'Not started' not in page.locator('#mobile-status').inner_text()
     assert page.locator('#mobile-status').is_visible()
     for selector in ('#q', '.nav-toggle', '.mobile-back a'):
         assert page.locator(selector).bounding_box()['height'] >= 44
@@ -70,6 +72,11 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     assert page.locator('.deep-note .note').bounding_box()['y'] < page.locator('.deep-note .side').bounding_box()['y']
     assert 'co\u00a0rem\u00a0start' in page.locator('#mobile-status').text_content()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    page.set_viewport_size({'width': 1440, 'height': 900})
+    page.reload()
+    assert 'Background updates off' in page.locator('#foot').inner_text()
+    assert 'Not started' not in page.locator('#foot').inner_text()
+    assert '`' not in page.locator('#foot').inner_text()
 
 
 @pytest.fixture
@@ -165,6 +172,104 @@ def test_the_people_sheet_fits_1440_and_says_when_it_is_cut(reader):
     scroller.evaluate("e => { e.scrollLeft = e.scrollWidth; }")
     page.wait_for_function("!document.querySelector('.sheet-box').classList.contains('clip-right')")
     assert page.locator("td.name").first.evaluate("e => e.getBoundingClientRect().left") >= scroller.evaluate("e => e.getBoundingClientRect().left") - 1
+
+
+def test_people_last_contact_heading_is_visible_beside_sticky_name_on_phone(reader):
+    page, uri = reader
+    page.set_viewport_size({"width": 375, "height": 812})
+    page.goto(uri + "#c=people")
+    scroller = page.locator(".sheet-scroll")
+    assert page.locator(".sheet th.c-last button").text_content().startswith("Last contact")
+    assert any("· map" in date for date in page.locator(".sheet td.c-last").all_inner_texts())
+    header_positions = """() => {
+      const button = document.querySelector('.sheet th.c-last button');
+      const firstLetter = document.createRange();
+      firstLetter.setStart(button.firstChild, 0);
+      firstLetter.setEnd(button.firstChild, 1);
+      const letter = firstLetter.getBoundingClientRect();
+      const name = document.querySelector('.sheet th.name').getBoundingClientRect();
+      const edge = document.querySelector('.sheet-scroll').getBoundingClientRect();
+      return { letterLeft: letter.left, nameLeft: name.left, nameRight: name.right,
+        headingRight: button.getBoundingClientRect().right, edgeLeft: edge.left, edgeRight: edge.right };
+    }"""
+    for without_map_suffix in (False, True):
+        if without_map_suffix:
+            page.locator(".sheet td.c-last .mono").evaluate_all(
+                "cells => cells.forEach(cell => cell.textContent = cell.textContent.replace(' · map', ''))")
+        scroller.evaluate("e => { e.scrollLeft = e.scrollWidth; }")
+        positions = page.evaluate(header_positions)
+        assert positions["nameLeft"] >= positions["edgeLeft"] - 1, positions
+        assert positions["letterLeft"] >= positions["nameRight"], positions
+        assert positions["headingRight"] <= positions["edgeRight"], positions
+
+
+def test_large_people_roster_keeps_the_mobile_last_contact_heading_visible(reader, tmp_path, monkeypatch):
+    from connectonion.rem import reader as rem_reader
+
+    data = rem_reader.snapshot(tmp_path / "rem")
+    example = next(r for r in data["records"] if r["title"] == "Quinn Alder")
+    data["records"].extend({**example, "path": f"people/example-{i}.md",
+                            "title": f"Alexandria Margaret Historical Correspondent {i:03d}"}
+                           for i in range(570))
+    monkeypatch.setattr(rem_reader, "snapshot", lambda _: data)
+    path = tmp_path / "large-roster.html"
+    path.write_text(rem_reader.render(tmp_path / "rem"), encoding="utf-8")
+
+    page, _ = reader
+    page.set_viewport_size({"width": 375, "height": 812})
+    page.goto(path.as_uri() + "#c=people")
+    sheet = page.locator(".sheet-scroll")
+    assert page.locator(".sheet tbody tr").count() >= 575
+    for _ in range(2):
+        sheet.evaluate("e => e.scrollLeft = e.scrollWidth")
+        positions = page.evaluate("""() => {
+          const button = document.querySelector('.sheet th.c-last button');
+          const letter = document.createRange();
+          letter.setStart(button.firstChild, 0);
+          letter.setEnd(button.firstChild, 1);
+          return { first: letter.getBoundingClientRect().left,
+            name: document.querySelector('.sheet th.name').getBoundingClientRect().right,
+            right: button.getBoundingClientRect().right,
+            edge: document.querySelector('.sheet-scroll').getBoundingClientRect().right };
+        }""")
+        assert positions["first"] >= positions["name"], positions
+        assert positions["right"] <= positions["edge"], positions
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        assert any("· map" in text for text in page.locator(".sheet td.c-last .mono").all_inner_texts())
+        page.locator(".sheet th.c-last button").click()
+        assert page.locator(".sheet th.c-last").get_attribute("aria-sort") in ("ascending", "descending")
+
+
+def test_first_map_shows_results_next_step_and_held_count_on_phone(reader, tmp_path, monkeypatch):
+    from connectonion.rem import reader as rem_reader
+
+    data = rem_reader.snapshot(tmp_path / "rem")
+    data["logs"] = []
+    data["status"] = {"state": "Not started — run `co rem start` to begin"}
+    for record in data["records"]:
+        record["written"] = False
+    next(r for r in data["records"] if r["title"] == "Quinn Alder")["needs_review"] = True
+    for counts in data["counts"].values():
+        counts["written"] = 0
+    visible_people = sum(r["category"] == "people" and not r.get("needs_review") and not r.get("service")
+                         for r in data["records"])
+    monkeypatch.setattr(rem_reader, "snapshot", lambda _: data)
+    path = tmp_path / "first-map.html"
+    path.write_text(rem_reader.render(tmp_path / "rem"), encoding="utf-8")
+
+    page, _ = reader
+    page.set_viewport_size({"width": 375, "height": 812})
+    page.goto(path.as_uri())
+    assert page.get_by_role("heading", name="Your source map").is_visible()
+    assert page.locator(".first-map h2").inner_text().endswith(" records mapped")
+    assert page.locator(".first-map .morning-time").inner_text() == "0 memories written"
+    assert page.locator(".first-map-actions a").inner_text() == f"Browse {visible_people} people →"
+    assert page.locator(".first-map-actions a").is_visible()
+    assert page.locator(".first-map-actions button").evaluate("e => e.getBoundingClientRect().bottom <= innerHeight")
+    assert "Background updates off" in page.locator("#mobile-status").inner_text()
+    page.locator(".first-map-actions a").click()
+    assert "1 possible contact" in page.locator(".held-note").inner_text()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
 def test_a_person_opens_on_a_fact_card_with_cited_values(reader):
@@ -272,7 +377,9 @@ def test_focus_connects_project_people_org_and_archived_conversation(reader):
     connected = page.locator(".related-records .relation-card")
     assert {name.strip() for name in connected.locator("strong").all_inner_texts()} >= {
         "Mara Ostrowski", "Fernhill Labs"}
-    assert page.get_by_role("heading", name="What this is").is_visible()
+    assert "what this project does" in page.locator('.focus-kicker').inner_text().lower()
+    assert "command-line tool" in page.locator('.focus-statement').inner_text()
+    assert "did not confirm current project work" in page.locator('.focus-limit').inner_text()
     assert page.get_by_role("heading", name="Recorded direction").is_visible()
     assert page.get_by_role("heading", name="Full memory and sources").is_visible()
     page.get_by_role("link", name="View all decisions").click()
@@ -821,6 +928,43 @@ def test_written_unknown_sections_are_distinct_from_uninvestigated_pages(reader)
     page.goto(uri + '#r=people%2Fquinn-alder.md')
     assert page.locator('.missing .names').inner_text().startswith('Not investigated yet:')
     assert page.locator('.missing .lead').inner_text().lower() == 'only mapped so far'
+
+
+def test_mapped_person_distinguishes_map_date_from_missing_note_fact(reader):
+    page, uri = reader
+    for width in (1440, 375):
+        page.set_viewport_size({'width': width, 'height': 812})
+        page.reload()
+        page.goto(uri + '#r=people%2Fquinn-alder.md')
+        page.get_by_role('heading', name='Quinn Alder', exact=True).wait_for()
+        assert 'Last contact in map' in page.locator('.leadrow').inner_text()
+        assert page.locator('.focus-facts').count() == 0
+        assert '— map date shown above' in page.locator(
+            '.factlist dt:text-is("Last contact") + dd').inner_text()
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        if width == 375:
+            button = page.locator('.missing.primary .btn-primary').bounding_box()
+            assert button['height'] >= 44
+            assert button['y'] + button['height'] <= 812
+
+        page.goto(uri + '#c=people')
+        page.get_by_role('heading', name='People', exact=True).wait_for()
+        quinn = page.locator('.sheet tbody tr').filter(has_text='Quinn Alder')
+        assert 'map' in quinn.locator('.c-last').inner_text()
+
+        page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+        page.get_by_role('heading', name='Mara Ostrowski', exact=True).wait_for()
+        assert 'Last contact in map' not in page.locator('.leadrow').inner_text()
+
+        page.goto(uri + '#r=people%2Fquinn-alder.md')
+        page.get_by_role('heading', name='Quinn Alder', exact=True).wait_for()
+        page.evaluate("""() => {
+          const r = byPath('people/quinn-alder.md');
+          r.last_activity = ''; r.mail.last = '';
+          KNOWN.delete(r.path); FACTS.delete(r.path); render();
+        }""", isolated_context=False)
+        assert 'Last contact in map' not in page.locator('.leadrow').inner_text()
+        assert '— not found' in page.locator('.factlist dt:text-is("Last contact") + dd').inner_text()
 
 
 def test_unknown_open_status_is_not_a_current_exchange(reader):

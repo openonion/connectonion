@@ -1,6 +1,6 @@
 # co rem — 1.9 preview guide
 
-Updated 2026-10-03 for opt-in preview **1.9.0a22**. The exact commands are
+Updated 2026-10-03 for opt-in preview **1.9.0a27**. The exact commands are
 also available through `co rem --help` and each subcommand's `--help` page.
 Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
 `unsubscribe`, `route`, `usage`) still work until 1.9.0 and print their new name.
@@ -259,7 +259,7 @@ an exhaustive plugin-cache or remote-catalog scan. Repeat `--skills-dir` for
 explicit roots; supplying it replaces defaults for that scan. Coverage and
 unreadable files are reported in the index and command result.
 
-The [co rem CLI reference](../../connectonion/useful_skills/rem-init/CLI.md) explains
+The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0a27/connectonion/useful_skills/rem-init/CLI.md) explains
 mail IDs, browser tabs, source/working/output directories and failure recovery.
 
 ## One execution path
@@ -354,6 +354,9 @@ findings first, then newest last contact. The Markdown file is unchanged, and
 
 The reader returns the context REM carried forward, then helps you recall an
 older page before showing its answer. It remains a point-in-time snapshot.
+When pages already exist but no background schedule is authorized, its status
+says **Background updates off** and offers `co rem start`; the written pages
+remain available. A wholly empty notebook still says **Not started**.
 
 - **Home** opens with up to three pages changed in the latest pass, labeling
   their statements as current context. When the new run log has cited Facts or
@@ -659,8 +662,6 @@ investigation remains outside the scheduled cap.
 The UI is a static snapshot of the notebook as it is now; run `open` again to see later changes (`--no-launch` says so and ends on `co rem open`). No merge,
 release, new background job, broad mailbox backfill or production co rem rewrite
 is implied by the architecture refactor.
-
-See [acceptance evidence](../testing/rem-acceptance.md).
 
 ### Investigate an installed skill
 
