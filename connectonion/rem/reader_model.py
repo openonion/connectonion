@@ -6,8 +6,8 @@ without rewriting a person's notes just to change the interface.
 
 from __future__ import annotations
 
-import posixpath
 import hashlib
+import posixpath
 import re
 import sqlite3
 from pathlib import Path
@@ -39,7 +39,7 @@ def _relation(origin: str, target: str, line: str, kind: str) -> dict:
             "private": bool(PRIVATE.search(line)), "sources": list(dict.fromkeys(CITATION.findall(line)))[:4], "via": origin}
 
 
-def _forward_relations(origin: str, text: str, paths: dict, names: dict) -> dict:
+def _forward_relations(origin: str, text: str, paths: dict, names: list[tuple[re.Pattern[str], str, str]]) -> dict:
     body = _not_sources(text)
     found = {}
     # An exact notebook path does not depend on its label or the target's title.
@@ -51,8 +51,15 @@ def _forward_relations(origin: str, text: str, paths: dict, names: dict) -> dict
     # Match visible prose once per name, never Markdown URLs. Replacing link
     # markup preserves line boundaries, citation numbers and privacy markers.
     prose = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", body)
-    for pattern, target in names:
+    folded = prose.casefold() if names else ""
+    for pattern, target, name in names:
         if target == origin or target in found:
+            continue
+        # A literal check avoids running hundreds of regexes against each
+        # written page. Python's IGNORECASE also equates dotted/dotless I, so
+        # leave those names to the regex rather than filtering a real match.
+        if (name not in folded and "i\u0307" not in name and "\u0131" not in name
+                and not (("\u0130" in prose or "\u0131" in prose) and "i" in name)):
             continue
         match = pattern.search(prose)
         if match:
@@ -79,7 +86,7 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
                     stem = words[0]
                     if len(stem) >= 4:
                         names.setdefault(stem.casefold(), []).append(row["path"])
-    unique = [(re.compile(r"(?<!\w)" + re.escape(name) + r"(?!\w)", re.I), rows[0])
+    unique = [(re.compile(r"(?<!\w)" + re.escape(name) + r"(?!\w)", re.I), rows[0], name)
               for name, rows in sorted(names.items(), key=lambda pair: -len(pair[0])) if len(set(rows)) == 1]
     # Mapped stubs have no investigated prose to infer relationships from.
     # Keep their explicit links, but avoid scanning every name in every stub.

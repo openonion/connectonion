@@ -27,6 +27,41 @@ def test_attachment_citation_with_spaces_reads_current_file_without_claiming_old
     assert not context[source].get('captured_at')
 
 
+def test_pdf_source_preview_reads_only_the_pages_needed(tmp_path, monkeypatch):
+    from connectonion.rem.attachments import attachment_context, extract_text
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import state_path
+
+    prepare(tmp_path)
+    source = 'outlook:123456789abc:terms.pdf'
+    path = state_path(tmp_path, 'attachments/outlook/123456789abc/terms.pdf')
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b'%PDF-1.4\n')
+    first = 'First page clause. ' * 50
+    calls = []
+
+    class Page(dict):
+        def __init__(self, label, body):
+            self.label, self.body = label, body
+
+        def extract_text(self):
+            calls.append(self.label)
+            return self.body
+
+    class Reader:
+        def __init__(self, path):
+            self.pages = [Page('first', first), Page('second', 'Later clause.')]
+
+    monkeypatch.setattr('pypdf.PdfReader', Reader)
+    context = attachment_context(tmp_path, source)
+    assert context['excerpt'] == first.strip()[:640]
+    assert context['truncated']
+    assert calls == ['first']
+    calls.clear()
+    assert extract_text(path, limit=None).endswith('Later clause.')
+    assert calls == ['first', 'second']
+
+
 def test_attachment_citation_rejects_a_linked_attachment(tmp_path):
     from connectonion.rem.attachments import attachment_context
     from connectonion.rem.config import prepare
@@ -56,6 +91,17 @@ def test_short_mentions_link_only_when_the_alias_is_unique():
     records.append({"path": "people/mara-other.md", "category": "people", "title": "Mara Nguyen", "text": "# Mara"})
     links = relationships(records)
     assert {link["path"] for link in links["projects/harbour.md"]} == {"orgs/fernhill.md"}
+
+
+def test_unicode_case_insensitive_mentions_keep_dotted_and_dotless_i():
+    records = [
+        {"path": "people/ipek.md", "category": "people", "title": "Ipek Kaya", "text": "# Ipek Kaya"},
+        {"path": "projects/pilot.md", "category": "projects", "title": "Pilot",
+         "text": "İpek Kaya joined the pilot [1].\n## Sources\n- [1] mail:source — evidence"},
+    ]
+    assert {link["path"] for link in relationships(records)["projects/pilot.md"]} == {"people/ipek.md"}
+    records[1]["text"] = "ıpek Kaya joined the pilot [1]."
+    assert {link["path"] for link in relationships(records)["projects/pilot.md"]} == {"people/ipek.md"}
 
 
 def test_mapped_stubs_keep_explicit_links_without_inventing_prose_relationships():
