@@ -535,6 +535,7 @@
   .open-cell { flex-wrap: wrap; row-gap: 2px; }
   .open-cell .txt { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; flex-basis: 100%; }
   .name-cell .st { display: inline-flex; }
+  .mobile-person-hint { display: none; }
   /* A cut edge says so: a shadow where more columns wait to the right. */
   .sheet-box { position: relative; }
   .sheet-box::after { content: ""; position: absolute; right: 1px; bottom: 1px; top: var(--sheet-top, 0); width: 28px; pointer-events: none; border-radius: 0 8px 8px 0; background: linear-gradient(to right, transparent, rgba(23, 27, 43, 0.12)); opacity: 0; transition: opacity 150ms; }
@@ -770,8 +771,10 @@
     .fact { padding: 9px 11px 10px; }
     .sheet-find { flex: 1 1 100%; font-size: 16px; }
     .sheet-count { margin-left: 0; }
+    .sheet th button { min-height: 44px; }
     .sheet .name { box-sizing: border-box; width: 170px; min-width: 170px; max-width: 170px; }
     .sheet .name .nm a { overflow-wrap: anywhere; }
+    .mobile-person-hint { display: block; margin: 3px 0 0 21px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font: 10.5px var(--mono); }
     .sheet th.c-last button { gap: 0; padding-right: 2px; }
     .mobile-status-label { display: block; padding-left: 21px; color: var(--ink-3); font: 11px var(--mono); }
   }
@@ -1450,8 +1453,12 @@ function textCell(v) { return v ? privateFallback(el("span", { class: "clamp",
   html: inline(v.replace(/\s*\[W?\d{1,3}\]/g, ""), "") })) : el("span", { class: "unk", text: "—" }); }
 function nameCell(r, f, withSummary) {
   const k = known(r);
+  const email = plainValue(f.email).split(/[,;\s]/)[0];
+  const mappedScope = k.status === "Mapped" && r.mail ? r.mail.mails + " mapped mails" : "";
   return el("div", { class: "name-cell" }, [el("span", { class: "nm" }, [el("span", { class: "st", title: k.status, "aria-label": k.status }, [moon(k.status)]), el("a", { href: href(r), text: r.title })]),
     r.category === "projects" ? el("span", { class: "mobile-status-label", text: k.status }) : null,
+    r.category === "people" && email && !/^Unknown$/i.test(email) ? el("span", { class: "mobile-person-hint", title: email, text: email }) : null,
+    r.category === "people" && mappedScope ? el("span", { class: "mobile-person-hint", text: mappedScope }) : null,
     withSummary && k.summary ? el("span", { class: "sum", text: k.summary }) : null]);
 }
 const COLUMNS = {

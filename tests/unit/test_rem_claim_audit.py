@@ -24,6 +24,16 @@ def test_provider_dates_reject_a_wrong_source_day_and_next_day_wording():
     assert "next-day" in findings[1]["issue"]
 
 
+def test_a_future_event_is_not_mistaken_for_a_next_day_correction():
+    packet = {"candidate": "Meeting scheduled for the next day [8][10].\n\n## Sources\n", "sources": [
+        {"citation": "8", "definition": "- [8] gmail:invite — 2026-08-12",
+         "context": {"time": "2026-08-12T01:34:42+00:00"}},
+        {"citation": "10", "definition": "- [10] gmail:confirmation — 2026-08-12",
+         "context": {"time": "2026-08-12T01:36:40+00:00"}},
+    ]}
+    assert claim_audit.date_findings(packet, "Australia/Sydney") == []
+
+
 def test_missing_cited_original_never_reaches_the_model(tmp_path):
     prepare(tmp_path)
     candidate = "# Mia\n\nMia leads the team [1].\n\n## Sources\n- [1] gmail:missing — 2026-08-12\n"

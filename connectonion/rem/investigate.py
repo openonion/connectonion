@@ -1056,7 +1056,7 @@ def _local_mail_times(items: list[dict], zone_name: str) -> None:
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
-                quick: bool = False) -> dict:
+                quick: bool = False, audit_claims: bool = True) -> dict:
     """Fill the page's gaps from everything gathered; the page itself is the first input."""
     notebook = Notebook(root)
     if not notebook.path(record).is_file():
@@ -1327,7 +1327,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # only picks which harness answers the Skill -- our own loop, or Codex
     # delegated through `co ai --harness codex`. Either one can reach the web.
     if runner is None:
-        runner = partial(run_stage, search=mail_search(clients)) if clients else run_stage
+        runner = partial(run_stage, search=mail_search(clients) if clients else None,
+                         audit_claims=audit_claims)
     if stage_progress:
         stage_progress("writing investigation")
     try:

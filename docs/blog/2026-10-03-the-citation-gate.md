@@ -28,6 +28,14 @@ argument visible to local process listings. Other runners read a private
 temporary packet file. A protected end-to-end attempt on the sampled notebook
 rejected the candidate and preserved the mapped page byte for byte.
 
+A fictional three-mail calibration checked both directions of this gate. The
+auditor rejected a page that inferred attendance from an invitation and a
+group reply, then passed a page that stated the invitation, the reply's actual
+words, and the limited visibility of a later request. The two calls each used
+about 22,000 input tokens. This tests those two examples, not general accuracy.
+The model-tier fixture now tests only whether a model can fill a page; actual
+person investigations still run the claim audit before promotion.
+
 A normal investigation refusal log also exposed a reader problem: the latest
 draft's rejection was hidden in Maintenance, while an earlier metadata refresh
 looked like a rewritten memory. The reader now shows the citation-review
@@ -38,6 +46,14 @@ widths opened the protected audit and candidate files, confirmed 44-pixel
 phone link targets and a visible first-fold copy action, and found no overflow
 or script errors in the sampled Home and person states. Recent-run totals now
 identify their multi-run scope.
+
+A further independent role-based review searched two near-same-name People
+records at 1440 and 375 pixels. Their phone Name cells now expose mapped-mail
+counts before the reader opens either page; the records remained separate after
+sorting and navigation. Phone table sort buttons measured 44 pixels high after
+the touch adjustment, with no sampled overflow or script error. This is a
+two-record UI check, not evidence that the records belong to different people
+or that every person page has been reviewed.
 
 This is a conservative gate for the evidence cited on a person page, not proof
 that the selected originals cover every address or all contact history. The

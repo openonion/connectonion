@@ -11,6 +11,7 @@ from .reader_model import SOURCE, cited_context
 
 
 NEXT_DAY = re.compile(r"\b(?:next day|following day|day after)\b|隔天|次日|第二天", re.I)
+CORRECTION = re.compile(r"\b(?:corrected|clarified|revised|withdrew)\b|更正|澄清|修正|撤回", re.I)
 STAMP = re.compile(r"(?:—|–)\s*(\d{4}-\d{2}-\d{2})")
 MARK = re.compile(r"\[(W?\d{1,3})\]")
 SCHEMA = {
@@ -85,7 +86,7 @@ def date_findings(packet: dict, zone_name: str) -> list[dict]:
     head = packet["candidate"].partition("\n## Sources\n")[0]
     for line in head.splitlines():
         cited = [days[number] for number in MARK.findall(line) if number in days]
-        if NEXT_DAY.search(line) and len(cited) >= 2 and len(set(cited)) == 1:
+        if NEXT_DAY.search(line) and CORRECTION.search(line) and len(cited) >= 2 and len(set(cited)) == 1:
             findings.append({"issue": "Relative next-day wording conflicts with cited mail dates",
                              "evidence": f"All cited mail on this line is dated {cited[0]} in {zone_name}: {line[:180]}",
                              "required_correction": "Verify the event time or remove the next-day wording."})

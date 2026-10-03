@@ -644,6 +644,7 @@ def link_people(record: str, text: str, names: dict) -> str:
     Exact full names only, outside Contact fields and Sources, so nothing is guessed."""
     head, marker, tail = text.partition('\n## Sources\n')
     lines = head.split('\n')
+    title = next((line[2:].strip() for line in lines if line.startswith('# ')), '')
     for name, target in sorted(names.items(), key=lambda item: -len(str(item[0]))):
         if isinstance(target, tuple):        # a first-name page: (record, address local part)
             target, local = target
@@ -652,6 +653,10 @@ def link_people(record: str, text: str, names: dict) -> str:
             if len(hits) != 1:
                 continue
             name = hits.pop()
+        # A page titled "Nora" may be about "Nora Vale", but a separate
+        # same-name map page is not identity proof. Leave that mention unlinked.
+        if record.startswith('people/') and len(title.split()) == 1 and name.casefold().startswith(title.casefold() + ' '):
+            continue
         if target == record or f'[{name}](' in head:
             continue
         pattern = re.compile(r'(?<![\w\[/])' + re.escape(name) + r'(?![\w\]])')

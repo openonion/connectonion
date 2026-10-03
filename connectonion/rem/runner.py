@@ -721,7 +721,8 @@ def scrub_finished_tasks(workdir: Path) -> None:
 
 
 def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "",
-              *, stage: str = "maintain", maintenance_lock_held: bool = False, search=None) -> dict:
+              *, stage: str = "maintain", maintenance_lock_held: bool = False, search=None,
+              audit_claims: bool = True) -> dict:
     """Run investigation and maintenance on disposable page copies before promotion."""
     workdir = notebook.root / ".state" / "tasks"
     workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -732,14 +733,16 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
     # of them 0644 (#1974). The mask is the process's, so it is put back.
     previous_mask = os.umask(0o077)
     try:
-        return _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory, search)
+        return _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory,
+                          search, audit_claims)
     finally:
         # Ctrl-C and anything else unexpected too, not only a RemError.
         scrub_task(directory)
         os.umask(previous_mask)
 
 
-def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory, search=None):
+def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory,
+               search=None, audit_claims=True):
     from .reflections import POLICY
     from .reflections import context as reflections
     from .reviews import context as reviews
@@ -886,7 +889,8 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
             def promote():
                 audit_usage = _promote_candidate(notebook, record, candidate, before[record], items, directory,
                                                  result.get("usage"), lock_held=maintenance_lock_held,
-                                                 investigation=stage == "investigate", claim_config=selected_config)
+                                                 investigation=stage == "investigate",
+                                                 claim_config=selected_config if audit_claims else None)
                 if audit_usage:
                     result["usage"] = {key: (result.get("usage") or {}).get(key, 0) + audit_usage.get(key, 0)
                                        for key in (result.get("usage") or {}).keys() | audit_usage.keys()}
