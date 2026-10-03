@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a26
+## Current Version: 1.9.0a27
+
+1.9.0a27 keeps institutional and service desk correspondents out of `people/`
+and requires project evidence before dated scratchpad folders or prompt
+fragments enter `projects/`. Stable remains 1.8.10. See
+[1.9.0a27 notes](docs/releases/1.9.0a27.md).
+
+- 1.9.0a27 (#2201, #2202; institutional correspondents and project entry gate).
+
+## Previous preview: 1.9.0a26
 
 1.9.0a26 makes written REM notebooks faster to reopen, clarifies that existing
 memories remain available when background updates are off, and checks that the

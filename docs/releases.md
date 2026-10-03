@@ -23,6 +23,18 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a27** keeps institutional and service desk senders out of the
+People notebook and filters dated scratch tasks and prompt fragments from the
+Projects notebook unless they have project evidence. See
+[1.9.0a27 notes](releases/1.9.0a27.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a27'
+co rem open --live
+```
+
+Earlier alpha previews remain available:
+
 Alpha **1.9.0a26** reopens written `co rem` notebooks faster and makes it clear
 when background updates are off while existing memories remain available. The
 package README now checks its exact preview pin against the shipped version.
@@ -32,8 +44,6 @@ See [1.9.0a26 notes](releases/1.9.0a26.md).
 python -m pip install --upgrade 'connectonion==1.9.0a26'
 co rem open --live
 ```
-
-Earlier alpha previews remain available:
 
 Alpha **1.9.0a25** shows what a first `co rem init` mapped, reconciles held
 contacts, and corrects grouped mail dates on a fresh map. See
