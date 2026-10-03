@@ -23,6 +23,16 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a38** adds a within-source find and Next match control to long
+archived REM excerpts. It shows when an excerpt was truncated and searches only
+the text shown; saved source bodies and memory pages do not change. See
+[1.9.0a38 notes](releases/1.9.0a38.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a38'
+co rem open --local
+```
+
 Alpha **1.9.0a37** shows a compact Project purpose on changed Home cards,
 keeps the purpose's individual source links openable beside a clipped preview,
 and enlarges the desktop privacy control. Saved memories do not change. See

@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a37
+## Current Version: 1.9.0a38
+
+1.9.0a38 adds Find and Next match inside long archived REM source excerpts.
+The dialog names truncation, and search stays inside the private source
+section. Existing saved memories and source bodies are unchanged. Stable
+remains 1.8.10. See [1.9.0a38 notes](docs/releases/1.9.0a38.md).
+
+- 1.9.0a38 (Find within long archived sources).
+
+## Previous preview: 1.9.0a37
 
 1.9.0a37 puts a short, source-backed Project purpose on changed Home cards,
 keeps each cited purpose source directly openable beside the clipped phone and
