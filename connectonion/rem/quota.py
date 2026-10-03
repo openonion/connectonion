@@ -100,7 +100,7 @@ def points_spent(logs: list[dict], now: dict) -> float:
     Summed per run, not "now minus the first reading", because the owner's own
     coding moves the same meter between runs.
     """
-    if "unknown" in now:
+    if "unknown" in now or "resets_at" not in now:
         return 0
     window_start = now["resets_at"] - now["window_minutes"] * 60
     spent = 0.0
