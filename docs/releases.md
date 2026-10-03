@@ -23,27 +23,25 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
-Alpha **1.9.0a29** puts the investigate action on the first phone screen of
-mapped Person, Project and Skill pages. A mapped Project now leads with observed
-session coverage and says its purpose remains unverified; the phone privacy
-control has a full touch target. See [1.9.0a29 notes](releases/1.9.0a29.md).
+Alpha **1.9.0a30** implements full-cohort concurrent onboarding and CLI
+investigations, running across a 10-worker thread pool with thread-safe client
+isolation and zero dry-run capping. See
+[1.9.0a30 notes](releases/1.9.0a30.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.0a29'
+python -m pip install --upgrade 'connectonion==1.9.0a30'
 co rem open --live
 ```
 
 Earlier alpha previews remain available:
 
+Alpha **1.9.0a29** puts the mapped-page investigate action within phone reach
+on the first screen. See [1.9.0a29 notes](releases/1.9.0a29.md).
+
 Alpha **1.9.0a28** implements context over control in `co rem investigate`:
 pre-authorizes local search and shell tools upfront, supplies live project
 repository paths, and records full audit provenance. See
 [1.9.0a28 notes](releases/1.9.0a28.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.0a28'
-co rem open --live
-```
 
 Alpha **1.9.0a27** keeps institutional and service desk senders out of the
 People notebook and filters dated scratch tasks and prompt fragments from the
@@ -54,6 +52,8 @@ Projects notebook unless they have project evidence. See
 python -m pip install --upgrade 'connectonion==1.9.0a27'
 co rem open --live
 ```
+
+Earlier alpha previews remain available:
 
 Alpha **1.9.0a26** reopens written `co rem` notebooks faster and makes it clear
 when background updates are off while existing memories remain available. The

@@ -1,6 +1,6 @@
 # co rem — 1.9 preview guide
 
-Updated 2026-10-03 for opt-in preview **1.9.0a29**. The exact commands are
+Updated 2026-10-03 for opt-in preview **1.9.0a30**. The exact commands are
 also available through `co rem --help` and each subcommand's `--help` page.
 Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
 `unsubscribe`, `route`, `usage`) still work until 1.9.0 and print their new name.
@@ -20,7 +20,7 @@ in its owner-only `.state/` and never go into a page; a model reads them only
 through the login you choose. By default it runs on your own Codex plan and
 spends no OpenOnion credits.
 
-What it costs, measured: the first run writes 12 pages at a time. An earlier
+What it costs, measured: the first run writes up to 10 pages at a time. An earlier
 real notebook trial wrote 198 of 242 people, project and organisation pages in
 about 25 minutes under its configured 60-point weekly cap. The current default
 routine budget is 35 points, with a 90% weekly safety floor; `co rem status`
@@ -60,11 +60,11 @@ first minutes. Then it uses the configured model to write your own page: the who
 `investigate me`, from everything you sent and your coding sessions of the last
 30 days (or `--days`), one model turn over evidence files, about 15 minutes.
 It writes a quick first pass of your page in about 4 minutes, then the whole
-page alongside the selected pages. Next come eligible people, those active in
-the last 14 days first, each investigated from up to two years of their mail;
-queued projects already listed in the map, recent first; organisations linked
-to those people; and installed skills from source and retained run evidence:
-12 pages at a time. Session folders discovered after the map summary remain
+page alongside the selected pages. Next come all eligible mapped people, recent
+first, each investigated from up to two years of their mail; queued projects
+already listed in the map, recent first; all pending mapped organisations; and
+installed skills from source and retained run evidence: 10 pages at a time.
+Session folders discovered after the map summary remain
 unmapped candidates during this first run. They do not silently add project
 pages or change the project count the owner just saw.
 Init rereads the retained project-message window against the current map. If
@@ -85,8 +85,8 @@ measured on a real 7-day first run on 2026-10-02: each owner turn 768k and
 ~4.5 minutes (quick and full are both counted), a person 304k and ~2 minutes
 with up to two years of evidence, a project 69k and ~1 minute, an organisation
 129k and ~2 minutes. Minutes are wall clock: after the quick owner turn, the
-full turn and selected pages share up to 12 workers. The estimate simulates
-that queue so a slow last page is not hidden by an average. Roughly 35% of a weekly runner
+full turn and selected pages share up to 10 workers. The estimate simulates
+that queue so a slow last page is not hidden by an average. Roughly 30% of a weekly runner
 allowance is a target, not a hard stop. The selected investigation finishes
 even if it uses more, unless the configured weekly safety floor is reached;
 pages already in flight finish. Ctrl-C stops it, says which pages
@@ -95,9 +95,8 @@ continues. It skips the model steps, with a one-line reason, when
 the runner is not installed or not signed in (checked before the map starts,
 without a model), when no mailbox gave an address of yours, when your page was
 already written. `--json` and non-terminal runs investigate by default too.
-`--no-investigate` explicitly builds the map only. Older
-projects wait for `co rem projects write`; more people for
-`co rem investigate people`.
+`--no-investigate` explicitly builds the map only. Later new evidence can be
+investigated with `co rem investigate all`.
 
 Your page is titled with what you are called: `--name` if given, else the
 name the people writing to you put on your address (the To and Cc of mail you
@@ -259,7 +258,7 @@ an exhaustive plugin-cache or remote-catalog scan. Repeat `--skills-dir` for
 explicit roots; supplying it replaces defaults for that scan. Coverage and
 unreadable files are reported in the index and command result.
 
-The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0a29/connectonion/useful_skills/rem-init/CLI.md) explains
+The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0a30/connectonion/useful_skills/rem-init/CLI.md) explains
 mail IDs, browser tabs, source/working/output directories and failure recovery.
 
 ## One execution path
@@ -303,7 +302,7 @@ Every command returns a next command, including in JSON and through a pipe.
 
 | Command | Behavior |
 |---|---|
-| `co rem init` | Discover sources and map pages, then use the configured model to investigate your page, eligible people, queued projects, related organizations and installed skills, recent first. `--no-investigate` explicitly stops after the map. |
+| `co rem init` | Discover sources and map pages, then use the configured model to investigate your page, all eligible people, queued projects, pending mapped organizations and installed skills, recent first. `--no-investigate` explicitly stops after the map. |
 | `co rem scan people --days 150 --min-mails 1` | Enumerate correspondent signals from Gmail/Outlook; no model. Repeat `--mine <address>` for own addresses. |
 | `co rem scan orgs --days 180 --min-people 2` | List work domains that two or more people write from — where an organisation page earns its place. No model. |
 | `co rem scan projects --days 150` | Enumerate session working directories and local Git repository identities; no model. |
@@ -615,21 +614,21 @@ below is good to about one point.
   read) now counts `(input − cached input + output) / 1,000,000` points, to one
   decimal: about a million tokens the model had to read fresh or write is one
   point. A run that did move the meter counts what the meter says.
-- **Scheduled and manual investigation has a weekly budget**, `limits.investigation_quota_points`,
+- **Scheduled investigation has a weekly budget**, `limits.investigation_quota_points`,
   default **35** points of the weekly window. The
   scheduled round adds up the points its investigation runs used since the
   window last reset, and starts no new page once that reaches the budget.
-- **The initial investigation uses a soft 35% target.** It finishes the
+- **The initial investigation uses a soft 30% target.** It finishes the
   selected pages beyond that target and the normal investigation
   budget. The configured safety floor still protects the rest of the week.
   Claude Code and other runners without a readable weekly meter show an
   estimate and finish the selected cohort; the CLI cannot claim to have
   measured 20% of their plan.
-- **Manual investigation counts too** (#1842). `co rem investigate PAGE`,
-  `me` and CATEGORY runs record the meter like the round does, and their
-  points count toward the same weekly budget. A CATEGORY run stops starting
-  pages when the weekly budget is spent, when its own `--budget N` is spent, or
-  at the floor, and says which; the page in flight finishes.
+- **Manual investigation is metered too** (#1842). `co rem investigate PAGE`,
+  `me` and CATEGORY runs record usage. A CATEGORY run covers all pending pages
+  by default, with up to 10 workers; `--limit N` and `--workers N` bound a trial.
+  It stops starting pages when its explicit `--budget N` is spent or at the
+  safety floor. Pages already in flight finish.
 - **After init**, `co rem investigate all --budget 10` works whatever init left:
   one queue over people, projects and organisations by weight (the same order
   the round uses), until 10 points of the week are spent. `--list` shows that

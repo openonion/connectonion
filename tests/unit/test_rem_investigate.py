@@ -38,6 +38,29 @@ def test_transient_connection_error_retries_body_fetch(monkeypatch):
     assert len(attempts) == 3
 
 
+def test_gather_fetches_mail_bodies_concurrently_and_keeps_source_order():
+    import threading
+    from datetime import datetime, timedelta, timezone
+
+    together = threading.Barrier(4, timeout=5)
+
+    class Mail:
+        def my_addresses(self): return {"me@example.org"}
+        def list_with(self, address, start, finish):
+            return [{"id": str(n), "date": (datetime.now(timezone.utc) - timedelta(days=5 - n)).isoformat(),
+                     "from": "friend@example.org", "to": ["me@example.org"], "subject": "Hi"}
+                    for n in range(1, 5)]
+        def get_email_body(self, message_id):
+            together.wait()
+            return f"Body {message_id}"
+
+    items, coverage = inv.gather("Friend", ["friend@example.org"], days=30,
+                                 clients={"gmail": Mail()}, subscriptions={})
+    assert [item["text"] for item in items if item["source"].startswith("gmail:")] == [
+        "Body 1", "Body 2", "Body 3", "Body 4"]
+    assert any("4 bodies read" in line for line in coverage)
+
+
 def test_quick_evidence_keeps_complete_gathered_sources():
     items = [{'source': 'gmail:old', 'timestamp': '2026-09-20', 'text': 'a' * 9000},
              *[{'source': f'codex:{i}', 'timestamp': f'2026-09-{21 + i:02d}',
