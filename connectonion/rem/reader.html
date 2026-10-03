@@ -873,6 +873,11 @@ function byPath(path) { return REM.records.find(r => r.path === path); }
 // Services still on a people page (census.py) are left off like held pages (#2008).
 function listedRecords() { return REM.records.filter(r => !r.catalog_parent && !r.needs_review && !r.service && r.path !== "skills/catalog/index.md"); }
 function inCategory(category) { return listedRecords().filter(r => r.category === category); }
+function peopleExclusions() {
+  const people = REM.records.filter(r => r.category === "people");
+  return { held: people.filter(r => r.needs_review).length,
+    service: people.filter(r => r.service && !r.needs_review).length };
+}
 function remCommand(args) { return "co rem --root '" + String(REM.root).replace(/'/g, "'\\''") + "' " + args; }
 function initCommand() { return remCommand("init --mail outlook"); }
 function href(r) { return "#r=" + encodeURIComponent(r.path); }
@@ -1794,7 +1799,7 @@ function firstMapBrief() {
   const written = counts.reduce((n, row) => n + (row.written || 0), 0);
   if (lastPass() || !mapped || written) return null;
   const people = inCategory("people").length;
-  const held = REM.records.filter(r => r.category === "people" && r.needs_review).length;
+  const { held, service } = peopleExclusions();
   const preview = el("button", { type: "button", text: "Copy investigation preview" });
   preview.onclick = () => copyToClipboard(remCommand("investigate people --list"), preview, "Copied — paste it in a terminal");
   const brief = el("section", { class: "morning first-map", "aria-label": "Source map and next step" }, [
@@ -1804,7 +1809,9 @@ function firstMapBrief() {
       el("span", { class: "morning-time", text: "0 memories written" })]),
     el("p", { class: "memory-empty", text: "People, projects, organisations and skills are ready to explore. These are metadata starting points, not investigated findings." }),
     el("div", { class: "first-map-actions" }, [el("a", { href: "#c=people", text: "Browse " + people + " people →" }), preview])]);
-  if (held) brief.appendChild(el("p", { class: "first-map-held", text: held + " possible contacts are held for review and excluded from the People count." }));
+  if (held || service) brief.appendChild(el("p", { class: "first-map-held", text:
+    (held ? held + " possible contacts are held for review and excluded from the People count." : "") +
+    (service ? (held ? " " : "") + service + " service or institutional senders are excluded from People." : "") }));
   return brief;
 }
 function morningBrief() {
@@ -2027,11 +2034,17 @@ function category(c) {
   main.appendChild(el("h1", { text: c === "all" ? "Explore memory" : label(c) }));
   const lede = (c === "all" ? "People, projects, skills and ideas in one place" : CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
   main.appendChild(el("p", { class: "lede" }, [lede + (items.length ? (/[?.]$/.test(lede) ? " " : ". ") : ""), items.length ? el("span", { class: "mono", text: counts ? counts.written + " written of " + counts.mapped : items.length + " pages" }) : null]));
-  const held = c === "people" ? REM.records.filter(r => r.category === "people" && r.needs_review).length : 0;
-  if (held) {
-    const review = el("button", { type: "button", text: "Copy review list command" });
-    review.onclick = () => copyToClipboard(remCommand("list people --review"), review, "Copied — paste it in a terminal");
-    main.appendChild(el("p", { class: "held-note" }, [held + " possible contacts are held for review, outside this list.", review]));
+  const { held, service } = c === "people" ? peopleExclusions() : { held: 0, service: 0 };
+  if (held || service) {
+    const note = el("p", { class: "held-note" }, [el("span", { text:
+      (held ? held + " possible contacts are held for review, outside this list." : "") +
+      (service ? (held ? " " : "") + service + " service or institutional senders are excluded from People." : "") })]);
+    if (held) {
+      const review = el("button", { type: "button", text: "Copy review list command" });
+      review.onclick = () => copyToClipboard(remCommand("list people --review"), review, "Copied — paste it in a terminal");
+      note.appendChild(review);
+    }
+    main.appendChild(note);
   }
   if (!items.length) {
     main.appendChild(c === "people"
