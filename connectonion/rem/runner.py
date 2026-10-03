@@ -7,8 +7,9 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
-from contextlib import ExitStack, nullcontext
+from contextlib import ExitStack, contextmanager, nullcontext
 from pathlib import Path
 
 from ..skills_catalog import useful_skills_dir
@@ -579,8 +580,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             # what was refused and why, not discarded behind a one-line error.
             raise RunFailed(f"Candidate rejected, kept at {candidate}: " + "; ".join(errors), usage)
         if record.startswith("projects/"):
-            from .project_pages import retain_live_file_context
-            retain_live_file_context(notebook.root, original, text)
+            from .project_pages import retain_live_source_context
+            retain_live_source_context(notebook.root, original, text)
         notebook.write(record, text)
 
 
@@ -660,17 +661,43 @@ def scrub_task(directory: Path) -> None:
 # A folder with no result.json this old was left by a run that was killed: the
 # longest run (three routed turns at the largest timeout) is well inside it.
 ABANDONED_TASK_SECONDS = 6 * 3600
+FINISHED_TASK_GRACE_SECONDS = 60
 
 
 def scrub_finished_tasks(workdir: Path) -> None:
-    # Finished ones, and ones a killed run left long ago: another run may be
-    # working in its own folder right now, and that one is recent.
+    # Give a just-finished parallel turn time to read its result and review
+    # files; its own finally block normally scrubs them immediately.
     stale = time.time() - ABANDONED_TASK_SECONDS
+    finished = time.time() - FINISHED_TASK_GRACE_SECONDS
     for folder in workdir.iterdir():
         if not folder.is_dir() or folder.is_symlink():
             continue
-        if (folder / "result.json").is_file() or folder.stat().st_mtime < stale:
+        result = folder / "result.json"
+        if (result.is_file() and result.stat().st_mtime < finished) or folder.stat().st_mtime < stale:
             scrub_task(folder)
+
+
+_TASK_MASK_LOCK = threading.Lock()
+_TASK_CLEANUP_LOCK = threading.Lock()
+_TASK_MASK_USERS = 0
+_TASK_MASK_PREVIOUS = None
+
+
+@contextmanager
+def private_task_mask():
+    """Keep the process mask private until all overlapping task runs finish."""
+    global _TASK_MASK_USERS, _TASK_MASK_PREVIOUS
+    with _TASK_MASK_LOCK:
+        if _TASK_MASK_USERS == 0:
+            _TASK_MASK_PREVIOUS = os.umask(0o077)
+        _TASK_MASK_USERS += 1
+    try:
+        yield
+    finally:
+        with _TASK_MASK_LOCK:
+            _TASK_MASK_USERS -= 1
+            if _TASK_MASK_USERS == 0:
+                os.umask(_TASK_MASK_PREVIOUS)
 
 
 def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "",
@@ -678,18 +705,18 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
     """Run investigation and maintenance on disposable page copies before promotion."""
     workdir = notebook.root / ".state" / "tasks"
     workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    scrub_finished_tasks(workdir)
+    with _TASK_CLEANUP_LOCK:
+        scrub_finished_tasks(workdir)
     directory = Path(tempfile.mkdtemp(prefix=f"{stage}-", dir=workdir))
-    # Everything written for this turn is a copy of the owner's mail or pages,
-    # the model's own files included (it inherits the mask). 1.9.0a2 left 73 MB
-    # of them 0644 (#1974). The mask is the process's, so it is put back.
-    previous_mask = os.umask(0o077)
-    try:
-        return _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory, search)
-    finally:
-        # Ctrl-C and anything else unexpected too, not only a RemError.
-        scrub_task(directory)
-        os.umask(previous_mask)
+    # The model inherits this mask; overlapping turns restore it only after
+    # the last task finishes.
+    with private_task_mask():
+        try:
+            return _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory, search)
+        finally:
+            # Ctrl-C and anything else unexpected too, not only a RemError.
+            with _TASK_CLEANUP_LOCK:
+                scrub_task(directory)
 
 
 def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory, search=None):

@@ -310,10 +310,10 @@ def _known_sources(items: list[dict]) -> set:
 
 
 def _identifiable(value: str, *, known, record, original, old_sources, items, pages) -> bool:
-    if record.startswith('projects/') and value.strip().startswith('file:'):
-        from .project_pages import live_file_snapshot
+    if record.startswith('projects/') and value.strip().startswith(('file:', 'git:')):
+        from .project_pages import live_source_snapshot
         source = re.split(r'\s+[—–]\s+', value.strip(), 1)[0]
-        return value.strip() in old_sources or live_file_snapshot(original, source) is not None
+        return value.strip() in old_sources or live_source_snapshot(original, source) is not None
     return bool(any(source in value for source in known) or value.strip() in old_sources
                 or re.search(r'https?://\S+', value) or _local_reference(value, original, items)
                 or prior_context_reference(value, record, items, original)
@@ -333,10 +333,10 @@ def _identifiable(value: str, *, known, record, original, old_sources, items, pa
 
 def _material(value: str, *, known, record, original, old_sources, items) -> bool:
     """Does this Sources entry name something about the subject, not the run's own context?"""
-    if record.startswith('projects/') and value.strip().startswith('file:'):
-        from .project_pages import live_file_snapshot
+    if record.startswith('projects/') and value.strip().startswith(('file:', 'git:')):
+        from .project_pages import live_source_snapshot
         source = re.split(r'\s+[—–]\s+', value.strip(), 1)[0]
-        return value.strip() in old_sources or live_file_snapshot(original, source) is not None
+        return value.strip() in old_sources or live_source_snapshot(original, source) is not None
     if '.state/map.json' in value or 'Enumeration metadata' in value:
         return False
     material = known - set(CONTEXT_SOURCES)
@@ -468,15 +468,15 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     errors += [f'Missing or duplicate citation: {key}' for key in refs if defined[key] != 1]
     known = _known_sources(items)
     if record.startswith('projects/'):
-        from .project_pages import live_file_snapshot
+        from .project_pages import live_source_snapshot
         carried = original.partition('\n## Sources\n')[2]
         for _, value in definitions:
             source = re.split(r'\s+[—–]\s+', value.strip(), 1)[0]
-            if source.startswith('file:') and value.strip() not in carried:
-                if live_file_snapshot(original, source):
+            if source.startswith(('file:', 'git:')) and value.strip() not in carried:
+                if live_source_snapshot(original, source):
                     known.add(source)
                 else:
-                    errors.append(f'Cited local file needs its current SHA-256 and a mapped path: {source}')
+                    errors.append(f'Cited file needs a hash or exact Git commit in a mapped repository: {source}')
     if record.startswith('projects/'):
         errors += _project_overview_errors(candidate)
         if any(item.get('role') == 'project-input-scope' and item.get('inputs_read') == 0 for item in items):

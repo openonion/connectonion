@@ -1,9 +1,9 @@
-"""Estimate the first run's selected recent investigations before they start (#2008).
+"""Estimate the first run's selected investigations before they start (#2008).
 
 1.9.0a5 announced "~90k billed input per project page, about a minute" and
 measured 614k and 922k, four to five minutes each, with every project active
-in the window queued and no total. The first run now selects recent people,
-projects and their organizations (init's --first-* flags cap each kind), and its
+in the window queued and no total. The first run now selects all eligible people,
+projects and organizations (init's --first-* flags cap each kind), and its
 cost is one sum stated before the first page: pages x the median of this
 notebook's own completed runs of that kind, or, before there are any, the
 defaults below. Either way it is an estimate, and the line says so.
@@ -13,10 +13,10 @@ from itertools import zip_longest
 from math import ceil
 from statistics import median
 
-FIRST_PEOPLE = None    # None: every recent page of the kind; init's flags cap it
+FIRST_PEOPLE = None    # None: every eligible page of the kind; init's flags cap it
 FIRST_PROJECTS = None
 FIRST_ORGS = None
-WORKERS = 12           # pages investigated at once after the owner's page (2026-10-01)
+WORKERS = 10           # pages investigated at once after the owner's page
 
 # Real 7-day first run on 2026-10-02: 27 selected pages, 7.66M billed input,
 # ~13 minutes including mapping. Medians below include two-year person searches.

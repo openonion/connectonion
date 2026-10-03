@@ -436,12 +436,10 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
         stage_progress=update), quiet=quiet)
 
 
-# The first run investigates the owner and the recent, relevant pages, with
-# enough allowance for roughly 35 points of the runner's week. The target is
-# advisory: finish the selected cohort unless the configured weekly floor is
-# reached. --first-people, --first-projects and --first-orgs cap a kind.
-FIRST_RUN_TARGET_POINTS = 35
-FIRST_RUN_WORKERS = 12
+# The first run investigates the owner and every eligible mapped page. The
+# weekly target is advisory; explicit --first-* flags cap a kind for a trial.
+FIRST_RUN_TARGET_POINTS = 30
+FIRST_RUN_WORKERS = 10
 
 
 def _first_run_gate(root, config):
@@ -494,14 +492,10 @@ def _first_project_rows(root, cap) -> list[dict]:
     return _capped(rows, cap)
 
 
-def _first_org_rows(root, cap, people: list[dict]) -> list[dict]:
-    """Organizations linked to the selected people, most relevant first."""
-    from ...rem.files import read_json, state_path
+def _first_org_rows(root, cap) -> list[dict]:
+    """Every pending mapped organization, most relevant first."""
     from ...rem.queue import order
-    selected = {row["record"] for row in people}
-    mapped = {row["record"]: row for row in read_json(state_path(root, "map.json"), {}).get("orgs", [])}
-    rows = [row for row in order(root, "orgs") if not row["recent"]
-            and selected.intersection(mapped.get(row["path"], {}).get("people") or [])]
+    rows = [row for row in order(root, "orgs") if not row["recent"]]
     return _capped(rows, cap)
 
 
@@ -867,10 +861,9 @@ def make_rem_app(factory):
             from ...rem import first_run
             from .rem_people import counted
             from ...rem.service import run_logs
-            recent = min(14, days)
-            people_rows = _first_people_rows(root, first_people, recent)
+            people_rows = _first_people_rows(root, first_people, days)
             project_rows = _first_project_rows(root, first_projects) if first_projects != 0 else []
-            org_rows = _first_org_rows(root, first_orgs, people_rows)
+            org_rows = _first_org_rows(root, first_orgs)
             from ...rem.queue import order
             skill_rows = _capped([row for row in order(root, "skills") if not row["recent"]], first_skills)
             total = first_run.plan(run_logs(root), owner=not reason, people=len(people_rows),
@@ -944,6 +937,8 @@ def make_rem_app(factory):
                          days: Optional[int] = typer.Option(None, "--days", min=1),
                          quick: bool = typer.Option(False, "--quick", help="Bounded first pass for your own page"),
                          limit: Optional[int] = typer.Option(None, "--limit", min=0),
+                         workers: int = typer.Option(10, "--workers", "-w", min=1, max=32,
+                                                     help="Number of concurrent investigation workers (default: 10)"),
                          budget: Optional[int] = typer.Option(None, "--budget", min=1, max=100),
                          list_only: bool = typer.Option(False, "--list"),
                          recent_days: Optional[int] = typer.Option(None, "--recent-days", min=1),
@@ -951,8 +946,7 @@ def make_rem_app(factory):
         from ...rem.files import Notebook, RemError, read_json, state_path
         from ...rem import queue as rem_queue
         from ...rem.queue import CATEGORIES, order
-        # With a budget the budget is the bound; otherwise five pages, as before.
-        pages_limit = limit if limit is not None else (0 if budget else 5)
+        pages_limit = limit if limit is not None else 0
         runnable = (*CATEGORIES, "all")
         from ...rem.runner import RunFailed
         from ...rem.service import subscriptions
@@ -1007,33 +1001,55 @@ def make_rem_app(factory):
                                else "not investigated") + (", skipped: this week" if row["recent"] else "") + ")"
                             for row in rows]
                 return {"category": category, "order": rows}, ["investigate", category]
+            from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
             notebook, done, stopped = Notebook(root), [], ""
             gate = budget_gate(root)
-            for number, row in enumerate(chosen, 1):
-                stopped = gate()
-                if stopped:
-                    rem_look.line(f"Stopped: {stopped}", err=True)
-                    break
-                rem_look.line(f"[{number}/{len(chosen)}] {row['path']}", err=True)
+            if chosen:
+                rem_look.line(f"Investigating {len(chosen)} of {len(queue)} pending {category} pages "
+                              f"with up to {min(workers, len(chosen))} workers.", err=True)
+
+            def investigate_one(record):
                 try:
-                    one(root, notebook, row["path"])
-                    done.append({"page": row["path"], "outcome": "accepted"})
+                    one(root, notebook, record)
+                    return {"page": record, "outcome": "accepted"}
                 except RunFailed as error:
-                    done.append({"page": row["path"], "outcome": "refused", "why": str(error)})
+                    return {"page": record, "outcome": "refused", "why": str(error)}
                 except RemError as error:
                     from ...rem.investigate import NothingNew
                     outcome = "nothing_new" if isinstance(error, NothingNew) else "failed"
-                    done.append({"page": row["path"], "outcome": outcome, "why": str(error)})
+                    return {"page": record, "outcome": outcome, "why": str(error)}
+
+            pending, running = iter(chosen), {}
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                while True:
+                    while len(running) < workers and not stopped:
+                        row = next(pending, None)
+                        if row is None:
+                            break
+                        stopped = gate()
+                        if not stopped:
+                            running[pool.submit(investigate_one, row["path"])] = row
+                    if not running:
+                        break
+                    finished, _ = wait(running, return_when=FIRST_COMPLETED)
+                    for future in finished:
+                        running.pop(future)
+                        outcome = future.result()
+                        done.append(outcome)
+                        rem_look.line(f"[{len(done)}/{len(chosen)}] {outcome['page']}: {outcome['outcome']}", err=True)
+            if stopped:
+                rem_look.line(f"Stopped: {stopped}", err=True)
             skipped = [row["path"] for row in ranked() if row["recent"]]
             accepted = [row["page"] for row in done if row["outcome"] == "accepted"]
-            return ({"category": category, "pages": done, "skipped_recent": skipped,
-                     "left": max(len(queue) - len(done), 0), **({"stopped": stopped} if stopped else {})},
-                    ["show", accepted[0]] if accepted else ["logs"],
-                    any(row["outcome"] != "accepted" for row in done))
+            failed = any(row["outcome"] not in ("accepted", "nothing_new") for row in done)
+            return ({"category": category, "pages": done, "left": max(len(queue) - len(accepted), 0),
+                     **({"show_accepted": _next(ctx, ["show", accepted[0]])} if accepted else {}),
+                     **({"skipped_recent": skipped} if skipped else {}),
+                     **({"stopped": stopped} if stopped else {})},
+                    ["logs"] if failed else ["show", accepted[0]] if accepted else ["list", category], failed)
 
         def budget_gate(root):
-            """Before each page: why not to start it, or ''. Reads the Codex week
-            (#1843): the weekly budget, this run's --budget, and the floor."""
+            """Before each page: the weekly safety floor or an explicit --budget."""
             from ...rem import quota
             from ...rem.config import read_config
             from ...rem.service import now, run_logs
@@ -1041,11 +1057,11 @@ def make_rem_app(factory):
             start, began = quota.read(config), now().isoformat()
 
             def gate():
-                meter, logs = quota.read(config), run_logs(root)
-                stop = quota.blocks(meter, quota.points_spent(logs, meter), config["limits"])
+                meter = quota.read(config)
+                stop = quota.floor_block(meter, config["limits"])
                 if stop or not budget or "unknown" in meter or "unknown" in start:
                     return stop
-                used = quota.run_spent(start, meter, logs, began)
+                used = quota.run_spent(start, meter, run_logs(root), began)
                 return f"this run has used {used} of its {budget}-point budget" if used >= budget else ""
             return gate
 
@@ -1070,7 +1086,8 @@ def make_rem_app(factory):
                 from .rem_people import run_people
                 return run_people(ctx, root, limit=pages_limit, recent_days=recent_days or 14, days=days,
                                   list_only=list_only, gate=None if list_only else budget_gate(root),
-                                  clients_for=clients_for, subscriptions=subscriptions, logged=_logged)
+                                  clients_for=clients_for, subscriptions=subscriptions, logged=_logged,
+                                  workers=workers)
             if target == "me":
                 return me(root)
             if target in runnable:

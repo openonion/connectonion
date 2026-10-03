@@ -12,6 +12,7 @@ import os
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
@@ -23,6 +24,7 @@ from .mail import _address, _list_all, correspondent, on_domains, participants, 
 from .source import KINDS, collect, timestamp
 
 MAIL_KINDS = ("outlook", "gmail")
+MAIL_FETCH_SLOTS = threading.BoundedSemaphore(10)
 DOMAIN_HANDLE = re.compile(r"^@?([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})$")
 DOMAIN_RESULTS = 10_000
 
@@ -352,6 +354,11 @@ def _patient(call, *args, attempts: int = 4):
             time.sleep(2 ** attempt)
 
 
+def _mail_body(client, message_id: str) -> str:
+    with MAIL_FETCH_SLOTS:
+        return _patient(client.get_email_body, message_id)
+
+
 def _download(client, email_id: str, folder: str):
     """The two mailboxes save attachments through different doors.
 
@@ -564,35 +571,36 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         if sent_only:
             searched += ", kept the owner's own sent mail"
         mail_to_read = sorted(hit, key=lambda r: str(r["date"]))
-        for number, r in enumerate(mail_to_read, 1):
-            body = _patient(client.get_email_body, r["id"])
-            provenance = {}
-            if archive_root is not None:
-                from .mail_archive import retain_message
-                saved = retain_message(archive_root, kind, r, body, fetched_at=datetime.now(timezone.utc).isoformat())
-                body = saved["body"]
-                provenance = {key: saved[key] for key in ("input_scope", "retained_at", "body_format") if saved.get(key)}
-                if saved.get("fetched_at"):
-                    provenance["captured_at"] = saved["fetched_at"]
-                r = {**r, **{key: saved[key] if key in saved else r.get(key)
-                            for key in ("date", "from", "to", "cc", "subject")}}
-            head, _, rest = body.partition("--- Email Body ---")
-            body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
-            own = _address(r["from"]) in mine or "@" not in _address(r["from"])
-            short = hashlib.sha256(r["id"].encode()).hexdigest()[:12]
-            scope = RELATED_ORG_SCOPE if domains and not on_domains(r, domains) else ""
-            thread = r.get("thread_id") or r.get("thread") or ""
-            items.append({"role": "user" if own else "other", "speaker": r["from"],
-                          "text": body, "timestamp": str(r["date"]),
-                          "participants": {key: r.get(key) or ([] if key in ("to", "cc") else "")
-                                           for key in ("from", "to", "cc")},
-                          "subject": r.get("subject", ""), "source": f"{kind}:{short}",
-                          **provenance,
-                          **({"thread": f"mail:{kind}:{thread}"} if thread else {}),
-                          **({"relationship_scope": scope} if scope else {})})
-            add_attachments(r["id"], r["from"], str(r["date"]), r.get("subject", ""), scope)
-            if stage_progress and (number % 10 == 0 or number == len(mail_to_read)):
-                stage_progress(f"gathering {kind} mail", number, len(mail_to_read))
+        with ThreadPoolExecutor(max_workers=min(len(mail_to_read) or 1, 10)) as pool:
+            bodies = pool.map(partial(_mail_body, client), (row["id"] for row in mail_to_read))
+            for number, (r, body) in enumerate(zip(mail_to_read, bodies), 1):
+                provenance = {}
+                if archive_root is not None:
+                    from .mail_archive import retain_message
+                    saved = retain_message(archive_root, kind, r, body, fetched_at=datetime.now(timezone.utc).isoformat())
+                    body = saved["body"]
+                    provenance = {key: saved[key] for key in ("input_scope", "retained_at", "body_format") if saved.get(key)}
+                    if saved.get("fetched_at"):
+                        provenance["captured_at"] = saved["fetched_at"]
+                    r = {**r, **{key: saved[key] if key in saved else r.get(key)
+                                for key in ("date", "from", "to", "cc", "subject")}}
+                head, _, rest = body.partition("--- Email Body ---")
+                body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
+                own = _address(r["from"]) in mine or "@" not in _address(r["from"])
+                short = hashlib.sha256(r["id"].encode()).hexdigest()[:12]
+                scope = RELATED_ORG_SCOPE if domains and not on_domains(r, domains) else ""
+                thread = r.get("thread_id") or r.get("thread") or ""
+                items.append({"role": "user" if own else "other", "speaker": r["from"],
+                              "text": body, "timestamp": str(r["date"]),
+                              "participants": {key: r.get(key) or ([] if key in ("to", "cc") else "")
+                                               for key in ("from", "to", "cc")},
+                              "subject": r.get("subject", ""), "source": f"{kind}:{short}",
+                              **provenance,
+                              **({"thread": f"mail:{kind}:{thread}"} if thread else {}),
+                              **({"relationship_scope": scope} if scope else {})})
+                add_attachments(r["id"], r["from"], str(r["date"]), r.get("subject", ""), scope)
+                if stage_progress and (number % 10 == 0 or number == len(mail_to_read)):
+                    stage_progress(f"gathering {kind} mail", number, len(mail_to_read))
         coverage.append(f"{kind} ({', '.join(sorted(mine))}): {searched} over {days} days, "
                         f"{len(local) + len(hit)} matched, {len(local) + len(mail_to_read)} bodies read"
                         + (f", {len(local)} of them from the private mail archive" if local else "")
@@ -1349,8 +1357,9 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     from .project_pages import repository_context
     cited_live = []
     for source in _source_ids([{"text": notebook.read(record)}]):
-        if source.startswith("file:") and (context := repository_context(root, source)):
-            cited_live.append({"source": source, "file": source[5:].rsplit("@", 1)[0],
+        if source.startswith(("file:", "git:")) and (context := repository_context(root, source)):
+            cited_live.append({"source": source,
+                               "file": source[5:].rsplit("@", 1)[0] if source.startswith("file:") else source,
                                "timestamp": context["time"], "captured_at": context["captured_at"]})
     return {"record": record, "items": len(items), "items_available": available_items,
             "quick": quick, "chars_gathered": gathered_chars,

@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a28
+## Current Version: 1.9.0a29
+
+1.9.0a29 implements full-cohort concurrent onboarding and CLI investigations,
+running across a 10-worker thread pool with thread-safe client isolation and
+zero dry-run capping. Stable remains 1.8.10. See
+[1.9.0a29 notes](docs/releases/1.9.0a29.md).
+
+- 1.9.0a29 (full-cohort onboarding, 10-worker thread pool, thread-safe mail client isolation).
+
+## Previous preview: 1.9.0a28
 
 1.9.0a28 implements context over control in `co rem investigate`:
 pre-authorizes local search and shell tools upfront, supplies live project

@@ -2,6 +2,7 @@
 
 import json
 import hashlib
+import subprocess
 
 import pytest
 
@@ -117,6 +118,45 @@ def test_live_file_citation_is_hash_pinned_and_openable_after_file_changes(tmp_p
                          default_config(), stage="investigate")
 
 
+def test_historical_git_file_outside_prepared_snapshots_is_openable(tmp_path, monkeypatch):
+    from connectonion.rem.reader_model import cited_context
+
+    repo = tmp_path / "reader"
+    repo.mkdir()
+    subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True)
+    file = repo / "feature.md"
+    file.write_text("Original feature design.\n")
+    subprocess.run(["git", "-C", str(repo), "add", "feature.md"], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.org",
+                    "commit", "-qm", "Add feature"], check=True)
+    commit = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
+                            capture_output=True, text=True, check=True).stdout.strip()
+    file.write_text("New working tree design.\n")
+    source = f"git:{repo}:{commit}:feature.md"
+    root = tmp_path / "rem"
+    prepare(root)
+    notebook = Notebook(root)
+    record = "projects/reader.md"
+    notebook.stub_project(record, "Reader", [str(repo)])
+
+    def write_candidate(workdir, prompt, config, stage):
+        candidate = next(path for path in workdir.glob("investigate-*")
+                         if not (path / "result.json").exists()) / "candidate.md"
+        page = notebook.read(record).replace("- Unknown — not investigated yet", "- Unknown")
+        page = page.replace("## What it is\n- Unknown", "## What it is\n- Original feature design [1]")
+        candidate.write_text(page.replace("- (none yet)", f"- [1] {source} — 2026-10-03"))
+        return {"result": f"Inspected {source}", "usage": None}
+
+    monkeypatch.setattr(rem_runner, "run_task", write_candidate)
+    rem_runner.run_stage(notebook, [{"role": "page", "record": record,
+                                     "source": "investigation:page", "text": notebook.read(record)}],
+                         default_config(), stage="investigate")
+    context = cited_context(root, [{"text": notebook.read(record)}])[source]
+    assert context["excerpt"] == "Original feature design."
+    assert context["time"] and context["captured_at"] and commit[:12] in context["input_scope"]
+    assert context["origin"] == source
+
+
 def test_scheduled_run_record_keeps_page_evidence_and_inspection_report(tmp_path, monkeypatch):
     from connectonion.rem import daily
 
@@ -136,6 +176,8 @@ def test_scheduled_run_record_keeps_page_evidence_and_inspection_report(tmp_path
     assert result["outcome"] == "completed"
     assert record["pages"][0]["evidence"] == evidence
     assert "Inspected /mail/archive/2026-10.md" in record["pages"][0]["report"]
+    from connectonion.rem.reader import snapshot
+    assert snapshot(root)["logs"][0]["pages"][0]["evidence"] == evidence
 
 
 def test_manual_run_record_keeps_page_evidence_and_inspection_report(tmp_path):
@@ -152,3 +194,5 @@ def test_manual_run_record_keeps_page_evidence_and_inspection_report(tmp_path):
     record = json.loads(next((root / ".state/runs").glob("run_*.json")).read_text())
     assert record["evidence"] == evidence
     assert record["report"] == "Inspected /work/reader/README.md"
+    from connectonion.rem.reader import snapshot
+    assert snapshot(root)["logs"][0]["report"] == record["report"]

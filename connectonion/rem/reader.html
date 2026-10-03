@@ -190,6 +190,7 @@
   .morning-kicker { display: block; color: #aab7e8; font: 600 11px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .13em; }
   .morning h2 { max-width: 22ch; font: 400 clamp(28px, 3vw, 42px)/1.12 var(--display); letter-spacing: -.02em; margin: 9px 0 0; text-wrap: balance; }
   .morning-time { flex-shrink: 0; color: #b3bfed; font: 11px/1.5 var(--mono); }
+  .inspection-link { display: inline-block; margin-top: 14px; padding: 0; border: 0; background: none; color: #fff; font: 12px var(--ui); text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
   .first-map-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
   .first-map-actions a, .first-map-actions button { display: inline-flex; align-items: center; min-height: 44px; padding: 9px 14px; border: 1px solid rgba(194, 205, 255, .42); border-radius: 7px; background: transparent; color: #f4f5fb; font: 600 13px var(--ui); text-decoration: none; cursor: pointer; }
   .first-map-actions a { background: #f4f5fb; color: #111931; }
@@ -303,6 +304,12 @@
   table.runs th { text-align: left; font-weight: 500; color: var(--ink-3); padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
   table.runs td { padding: 7px 12px 7px 0; border-bottom: 1px solid var(--line-2); color: var(--ink-2); white-space: nowrap; }
   table.runs td:first-child { color: var(--ink); }
+  .run-trace { margin: 8px 0; border-bottom: 1px solid var(--line-2); }
+  .run-trace > summary { cursor: pointer; padding: 8px 0; font: 12px var(--mono); color: var(--ink-2); }
+  .run-trace h3 { font: 600 12px var(--ui); margin: 12px 0 4px; }
+  .run-trace ul { padding-left: 20px; margin: 4px 0 12px; }
+  .run-trace li, .run-trace pre { font: 12px/1.5 var(--mono); overflow-wrap: anywhere; white-space: pre-wrap; }
+  .run-trace pre { max-height: 240px; overflow: auto; }
 
   /* ---- a page ---- */
   .page-head { margin-bottom: 26px; }
@@ -394,6 +401,8 @@
   .code-block { position: relative; margin: 0 0 1.3em; }
   .note pre { background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; overflow-x: auto; font: 12.5px/1.55 var(--mono); max-width: 100%; tab-size: 4; margin: 0; color: var(--ink); }
   .code-block.diagram pre { background-color: var(--sheet); background-image: radial-gradient(var(--line) 1px, transparent 1.2px); background-size: 14px 14px; background-position: 7px 7px; padding: 22px 22px 20px; }
+  .pan-hint { display: none; font: 11px var(--mono); color: var(--ink-3); margin-top: 5px; }
+  @media (max-width: 600px) { .code-block.diagram .pan-hint { display: block; } }
   .code-block .cap { position: absolute; left: 12px; top: -8px; font: 600 9.5px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); background: var(--paper); padding: 3px 6px; border-radius: 3px; }
   .note pre code { background: none; padding: 0; font: inherit; white-space: pre; overflow-wrap: normal; }
   .code-copy { position: absolute; top: 8px; right: 8px; font: 11px var(--mono); color: var(--ink-2); background: var(--sheet); border: 1px solid var(--line); border-radius: 5px; padding: 2px 8px; opacity: 0; cursor: pointer; }
@@ -679,6 +688,9 @@
   .evidence-dialog h2 { font: 25px var(--display); margin: 14px 0; }
   .evidence-summary { color: var(--ink-2); }
   .evidence-summary, .evidence-meta { overflow-wrap: anywhere; }
+  .evidence-source-id { margin: 8px 0; font: 11px var(--mono); color: var(--ink-3); }
+  .evidence-source-id summary { cursor: pointer; }
+  .evidence-source-id code { display: block; overflow-wrap: anywhere; margin-top: 6px; }
   .evidence-original { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 18px; }
   .evidence-original .focus-kicker { color: var(--blue); }
   .evidence-meta { font: 11px var(--mono); color: var(--ink-3); }
@@ -1051,7 +1063,8 @@ function codeBlock(code, info) {
   const cap = diagram ? "Diagram" : lang && lang !== "text" ? lang : "";
   return '<div class="code-block' + (diagram ? " diagram" : "") + '">' + (cap ? '<span class="cap" aria-hidden="true">' + esc(cap) + "</span>" : "") +
     '<pre tabindex="0" aria-label="' + (diagram ? "Diagram" : "Code block") + '"><code>' + esc(code) +
-    '</code></pre><button class="code-copy" type="button" aria-label="Copy code">Copy</button></div>';
+    '</code></pre>' + (diagram ? '<span class="pan-hint">Swipe diagram sideways to see all steps →</span>' : '') +
+    '<button class="code-copy" type="button" aria-label="Copy code">Copy</button></div>';
 }
 
 function markdown(text, from) {
@@ -1826,6 +1839,18 @@ function morningBrief() {
         ? "The context to carry into today" : "The context from the last pass") : "Ready when there is something new" })]),
     el("span", { class: "morning-time", text: pass ? fmtTime(new Date(pass.latest).toISOString()) : "No pass yet" })]);
   brief.appendChild(top);
+  if ((REM.logs || []).some(run => run.evidence?.length || run.report || run.pages?.some(page => page.evidence?.length || page.report))) {
+    const trail = el("button", { type: "button", class: "inspection-link", text: "View recent inspection trail →" });
+    trail.onclick = () => {
+      const maintenance = document.querySelector("details.maint");
+      const trace = maintenance?.querySelector("details.run-trace");
+      if (!maintenance) return;
+      maintenance.open = true;
+      if (trace) trace.open = true;
+      (trace || maintenance).scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+    brief.appendChild(trail);
+  }
   if (pass?.claims?.length) {
     const found = el("div", { class: "claim-grid", "aria-label": "Source-backed memory changes" },
       pass.claims.slice(0, 4).map(changeCard).filter(Boolean));
@@ -2020,6 +2045,32 @@ function maintenance(s) {
         el("td", { text: run.seconds == null ? "—" : String(run.seconds) })]));
     }
     maint.appendChild(el("div", { class: "table-scroll", role: "region", "aria-label": "Recent runs", tabindex: "0" }, [table]));
+    for (const run of REM.logs.slice(0, 8)) {
+      const pages = run.pages?.length ? run.pages : [run];
+      if (!pages.some(page => page.evidence?.length || page.report)) continue;
+      const count = pages.reduce((total, page) => total + (page.evidence?.length || 0), 0);
+      const trace = el("details", { class: "run-trace" }, [el("summary", {
+        text: fmtTime(run.started_at) + " · " + count + " supplied items · inspection report"
+      })]);
+      trace.addEventListener("toggle", () => {
+        if (!trace.open || trace.dataset.loaded) return;
+        trace.dataset.loaded = "true";
+        for (const page of pages) {
+          const record = page.page || page.record;
+          if (record) trace.appendChild(el("h3", {}, [el("a", { href: "#r=" + encodeURIComponent(record), text: record })]));
+          if (page.report) trace.appendChild(el("pre", { text: "Model's inspection report\n" + page.report }));
+          if (!page.evidence?.length) continue;
+          trace.appendChild(el("h3", { text: "Inputs supplied to this run (including context; not proof of inspection)" }));
+          const sources = el("ul");
+          for (const item of page.evidence) sources.appendChild(el("li", { text: [
+            item.source, item.file || item.origin, item.timestamp && "source: " + item.timestamp,
+            item.captured_at && "captured: " + item.captured_at,
+            item.paths?.join(", ")].filter(Boolean).join(" · ") }));
+          trace.appendChild(sources);
+        }
+      });
+      maint.appendChild(trace);
+    }
   }
   return maint;
 }
@@ -2735,7 +2786,7 @@ function openEvidence(r, number, trigger) {
   const mail = /^(gmail|outlook)$/.test(context?.source || "");
   const headers = context?.participants;
   const headerText = value => Array.isArray(value) ? value.join(", ") : value || "Not recorded";
-  const revision = /:([0-9a-f]{40}):(.+)$/.exec(context?.origin || "");
+  const revision = /:([0-9a-f]{40,64}):(.+)$/.exec(context?.origin || "");
   const origin = revision ? revision[2] + " @ " + revision[1].slice(0, 8)
     : context?.origin ? context.origin.split("/").at(-1).replace(/.*:checkout-state$/, "Checkout state") : "";
   let dialog = document.getElementById("evidence-dialog");
@@ -2745,7 +2796,9 @@ function openEvidence(r, number, trigger) {
   close.onclick = () => dialog.close();
   dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "co rem / source " + number }), close]),
     el("h2", { text: "Why this appears on " + r.title }),
-    el("p", { class: "evidence-summary private", text: source.text }));
+    el("p", { class: "evidence-summary private", text: revision ? origin : source.text }));
+  if (revision) dialog.appendChild(el("details", { class: "evidence-source-id private" }, [
+    el("summary", { text: "Full source ID" }), el("code", { text: id })]));
   dialog.appendChild(el("p", { class: "private-hidden-notice", text: "Source descriptions and original excerpts are hidden because their private content has not been classified. Use Show labelled passages in the menu to read them." }));
   if (context) dialog.append(el("div", { class: "evidence-original private" }, [
     el("span", { class: "focus-kicker", text: (/^skill-(source|reference)$/.test(context.source) ? "Instruction excerpt" : context.source === "project-source" ? "Repository snapshot" : mail ? context.body_empty ? "Mail headers" : "Mail body excerpt" : "Original source context") + " · not a validated claim span" }),

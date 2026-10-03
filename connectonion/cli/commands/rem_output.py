@@ -248,12 +248,35 @@ def _init_text(value: dict, failed: bool) -> str:
     return '\n'.join(lines)
 
 
+def _investigation_text(value: dict, failed: bool) -> str:
+    """Summarize a batch whose per-page progress was already printed."""
+    category, pages = value['category'], value.get('pages') or []
+    title = f"co rem investigate {category}" + (' — needs attention' if failed else '')
+    if not pages and not value.get('stopped'):
+        return f"{title}\n\nAll pending pages in {category} are current."
+    counts = {outcome: sum(row['outcome'] == outcome for row in pages)
+              for outcome in ('accepted', 'refused', 'failed', 'nothing_new')}
+    summary = ', '.join(f"{count} {name}" for name, count in counts.items() if count) or 'none started'
+    lines = [title, '', f"Completed: {summary}.", f"Left: {value['left']}"]
+    lines += [f"{row['page']}: {row['outcome']} — {row.get('why', '')}".rstrip(' —')
+              for row in pages if row['outcome'] not in ('accepted', 'nothing_new')]
+    if failed and (accepted := next((row['page'] for row in pages if row['outcome'] == 'accepted'), '')):
+        lines.append(f"Read accepted: {value.get('show_accepted') or accepted}")
+    if value.get('skipped_recent'):
+        lines.append(f"Skipped recent: {len(value['skipped_recent'])}")
+    if value.get('stopped'):
+        lines.append(f"Stopped: {value['stopped']}")
+    return '\n'.join(lines)
+
+
 def render(value, command: str, *, failed: bool = False) -> str:
     """Render readable results without interpreting source text as terminal markup."""
     if isinstance(value, str):
         text = ('Error: ' if failed else '') + value
     elif command == 'init' and isinstance(value, dict):
         text = _init_text(value, failed)
+    elif command == 'investigate' and isinstance(value, dict) and 'pages' in value and 'category' in value:
+        text = _investigation_text(value, failed)
     else:
         title = 'co rem ' + ('status' if command == 'rem' else command.replace('-', ' '))
         if command in ('status', 'rem') and isinstance(value, dict):
