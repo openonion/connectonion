@@ -23,8 +23,7 @@ from .files import Notebook, maintenance_lock, read_json, state_path, write_json
 LOG = "tidy.json"
 WEB_LINE = re.compile(r"^\s*- web: not searched\b.*$")
 COVERAGE = re.compile(r"^\s*- \[(W?\d+)\] investigation:coverage\b.*$")
-# The runner's own deterministic citation for a project's empty session window
-# (runner._project_window_notice) backs a fact it states; only the model's kept.
+# Older runners added this citation to project pages; preserve those existing notes.
 RUNNER_COVERAGE = "source-collection record for this investigation"
 
 

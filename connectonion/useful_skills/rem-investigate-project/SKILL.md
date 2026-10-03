@@ -83,3 +83,5 @@ prove an output. Current code is not a decision (local code ≠ a decision to st
 local).
 Always keep the required `Open threads` heading. Write bare `Unknown` if no
 current exchange is supported; do not omit the heading or invent an obligation.
+Do not put a “no confirmed pending work” summary under this heading as a
+thread; it would appear as an open task in the reader.

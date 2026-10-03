@@ -12,7 +12,7 @@ import pytest
 from connectonion.rem.config import default_config, prepare
 from connectonion.rem.extract import run_extract
 from connectonion.rem.files import Notebook
-from connectonion.rem.runner import RunFailed, _project_window_notice, run_stage, task_prompt
+from connectonion.rem.runner import RunFailed, run_stage, task_prompt
 
 
 @pytest.fixture
@@ -85,6 +85,9 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
     assert 'A branch' in prompts[0] and 'not an Insight' in prompts[0]
     assert 'local mail archives and project repositories' in prompts[0]
     assert 'stop using tools and return a brief coverage summary' in prompts[0]
+    assert 'investigation:coverage, investigation:project-scope' in prompts[0]
+    assert 'reading guides, never citable originals' in prompts[0]
+    assert 'write bare Unknown, not a no-pending-work summary' in prompts[0]
 
 
 def test_a_person_page_near_the_limit_is_told_its_size_before_the_turn(notebook, monkeypatch):
@@ -118,19 +121,6 @@ def test_quick_investigation_reads_complete_bounded_material_once(tmp_path):
     assert 'continued_text' not in prompt
     assert json.loads((tmp_path / 'material.json').read_text()) == items
     assert (tmp_path / 'material.md').exists()
-
-
-def test_project_page_keeps_zero_session_window_separate_from_old_files():
-    page = ('# Reader\n\n## Uncertainties\n- Unknown\n\n## Sources\n'
-            '- [1] project-file — observed today\n\nInvestigation: mapped today')
-    items = [{'role': 'coverage', 'source': 'investigation:coverage',
-              'text': 'codex: 10 messages in window, 0 related to subject, 0 read\n'
-                      'claude-code: 101 messages in window, 0 related to subject, 0 read\n'
-                      'Requested investigation window: 5 days ending 2026-09-26'}]
-    result = _project_window_notice(page, items)
-    assert 'No related Codex and Claude Code messages were found in the requested 5-day window' in result
-    assert '- [2] investigation:coverage' in result
-    assert _project_window_notice(result, items) == result
 
 
 def test_investigation_does_not_claim_another_concurrent_page_change(notebook, monkeypatch):

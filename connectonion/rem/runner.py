@@ -423,38 +423,6 @@ def _verify_no_change(directory: Path, items: list[dict], usage) -> None:
                         "source progress was preserved", usage)
 
 
-def _project_window_notice(text: str, items: list[dict]) -> str:
-    """Keep a page from presenting mapped sessions as fresh investigation evidence.
-
-    The model can correctly cite old project files yet omit that the requested
-    session window found nothing. This bounded, deterministic fact belongs on
-    the page itself, with the collector's coverage record as its source.
-    """
-    coverage = next((item.get("text", "") for item in items if item.get("role") == "coverage"), "")
-    missing = [kind for kind in ("codex", "claude-code")
-               if re.search(rf"(?m)^{kind}:.*\b0 related to subject\b", coverage)]
-    if not missing or "\n## Uncertainties\n" not in text or "\n## Sources\n" not in text:
-        return text
-    window = re.search(r"Requested investigation window: (\d+) days", coverage)
-    span = f"the requested {window.group(1)}-day window" if window else "the requested window"
-    labels = " and ".join("Claude Code" if kind == "claude-code" else "Codex" for kind in missing)
-    head, marker, tail = text.partition("\n## Sources\n")
-    existing = re.search(r"(?m)^\s*- \[(\d+)\].*investigation:coverage", tail)
-    if existing:
-        number = existing.group(1)
-    else:
-        number = str(max([int(value) for value in re.findall(r"\[(\d+)\]", text)] or [0]) + 1)
-        source_part, footer, rest = tail.partition("\nInvestigation:")
-        tail = (source_part.rstrip() + f"\n- [{number}] investigation:coverage — "
-                "source-collection record for this investigation.\n" +
-                (footer + rest if footer else ""))
-    notice = (f"- No related {labels} messages were found in {span}; "
-              f"project files cited above may predate that window. [{number}]")
-    if notice in head:
-        return text
-    return head.rstrip() + "\n" + notice + marker + tail
-
-
 def _one_more_turn(workdir, prompt, config, stage, candidate, first, run=None):
     """The model stopped without writing the candidate: ask once more, saying where it may write.
 
@@ -543,8 +511,6 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text = link_people(record, text, person_names(notebook, owner.get("record", "")))
     if record == owner.get("record"):
         text = link_projects(text, project_names(notebook))
-    if record.startswith("projects/"):
-        text = _project_window_notice(text, items)
     if investigation and record.startswith(("projects/", "skills/catalog/")):
         text = compact_page(record, text)
     # Lost citations can themselves cause empty-section or no-source errors.
@@ -796,6 +762,15 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         prompt += (f" Optionally write {directory / 'review-candidates.json'} as a JSON list of zero to two evidence-linked questions or connections. "
                    'Each item has kind (question/link), subjects (one/two existing notebook paths), question, basis. '
                    'A connection is only a candidate; do not establish it before user review. Do not repeat rejected proposals. ')
+    if candidate and record.startswith("projects/"):
+        prompt += (" Before saving the Project page, check every Sources entry: "
+                   "investigation:coverage, investigation:project-scope, "
+                   "investigation:project-inventory, investigation:project-repositories and "
+                   "investigation:page are reading guides, never citable originals. "
+                   "Follow them to original sessions or verified files and cite those IDs. "
+                   "Remove claims without original support; put search limits in the final run reply, not the page. "
+                   "In Open threads, list only supported unresolved exchanges; if none is confirmed, "
+                   "write bare Unknown, not a no-pending-work summary as an open item.")
     if stage == "maintain" and items:
         sources = sorted({item["source"] for item in items if isinstance(item.get("source"), str) and item["source"]})
         prompt += (f" If the supplied batch warrants no notebook changes after reading it, write "

@@ -64,7 +64,9 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
     prepare(root)
     notebook = Notebook(root)
     notebook.write("projects/aurora.md", "# Aurora\n\nA synthetic project.\n\n"
-                   "Related: [Storage](../decisions/storage.md)\nSources: codex:test:1\n")
+                   "Related: [Storage](../decisions/storage.md)\nSources: codex:test:1\n\n"
+                   "## Open threads\n- No confirmed pending work is recorded; "
+                   "the status of historical requests is Unknown.\n")
     notebook.write("decisions/storage.md", "# Storage\n\nMarkdown for inspectability.\n\n"
                    "<script>window.wikiInjected=true</script>\nSources: codex:test:2\n")
     page_path = write_reader(root)
@@ -84,6 +86,10 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.get_by_role("heading", name="What co rem carried forward").wait_for()
             page.screenshot(path=str(shots / "rem-desktop.png"), full_page=True)
             page.locator("#main").get_by_role("link", name="Aurora", exact=True).first.click()
+            assert page.locator(".next-exchanges").count() == 0
+            page.goto(page_path.as_uri() + "#view=open")
+            assert "nothing open" in page.locator("#main").inner_text().lower()
+            page.goto(page_path.as_uri() + "#r=projects%2Faurora.md")
             page.locator("#main").get_by_role("link", name="Storage", exact=True).click()
             page.get_by_role("heading", name="Storage", exact=True).wait_for()
             assert "inspectability" in page.locator("#main").inner_text()
@@ -91,6 +97,8 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.locator("input[type=search]").fill("inspectability")
             page.locator("#main").get_by_role("link", name="Storage", exact=True).wait_for()
             page.set_viewport_size({"width": 375, "height": 812})
+            page.goto(page_path.as_uri() + "#r=projects%2Faurora.md")
+            assert page.locator(".next-exchanges").count() == 0
             page.screenshot(path=str(shots / "rem-mobile.png"), full_page=True)
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             assert not errors, errors
