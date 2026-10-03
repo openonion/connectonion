@@ -29,8 +29,10 @@ def cost_line(estimate: dict, meter: dict) -> str:
     week = (f" The Codex week is at {meter['used_percent']}%." if "used_percent" in meter
             else f" Quota: {meter['unknown']}." if meter.get("unknown") else "")
     measured = estimate["measured"]
-    known = (f" On this machine one {measured['mails']}-mail person took {measured['input_tokens'] / 1e6:.2f}M "
-             f"input tokens and {measured['minutes']} minutes." if measured.get("input_tokens") else "")
+    known = (f" Historical sample ({measured['date']}, {measured['window_days']}-day read): "
+             f"one {measured['mails']}-mail person took {measured['input_tokens'] / 1e6:.2f}M "
+             f"input tokens and {measured['minutes']} minutes. A longer read may cost more."
+             if measured.get("input_tokens") else "")
     return (f"Cost: {counted(estimate['model_calls'], 'model call')}, one per person; at least "
             f"{counted(estimate['mails_mapped'], 'mail')} for the full investigations (the map's count: they read "
             f"{estimate.get('window_days', 150)} days and search the server, which finds more), and "
@@ -73,7 +75,7 @@ def owner_first(ctx, root) -> list[str]:
 
 
 def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool, gate, clients_for,
-               subscriptions, logged, announce=True):
+               subscriptions, logged, budget=None, announce=True):
     """The people category: order, cost, then up to four people at once. Returns (result, next, failed).
 
     `announce=False` is init's first run, which has already said one total
@@ -88,6 +90,8 @@ def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool
         rows = [{**row, "days": days} if row["mode"] == "full" else row for row in rows]
     chosen = rows if limit == 0 else rows[:limit]
     config = read_config(root)
+    budget_note = (f" Budget: {budget} points is advisory; up to four already-started pages can finish "
+                   "after it is reached." if budget else "")
     if list_only:
         if ctx.obj["json"]:
             return ({"category": "people", "order": rows, "estimate": estimate(chosen),
@@ -96,7 +100,8 @@ def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool
                           f"{counted(len(rows), 'person', 'people')} to investigate: people you wrote to first, "
                           f"then people who wrote more than once, then one-mail contacts; the last {recent_days} "
                           "days first in each:", *order_lines(rows), "",
-                          f"The next {len(chosen)}: " + cost_line(estimate(chosen), quota.read(config)),
+                          f"The next {len(chosen)}: " + cost_line(estimate(chosen), quota.read(config))
+                          + budget_note,
                           "Nothing was read or spent."])
         return text, ["investigate", "people"], False
     if not chosen:
@@ -105,7 +110,7 @@ def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool
     meter = quota.read(config)
     if announce:
         rem_look.line(f"Investigating {len(chosen)} of {len(rows)} people. "
-                      + cost_line(estimate(chosen), meter), err=True)
+                      + cost_line(estimate(chosen), meter) + budget_note, err=True)
     sources = subscriptions(root)
 
     def on_page(number, total, row):

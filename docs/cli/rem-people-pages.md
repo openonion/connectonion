@@ -15,7 +15,7 @@ co rem investigate people --list                      # the order and the cost; 
 co rem investigate people                             # the next 5, last 14 days first
 co rem investigate people --limit 1                   # just the most recent correspondent
 co rem investigate people --recent-days 7 --limit 0   # all queued people; last 7 days first
-co rem investigate people --budget 20                 # stop new pages at 20 points; rerun for the rest
+co rem investigate people --budget 20                 # advisory: stop new pages at 20 points; rerun for the rest
 ```
 
 `co rem investigate people` is the command it always was; its order and
@@ -24,7 +24,8 @@ the map counted for the full investigations, how many are updates, and what
 one full investigation measured on this machine — then investigates up to four
 people at a time. It stops starting people at the weekly Codex budget, at this
 run's `--budget`, or at the floor kept for your own work, and ends by saying
-how many people are left. Already running pages finish after a stop. `projects`,
+how many people are left. The budget is advisory: up to four already running
+pages finish after a stop, so the run can exceed its point target. `projects`,
 `orgs`, `skills` and `all` keep their order (most mail or sessions first). A
 single page and `me` are unchanged.
 
@@ -91,7 +92,8 @@ Each scheduled run maintains first, as before. Then:
   run). At most 5 pages, one call each, within the day's call cap. A run with
   nothing new calls no model and says `nothing_new`.
 
-Both stop starting pages at the weekly budget or the 70% floor, and both record
+Both stop starting pages at the weekly budget or the configured safety floor
+(90% by default), and both record
 in `co rem logs` how many pages are left. Which run is which is decided by what
 already ran today, not by the clock, so a machine asleep at the first slot
 still gets its unfinished portion from whichever run comes first. The schedule

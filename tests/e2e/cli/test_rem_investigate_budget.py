@@ -99,6 +99,7 @@ def test_people_batch_near_the_floor_starts_one_before_rechecking(tmp_path, monk
     data = json.loads(result.stdout)["data"]
     assert len(state["done"]) == 1
     assert data["left"] == 2 and "90%" in data["stopped"]
+    assert "Budget: 20 points is advisory" in result.stderr
 
 
 def test_the_weekly_budget_already_spent_stops_a_category_run(tmp_path, monkeypatch):

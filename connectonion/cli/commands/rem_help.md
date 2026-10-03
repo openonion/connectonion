@@ -128,8 +128,8 @@ Usage:
   co rem investigate me                       Investigate your own page from your recent work.
   co rem investigate me --quick               Bounded first pass; says what it did not cover.
                                                init runs this for you in a terminal.
-  co rem investigate all --budget 10          The whole queue, highest first, until 10 points
-                                               of your Codex week are spent.
+  co rem investigate all --budget 10          The whole queue, highest first; stop new pages after
+                                               10 Codex-week points are spent.
 
   CATEGORY is one of: people, projects, orgs, skills, all (people, projects, orgs and skills
   in one queue, by weight)
@@ -155,7 +155,7 @@ What each kind reads:
   me        Your own sent mail and coding sessions from the last --days (default 30).
 
 Options:
-  --days N       How far back to read (default 150; 30 for me)
+  --days N       How far back to read (730 for a full page; 30 for me; updates since last run)
   --quick        With me: sample recent evidence for one model turn; explicitly partial
   --limit N      With CATEGORY: at most N pages this run (default 5; 0 for all)
   --list         With CATEGORY: print the order and stop; no model
@@ -180,8 +180,8 @@ and after, and counts toward investigation's weekly budget (limits.
 investigation_quota_points, default 35). A CATEGORY run stops starting pages when
 that budget is spent, when --budget is spent, or once the week is at
 limits.quota_floor_percent (default 90%), and says which. Pages already in
-flight finish. Without a meter (another runner, Codex signed out), --limit is
-the bound.
+flight finish, so --budget is advisory and can be exceeded by in-flight pages.
+Without a meter (another runner, Codex signed out), --limit is the bound.
 
 Effects:  Reads message bodies and files. Calls the model configured in co rem config:
           one call per page. Material too large for one turn is written to evidence

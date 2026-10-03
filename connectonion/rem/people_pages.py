@@ -34,7 +34,8 @@ RECENT_DAYS = 14
 FIRST_WINDOW_DAYS = 730  # two years: a real contact went back to July 2025, 38 mails; 150 days read 13 (2026-10-01)
 # Measured on the owner's machine, 2026-09-30 (docs/cli/rem-people-pages.md):
 # one full investigation of a 157-mail person, the #1850 baseline subject.
-MEASURED = {"mails": 157, "input_tokens": 1_931_414, "minutes": 15}
+MEASURED = {"mails": 157, "input_tokens": 1_931_414, "minutes": 15,
+            "date": "2026-09-30", "window_days": 150}
 # A mail still arriving at the last listing carries a time before it.
 OVERLAP = timedelta(hours=1)
 
@@ -141,7 +142,7 @@ def estimate(rows: list[dict]) -> dict:
     return {"people": len(rows), "model_calls": len(rows), "recent": sum(1 for r in rows if r["recent"]),
             "updates": sum(1 for r in rows if r["mode"] == "update"),
             "mails_mapped": sum(r["mails"] for r in rows if r["mode"] == "full"), "measured": MEASURED,
-            "window_days": FIRST_WINDOW_DAYS}
+            "window_days": next((row["days"] for row in rows if row["mode"] == "full"), FIRST_WINDOW_DAYS)}
 
 
 def handles(root: Path, record: str) -> tuple[str, list[str]]:

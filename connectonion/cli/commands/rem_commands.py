@@ -1071,7 +1071,8 @@ def make_rem_app(factory):
                 from .rem_people import run_people
                 return run_people(ctx, root, limit=pages_limit, recent_days=recent_days or 14, days=days,
                                   list_only=list_only, gate=None if list_only else budget_gate(root),
-                                  clients_for=clients_for, subscriptions=subscriptions, logged=_logged)
+                                  clients_for=clients_for, subscriptions=subscriptions, logged=_logged,
+                                  budget=budget)
             if target == "me":
                 return me(root)
             if target in runnable:

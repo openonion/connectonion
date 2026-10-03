@@ -379,6 +379,10 @@ def test_the_cost_says_its_counts_are_the_maps_and_a_floor(root):
     assert "at least" in line
     text = cost_line(estimate(rows[:1]), {})
     assert "the map" in text and "1 mails" not in text
+    assert "Historical sample (2026-09-30, 150-day read)" in text
+    assert "730 days" in text and "A longer read may cost more" in text
+    rows[0]["days"] = 5
+    assert "5 days" in cost_line(estimate(rows[:1]), {})
 
 
 def test_a_page_stamped_with_no_source_about_its_subject_is_hollow(tmp_path):
