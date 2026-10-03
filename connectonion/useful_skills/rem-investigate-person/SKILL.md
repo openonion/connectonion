@@ -11,8 +11,9 @@ Why these rules: docs/rem-skills/rem-investigate.md
 
 - The user's addresses (the mailbox names in coverage) are never the subject's;
   `Email`/`Handles` take only addresses the subject writes from.
-- Every handle you were given, wrong spellings too, goes in `Also known as:`;
-  add the ones you discover (signature, second address, other script). Company
+- Given handles are search leads, not verified aliases. Put one in `Also known
+  as:` only with a cited signature, cross-reference or reply thread tying it
+  to this person; otherwise leave it unverified in `Uncertainties`. Company
   names go in their own field.
 - The subject is the owner of a coverage mailbox → the user's own page: follow
   `rem-owner-page`.

@@ -17,7 +17,7 @@ Placeholders are not evidence.
 ```markdown
 # <observed name>
 
-<lead>. Last contact: <date>.
+<lead>. Last contact: <date> (observed mail).
 
 ## Facts
 - Email: Unknown
@@ -51,8 +51,8 @@ Placeholders are not evidence.
 Rules:
 
 - **Lead**: 2–3 cited sentences. Start with a supported current obligation or
-  relationship finding; end with `Last contact: <date>` and channel. Historical
-  gaps go in `Uncertainties`. `Nothing open as of <date>` needs closure evidence.
+  relationship finding; end with `Last contact: <date>` and observed channel/window.
+  `Nothing open as of <date>` needs closure evidence.
 - **`Facts` is data, written first.** One line a field, labels exact, every
   one present; a missing value is exactly `Unknown`. Several values: `; `
   between, each `value (qualifier) [n]` (`+61 2 5550 0142 (work) [3];
