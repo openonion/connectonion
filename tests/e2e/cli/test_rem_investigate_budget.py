@@ -89,6 +89,18 @@ def test_nothing_starts_once_the_week_is_at_the_floor(tmp_path, monkeypatch):
     assert "90%" in json.loads(result.stdout)["data"]["stopped"]
 
 
+def test_people_batch_near_the_floor_starts_one_before_rechecking(tmp_path, monkeypatch):
+    root = _notebook(tmp_path)
+    _queue(monkeypatch, {"people": [("people/ada.md", 3), ("people/bob.md", 2), ("people/cy.md", 1)]})
+    state = {"used": 89, "per_page": 1, "done": []}
+    _meter(monkeypatch, state)
+    result = invoke(root, "--json", "investigate", "people", "--budget", "20", "--days", "5")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert len(state["done"]) == 1
+    assert data["left"] == 2 and "90%" in data["stopped"]
+
+
 def test_the_weekly_budget_already_spent_stops_a_category_run(tmp_path, monkeypatch):
     root = _notebook(tmp_path)
     _queue(monkeypatch, {"people": [("people/ada.md", 3)]})
@@ -124,5 +136,7 @@ def test_without_a_meter_the_page_limit_is_the_bound(tmp_path, monkeypatch):
     _meter(monkeypatch, state)
     result = invoke(root, "--json", "investigate", "people", "--limit", "2", "--days", "5")
     assert result.exit_code == 0, result.output
-    assert state["done"] == ["people/ada.md", "people/bob.md"]
-    assert "stopped" not in json.loads(result.stdout)["data"]
+    assert set(state["done"]) == {"people/ada.md", "people/bob.md"}
+    data = json.loads(result.stdout)["data"]
+    assert [page["page"] for page in data["pages"]] == ["people/ada.md", "people/bob.md"]
+    assert "stopped" not in data

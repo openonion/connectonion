@@ -74,14 +74,15 @@ def owner_first(ctx, root) -> list[str]:
 
 def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool, gate, clients_for,
                subscriptions, logged, announce=True):
-    """The people category: order, cost, then one person after another. Returns (result, next, failed).
+    """The people category: order, cost, then up to four people at once. Returns (result, next, failed).
 
     `announce=False` is init's first run, which has already said one total
     for every page it will write (#2008).
     """
     from ...rem import quota
     from ...rem.config import read_config
-    from ...rem.people_pages import estimate, investigate_person, queue, write_pages
+    from ...rem.people_pages import estimate, investigate_person, queue
+    from .rem_commands import _in_parallel
     rows = queue(root, recent_days=recent_days)
     if days:
         rows = [{**row, "days": days} if row["mode"] == "full" else row for row in rows]
@@ -101,20 +102,30 @@ def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool
     if not chosen:
         return "No people to investigate: every page is investigated and nothing new has arrived.", \
             ["list", "people"], False
+    meter = quota.read(config)
     if announce:
         rem_look.line(f"Investigating {len(chosen)} of {len(rows)} people. "
-                      + cost_line(estimate(chosen), quota.read(config)), err=True)
-    clients, sources = clients_for(root), subscriptions(root)
+                      + cost_line(estimate(chosen), meter), err=True)
+    sources = subscriptions(root)
 
     def on_page(number, total, row):
         rem_look.line(f"[{number}/{total}] {row['record']} (last mail {_day(row['last_activity'])}, "
                    f"{'update, ' if row['mode'] == 'update' else ''}{row['days']} days)", err=True)
 
-    def one(row):
+    def one(row, number):
+        on_page(number, len(chosen), row)
         return logged(root, row["record"], "investigate", lambda update: investigate_person(
-            root, row, clients=clients, subscriptions=sources, stage_progress=update))
+            root, row, clients=clients_for(root), subscriptions=sources, stage_progress=update))
 
-    result = write_pages(chosen, write=one, gate=gate, on_page=on_page)
+    jobs = [{"record": row["record"], "mode": row["mode"], "number": number,
+             "run": lambda row=row, number=number: one(row, number)}
+            for number, row in enumerate(chosen, 1)]
+    workers = min(4, len(jobs))
+    if "used_percent" in meter:
+        workers = min(workers, max(1, config["limits"]["quota_floor_percent"] - meter["used_percent"]))
+    outcomes, stopped = _in_parallel(jobs, workers=workers, gate=gate)
+    result = {"pages": [outcome for _, outcome in sorted(outcomes, key=lambda pair: pair[0]["number"])],
+              **({"stopped": stopped} if stopped else {})}
     result["left"] = len(rows) - sum(1 for row in result["pages"] if row["outcome"] == "accepted")
     if result.get("stopped"):
         rem_look.line(f"Stopped: {result['stopped']}", err=True)

@@ -179,15 +179,16 @@ Budget: with the Codex runner every investigation records your Codex week before
 and after, and counts toward investigation's weekly budget (limits.
 investigation_quota_points, default 35). A CATEGORY run stops starting pages when
 that budget is spent, when --budget is spent, or once the week is at
-limits.quota_floor_percent (default 90%), and says which. The page in flight
-finishes. Without a meter (another runner, Codex signed out) --limit is the bound.
+limits.quota_floor_percent (default 90%), and says which. Pages already in
+flight finish. Without a meter (another runner, Codex signed out), --limit is
+the bound.
 
 Effects:  Reads message bodies and files. Calls the model configured in co rem config:
           one call per page. Material too large for one turn is written to evidence
           files the model searches, not summarised first; files are removed after the
           run. A page investigated before reads only what is new since then. Pages
-          run one after another, not in parallel. The mailbox servers throttle
-          parallel reads.
+          in the people category run up to four at once, each with its own
+          mailbox client. Other category runs start one page at a time.
 
 For the model writing a page: the Skill covers the common case. Use supplied
 material and, for projects, the supplied bounded repository snapshots. Unsupported

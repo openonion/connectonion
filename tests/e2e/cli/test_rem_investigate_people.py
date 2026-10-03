@@ -2,13 +2,14 @@
 
 import json
 from datetime import datetime, timedelta, timezone
+from threading import Barrier
 
 import pytest
 from typer.testing import CliRunner
 
 from connectonion.cli.main import app
 from connectonion.rem.config import prepare
-from connectonion.rem.files import Notebook, state_path, write_json
+from connectonion.rem.files import Notebook, RemError, state_path, write_json
 
 
 def invoke(root, *args):
@@ -109,3 +110,44 @@ def test_one_person_left_is_one_person(root, monkeypatch):
                         lambda root, record, *a, **k: {"changed": [record], "usage": None})
     result = invoke(root, "--json", "investigate", "people", "--limit", "1")
     assert "1 person left to investigate." in result.stderr
+
+
+def test_two_people_make_progress_at_the_same_time(root, monkeypatch):
+    barrier = Barrier(2)
+    monkeypatch.setattr("connectonion.rem.quota.read", lambda config: {"unknown": "synthetic meter"})
+
+    def investigate(root, record, subject, handles, *, days, **kw):
+        barrier.wait(timeout=10)
+        return {"changed": [record], "usage": None}
+
+    monkeypatch.setattr("connectonion.rem.investigate.investigate", investigate)
+    result = invoke(root, "--json", "investigate", "people", "--limit", "2")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert [page["page"] for page in data["pages"]] == ["people/new.md", "people/old.md"]
+    assert [page["outcome"] for page in data["pages"]] == ["accepted", "accepted"]
+    assert data["left"] == 0
+
+
+def test_parallel_gate_does_not_start_another_page_after_a_stop():
+    from connectonion.cli.commands.rem_commands import _in_parallel
+
+    started = []
+    checks = 0
+
+    def gate():
+        nonlocal checks
+        checks += 1
+        return "budget reached" if checks > 2 else ""
+
+    def run(record):
+        started.append(record)
+        if record == "people/first.md":
+            raise RemError("rejected by evidence")
+
+    jobs = [{"record": record, "mode": "full", "run": lambda record=record: run(record)}
+            for record in ("people/first.md", "people/second.md", "people/third.md")]
+    outcomes, stopped = _in_parallel(jobs, workers=2, gate=gate)
+    assert stopped == "budget reached"
+    assert set(started) == {"people/first.md", "people/second.md"}
+    assert {row["outcome"] for _, row in outcomes} == {"accepted", "refused"}
