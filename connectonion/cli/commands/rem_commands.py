@@ -866,6 +866,7 @@ def make_rem_app(factory):
             # project page, about a minute" and spent 614k-922k and 4-5 minutes
             # each, on every project active in the window, with no total at all.
             from ...rem import first_run
+            from ...rem.people_pages import FIRST_WINDOW_DAYS
             from .rem_people import counted
             from ...rem.service import run_logs
             recent = min(14, days)
@@ -885,15 +886,19 @@ def make_rem_app(factory):
             steps = ([f"your page (quick first, then full; {me_days} days of your mail and sessions)"]
                      if not reason else [])
             steps += ([f"{counted(len(people_rows), 'person', 'people')} "
-                       f"(recent first; up to two years of evidence each)"] if people_rows else [])
+                       f"(recent first; at least two years, back to each person's first mapped mail)"] if people_rows else [])
             steps += ([f"{counted(len(project_rows), 'project')} (recent first)"] if project_rows else [])
             steps += ([f"{counted(len(org_rows), 'related organisation')}"] if org_rows else [])
             steps += ([f"{counted(len(skill_rows), 'installed skill')} (source and retained run evidence)"] if skill_rows else [])
             if not steps:
                 return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
+            window_warning = ("Earlier mapped mail extends some person reads beyond two years. "
+                              "The measured example covered 150 days, so actual cost may be higher.\n"
+                              if any(row["days"] > FIRST_WINDOW_DAYS for row in people_rows) else "")
             cost = (f"First run with {config['runner']} ({config['model']}): "
                     + ", ".join(steps) + f"; up to {FIRST_RUN_WORKERS} at a time.\n"
                     + "Estimate: " + first_run.announce(total, plan) + "\n"
+                    + window_warning
                     + f"Budget: about {FIRST_RUN_TARGET_POINTS}% of a weekly runner allowance is a planning "
                     "target, not a stop. The selected investigation finishes even if it uses more; "
                     "a runner without a weekly meter cannot verify the percentage.\n"
