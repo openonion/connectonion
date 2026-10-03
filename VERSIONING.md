@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a25
+## Current Version: 1.9.0a26
+
+1.9.0a26 makes written REM notebooks faster to reopen, clarifies that existing
+memories remain available when background updates are off, and checks that the
+package's preview install command matches the version being shipped. The full
+CLI help audit now runs once per test workflow. Stable remains 1.8.10. See
+[1.9.0a26 notes](docs/releases/1.9.0a26.md).
+
+- 1.9.0a26 (#2214, #2215, #2216, #2218; reader speed, status copy, release guidance).
+
+## Previous preview: 1.9.0a25
 
 1.9.0a25 makes a completed `co rem init` source map visible on the reader's
 first screen, reconciles held People counts, and keeps the Last contact heading

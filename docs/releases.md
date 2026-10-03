@@ -23,6 +23,18 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a26** reopens written `co rem` notebooks faster and makes it clear
+when background updates are off while existing memories remain available. The
+package README now checks its exact preview pin against the shipped version.
+See [1.9.0a26 notes](releases/1.9.0a26.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a26'
+co rem open --live
+```
+
+Earlier alpha previews remain available:
+
 Alpha **1.9.0a25** shows what a first `co rem init` mapped, reconciles held
 contacts, and corrects grouped mail dates on a fresh map. See
 [1.9.0a25 notes](releases/1.9.0a25.md).
@@ -31,8 +43,6 @@ contacts, and corrects grouped mail dates on a fresh map. See
 python -m pip install --upgrade 'connectonion==1.9.0a25'
 co rem open --live
 ```
-
-Earlier alpha previews remain available:
 
 Alpha **1.9.0a24** adds `co rem merge` to fold duplicate pages and preserve aliases.
 See [1.9.0a24 notes](releases/1.9.0a24.md).
@@ -51,8 +61,6 @@ python -m pip install --upgrade 'connectonion==1.9.0a23'
 co rem open --live
 ```
 
-Earlier alpha previews remain available:
-
 Alpha **1.9.0a22** makes project findings and their evidence easier to check:
 the current finding leads, partial session coverage is visible, and every
 numbered source can be opened from the reader. See
@@ -62,8 +70,6 @@ numbered source can be opened from the reader. See
 python -m pip install --upgrade 'connectonion==1.9.0a22'
 co rem open --live
 ```
-
-Earlier alpha previews remain available:
 
 Alpha **1.9.0a21** shows the complete REM note and citations by default,
 puts the note before Facts on phones, and gives investigation more weekly
