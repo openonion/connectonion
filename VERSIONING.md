@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a38
+## Current Version: 1.9.0a39
+
+1.9.0a39 gives cited Skill findings a direct 44-pixel source link beside the
+lead statement, keeps keyboard focus visible on the dark lead card, and hides
+labelled private finding links when private passages are hidden. The reader
+changes presentation only. Stable remains 1.8.10. See
+[1.9.0a39 notes](docs/releases/1.9.0a39.md).
+
+- 1.9.0a39 (Skill finding source access on phones).
+
+## Previous preview: 1.9.0a38
 
 1.9.0a38 adds Find and Next match inside long archived REM source excerpts.
 The dialog names truncation, and search stays inside the private source

@@ -23,6 +23,16 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a39** puts direct 44-pixel source links beside a cited Skill
+finding, so the specific original remains easy to open on a phone. Labelled
+private findings hide those links when the reader hides private passages. See
+[1.9.0a39 notes](releases/1.9.0a39.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a39'
+co rem open --local
+```
+
 Alpha **1.9.0a38** adds a within-source find and Next match control to long
 archived REM excerpts. It shows when an excerpt was truncated and searches only
 the text shown; saved source bodies and memory pages do not change. See

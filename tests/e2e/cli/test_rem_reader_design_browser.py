@@ -1054,12 +1054,34 @@ def test_skill_opens_on_its_finding_and_keeps_usage_in_full_note(reader):
     assert page.locator('.focus-statement').inner_text() == 'A saved draft still needs a queue readback.'
     assert page.locator('.focus-head .focus-kicker').inner_text() == 'USEFUL FINDING'
     assert not page.locator('.focus-more').is_visible()
+    finding_source = page.locator('.skill-finding-cites a.cite').first
+    assert finding_source.get_attribute('href').endswith('h=src-1')
+    assert finding_source.bounding_box()['width'] >= 44
+    assert finding_source.bounding_box()['height'] >= 44
+    finding_source.click()
+    assert page.locator('#evidence-dialog blockquote').inner_text() == 'Recorded queue readback.'
+    page.get_by_role('button', name='Close source context').click()
+    assert finding_source.evaluate('e => e === document.activeElement')
     page.get_by_role('link', name='View sources →').click()
     assert page.locator('.deep-note .block-sources').is_visible()
     assert 'Use for a weekly brief.' in page.locator('.deep-note').inner_text()
     page.locator('.deep-note a.cite').first.click()
     assert page.locator('#evidence-dialog .evidence-summary').evaluate('e => e.scrollWidth <= e.clientWidth')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    page.get_by_role('button', name='Close source context').click()
+    page.evaluate("""() => {
+      const r = byPath('skills/catalog/weekly-brief.md');
+      r.text = r.text.replace('A saved draft still needs a queue readback. [1]',
+        'A saved draft still needs a queue readback. [personal] [1]');
+      KNOWN.delete(r.path);
+      render();
+    }""", isolated_context=False)
+    private_source = page.locator('.skill-finding-cites a.cite').first
+    assert private_source.is_visible()
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert not private_source.is_visible()
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert private_source.is_visible()
 
 
 def test_skill_activity_uses_invocation_dates_instead_of_investigation_dates(reader):
