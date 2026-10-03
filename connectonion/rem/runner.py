@@ -647,8 +647,10 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
 
 
 # What a finished task keeps: its record, the page it proposed, the review
-# questions and the Skill text it was given. The rest is a private copy of the owner's mail and pages.
-TASK_KEEPS = ("result.json", "candidate.md", "review-candidates.json", "instructions.md")
+# questions, rejection reasons and the Skill text it was given. The rest is a
+# private copy of the owner's mail and pages.
+TASK_KEEPS = ("result.json", "candidate.md", "review.json", "claim-review.json",
+              "review-candidates.json", "instructions.md")
 
 
 def scrub_task(directory: Path) -> None:

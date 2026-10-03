@@ -81,3 +81,12 @@ def test_codex_audit_sends_private_sources_over_stdin(tmp_path, monkeypatch):
     assert seen['input'] == 'PRIVATE SOURCE BODY'
     assert 'PRIVATE SOURCE BODY' not in ' '.join(seen['command'])
     assert result['usage'] == {'input_tokens': 42, 'cached_input_tokens': 0, 'output_tokens': 4}
+
+
+def test_finished_task_keeps_rejection_reason_but_removes_audit_packet(tmp_path):
+    for name in ('candidate.md', 'review.json', 'claim-review.json', 'claim-input.txt'):
+        (tmp_path / name).write_text('private')
+    runner.scrub_task(tmp_path)
+    assert all((tmp_path / name).is_file() for name in ('candidate.md', 'review.json', 'claim-review.json'))
+    assert not (tmp_path / 'claim-input.txt').exists()
+    assert (tmp_path / 'claim-review.json').stat().st_mode & 0o777 == 0o600
