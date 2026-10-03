@@ -74,8 +74,8 @@ whose whole body would be `Unknown`. Keep the following order for those shown:
 
 **Opening**
 
-- `What it is`: one sentence: product, user, purpose; unknown product identity:
-  a session workspace and its documented tasks.
+- `What it is`: one sentence naming a verified product and purpose, or state
+  the user's requested work as a goal when product identity is unverified.
 - `Overview`, when supported: 3–7 narrow-screen ASCII steps in a `text` fence,
   showing user start, actions and outcome. Modules go in `Architecture map`.
 - `Try it`, when supported: entry point, tiny example and visible result,
@@ -113,14 +113,13 @@ An unknown flow is omitted; a plausible diagram is not evidence.
   here rather than as a tail on every bullet elsewhere.
 - `Sources`: numbered, `- [n] <source id> — <date>`, nothing more; each inspected
   file its own entry. Mark inference; never copy facts from examples.
-  Use `project-source:` IDs or inspected paths and revisions. Dates do
+  Use supplied `source` IDs; `git:` origins and paths are not IDs. Dates do
   not establish project activity or release.
   Check inherited clauses, quantities and dates against exact originals,
   not summaries or adjacent inputs. Valid IDs are not support; cite each
   joined clause and both messages.
 
-State a claim in one clause. How the page was made (the mapper, the collector,
-counts of matched sessions, the prior page) goes nowhere in the body.
+Keep claims short. Omit mapper, collector, counts and prior-page metadata.
 
 **Two stages, one page**
 

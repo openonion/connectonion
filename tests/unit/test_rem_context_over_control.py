@@ -106,7 +106,7 @@ def test_live_file_citation_is_hash_pinned_and_openable_after_file_changes(tmp_p
 
     monkeypatch.setattr(rem_runner, "run_task", write_candidate)
 
-    def audited(notebook, candidate, *_args):
+    def audited(notebook, candidate, *_args, **_kwargs):
         material, missing = project_claim_review.packet(notebook, candidate)
         assert missing == []
         assert material['sources'][0]['context']['excerpt'] == 'Verified feature design.'

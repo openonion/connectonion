@@ -397,12 +397,15 @@ def _spending_skipped(ctx, *, want, problem, fix) -> str:
     return ""
 
 
-def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=(), progress=None, quiet=False):
+def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=(), progress=None,
+                      quiet=False, retry_refused=False):
     """One page of `co rem investigate PAGE|CATEGORY`, and of the first run's organisations."""
     from ...rem import investigate as rem_investigate
     from ...rem.files import RemError, split_handles
     from ...rem.service import subscriptions
     if record.startswith("skills/"):
+        if retry_refused:
+            raise RemError("--retry-refused applies to people, projects and orgs pages")
         from ...rem.skill_runs import investigate_skill_page
         return _logged(root, record, "investigate", lambda update: investigate_skill_page(
             root, record, eval_dir or [Path.home() / ".co/evals"]), quiet=quiet)
@@ -433,7 +436,7 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
     return _logged(root, record, "investigate", lambda update: rem_investigate.investigate(
         root, record, title, handles, days=days or rem_investigate.window_since(text), clients=clients,
         subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped,
-        stage_progress=update), quiet=quiet)
+        stage_progress=update, retry_refused=retry_refused), quiet=quiet)
 
 
 # The first run investigates the owner and every eligible mapped page. The
@@ -942,7 +945,8 @@ def make_rem_app(factory):
                          budget: Optional[int] = typer.Option(None, "--budget", min=1, max=100),
                          list_only: bool = typer.Option(False, "--list"),
                          recent_days: Optional[int] = typer.Option(None, "--recent-days", min=1),
-                         eval_dir: List[Path] = typer.Option([], "--eval-dir")):
+                         eval_dir: List[Path] = typer.Option([], "--eval-dir"),
+                         retry_refused: bool = typer.Option(False, "--retry-refused")):
         from ...rem.files import Notebook, RemError, read_json, state_path
         from ...rem import queue as rem_queue
         from ...rem.queue import CATEGORIES, order
@@ -955,7 +959,7 @@ def make_rem_app(factory):
 
         def one(root, notebook, record):
             return _investigate_page(root, notebook, record, handle=handle, days=days, eval_dir=eval_dir,
-                                     progress=progress)
+                                     progress=progress, retry_refused=retry_refused)
 
         def overview(root):
             from ...rem.people_pages import queue as people_queue
@@ -1073,6 +1077,8 @@ def make_rem_app(factory):
         def run(root):
             if quick and target != "me":
                 raise RemError("--quick is for `co rem investigate me` only")
+            if retry_refused and (not target or target in runnable or target == "me"):
+                raise RemError("--retry-refused needs one page: co rem investigate PAGE --retry-refused")
             if budget and target not in runnable:
                 raise RemError("--budget goes with a category: co rem investigate all --budget 10")
             if list_only and target not in runnable:
@@ -1106,7 +1112,8 @@ def make_rem_app(factory):
             return result, ["show", result["report"] if record.startswith("skills/") else record]
         retry = ["investigate", *([target] if target else []),
                  *(["--days", str(days)] if days is not None else []),
-                 *(["--quick"] if quick else [])]
+                 *(["--quick"] if quick else []),
+                 *(["--retry-refused"] if retry_refused else [])]
         _handle(ctx, run, ["investigate"], retry=retry, resume=retry)
 
     # ------------------------------------------------------------------- Read

@@ -79,6 +79,23 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     assert '`' not in page.locator('#foot').inner_text()
 
 
+def test_mobile_browse_privacy_control_remains_a_full_touch_target(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.locator('.nav-toggle').click()
+    privacy = page.get_by_role('button', name='Hide labelled passages')
+    box = privacy.bounding_box()
+    assert box['height'] >= 44 and box['width'] >= 44
+    assert box['y'] >= 0 and box['y'] + box['height'] <= 812
+    privacy.focus()
+    privacy.press('Enter')
+    shown = page.get_by_role('button', name='Show labelled passages')
+    assert shown.get_attribute('aria-pressed') == 'true'
+    assert shown.evaluate('(node) => node === document.activeElement')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
 @pytest.fixture
 def reader(tmp_path, monkeypatch):
     from patchright.sync_api import sync_playwright
@@ -782,6 +799,25 @@ def test_open_request_dates_keep_explicit_deadlines_on_the_notebook_calendar(rea
       KNOWN.clear(); return threads(r).items[0];
     }""", isolated_context=False)
     assert dates['since'] == '2026-10-01' and dates['due'] == ''
+
+
+def test_phone_open_preview_names_elapsed_age_and_keeps_the_full_thread(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate(r"""() => {
+      REM.status.timezone = 'Australia/Sydney'; REM.as_of = '2026-10-03T14:30:00Z';
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace(/## Open threads[\s\S]*?(?=\n## )/, '## Open threads' + String.fromCharCode(10) +
+        '- Mara asked Avery to confirm the scope on 2026-09-29, followed up twice, and offered several detailed ways to answer before a time-sensitive proposal, while the exact due day still needs confirmation [5].' + String.fromCharCode(10));
+      KNOWN.clear(); render();
+    }""", isolated_context=False)
+    preview = page.locator('.lead-open')
+    assert preview.locator('.dir').inner_text() == 'YOU OWE'
+    assert preview.locator('.age').inner_text() == 'open for 5 days'
+    assert len(preview.locator('.txt').inner_text()) <= 100
+    assert 'exact due day still needs confirmation' in page.locator('.next-exchanges').inner_text()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
 def test_dates_and_contact_age_use_notebook_calendar_on_another_browser_timezone(reader):

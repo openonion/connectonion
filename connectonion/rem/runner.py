@@ -563,8 +563,11 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         from .project_pages import retain_live_source_context
         retain_live_source_context(notebook.root, original, text)
     if not errors and claim_config is not None and investigation and record.startswith("projects/"):
-        from .project_claim_review import review as review_claims
-        report, audit_usage = review_claims(notebook, text, claim_config, directory, run_claim_task)
+        from .project_claim_review import retain_cited_originals, review as review_claims
+        with nullcontext() if lock_held else maintenance_lock(notebook.root):
+            retain_cited_originals(notebook, text, items)
+        report, audit_usage = review_claims(notebook, text, claim_config, directory, run_claim_task,
+                                            record=record)
         write_json(directory / "claim-review.json", report)
         audit_status = "bounded citation audit passed" if report["verdict"] == "pass" else "bounded citation audit failed"
         if report["verdict"] != "pass":
@@ -900,34 +903,57 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                     result["usage"] = {key: (result.get("usage") or {}).get(key, 0) + audit_usage.get(key, 0)
                                        for key in (result.get("usage") or {}).keys() | audit_usage.keys()}
 
-            try:
-                promote()
-            except RunFailed:
-                errors = read_json(directory / "review.json", {}).get("errors") or []
-                if not errors or any(not error.startswith(("History has ", "Finding has unresolved citations"))
-                                     for error in errors):
-                    raise
-                # Repair bounded history and miscopied evidence ids once,
-                # keeping the paid-for candidate and accounting for both turns.
+            max_repairs = 2 if record.startswith("projects/") and stage == "investigate" else 1
+            for attempt in range(max_repairs + 1):
                 try:
-                    repair = run_task(workdir, f"Edit the existing page at {candidate}. "
-                                      f"Review errors: {'; '.join(errors)}. "
-                                      "Keep at most eight dated bullets in History, folding older events by year. "
-                                      f"For unresolved citations, read {directory / 'material.md'} and its named "
-                                      "evidence index; copy the exact source ids for supported claims. Remove a "
-                                      "claim only if evidence does not support it. Preserve all other sections "
-                                      "and citations. Save the same file and stop.",
-                                      selected_config, stage)
-                except RunFailed as error:
-                    prior = result.get("usage") or {}
-                    current = error.usage or {}
-                    raise RunFailed(str(error), {key: prior.get(key, 0) + current.get(key, 0)
-                                                 for key in prior.keys() | current.keys()}) from error
-                usage = [result.get("usage") or {}, repair.get("usage") or {}]
-                result["usage"] = {key: sum(part.get(key) or 0 for part in usage)
-                                   for key in usage[0].keys() | usage[1].keys()} or None
-                promote()
-                metrics["render_usage"] = result.get("usage")
+                    promote()
+                    break
+                except RunFailed as rejected:
+                    result["usage"] = rejected.usage or result.get("usage")
+                    errors = read_json(directory / "review.json", {}).get("errors") or []
+                    audit_failed = errors == ["Cited-claim audit did not pass; see claim-review.json"]
+                    source_failed = (record.startswith("projects/") and errors and all(error.startswith(
+                        ("Cited local file needs ", "Citation has no identifiable source:")) for error in errors))
+                    if (attempt == max_repairs or not errors or
+                            (not audit_failed and not source_failed and any(not error.startswith(
+                                ("History has ", "Finding has unresolved citations")) for error in errors))):
+                        raise
+                    if audit_failed:
+                        instruction = (f"Read {directory / 'claim-review.json'} and the cited originals in "
+                                       f"{directory / 'material.md'} and its evidence index. Fix every audit finding "
+                                       "in the existing candidate: state only what the originals prove, or remove "
+                                       "the unsupported claim. Check every adjacent cited clause, including "
+                                       "unflagged ones. Keep supported detail and exact citations. The audit "
+                                       "report is a correction guide, not a source. Save the same file and stop.")
+                    elif source_failed:
+                        instruction = (f"Review errors: {'; '.join(errors)}. Read {directory / 'material.md'} "
+                                       "and its evidence index. Replace invented `git:` or `file:` citations with "
+                                       "exact supplied source IDs only when those originals support the same claims. "
+                                       "A new `file:` citation requires an existing file under mapped Paths and its "
+                                       "current SHA-256; remove unsupported claims. Preserve the page and save it.")
+                    else:
+                        instruction = (f"Review errors: {'; '.join(errors)}. "
+                                       "Keep at most eight dated bullets in History, folding older events by year. "
+                                       f"For unresolved citations, read {directory / 'material.md'} and its named "
+                                       "evidence index; copy the exact source ids for supported claims. Remove a "
+                                       "claim only if evidence does not support it. Preserve all other sections "
+                                       "and citations. Save the same file and stop.")
+                    if record.startswith("projects/") and stage == "investigate":
+                        instruction += (f" Read the original mapped page at {workdir / record}; "
+                                        "preserve its Paths mapping and the exact Sessions, First seen, and "
+                                        "Last seen lines. These are routing metadata, not proof of project work.")
+                    try:
+                        repair = run_task(workdir, f"Edit the existing page at {candidate}. " + instruction,
+                                          selected_config, stage)
+                    except RunFailed as error:
+                        prior = result.get("usage") or {}
+                        current = error.usage or {}
+                        raise RunFailed(str(error), {key: prior.get(key, 0) + current.get(key, 0)
+                                                     for key in prior.keys() | current.keys()}) from error
+                    usage = [result.get("usage") or {}, repair.get("usage") or {}]
+                    result["usage"] = {key: sum(part.get(key) or 0 for part in usage)
+                                       for key in usage[0].keys() | usage[1].keys()} or None
+            metrics["render_usage"] = result.get("usage")
         elif stage in ("maintain", "abstract"):
             refusals = _promote_maintenance(notebook, Notebook(task_root), before, items, directory,
                                             result.get("usage"), maintenance_lock_held)

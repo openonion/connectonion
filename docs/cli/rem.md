@@ -124,6 +124,7 @@ names in old help text, such as `people/emma.md`, are not built-in records.
 
 ```bash
 co rem investigate          # What is left to investigate, by category; no model
+co rem investigate PAGE --retry-refused  # Retry a refused Person/Project/Org page on the same sources
 co rem investigate me --quick --days 5  # Bounded first pass; disclose uncovered sources
 co rem open                 # Open a fresh snapshot of the notebook in your browser
 co rem sync --dry-run       # Inspect pending metadata, without running a model

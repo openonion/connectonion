@@ -891,6 +891,25 @@ def test_investigate_resolves_observed_name_email_or_path(tmp_path, monkeypatch,
     assert result.output.rstrip().endswith('show people/ody-123.md')
 
 
+def test_retry_refused_is_forwarded_only_for_one_page(tmp_path, monkeypatch):
+    prepare(tmp_path)
+    Notebook(tmp_path).stub_person('people/ody-123.md', 'Ody', ['ody@example.org'])
+    monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
+    calls = []
+
+    def run(root, record, *args, **kwargs):
+        calls.append(kwargs['retry_refused'])
+        return {'record': record, 'changed': []}
+
+    monkeypatch.setattr('connectonion.rem.investigate.investigate', run)
+    result = invoke(tmp_path, 'investigate', 'people/ody-123.md', '--retry-refused')
+    assert result.exit_code == 0, result.output
+    assert calls == [True]
+    invalid = invoke(tmp_path, 'investigate', 'people', '--retry-refused')
+    assert invalid.exit_code == 1 and 'needs one page' in invalid.output
+    assert calls == [True]
+
+
 def test_nothing_new_is_a_finished_run_not_an_error(tmp_path, monkeypatch):
     """#2034: it printed "Error:", exited 1 and named the same command as Next."""
     from connectonion.rem.investigate import NothingNew

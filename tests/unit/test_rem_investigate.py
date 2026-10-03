@@ -192,7 +192,7 @@ def test_quick_owner_fetches_all_matching_mail_bodies():
     items, coverage = inv.gather('Me', ['me@example.org'], days=5,
                                  clients={'outlook': box}, subscriptions={},
                                  sent_only=True, quick=True)
-    assert len(items) == 20 and box.fetched == [str(i) for i in range(20)]
+    assert len(items) == 20 and sorted(box.fetched, key=int) == [str(i) for i in range(20)]
     assert any('20 matched, 20 bodies read' in line for line in coverage)
 
 
@@ -1369,6 +1369,21 @@ def test_a_refused_investigation_is_not_retried_on_the_same_material(tmp_path, m
         inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], **args,
                         runner=lambda *a, **kw: pytest.fail('no model call for material already refused'))
     assert 'waits for newer material' in str(caught.value) and '20,000 limit' in str(caught.value)
+    assert 'co rem investigate people/vern.md --retry-refused' in str(caught.value)
+
+
+def test_an_explicit_retry_can_use_material_that_was_refused(tmp_path, monkeypatch):
+    from connectonion.rem.runner import RunFailed
+    root = _notebook(tmp_path, 'codex')
+    mail = {'source': 'gmail:aaa', 'timestamp': '2026-09-30T09:00:00+00:00', 'text': 'Ody wrote.'}
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([mail], ['gmail: 1 matched']))
+    args = dict(days=4, clients={}, subscriptions={})
+    with pytest.raises(RunFailed):
+        inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], runner=_refusing, **args)
+    called = []
+    inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], retry_refused=True, **args,
+                    runner=lambda *a, **kw: called.append(1) or {'changed': [], 'usage': None})
+    assert called == [1] and inv.refused_for(root, 'people/vern.md') == {}
 
 
 def test_newer_material_after_a_refusal_runs_again_and_clears_it(tmp_path, monkeypatch):

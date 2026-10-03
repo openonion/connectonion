@@ -2,13 +2,14 @@
 
 import json
 import importlib
+import hashlib
 from types import SimpleNamespace
 
 import pytest
 
 from connectonion.rem import project_claim_review, runner
 from connectonion.rem.config import prepare
-from connectonion.rem.files import Notebook
+from connectonion.rem.files import Notebook, state_path
 
 
 def test_missing_cited_original_never_reaches_the_model(tmp_path):
@@ -33,6 +34,69 @@ def test_truncated_original_is_shown_with_its_limit(tmp_path, monkeypatch):
     assert material['sources'][0]['context']['excerpt'] == 'A question about filtering'
 
 
+def test_new_cited_session_and_repo_packets_are_openable_before_audit(tmp_path):
+    prepare(tmp_path)
+    session = 'codex:session:5121301'
+    origin, body = 'git:main:README.md', 'The source states the project goal.'
+    repository = 'project-source:' + hashlib.sha256((origin + '\0' + body).encode()).hexdigest()
+    file = tmp_path / 'originals.json'
+    file.write_text(json.dumps([
+        {'role': 'user', 'source': session, 'text': 'Ask the owner about the goal.',
+         'timestamp': '2026-10-01T00:00:00Z'},
+        {'role': 'readme', 'source': repository, 'origin': origin, 'text': body,
+         'timestamp': '2026-10-01T00:00:00Z'}]))
+    candidate = ('# Atlas\n\nThe user asked about the goal [1]; the README states it [2].\n\n'
+                 '## Sources\n- [1] ' + session + ' — 2026-10-01\n'
+                 '- [2] ' + repository + ' — 2026-10-01\n')
+    notebook = Notebook(tmp_path)
+    assert project_claim_review.packet(notebook, candidate)[1] == ['1', '2']
+    project_claim_review.retain_cited_originals(notebook, candidate,
+        [{'role': 'original_evidence', 'file': str(file)}])
+    material, missing = project_claim_review.packet(notebook, candidate)
+    assert missing == []
+    assert {row['source_id'] for row in material['sources']} == {session, repository}
+
+
+def test_runner_status_is_excluded_from_prose_audit(tmp_path, monkeypatch):
+    monkeypatch.setattr(project_claim_review, 'cited_context', lambda *_args, **_kwargs: {
+        'codex:session': {'excerpt': 'Filtering was discussed', 'truncated': False}})
+    candidate = ('# Atlas\n\nFiltering was discussed [1].\n\n'
+                 'Investigation: complete\n\n## Sources\n'
+                 '- [1] codex:session — 2026-10-01\n')
+    seen = {}
+
+    def audited(_workspace, prompt, _config, _stage):
+        seen['prompt'] = prompt
+        return {'result': '{"verdict":"PASS","findings":[]}'}
+
+    report, _usage = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, audited)
+    assert report['verdict'] == 'pass'
+    assert 'do not audit it as a prose claim' in seen['prompt']
+
+
+def test_audit_sees_session_folder_without_promoting_it_to_subfolder_purpose(tmp_path, monkeypatch):
+    record, source = 'projects/work.md', 'codex:session:5121301'
+    folder = tmp_path / 'work'
+    path = state_path(tmp_path, 'projects/work/messages.jsonl')
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({'source': source, 'cwd': str(folder)}) + '\n')
+    monkeypatch.setattr(project_claim_review, 'cited_context', lambda *_args, **_kwargs: {
+        source: {'excerpt': 'Research houses', 'truncated': False}})
+    candidate = '# Work\n\nThe user requested house research [1].\n\n## Sources\n- [1] ' + source + ' — 2026-10-01\n'
+    seen = {}
+
+    def audited(_workspace, prompt, _config, _stage):
+        seen['packet'] = json.loads(prompt[prompt.index('{'):])
+        seen['instruction'] = prompt[:prompt.index('{')]
+        return {'result': '{"verdict":"PASS","findings":[]}'}
+
+    report, _usage = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path,
+                                                 audited, record=record)
+    assert report['verdict'] == 'pass'
+    assert seen['packet']['sources'][0]['context']['mapped_session_folder'] == str(folder)
+    assert 'proves neither implementation nor that earlier work belongs' in seen['instruction']
+
+
 def test_failed_project_claim_review_preserves_previous_page(tmp_path, monkeypatch):
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
@@ -45,7 +109,7 @@ def test_failed_project_claim_review_preserves_previous_page(tmp_path, monkeypat
     path = tmp_path / 'candidate.md'
     path.write_text(candidate)
 
-    def rejected(*args):
+    def rejected(*args, **kwargs):
         return {'verdict': 'fail', 'findings': [{'issue': 'The original only asked a question',
                                                'evidence': 'No answer is present',
                                                'required_correction': 'State the question as open'}]}, {

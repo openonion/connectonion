@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+from .files import read_json
 from .reader_model import SOURCE, cited_context
 
 
@@ -17,8 +18,25 @@ SCHEMA = {
 }
 
 
-def packet(notebook, candidate: str) -> tuple[dict, list[str]]:
+def retain_cited_originals(notebook, candidate: str, items: list[dict]) -> None:
+    """Make newly gathered Project originals readable before the claim audit."""
+    from .project_material import retain_cited_sessions
+    from .project_pages import retain_repository_context
+    from .reader_model import _source_ids
+
+    originals = []
+    for item in items:
+        originals.extend(read_json(Path(item["file"]), []) if item.get("role") == "original_evidence" else [item])
+    cited = _source_ids([{"text": candidate}])
+    retain_repository_context(notebook.root, originals, cited)
+    retain_cited_sessions(notebook.root, originals, cited)
+
+
+def packet(notebook, candidate: str, record: str | None = None) -> tuple[dict, list[str]]:
     """Give the reviewer the same original excerpts the reader can open."""
+    from .project_material import stored
+
+    folders = {row["source"]: row["cwd"] for row in stored(notebook.root, record)} if record else {}
     contexts = cited_context(notebook.root, [{"text": candidate}], budget=100_000)
     sources, missing = [], []
     for line in candidate.partition("\n## Sources\n")[2].splitlines():
@@ -31,13 +49,15 @@ def packet(notebook, candidate: str) -> tuple[dict, list[str]]:
             missing.append(number)
             continue
         sources.append({"citation": number, "source_id": source,
-                        "definition": line, "context": context})
+                        "definition": line, "context": {**context,
+                        **({"mapped_session_folder": folders[source]} if source in folders else {})}})
     return {"candidate": candidate, "sources": sources}, missing
 
 
-def review(notebook, candidate: str, config: dict, workspace: Path, run) -> tuple[dict, dict]:
+def review(notebook, candidate: str, config: dict, workspace: Path, run,
+           *, record: str | None = None) -> tuple[dict, dict]:
     """One read-only model turn; an uncertain verdict keeps the prior page."""
-    material, missing = packet(notebook, candidate)
+    material, missing = packet(notebook, candidate, record)
     if missing:
         return {"verdict": "insufficient", "findings": [], "missing_citations": missing}, {}
     if not material["sources"]:
@@ -48,10 +68,15 @@ def review(notebook, candidate: str, config: dict, workspace: Path, run) -> tupl
         "in the candidate with its exact adjacent numbered citation and the original excerpt below. "
         "A user's request or question proves intent, not implementation, authorization, completion or current status. "
         "A truncated excerpt supports only the words shown; omitted text is not evidence. "
+        "A mapped_session_folder identifies where a coding session was assigned; it groups these "
+        "inputs under the page, but proves neither implementation nor that earlier work belongs "
+        "to a later named subfolder. Do not require a folder name in each user message to describe "
+        "the requests as folder-scoped conversation history. "
         "Do not infer a project purpose, location, architecture, command, URL, recipient or permission from "
         "nearby but different work. A source elsewhere in the packet does not fix a wrong adjacent citation. "
         "The Paths section preserves runner-mapped path and session metadata; structural validation checks it, "
-        "so do not demand prose citations for those rows. Audit every claim outside Paths. "
+        "so do not demand prose citations for those rows. The runner-owned Investigation: status "
+        "line is also structurally checked; do not audit it as a prose claim. Audit other claims outside Paths. "
         "Fail if any material claim is unsupported, even if other claims are sound; name the exact correction. "
         "Return only JSON with verdict PASS, FAIL or INSUFFICIENT and findings containing issue, evidence and "
         "required_correction. No markdown fences.\n\n"

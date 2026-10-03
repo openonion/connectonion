@@ -91,7 +91,8 @@ def _forget_refusal(root: Path, record: str) -> None:
 def _refused_again(record: str, subject: str, refusal: dict) -> NothingNew:
     return NothingNew(f"Nothing new since this material was refused on {refusal['at'][:10]} for {subject} "
                       f"({refusal.get('why', '')}). No model was called; {record} is unchanged and waits for "
-                      "newer material.")
+                      f"newer material. To try these sources again, run "
+                      f"`co rem investigate {record} --retry-refused`.")
 
 
 def _nothing_found(record: str, subject: str, coverage: list[str], *, me: bool = False,
@@ -1053,7 +1054,7 @@ def _mail_comparison(root, record, handles, items, fresh, cited, subscriptions, 
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
-                quick: bool = False) -> dict:
+                quick: bool = False, retry_refused: bool = False) -> dict:
     """Fill the page's gaps from everything gathered; the page itself is the first input."""
     notebook = Notebook(root)
     if not notebook.path(record).is_file():
@@ -1203,7 +1204,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 raise _nothing_new(record, subject, coverage, last)
         items += repository_items
     gathered_sources.update(item["source"] for item in repository_items)
-    if refusal and gathered_sources and gathered_sources <= set(refusal["sources"]):
+    if not retry_refused and refusal and gathered_sources and gathered_sources <= set(refusal["sources"]):
         raise _refused_again(record, subject, refusal)
     if room <= 0:
         raise RemError("Configured input limit cannot fit the current page and investigation Skill")

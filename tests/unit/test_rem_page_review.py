@@ -232,7 +232,7 @@ def test_skill_finding_citing_a_split_record_survives_promotion(tmp_path, monkey
 def test_investigation_promotes_only_valid_new_candidate(tmp_path, monkeypatch, invalid):
     from connectonion.rem import project_claim_review
 
-    monkeypatch.setattr(project_claim_review, 'review', lambda *_: (
+    monkeypatch.setattr(project_claim_review, 'review', lambda *_, **__: (
         {'verdict': 'pass', 'findings': []}, {'input_tokens': 3}))
     prepare(tmp_path)
     nb = Notebook(tmp_path)

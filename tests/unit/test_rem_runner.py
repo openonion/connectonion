@@ -82,7 +82,7 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
                               'source': 'investigation:page'}], default_config(), stage='investigate')
     assert 'Inspect mapped repositories' in prompts[0]
     assert 'git log, git show' in prompts[0]
-    assert 'A branch' in prompts[0] and 'not an Insight' in prompts[0]
+    assert 'A branch, commit date or' in prompts[0] and 'belongs elsewhere' in prompts[0]
     assert 'local mail archives and project repositories' in prompts[0]
     assert 'stop using tools and return a brief coverage summary' in prompts[0]
     assert 'investigation:coverage, investigation:project-scope' in prompts[0]
@@ -767,6 +767,89 @@ def test_failed_history_repair_counts_both_model_turns(notebook, monkeypatch):
                   default_config(), stage='investigate')
     assert len(calls) == 2
     assert caught.value.usage == {'input_tokens': 13}
+
+
+@pytest.mark.parametrize(('failure', 'repair_hint'), [
+    ('Cited local file needs its current SHA-256 and a mapped path: file:/missing',
+     'Replace invented `git:` or `file:` citations'),
+    ('Cited-claim audit did not pass; see claim-review.json', 'Fix every audit finding'),
+])
+def test_project_refusal_gets_one_source_based_repair(notebook, monkeypatch, failure, repair_hint):
+    import re
+    from connectonion.rem.files import write_json
+
+    record = 'projects/example.md'
+    notebook.stub_project(record, 'Example', [])
+    prompts, promotions = [], []
+
+    def run_model(workdir, prompt, config, stage):
+        prompts.append(prompt)
+        candidate = Path(re.search(r'(/\S+/candidate\.md)', prompt).group(1))
+        candidate.write_text('# Example\n' + ('Corrected' if len(prompts) == 2 else 'Bad file citation'))
+        return {'usage': {'input_tokens': 10 if len(prompts) == 1 else 5}, 'result': 'done'}
+
+    def promote(book, record, candidate, original, items, directory, usage, **options):
+        promotions.append(usage)
+        if len(promotions) == 1:
+            write_json(directory / 'review.json', {'accepted': False, 'errors': [failure]})
+            if failure.startswith('Cited-claim'):
+                write_json(directory / 'claim-review.json', {'verdict': 'fail', 'findings': []})
+            raise RunFailed('Bad file citation', usage)
+        book.write(record, candidate.read_text())
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
+    monkeypatch.setattr('connectonion.rem.runner._promote_candidate', promote)
+    result = run_stage(notebook, [{'role': 'page', 'record': record,
+                                   'text': notebook.read(record), 'source': 'investigation:page'}],
+                       default_config(), stage='investigate')
+    assert len(prompts) == 2 and repair_hint in prompts[1]
+    assert 'material.md' in prompts[1]
+    assert 'exact Sessions, First seen, and Last seen lines' in prompts[1]
+    assert 'Read the original mapped page at ' in prompts[1]
+    assert '/projects/example.md' in prompts[1]
+    if failure.startswith('Cited local'):
+        assert 'mapped Paths' in prompts[1]
+    else:
+        assert 'claim-review.json' in prompts[1]
+    assert promotions == [{'input_tokens': 10}, {'input_tokens': 15}]
+    assert result['usage'] == {'input_tokens': 15}
+    assert 'Corrected' in notebook.read(record)
+
+
+def test_project_claim_audit_can_surface_new_findings_on_a_second_repair(notebook, monkeypatch):
+    import re
+    from connectonion.rem.files import write_json
+
+    record = 'projects/example.md'
+    notebook.stub_project(record, 'Example', [])
+    prompts, promotions = [], []
+
+    def run_model(workdir, prompt, config, stage):
+        prompts.append(prompt)
+        candidate = Path(re.search(r'(/\S+/candidate\.md)', prompt).group(1))
+        candidate.write_text('# Example\nCandidate ' + str(len(prompts)))
+        return {'usage': {'input_tokens': 10}, 'result': 'done'}
+
+    def promote(book, record, candidate, original, items, directory, usage, **options):
+        promotions.append(usage['input_tokens'])
+        if len(promotions) < 3:
+            write_json(directory / 'review.json', {'accepted': False,
+                'errors': ['Cited-claim audit did not pass; see claim-review.json']})
+            write_json(directory / 'claim-review.json', {'verdict': 'fail',
+                'findings': [{'issue': 'A different adjacent claim needs correction'}]})
+            raise RunFailed('Claim audit failed', {'input_tokens': usage['input_tokens'] + 2})
+        book.write(record, candidate.read_text())
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
+    monkeypatch.setattr('connectonion.rem.runner._promote_candidate', promote)
+    result = run_stage(notebook, [{'role': 'page', 'record': record,
+                                   'text': notebook.read(record), 'source': 'investigation:page'}],
+                       default_config(), stage='investigate')
+    assert len(prompts) == 3 and all('Fix every audit finding' in prompt for prompt in prompts[1:])
+    assert all('exact Sessions, First seen, and Last seen lines' in prompt for prompt in prompts[1:])
+    assert promotions == [10, 22, 34]
+    assert result['usage'] == {'input_tokens': 34}
+    assert 'Candidate 3' in notebook.read(record)
 
 
 @pytest.mark.parametrize('repaired', [True, False])
