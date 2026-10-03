@@ -23,6 +23,17 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a25** shows what a first `co rem init` mapped, reconciles held
+contacts, and corrects grouped mail dates on a fresh map. See
+[1.9.0a25 notes](releases/1.9.0a25.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a25'
+co rem open --live
+```
+
+Earlier alpha previews remain available:
+
 Alpha **1.9.0a24** adds `co rem merge` to fold duplicate pages and preserve aliases.
 See [1.9.0a24 notes](releases/1.9.0a24.md).
 
@@ -30,8 +41,6 @@ See [1.9.0a24 notes](releases/1.9.0a24.md).
 python -m pip install --upgrade 'connectonion==1.9.0a24'
 co rem open --live
 ```
-
-Earlier alpha previews remain available:
 
 Alpha **1.9.0a23** clarifies map-derived contact dates in the reader and keeps
 table headers visible beside sticky columns on mobile. See

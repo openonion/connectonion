@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a24
+## Current Version: 1.9.0a25
+
+1.9.0a25 makes a completed `co rem init` source map visible on the reader's
+first screen, reconciles held People counts, and keeps the Last contact heading
+legible on a real large phone roster. A new map aggregates each person's first
+and last mail dates across addresses; mapped-only notebooks render much faster.
+Stable remains 1.8.10. See [1.9.0a25 notes](docs/releases/1.9.0a25.md).
+
+- 1.9.0a25 (#2205, #2210, #2211, #2212; first-map reader and date fixes).
+
+## Previous preview: 1.9.0a24
 
 1.9.0a24 adds `co rem merge KEPT OLD` to fold duplicate pages and preserve
 aliases. Written sections are merged, citations are renumbered, OLD is archived,
