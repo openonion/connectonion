@@ -207,7 +207,7 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
         {'name': 'Ody Zhou', 'address': 'zhouodywork@gmail.com', 'mails': 30, 'sent': 12, 'received': 18,
          'one_way': False, 'first': '2026-07-17', 'last': '2026-09-14', 'boxes': ['gmail']},
         {'name': 'Ody Zhou', 'address': 'zhouody@gmail.com', 'mails': 3, 'sent': 1, 'received': 2,
-         'one_way': False, 'first': '2026-08-01', 'last': '2026-08-02', 'boxes': ['gmail']},
+         'one_way': False, 'first': '2024-08-01', 'last': '2026-09-29', 'boxes': ['gmail']},
         {'name': 'Ody Zhou', 'address': 'usr-abc@user.luma-mail.com', 'mails': 1, 'one_way': True},
         {'name': 'Ody Zhou (via Google Drive)', 'address': 'drive-shares-dm-noreply@google.com', 'mails': 2,
          'one_way': True},
@@ -231,7 +231,12 @@ def test_one_person_on_several_addresses_is_one_page_and_notices_get_none(tmp_pa
     ody = next(row for row in result['people'] if row['name'] == 'Ody Zhou')
     assert ody['addresses'] == ['zhouodywork@gmail.com', 'zhouody@gmail.com', 'usr-abc@user.luma-mail.com']
     assert ody['mails'] == 34
+    assert (ody['first'], ody['last']) == ('2024-08-01', '2026-09-29')
+    from connectonion.rem.reader import mail_facts
+    facts = mail_facts(tmp_path)[ody['record']]
+    assert (facts['first'], facts['last']) == ('2024-08-01', '2026-09-29')
     page = Notebook(tmp_path).read(ody['record'])
+    assert 'Last contact: 2026-09-29' in page
     assert 'zhouody@gmail.com' in page and 'Confirm they are one person' in page
     assert len(pages) == 5               # Ody, the two Johns, Misa, and a mail.com person
     listed = {row['address'] for row in result['automated_correspondents']}

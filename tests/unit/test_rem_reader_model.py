@@ -58,6 +58,16 @@ def test_short_mentions_link_only_when_the_alias_is_unique():
     assert {link["path"] for link in links["projects/harbour.md"]} == {"orgs/fernhill.md"}
 
 
+def test_mapped_stubs_keep_explicit_links_without_inventing_prose_relationships():
+    records = [
+        {"path": "people/mara.md", "category": "people", "title": "Mara Ostrowski", "written": False,
+         "text": "# Mara\n\nHarbour was named in metadata. [Fernhill Labs](../orgs/fernhill.md) is linked."},
+        {"path": "orgs/fernhill.md", "category": "orgs", "title": "Fernhill Labs", "text": "# Fernhill"},
+        {"path": "projects/harbour.md", "category": "projects", "title": "Harbour", "text": "# Harbour"},
+    ]
+    assert {link["path"] for link in relationships(records)["people/mara.md"]} == {"orgs/fernhill.md"}
+
+
 def test_relationship_basis_keeps_privacy_after_its_text_is_clipped():
     text = 'Mara Ostrowski discussed confidential background ' + 'detail ' * 40 + '[sensitive] [1].'
     records = [
