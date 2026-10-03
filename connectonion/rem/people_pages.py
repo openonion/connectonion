@@ -22,7 +22,7 @@ investigate turn searches that material as files instead of digesting it
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
@@ -42,6 +42,16 @@ OVERLAP = timedelta(hours=1)
 
 def _map(root: Path) -> dict:
     return read_json(state_path(root, "map.json"), {})
+
+
+def first_window(root: Path, record: str, *, mapped_row: dict | None = None,
+                 today: date | None = None) -> int:
+    """First person read reaches their earliest mapped mail, with two years minimum."""
+    if mapped_row is None:
+        mapped_row = next((r for r in _map(root).get("people", []) if r.get("record") == record), {})
+    today = today or datetime.now(timezone.utc).date()
+    first = _stamp(mapped_row.get("first"))
+    return max(FIRST_WINDOW_DAYS, (today - first.date()).days + 1) if first else FIRST_WINDOW_DAYS
 
 
 def rank(row: dict, now: datetime) -> tuple:
@@ -114,8 +124,7 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
                                           if investigated else None)
         hollow = unfinished.get(record, {}).get("hollow")
         row = mapped.get(record, {})
-        first = _stamp(row.get("first"))
-        full_window = max(FIRST_WINDOW_DAYS, (today - first.date()).days + 1) if first else FIRST_WINDOW_DAYS
+        full_window = first_window(root, record, mapped_row=row, today=today)
         if hollow:
             # Stamped by a run that read nothing (#1974): read again in full.
             mode, window, investigated = "full", full_window, None

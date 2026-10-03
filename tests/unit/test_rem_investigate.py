@@ -948,6 +948,27 @@ def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monk
     assert not any(s.startswith("Page last") for s in inv.searched_sources(out["coverage"]))
 
 
+def test_first_person_read_tells_writer_about_earlier_mapped_mail(tmp_path, monkeypatch):
+    from connectonion.rem.files import state_path, write_json
+
+    root = _notebook(tmp_path, "codex")
+    write_json(state_path(root, "map.json"), {"people": [
+        {"record": "people/vern.md", "first": "2024-08-02T01:44:00Z"}]})
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: ([
+        {"source": "outlook:new", "role": "other", "speaker": "Vern <vern.chan@unsw.edu.au>",
+         "timestamp": "2026-09-29T00:00:00Z", "text": "New message"}], []))
+    seen = {}
+
+    def write(book, material, config, **kw):
+        seen["coverage"] = next(i["text"] for i in material if i["role"] == "coverage")
+        return {"changed": [], "usage": None}
+
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern.chan@unsw.edu.au"],
+                    days=730, clients={}, subscriptions={}, runner=write)
+    assert "Earliest person-linked mapped mail metadata: 2024-08-02" in seen["coverage"]
+    assert "Do not claim a later message is first contact" in seen["coverage"]
+
+
 def test_a_page_written_from_its_sources_starts_the_next_window_too():
     """#1983: `projects write` stamped `written <date>`, which the window did not
     count, so the next investigation re-read 150 days (1.58M tokens)."""

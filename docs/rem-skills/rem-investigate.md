@@ -179,6 +179,40 @@ Unknown without creating a current debt from a historical gap. A copied
 recipient does not become the event organiser or the author of another
 person's confirmation.
 
+A live first read across an older mail window exposed two attribution errors:
+an automated company onboarding message became the person's first contact,
+and a group thank-you became a claim that the person's company presented,
+though the listed presenters did not include it. Message delivery or a copied
+recipient identifies neither a personal exchange nor an event role. Person
+pages now require a cited line that directly ties the subject to each
+relationship origin and dated action; otherwise they leave the field `Unknown`
+or describe only the supported company/group context.
+The same trial found a proposed edit cited as though it also proved the
+recipient's later acceptance. Each factual clause must cite its own original;
+an open action is conditional when a later reply has not been checked outside
+the retained material.
+A later read also turned proposed meeting times into a claim that the user
+checked whether to send a calendar invitation, though neither cited message
+mentioned one. The writer must keep each coordination step at the detail the
+original actually supports.
+A second read recovered a direct 2024 exchange but still treated a request to
+join a startup lineup plus a later group thank-you as proof of attendance.
+Neither message establishes that the person attended or presented, especially
+when the organiser's named lineup omits the company. The page must describe
+the request unless a later source explicitly confirms the event role.
+A third read removed those attribution errors, but its Open threads still said
+the user "owes" an answer to an incoming question while admitting no later
+reply was found only in retained mail. The reader turned that into a `You owe`
+badge. For an unverified request, the writer must first ask the user to check
+whether they answered elsewhere, then answer if not; debtor language requires
+evidence of an outstanding commitment.
+A fourth read and reader change showed the conditional request as `Open` on
+desktop and phone. Its source review still found two adjacent-citation errors:
+the calendar-invite wording was in the next email, and a website form was in
+an earlier signature rather than the cited latest one. The structural citation
+validator confirms IDs exist, not that each cited original entails the clause;
+this remains a source-quality gate for the draft people work.
+
 Fact extraction converts source timestamps to `schedule.timezone` before
 deriving contact and source dates. It sorts full instants, rather than date
 strings, so reversed inputs on the same UTC day still cite the correct first

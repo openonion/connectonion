@@ -68,6 +68,39 @@ Use `investigation:page` only for untraceable carried context. Cite supplied
 project snapshots by source ID, not commands or queries. The material's start
 date does not prove first contact.
 
+For a person, distinguish delivery from a personal exchange. A company mailing
+sent to the user does not establish contact with a named employee, and a name
+in a recipient list does not prove that person or their company attended,
+presented, organised, or agreed to anything. Before writing a relationship
+origin or dated milestone, read the cited message and check that it explicitly
+ties the person to the claimed action. Use the earliest supported direct
+exchange for `First contact`; otherwise leave it `Unknown`. Company or group
+context can be described as such, without assigning it to the person.
+An invitation, a request to add someone to a lineup, and a later group
+thank-you still do not prove that person attended or presented. If a named
+participant list omits the person or company, do not turn surrounding group
+mail into their participation. Describe the request or invitation instead;
+claim attendance or presentation only from explicit confirmation about the
+subject's actual role at the event.
+For each factual clause, cite the original that actually contains it. A
+proposal and a later acceptance need their respective messages; an unrelated
+mail in the same relationship is not a substitute citation. Proposed meeting
+times do not establish that someone discussed or sent a calendar invitation.
+Do not add plausible coordination steps that the cited message does not say.
+If later replies are not present in the retained material, state that limit
+and make the next action conditional on checking whether the user already
+replied elsewhere. An incoming question alone does not prove the user owes an
+answer. Do not say `you owe`, `<owner> owes`, or `waiting on you` in the lead
+or Open threads unless the retained evidence establishes an outstanding
+commitment. Say `Check whether you replied; if not, answer` for an unverified
+request, so the reader does not show a categorical `You owe` badge.
+Before writing the candidate, audit the lead, every Facts value, History,
+Our relationship, Cadence, and How the user writes. Each factual sentence and
+each dated range needs its own cited original; a citation at a paragraph's
+end does not support unrelated earlier sentences. Check that aliases appear
+in the cited original and that action verbs match what it says. Remove a
+clause whose cited message only makes it plausible.
+
 ## Candidate and finish
 
 Write one complete page to the NEW candidate path with a local file tool.

@@ -1103,6 +1103,14 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     coverage.append(f"Requested investigation window: {days} days ending "
                     f"{datetime.now(timezone.utc).date().isoformat()}")
     last = last_investigated(notebook.read(record))
+    if record.startswith("people/") and not last:
+        mapped = read_json(state_path(root, "map.json"), {})
+        person = next((row for row in mapped.get("people", []) if row.get("record") == record), {})
+        if person.get("first"):
+            coverage.append(f"Earliest person-linked mapped mail metadata: {person['first']}. "
+                            "Its body may be unavailable, and inclusion as sender or recipient does not "
+                            "prove a personal exchange. Do not claim a later message is first contact "
+                            "without checking this earlier evidence.")
     # Read from everything gathered, before anything is filtered, laid out in
     # files or sampled: the turn searches files for what it thinks to look for,
     # and Ody's phone sat in a signature it never opened (#2068). A mail the

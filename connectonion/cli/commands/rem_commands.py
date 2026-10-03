@@ -429,6 +429,9 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
         clients = {kind: client for kind, client in clients.items() if handle}
     skipped = "" if clients or not record.startswith("projects/") else \
         "not read for a project page; name its mail with --handle"
+    if days is None and record.startswith("people/") and not rem_investigate.last_investigated(text):
+        from ...rem.people_pages import first_window
+        days = first_window(root, record)
     return _logged(root, record, "investigate", lambda update: rem_investigate.investigate(
         root, record, title, handles, days=days or rem_investigate.window_since(text), clients=clients,
         subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped,

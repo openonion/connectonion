@@ -107,27 +107,26 @@ def test_a_role_only_in_a_calendar_invite_is_handed_over_as_the_invite_line():
     assert any("Procurement Lead" in line for line in lines)
 
 
-def test_first_and_last_contact_come_from_the_dates_of_the_messages_either_way():
+def test_earliest_mail_does_not_become_first_contact_automatically():
     rows = extract([mail("gmail:a1", "2026-08-04T01:00:00+00:00", "hi"),
                     mail("gmail:a2", "2026-09-10T01:00:00+00:00", "ok", role="user", speaker="Alex <a@r.example>")],
                    HANDLES)
-    assert found(rows, "First contact")[0]["value"] == "2026-08-04"
+    assert not found(rows, "First contact")
     assert found(rows, "Last contact")[0]["value"] == "2026-09-10"
     assert found(rows, "Last contact")[0]["source"] == "gmail:a2"
 
 
-@pytest.mark.parametrize("zone, first, last", [
-    ("Australia/Sydney", "2026-07-31", "2026-08-01"),
-    ("America/Los_Angeles", "2026-07-30", "2026-07-31"),
-    ("UTC", "2026-07-31", "2026-07-31"),
+@pytest.mark.parametrize("zone, last", [
+    ("Australia/Sydney", "2026-08-01"),
+    ("America/Los_Angeles", "2026-07-31"),
+    ("UTC", "2026-07-31"),
 ])
-def test_contact_and_signature_dates_use_notebook_timezone_in_timestamp_order(zone, first, last):
+def test_last_contact_and_signature_dates_use_notebook_timezone_in_timestamp_order(zone, last):
     # Same UTC day, reverse input order: source choice needs full instants.
     rows = extract([mail("outlook:late", "2026-07-31T23:03:58Z", SIGNED),
                     mail("outlook:early", "2026-07-31T00:23:51Z", "hello")],
                    HANDLES, timezone=zone)
-    assert found(rows, "First contact")[0]["value"] == first
-    assert found(rows, "First contact")[0]["source"] == "outlook:early"
+    assert not found(rows, "First contact")
     assert found(rows, "Last contact")[0]["value"] == last
     assert found(rows, "Last contact")[0]["source"] == "outlook:late"
     assert all(row["date"] == last for row in found(rows, "Phone") + found(rows, "Signature"))
@@ -174,8 +173,8 @@ def test_a_phone_the_model_dropped_is_put_back_with_its_source():
     assert {r["field"] for r in restored} == {"Phone"}           # no Links line: nothing to fill
     assert facts.keep_extracted("people/mia.md", kept, rows)[1] == []
     upgraded, restored = facts.keep_extracted("people/mia.md", facts.upgrade("people/mia.md", PAGE), rows)
-    assert {r["field"] for r in restored} == {"Phone", "Links", "First contact"}
-    assert "- First contact: 2026-08-04 [2]" in upgraded and "- Last contact: 2026-09-10 [1]" in upgraded
+    assert {r["field"] for r in restored} == {"Phone", "Links"}
+    assert "- First contact: Unknown" in upgraded and "- Last contact: 2026-09-10 [1]" in upgraded
 
 
 def test_a_phone_already_on_the_page_in_another_format_is_not_added_twice():
@@ -190,14 +189,13 @@ def test_a_date_the_model_corrected_is_not_overwritten():
     assert facts.keep_extracted("people/mia.md", PAGE, rows) == (PAGE, [])
 
 
-@pytest.mark.parametrize('label', ['First contact', 'Last contact'])
-def test_a_contact_date_uses_the_notebook_calendar_when_it_cites_the_same_original(label):
+def test_last_contact_uses_the_notebook_calendar_when_it_cites_the_same_original():
     item = mail('gmail:a2', '2026-09-09T23:30:00Z', SIGNED)
-    rows = [r for r in extract([item], HANDLES, timezone='Australia/Sydney') if r['field'] == label]
-    page = PAGE.replace('- Last contact: 2026-09-10 [1]', f'- {label}: 2026-09-09 [1]')
+    rows = [r for r in extract([item], HANDLES, timezone='Australia/Sydney') if r['field'] == 'Last contact']
+    page = PAGE.replace('- Last contact: 2026-09-10 [1]', '- Last contact: 2026-09-09 [1]')
     page += '\n## History\n- 2026-09-10: A separate milestone already has the right date [1].\n'
     kept, changed = facts.keep_extracted('people/mia.md', page, rows)
-    assert f'- {label}: 2026-09-10 [1]' in kept
+    assert '- Last contact: 2026-09-10 [1]' in kept
     assert changed == rows
     assert facts.keep_extracted('people/mia.md', kept, rows) == (kept, [])
 
@@ -268,7 +266,7 @@ def test_the_turn_is_handed_the_facts_and_the_dropped_phone_comes_back(tmp_path,
     page = notebook.read("people/vern.md")
     assert "- Phone: +61 412 000 111 (mobile) [1]" in page        # same message, same number
     assert result["facts"]["after"]["filled"] > result["facts"]["before"]["filled"]
-    assert result["facts"]["extracted"] >= 3                        # email, phone, first and last contact
+    assert result["facts"]["extracted"] >= 2                        # email, phone and last contact
 
 
 def test_a_page_that_already_cites_the_mail_gets_its_lost_phone_without_a_model_call(tmp_path, monkeypatch):
