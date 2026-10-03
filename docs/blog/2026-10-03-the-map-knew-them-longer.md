@@ -60,3 +60,13 @@ facts elsewhere in a source bundle do not make a nearby citation accurate.
 The broader batch remains a draft while claim-to-source accuracy is measured
 and corrected. A longer window supplies evidence; it does not certify the
 memory written from it.
+
+A two-person parallel trial then selected two previously uninvestigated people
+whose mapped history required 870- and 857-day reads. Both started within a
+second, gathered 326 matched mail bodies and 51 attachments in total, and
+finished in 4 minutes 49 seconds. Their turns used 1,807,430 input tokens
+(1,598,976 cached) and 33,032 output tokens; both pages passed the structural
+validator. The first source audit found one page describing messages as a day
+apart even though both fall on the same Sydney date. That is a different
+quality gate from throughput, and the draft cannot use a successful batch
+exit as evidence that its relationship timeline is correct.
