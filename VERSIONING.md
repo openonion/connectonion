@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a28
+## Current Version: 1.9.0a29
+
+1.9.0a29 brings the mapped page's investigation action into the phone's first
+screen, explains what a mapped project does and does not yet know, and makes the
+phone privacy action easier to tap. Stable remains 1.8.10. See
+[1.9.0a29 notes](docs/releases/1.9.0a29.md).
+
+- 1.9.0a29 (mapped first-screen action, honest project lead, phone privacy target).
+
+## Previous preview: 1.9.0a28
 
 1.9.0a28 implements context over control in `co rem investigate`:
 pre-authorizes local search and shell tools upfront, supplies live project

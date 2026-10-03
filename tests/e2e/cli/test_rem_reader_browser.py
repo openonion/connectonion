@@ -206,10 +206,14 @@ def test_private_sentences_can_be_hidden_and_restored(reader_page):
     private = page.locator(".note .private")
     assert private.count() == 1 and private.is_visible()
     assert "family plan" in private.inner_text()
-    page.get_by_role("button", name="Hide labelled passages").click()
+    privacy = page.get_by_role("button", name="Hide labelled passages")
+    privacy.focus()
+    page.keyboard.press("Enter")
     assert not private.is_visible()
-    page.get_by_role("button", name="Show labelled passages").click()
+    assert page.evaluate("document.activeElement.id") == "privacy-toggle"
+    page.keyboard.press("Space")
     assert private.is_visible()
+    assert page.evaluate("document.activeElement.id") == "privacy-toggle"
 
 
 @pytest.mark.parametrize("width,height", [(375, 812), (768, 1024), (1440, 1000)])
