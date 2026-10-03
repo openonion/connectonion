@@ -404,8 +404,10 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 
 1.9.0a36 keeps Outlook HTML mail's paragraph and table-field separators in
 provider-rendered text. In a synthetic cancellation source, the phone reader
-shows event time, reason and follow-up as separate lines. Previously retained
-mail is not rewritten. Stable remains 1.8.10. See
+shows event time, reason and follow-up as separate lines; one privately
+re-read affected Outlook message went from 8 to 32 lines with the same
+non-whitespace characters. Previously retained mail is not rewritten. Stable
+remains 1.8.10. See
 [1.9.0a36 notes](docs/releases/1.9.0a36.md).
 
 - 1.9.0a36 (Outlook HTML source separators).

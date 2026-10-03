@@ -20,7 +20,10 @@ than original MIME.
 We rendered an invented cancellation email through the actual reader at
 desktop and phone widths. Its event time, reason and follow-up appeared on
 separate lines in the source dialog, without horizontal overflow or a page
-error. The Outlook and link tests passed. This is a layout and extraction
-check on a synthetic message. It does not mean previously saved mail changed,
-or that every real Outlook template has been checked. The
+error. We then re-read one previously affected Outlook message: its captured
+rendering went from 8 lines to 32, with the same non-whitespace characters.
+The private source dialog remained readable on both widths. The Outlook and
+link tests passed. This narrow check does not mean previously saved mail
+changed, that every Outlook template has been checked, or that a new REM
+finding has been written. The
 [preview notes](/releases/1.9.0a36) state those limits.
