@@ -190,6 +190,10 @@
   .morning-kicker { display: block; color: #aab7e8; font: 600 11px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .13em; }
   .morning h2 { max-width: 22ch; font: 400 clamp(28px, 3vw, 42px)/1.12 var(--display); letter-spacing: -.02em; margin: 9px 0 0; text-wrap: balance; }
   .morning-time { flex-shrink: 0; color: #b3bfed; font: 11px/1.5 var(--mono); }
+  .first-map-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+  .first-map-actions a, .first-map-actions button { display: inline-flex; align-items: center; min-height: 44px; padding: 9px 14px; border: 1px solid rgba(194, 205, 255, .42); border-radius: 7px; background: transparent; color: #f4f5fb; font: 600 13px var(--ui); text-decoration: none; cursor: pointer; }
+  .first-map-actions a { background: #f4f5fb; color: #111931; }
+  .first-map-held { margin: 16px 0 0; color: #b3bfed; font-size: 12.5px; }
   .memory-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; }
   .memory-card { min-width: 0; padding: 24px 22px 12px 0; }
   .memory-card + .memory-card { border-left: 1px solid rgba(194, 205, 255, .18); padding-left: 22px; }
@@ -471,6 +475,8 @@
   .seg button.on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
   .seg button.on .n { color: var(--paper); opacity: 0.7; }
   .sheet-count { margin-left: auto; font-size: 11.5px; color: var(--ink-3); }
+  .held-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: -18px 0 20px; color: var(--ink-3); font-size: 12.5px; }
+  .held-note button { min-height: 44px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet); color: var(--ink-2); font: 600 12px var(--ui); cursor: pointer; }
   .sheet-scroll { overflow: auto; max-height: calc(100vh - 150px); border: 1px solid var(--line); border-radius: 8px; background: var(--sheet); }
   table.sheet { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13.5px; }
   .sheet th { position: sticky; top: 0; z-index: 2; background: var(--well); text-align: left; padding: 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -747,7 +753,6 @@
     .mobile-back { display: block; }
     .mobile-back a { display: inline-flex; align-items: center; min-height: 44px; }
     .note { font-size: 16px; }
-    .code-block.diagram pre, .code-block.diagram pre code { white-space: pre-wrap; overflow-wrap: anywhere; }
     .maint > summary .n { display: none; }
     .side .toc-panel { display: none; }
     .factlist .copy { opacity: 1; }
@@ -756,7 +761,8 @@
     .fact { padding: 9px 11px 10px; }
     .sheet-find { flex: 1 1 100%; font-size: 16px; }
     .sheet-count { margin-left: 0; }
-    .sheet .name { min-width: 170px; }
+    .sheet .name { box-sizing: border-box; width: 170px; min-width: 170px; max-width: 170px; }
+    .sheet .name .nm a { overflow-wrap: anywhere; }
     .sheet th.c-last button { gap: 0; padding-right: 2px; }
     .mobile-status-label { display: block; padding-left: 21px; color: var(--ink-3); font: 11px var(--mono); }
   }
@@ -867,7 +873,8 @@ function byPath(path) { return REM.records.find(r => r.path === path); }
 // Services still on a people page (census.py) are left off like held pages (#2008).
 function listedRecords() { return REM.records.filter(r => !r.catalog_parent && !r.needs_review && !r.service && r.path !== "skills/catalog/index.md"); }
 function inCategory(category) { return listedRecords().filter(r => r.category === category); }
-function initCommand() { return "co rem --root '" + String(REM.root).replace(/'/g, "'\\''") + "' init --mail outlook"; }
+function remCommand(args) { return "co rem --root '" + String(REM.root).replace(/'/g, "'\\''") + "' " + args; }
+function initCommand() { return remCommand("init --mail outlook"); }
 function href(r) { return "#r=" + encodeURIComponent(r.path); }
 function calendarDay(iso) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(iso))) return String(iso);
@@ -1697,10 +1704,12 @@ function renderRail(active) {
   foot.appendChild(privacy);
   foot.appendChild(el("div", { text: "Also hides raw excerpts; other details stay visible." }));
   foot.appendChild(el("div", { text: "Snapshot " + fmtTime(REM.as_of) }));
-  foot.appendChild(el("div", { text: s.next_run ? "Next pass " + fmtTime(s.next_run) : (s.state || "") }));
+  const mappedPages = Object.values(REM.counts || {}).reduce((n, row) => n + (row.mapped || 0), 0);
+  const schedule = s.next_run ? "Next pass " + fmtTime(s.next_run)
+    : mappedPages && !lastPass() && /^Not started/.test(s.state || "") ? "Background passes off" : (s.state || "No pass scheduled");
+  foot.appendChild(el("div", { text: schedule }));
   foot.appendChild(el("div", { text: location.protocol === "about:" ? "Reload for latest" : "co rem open re-renders" }));
-  document.getElementById("mobile-status").textContent = ("Snapshot " + fmtTime(REM.as_of)
-    + " · " + (s.next_run ? "Next pass " + fmtTime(s.next_run) : (s.state || "No pass scheduled")))
+  document.getElementById("mobile-status").textContent = ("Snapshot " + fmtTime(REM.as_of) + " · " + schedule)
     .replace(/`([^`]+)`/g, (_, command) => command.replaceAll(" ", "\u00a0"));
   document.getElementById("brand-sub").textContent = (REM.root || "").split("/").filter(Boolean).slice(-2).join("/");
 }
@@ -1772,6 +1781,25 @@ function changeCard(claim) {
     el("a", { href: href(r) + "&h=src-" + (claim.sources || [""])[0].toLowerCase(),
       text: "Open the page and source →" })]);
   return card;
+}
+function firstMapBrief() {
+  const counts = Object.values(REM.counts || {});
+  const mapped = counts.reduce((n, row) => n + (row.mapped || 0), 0);
+  const written = counts.reduce((n, row) => n + (row.written || 0), 0);
+  if (lastPass() || !mapped || written) return null;
+  const people = inCategory("people").length;
+  const held = REM.records.filter(r => r.category === "people" && r.needs_review).length;
+  const preview = el("button", { type: "button", text: "Copy investigation preview" });
+  preview.onclick = () => copyToClipboard(remCommand("investigate people --list"), preview, "Copied — paste it in a terminal");
+  const brief = el("section", { class: "morning first-map", "aria-label": "Source map and next step" }, [
+    el("div", { class: "morning-top" }, [el("div", {}, [
+      el("span", { class: "morning-kicker", text: "co rem / source map" }),
+      el("h2", { text: mapped + " records mapped" })]),
+      el("span", { class: "morning-time", text: "0 memories written" })]),
+    el("p", { class: "memory-empty", text: "People, projects, organisations and skills are ready to explore. These are metadata starting points, not investigated findings." }),
+    el("div", { class: "first-map-actions" }, [el("a", { href: "#c=people", text: "Browse " + people + " people →" }), preview])]);
+  if (held) brief.appendChild(el("p", { class: "first-map-held", text: held + " possible contacts are held for review and excluded from the People count." }));
+  return brief;
 }
 function morningBrief() {
   const pass = lastPass();
@@ -1874,13 +1902,15 @@ function overview() {
   const s = REM.status || {};
   const main = document.getElementById("main");
   main.textContent = "";
+  const firstMap = firstMapBrief();
   main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "co rem / Today" }), el("span", { class: "sep", text: "/" }), el("span", { class: "when", text: fmtDate(REM.as_of) })]));
-  main.appendChild(el("h1", { text: "What co rem carried forward" }));
+  main.appendChild(el("h1", { text: firstMap ? "Your source map" : "What co rem carried forward" }));
   const n = listedRecords().length;
   const mapped = listedRecords().filter(r => known(r).status === "Mapped").length;
-  main.appendChild(el("p", { class: "lede", text: n === 0 ? "Once co rem has read your permitted sources, it will bring back the context worth keeping." :
+  main.appendChild(el("p", { class: "lede", text: firstMap ? "Your sources are mapped. Investigate a person or project to add source-backed findings." :
+    n === 0 ? "Once co rem has read your permitted sources, it will bring back the context worth keeping." :
     "A short return to what changed, what is still open, and what is worth remembering." }));
-  main.appendChild(morningBrief());
+  main.appendChild(firstMap || morningBrief());
   const recall = recallPrompt();
   if (recall) main.appendChild(recall);
   const review = connectionReview();
@@ -1990,6 +2020,12 @@ function category(c) {
   main.appendChild(el("h1", { text: c === "all" ? "Explore memory" : label(c) }));
   const lede = (c === "all" ? "People, projects, skills and ideas in one place" : CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
   main.appendChild(el("p", { class: "lede" }, [lede + (items.length ? (/[?.]$/.test(lede) ? " " : ". ") : ""), items.length ? el("span", { class: "mono", text: counts ? counts.written + " written of " + counts.mapped : items.length + " pages" }) : null]));
+  const held = c === "people" ? REM.records.filter(r => r.category === "people" && r.needs_review).length : 0;
+  if (held) {
+    const review = el("button", { type: "button", text: "Copy review list command" });
+    review.onclick = () => copyToClipboard(remCommand("list people --review"), review, "Copied — paste it in a terminal");
+    main.appendChild(el("p", { class: "held-note" }, [held + " possible contacts are held for review, outside this list.", review]));
+  }
   if (!items.length) {
     main.appendChild(c === "people"
       ? el("div", { class: "empty" }, [el("span", { class: "lead", text: "Not mapped yet" }), "No people mapped yet. Run ", el("code", { text: initCommand() }), " (or select gmail) to read correspondent metadata. No background schedule is started."])

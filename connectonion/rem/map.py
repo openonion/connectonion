@@ -872,7 +872,10 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
             if title.startswith('# ') and '@' in title and _mapped_only(page):
                 notebook.write(record, f'# {name}\n' + page.split('\n', 1)[1])
         mails = sum(row.get('mails', 0) for row in group)
+        first_dates = [row['first'] for row in group if row.get('first')]
+        last_dates = [row['last'] for row in group if row.get('last')]
         report['people'].append({**first, 'mails': mails, 'addresses': addresses, 'record': record,
+                                 'first': min(first_dates, default=''), 'last': max(last_dates, default=''),
                                  'sent': sum(row.get('sent', 0) for row in group),
                                  'received': sum(row.get('received', 0) for row in group),
                                  'boxes': sorted({box for row in group for box in row.get('boxes', [])}),
@@ -902,12 +905,11 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
                           "Confirm they are one person before relying on it.\n")
             notebook.write(record, notebook.read(record).replace('## Uncertainties\n', '## Uncertainties\n' + notes))
             page = notebook.read(record)
-            dates = [row.get('first') for row in group if row.get('first')], [row.get('last') for row in group if row.get('last')]
             boxes = sorted({box for row in group for box in row.get('boxes', [])})
             # The count is the map's, not the person's history: 379 of 424 History
             # bullets on the owner's people pages were this line (#2059). It goes in
             # the lead, where the reader shows it and the census dates the page.
-            last = max(dates[1]) if dates[1] else 'Unknown'
+            last = max(last_dates) if last_dates else 'Unknown'
             plural = '' if mails == 1 else 's'
             page = page.replace(Notebook.PERSON_LEAD, f"Unknown — not investigated yet. Last contact: {last}; "
                                 f"{mails} mail{plural} ({', '.join(boxes) or 'mail'}).", 1)

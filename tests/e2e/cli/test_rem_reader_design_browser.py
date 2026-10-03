@@ -196,6 +196,75 @@ def test_people_last_contact_heading_is_visible_beside_sticky_name_on_phone(read
         assert positions["headingRight"] <= positions["edgeRight"], positions
 
 
+def test_large_people_roster_keeps_the_mobile_last_contact_heading_visible(reader, tmp_path, monkeypatch):
+    from connectonion.rem import reader as rem_reader
+
+    data = rem_reader.snapshot(tmp_path / "rem")
+    example = next(r for r in data["records"] if r["title"] == "Quinn Alder")
+    data["records"].extend({**example, "path": f"people/example-{i}.md",
+                            "title": f"Alexandria Margaret Historical Correspondent {i:03d}"}
+                           for i in range(570))
+    monkeypatch.setattr(rem_reader, "snapshot", lambda _: data)
+    path = tmp_path / "large-roster.html"
+    path.write_text(rem_reader.render(tmp_path / "rem"), encoding="utf-8")
+
+    page, _ = reader
+    page.set_viewport_size({"width": 375, "height": 812})
+    page.goto(path.as_uri() + "#c=people")
+    sheet = page.locator(".sheet-scroll")
+    assert page.locator(".sheet tbody tr").count() >= 575
+    for _ in range(2):
+        sheet.evaluate("e => e.scrollLeft = e.scrollWidth")
+        positions = page.evaluate("""() => {
+          const button = document.querySelector('.sheet th.c-last button');
+          const letter = document.createRange();
+          letter.setStart(button.firstChild, 0);
+          letter.setEnd(button.firstChild, 1);
+          return { first: letter.getBoundingClientRect().left,
+            name: document.querySelector('.sheet th.name').getBoundingClientRect().right,
+            right: button.getBoundingClientRect().right,
+            edge: document.querySelector('.sheet-scroll').getBoundingClientRect().right };
+        }""")
+        assert positions["first"] >= positions["name"], positions
+        assert positions["right"] <= positions["edge"], positions
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        assert any("· map" in text for text in page.locator(".sheet td.c-last .mono").all_inner_texts())
+        page.locator(".sheet th.c-last button").click()
+        assert page.locator(".sheet th.c-last").get_attribute("aria-sort") in ("ascending", "descending")
+
+
+def test_first_map_shows_results_next_step_and_held_count_on_phone(reader, tmp_path, monkeypatch):
+    from connectonion.rem import reader as rem_reader
+
+    data = rem_reader.snapshot(tmp_path / "rem")
+    data["logs"] = []
+    data["status"] = {"state": "Not started — run `co rem start` to begin"}
+    for record in data["records"]:
+        record["written"] = False
+    next(r for r in data["records"] if r["title"] == "Quinn Alder")["needs_review"] = True
+    for counts in data["counts"].values():
+        counts["written"] = 0
+    visible_people = sum(r["category"] == "people" and not r.get("needs_review") and not r.get("service")
+                         for r in data["records"])
+    monkeypatch.setattr(rem_reader, "snapshot", lambda _: data)
+    path = tmp_path / "first-map.html"
+    path.write_text(rem_reader.render(tmp_path / "rem"), encoding="utf-8")
+
+    page, _ = reader
+    page.set_viewport_size({"width": 375, "height": 812})
+    page.goto(path.as_uri())
+    assert page.get_by_role("heading", name="Your source map").is_visible()
+    assert page.locator(".first-map h2").inner_text().endswith(" records mapped")
+    assert page.locator(".first-map .morning-time").inner_text() == "0 memories written"
+    assert page.locator(".first-map-actions a").inner_text() == f"Browse {visible_people} people →"
+    assert page.locator(".first-map-actions a").is_visible()
+    assert page.locator(".first-map-actions button").evaluate("e => e.getBoundingClientRect().bottom <= innerHeight")
+    assert "Background passes off" in page.locator("#mobile-status").inner_text()
+    page.locator(".first-map-actions a").click()
+    assert "1 possible contact" in page.locator(".held-note").inner_text()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
 def test_a_person_opens_on_a_fact_card_with_cited_values(reader):
     page, _ = reader
     page.goto(page.url.split("#")[0] + "#r=people%2Fmara-ostrowski.md")
