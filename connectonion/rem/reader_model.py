@@ -6,8 +6,8 @@ without rewriting a person's notes just to change the interface.
 
 from __future__ import annotations
 
-import posixpath
 import hashlib
+import posixpath
 import re
 import sqlite3
 from pathlib import Path
