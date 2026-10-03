@@ -35,7 +35,7 @@ Options (before the command):
 First time:   co rem init
 Example:      co rem search "term sheet" --in people
 Every page:   co rem <command> --help
-Advanced:     co rem advanced --help   (scan, map-skills, stub, reflect, reflections,
+Advanced:     co rem advanced --help   (scan, map-skills, stub, merge, reflect, reflections,
               propose, review, abstract, capture, projects)
 Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
               and usage still work until 1.9.0 and print their new name.
@@ -482,6 +482,8 @@ Build by hand
   scan          List the people, organisations or projects a map would find. No pages written.
   map-skills    Map installed Skills only, without re-reading mail or sessions.
   stub          Create one empty page by hand, with every section marked Unknown.
+Manage pages
+  merge         Fold one page into another; archive the old page and keep its name as an alias.
 Experimental: corrections and questions (#1611, #1609)
   reflect       Record a correction, a change, or a reflection about a page.
   reflections   Read the records for a page, or write a compact copy of them.
@@ -541,6 +543,22 @@ Example:  co rem stub person "Mei Lin" --email mei@harbourlabs.example
           --person  org: a person page that belongs to it (repeatable)
           --path    project: a folder it lives in (repeatable)
 Next:     co rem investigate PAGE
+Back:     co rem advanced --help
+```
+
+## co rem merge
+
+```
+Fold OLD into KEPT. Written lines are added to the matching sections; OLD is archived
+and its name becomes an alias of KEPT. Links to OLD are updated. No model.
+
+Usage:    co rem merge KEPT OLD [--reason TEXT]
+Example:  co rem merge people/alice.md people/alice-copy.md --reason "same person"
+          --reason  why these pages were merged (default: manual merge; short form -r)
+Effects:  Writes KEPT, moves OLD to .state/archived/, and updates aliases and links.
+JSON:     co rem --json merge KEPT OLD
+          Prints one {"ok", "data", "next"} result.
+Next:     co rem show KEPT
 Back:     co rem advanced --help
 ```
 
