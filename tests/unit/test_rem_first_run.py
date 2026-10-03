@@ -520,6 +520,7 @@ def test_after_me_the_people_you_wrote_to_and_projects_four_at_a_time(people):
     text = Text.from_ansi(result.output).plain
     assert "up to two years of evidence each" in text
     assert "10 at a time" in text and "about 35% of a weekly runner allowance is a planning target" in text
+    assert "90% weekly safety floor; pages already in flight finish" in text
     assert "Written this run: your page, 5 people" in text and "3 project pages" in text
 
 

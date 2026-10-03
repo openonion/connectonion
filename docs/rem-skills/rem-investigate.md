@@ -179,6 +179,15 @@ Unknown without creating a current debt from a historical gap. A copied
 recipient does not become the event organiser or the author of another
 person's confirmation.
 
+An a32 Person trial cited the earliest retained reply as `First contact`, even
+though that reply referred to an earlier application. The dated reply supports
+an observed exchange, not the start of the relationship. The Person prompt now
+asks for `First contact: Unknown` when the earlier event has no dated original,
+and for that gap in `Uncertainties` (#2261). Deterministic fact extraction no
+longer supplies the oldest mail as `First contact`; the People index reads the
+date only from an explicit page fact. A cited date alone is not proof of the
+field's meaning.
+
 Fact extraction converts source timestamps to `schedule.timezone` before
 deriving contact and source dates. It sorts full instants, rather than date
 strings, so reversed inputs on the same UTC day still cite the correct first

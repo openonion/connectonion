@@ -887,13 +887,15 @@ def make_rem_app(factory):
             if not steps:
                 return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
             target = config["limits"]["investigation_quota_points"]
+            floor = config["limits"]["quota_floor_percent"]
             cost = (f"First run with {config['runner']} ({config['model']}): "
                     + ", ".join(steps) + f"; up to {FIRST_RUN_WORKERS} at a time.\n"
                     + "Estimate: " + first_run.announce(total, plan) + "\n"
                     + "Input estimate includes cached tokens; it is not weekly quota points.\n"
                     + f"Budget: about {target}% of a weekly runner allowance is a planning "
-                    "target, not a stop. The selected investigation finishes even if it uses more; "
-                    "a runner without a weekly meter cannot verify the percentage.\n"
+                    f"target, not a stop. Selected pages may continue past it until the {floor}% "
+                    "weekly safety floor; pages already in flight finish. A runner without a "
+                    "weekly meter cannot verify the percentage.\n"
                     "Controls: --first-people, --first-projects, --first-orgs and --first-skills cap a kind; Ctrl-C "
                     "keeps the map and completed pages; --no-investigate skips model work.")
             rem_look.say(rem_look.highlight(cost, counts=True), err=ctx.obj["json"], plain=cost)

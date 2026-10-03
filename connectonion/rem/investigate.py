@@ -1084,16 +1084,15 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # files or sampled: the turn searches files for what it thinks to look for,
     # and Ody's phone sat in a signature it never opened (#2068). A mail the
     # page already cites still has its signature. On a page investigated
-    # before, the window is not the whole history, so its first date is not
-    # the first contact.
+    # before, the window is not the whole history. Even a first full window's
+    # earliest retained mail cannot establish when this relationship began.
     from . import facts
     from .fact_extract import extract, facts_item
     config = read_config(root)
     fact_rows = [] if record.startswith("projects/") else [
         row for row in extract([item for item in items if not item.get("relationship_scope")], handles,
                                owner=sent_only, timezone=config["schedule"]["timezone"])
-        if not (last and row["field"] == "First contact")
-        and not (related["candidates"] and row["field"] in ("First contact", "Last contact"))]
+        if not (related["candidates"] and row["field"] == "Last contact")]
     facts_before = facts.coverage(notebook.read(record), record)
     if last:
         # The window is whole days, so an investigation straight after another

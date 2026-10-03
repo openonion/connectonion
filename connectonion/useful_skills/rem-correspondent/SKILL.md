@@ -31,3 +31,8 @@ description: Rules for investigating someone other than the user — composed af
   (language, tone, length, how they open, what they ask); **`Cadence`** from the
   dates (`about weekly, July–September`). Each is `Unknown` only when there is
   no such message, or a single one.
+- `First contact` needs a cited direct exchange that establishes the beginning
+  of this relationship. The earliest retained message is only the earliest
+  observed message: a reply mentioning an earlier application, introduction or
+  conversation does not date first contact. Leave the field `Unknown` and name
+  the earlier event in `Uncertainties` when its date is not in the evidence.

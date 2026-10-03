@@ -54,6 +54,11 @@ uploaded, or copied into a page or a deployment, like everything in
 | `meta` | key | `key`, `value` — `schema_version`, `built_at` |
 | `sources` | input file | `path`, `mtime_ns`, `size`, `grp` — what the last build read |
 | `people` | person page | `record`, `name`, `emails` (JSON list), `phone`, `company`, `role`, `location`, `timezone`, `linkedin`, `website`, `how_known`, `language`, `first_contact`, `last_contact`, `mails`, `sent`, `received`, `open_threads`, `written`, `listed`, `held`, `service`, `classification`, `facts` (JSON object of every labelled fact) |
+
+`people.first_contact` is populated only from a dated `First contact` fact on
+the page. An unknown page fact stays empty in the table, even when the map has
+an earliest retained message date. Index readers also enforce this distinction
+for indexes built before 1.9.0a33; a later map or sync rebuilds the stored row.
 | `orgs` | org page | `record`, `name`, `domain`, `domains` (JSON), `people` (count), `last_contact`, `written`, `listed` |
 | `projects` | project page | `record`, `name`, `paths` (JSON), `sessions`, `first`, `last`, `written`, `listed` |
 | `messages` | mail or typed session message | `id`, `source`, `thread`, `sender`, `recipients` (JSON), `time`, `subject`, `body_path`, `body_line` |

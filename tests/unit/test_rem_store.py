@@ -114,11 +114,34 @@ def test_the_people_table_has_the_crm_columns_and_the_census_count(tmp_path):
     ody = next(row for row in rows if row["record"] == "people/ody.md")
     assert ody["name"] == "Ody Zhou" and ody["emails"] == ["ody@acme.test"]
     assert (ody["company"], ody["phone"], ody["role"]) == ("Acme", "+61 400 000 000", "")   # cited, Unknown is empty
-    assert ody["mails"] == 3 and ody["first_contact"] == "2026-07-01"
+    assert ody["mails"] == 3 and ody["first_contact"] == ""
     assert ody["last_contact"] == "2026-09-21"          # the page's own, later than the map's 2026-09-20
     assert ody["open_threads"] == 2 and ody["written"] and ody["listed"]
     assert [row["record"] for row in rows][0] == "people/ody.md"        # most recent contact first
     assert os.stat(state_path(root, "rem.db")).st_mode & 0o777 == 0o600
+
+
+def test_first_contact_column_needs_a_written_fact_not_the_earliest_mapped_mail(tmp_path):
+    from connectonion.rem import store
+    root = notebook(tmp_path)
+    page = Notebook(root)
+    store.refresh(root)
+    assert store.person(root, "people/ody.md")["first_contact"] == ""
+    page.write("people/ody.md", page.read("people/ody.md").replace(
+        "- First contact: Unknown", "- First contact: 2026-06-20 [1]"))
+    store.refresh(root)
+    assert store.person(root, "people/ody.md")["first_contact"] == "2026-06-20"
+
+
+def test_an_older_index_cannot_reintroduce_a_false_first_contact(tmp_path):
+    from connectonion.rem import store
+    root = notebook(tmp_path)
+    store.refresh(root)
+    with sqlite3.connect(store.db_path(root)) as db:
+        db.execute("update people set first_contact = '2026-07-01' where record = 'people/ody.md'")
+    assert store.person(root, "people/ody.md")["first_contact"] == ""
+    assert next(row for row in store.people_table(root, sort="first_contact")
+                if row["record"] == "people/ody.md")["first_contact"] == ""
 
 
 def test_a_facts_block_wins_and_every_labelled_fact_is_kept(tmp_path):
@@ -290,6 +313,7 @@ def test_co_rem_list_people_table_prints_the_crm_columns(tmp_path):
     assert "Ody Zhou" in plain.output and "Acme" in plain.output and "Next:" in plain.output
     data = json.loads(runner.invoke(app, ["rem", "--root", str(root), "--json", "list", "people", "--table"]).output)
     assert data["data"][0]["record"] == "people/ody.md" and data["data"][0]["company"] == "Acme"
+    assert data["data"][0]["first_contact"] == ""
 
 
 def test_rem_full_gmail_window_defers_headers_until_after_split():

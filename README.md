@@ -134,7 +134,7 @@ for account setup, source choices and model costs. Daily scheduling currently
 requires **macOS**. Then run:
 
 ```bash
-pip install --upgrade 'connectonion==1.9.0a32'
+pip install --upgrade 'connectonion==1.9.0a33'
 co rem init                # build your map and first pages
 co rem open                # read the local notebook
 co rem start               # approve a daily schedule (macOS)

@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a32
+## Current Version: 1.9.0a33
+
+1.9.0a33 leaves first contact unknown when the earliest retained reply points
+to an earlier exchange, and keeps the People index tied to explicit page facts.
+It aligns first-run cost and quota guidance with measured samples and configured
+limits, and runs release building beside the test matrix while keeping
+publication gated on both. Stable remains 1.8.10. See
+[1.9.0a33 notes](docs/releases/1.9.0a33.md).
+
+- 1.9.0a33 (Person first-contact provenance, first-run cost guidance, release latency).
+
+## Previous preview: 1.9.0a32
 
 1.9.0a32 keeps Skill invocation names stable across investigations, opens the
 full bounded cited run part and local artifacts in the owner-only reader, and
