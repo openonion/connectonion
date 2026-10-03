@@ -1,3 +1,8 @@
+---
+description: A real first-run map put the next action below the phone's first screen. We moved investigation into reach and made mapped Project leads honest about what remains unknown.
+tags: [REM, Memory, Release]
+---
+
 # A map needs a next step
 
 The first run had read two connected mailboxes and local coding sessions. It
@@ -26,3 +31,7 @@ on the path. We checked desktop and phone, navigation, Full memory, privacy,
 overflow and browser errors. The review covered a small sample of mapped
 pages. A separate model run is still needed to judge whether their eventual
 memories contain useful, well-supported findings.
+
+Read the [a29 preview notes](https://docs.connectonion.com/releases/1.9.0a29)
+for the exact install pin and trial limits, or [explore co rem](https://docs.connectonion.com/rem)
+with an invented sample notebook.
