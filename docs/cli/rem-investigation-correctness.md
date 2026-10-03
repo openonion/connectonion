@@ -78,7 +78,7 @@ yesterday.
 
 **Counts are the map's.** The number beside a person is what the map counted in
 its window (90 days by default), not what the investigation will read: that
-reads 150 days, and the server search finds mail the map's listing did not
+reads 730 days by default, and the server search finds mail the map's listing did not
 (one person showed 1 and had 617). The list and the cost line say so, and the
 count reads as a floor ("at least 12 mails"). Singular counts are singular.
 
