@@ -214,6 +214,8 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
     assert page.evaluate("cases => Object.keys(cases).map(youify)", cases, isolated_context=False) == list(cases.values())
     # A thread addressed to the owner by name ("Avery: collect …") is the owner's to do.
     assert page.evaluate("direction('Avery: collect the swipe card from Security')", isolated_context=False) == "mine"
+    # Missing mail in this notebook does not say who owes the next response.
+    assert page.evaluate("direction('Purnjay asks for rates; no reply found here; check whether you replied elsewhere')", isolated_context=False) == "plain"
     home_threads = page.locator("ul.threads").first.inner_text()
     assert "you have owed them" in home_threads and "the user" not in home_threads.lower()
     page.goto(page.url.split("#")[0] + "#r=people%2Fmara-ostrowski.md")
