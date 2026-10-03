@@ -805,6 +805,62 @@ def test_a_mailbox_left_out_on_purpose_says_why_not_that_it_is_disconnected():
     assert not any("co auth" in line for line in coverage)
 
 
+def test_project_gather_withholds_unnamed_followup_after_other_project_in_same_session(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    stamp = datetime.now(timezone.utc).isoformat()
+    window = [
+        {"role": "user", "source": "claude-code:session:12", "project": "/work/other",
+         "timestamp": stamp, "text": "Build the Other product's reply listener."},
+        {"role": "user", "source": "claude-code:session:50", "project": "/work/tide",
+         "timestamp": stamp, "text": "Why no reply?"},
+        {"role": "user", "source": "claude-code:session:90", "project": "/work/tide",
+         "timestamp": stamp, "text": "Tide: fix the parser."},
+    ]
+    monkeypatch.setattr(inv, "_window_items", lambda *args, **kwargs: (window, 0))
+    items, coverage = inv.gather("Tide", ["/work/tide", "Tide"], days=7, clients={},
+                                 subscriptions={"claude": {"kind": "claude-code", "root": str(tmp_path),
+                                                           "enabled": True}}, record="projects/tide.md")
+    assert [item["source"] for item in items] == ["claude-code:session:90"]
+    assert any("1 unnamed follow-up(s) withheld" in line for line in coverage)
+
+
+def test_project_writer_does_not_receive_collector_coverage_as_evidence(tmp_path, monkeypatch):
+    root = _notebook(tmp_path, "codex")
+    repo = tmp_path / "tide"
+    repo.mkdir()
+    (repo / "README.md").write_text("Tide reads a local log.\n")
+    inv.Notebook(root).stub_project("projects/tide.md", "Tide", [str(repo)])
+    messages = [{"role": "user", "source": "codex:session:10", "project": str(repo),
+                 "timestamp": "2026-10-02T00:00:00+00:00", "text": "Check Tide's local log."}]
+    monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: (messages, ["codex: one input read"]))
+    seen = []
+    result = inv.investigate(root, "projects/tide.md", "Tide", [str(repo)], days=7,
+                             clients={}, subscriptions={},
+                             runner=lambda notebook, items, config, stage: seen.extend(items) or {"changed": []})
+    assert not any(item.get("source") == "investigation:coverage" for item in seen)
+    assert "codex: one input read" in result["coverage"]
+
+
+def test_repository_only_project_investigation_records_zero_session_coverage(tmp_path, monkeypatch):
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.project_material import page_state
+    root = _notebook(tmp_path, "codex")
+    repo = tmp_path / "tide"
+    repo.mkdir()
+    (repo / "README.md").write_text("Tide reads a local log.\n")
+    inv.Notebook(root).stub_project("projects/tide.md", "Tide", [str(repo)])
+    write_json(state_path(root, "projects/tide/state.json"), {"messages": 5})
+    monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: ([], ["no session inputs assigned"]))
+    seen = []
+    inv.investigate(root, "projects/tide.md", "Tide", [str(repo)], days=7,
+                    clients={}, subscriptions={},
+                    runner=lambda notebook, items, config, stage: seen.extend(items) or {"changed": []})
+    assert any(item.get("role") == "project-input-scope" and item.get("inputs_read") == 0 for item in seen)
+    assert not any(item.get("source") == "investigation:coverage" for item in seen)
+    assert page_state(root, "projects/tide.md")["last_page_coverage"] == {
+        "inputs_read": 0, "inputs_available": 5, "days": 7, "scope": "archived"}
+
+
 def test_the_status_line_never_names_the_evidence_layout_as_a_source():
     """#1962: pages were stamped `(outlook, gmail, codex, claude-code, evidence)`;
     evidence is how the material was laid out, not where it came from."""
@@ -835,6 +891,21 @@ def test_an_accepted_investigation_refreshes_the_index(tmp_path):
     indexed = store.person(tmp_path, "people/river.md")
     assert indexed["written"]
     assert indexed["role"] == "Designer"
+
+
+def test_project_investigation_retains_its_partial_input_window(tmp_path):
+    from connectonion.rem.project_material import page_state
+    from connectonion.rem.reader import snapshot
+    notebook = inv.Notebook(tmp_path)
+    record = "projects/tide.md"
+    notebook.stub_project(record, "Tide", ["/work/tide"])
+    inv.record_result(tmp_path, notebook, record, [], ["codex"],
+                      project_coverage={"inputs_read": 3, "inputs_available": 5, "days": 150,
+                                        "scope": "archived"})
+    assert page_state(tmp_path, record)["last_page_coverage"]["inputs_read"] == 3
+    shown = next(row for row in snapshot(tmp_path)["records"] if row["path"] == record)
+    assert shown["project_coverage"] == {"inputs_read": 3, "inputs_available": 5, "days": 150,
+                                         "scope": "archived"}
 
 
 def test_an_accepted_investigation_drops_the_map_s_mail_count_from_history():
@@ -1541,15 +1612,43 @@ def test_file_only_investigation_keeps_exact_cited_snapshot_after_live_file_chan
 
     inv.investigate(root, record, 'Tide', [str(repo)], days=30, clients={}, subscriptions={}, runner=runner)
     saved = project_pages.repository_context(root, seen['source'])
-    assert saved and saved['excerpt'] == original.strip()[:640]
+    expected = original if tier == 'agent' else original[:2000] + '\n[truncated]'
+    assert saved and saved['excerpt'] == expected.strip()[:project_pages.REPOSITORY_EXCERPT_CHARS]
     retained = next((root / '.state/project-sources').glob('*.json'))
     body = json.loads(retained.read_text())
-    expected = original if tier == 'agent' else original[:2000] + '\n[truncated]'
     assert body['text'] == expected and body['origin'] == 'file:' + str(live)
     assert body['captured_at'] and body['file_modified_at']
     assert retained.stat().st_mode & 0o777 == 0o600
     assert cited_context(root, [{'text': '- [1] ' + seen['source']}])[seen['source']]['excerpt'] == saved['excerpt']
     assert not list((root / '.state/evidence').rglob('*.md'))
+
+
+def test_explicit_project_keeps_only_cited_live_session_input_for_reader(tmp_path, monkeypatch):
+    from connectonion.rem.reader_model import cited_context
+    root = _notebook(tmp_path, 'codex')
+    repo = tmp_path / 'tide'
+    repo.mkdir()
+    record = 'projects/tide.md'
+    notebook = inv.Notebook(root)
+    notebook.stub_project(record, 'Tide', [str(repo)])
+    cited = 'claude-code:session-123:42'
+    other = 'claude-code:session-123:84'
+    long_input = 'Background. ' * 80 + 'The Tide release still needs a hook fix.'
+    messages = [{'role': 'user', 'source': source, 'timestamp': '2026-10-01T12:00:00+00:00',
+                 'project': str(repo), 'text': body} for source, body in
+                [(cited, long_input),
+                 (other, 'Unrelated session input.')]]
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (messages, ['claude-code: 2 sessions']))
+
+    def runner(book, items, config, stage):
+        book.write(record, book.read(record) + f'\n- [1] {cited} — 2026-10-01\n')
+        return {'changed': [record], 'usage': None}
+
+    inv.investigate(root, record, 'Tide', [str(repo)], days=30, clients={}, subscriptions={}, runner=runner)
+    contexts = cited_context(root, [{'text': f'- [1] {cited} — 2026-10-01'}])
+    assert contexts[cited]['excerpt'] == messages[0]['text']
+    assert 'Your input only' in contexts[cited]['input_scope']
+    assert len(list((root / '.state/session-sources').glob('*.json'))) == 1
 
 
 def test_file_inventory_includes_package_manifest_without_all_json_data(tmp_path):

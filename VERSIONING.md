@@ -400,7 +400,24 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a21
+## Current Version: 1.9.0a22
+
+1.9.0a22 leads project pages with a current, source-backed finding when one is
+supported; otherwise it shows the sourced project purpose and says current
+work is unknown. The full statement stays visible on phones. Partial session
+coverage, private-mode
+placeholders and per-source navigation make the rendered page's limits easier
+to see. Accepted explicit investigations retain the live coding inputs they
+cite even when the older map did not archive them. Skill pages use retained
+originals for cited instructions and runs. A 730-day discovery trial
+found more historical pages but took 16.5 minutes before model writing; the
+default remains 90 days while [#2176](https://github.com/openonion/connectonion/issues/2176)
+tracks a resumable, affordable path. Stable remains 1.8.10. See
+[1.9.0a22 notes](docs/releases/1.9.0a22.md).
+
+- 1.9.0a22 (project insight and source navigation, partial coverage, live-session citations).
+
+## Previous preview: 1.9.0a21
 
 1.9.0a21 opens Full memory and its citations without a disclosure click. On
 phones the original note precedes auxiliary Facts and Usage, source jumps and

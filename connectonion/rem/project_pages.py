@@ -31,6 +31,7 @@ SKILL = "rem-project-sessions"
 PROMPT_CHARS_FIXED = 1_500
 # README, package metadata and local Git state stay below this per project.
 REPOSITORY_EVIDENCE_CHARS = 9_000
+REPOSITORY_EXCERPT_CHARS = 65_536
 FILE_SNAPSHOT_CHARS = 1_000_000
 IMPLEMENTATION_FILES = 60
 SOURCE_INDEX_ESTIMATE_CHARS = 20_000
@@ -217,7 +218,8 @@ def repository_context(root: Path, source: str) -> dict | None:
             or not 0 < len(text) <= limit or SECRET_SHAPES.search(text) or PRIVATE.search(text)
             or source != "project-source:" + hashlib.sha256((origin + "\0" + text).encode()).hexdigest()):
         return None
-    return {"excerpt": text.strip()[:640], "truncated": len(text.strip()) > 640, "source": "project-source",
+    return {"excerpt": text.strip()[:REPOSITORY_EXCERPT_CHARS],
+            "truncated": len(text.strip()) > REPOSITORY_EXCERPT_CHARS, "source": "project-source",
             "time": "", "sender": "", "thread": "", "origin": origin,
             "captured_at": saved.get("captured_at") or "",
             "input_scope": saved.get("input_scope") or "Local repository snapshot. Files and commit records do not verify tests or deployment."}
@@ -486,7 +488,8 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
         from .reader_model import _source_ids
         retain_repository_context(root, items, _source_ids([{"text": notebook.read(record)}]))
         notebook.note_pass(record, "written", "own messages: " + ", ".join(tools))
-        mark_written(root, record, through, now=now)
+        mark_written(root, record, through, now=now, inputs_read=messages,
+                     inputs_available=len(pending(root, record)[0]))
         from .store import refresh_safely
         refresh_safely(root)
     write_json(directory / "result.json", {**metrics, "status": "candidate_accepted", "usage": result.get("usage"),

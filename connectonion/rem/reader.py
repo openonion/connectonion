@@ -96,6 +96,8 @@ def snapshot(root: Path) -> dict:
             record.update(written=entry["written"], last_activity=entry["last"], service=entry["service"])
         if record["category"] == "projects":
             record["private_project"] = private(record["path"], record["text"])
+            from .project_material import page_state
+            record["project_coverage"] = page_state(root, record["path"]).get("last_page_coverage")
     groups = {}
     for record in records:
         if record["path"].startswith("skills/catalog/") and record["path"] != "skills/catalog/index.md":

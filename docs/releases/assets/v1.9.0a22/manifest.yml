@@ -1,0 +1,37 @@
+version: v1.9.0a22
+images:
+  - file: before-project-desktop.png
+    alt: "Earlier project record on a desktop with a historical pattern leading the page"
+    caption: "Before: a historical pattern occupied the first project screen."
+    scenario: "Invented notebook fixture, project record before the a22 reader change"
+    viewport: "1440x900, light"
+    commit: 0efc7fef
+    source_run: "tests/fixtures/rem_reader_notebook.py rendered in Chromium with Playwright"
+  - file: before-project-phone.png
+    alt: "Earlier project record on a phone with a clipped historical pattern"
+    caption: "Before: the phone first fold hid the useful current finding."
+    scenario: "Invented notebook fixture, project record before the a22 reader change"
+    viewport: "375x812, light"
+    commit: 0efc7fef
+    source_run: "tests/fixtures/rem_reader_notebook.py rendered in Chromium with Playwright"
+  - file: project-desktop.png
+    alt: "Current project record on a desktop with its sourced finding and partial scope"
+    caption: "After: the decision-changing current finding leads the project page."
+    scenario: "Invented notebook fixture, project record after the a22 reader change"
+    viewport: "1440x900, light"
+    commit: a2ba58ee
+    source_run: "tests/fixtures/rem_reader_notebook.py rendered in Chromium with Playwright"
+  - file: project-phone.png
+    alt: "Current project record on a phone with an unclipped finding and coverage note"
+    caption: "After: the full finding and partial-scope note stay readable on a phone."
+    scenario: "Invented notebook fixture, project record after the a22 reader change"
+    viewport: "375x812, light"
+    commit: a2ba58ee
+    source_run: "tests/fixtures/rem_reader_notebook.py rendered in Chromium with Playwright"
+  - file: source-dialog-phone.png
+    alt: "Phone source dialog showing a retained original excerpt and provenance limit"
+    caption: "A numbered source opens a bounded original excerpt with its evidence limit."
+    scenario: "Invented notebook fixture, source dialog after the a22 reader change"
+    viewport: "375x812, light"
+    commit: a2ba58ee
+    source_run: "tests/fixtures/rem_reader_notebook.py rendered in Chromium with Playwright"

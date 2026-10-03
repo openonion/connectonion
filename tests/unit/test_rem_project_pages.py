@@ -199,6 +199,14 @@ def test_a_written_page_waits_for_new_messages_and_then_gets_only_those(world):
     assert "This is an update" in items[1]["text"]
 
 
+def test_a_small_update_does_not_hide_older_inputs_omitted_from_the_page(world):
+    record = "projects/tide.md"
+    mark_written(world.root, record, "2026-09-20T00:00:00+00:00", inputs_read=3, inputs_available=5)
+    mark_written(world.root, record, "2026-09-21T00:00:00+00:00", inputs_read=1, inputs_available=1)
+    assert page_state(world.root, record)["last_page_coverage"] == {
+        "inputs_read": 3, "inputs_available": 5, "scope": "queued"}
+
+
 def test_one_call_carries_the_newest_messages_that_fit_and_says_what_it_left_out(world, monkeypatch):
     monkeypatch.setattr(project_pages, "PROMPT_CHARS", 25)
     codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide",
@@ -306,6 +314,20 @@ def test_repository_context_survives_mutable_file_changes_and_rejects_tampering(
     assert cited_context(tmp_path, [{"text": "- [1] " + item["source"]}]) == {}
 
 
+def test_repository_context_shows_a_cited_note_deep_in_a_large_file(tmp_path):
+    from connectonion.rem.files import maintenance_lock
+    from connectonion.rem.reader_model import cited_context
+    original = "Background.\n" * 4_500 + "This dated note records the pending branch.\n"
+    item = project_pages.repository_snapshots([{
+        "role": "project-file", "snapshot_kind": "git-file", "source": "git:/repo:" + "a" * 40 + ":NOW.md",
+        "text": original, "timestamp": "2026-07-24T00:00:00Z"}])[0]
+    with maintenance_lock(tmp_path):
+        assert project_pages.retain_repository_context(tmp_path, [item], {item["source"]}) == 1
+    context = cited_context(tmp_path, [{"text": "- [1] " + item["source"]}])[item["source"]]
+    assert "pending branch" in context["excerpt"]
+    assert not context["truncated"]
+
+
 def _page_citing(source):
     page = Notebook.__new__(Notebook)  # only for PROJECT_SECTIONS
     lines = ["# tide"]
@@ -332,6 +354,8 @@ def test_a_page_is_written_once_from_the_material_and_the_status_line_says_so(wo
     assert "A swell warning tool for surfers. [1]" in page
     assert re.search(r"^Investigation: .*written \d{4}-\d\d-\d\d \(own messages: codex\)$", page, re.M)
     assert page_state(world.root, "projects/tide.md")["written_through"] == out["through"]
+    assert page_state(world.root, "projects/tide.md")["last_page_coverage"] == {
+        "inputs_read": 1, "inputs_available": 1, "scope": "queued"}
     from connectonion.rem import store
     indexed = store._rows(world.root, "select * from projects where record = ?", ("projects/tide.md",))
     assert indexed[0]["written"] is True
@@ -566,7 +590,7 @@ def test_initial_writer_can_search_fixed_implementation_and_declared_cli(tmp_pat
     with maintenance_lock(tmp_path / "rem"):
         assert project_pages.retain_repository_context(tmp_path / "rem", code, {page["source"]}) == 1
     context = project_pages.repository_context(tmp_path / "rem", page["source"])
-    assert context["excerpt"] == page["text"].strip()[:640]
+    assert context["excerpt"] == page["text"].strip()[:project_pages.REPOSITORY_EXCERPT_CHARS]
     assert context["time"] == "" and context["captured_at"] == NOW.isoformat()
 
 

@@ -80,7 +80,10 @@ def test_project_investigation_bounds_local_file_search(notebook, monkeypatch):
         run_stage(notebook, [{'role': 'page', 'record': 'projects/reader.md',
                               'text': notebook.read('projects/reader.md'),
                               'source': 'investigation:page'}], default_config(), stage='investigate')
-    assert 'twelve relevant text files' in prompts[0]  # composed project Skill owns the limit
+    assert 'Read the supplied repository snapshots, not the original checkout' in prompts[0]
+    assert "`Paths` identify where co rem gathered evidence" in prompts[0]
+    assert 'A branch' in prompts[0] and 'not an Insight' in prompts[0]
+    assert 'including exact evidence-index paths and the snapshot files they name' in prompts[0]
     assert 'stop using tools and return a brief coverage summary' in prompts[0]
 
 

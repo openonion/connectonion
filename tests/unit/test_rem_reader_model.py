@@ -164,6 +164,30 @@ def test_hashed_mail_citations_resolve_native_provider_ids_without_migrating_the
     assert context[source]['thread']
 
 
+def test_mail_source_dialog_keeps_a_reply_request_beyond_the_old_preview_limit(tmp_path):
+    import hashlib
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import atomic_write, state_path, write_json
+    from connectonion.rem.mail_archive import message_path
+    from connectonion.rem.reader_model import cited_context
+    from connectonion.rem.store import refresh
+
+    prepare(tmp_path)
+    native = 'long-reply-request'
+    source = 'outlook:' + hashlib.sha256(native.encode()).hexdigest()[:12]
+    body = 'Background. ' * 80 + 'Please reply with the proposed time.'
+    write_json(message_path(tmp_path, 'outlook', native), {'id': native, 'provider': 'outlook', 'body': body})
+    import json
+    atomic_write(state_path(tmp_path, 'source-inventory.jsonl'), json.dumps({
+        'type': 'mail', 'source': 'outlook', 'id': native, 'from': 'alex@example.org',
+        'date': '2026-09-30T10:00:00+00:00', 'subject': 'Next meeting'}) + '\n')
+    refresh(tmp_path)
+
+    context = cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + source}])[source]
+    assert context['excerpt'] == body
+    assert not context['truncated']
+
+
 def test_an_empty_retained_calendar_reply_keeps_its_header_evidence(tmp_path):
     import hashlib
     from connectonion.rem.config import prepare

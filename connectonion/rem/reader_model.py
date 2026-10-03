@@ -135,11 +135,13 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -
                 break
             row = _cited_row(db, source) if db is not None else None
             if row is None:
-                from .skill_runs import instruction_context, skill_record_context
-                from .project_pages import repository_context
                 from .attachments import attachment_context
+                from .project_material import retained_session_context
+                from .project_pages import repository_context
+                from .skill_runs import instruction_context, skill_record_context
                 context = (instruction_context(root, source) or skill_record_context(root, source)
-                           or repository_context(root, source) or attachment_context(root, source))
+                           or repository_context(root, source) or retained_session_context(root, source)
+                           or attachment_context(root, source))
                 if context:
                     output[source] = {**context, 'excerpt': context['excerpt'][:budget],
                                       'truncated': context['truncated'] or len(context['excerpt']) > budget}
@@ -153,7 +155,7 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -
             mail = message.get("source") in ("gmail", "outlook") and not message.get("body_line")
             if mail and "--- Email Body ---" in raw:
                 raw = raw.partition("--- Email Body ---")[2]
-            excerpt = raw.strip()[: min(640, budget)]
+            excerpt = raw.strip()[: min(4_096 if mail else 640, budget)]
             if not excerpt and not mail:
                 continue
             output[source] = {"excerpt": excerpt, "truncated": len(raw.strip()) > len(excerpt),

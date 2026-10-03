@@ -125,6 +125,7 @@
   .privacy-tag { font: 10px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; padding: 0 5px; margin: 0 2px; border-radius: 4px; border: 1px solid var(--line); color: var(--ink-3); background: var(--well); white-space: nowrap; }
   .privacy-tag.sensitive { border-color: var(--ink-3); color: var(--ink); font-weight: 600; }
   :root.hide-private .private, :root.hide-private li.private-item { display: none; }
+  :root.hide-private .privacy-only .privacy-content { display: none; }
   .private-hidden-notice { display: none; }
   :root.hide-private .private-hidden-notice { display: block; }
 
@@ -373,10 +374,11 @@
 
   /* sources: a compact footnote list */
   .block-sources ol { list-style: none; padding: 0; margin: 0 0 1em; font: 13px/1.5 var(--ui); color: var(--ink-2); }
-  .block-sources li { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line-2); margin: 0; }
+  .block-sources li { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line-2); margin: 0; }
   .block-sources li:target, .block-sources li.flash { background: var(--blue-soft); }
   .dead-link { color: var(--ink-3); text-decoration: line-through dotted; cursor: help; }
   .block-sources .n { font: 600 11px/1.9 var(--mono); color: var(--blue); }
+  .block-sources .source-open { display: inline-flex; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; vertical-align: baseline; font: 600 11px var(--mono); }
   .block-sources .id { font: 11.5px var(--mono); color: var(--ink); }
 
   /* where it stands: a status block */
@@ -491,6 +493,7 @@
   .name-cell { display: flex; flex-direction: column; gap: 2px; }
   .name-cell .nm { display: flex; align-items: center; gap: 7px; font-weight: 600; }
   .name-cell .nm a { color: var(--ink); }
+  .mobile-status-label { display: none; }
   .name-cell .sum { font-size: 12.5px; color: var(--ink-3); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .sheet .open-col { min-width: 220px; max-width: 320px; }
   .open-cell { display: flex; gap: 7px; align-items: baseline; }
@@ -576,10 +579,12 @@
 
   /* The memory surface: answer, connections, and activity before the full note. */
   .record-focus { max-width: 1120px; margin: 8px 0 34px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .scope-note { grid-column: 1 / -1; margin: 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--well); color: var(--ink-2); font: 13px/1.5 var(--ui); }
   .focus-head { grid-column: 1 / -1; min-height: 170px; padding: 26px 32px; border-radius: 16px; color: var(--night-ink); background: var(--night); position: relative; overflow: hidden; }
   .focus-head::after { content: ""; position: absolute; width: 420px; height: 420px; border: 1px solid var(--night-line); border-radius: 50%; right: -100px; top: -296px; box-shadow: 0 0 0 45px rgba(105, 128, 217, .035), 0 0 0 90px rgba(105, 128, 217, .025); pointer-events: none; }
   .focus-kicker { display: block; font: 600 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--night-2); }
   .focus-statement { max-width: 64ch; position: relative; z-index: 1; font: 26px/1.28 var(--display); margin: 16px 0 0; }
+  .focus-limit { position: relative; z-index: 1; max-width: 64ch; margin: 12px 0 0; font: 13px/1.5 var(--ui); color: var(--night-2); }
   .focus-statement.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
   .focus-next { position: relative; z-index: 1; max-width: 68ch; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--night-line); }
   .focus-next .k { display: block; font: 600 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--night-2); }
@@ -587,6 +592,7 @@
   .focus-more { position: relative; z-index: 1; border: 0; background: transparent; color: var(--night-ink); cursor: pointer; margin: 4px 0 0; padding: 0; min-height: 44px; font: 600 12px var(--ui); text-decoration: underline; text-underline-offset: 3px; }
   .focus-section.next-exchanges { grid-column: 1 / -1; }
   .project-workspace { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .project-workspace.single { grid-template-columns: 1fr; }
   .project-workspace .focus-section { min-width: 0; }
   .project-workspace p, .project-workspace li { font: 15px/1.5 var(--text); }
   .project-workspace p { margin: 0; }
@@ -740,6 +746,7 @@
     .mobile-back { display: block; }
     .mobile-back a { display: inline-flex; align-items: center; min-height: 44px; }
     .note { font-size: 16px; }
+    .code-block.diagram pre, .code-block.diagram pre code { white-space: pre-wrap; overflow-wrap: anywhere; }
     .maint > summary .n { display: none; }
     .side .toc-panel { display: none; }
     .factlist .copy { opacity: 1; }
@@ -749,6 +756,7 @@
     .sheet-find { flex: 1 1 100%; font-size: 16px; }
     .sheet-count { margin-left: 0; }
     .sheet .name { min-width: 170px; }
+    .mobile-status-label { display: block; padding-left: 21px; color: var(--ink-3); font: 11px var(--mono); }
   }
   @media (prefers-reduced-motion: no-preference) {
     a, button, nav a, .cite, .thread { transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease; }
@@ -973,9 +981,9 @@ function inline(text, from) {
   });
   // Link targets and inline code can contain dots without ending a sentence.
   // Do not consume the preceding boundary: adjacent labelled sentences share it.
-  s = s.replace(/(?<=^|[.!?。](?:\s*\[(?:personal|sensitive|W?\d+)\])*\s+)(?!\s|\[(?:personal|sensitive|W?\d+)\])([^.!?。]*?[.!?。]?)\s*\[(personal|sensitive)\]((?:\s*\[W?\d+\])*)/g,
-    (m, sentence, level, cites) => '<span class="private" data-level="' + level + '">' + sentence +
-      ' <span class="privacy-tag ' + level + '">' + level + '</span>' + cites + '</span>');
+  s = s.replace(/(?<=^|[.!?。](?:\s*\[(?:personal|sensitive|W?\d+)\])*\s+)(?!\s|\[(?:personal|sensitive|W?\d+)\])([^.!?。]*?[.!?。]?)\s*\[(personal|sensitive)\]((?:\s*\[W?\d+\])*)([.!?。]?)/g,
+    (m, sentence, level, cites, ending) => '<span class="private" data-level="' + level + '">' + sentence +
+      ' <span class="privacy-tag ' + level + '">' + level + '</span>' + cites + ending + '</span>');
   // Three or more claim numbers in a row read as noise: one chip says how many, and names them on hover.
   s = youify(s);
   const runs = [];
@@ -1399,10 +1407,24 @@ function openCell(f) {
     el("span", { class: "txt", text: plainLine(t.text) }), f.open.length > 1 ? el("span", { class: "more", text: "+" + (f.open.length - 1) }) : null]);
 }
 function dateCell(day) { return day ? el("span", { class: "mono", text: shortDate(day) }) : el("span", { class: "unk", text: "—" }); }
-function textCell(v) { return v ? el("span", { class: "clamp", title: plainLine(v), html: inline(v.replace(/\s*\[W?\d{1,3}\]/g, ""), "") }) : el("span", { class: "unk", text: "—" }); }
+function privateFallback(node) {
+  const visible = node.cloneNode(true);
+  visible.querySelectorAll(".private").forEach(span => span.remove());
+  if (node.querySelector(".private") && !/[\p{L}\p{N}]/u.test(visible.textContent)) {
+    const content = el("span", { class: "privacy-content" });
+    while (node.firstChild) content.appendChild(node.firstChild);
+    node.append(content, el("span", { class: "private-hidden-notice", text: "Hidden labelled passage" }));
+    node.classList.add("privacy-only");
+  }
+  return node;
+}
+function textCell(v) { return v ? privateFallback(el("span", { class: "clamp",
+  title: /\[(?:personal|sensitive)\]/i.test(v) ? "" : plainLine(v),
+  html: inline(v.replace(/\s*\[W?\d{1,3}\]/g, ""), "") })) : el("span", { class: "unk", text: "—" }); }
 function nameCell(r, f, withSummary) {
   const k = known(r);
   return el("div", { class: "name-cell" }, [el("span", { class: "nm" }, [el("span", { class: "st", title: k.status, "aria-label": k.status }, [moon(k.status)]), el("a", { href: href(r), text: r.title })]),
+    r.category === "projects" ? el("span", { class: "mobile-status-label", text: k.status }) : null,
     withSummary && k.summary ? el("span", { class: "sum", text: k.summary }) : null]);
 }
 const COLUMNS = {
@@ -1429,7 +1451,7 @@ const COLUMNS = {
   projects: [
     { key: "name", label: "Name", cls: "name", sort: r => r.title.toLowerCase(), cell: (r, f) => nameCell(r, f, false) },
     { key: "what", label: "What it is", cls: "wide", sort: (r, f) => f.what || "￿", cell: (r, f) => textCell(f.what) },
-    { key: "last", label: "Last active", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last), desc: true },
+    { key: "last", label: "Last mapped session", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last), desc: true },
     { key: "sessions", label: "Mapped sessions", num: true, sort: (r, f) => f.sessions ?? -1, cell: (r, f) => el("span", { class: "mono", title: "Sessions in the mapping window; archived input coverage can differ.", text: f.sessions ? String(f.sessions) : "—" }), desc: true },
     { key: "open", label: "What's open", cls: "open-col", sort: (r, f) => f.open.length ? OPEN_RANK[f.open[0].dir] : 9, cell: (r, f) => openCell(f) },
     { key: "status", label: "Status", sort: r => ({ "Investigated": 0, "Some findings": 1 })[known(r).status] ?? 2, cell: r => statusPill(r) }]
@@ -1709,9 +1731,9 @@ function sectionHead(title, note) {
 function memoryStatement(r) {
   const insight = section(r, "insight");
   const lines = insight ? listItems(insight.text) : [];
-  // The owner recalls what changed; a project's pattern is the lasting finding.
+  // Lead project pages with the current finding; the full note preserves patterns.
   const preferred = r.path === REM.owner ? ["Changed", "Now"]
-    : r.category === "projects" ? ["Pattern", "Now", "Changed"] : ["Now", "Changed"];
+    : r.category === "projects" ? ["Now", "At stake", "Changed", "Pattern"] : ["Now", "Changed"];
   const line = preferred.map(kind => lines.find(item => new RegExp("^" + kind + ":", "i").test(item))).find(Boolean)
     || lines.find(item => /^At stake:/i.test(item)) || lines[0];
   const current = section(r, "where it stands");
@@ -2018,7 +2040,9 @@ function sectionBody(r, s) {
       return el("div", { class: "block-sources" }, [el("ol", {}, list.map(src => {
         const id = sourceId(src.text);
         const rest = id ? src.text.replace(id, "").replace(/^\s*[—–-]\s*/, "") : src.text;
-        return el("li", { id: "src-" + src.n.toLowerCase() }, [el("span", { class: "n", text: "[" + src.n + "]" }),
+        return el("li", { id: "src-" + src.n.toLowerCase() }, [el("a", { class: "n cite source-open",
+          href: href(r) + "&h=src-" + src.n.toLowerCase(), "aria-label": "Open source " + src.n,
+          text: "[" + src.n + "]" }),
           el("span", {}, [id ? el("span", { class: "id", text: id }) : null, id ? " " : "", rest])]);
       }))]);
     }
@@ -2104,7 +2128,7 @@ function leadRow(r) {
       threadAge(first) ? el("span", { class: "age mono" + (threadAge(first).endsWith("today") ? " today" : ""), text: threadAge(first) }) : null,
       t.items.length > 1 ? el("span", { class: "more mono", text: "+" + (t.items.length - 1) + " more" }) : null]));
   } else if (t.calm) row.appendChild(el("span", { class: "lead-calm", text: "Nothing open" }));
-  if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "people" && r.path !== REM.owner ? "Last contact " : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
+  if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "projects" ? "Last mapped session " : r.category === "people" && r.path !== REM.owner ? "Last contact " : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u) row.appendChild(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: usageCaption(u) + (u.tools ? " · " + u.tools : "") })]));
   if (section(r, "uncertainties")) row.appendChild(el("a", { class: "unsure", href: "#r=" + encodeURIComponent(r.path) + "&h=uncertainties", title: "What this page is not sure of" }, ["?", el("span", { text: " Uncertain points" })]));
@@ -2117,7 +2141,7 @@ function sidePanels(r, k) {
   const glance = el("dl", {});
   const add = (dt, dd) => glance.append(el("dt", { text: dt }), el("dd", {}, [dd]));
   add("Status", statusPill(r));
-  if (k.last) add(r.category === "people" ? "Last contact" : r.category === "skills" ? "Last invocation" : "Last active", el("span", { class: "mono", text: fmtDate(k.last) }));
+  if (k.last) add(r.category === "people" ? "Last contact" : r.category === "skills" ? "Last invocation" : r.category === "projects" ? "Last mapped session" : "Last active", el("span", { class: "mono", text: fmtDate(k.last) }));
   const mail = /Observed mail count:\s*(\d+);\s*first:\s*(\d{4}-\d{2}-\d{2});\s*last:\s*(\d{4}-\d{2}-\d{2})/.exec(r.text);
   if (mail) add("Mail", el("span", { class: "mono", text: mail[1] + " · " + shortDate(mail[2]) + "–" + shortDate(mail[3]) }));
   const sessions = /^- Sessions:\s*(\d+)/m.exec(r.text), first = /^- First seen:\s*(\S+)/m.exec(r.text);
@@ -2189,15 +2213,29 @@ function recordFocus(r) {
     "aria-label": "At a glance" });
   const privateMapped = r.private_project && k.status === "Mapped";
   const purpose = section(r, r.category === "orgs" ? "our relationship" : r.category === "skills" ? "when to use" : "");
+  const projectPurpose = r.category === "projects" ? section(r, "what it is") : null;
+  const projectInsight = r.category === "projects" ? section(r, "insight") : null;
+  const projectDescription = projectPurpose ? plainLine(listItems(projectPurpose.text)[0] || projectPurpose.text) : "";
+  const projectNeedsContext = r.category === "projects" && k.status !== "Mapped" &&
+    (!projectInsight || /^-?\s*Unknown\b/i.test(projectInsight.text.trim()));
   const finding = r.category === "skills" ? plainLine(section(r, "insight")?.text || "") : "";
   const statement = privateMapped ? "Automatic investigations skip this private project. Name this page to request a write."
+    : projectNeedsContext ? projectDescription || "Current project work is unconfirmed in the supplied evidence."
     : finding || plainLine(purpose?.text || "") || memoryStatement(r) || facts(r).what || k.summary;
-  const question = privateMapped ? "Needs your explicit request" : ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
+  const question = privateMapped ? "Needs your explicit request" : projectNeedsContext ?
+    (projectDescription ? "What this project does" : "Current work") : ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
     skills: finding ? "Useful finding" : "When this helps" })[r.category] || "What matters now";
   const focusHead = el("div", { class: "focus-head" }, [el("span", { class: "focus-kicker", text: question })]);
-  const statementNode = el("p", { class: "focus-statement" + (privateMapped ? "" : " clamped"), html: inline(statement || (k.status === "Mapped"
-    ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet."), r.path) });
+  const statementNode = privateFallback(el("p", { class: "focus-statement" + (privateMapped || r.category === "projects" ? "" : " clamped"), html: inline(statement || (k.status === "Mapped"
+    ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet."), r.path) }));
   focusHead.appendChild(statementNode);
+  if (projectNeedsContext) {
+    const days = r.project_coverage?.days;
+    const limit = r.project_coverage?.inputs_read === 0
+      ? "No coding-session input was assigned to this project in this " + (days ? days + "-day " : "") + "investigation."
+      : "The " + (days ? days + "-day " : "supplied ") + "session sample did not confirm current project work.";
+    focusHead.appendChild(el("p", { class: "focus-limit", text: limit }));
+  }
   if (r.path === REM.owner) {
     const insight = section(r, "insight");
     const items = insight ? listItems(insight.text) : [];
@@ -2210,7 +2248,7 @@ function recordFocus(r) {
         el("p", { html: inline(step[0].toUpperCase() + step.slice(1), r.path) })]));
     }
   }
-  if (statement && !privateMapped) {
+  if (statement && !privateMapped && r.category !== "projects") {
     const more = el("button", { type: "button", class: "focus-more", "aria-expanded": "false", text: "Read full context", hidden: "" });
     more.onclick = () => {
       const expanded = statementNode.classList.toggle("clamped");
@@ -2221,6 +2259,18 @@ function recordFocus(r) {
     focusHead.appendChild(more);
   }
   out.appendChild(focusHead);
+  const coverage = r.category === "projects" ? r.project_coverage : null;
+  if (coverage && coverage.inputs_available > coverage.inputs_read)
+    out.appendChild(el("p", { class: "scope-note", text: coverage.scope === "queued"
+      ? "Partial project update: " + coverage.inputs_read + " of " + coverage.inputs_available +
+        " queued inputs were supplied. Older queued inputs were left out."
+      : coverage.inputs_read === 0
+      ? "No session inputs were supplied in this " + (coverage.days ? coverage.days + "-day " : "") +
+        "investigation; " + coverage.inputs_available + " inputs are archived for this workspace. " +
+        "Current project activity is unknown."
+      : "Partial project history: " + coverage.inputs_read + " session inputs were supplied in this " +
+        (coverage.days ? coverage.days + "-day " : "") + "investigation; " + coverage.inputs_available +
+        " inputs are archived for this workspace. Earlier inputs may be outside this pass." }));
   if (sourceList(r).length) out.appendChild(el("a", { class: "open-note", href: href(r) + "&h=sources", text: "View sources →" }));
   const open = threads(r).items;
   if (open.length) out.appendChild(el("div", { class: "focus-section next-exchanges" }, [
@@ -2229,17 +2279,17 @@ function recordFocus(r) {
   if (r.category === "projects") {
     const purpose = section(r, "what it is"), decisions = section(r, "key decisions");
     const blocks = [];
-    if (purpose) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: "What this is" }),
-      el("p", { html: inline(listItems(purpose.text)[0] || purpose.text, r.path) })]));
+    if (purpose && !projectNeedsContext) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: "What this is" }),
+      privateFallback(el("p", { html: inline(listItems(purpose.text)[0] || purpose.text, r.path) }))]));
     if (decisions) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: "Recorded direction" }),
-      el("ul", {}, listItems(decisions.text).slice(-1).map(item => el("li", { html: inline(item, r.path) }))),
+      el("ul", {}, listItems(decisions.text).slice(-1).map(item => privateFallback(el("li", { html: inline(item, r.path) })))),
       el("a", { class: "open-note", href: href(r) + "&h=key-decisions", text: "View all decisions →" })]));
-    if (blocks.length) out.appendChild(el("div", { class: "project-workspace" }, blocks));
+    if (blocks.length) out.appendChild(el("div", { class: "project-workspace" + (blocks.length === 1 ? " single" : "") }, blocks));
   }
   const f = facts(r);
   const labels = r.path === REM.owner ? [["Role", f.role], ["Location", f.location], ["Company", f.company]]
     : r.category === "people" ? [["Role", f.role], ["Company", f.company], ["Last contact", f.last]]
-    : r.category === "projects" ? [["Last active", f.last], ["Mapped sessions", f.sessions], ["Local path", f.repo]]
+    : r.category === "projects" ? [["Last mapped session", f.last], ["Mapped sessions", f.sessions], ["Local path", f.repo]]
       : r.category === "orgs" ? [["Domain", f.domain], ["Last contact", f.last]]
         : r.category === "skills" ? [["Recorded invocations", skillUsage(r) ? String(skillUsage(r).count) : ""], ["Last invocation", f.last]] : [];
   const shown = labels.filter(([, value]) => value).slice(0, 3);
@@ -2353,7 +2403,7 @@ function record(path, heading) {
   CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#c=" + r.category }, ["← " + label(r.category)])]));
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#c=" + r.category, text: label(r.category) }), el("span", { class: "sep", text: "/" }),
-    statusPill(r), el("span", { class: "when", text: (k.last ? (r.category === "skills" ? "last invocation " : "last activity ") + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })]));
+    statusPill(r), el("span", { class: "when", text: (k.last ? (r.category === "skills" ? "last invocation " : r.category === "projects" ? "last mapped session " : "last activity ") + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })]));
   const head = el("header", { class: "page-head" }, [el("h1", { text: r.title })]);
   // Keep the original prose in the full note. The first screen uses the
   // structured status, actions, facts and connections above that note.

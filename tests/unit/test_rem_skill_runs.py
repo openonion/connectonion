@@ -194,7 +194,7 @@ def test_instruction_excerpts_survive_source_removal_and_preserve_part_identity(
     context = cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + source + ':part-2'}])
     row = context[source + ':part-2']
     assert row['excerpt'].startswith('Inspect the actual artifact')
-    assert len(row['excerpt']) == 640 and row['truncated']
+    assert row['excerpt'] == text[FILE_CHARS:].strip() and not row['truncated']
     assert 'matches the citation hash' in row['input_scope']
     assert 'not verified execution' in row['input_scope'] and not row['thread']
     assert (tmp_path / '.state/skill-sources').stat().st_mode & 0o077 == 0
@@ -232,6 +232,21 @@ def test_retained_instruction_identity_and_first_capture_cannot_be_replaced(tmp_
     with pytest.raises(RemError, match='conflicting content'):
         _save_instruction_context(tmp_path, {**first, 'content_sha256': '0' * 64})
     assert instruction_context(tmp_path, source) == first
+
+
+def test_identical_instruction_source_widens_an_older_short_excerpt(tmp_path):
+    import hashlib
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.skill_runs import retain_instruction_context, instruction_context
+    text = 'Three decisions are required before a principle is written. ' * 150
+    source = 'skill-source:' + hashlib.sha256(text.encode()).hexdigest()[:16]
+    item = {'source': source, 'text': text, 'timestamp': '2026-10-01'}
+    retain_instruction_context(tmp_path, [item], {source})
+    current = instruction_context(tmp_path, source)
+    saved = state_path(tmp_path, 'skill-sources/' + hashlib.sha256(source.encode()).hexdigest() + '.json')
+    write_json(saved, {**current, 'excerpt': current['excerpt'][:640], 'truncated': True})
+    retain_instruction_context(tmp_path, [item], {source})
+    assert instruction_context(tmp_path, source)['excerpt'] == current['excerpt']
 
 
 def test_only_changed_skill_pages_retain_instruction_excerpts(tmp_path, monkeypatch):
@@ -324,7 +339,7 @@ def test_skill_record_original_survives_cleanup_and_mutable_run_report(tmp_path,
     assert not captured['directory'].exists()
     source.unlink()
     context = cited_context(root, [{'text': '- [1] ' + captured['id']}])[captured['id']]
-    assert context['excerpt'] == original[:640]
+    assert context['excerpt'] == original[:4_096]
     assert context['time'] == '2026-09-30T23:40:00Z'
     assert context['captured_at'] != context['time']
     assert 'not independently verified' in context['input_scope']
