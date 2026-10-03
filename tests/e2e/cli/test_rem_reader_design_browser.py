@@ -1092,6 +1092,22 @@ def test_unknown_open_status_is_not_a_current_exchange(reader):
     assert note.locator('a.cite[href$="h=src-1"]').first.is_visible()
 
 
+def test_a_none_line_is_not_shown_as_an_open_thread(reader):
+    page, uri = reader
+    page.goto(uri + '#r=people%2Fquinn-alder.md')
+    page.evaluate("""() => {
+      const r = byPath('people/quinn-alder.md');
+      r.text = '# Quinn Alder\\n\\n## Open threads\\n- None as of 2026-10-02 [1].\\n\\n'
+        + '## Sources\\n- [1] gmail:reply';
+      KNOWN.delete(r.path);
+      render();
+    }""", isolated_context=False)
+    assert page.evaluate("threads(byPath('people/quinn-alder.md')).items.length", isolated_context=False) == 0
+    assert page.locator('.next-exchanges').count() == 0
+    page.evaluate("location.hash = '#view=open'")
+    assert page.locator('.thread', has_text='None as of 2026-10-02').count() == 0
+
+
 def test_project_map_date_is_labelled_as_a_session_not_verified_activity(reader):
     page, uri = reader
     page.goto(uri + '#r=projects%2Fharbour.md')

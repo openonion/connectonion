@@ -1300,7 +1300,8 @@ function threads(r) {
   const all = listItems(s.text);
   const calm = all.find(t => /^nothing open\b/i.test(t.replace(/\*/g, ""))) || "";
   const today = calendarDay(REM.as_of);
-  const items = all.filter(t => t !== calm && !/^unknown\b/i.test(t)).map(text => {
+  const items = all.filter(t => t !== calm && !/^(?:unknown|none)\b/i.test(t)
+    && !/^no (?:explicit |supported |known |clear )?(?:open |outstanding )?(?:requests?|threads?|actions?)\b/i.test(t)).map(text => {
     const days = text.match(/\d{4}-\d{2}-\d{2}/g) || [];
     // A stated deadline stays a deadline after it passes. Other event dates
     // do not establish a due date merely because they are in the future.
