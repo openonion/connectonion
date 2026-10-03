@@ -35,6 +35,10 @@ words, and the limited visibility of a later request. The two calls each used
 about 22,000 input tokens. This tests those two examples, not general accuracy.
 The model-tier fixture now tests only whether a model can fill a page; actual
 person investigations still run the claim audit before promotion.
+The coai runner read the same fictional packet from its private task file and
+also passed the bounded version while rejecting the two unsupported claims.
+Those calls used 101,493 and 119,891 input tokens respectively, so this path
+cost more in the small sample than the direct Codex stdin path.
 
 A normal investigation refusal log also exposed a reader problem: the latest
 draft's rejection was hidden in Maintenance, while an earlier metadata refresh
