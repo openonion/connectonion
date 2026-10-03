@@ -21,7 +21,7 @@ runner = CliRunner()
 REM = get_command(app).commands["rem"]
 ROOT_COMMANDS = ["init", "investigate", "open", "list", "show", "search", "start", "stop", "status",
                  "sync", "sources", "config", "logs", "doctor"]
-ADVANCED = ["scan", "map-skills", "stub", "reflect", "reflections", "propose", "review", "abstract", "capture",
+ADVANCED = ["scan", "map-skills", "stub", "merge", "reflect", "reflections", "propose", "review", "abstract", "capture",
             "projects"]
 OLD_NAMES = {"unfinished": "investigate", "people": "list people --aliases", "daily": "sync",
              "subscriptions": "sources", "subscribe": "sources add", "unsubscribe": "sources remove",

@@ -419,6 +419,9 @@ class Notebook:
                            "emails": sorted(set(emails)), "summary": summary})
         return roster
 
+    def exists(self, record: str) -> bool:
+        return self.path(record).is_file()
+
     def read(self, record: str) -> str:
         path = self.path(record)
         if not path.is_file():
