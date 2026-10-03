@@ -5,13 +5,9 @@ description: Rules for investigating someone other than the user — composed af
 
 # Investigating someone the user corresponds with
 
-- Before choosing milestones, survey the whole supplied date range. For an
-  evidence index, scan all entry headers and subjects in one bounded shell
-  read, then open the messages behind each distinct relationship thread across
-  older and newer months. Search for introductions, agreements, changes,
-  unanswered requests and changed signatures. Do not stop at the newest mail
-  or read every repeated notice in full. Report the files and months actually
-  read and any skipped relevant thread in the final reply.
+- Survey the supplied date range: scan index headers, then read relevant
+  relationship threads across months. Check introductions, agreements, changes,
+  unanswered requests and signatures. Report months read and skipped threads.
 - An `Insight` must connect evidence to a decision: an obligation still owed,
   a role or relationship that changed, a repeated response pattern, or a
   consequential next contact. Cite the underlying dated messages, mark
@@ -31,3 +27,19 @@ description: Rules for investigating someone other than the user — composed af
   (language, tone, length, how they open, what they ask); **`Cadence`** from the
   dates (`about weekly, July–September`). Each is `Unknown` only when there is
   no such message, or a single one.
+- `First contact` and relationship origin require a cited direct exchange.
+  Earliest mail in the window, company mailing and group recipient lists do not
+  prove one; earlier mapped mail may exist. Leave unsupported dates `Unknown`.
+- Proposed meeting times are not a sent invite or confirmation; check exact
+  From/To/Cc before attributing action.
+- Cite the exact original beside each factual clause in Lead, Facts, Insight,
+  History, Open threads, Cadence and How the user writes. Proposal and acceptance
+  need their respective messages; a cited alias must appear in that original.
+  A later message does not quote earlier scope unless that scope appears in its
+  quoted text.
+  Use notebook-timezone source dates in every section, with stated event dates
+  separate. Remove claims that only sound plausible from adjacent mail.
+- A correction can withdraw an earlier ask; a pending decision about the
+  corrected subject needs a new request. With no later reply in retained
+  sources, use `Open` and `Check whether you replied elsewhere; if not, answer`.
+  An incoming question alone does not prove `you owe`.

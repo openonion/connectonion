@@ -20,8 +20,10 @@ class Quiet:
 
 @pytest.fixture(autouse=True)
 def skill_found(monkeypatch):
-    """The real check spawns the interpreter; its own tests are in test_rem_runner."""
+    """These tests exercise gathering/writing; the claim gate has its own tests."""
     monkeypatch.setattr("connectonion.rem.runner.check_skill", lambda root, stage: None)
+    monkeypatch.setattr("connectonion.rem.claim_audit.review",
+                        lambda *args: ({"verdict": "pass", "findings": []}, {}))
 
 
 def test_transient_connection_error_retries_body_fetch(monkeypatch):
@@ -38,16 +40,15 @@ def test_transient_connection_error_retries_body_fetch(monkeypatch):
     assert len(attempts) == 3
 
 
-def test_quick_evidence_bounds_the_first_turn_and_keeps_source_diversity():
+def test_quick_evidence_keeps_complete_gathered_sources():
     items = [{'source': 'gmail:old', 'timestamp': '2026-09-20', 'text': 'a' * 9000},
              *[{'source': f'codex:{i}', 'timestamp': f'2026-09-{21 + i:02d}',
                 'text': 'b' * 9000} for i in range(4)],
              {'source': 'outlook:new', 'timestamp': '2026-09-26', 'text': 'c' * 9000}]
-    selected = inv.quick_evidence(items, max_items=3, chars_per_item=100)
-    assert len(selected) == 3
+    selected = inv.quick_evidence(items)
+    assert len(selected) == len(items)
     assert {item['source'].split(':')[0] for item in selected} == {'gmail', 'codex', 'outlook'}
-    assert all(len(item['text']) < 200 for item in selected)
-    assert all(item['text'].endswith('[truncated for quick first-pass review]') for item in selected)
+    assert selected == items and all(len(item['text']) == 9000 for item in selected)
 
 
 def test_owner_work_packet_exposes_dated_decision_sources_without_claiming_completion():
@@ -142,13 +143,14 @@ def test_quick_owner_run_uses_one_turn_and_reports_partial_coverage(tmp_path, mo
                              clients={}, subscriptions={}, runner=runner, quick=True,
                              extractor=lambda *a: pytest.fail('quick pass must fit one model turn'))
     assert result['quick'] is True and result['items_available'] == 30
-    assert result['items'] == 24
+    assert result['items'] == 1  # all 30 originals are in the evidence index
     assert any('Quick first pass' in text for text in result['coverage'])
-    assert len(received) == 27  # page, coverage, quick-scope marker, 24 source items
+    assert len(received) == 4  # page, coverage, quick-scope marker, evidence index
     assert received[2]['role'] == 'quick-first-pass'
+    assert len(received[3]['sources']) == 30
 
 
-def test_quick_owner_fetches_only_recent_mail_bodies():
+def test_quick_owner_fetches_all_matching_mail_bodies():
     class Mailbox:
         def __init__(self):
             self.fetched = []
@@ -169,8 +171,8 @@ def test_quick_owner_fetches_only_recent_mail_bodies():
     items, coverage = inv.gather('Me', ['me@example.org'], days=5,
                                  clients={'outlook': box}, subscriptions={},
                                  sent_only=True, quick=True)
-    assert len(items) == 12 and box.fetched == [str(i) for i in range(8, 20)]
-    assert any('20 matched, 12 bodies read (recent quick sample)' in line for line in coverage)
+    assert len(items) == 20 and box.fetched == [str(i) for i in range(20)]
+    assert any('20 matched, 20 bodies read' in line for line in coverage)
 
 
 @pytest.fixture
@@ -206,13 +208,13 @@ def _notebook(tmp_path, runner):
     return root
 
 
-def test_runner_codex_is_co_ai_delegating_to_codex_in_the_workspace_sandbox(tmp_path, co_ai):
+def test_runner_codex_is_co_ai_delegating_with_investigation_tools(tmp_path, co_ai):
     root = _notebook(tmp_path, "codex")
     inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=7,
                     clients={"outlook": Quiet()}, subscriptions={})
     argv = co_ai[0]
     assert argv[1:3] == ["ai", "--json"]
-    assert argv[3:9] == ["--harness", "codex", "--sandbox", "workspace-write",
+    assert argv[3:9] == ["--harness", "codex", "--sandbox", "danger-full-access",
                          "--model", read_config(root)["model"]]
     # The Skill is told the page's real path, extension included: an earlier
     # version cut the record at its first "." and pointed it at people/vern.
@@ -254,17 +256,12 @@ def test_project_inventory_is_bounded_and_excludes_hidden_or_sensitive_files(tmp
     assert inv.project_file_inventory(cited, max_files=2) == leads
 
 
-# The whole command line before the prompt, pinned per executor. Investigation
-# puts correspondents' mail and attachments in front of the model, and the same
-# page is investigated unattended by the daily job `co rem start` installs.
-# Codex used to get danger-full-access and Claude bypassPermissions here, so
-# anyone who could email the user could hand instructions to an agent with a
-# shell, the network and the user's mailbox. Our code fetches the mail; the
-# model only reads the material and writes candidate.md in its task directory.
+# The whole command line before the prompt, pinned per executor for both
+# attended and scheduled investigation runs.
 PINNED = {
-    "codex": ["ai", "--json", "--harness", "codex", "--sandbox", "workspace-write",
+    "codex": ["ai", "--json", "--harness", "codex", "--sandbox", "danger-full-access",
               "--model", "gpt-5.6-luna", "--timeout", "1200"],
-    "claude-code": ["ai", "--json", "--harness", "claude-code", "--permission-mode", "acceptEdits",
+    "claude-code": ["ai", "--json", "--harness", "claude-code", "--permission-mode", "bypassPermissions",
                     "--model", "sonnet", "--timeout", "1200"],
 }
 
@@ -277,7 +274,7 @@ def _pinned_notebook(tmp_path, runner):
 
 
 @pytest.mark.parametrize("runner", sorted(PINNED))
-def test_an_investigation_the_user_starts_runs_confined(tmp_path, co_ai, runner):
+def test_an_investigation_the_user_starts_has_tools_authorized(tmp_path, co_ai, runner):
     root = _pinned_notebook(tmp_path, runner)
     inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=7,
                     clients={"outlook": Quiet()}, subscriptions={})
@@ -285,7 +282,7 @@ def test_an_investigation_the_user_starts_runs_confined(tmp_path, co_ai, runner)
 
 
 @pytest.mark.parametrize("runner", sorted(PINNED))
-def test_the_scheduled_daily_investigation_runs_confined(tmp_path, co_ai, monkeypatch, runner):
+def test_the_scheduled_daily_investigation_has_tools_authorized(tmp_path, co_ai, monkeypatch, runner):
     from connectonion.rem.daily import run_daily
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: kind == "outlook")
     monkeypatch.setattr("connectonion.rem.daily.mail_client", lambda kind, **kw: Quiet())
@@ -948,6 +945,27 @@ def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monk
     assert not any(s.startswith("Page last") for s in inv.searched_sources(out["coverage"]))
 
 
+def test_first_person_read_tells_writer_about_earlier_mapped_mail(tmp_path, monkeypatch):
+    from connectonion.rem.files import state_path, write_json
+
+    root = _notebook(tmp_path, "codex")
+    write_json(state_path(root, "map.json"), {"people": [
+        {"record": "people/vern.md", "first": "2024-08-02T01:44:00Z"}]})
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: ([
+        {"source": "outlook:new", "role": "other", "speaker": "Vern <vern.chan@unsw.edu.au>",
+         "timestamp": "2026-09-29T00:00:00Z", "text": "New message"}], []))
+    seen = {}
+
+    def write(book, material, config, **kw):
+        seen["coverage"] = next(i["text"] for i in material if i["role"] == "coverage")
+        return {"changed": [], "usage": None}
+
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern.chan@unsw.edu.au"],
+                    days=730, clients={}, subscriptions={}, runner=write)
+    assert "Earliest person-linked mapped mail metadata: 2024-08-02" in seen["coverage"]
+    assert "Do not claim a later message is first contact" in seen["coverage"]
+
+
 def test_a_page_written_from_its_sources_starts_the_next_window_too():
     """#1983: `projects write` stamped `written <date>`, which the window did not
     count, so the next investigation re-read 150 days (1.58M tokens)."""
@@ -1385,7 +1403,7 @@ def test_a_failure_that_is_not_a_refusal_is_retried(tmp_path, monkeypatch):
     assert inv.refused_for(root, 'people/vern.md') == {}
 
 
-def test_a_quick_pass_reports_its_sampling_limit_in_the_reply_not_on_the_page(tmp_path, monkeypatch):
+def test_a_quick_pass_reports_coverage_limits_in_the_reply_not_on_the_page(tmp_path, monkeypatch):
     """#1975: coverage stays off the page; the runner records it and the model says it in its reply."""
     root = _notebook(tmp_path, 'codex')
     monkeypatch.setattr(inv, 'gather', lambda *a, **kw: (
@@ -1398,7 +1416,7 @@ def test_a_quick_pass_reports_its_sampling_limit_in_the_reply_not_on_the_page(tm
     assert 'Uncertainties' not in scope and 'final reply' in scope
     from connectonion.rem.runner import task_prompt
     prompt = task_prompt(tmp_path, received, 'investigate')
-    assert 'explicit coverage limits' not in prompt and 'states the sampling limit' in prompt
+    assert 'Search the evidence index and relevant local archives' in prompt
 
 
 def test_investigate_me_marks_the_page_as_the_owners_and_drops_the_how_the_user_writes_heading(tmp_path, monkeypatch):
@@ -1437,6 +1455,37 @@ def test_a_gmail_date_with_no_timezone_is_read_as_utc():
     assert _iso_date("Thu, 09 Jul 2026 01:50:17 -0000", "2026-07-01T00:00:00+00:00") == "2026-07-09T01:50:17+00:00"
     assert _iso_date("Thu, 09 Jul 2026 11:50:17 +1000", "x") == "2026-07-09T11:50:17+10:00"
     assert _iso_date("not a date", "2026-07-01T00:00:00+00:00") == "2026-07-01T00:00:00+00:00"
+
+
+def test_person_mail_evidence_uses_the_notebook_day_across_provider_offsets():
+    items = [
+        {"source": "gmail:proposal", "timestamp": "2026-08-11T18:34:42-07:00"},
+        {"source": "gmail:correction", "timestamp": "2026-08-12T01:36:40+00:00"},
+        {"source": "codex:session", "timestamp": "2026-08-12T01:36:40+00:00"},
+    ]
+
+    inv._local_mail_times(items, "Australia/Sydney")
+
+    assert [item["timestamp"] for item in items[:2]] == [
+        "2026-08-12T11:34:42+10:00", "2026-08-12T11:36:40+10:00"]
+    assert items[2]["timestamp"] == "2026-08-12T01:36:40+00:00"
+
+
+def test_person_writer_receives_notebook_local_mail_times(tmp_path, monkeypatch):
+    root = _notebook(tmp_path, "codex")
+    set_config(root, ["schedule.timezone", "Australia/Sydney"])
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: ([
+        {"source": "gmail:proposal", "timestamp": "2026-08-11T18:34:42-07:00", "text": "A proposal"},
+        {"source": "gmail:correction", "timestamp": "2026-08-12T01:36:40+00:00", "text": "A correction"},
+    ], ["gmail: two matching messages"]))
+    received = []
+
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=857,
+                    clients={}, subscriptions={},
+                    runner=lambda notebook, items, config, stage: received.extend(items) or {"changed": []})
+
+    assert [item["timestamp"] for item in received if item.get("source", "").startswith("gmail:")] == [
+        "2026-08-12T11:34:42+10:00", "2026-08-12T11:36:40+10:00"]
 
 
 def test_one_saved_mail_with_an_unreadable_date_is_skipped_not_the_whole_run(tmp_path, monkeypatch):

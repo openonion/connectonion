@@ -79,6 +79,37 @@ def test_recent_correspondents_come_first_then_older_newest_first(root):
     assert not {"people/owner.md", "people/bot.md"} & {row["record"] for row in rows}
 
 
+def test_first_investigation_reaches_earliest_mapped_mail(root):
+    path = state_path(root, "map.json")
+    state = json.loads(path.read_text())
+    person = next(row for row in state["people"] if row["record"] == "people/dee.md")
+    person["first"] = (NOW - timedelta(days=2400)).date().isoformat()
+    write_json(path, state)
+
+    rows = queue(root, now=NOW)
+    dee = next(row for row in rows if row["record"] == "people/dee.md")
+    assert dee["days"] == 2401
+    assert estimate(rows)["window_days"] == 2401
+
+
+def test_single_page_investigation_uses_the_same_mapped_window(root, monkeypatch):
+    from connectonion.cli.commands import rem_commands
+    from connectonion.rem import investigate as rem_investigate
+
+    path = state_path(root, "map.json")
+    state = json.loads(path.read_text())
+    person = next(row for row in state["people"] if row["record"] == "people/dee.md")
+    person["first"] = (NOW - timedelta(days=2400)).date().isoformat()
+    write_json(path, state)
+    monkeypatch.setattr(rem_commands, "_mail_clients", lambda _: {})
+    monkeypatch.setattr(rem_commands, "_logged", lambda root, record, stage, run, quiet=False: run(None))
+    monkeypatch.setattr(rem_investigate, "investigate", lambda *args, days, **kwargs: days)
+
+    notebook = Notebook(root)
+    assert rem_commands._investigate_page(root, notebook, "people/dee.md") >= 2400
+    assert rem_commands._investigate_page(root, notebook, "people/dee.md", days=30) == 30
+
+
 def test_a_page_investigated_since_its_last_mail_waits(root):
     investigated(root, "people/ada.md", NOW.date().isoformat())
     assert "people/ada.md" not in {row["record"] for row in queue(root)}

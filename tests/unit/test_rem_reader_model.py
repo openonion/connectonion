@@ -231,7 +231,7 @@ def test_mail_source_dialog_keeps_a_reply_request_beyond_the_old_preview_limit(t
     prepare(tmp_path)
     native = 'long-reply-request'
     source = 'outlook:' + hashlib.sha256(native.encode()).hexdigest()[:12]
-    body = 'Background. ' * 80 + 'Please reply with the proposed time.'
+    body = 'Background. ' * 700 + 'Please reply with the proposed time.'
     write_json(message_path(tmp_path, 'outlook', native), {'id': native, 'provider': 'outlook', 'body': body})
     import json
     atomic_write(state_path(tmp_path, 'source-inventory.jsonl'), json.dumps({

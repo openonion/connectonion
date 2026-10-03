@@ -1,6 +1,6 @@
 # co rem — 1.9 preview guide
 
-Updated 2026-10-03 for opt-in preview **1.9.0a27**. The exact commands are
+Updated 2026-10-03 for opt-in preview **1.9.0a28**. The exact commands are
 also available through `co rem --help` and each subcommand's `--help` page.
 Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
 `unsubscribe`, `route`, `usage`) still work until 1.9.0 and print their new name.
@@ -259,7 +259,7 @@ an exhaustive plugin-cache or remote-catalog scan. Repeat `--skills-dir` for
 explicit roots; supplying it replaces defaults for that scan. Coverage and
 unreadable files are reported in the index and command result.
 
-The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0a27/connectonion/useful_skills/rem-init/CLI.md) explains
+The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0a28/connectonion/useful_skills/rem-init/CLI.md) explains
 mail IDs, browser tabs, source/working/output directories and failure recovery.
 
 ## One execution path
@@ -394,12 +394,22 @@ remain available. A wholly empty notebook still says **Not started**.
   row under Sources can also open its own original on a phone. An accepted
   explicit investigation retains the live coding-session inputs it cites,
   even when they were absent from the older map. Cited mail bodies show up to
-  4,096 characters, retained coding inputs up to 4,096, and repository
+  16,384 characters, retained coding inputs up to 4,096, and repository
   snapshots up to 65,536, with truncation
   marked. Cited conversations show up to twelve recent archived
   messages with the total count. Missing original bodies are labeled, never
   replaced by a generated summary. A page only mapped from metadata says so
   and gives the command to investigate it.
+- **Full person investigations** check the proposed page against the exact
+  originals it cites before replacing the accepted page. The check reads only
+  bounded cited context and explicit linked people pages; it does not certify
+  that all mail or every alias was found. A failed or incomplete audit keeps
+  the previous page, candidate and `claim-review.json` in the private task
+  folder. The reader shows a logged citation-review refusal on Today and the
+  affected person page, with local links to the audit and retained draft.
+  It counts refreshed mapped pages separately from investigated memory updates.
+  Its model tokens count toward that investigation. Quick onboarding pages
+  and other page types do not run this claim audit.
 - **Open threads** shows all supported obligations with direct record links.
   **Memory changes** keeps cited field changes separate from page rewrites.
   Older run logs have no claim-level comparison; they show an empty state.

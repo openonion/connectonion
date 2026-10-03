@@ -239,7 +239,8 @@ def _logged(root, record, phase, call, quiet=False):
         run.update(outcome="completed", usage=result.get("usage"), usage_by_stage=result.get("usage_by_stage") or {},
                    changed=result.get("changed") or [], items=result.get("items", 0),
                    chars_in=result.get("chars_gathered") or 0, coverage=result.get("coverage") or [],
-                   instructions_chars=result.get("instructions_chars") or {})
+                   instructions_chars=result.get("instructions_chars") or {},
+                   evidence=result.get("evidence") or [], report=result.get("report") or "")
         _WRITTEN.append(record)
         # Said, not left to the record: an accepted page had no outcome line (#2044).
         rem_look.step(f"Updated {record}: accepted, {len(run['changed'])} page"
@@ -429,6 +430,9 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
         clients = {kind: client for kind, client in clients.items() if handle}
     skipped = "" if clients or not record.startswith("projects/") else \
         "not read for a project page; name its mail with --handle"
+    if days is None and record.startswith("people/") and not rem_investigate.last_investigated(text):
+        from ...rem.people_pages import first_window
+        days = first_window(root, record)
     return _logged(root, record, "investigate", lambda update: rem_investigate.investigate(
         root, record, title, handles, days=days or rem_investigate.window_since(text), clients=clients,
         subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped,
@@ -866,6 +870,7 @@ def make_rem_app(factory):
             # project page, about a minute" and spent 614k-922k and 4-5 minutes
             # each, on every project active in the window, with no total at all.
             from ...rem import first_run
+            from ...rem.people_pages import FIRST_WINDOW_DAYS
             from .rem_people import counted
             from ...rem.service import run_logs
             recent = min(14, days)
@@ -885,15 +890,19 @@ def make_rem_app(factory):
             steps = ([f"your page (quick first, then full; {me_days} days of your mail and sessions)"]
                      if not reason else [])
             steps += ([f"{counted(len(people_rows), 'person', 'people')} "
-                       f"(recent first; up to two years of evidence each)"] if people_rows else [])
+                       f"(recent first; at least two years, back to each person's first mapped mail)"] if people_rows else [])
             steps += ([f"{counted(len(project_rows), 'project')} (recent first)"] if project_rows else [])
             steps += ([f"{counted(len(org_rows), 'related organisation')}"] if org_rows else [])
             steps += ([f"{counted(len(skill_rows), 'installed skill')} (source and retained run evidence)"] if skill_rows else [])
             if not steps:
                 return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
+            window_warning = ("Earlier mapped mail extends some person reads beyond two years. "
+                              "The measured example covered 150 days, so actual cost may be higher.\n"
+                              if any(row["days"] > FIRST_WINDOW_DAYS for row in people_rows) else "")
             cost = (f"First run with {config['runner']} ({config['model']}): "
                     + ", ".join(steps) + f"; up to {FIRST_RUN_WORKERS} at a time.\n"
                     + "Estimate: " + first_run.announce(total, plan) + "\n"
+                    + window_warning
                     + f"Budget: about {FIRST_RUN_TARGET_POINTS}% of a weekly runner allowance is a planning "
                     "target, not a stop. The selected investigation finishes even if it uses more; "
                     "a runner without a weekly meter cannot verify the percentage.\n"

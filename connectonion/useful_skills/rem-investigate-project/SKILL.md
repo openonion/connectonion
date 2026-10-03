@@ -9,14 +9,17 @@ Why these rules: docs/rem-skills/rem-investigate.md
 
 - **Sessions show intent, not repository state.** Check files before claiming
   anything shipped or passed.
-- **Read the supplied repository snapshots, not the original checkout.** The
-  page's `Paths` identify where co rem gathered evidence; they do not give this
-  turn access to those directories. Start with the supplied source index,
-  search for the claim in its snapshot files, and read matching entries with
-  context. Cite each entry's source ID. The index names omitted files and size
-  limits; an omitted body is not evidence that implementation is absent.
+- **Inspect the live repository paths supplied in the task.** Start with the
+  evidence index and mapped paths. Use `git log`, `git show`, `README.md`,
+  `pyproject.toml`, `package.json` and relevant source files to verify claims.
+  Record the inspected path and revision or timestamp in each source
+  citation. For a live file outside snapshots, cite
+  `file:/absolute/path@<sha256>` (hash full bytes with `shasum -a 256`)
+  so the cited version can be retained. The index names omitted files and size limits; an omitted body is
+  not evidence that implementation is absent.
 - `project-inventory` lists candidate files, not their contents. Do not cite
-  `investigation:project-inventory`; cite a retained snapshot for file facts.
+  `investigation:project-inventory`; cite the inspected file or a retained
+  snapshot for file facts.
 - Keep existing `Paths` without citing `investigation:page`. A new path needs
   a retained source.
 - Put search-window limits in your final reply, not page `Uncertainties` or

@@ -2,12 +2,13 @@
 
 The phone number on Ody's page was in a signature block; the turn searched its
 evidence files for what it thought to look for and wrote "no phone number
-appears in the material". A signature, a From address and the dates of the
-first and last message are text a regular expression reads exactly, so they
+appears in the material". A signature, a From address and the date of the
+latest message are text a regular expression reads exactly, so they
 are read here and handed to the turn as one `investigation:facts` item, each
 with the source id to cite. What only a reader can judge -- which signature
-line is a title, which domain is the employer -- is handed over as the lines
-themselves (`Signature`, `Calendar`, `Company domain`), never as a field value.
+line is a title, which domain is the employer, or whether the earliest mail is
+a personal exchange -- is handed over as context or left for the reader, never
+as an automatic field value.
 
 Each row: {"field", "value", "qualifier", "source", "date"}; `field` is a
 Facts label (see facts.FIELDS) or one of the context kinds above.
@@ -149,7 +150,6 @@ def extract(items: list[dict], handles: list[str], *, owner: bool = False, timez
                 if at >= 0:   # a flattened invite is one long line: the window around the name
                     add(_row("Calendar", line[max(0, at - 60):at + 140] if len(line) > 200 else line, item, zone))
     if mail and not owner:
-        add(_row("First contact", _date(mail[0], zone), mail[0], zone))
         add(_row("Last contact", _date(mail[-1], zone), mail[-1], zone))
     return rows
 
@@ -167,6 +167,7 @@ def facts_item(rows: list[dict], timezone: str = "UTC") -> dict:
                     "from: put it in its Facts field and cite that source id, not this item. Signature and "
                     "Calendar lines are the text itself: read the role, company, location or time zone from "
                     "them. Correct a fact only where the material contradicts it, and say so in "
-                    "Uncertainties; a phone, address, link or contact date left off the page is put back "
-                    f"after the turn. Contact and source dates use {timezone}; event dates are separate.\n"
+                    "Uncertainties; a phone, address, link or last-mail date left off the page is put back "
+                    f"after the turn. First contact requires evidence of a personal exchange. "
+                    f"Contact and source dates use {timezone}; event dates are separate.\n"
                     + "\n".join(lines)}

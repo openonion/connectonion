@@ -28,6 +28,9 @@ how many people are left. The budget is advisory: up to four already running
 pages finish after a stop, so the run can exceed its point target. `projects`,
 `orgs`, `skills` and `all` keep their order (most mail or sessions first). A
 single page and `me` are unchanged.
+When a mapped first message predates the two-year minimum, init warns that the
+actual cost may exceed the estimate before it starts models. The measured
+example behind that estimate covered 150 days.
 
 ## Order
 
@@ -38,14 +41,14 @@ decayed by the weeks since the last mail. Left out: the owner (`investigate me`,
 listed first while never investigated), addresses that may be the owner's,
 automated senders, and vendors whose domain also sends notices. The overview
 `co rem investigate` and `people --list` read the same queue. Counts are the
-map's, a floor for what the 730-day read finds; see
+map's, a floor for what the full read finds; see
 [rem-investigation-correctness.md](rem-investigation-correctness.md).
 
 ## Windows: only what is new
 
 | The person | Mode | Window read |
 |---|---|---|
-| Never investigated, or investigated but still unfinished and not in the last 7 days, with nothing newer | full | 730 days (`--days`) |
+| Never investigated, or investigated but still unfinished and not in the last 7 days, with nothing newer | full | 730 days by default, extended to the earliest mapped mail; `investigate people --days` overrides |
 | Mail arrived after the page was last investigated | update | the days since that investigation |
 | Investigated since their last mail | — | not in the queue |
 
