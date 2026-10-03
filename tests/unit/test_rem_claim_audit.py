@@ -58,6 +58,26 @@ def test_missing_cited_original_never_reaches_the_model(tmp_path):
     assert usage == {}
 
 
+@pytest.mark.parametrize("cited", [False, True])
+def test_person_audit_supplies_the_original_mail_envelope(tmp_path, monkeypatch, cited):
+    prepare(tmp_path)
+    context = {"gmail:pilot": {"excerpt": "We signed a pilot.", "truncated": False}} if cited else {}
+    monkeypatch.setattr(claim_audit, "cited_context", lambda *_args, **_kwargs: context)
+    mail = {"role": "other", "source": "gmail:pilot", "text": "We signed a pilot.",
+            "speaker": "Ada <ada@example.org>",
+            "participants": {"from": "Ada <ada@example.org>", "to": "owner@example.org", "cc": []},
+            "subject": "Pilot", "timestamp": "2026-10-01T00:00:00+00:00"}
+    page = "# Ada\n\nAda reported a pilot [1].\n\n## Sources\n- [1] gmail:pilot — 2026-10-01\n"
+
+    material, missing = claim_audit.packet(Notebook(tmp_path), page, [mail])
+
+    assert missing == []
+    context = material["sources"][0]["context"]
+    assert context["sender"] == mail["speaker"]
+    assert context["participants"] == mail["participants"]
+    assert context["subject"] == "Pilot"
+
+
 def test_person_audit_can_review_a_source_packet_above_the_old_100kb_limit(tmp_path, monkeypatch):
     material = {'candidate': '# Person\n\nA finding [1].\n\n## Sources\n- [1] codex:session — 2026-10-03',
                 'sources': [{'citation': '1', 'definition': '- [1] codex:session — 2026-10-03',

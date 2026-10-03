@@ -50,11 +50,16 @@ def packet(notebook, text: str, items: list[dict]) -> tuple[dict, list[str]]:
             continue
         number, source = match.groups()
         context = contexts.get(source)
+        original = originals.get(source)
         if not context or context.get("truncated"):
-            original = originals.get(source)
             if original:
                 context = {"excerpt": original["text"], "time": original.get("timestamp") or "",
-                           "sender": original.get("sender") or "", "truncated": False}
+                           "truncated": False}
+        if context and original and not context.get("truncated"):
+            context = {**context, "time": context.get("time") or original.get("timestamp") or "",
+                       "sender": context.get("sender") or original.get("speaker") or original.get("sender") or "",
+                       "participants": original.get("participants") or {},
+                       "subject": original.get("subject") or ""}
         if not context or context.get("truncated"):
             missing.append(number)
             continue
