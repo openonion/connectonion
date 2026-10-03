@@ -73,8 +73,8 @@ def owner_first(ctx, root) -> list[str]:
 
 
 def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool, gate, clients_for,
-               subscriptions, logged, announce=True):
-    """The people category: order, cost, then one person after another. Returns (result, next, failed).
+               subscriptions, logged, announce=True, workers: int = 1):
+    """The people category: order, cost, then bounded parallel work. Returns (result, next, failed).
 
     `announce=False` is init's first run, which has already said one total
     for every page it will write (#2008).
@@ -106,15 +106,16 @@ def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool
                       + cost_line(estimate(chosen), quota.read(config)), err=True)
     clients, sources = clients_for(root), subscriptions(root)
 
-    def on_page(number, total, row):
-        rem_look.line(f"[{number}/{total}] {row['record']} (last mail {_day(row['last_activity'])}, "
-                   f"{'update, ' if row['mode'] == 'update' else ''}{row['days']} days)", err=True)
+    def on_page(number, total, row, outcome):
+        rem_look.line(f"[{number}/{total}] {row['record']}: {outcome['outcome']} "
+                      f"(last mail {_day(row['last_activity'])}, "
+                      f"{'update, ' if row['mode'] == 'update' else ''}{row['days']} days)", err=True)
 
     def one(row):
         return logged(root, row["record"], "investigate", lambda update: investigate_person(
             root, row, clients=clients, subscriptions=sources, stage_progress=update))
 
-    result = write_pages(chosen, write=one, gate=gate, on_page=on_page)
+    result = write_pages(chosen, write=one, gate=gate, on_page=on_page, workers=workers)
     result["left"] = len(rows) - sum(1 for row in result["pages"] if row["outcome"] == "accepted")
     if result.get("stopped"):
         rem_look.line(f"Stopped: {result['stopped']}", err=True)

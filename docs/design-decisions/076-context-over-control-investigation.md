@@ -1,6 +1,6 @@
 # Context over control in REM investigation
 
-Status: candidate for preview. Pre-authorizes local shell and search tools during investigation, records verifiable provenance, and defers external containment.
+Status: implemented. Preview 1.9.0a28 includes upfront tool authorization; the Git citation and reader trail follow-up in this working tree awaits a later release.
 
 Investigation previously used `--sandbox workspace-write` for Codex and `--permission-mode acceptEdits` for Claude Code. The prompt limited searches to supplied evidence files and snapshots, so the model could not directly inspect the local repository or mail archive.
 
@@ -34,6 +34,7 @@ Project investigations supply live local repository paths alongside snapshots. A
 Each completed investigation preserves an execution audit trail:
 - Task results and scheduled run records retain supplied source IDs, local file paths, timestamps and the model's full inspection report. The report names files actually inspected; the evidence list records what was supplied, not proof it was read.
 - Markdown dossiers retain numbered citations (`[1]`, `[2]`) pointing to source IDs or identifiable local files, with dates or revisions. Repository path lists remain reading leads and cannot serve as claim evidence.
+- Directly cited working files are retained by content hash; historical Git files are retained by exact commit and path. The reader opens these retained excerpts even if the working tree later changes.
 
 ### 4. Security note (deferred)
 
@@ -47,10 +48,16 @@ Incoming email remains untrusted text in unattended runs. Containment and harden
 
 ## Review after this update
 
-Role: technology founder reviewing source clarity, page flow and traceability. Coverage: the generated reader fixture's project page and run snapshot, source and navigation markup, and the manual and scheduled run flows in unit tests. No browser surface was available, so visual states, mobile spacing and interactions remain uninspected.
+Role: independent AI reviewer acting as a technology founder with marketing and UI experience. Coverage: headless Chrome at 1440px and 390px of a local reader fixture's Today view, expanded manual and scheduled run trails, accepted Git Demo project claim, inline citation and archived source dialog, plus Harbour's mobile architecture diagram. The fixture's Git repository and accepted citation were created through the same project promotion path tested below. Playwright confirmed the jump to the trail, modal excerpt, diagram panning and no page-level horizontal overflow. This is fixture coverage, not a live harness run or an all-page pass; keyboard, dark theme and other page types remain uninspected.
 
 | Priority | Finding and user impact | Evidence | Improvement and recheck |
 | --- | --- | --- | --- |
 | High | A project path list could be cited as proof of a file claim. | Citation validation treated every supplied source ID as material. | Reject `investigation:project-repositories` as a citable original; the new validation test checks this. |
 | High | Manual and scheduled run logs omitted the page's source trail. | Their record writers previously copied usage and outcomes only. | Save the evidence metadata and full inspection report in both run paths; the new tests read the actual JSON files. |
-| Medium | The reader's source dialog and mobile layout need a visual check. | The local computer session exposed no browser or app surface. | Open a generated reader page in a browser and inspect project, source dialog, log detail and narrow viewport before claiming visual coverage. |
+| Medium | A new live citation could pass as a path without a retained excerpt. | A working file may change or disappear after investigation. | Require `file:/path@sha256` or an exact `git:/repo:commit:path`, retain the cited text, and reopen it after the working file changes in unit tests. |
+| Medium | The recent runs table hid the new source trail. | Reader markup listed time, outcome and usage only. | Add a collapsed run detail showing supplied evidence separately from the model's inspection report; recheck both manual and scheduled records. |
+| Medium | A reader could miss the trail several screens below the latest-pass card. | Desktop and 390px screenshots placed the trail under Maintenance. | Add a one-action jump on the latest-pass card; recheck that mobile opens and scrolls to the first run detail. |
+| Medium | Context items appeared to be original sources in the trail. | Investigation evidence includes `investigation:page`, coverage and repository paths. | Label the count as supplied items and explain that the list includes context and does not prove inspection. |
+| Medium | The mobile Git dialog led with a long raw source ID and repeated its full hash. | The excerpt was pushed below the useful heading. | Show filename and short revision first, keep the full ID in a disclosure, and recheck the excerpt at 390px. |
+| Medium | The mobile diagram's horizontal scroll was unclear. | The architecture diagram extended past its visible panel. | Add a swipe hint; recheck the diagram pans to the last step at 390px. |
+| Medium | Release copy could imply supplied evidence proved inspection. | It called run JSON a complete evidence inventory. | Describe supplied evidence and the model's report separately. |

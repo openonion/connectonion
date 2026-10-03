@@ -80,7 +80,7 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
         run_stage(notebook, [{'role': 'page', 'record': 'projects/reader.md',
                               'text': notebook.read('projects/reader.md'),
                               'source': 'investigation:page'}], default_config(), stage='investigate')
-    assert 'Inspect the live repository paths supplied in the task' in prompts[0]
+    assert 'Inspect mapped repositories' in prompts[0]
     assert 'git log, git show' in prompts[0]
     assert 'A branch' in prompts[0] and 'not an Insight' in prompts[0]
     assert 'local mail archives and project repositories' in prompts[0]
@@ -534,8 +534,8 @@ def test_a_sync_that_outlasts_the_wait_leaves_the_page_where_it_can_be_found(tmp
 
 def test_finished_tasks_lose_their_private_copies_and_running_ones_are_left_alone(tmp_path):
     """#1958: 98 task folders held 75 MB of the owner's mail. A folder is scrubbed
-    once its run wrote result.json; a run still working keeps its material."""
-    from connectonion.rem.runner import scrub_finished_tasks
+    after its result is old enough; a run still finishing keeps its material."""
+    from connectonion.rem.runner import FINISHED_TASK_GRACE_SECONDS, scrub_finished_tasks
 
     done, running = tmp_path / "maintain-a", tmp_path / "investigate-b"
     for folder in (done, running):
@@ -546,6 +546,10 @@ def test_finished_tasks_lose_their_private_copies_and_running_ones_are_left_alon
     (done / "result.json").write_text("{}")
     (done / "candidate.md").write_text("# X")
 
+    scrub_finished_tasks(tmp_path)
+    assert (done / "material.json").is_file()
+    old = time.time() - FINISHED_TASK_GRACE_SECONDS - 1
+    os.utime(done / "result.json", (old, old))
     scrub_finished_tasks(tmp_path)
 
     assert sorted(p.name for p in done.iterdir()) == ["candidate.md", "result.json"]
@@ -576,6 +580,34 @@ def test_task_files_are_owner_only_even_those_the_model_writes(notebook, monkeyp
     finally:
         os.umask(before)
     assert seen and all(mode == 0o600 for mode in seen.values()), seen
+
+
+def test_overlapping_runner_tasks_keep_private_mask_until_both_finish(notebook, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+
+    together = threading.Barrier(2, timeout=5)
+    observed = []
+
+    def run(argv, **kw):
+        observed.append(os.umask(0o077))
+        together.wait()
+        if threading.current_thread().name.endswith("_0"):
+            time.sleep(0.05)
+            observed.append(os.umask(0o077))
+        return SimpleNamespace(returncode=0, stdout='{"outcome":"natural"}', stderr="")
+
+    monkeypatch.setattr("connectonion.rem.runner.subprocess.run", run)
+    original = os.umask(0o022)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(run_stage, notebook, [], default_config(), stage="abstract") for _ in range(2)]
+            for future in futures:
+                future.result()
+        assert os.umask(0o022) == 0o022
+    finally:
+        os.umask(original)
+    assert observed == [0o077] * 3
 
 
 def test_an_interrupted_task_loses_its_copies_too(notebook, monkeypatch):

@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a29
+## Current Version: 1.9.0a30
+
+1.9.0a30 implements full-cohort concurrent onboarding and CLI investigations,
+running across a 10-worker thread pool with thread-safe client isolation and
+zero dry-run capping. Stable remains 1.8.10. See
+[1.9.0a30 notes](docs/releases/1.9.0a30.md).
+
+- 1.9.0a30 (full-cohort onboarding, 10-worker thread pool, thread-safe mail client isolation).
+
+## Previous preview: 1.9.0a29
 
 1.9.0a29 brings the mapped page's investigation action into the phone's first
 screen, explains what a mapped project does and does not yet know, and makes the
