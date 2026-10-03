@@ -163,33 +163,9 @@ def org_contact_context(notebook: Notebook, record: str) -> dict:
             "addresses": sorted(addresses), "candidates": candidates}
 
 
-def quick_evidence(items: list[dict], *, max_items: int = 24,
-                   chars_per_item: int = 2500) -> list[dict]:
-    """A bounded first look, with source diversity and recent items.
-
-    This is explicitly partial evidence. A quick onboarding turn should not
-    quietly spawn a sequence of expensive extraction agents for the owner.
-    """
-    latest = list(reversed(items))
-    chosen, seen = [], set()
-    for item in latest:
-        source = item.get("source", "").split(":", 1)[0]
-        if source not in seen:
-            chosen.append(item)
-            seen.add(source)
-    for item in latest:
-        if len(chosen) >= max_items:
-            break
-        if item not in chosen:
-            chosen.append(item)
-    selected = []
-    for item in sorted(chosen[:max_items], key=lambda row: row["timestamp"]):
-        copy = dict(item)
-        body = copy.get("text", "")
-        if len(body) > chars_per_item:
-            copy["text"] = body[:chars_per_item] + "\n[truncated for quick first-pass review]"
-        selected.append(copy)
-    return selected
+def quick_evidence(items: list[dict]) -> list[dict]:
+    """Keep every gathered original for the quick writer's one model turn."""
+    return list(items)
 
 
 def project_paths(page: str) -> list[str]:
@@ -491,8 +467,6 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 local.append(item)
         if undated:
             coverage.append(f"{kind}: {undated} saved message(s) skipped for an unreadable date")
-        if quick:
-            local = sorted(local, key=lambda item: item["timestamp"])[-12:]
         items.extend(local)
         attached = 0
 
@@ -591,8 +565,6 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         if sent_only:
             searched += ", kept the owner's own sent mail"
         mail_to_read = sorted(hit, key=lambda r: str(r["date"]))
-        if quick:
-            mail_to_read = mail_to_read[-12:]
         for number, r in enumerate(mail_to_read, 1):
             body = _patient(client.get_email_body, r["id"])
             provenance = {}
@@ -624,7 +596,6 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 stage_progress(f"gathering {kind} mail", number, len(mail_to_read))
         coverage.append(f"{kind} ({', '.join(sorted(mine))}): {searched} over {days} days, "
                         f"{len(local) + len(hit)} matched, {len(local) + len(mail_to_read)} bodies read"
-                        + (" (recent quick sample)" if quick else "")
                         + (f", {len(local)} of them from the private mail archive" if local else "")
                         + f", {attached} attachments read")
     for kind in ("outlook", "gmail"):
@@ -685,11 +656,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         if legacy:
             coverage.append(f"{name}: {legacy} related legacy message(s) have only a session-start date; "
                             "individual message times were not recorded")
-        if quick:
-            picked = picked[-12:]
         coverage.append(f"{name}: {scanned} messages in window, {related} related to subject, "
                         f"{len(picked)} read"
-                        + (" (recent quick sample)" if quick else "")
                         + (" (account owner's own messages)" if is_owner or (chat and sent_only)
                            else " (handle, sender or chat match)" if chat else " (handle or project match)"))
         items += picked
@@ -1180,16 +1148,18 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     if quick:
         items = quick_evidence(items)
         coverage.append(f"Quick first pass: reviewed {len(items)} of {available_items} gathered items; "
-                        "individual texts capped at 2,500 characters. Other material was not evaluated; "
+                        "check the local archives for anything not fetched in this pass; "
                         "do not claim comprehensive coverage or resolve unsupported conflicts.")
     gathered_items = len(items)
     leads = []
+    project_roots = []
     if record.startswith("projects/"):
         # The model reads the page's Paths too; a worktree left there is the
         # stale copy it would otherwise quote as current (#1955).
         corrected = collapse_worktree_paths(notebook.read(record))
         if corrected != notebook.read(record):
             notebook.write(record, corrected)
+        project_roots = [path for path in project_paths(corrected)[:4] if Path(path).is_dir()]
         leads = project_file_inventory(corrected)
         if leads:
             items.append({"role": "project-inventory", "source": "investigation:project-inventory",
@@ -1197,12 +1167,12 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                                   "\n".join(leads),
                           "timestamp": datetime.now(timezone.utc).isoformat()})
         newest = _newest_session(root, record, corrected)
-        for path in project_paths(corrected)[:4]:
+        for path in project_roots:
             state = checkout_state(path, newest)
             if state:
                 items.append({"role": "checkout-state", "source": f"git:{path}:checkout-state", "text": state,
                               "timestamp": datetime.now(timezone.utc).isoformat()})
-    if not gathered_items and not leads:
+    if not gathered_items and not leads and not project_roots:
         # Nothing about the subject, so nothing to write from: the page and the
         # coverage note are not material (#1974).
         raise _nothing_found(record, subject, coverage, me=sent_only)
@@ -1257,6 +1227,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         raise RemError("Insufficient call budget for investigation; page preserved")
     now = datetime.now(timezone.utc).isoformat()
     original_items = items
+    evidence_items = items
     evidence_dir = None
     if gathered_chars > room and summary:
         # A summary-tier model cannot search files (#1847), so it is handed
@@ -1313,7 +1284,13 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
          "text": f"The page as it stands, at {record}. Fill its Unknowns, update what "
                  f"has moved, keep what is right:\n\n{current_page}",
          "timestamp": now, "source": "investigation:page"},
-    ] + ([{"role": "project-input-scope", "source": "investigation:project-scope", "inputs_read": 0,
+    ] + ([{"role": "project-repositories", "source": "investigation:project-repositories",
+           "paths": project_roots, "timestamp": now,
+           "text": "Live local repository paths for direct inspection: " + ", ".join(project_roots) +
+                   ". Use git log, git show, README.md, pyproject.toml and package.json where present; "
+                   "cite verifiable source IDs and revisions."}]
+         if project_roots else []) + (
+        [{"role": "project-input-scope", "source": "investigation:project-scope", "inputs_read": 0,
            "timestamp": now, "text": "No coding-session input was assigned to this project in this run. "
            "Repository snapshots show dated file content, not current user work. Leave Insight and Open "
            "threads as bare Unknown; describe historical file notes with their dates in Where it stands. "
@@ -1339,8 +1316,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
           "timestamp": now, "text": owner_packet,
           "sources": re.findall(r"(?m)^### (\S+) —", owner_packet)}] if owner_packet else []) + (
         [{"role": "quick-first-pass", "source": "investigation:quick-scope",
-           "timestamp": now, "text": "This is a bounded, partial first pass. Use only the supplied sample; "
-                                     "state the sampling limit in your final reply, not on the page."}]
+           "timestamp": now, "text": "This is a partial first pass. Inspect relevant local sources "
+                                     "and state remaining coverage limits in your final reply, not on the page."}]
          if quick else []) + ([facts_item(fact_rows, config["schedule"]["timezone"])] if fact_rows else []) + items
     if original_material:
         prompt_items.append({"role": "original_evidence", "source": "investigation:original-evidence",
@@ -1389,11 +1366,21 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                                     "inputs_available": page_state(root, record).get("messages", 0),
                                     "days": days, "scope": "archived"}
                   if record.startswith("projects/") else None)
+    from .reader_model import _source_ids
+    from .project_pages import repository_context
+    cited_live = []
+    for source in _source_ids([{"text": notebook.read(record)}]):
+        if source.startswith("file:") and (context := repository_context(root, source)):
+            cited_live.append({"source": source, "file": source[5:].rsplit("@", 1)[0],
+                               "timestamp": context["time"], "captured_at": context["captured_at"]})
     return {"record": record, "items": len(items), "items_available": available_items,
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,
             "usage_by_stage": usage_by_stage, "report": result.get("report", ""),
+            "evidence": cited_live + [{key: item[key] for key in ("source", "file", "timestamp", "captured_at", "origin", "paths")
+                          if key in item} for item in [*prompt_items, *evidence_items]
+                         if item.get("source") and item.get("role") not in ("evidence-index", "original_evidence")],
             "facts": {"before": facts_before, "after": facts.coverage(notebook.read(record), record),
                       "extracted": sum(1 for row in fact_rows if row["field"] in facts.fields(record))},
             "instructions_chars": {"investigate": result.get("instructions_chars")}}

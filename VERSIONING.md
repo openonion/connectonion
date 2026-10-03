@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a27
+## Current Version: 1.9.0a28
+
+1.9.0a28 implements context over control in `co rem investigate`:
+pre-authorizes local search and shell tools upfront, supplies live project
+repository paths, and records full audit provenance. Stable remains 1.8.10. See
+[1.9.0a28 notes](docs/releases/1.9.0a28.md).
+
+- 1.9.0a28 (context over control, live repository paths, full investigation provenance).
+
+## Previous preview: 1.9.0a27
 
 1.9.0a27 keeps institutional and service desk correspondents out of `people/`
 and requires project evidence before dated scratchpad folders or prompt

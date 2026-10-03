@@ -233,7 +233,10 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
                         raise
                     continue
                 calls = 0
-            _page_done(record, done, usage, say, {'page': target, 'outcome': 'accepted'}, result.get('usage'))
+            _page_done(record, done, usage, say,
+                       {'page': target, 'outcome': 'accepted',
+                        'evidence': result.get('evidence', []), 'report': result.get('report', '')},
+                       result.get('usage'))
             changed += result.get('changed', [])
         accepted = [row['page'] for row in done if row['outcome'] == 'accepted']
         left = len(unfinished_by_recency(root))
@@ -345,8 +348,10 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
                     result = (person_one or _person)(root, row, clients=clients, subscriptions=sources)
                 else:
                     result = (project_one or _project)(root, row['record'], config=config)
-                _page_done(record, done, usage, say, {'page': row['record'], 'mode': row['mode'],
-                                                      'outcome': 'accepted'}, result.get('usage'), row['kind'])
+                _page_done(record, done, usage, say,
+                           {'page': row['record'], 'mode': row['mode'], 'outcome': 'accepted',
+                            'evidence': result.get('evidence', []), 'report': result.get('report', '')},
+                           result.get('usage'), row['kind'])
                 changed += result.get('changed', [])
             except RemError as error:
                 # One refused page does not stop the others; its material stays pending.

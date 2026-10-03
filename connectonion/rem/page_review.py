@@ -283,7 +283,8 @@ def drop_owner_addresses(text: str, owner: set[str]) -> tuple[str, list[str]]:
 # What an investigation hands the model about itself, not about the subject.
 # A page that cites only these was written from nothing (#1974).
 CONTEXT_SOURCES = ("investigation:page", "investigation:coverage", "investigation:quick-scope",
-                   "investigation:project-inventory", "investigation:original-evidence",
+                   "investigation:project-inventory", "investigation:project-repositories",
+                   "investigation:original-evidence",
                    "investigation:org-pages", "investigation:facts", "investigation:skill-records")
 
 
@@ -309,6 +310,10 @@ def _known_sources(items: list[dict]) -> set:
 
 
 def _identifiable(value: str, *, known, record, original, old_sources, items, pages) -> bool:
+    if record.startswith('projects/') and value.strip().startswith('file:'):
+        from .project_pages import live_file_snapshot
+        source = re.split(r'\s+[—–]\s+', value.strip(), 1)[0]
+        return value.strip() in old_sources or live_file_snapshot(original, source) is not None
     return bool(any(source in value for source in known) or value.strip() in old_sources
                 or re.search(r'https?://\S+', value) or _local_reference(value, original, items)
                 or prior_context_reference(value, record, items, original)
@@ -328,6 +333,10 @@ def _identifiable(value: str, *, known, record, original, old_sources, items, pa
 
 def _material(value: str, *, known, record, original, old_sources, items) -> bool:
     """Does this Sources entry name something about the subject, not the run's own context?"""
+    if record.startswith('projects/') and value.strip().startswith('file:'):
+        from .project_pages import live_file_snapshot
+        source = re.split(r'\s+[—–]\s+', value.strip(), 1)[0]
+        return value.strip() in old_sources or live_file_snapshot(original, source) is not None
     if '.state/map.json' in value or 'Enumeration metadata' in value:
         return False
     material = known - set(CONTEXT_SOURCES)
@@ -459,6 +468,16 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     errors += [f'Missing or duplicate citation: {key}' for key in refs if defined[key] != 1]
     known = _known_sources(items)
     if record.startswith('projects/'):
+        from .project_pages import live_file_snapshot
+        carried = original.partition('\n## Sources\n')[2]
+        for _, value in definitions:
+            source = re.split(r'\s+[—–]\s+', value.strip(), 1)[0]
+            if source.startswith('file:') and value.strip() not in carried:
+                if live_file_snapshot(original, source):
+                    known.add(source)
+                else:
+                    errors.append(f'Cited local file needs its current SHA-256 and a mapped path: {source}')
+    if record.startswith('projects/'):
         errors += _project_overview_errors(candidate)
         if any(item.get('role') == 'project-input-scope' and item.get('inputs_read') == 0 for item in items):
             for heading in ('Insight', 'Open threads'):
@@ -472,8 +491,12 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
                 errors.append(f'Preserve mapped project metadata: {label}')
     old_sources = original.partition('\n## Sources\n')[2]
     for key, value in definitions:
+        if record.startswith('projects/') and value.strip().startswith('/') and value.strip() not in old_sources:
+            errors.append(f'Cited local file needs a file: source ID and SHA-256: {key}')
         if record.startswith('projects/') and value.strip().startswith('investigation:project-inventory'):
             errors.append(f'Candidate file inventory is not a citable original: {key}')
+        if record.startswith('projects/') and value.strip().startswith('investigation:project-repositories'):
+            errors.append(f'Project paths are reading leads, not citable originals: {key}')
         if record.startswith('projects/') and value.strip().startswith('investigation:coverage'):
             errors.append(f'Investigation coverage belongs in the run report, not page Sources: {key}')
         if record.startswith('projects/') and value.strip().startswith('investigation:project-scope'):
