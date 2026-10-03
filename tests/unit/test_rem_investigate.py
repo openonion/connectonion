@@ -20,8 +20,10 @@ class Quiet:
 
 @pytest.fixture(autouse=True)
 def skill_found(monkeypatch):
-    """The real check spawns the interpreter; its own tests are in test_rem_runner."""
+    """These tests exercise gathering/writing; the claim gate has its own tests."""
     monkeypatch.setattr("connectonion.rem.runner.check_skill", lambda root, stage: None)
+    monkeypatch.setattr("connectonion.rem.claim_audit.review",
+                        lambda *args: ({"verdict": "pass", "findings": []}, {}))
 
 
 def test_transient_connection_error_retries_body_fetch(monkeypatch):

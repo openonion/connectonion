@@ -239,7 +239,8 @@ def harness_flags(config: dict, stage: str) -> list[str]:
     # tool authorization, and complete context come first.
     investigating = stage in ("init", "investigate")
     if harness == "codex":
-        flags += ["--sandbox", "danger-full-access" if investigating else "workspace-write"]
+        flags += ["--sandbox", "read-only" if stage == "claim-audit" else
+                  "danger-full-access" if investigating else "workspace-write"]
     elif harness == "claude-code":
         flags += ["--permission-mode", "bypassPermissions" if investigating else "acceptEdits"]
     if config["model"] != "default":
@@ -294,6 +295,37 @@ def run_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
             f"outcome {envelope.get('outcome', 'missing')}): "
             f"{str(envelope.get('error') or completed.stderr[-300:])[:300]}", usage)
     return envelope
+
+
+def run_claim_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
+    """Give the auditor full evidence over stdin, never in process arguments."""
+    if config["runner"] != "codex":
+        packet = workspace / "claim-input.txt"
+        packet.write_text(prompt, encoding="utf-8")
+        return run_task(workspace, f"Read {packet} fully and return its requested JSON decision. "
+                        "Do not edit the packet or any page.", config, stage)
+    from ..useful_tools.codex import _base_command
+    from .claim_audit import SCHEMA
+    binary = _base_command()
+    if not binary:
+        raise RunFailed("Codex is not installed; cited-claim audit could not run")
+    schema = workspace / "claim-schema.json"
+    answer = workspace / "claim-answer.json"
+    schema.write_text(json.dumps(SCHEMA), encoding="utf-8")
+    command = [*binary[:-1], "exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only",
+               "--json", "--output-schema", str(schema), "-o", str(answer)]
+    if config["model"] != "default":
+        command += ["--model", config["model"]]
+    completed = subprocess.run(command + ["-"], input=prompt, capture_output=True, text=True,
+                               cwd=workspace, timeout=config["limits"]["timeout_seconds"])
+    events = [json.loads(line) for line in completed.stdout.splitlines() if line.startswith("{")]
+    turn = next((event for event in reversed(events) if event.get("type") == "turn.completed"), {})
+    usage = {key: (turn.get("usage") or {}).get(key, 0)
+             for key in ("input_tokens", "cached_input_tokens", "output_tokens")}
+    if completed.returncode or not answer.is_file() or not turn:
+        raise RunFailed(f"Cited-claim audit did not complete (exit {completed.returncode}); "
+                        "prior page preserved", usage)
+    return {"result": answer.read_text(encoding="utf-8"), "usage": usage}
 
 
 # The prompt travels as one argv string; Linux caps a single argument at
@@ -511,7 +543,7 @@ PROMOTE_WAIT_SECONDS = 1800
 
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
-                       investigation=True):
+                       investigation=True, claim_config=None):
     from .page_review import (compact_page, drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
                               link_company, normalize_numbered_sources, placeholder_errors, restore_runner_fields,
                               unresolved_findings, validate)
@@ -554,6 +586,20 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # 290k tokens and no page changed in one a5 sync (#2014).
     if investigation:
         errors += placeholder_errors(text)
+    audit_usage = {}
+    audit_status = "not automatically assessed"
+    if (not errors and claim_config and investigation and record.startswith("people/")
+            and record != owner.get("record")
+            and not any(item.get("role") == "quick-first-pass" for item in items)):
+        from .claim_audit import review as review_claims
+        report, audit_usage = review_claims(notebook, text, items, claim_config["schedule"]["timezone"],
+                                            claim_config, directory, run_claim_task)
+        write_json(directory / "claim-review.json", report)
+        audit_status = "bounded citation audit passed" if report["verdict"] == "pass" else "bounded citation audit failed"
+        if report["verdict"] != "pass":
+            errors.append("Cited-claim audit did not pass; see claim-review.json")
+    total_usage = {key: (usage or {}).get(key, 0) + audit_usage.get(key, 0)
+                   for key in (usage or {}).keys() | audit_usage.keys()} or None
     # Sync owns this same lock. Compare and write together so a completed
     # concurrent update cannot be silently replaced by an older candidate.
     # Wait for it: at 05:00 on 2026-09-28 a finished project page was dropped
@@ -573,15 +619,16 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                    "facts_restored": [{k: r[k] for k in ("field", "source")} for r in restored],
                    "facts": {"before": facts.coverage(original, record), "after": facts.coverage(text, record),
                              "extracted": sum(1 for r in extracted if r["field"] in facts.fields(record))},
-                   "factual_quality": "not automatically assessed"})
+                   "factual_quality": audit_status})
         if errors:
             # The run is paid for; the page it wrote is kept where the reader can see
             # what was refused and why, not discarded behind a one-line error.
-            raise RunFailed(f"Candidate rejected, kept at {candidate}: " + "; ".join(errors), usage)
+            raise RunFailed(f"Candidate rejected, kept at {candidate}: " + "; ".join(errors), total_usage)
         if record.startswith("projects/"):
             from .project_pages import retain_live_file_context
             retain_live_file_context(notebook.root, original, text)
         notebook.write(record, text)
+    return audit_usage
 
 
 def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held):
@@ -633,7 +680,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
 
 # What a finished task keeps: its record, the page it proposed, the review
 # questions and the Skill text it was given. The rest is a private copy of the owner's mail and pages.
-TASK_KEEPS = ("result.json", "candidate.md", "review-candidates.json", "instructions.md")
+TASK_KEEPS = ("result.json", "candidate.md", "claim-review.json", "review-candidates.json", "instructions.md")
 
 
 def scrub_task(directory: Path) -> None:
@@ -837,9 +884,12 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                            for key in inquiry_usage.keys() | (result.get("usage") or {}).keys()} or None
         if candidate:
             def promote():
-                _promote_candidate(notebook, record, candidate, before[record], items, directory,
-                                   result.get("usage"), lock_held=maintenance_lock_held,
-                                   investigation=stage == "investigate")
+                audit_usage = _promote_candidate(notebook, record, candidate, before[record], items, directory,
+                                                 result.get("usage"), lock_held=maintenance_lock_held,
+                                                 investigation=stage == "investigate", claim_config=selected_config)
+                if audit_usage:
+                    result["usage"] = {key: (result.get("usage") or {}).get(key, 0) + audit_usage.get(key, 0)
+                                       for key in (result.get("usage") or {}).keys() | audit_usage.keys()}
 
             try:
                 promote()
