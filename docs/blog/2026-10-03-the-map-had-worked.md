@@ -41,3 +41,9 @@ The map is still only discovery. The older conversations have not yet been
 read by a live model batch, and this reader change does not claim they are
 useful findings. The next check is a fresh map to confirm the grouped dates,
 then an actual person batch to compare source-backed memories and token cost.
+
+After the next release, the reader recognized five existing People pages as
+service or institutional senders. The old map still held 613 people pages:
+570 browsable people, 38 possible contacts held for review, and those five
+excluded senders. A follow-up reader change makes both exclusions visible
+beside the People count, so the smaller roster does not look like lost data.
