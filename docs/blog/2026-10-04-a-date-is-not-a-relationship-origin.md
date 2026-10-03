@@ -37,6 +37,13 @@ explicitly labeled the invitee's time zone. But the reviewer found that its
 short `Now` sentence, used by Home and the Person first fold, omitted the
 sourced reason the thread had closed. We made that reason part of the Person
 instruction. In a third fresh run, `Now` said the position was filled and the
-intro canceled before saying no follow-up was proposed. This is one protected
-Person, not a claim that every page is accurate. The wider audit of claims
-that borrow authority from adjacent originals remains open.
+intro canceled before saying no follow-up was proposed. An independent
+role-based AI reviewer reopened all three displayed sources, Home and the
+Person page at desktop and phone widths, and found no remaining P1 or P2 in
+that sample. This is one protected Person, not a claim that every page is
+accurate. The wider audit of claims that borrow authority from adjacent
+originals remains open.
+
+To try the change, use the [a33 preview notes](https://docs.connectonion.com/releases/1.9.0a33)
+for the exact version and limits, then follow the
+[REM first-run guide](https://docs.connectonion.com/rem#start).

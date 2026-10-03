@@ -875,7 +875,7 @@ the block as a card.
   `YYYY-MM-DD`.
 - `First contact` needs evidence of the relationship's beginning. The earliest
   retained message is an observed mail date, not automatically first contact;
-  the Person writer and People table leave this fact Unknown when it cannot be
+  the Person writer and People index leave this fact Unknown when it cannot be
   established.
 - Every value carries a citation, except `Email`, `Handles` and
   `Also known as`, which the map fills from the addresses it found. A citation
@@ -886,10 +886,11 @@ the block as a card.
 
 `facts.parse(page)` returns `{"Phone": [{"value": "+61 2 5550 0142",
 "qualifier": "work", "citations": ["1"]}, …], "Location": [], …}` (an empty
-list is `Unknown`), so the reader, the People table and a later database
-(#2067) read the same thing. A page written before 1.9.0a9 has `## Contact`
-instead: `facts.upgrade` renames it and adds the missing labels as `Unknown`
-the next time an investigation or maintenance writes the page; `facts.parse`
+list is `Unknown`), so the reader and indexed views (#2067) use the same
+parsed values where they display these fields. A page written before 1.9.0a9
+has `## Contact` instead: `facts.upgrade` renames it and adds the missing
+labels as `Unknown` the next time an investigation or maintenance writes the
+page; `facts.parse`
 reads either.
 
 ### Extracted before prose
