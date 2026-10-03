@@ -60,13 +60,7 @@ Rules:
   in the notebook timezone, keeping stated event dates separate. Every value is cited
   except `Email`, `Handles`, `Also known as`. A contact detail never goes in a
   sentence instead of its field. `Links`: LinkedIn, personal or company site.
-  `How we know them`: who introduced whom, or the first directly evidenced
-  personal thread. A company mailing or group recipient list does not establish
-  a personal origin. `First contact` stays `Unknown` unless a cited direct
-  exchange supports it; the first mail in a limited window is only the first
-  mail read, not proof that no earlier contact exists.
-  If an `Also known as` alias is cited, its cited original must spell that
-  alias; a neighboring message in the thread is not enough.
+  `How we know them`: who introduced whom, or the first thread.
 - **`Insight` is 2–4 cited bullets of at most 30 words, each starting `Now:`, `Changed:`,
   `At stake:` or `Pattern:`** — what the inbox does not say outright: what they
   are to the user's work now; what moved recently; what is at risk or owed;
@@ -82,9 +76,6 @@ Rules:
   none: `Unknown`. Link schools/groups in relationship text, not as employers.
 - **`Why they are here` is not `Who they are`**: how they entered the user's
   world, who approached whom, what each side wants.
-- **`How the user writes to them` cites the user's actual words.** Suggested
-  meeting times are a scheduling proposal; do not add a calendar invitation,
-  confirmation, or follow-up that the cited message never mentions.
 - **`Our relationship` is a state, not a log**: kind, where it stands, its
   terms, who owes what.
   Keep each local link with its relationship, citations and privacy markers;
@@ -93,17 +84,10 @@ Rules:
   changed> [n]`: agreed, signed, delivered, met. Not a send or a newsletter.
   Past 8, fold the oldest into one line per year.
 - **Open threads keep exact asks.** Check later replies; separate terms/forms.
-  If no later reply appears in retained material, say "no reply found here"
-  and make the next action conditional on checking other channels. An incoming
-  question alone is not an established debt: do not write `you owe`,
-  `<owner> owes`, or `waiting on you` in the lead or Open threads. Write
-  `Check whether you replied to <request>; if not, answer` instead. The reader
-  must show an unverified request as `Open`, not `You owe`.
   Reports/optional offers create none. Prerequisites aren't agreed commitments;
   missing historical outcomes aren't current debts.
   Accepting an invitation or trial proves intent; attendance/activation need
-  separate evidence. A group thank-you or a request to join a lineup is not
-  attendance or presentation, especially when a named lineup omits the person.
+  separate evidence.
   Name debtor, request date and explicit due date; never hardcode its age.
   Preserve permission to proceed without a reply. Supported closure:
   `Nothing open as of <date>` and next expected contact; missing evidence:

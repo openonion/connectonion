@@ -31,3 +31,17 @@ description: Rules for investigating someone other than the user — composed af
   (language, tone, length, how they open, what they ask); **`Cadence`** from the
   dates (`about weekly, July–September`). Each is `Unknown` only when there is
   no such message, or a single one.
+- `First contact` and relationship origin require a cited direct exchange.
+  Earliest mail in the window, company mailing and group recipient lists do not
+  prove one; earlier mapped mail may exist. Leave unsupported dates `Unknown`.
+- Proposed meeting times are not a sent invite or confirmation. An invitation,
+  lineup request or group thank-you does not prove attendance or presentation;
+  check named participant lists and exact From/To/Cc before attributing action.
+- Cite the exact original beside each factual clause in Lead, Facts, Insight,
+  History, Open threads, Cadence and How the user writes. Proposal and acceptance
+  need their respective messages; a cited alias must appear in that original.
+  Use notebook-timezone source dates in every section, with stated event dates
+  separate. Remove claims that only sound plausible from adjacent mail.
+- No later reply in retained sources means `Open`, with a conditional action:
+  `Check whether you replied elsewhere; if not, answer`. An incoming question
+  alone does not prove `you owe` or `waiting on you`.
