@@ -1099,11 +1099,13 @@ def test_a_none_line_is_not_shown_as_an_open_thread(reader):
       const r = byPath('people/quinn-alder.md');
       r.text = '# Quinn Alder\\n\\n## Open threads\\n- None as of 2026-10-02 [1].\\n\\n'
         + '## Sources\\n- [1] gmail:reply';
+      REM.source_context['gmail:reply'] = { source: 'gmail', time: '2026-10-02T00:00:00Z' };
       KNOWN.delete(r.path);
       render();
     }""", isolated_context=False)
     assert page.evaluate("threads(byPath('people/quinn-alder.md')).items.length", isolated_context=False) == 0
     assert page.locator('.next-exchanges').count() == 0
+    assert page.evaluate("fmtDate('2026-10-02T00:00:00Z')", isolated_context=False) in page.locator('#src-1').inner_text()
     page.evaluate("location.hash = '#view=open'")
     assert page.locator('.thread', has_text='None as of 2026-10-02').count() == 0
 
