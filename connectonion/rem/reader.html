@@ -941,6 +941,8 @@ function resolve(from, path) {
 function safeHref(from, raw) {
   const target = raw.trim();
   if (/^(https?:|file:|mailto:)/i.test(target)) return { href: target, external: true };
+  if (target.startsWith("/") && !target.startsWith("//"))
+    return { href: "file://" + target.split("/").map(encodeURIComponent).join("/"), external: true };
   if (target.startsWith("#")) return { href: "#r=" + encodeURIComponent(from) + "&h=" + encodeURIComponent(target.slice(1)), external: false };
   if (/\.md(#.*)?$/i.test(target) && !/^[a-z]+:/i.test(target)) {
     const path = resolve(from, target.split("#")[0]);

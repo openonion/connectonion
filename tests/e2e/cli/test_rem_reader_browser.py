@@ -57,6 +57,28 @@ def test_attachment_source_keeps_filename_spaces_and_shows_extraction_limits(tmp
         browser.close()
 
 
+def test_absolute_skill_artifact_links_open_as_local_files(tmp_path, monkeypatch):
+    from patchright.sync_api import sync_playwright
+
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    root = tmp_path / 'rem'
+    prepare(root)
+    artifact = tmp_path / 'draft.md'
+    artifact.write_text('# Draft\n')
+    Notebook(root).write('skills/catalog/writer.md',
+                         '# writer\n\n## What it does\n\n'
+                         f'[Read the draft]({artifact})\n\n## Sources\n')
+    page_path = write_reader(root)
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        page = browser.new_page()
+        page.goto(page_path.as_uri() + '#r=skills%2Fcatalog%2Fwriter.md')
+        link = page.get_by_role('link', name='Read the draft')
+        assert link.get_attribute('href') == artifact.as_uri()
+        assert not page.locator('.dead-link').count()
+        browser.close()
+
+
 def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
     from patchright.sync_api import sync_playwright
 

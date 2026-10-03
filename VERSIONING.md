@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a31
+## Current Version: 1.9.0a32
+
+1.9.0a32 keeps Skill invocation names stable across investigations, opens the
+full bounded cited run part and local artifacts in the owner-only reader, and
+separates an intended Skill outcome from observed output. Stable remains
+1.8.10. See [1.9.0a32 notes](docs/releases/1.9.0a32.md).
+
+- 1.9.0a32 (Skill source access, artifact-grounded findings, stable Skill identity).
+
+## Previous preview: 1.9.0a31
 
 1.9.0a31 checks Project claims against retained originals before a page is
 replaced, adds a deliberate retry for refused pages, and improves the reader's
