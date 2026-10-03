@@ -23,13 +23,13 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
-Alpha **1.9.0a31** checks Project claims against their original sources before
-replacing a page, lets you retry one refused page, and clarifies the reader's
-first screen. It includes the full-cohort concurrent onboarding code from the
-a30 tag. See [1.9.0a31 notes](releases/1.9.0a31.md).
+Alpha **1.9.0a32** keeps Skill pages tied to their invocation names, makes
+cited run parts and local output files openable in the owner-only reader, and
+labels intended outcomes separately from observed work. See
+[1.9.0a32 notes](releases/1.9.0a32.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.0a31'
+python -m pip install --upgrade 'connectonion==1.9.0a32'
 co rem open --live
 ```
 
@@ -38,6 +38,10 @@ The a30 tag did not publish to PyPI after its release CI failed; see
 changes are included in a31.
 
 Earlier alpha previews remain available:
+
+Alpha **1.9.0a31** checks Project claims against their adjacent originals
+before replacing a page, supports deliberate retry, and includes the a30
+full-cohort onboarding code. See [1.9.0a31 notes](releases/1.9.0a31.md).
 
 Alpha **1.9.0a29** puts the mapped-page investigate action within phone reach
 on the first screen. See [1.9.0a29 notes](releases/1.9.0a29.md).
