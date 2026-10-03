@@ -23,6 +23,7 @@ SCHEMA = {
             "required": ["issue", "evidence", "required_correction"], "additionalProperties": False}},
     }, "required": ["verdict", "findings"], "additionalProperties": False,
 }
+AUDIT_BYTES = 250_000
 
 
 def _originals(items: list[dict]) -> dict[str, dict]:
@@ -40,7 +41,7 @@ def _originals(items: list[dict]) -> dict[str, dict]:
 
 def packet(notebook, text: str, items: list[dict]) -> tuple[dict, list[str]]:
     """Only cited originals and explicit same-name links enter the audit turn."""
-    contexts = cited_context(notebook.root, [{"text": text}], budget=100_000)
+    contexts = cited_context(notebook.root, [{"text": text}], budget=AUDIT_BYTES)
     originals = _originals(items)
     sources, missing = [], []
     for line in text.partition("\n## Sources\n")[2].splitlines():
@@ -110,8 +111,14 @@ def review(notebook, text: str, items: list[dict], zone_name: str, config: dict,
         "alone does not prove two addresses belong to one person. Require direct cross-reference or qualify it. "
         "Compare envelope sender and recipients with signatures and forwarded quotations; a name in quoted or "
         "signed text does not prove who operated the sending account or sent that passage to this recipient. "
-        "An invitation or group reply does not prove attendance or acceptance. A request with no verified later "
-        "reply is provisional, not a categorical debt. "
+        "An invitation or group reply does not prove attendance. Check each adjacent cited "
+        "source separately, including sender and Subject. An explicit sender-owned Accepted calendar "
+        "Subject supports RSVP but not attendance; boilerplate alone proves neither. A "
+        "welcome for a copied colleague to reply is an invitation, not delegation of approval authority. "
+        "A request with no verified later "
+        "reply is provisional, not a categorical debt. Resolve each relative deadline against its own "
+        "message date in the notebook timezone; conflicting implied due days remain uncertain even when "
+        "the latest message has a later date. "
         "A source elsewhere in the packet does not fix a wrong adjacent citation. "
         "Fail on an unsupported action or factual contradiction. An incomplete contact history cannot prove an "
         "unqualified global last-contact claim. Return only JSON: "
@@ -119,7 +126,7 @@ def review(notebook, text: str, items: list[dict], zone_name: str, config: dict,
         '"required_correction":"..."}]}. No markdown fences.\n\n'
     )
     prompt = instruction + json.dumps(material, ensure_ascii=False)
-    if len(prompt.encode("utf-8")) > 100_000:
+    if len(prompt.encode("utf-8")) > AUDIT_BYTES:
         return {"verdict": "insufficient", "findings": [], "reason": "Cited originals exceed the audit input bound"}, {}
     result = run(workspace, prompt, config, "claim-audit")
     report = json.loads(result["result"])

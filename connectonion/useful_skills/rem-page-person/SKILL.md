@@ -17,7 +17,7 @@ Placeholders are not evidence.
 ```markdown
 # <observed name>
 
-<lead>. Last contact: <date> (observed mail).
+<lead>. Last contact: <date> (latest in supplied sources).
 
 ## Facts
 - Email: Unknown
@@ -51,22 +51,19 @@ Placeholders are not evidence.
 Rules:
 
 - **Lead**: 2–3 cited sentences. Start with a supported current obligation or
-  relationship finding; end with `Last contact: <date>` and observed channel/window.
+  relationship finding; end with `Last contact: <date> (latest in supplied sources)`.
   `Nothing open as of <date>` needs closure evidence.
-- **`Facts` is data, written first.** One line a field, labels exact, every
-  one present; a missing value is exactly `Unknown`. Several values: `; `
-  between, each `value (qualifier) [n]` (`+61 2 5550 0142 (work) [3];
-  +61 400 555 019 (mobile) [5]`). Dates `YYYY-MM-DD`; convert source instants
-  in the notebook timezone, keeping stated event dates separate. Every value is cited
-  except `Email`, `Handles`, `Also known as`. A contact detail never goes in a
-  sentence instead of its field. `Links`: LinkedIn, personal or company site.
-  `How we know them`: who introduced whom, or the first thread.
-- **`Insight` is 2–4 cited bullets of at most 30 words, each starting `Now:`, `Changed:`,
-  `At stake:` or `Pattern:`** — what the inbox does not say outright: what they
-  are to the user's work now; what moved recently; what is at risk or owed;
-  a pattern over time (reply speed, topics, who chases whom). Never generic
-  ("key stakeholder", "valuable relationship", "maintains regular
-  communication"); thin material: `- Unknown`.
+- **`Facts` first.** Keep every exact label; missing values are `Unknown`.
+  Separate multiple values with `; ` and cite each as `value (qualifier) [n]`.
+  Dates use `YYYY-MM-DD`; convert source instants in notebook time zone, but
+  preserve stated event dates. Cite all except mapped `Email`, `Handles`,
+  `Also known as`. Put contact details in their fields. `Links` are sites;
+  `How we know them` is the introduction or first thread. Write `Last contact`
+  as `<date> (latest in supplied sources) [n]`. `Email` uses the envelope sender; a
+  different signature address needs an explicit cross-reference to be an alias.
+- **`Insight`**: 2–4 cited bullets, at most 30 words each, starting `Now:`,
+  `Changed:`, `At stake:` or `Pattern:`. Name a useful current relationship,
+  change, risk or repeated pattern; skip generic praise. Thin evidence: `- Unknown`.
 - **`Language` is observed**: the language they write to the user in.
 - Attribute group replies to their sender using exact From/To/Cc metadata.
   Greetings do not bind names by recipient order; the owner's phone is not
@@ -83,15 +80,12 @@ Rules:
 - **`History` is at most 8 milestones**, newest first, `- YYYY-MM-DD: <what
   changed> [n]`: agreed, signed, delivered, met. Not a send or a newsletter.
   Past 8, fold the oldest into one line per year.
-- **Open threads keep exact asks.** Check later replies; separate terms/forms.
-  Reports/optional offers create none. Prerequisites aren't agreed commitments;
-  missing historical outcomes aren't current debts.
-  Accepting an invitation or trial proves intent; attendance/activation need
-  separate evidence.
-  Name debtor, request date and explicit due date; never hardcode its age.
-  Preserve permission to proceed without a reply. Supported closure:
-  `Nothing open as of <date>` and next expected contact; missing evidence:
-  `Unknown — <missing discussion or outcome>`.
+- **Open threads keep exact asks.** Check later replies and separate terms.
+  Reports, optional offers, prerequisites and missing historical outcomes do
+  not create debts. Acceptance proves intent, not attendance or activation.
+  Name debtor, request date and explicit due date; preserve permission to
+  proceed without a reply. Closure needs evidence; otherwise say what outcome
+  is unknown. Never hardcode a request's age.
 - **Say things once.** Doubt goes in `Uncertainties`; omit collection counts
   and prior-page metadata.
 - **Label inference.** Empty sections stay `Unknown`; don't infer "no prior

@@ -732,6 +732,10 @@
     main { padding: 22px 16px 64px; }
     .rail .foot { display: none; }
     .rail[data-open="true"] .foot { display: flex; }
+    .rail[data-open="true"] #nav { padding-bottom: 64px; }
+    .rail[data-open="true"] .privacy-btn { position: fixed; z-index: 20; left: 16px; right: 16px; bottom: 12px;
+      min-height: 44px; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet);
+      box-shadow: var(--shadow); text-align: center; }
     .nav-toggle { display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 9px 12px; text-align: left; color: var(--ink); background: var(--sheet); border: 1px solid var(--line); border-radius: 6px; font: 14px var(--ui); cursor: pointer; }
     .nav-toggle::after { content: "▾"; color: var(--ink-3); }
     .nav-toggle[aria-expanded="true"]::after { content: "▴"; }
@@ -822,11 +826,13 @@ window.REM = REM;
 })();
 
 function togglePrivate() {
+  const restoreFocus = document.activeElement?.classList.contains("privacy-btn");
   const hidden = document.documentElement.classList.toggle("hide-private");
   try {
     if (location.protocol === "file:") localStorage.setItem("co-rem-private", hidden ? "hidden" : "shown");
   } catch (_) { /* choice lasts this view only */ }
   renderRail(railActive());
+  if (restoreFocus) document.querySelector(".privacy-btn")?.focus();
 }
 
 // Theme: auto follows the system; light or dark is remembered for file:// only.
@@ -1268,7 +1274,7 @@ function owing() {
   const me = "(?:the user|you" + (first ? "|" + first : "") + ")";
   OWING = {
     mine: new RegExp("\\b" + me + "(?:['’]s)?\\s+(?:has |have |had |still )?(?:owes?|owed|promised|offered|agreed|needs? to|must|should|said (?:he|she|they) would|to (?:send|reply|sign|confirm|pay|review|decide)|has not|have not|hasn't|haven't)\\b" +
-      "|^\\s*" + me + "\\s*:|\\b(?:requested|asked for|awaits?|awaiting|waiting (?:on|for))\\s+(?:" + me + "(?:['’]s)?|your)\\b|\\brequested (?:confirmation|approval|a reply|an answer)\\b|\\byou owe\\b", "i"),
+      "|^\\s*" + me + "\\s*:|\\b(?:asked|requested)\\s+" + me + "\\s+to\\b|\\b(?:requested|asked for|awaits?|awaiting|waiting (?:on|for))\\s+(?:" + me + "(?:['’]s)?|your)\\b|\\brequested (?:confirmation|approval|a reply|an answer)\\b|\\byou owe\\b", "i"),
     theirs: /\b(?:owes?|owed) (?:the user|you)\b|\bwaiting (?:on|for) (?:them|him|her|their)\b|\bunanswered\b|\b(?:he|she|they) (?:has|have) not (?:replied|answered|sent|confirmed)\b|\b[A-Z][\w-]+(?:['’]s)? (?:promised|is expected to|agreed to|owes|said (?:he|she|they) would)\b|\bpromised\b/
   };
   return OWING;
@@ -1779,7 +1785,7 @@ function renderRail(active) {
   }
   foot.appendChild(themeSwitch);
   const hidden = document.documentElement.classList.contains("hide-private");
-  const privacy = el("button", { class: "theme-btn" + (hidden ? " active" : ""), type: "button",
+  const privacy = el("button", { class: "theme-btn privacy-btn" + (hidden ? " active" : ""), type: "button",
     "aria-pressed": String(hidden), text: hidden ? "Show labelled passages" : "Hide labelled passages",
     title: "Also hides raw source and conversation excerpts. Names and unlabelled text stay visible." });
   privacy.onclick = togglePrivate;
@@ -2262,7 +2268,11 @@ function age(day) {
 // Show an explicit deadline first, without inferring whether it was met.
 function threadAge(t) {
   if (t.due) return "due " + (t.due === calendarDay(REM.as_of) ? "today" : shortDate(t.due));
-  return t.since ? age(t.since) : "";
+  return t.since ? (daysSince(t.since) === 0 ? "opened today" : "open for " + age(t.since)) : "";
+}
+function threadPreview(text) {
+  const summary = plainLine(text).replace(/\s*[—–-]\s.*$/, "");
+  return summary.length > 100 ? summary.slice(0, 97).replace(/\s+\S*$/, "") + "…" : summary;
 }
 // Under the title: what is open and how long, when you last spoke, how sure the page is.
 function leadRow(r) {
@@ -2270,7 +2280,7 @@ function leadRow(r) {
   if (t.items.length) {
     const first = t.items[0];
     row.appendChild(el("a", { class: "lead-open " + first.dir, href: "#r=" + encodeURIComponent(r.path) + "&h=open-threads" }, [
-      el("span", { class: "dir", text: DIRECTION_LABEL[first.dir] }), el("span", { class: "txt", text: plainLine(first.text).replace(/\s*[—–-]\s.*$/, "") }),
+      el("span", { class: "dir", text: DIRECTION_LABEL[first.dir] }), el("span", { class: "txt", text: threadPreview(first.text) }),
       threadAge(first) ? el("span", { class: "age mono" + (threadAge(first).endsWith("today") ? " today" : ""), text: threadAge(first) }) : null,
       t.items.length > 1 ? el("span", { class: "more mono", text: "+" + (t.items.length - 1) + " more" }) : null]));
   } else if (t.calm) row.appendChild(el("span", { class: "lead-calm", text: "Nothing open" }));

@@ -680,7 +680,8 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
 
 # What a finished task keeps: its record, the page it proposed, the review
 # questions and the Skill text it was given. The rest is a private copy of the owner's mail and pages.
-TASK_KEEPS = ("result.json", "candidate.md", "claim-review.json", "review-candidates.json", "instructions.md")
+TASK_KEEPS = ("result.json", "candidate.md", "review.json", "claim-review.json",
+              "review-candidates.json", "instructions.md")
 
 
 def scrub_task(directory: Path) -> None:
@@ -897,21 +898,30 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
 
             try:
                 promote()
-            except RunFailed:
+            except RunFailed as rejected:
+                result["usage"] = rejected.usage or result.get("usage")
                 errors = read_json(directory / "review.json", {}).get("errors") or []
-                if not errors or any(not error.startswith(("History has ", "Finding has unresolved citations"))
-                                     for error in errors):
+                audit_failed = errors == ["Cited-claim audit did not pass; see claim-review.json"]
+                if not errors or (not audit_failed and any(not error.startswith(
+                        ("History has ", "Finding has unresolved citations")) for error in errors)):
                     raise
                 # Repair bounded history and miscopied evidence ids once,
                 # keeping the paid-for candidate and accounting for both turns.
+                instruction = (f"Read {directory / 'claim-review.json'} and the cited originals in "
+                               f"{directory / 'material.md'} and its evidence index. Fix every audit finding "
+                               "in the existing candidate: state only what those originals prove, or remove "
+                               "the unsupported claim. Keep supported detail and exact citations. The audit "
+                               "report is a correction guide, not a source. Save the same file and stop."
+                               if audit_failed else
+                               f"Review errors: {'; '.join(errors)}. "
+                               "Keep at most eight dated bullets in History, folding older events by year. "
+                               f"For unresolved citations, read {directory / 'material.md'} and its named "
+                               "evidence index; copy the exact source ids for supported claims. Remove a "
+                               "claim only if evidence does not support it. Preserve all other sections "
+                               "and citations. Save the same file and stop.")
                 try:
                     repair = run_task(workdir, f"Edit the existing page at {candidate}. "
-                                      f"Review errors: {'; '.join(errors)}. "
-                                      "Keep at most eight dated bullets in History, folding older events by year. "
-                                      f"For unresolved citations, read {directory / 'material.md'} and its named "
-                                      "evidence index; copy the exact source ids for supported claims. Remove a "
-                                      "claim only if evidence does not support it. Preserve all other sections "
-                                      "and citations. Save the same file and stop.",
+                                      + instruction,
                                       selected_config, stage)
                 except RunFailed as error:
                     prior = result.get("usage") or {}

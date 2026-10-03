@@ -58,6 +58,25 @@ def test_missing_cited_original_never_reaches_the_model(tmp_path):
     assert usage == {}
 
 
+def test_person_audit_can_review_a_source_packet_above_the_old_100kb_limit(tmp_path, monkeypatch):
+    material = {'candidate': '# Person\n\nA finding [1].\n\n## Sources\n- [1] codex:session — 2026-10-03',
+                'sources': [{'citation': '1', 'definition': '- [1] codex:session — 2026-10-03',
+                             'context': {'excerpt': 'source text ' * 11_000, 'truncated': False}}],
+                'linked_pages': []}
+    monkeypatch.setattr(claim_audit, 'packet', lambda *_args: (material, []))
+    called = []
+
+    def approved(_workspace, prompt, _config, _stage):
+        called.append(len(prompt.encode()))
+        return {'result': '{"verdict":"PASS","findings":[]}', 'usage': {'input_tokens': 42}}
+
+    report, usage = claim_audit.review(Notebook(tmp_path), material['candidate'], [],
+                                       'Australia/Sydney', {}, tmp_path, approved)
+    assert called[0] > 100_000
+    assert report['verdict'] == 'pass'
+    assert usage == {'input_tokens': 42}
+
+
 def test_failed_claim_review_preserves_the_previous_person_page(tmp_path, monkeypatch):
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
