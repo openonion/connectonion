@@ -120,6 +120,10 @@ def review(notebook, text: str, items: list[dict], zone_name: str, config: dict,
         "message date in the notebook timezone; conflicting implied due days remain uncertain even when "
         "the latest message has a later date. "
         "A source elsewhere in the packet does not fix a wrong adjacent citation. "
+        "If a sender says 'we signed' a plan or contract, that only reports their side's act; "
+        "do not infer the recipient or user signed, is the contractual counterparty, or agreed to "
+        "delivery terms unless the adjacent original names them. A reply stating a start date "
+        "does not establish those parties or terms. "
         "Fail on an unsupported action or factual contradiction. An incomplete contact history cannot prove an "
         "unqualified global last-contact claim. Return only JSON: "
         '{"verdict":"PASS|FAIL|INSUFFICIENT","findings":[{"issue":"...","evidence":"...",'
