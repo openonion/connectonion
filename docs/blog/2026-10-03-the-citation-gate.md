@@ -89,11 +89,13 @@ now uses a person's stated contact date and leaves the date empty when the page
 says it is unknown. An older derived index cannot fill that empty value, and
 an uncertainty elsewhere cannot erase an explicit dated Fact. In the protected
 trial, actual desktop and phone renders show no false `Last contact` or `Open`
-indicator. The first-fold source link now has a 44-pixel target. The reviewed
-Email field also wins over an older derived index so a company mailbox cannot
-reappear as a person's address after source review. The phone hero exposes more
-of the identity qualification, and an unresolved-section command now says that
-reading the same sources again may leave the gap unresolved. This is
+indicator. A dated observed-mail History still sorts a person by its mail date,
+labelled as map-derived, while an investigated `Unknown` never falls back to
+the investigation date. The first-fold source link now has a 44-pixel target.
+The reviewed Email field also wins over an older derived index so a company
+mailbox cannot reappear as a person's address after source review. The phone
+hero exposes more of the identity qualification. The unresolved-section command
+also says reading the same sources again may leave the gap unresolved. This is
 selected-page coverage, not a review of the whole notebook.
 
 Independent role-based AI founder/UI review of the final protected render at

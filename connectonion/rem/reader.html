@@ -1219,13 +1219,16 @@ function known(r) {
   // A person's investigation date is not a contact date. The owner instead
   // uses session activity, labelled "Last active" in the reader.
   const person = r.category === "people" && r.path !== REM.owner;
-  const mapLast = person ? (r.mail?.last || (status === "Mapped" ? r.last_activity || "" : "")) : "";
+  const history = person ? rawSection(r, "History") : "";
+  const historyLast = (/Observed mail count:[^\n]*\blast:\s*(\d{4}-\d{2}-\d{2})/i.exec(history) || [])[1] || "";
+  const mapLast = person ? (r.mail?.last || historyLast || (status === "Mapped" ? r.last_activity || "" : "")) : "";
   const contactFacts = rawSection(r, "Facts") || rawSection(r, "Contact");
   const factUnknown = /^- Last contact:\s*Unknown\b/im.test(contactFacts);
   const statedContact = factUnknown ? "" : (/^- Last contact:\s*(\d{4}-\d{2}-\d{2})/im.exec(contactFacts)
     || /\bLast contact:\s*(\d{4}-\d{2}-\d{2})/i.exec(body) || [])[1] || "";
-  const contactFromMap = person && status !== "Investigated" && !statedContact && !!mapLast;
-  const last = person ? (statedContact || (contactFromMap ? mapLast : ""))
+  const derivedLast = status === "Investigated" ? historyLast : mapLast;
+  const contactFromMap = person && (!factUnknown || status === "Mapped") && !statedContact && !!derivedLast;
+  const last = person ? (statedContact || (contactFromMap ? derivedLast : ""))
     : r.category === "skills" ? (skillUsage(r)?.last || "") : r.last_activity !== undefined ? (r.last_activity || "")
     : (/\blast(?: contact)?:\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || String(r.updated || "").slice(0, 10);
   const summary = plainLine((intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || { text: "" }).text);
