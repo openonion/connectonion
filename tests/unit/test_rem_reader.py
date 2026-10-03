@@ -25,6 +25,17 @@ def test_render_embeds_records_and_neutralizes_markup(tmp_path):
     assert "as_of" in page
 
 
+def test_render_does_not_export_uncited_session_window_text(tmp_path):
+    from connectonion.rem.files import state_path, write_json
+
+    prepare(tmp_path)
+    Notebook(tmp_path).write("people/alice.md", "# Alice\n\nA short, cited page.\n")
+    cache = state_path(tmp_path, "session-windows/example.json")
+    write_json(cache, {"items": [{"source": "codex:example:123", "text": "private uncited session marker"}]})
+
+    assert "private uncited session marker" not in render(tmp_path)
+
+
 def test_render_is_self_contained_with_no_remote_assets(tmp_path):
     page = render(tmp_path)
     assert not re.search(r'(src|href)\s*=\s*["\']https?://', page)
