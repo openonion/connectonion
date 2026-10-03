@@ -1,6 +1,6 @@
 # co rem — 1.9 preview guide
 
-Updated 2026-10-04 for opt-in preview **1.9.0a36**. The exact commands are
+Updated 2026-10-04 for opt-in preview **1.9.0a37**. The exact commands are
 also available through `co rem --help` and each subcommand's `--help` page.
 Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
 `unsubscribe`, `route`, `usage`) still work until 1.9.0 and print their new name.
@@ -263,7 +263,7 @@ an exhaustive plugin-cache or remote-catalog scan. Repeat `--skills-dir` for
 explicit roots; supplying it replaces defaults for that scan. Coverage and
 unreadable files are reported in the index and command result.
 
-The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0a36/connectonion/useful_skills/rem-init/CLI.md) explains
+The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0a37/connectonion/useful_skills/rem-init/CLI.md) explains
 mail IDs, browser tabs, source/working/output directories and failure recovery.
 
 ## One execution path
@@ -363,7 +363,8 @@ says **Background updates off** and offers `co rem start`; the written pages
 remain available. A wholly empty notebook still says **Not started**.
 
 - **Home** opens with up to three pages changed in the latest pass, labeling
-  their statements as current context. When the new run log has cited Facts or
+  their statements as current context. A changed Project card shows its purpose
+  separately from its latest finding. When the new run log has cited Facts or
   Contact value changes, they appear separately as old and new values. A page
   rewrite alone is not described as a new fact. **Remember with REM** asks
   about an older page and reveals what it says on request. **Open threads**
@@ -387,7 +388,8 @@ remain available. A wholly empty notebook still says **Not started**.
 - **A page** opens on a focused status, next exchanges, compact facts, related
   records and filterable dated Activity. Project pages add purpose and a
   recorded decision when supported. A project opens on its current supported
-  finding; when only part of its queued or archived session history was read,
+  finding; on a phone, its purpose citations remain directly openable beside
+  the displayed purpose. When only part of its queued or archived session history was read,
   the page says how many inputs were supplied. Explicit links and unambiguous name
   mentions make cross-page cards and backlinks; their labels distinguish a
   link from a mention. The original prose, every Facts/Contact field,
