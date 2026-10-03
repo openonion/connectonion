@@ -18,15 +18,16 @@ FIRST_PROJECTS = None
 FIRST_ORGS = None
 WORKERS = 10           # pages investigated at once after the owner's page
 
-# Real 7-day first run on 2026-10-02: 27 selected pages, 7.66M billed input,
-# ~13 minutes including mapping. Medians below include two-year person searches.
-# An owner's first page takes two model turns: quick, then full. Notebook-local
-# completed runs replace these defaults as soon as they exist.
-DEFAULTS = {"owner": {"input_tokens": 768_000, "seconds": 273},
-            "person": {"input_tokens": 304_000, "seconds": 130},
-            "project": {"input_tokens": 69_000, "seconds": 55},
-            "org": {"input_tokens": 129_000, "seconds": 117},
-            "skill": {"input_tokens": 100_000, "seconds": 60}}  # unmeasured planning estimate
+# Planning rates from the 2026-10-03 90-day concurrent first-run sample and
+# separate full Person/Skill reads. The sample was interrupted; these rates
+# estimate completed pages, not the cost of all retries or refusals. An owner's
+# first page takes two turns: quick and full. Completed notebook-local runs
+# replace these defaults as soon as they exist.
+DEFAULTS = {"owner": {"input_tokens": 1_160_000, "seconds": 416},
+            "person": {"input_tokens": 1_100_000, "seconds": 290},
+            "project": {"input_tokens": 1_200_000, "seconds": 250},
+            "org": {"input_tokens": 120_000, "seconds": 90},
+            "skill": {"input_tokens": 500_000, "seconds": 180}}
 
 # Which run records are which kind of page: `_logged`'s phase, and the record's folder.
 _PHASES = {"owner": ("investigate me", ""), "person": ("investigate", "people/"),
@@ -100,7 +101,7 @@ def announce(total: dict, where: str) -> str:
              "from runs measured on a real notebook" if not any(measured.values()) else
              "from this notebook's runs where it has them, measured defaults otherwise")
     if total['counts'].get('skill') and not measured.get('skill'):
-        basis += "; skill time and tokens are initial planning estimates"
+        basis += "; skill time and tokens are planning estimates from sampled runs"
     return (f"About {total['pages']} page{'s' if total['pages'] != 1 else ''} ({_pages(total['counts'])}), "
             f"~{tokens(total['input_tokens'])} billed input tokens {where}, ~{total['minutes']} minutes "
             f"(an estimate {basis}).")

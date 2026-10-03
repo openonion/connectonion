@@ -519,20 +519,20 @@ def test_after_me_the_people_you_wrote_to_and_projects_four_at_a_time(people):
     assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
     text = Text.from_ansi(result.output).plain
     assert "up to two years of evidence each" in text
-    assert "10 at a time" in text and "about 30% of a weekly runner allowance is a planning target" in text
+    assert "10 at a time" in text and "about 35% of a weekly runner allowance is a planning target" in text
     assert "Written this run: your page, 5 people" in text and "3 project pages" in text
 
 
 def test_the_first_run_finishes_selected_pages_past_target(people, monkeypatch):
-    """The 30-point target is advisory; the selected cohort finishes below the safety floor."""
-    from connectonion.cli.commands.rem_commands import FIRST_RUN_TARGET_POINTS
+    """The configured target is advisory; the cohort finishes below the safety floor."""
+    from connectonion.rem.config import default_config
     root, init, calls, people_written, projects_written = people
     meter = {"used_percent": 10, "window_minutes": 10080, "resets_at": 4102444800, "plan": "plus"}
     monkeypatch.setattr("connectonion.rem.quota.read", lambda config: dict(meter))
 
     def one_person_costs_the_whole_budget(root, row, **kw):
         people_written.append(row["record"])
-        meter["used_percent"] += FIRST_RUN_TARGET_POINTS + 1
+        meter["used_percent"] += default_config()["limits"]["investigation_quota_points"] + 1
         return {"record": row["record"], "changed": [row["record"]]}
 
     monkeypatch.setattr("connectonion.rem.people_pages.investigate_person", one_person_costs_the_whole_budget)
@@ -619,7 +619,7 @@ def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
     assert fr.plan(runs, owner=False, people=0, projects=20, workers=10)["minutes"] == 9  # wall clock, shared
     owner_only = fr.plan(runs, owner=True, people=0, projects=0, workers=10)
     assert owner_only["input_tokens"] == 2 * fr.DEFAULTS["owner"]["input_tokens"]
-    assert owner_only["minutes"] == 10  # quick and full are two turns, not one
+    assert owner_only["minutes"] == 14  # quick and full are two turns, not one
     line = fr.announce(total, "on your Codex plan")
     assert line == ("About 2 pages (2 projects), ~1.4M billed input tokens on your Codex plan, ~9 minutes "
                     "(an estimate from this notebook's own runs).")

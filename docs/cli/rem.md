@@ -80,16 +80,20 @@ model can find, not what every turn reads. `--first-people N`,
 Before it spends anything it says one total (#2008): which runner and model,
 that it runs on your own plan, and "About N pages (...), ~X billed input tokens,
 ~Y minutes (an estimate ...)". Per page it is the median of this notebook's own
-completed runs of that kind (`.state/runs/`); before there are any, defaults
-measured on a real 7-day first run on 2026-10-02: each owner turn 768k and
-~4.5 minutes (quick and full are both counted), a person 304k and ~2 minutes
-with up to two years of evidence, a project 69k and ~1 minute, an organisation
-129k and ~2 minutes. Minutes are wall clock: after the quick owner turn, the
+completed runs of that kind (`.state/runs/`); before there are any, planning
+rates from a sampled 90-day concurrent run and separate full Person/Skill reads:
+each owner turn 1.16M and ~7 minutes (quick and full are both counted), a
+person 1.1M and ~5 minutes, a project 1.2M and ~4 minutes, an organisation
+120k and ~1.5 minutes, a skill 500k and ~3 minutes. The 90-day run was
+interrupted, so these rates do not predict every retry or refusal. Minutes are
+wall clock: after the quick owner turn, the
 full turn and selected pages share up to 10 workers. The estimate simulates
-that queue so a slow last page is not hidden by an average. Roughly 30% of a weekly runner
-allowance is a target, not a hard stop. The selected investigation finishes
+that queue so a slow last page is not hidden by an average. The configured
+investigation budget (35% of a weekly runner allowance by default) is a target,
+not a hard stop. The selected investigation finishes
 even if it uses more, unless the configured weekly safety floor is reached;
-pages already in flight finish. Ctrl-C stops it, says which pages
+pages already in flight finish. The input-token estimate includes cached tokens
+and is not weekly quota points. Ctrl-C stops it, says which pages
 were written, keeps the map and every page, and names the command that
 continues. It skips the model steps, with a one-line reason, when
 the runner is not installed or not signed in (checked before the map starts,
@@ -619,12 +623,13 @@ below is good to about one point.
   default **35** points of the weekly window. The
   scheduled round adds up the points its investigation runs used since the
   window last reset, and starts no new page once that reaches the budget.
-- **The initial investigation uses a soft 30% target.** It finishes the
+- **The initial investigation uses the configured budget as a soft target**
+  (35% by default). It finishes the
   selected pages beyond that target and the normal investigation
   budget. The configured safety floor still protects the rest of the week.
   Claude Code and other runners without a readable weekly meter show an
   estimate and finish the selected cohort; the CLI cannot claim to have
-  measured 20% of their plan.
+  measured 35% of their plan.
 - **Manual investigation is metered too** (#1842). `co rem investigate PAGE`,
   `me` and CATEGORY runs record usage. A CATEGORY run covers all pending pages
   by default, with up to 10 workers; `--limit N` and `--workers N` bound a trial.

@@ -440,8 +440,8 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
 
 
 # The first run investigates the owner and every eligible mapped page. The
-# weekly target is advisory; explicit --first-* flags cap a kind for a trial.
-FIRST_RUN_TARGET_POINTS = 30
+# configured weekly budget is an advisory target here; explicit --first-*
+# flags cap a kind for a trial.
 FIRST_RUN_WORKERS = 10
 
 
@@ -449,7 +449,7 @@ def _first_run_gate(root, config):
     """Before each first-run page: why not to start it, or ''.
 
     The configured weekly floor still protects the user's work. The first run
-    targets 35 points but does not abandon its selected pages at that point.
+    shows the configured budget as a target but does not abandon selected pages there.
     A runner without a meter can still finish the bounded cohort.
     """
     from ...rem import quota
@@ -886,10 +886,12 @@ def make_rem_app(factory):
             steps += ([f"{counted(len(skill_rows), 'installed skill')} (source and retained run evidence)"] if skill_rows else [])
             if not steps:
                 return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
+            target = config["limits"]["investigation_quota_points"]
             cost = (f"First run with {config['runner']} ({config['model']}): "
                     + ", ".join(steps) + f"; up to {FIRST_RUN_WORKERS} at a time.\n"
                     + "Estimate: " + first_run.announce(total, plan) + "\n"
-                    + f"Budget: about {FIRST_RUN_TARGET_POINTS}% of a weekly runner allowance is a planning "
+                    + "Input estimate includes cached tokens; it is not weekly quota points.\n"
+                    + f"Budget: about {target}% of a weekly runner allowance is a planning "
                     "target, not a stop. The selected investigation finishes even if it uses more; "
                     "a runner without a weekly meter cannot verify the percentage.\n"
                     "Controls: --first-people, --first-projects, --first-orgs and --first-skills cap a kind; Ctrl-C "

@@ -66,7 +66,7 @@ and work immediately, with evidence cited on each page.
 Before the first page it says one total: about how many pages, ~how many billed
 input tokens on your plan and ~how many minutes, an estimate from the median of
 this notebook's own runs (before there are any, measured defaults). It names the
-runner and model. Around 30% of a weekly runner allowance is a target,
+runner and model. The configured investigation budget (35% by default) is a target,
 not a hard limit: the selected investigation finishes even if it uses more.
 The configured weekly safety floor still stops new pages when measurable.
 Ctrl-C stops it, says which pages were written, and
