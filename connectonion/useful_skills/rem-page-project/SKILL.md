@@ -113,8 +113,8 @@ An unknown flow is omitted; a plausible diagram is not evidence.
   here rather than as a tail on every bullet elsewhere.
 - `Sources`: numbered, `- [n] <source id> — <date>`, nothing more; each inspected
   file its own entry. Mark inference; never copy facts from examples.
-  Use snapshot `project-source:` IDs; file mtime and capture time do not
-  establish project activity or release.
+  Use `project-source:` IDs or inspected paths and revisions. Dates do
+  not establish project activity or release.
   Check inherited clauses, quantities and dates against exact originals,
   not summaries or adjacent inputs. Valid IDs are not support; cite each
   joined clause and both messages.

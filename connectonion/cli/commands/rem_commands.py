@@ -239,7 +239,8 @@ def _logged(root, record, phase, call, quiet=False):
         run.update(outcome="completed", usage=result.get("usage"), usage_by_stage=result.get("usage_by_stage") or {},
                    changed=result.get("changed") or [], items=result.get("items", 0),
                    chars_in=result.get("chars_gathered") or 0, coverage=result.get("coverage") or [],
-                   instructions_chars=result.get("instructions_chars") or {})
+                   instructions_chars=result.get("instructions_chars") or {},
+                   evidence=result.get("evidence") or [], report=result.get("report") or "")
         _WRITTEN.append(record)
         # Said, not left to the record: an accepted page had no outcome line (#2044).
         rem_look.step(f"Updated {record}: accepted, {len(run['changed'])} page"
