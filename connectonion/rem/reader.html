@@ -615,6 +615,7 @@
   .project-workspace ul { margin: 0; padding-left: 18px; }
   .project-workspace li { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .project-workspace .open-note { display: inline-block; margin-top: 12px; font: 600 12px var(--ui); }
+  .record-focus > .open-note { display: flex; align-items: center; min-height: 44px; }
   .focus-section { background: var(--sheet); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; min-width: 0; }
   .focus-section h2 { margin: 0 0 14px; font: 600 17px var(--ui); }
   .focus-section .threads { margin: 0; padding: 0; }
@@ -1864,7 +1865,8 @@ function morningBrief() {
   }
   const cards = el("div", { class: "memory-grid" });
   for (const r of changed.slice(0, 3)) cards.appendChild(el("article", { class: "memory-card" }, [
-    el("span", { class: "kind", text: singular(r.category) + " · Current context on an updated page" }),
+    el("span", { class: "kind", text: singular(r.category) + " · Page rewritten" +
+      (r.category === "projects" && known(r).last ? " · last mapped session " + fmtDate(known(r).last) : "") }),
     el("h3", {}, [el("a", { href: href(r), text: r.title })]),
     el("p", { html: inline(memoryStatement(r) || "This page was updated. Open it to see the current context.", r.path) }),
     el("a", { class: "open", href: href(r), text: "Read the page and sources →" })]));

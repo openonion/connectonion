@@ -297,6 +297,37 @@ def run_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
     return envelope
 
 
+def run_claim_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
+    """Audit cited originals in a read-only Codex turn with structured output."""
+    if config["runner"] != "codex":
+        packet = workspace / "claim-input.txt"
+        packet.write_text(prompt, encoding="utf-8")
+        return run_task(workspace, f"Read {packet} fully and return its requested JSON decision. "
+                        "Do not edit the packet or any page.", config, stage)
+    from ..useful_tools.codex import _base_command
+    from .project_claim_review import SCHEMA
+    binary = _base_command()
+    if not binary:
+        raise RunFailed("Codex is not installed; cited-claim audit could not run")
+    schema = workspace / "claim-schema.json"
+    answer = workspace / "claim-answer.json"
+    schema.write_text(json.dumps(SCHEMA), encoding="utf-8")
+    command = [*binary[:-1], "exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only",
+               "--json", "--output-schema", str(schema), "-o", str(answer)]
+    if config["model"] != "default":
+        command += ["--model", config["model"]]
+    completed = subprocess.run(command + ["-"], input=prompt, capture_output=True, text=True,
+                               cwd=workspace, timeout=config["limits"]["timeout_seconds"])
+    events = [json.loads(line) for line in completed.stdout.splitlines() if line.startswith("{")]
+    turn = next((event for event in reversed(events) if event.get("type") == "turn.completed"), {})
+    usage = {key: (turn.get("usage") or {}).get(key, 0)
+             for key in ("input_tokens", "cached_input_tokens", "output_tokens")}
+    if completed.returncode or not answer.is_file() or not turn:
+        raise RunFailed(f"Cited-claim audit did not complete (exit {completed.returncode}); "
+                        "prior page preserved", usage)
+    return {"result": answer.read_text(encoding="utf-8"), "usage": usage}
+
+
 # The prompt travels as one argv string; Linux caps a single argument at
 # 128 KiB -- bytes, not characters, and a Chinese character is three.
 INLINE_LIMIT = 100_000
@@ -480,7 +511,7 @@ PROMOTE_WAIT_SECONDS = 1800
 
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
-                       investigation=True):
+                       investigation=True, claim_config=None):
     from .page_review import (compact_page, drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
                               link_company, normalize_numbered_sources, placeholder_errors, restore_runner_fields,
                               unresolved_findings, validate)
@@ -500,7 +531,12 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # Minor unresolved claims can be omitted, but losing a lead or finding
     # needs a repair turn instead of quietly promoting an impoverished page.
     cited_text = normalize_numbered_sources(text)
-    text, dropped = drop_unresolved(record, cited_text, original, items)
+    if investigation and record.startswith("projects/"):
+        # A dropped citation can strand an uncited diagram or command in the
+        # same section. Let validation ask the agent to repair the whole page.
+        text, dropped = cited_text, {"citations": [], "lines": 0}
+    else:
+        text, dropped = drop_unresolved(record, cited_text, original, items)
     citation_errors = unresolved_findings(cited_text, dropped['citations']) if investigation else []
     text = link_company(notebook, record, drop_uncited_sources(text))
     # A phone, address, link or contact date our code read from the material
@@ -521,6 +557,17 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # 290k tokens and no page changed in one a5 sync (#2014).
     if investigation:
         errors += placeholder_errors(text)
+    audit_usage = {}
+    audit_status = "not automatically assessed"
+    if not errors and claim_config is not None and investigation and record.startswith("projects/"):
+        from .project_claim_review import review as review_claims
+        report, audit_usage = review_claims(notebook, text, claim_config, directory, run_claim_task)
+        write_json(directory / "claim-review.json", report)
+        audit_status = "bounded citation audit passed" if report["verdict"] == "pass" else "bounded citation audit failed"
+        if report["verdict"] != "pass":
+            errors.append("Cited-claim audit did not pass; see claim-review.json")
+    total_usage = {key: (usage or {}).get(key, 0) + audit_usage.get(key, 0)
+                   for key in (usage or {}).keys() | audit_usage.keys()} or None
     # Sync owns this same lock. Compare and write together so a completed
     # concurrent update cannot be silently replaced by an older candidate.
     # Wait for it: at 05:00 on 2026-09-28 a finished project page was dropped
@@ -530,7 +577,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             try:
                 held.enter_context(maintenance_lock(notebook.root, wait=PROMOTE_WAIT_SECONDS))
             except RemError as error:
-                raise RunFailed(f"{error}; the finished page is kept at {candidate}", usage) from error
+                raise RunFailed(f"{error}; the finished page is kept at {candidate}", total_usage) from error
         if not notebook.path(record).is_file() or notebook.read(record) != original:
             errors.append("Page changed during investigation; preserve current page and retry")
         write_json(directory / "review.json", {"accepted": not errors, "errors": errors,
@@ -540,15 +587,16 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
                    "facts_restored": [{k: r[k] for k in ("field", "source")} for r in restored],
                    "facts": {"before": facts.coverage(original, record), "after": facts.coverage(text, record),
                              "extracted": sum(1 for r in extracted if r["field"] in facts.fields(record))},
-                   "factual_quality": "not automatically assessed"})
+                   "factual_quality": audit_status})
         if errors:
             # The run is paid for; the page it wrote is kept where the reader can see
             # what was refused and why, not discarded behind a one-line error.
-            raise RunFailed(f"Candidate rejected, kept at {candidate}: " + "; ".join(errors), usage)
+            raise RunFailed(f"Candidate rejected, kept at {candidate}: " + "; ".join(errors), total_usage)
         if record.startswith("projects/"):
             from .project_pages import retain_live_source_context
             retain_live_source_context(notebook.root, original, text)
         notebook.write(record, text)
+    return audit_usage
 
 
 def _promote_maintenance(notebook, working, before, items, directory, usage, lock_held):
@@ -767,7 +815,11 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                    "investigation:coverage, investigation:project-scope, "
                    "investigation:project-inventory, investigation:project-repositories and "
                    "investigation:page are reading guides, never citable originals. "
-                   "Follow them to original sessions or verified files and cite those IDs. "
+                   "Follow them to original sessions or hash-pinned files beneath this page's mapped Paths; "
+                   "nearby checkouts outside those Paths cannot be retained as evidence. "
+                   "Every concrete purpose, architecture, command, URL, status and next-action clause needs "
+                   "an original source that actually supports it; use bare Unknown if that source is unavailable. "
+                   "Audit carried text too, because the prior page is not an original source. "
                    "Remove claims without original support; put search limits in the final run reply, not the page. "
                    "In Open threads, list only supported unresolved exchanges; if none is confirmed, "
                    "write bare Unknown, not a no-pending-work summary as an open item.")
@@ -839,9 +891,12 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                            for key in inquiry_usage.keys() | (result.get("usage") or {}).keys()} or None
         if candidate:
             def promote():
-                _promote_candidate(notebook, record, candidate, before[record], items, directory,
-                                   result.get("usage"), lock_held=maintenance_lock_held,
-                                   investigation=stage == "investigate")
+                audit_usage = _promote_candidate(notebook, record, candidate, before[record], items, directory,
+                                                 result.get("usage"), lock_held=maintenance_lock_held,
+                                                 investigation=stage == "investigate", claim_config=selected_config)
+                if audit_usage:
+                    result["usage"] = {key: (result.get("usage") or {}).get(key, 0) + audit_usage.get(key, 0)
+                                       for key in (result.get("usage") or {}).keys() | audit_usage.keys()}
 
             try:
                 promote()

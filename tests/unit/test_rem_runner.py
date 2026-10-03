@@ -87,6 +87,8 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
     assert 'stop using tools and return a brief coverage summary' in prompts[0]
     assert 'investigation:coverage, investigation:project-scope' in prompts[0]
     assert 'reading guides, never citable originals' in prompts[0]
+    assert 'nearby checkouts outside those Paths cannot be retained' in prompts[0]
+    assert 'Every concrete purpose, architecture, command, URL' in prompts[0]
     assert 'write bare Unknown, not a no-pending-work summary' in prompts[0]
 
 

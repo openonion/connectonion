@@ -38,6 +38,7 @@ def test_attachment_source_keeps_filename_spaces_and_shows_extraction_limits(tmp
         browser = api.chromium.launch(channel='chrome', headless=True)
         page = browser.new_page(viewport={'width': 375, 'height': 812})
         page.goto(path.as_uri() + '#r=people%2Fmentor.md')
+        assert page.locator('.record-focus > .open-note').evaluate('e => e.getBoundingClientRect().height >= 44')
         assert page.locator('.block-sources .id').inner_text() == source
         cite = page.locator('a.cite[href$="h=src-15"]').first
         cite.click()

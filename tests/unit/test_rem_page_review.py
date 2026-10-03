@@ -230,6 +230,10 @@ def test_skill_finding_citing_a_split_record_survives_promotion(tmp_path, monkey
 
 @pytest.mark.parametrize('invalid', [False, True])
 def test_investigation_promotes_only_valid_new_candidate(tmp_path, monkeypatch, invalid):
+    from connectonion.rem import project_claim_review
+
+    monkeypatch.setattr(project_claim_review, 'review', lambda *_: (
+        {'verdict': 'pass', 'findings': []}, {'input_tokens': 3}))
     prepare(tmp_path)
     nb = Notebook(tmp_path)
     nb.stub_project('projects/atlas.md', 'Atlas')
@@ -251,7 +255,9 @@ def test_investigation_promotes_only_valid_new_candidate(tmp_path, monkeypatch, 
             run_stage(nb, items, default_config(), stage='investigate')
         assert nb.read('projects/atlas.md') == old
     else:
-        assert run_stage(nb, items, default_config(), stage='investigate')['changed'] == ['projects/atlas.md']
+        result = run_stage(nb, items, default_config(), stage='investigate')
+        assert result['changed'] == ['projects/atlas.md']
+        assert result['usage']['input_tokens'] == 10
         from connectonion.rem.page_review import compact_page
         assert nb.read('projects/atlas.md') == compact_page('projects/atlas.md', candidate)
 
@@ -660,6 +666,34 @@ def test_an_investigated_page_that_still_says_not_investigated_yet_is_refused(tm
     candidate.write_text(finished)
     runner._promote_candidate(nb, 'projects/atlas.md', candidate, old, items, tmp_path, None)
     assert 'A local demo. [1]' in nb.read('projects/atlas.md')
+
+
+def test_project_page_keeps_unretained_file_citation_for_review(tmp_path):
+    """A bad file citation must not leave an uncited diagram behind."""
+    import hashlib
+    from connectonion.rem import runner
+    prepare(tmp_path)
+    nb = Notebook(tmp_path)
+    mapped = tmp_path / 'mapped'
+    mapped.mkdir()
+    outside = tmp_path / 'outside.md'
+    outside.write_text('A -> B\n')
+    nb.stub_project('projects/atlas.md', 'Atlas', paths=[str(mapped)])
+    old = nb.read('projects/atlas.md')
+    source = f'file:{outside}@{hashlib.sha256(outside.read_bytes()).hexdigest()}'
+    candidate = (old.replace('- Unknown — not investigated yet', '- Unknown')
+                 .replace('## Insight\n- Unknown', '## Insight\n- Changed: collect first. [2]')
+                 .replace('## Overview\n- Unknown',
+                          '## Overview\nAn unsupported architecture. [1]\n```text\nA -> B\n```')
+                 .replace('- (none yet)', f'- [1] {source} — inspected file\n- [2] codex:abc — user request'))
+    path = tmp_path / 'candidate.md'
+    path.write_text(candidate)
+    items = [{'role': 'page', 'record': 'projects/atlas.md', 'text': old},
+             {'source': 'codex:abc', 'text': 'Collect first.'}]
+    with pytest.raises(runner.RunFailed, match='Cited local file needs its current SHA-256 and a mapped path'):
+        runner._promote_candidate(nb, 'projects/atlas.md', path, old, items, tmp_path, None)
+    assert nb.read('projects/atlas.md') == old
+    assert path.read_text() == candidate
 
 
 def test_the_project_skills_require_evidence_for_overview_and_no_placeholder_or_guessed_name():

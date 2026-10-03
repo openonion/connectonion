@@ -9,11 +9,18 @@ Why these rules: docs/rem-skills/rem-investigate.md
 
 - **Sessions show intent, not repository state.** Check files before claiming
   anything shipped or passed.
-- **Inspect mapped repositories.** Use `rg`, `git log`, `git show`, manifests
-  and source files. Cite `file:/absolute/path@<sha256>` for current files
-  (hash with `shasum -a 256`), or
-  `git:/absolute/repository:<full-commit-sha>:relative/file` for historical
-  files. The index's omitted files are not proof of absence.
+- **Inspect the live repository paths supplied in the task.** Start with the
+  evidence index and mapped paths. Use `git log`, `git show`, `README.md`,
+  `pyproject.toml`, `package.json` and relevant source files to verify claims.
+  Record the inspected path and revision or timestamp in each source
+  citation. For a live file outside snapshots, cite
+  `file:/absolute/path@<sha256>` (hash full bytes with `shasum -a 256`)
+  so the cited version can be retained. The index names omitted files and size limits; an omitted body is
+  not evidence that implementation is absent.
+- A file in a nearby checkout outside this page's mapped `Paths` cannot be
+  retained as this project's source, even if it exists and its hash is correct.
+  Do not carry its architecture or commands into the page. If the mapped path
+  has no inspectable original for a section, use `Unknown` there.
 - `project-inventory` lists candidate files, not their contents. Do not cite
   `investigation:project-inventory`; cite the inspected file or a retained
   snapshot for file facts.
@@ -44,8 +51,11 @@ Why these rules: docs/rem-skills/rem-investigate.md
   session establishes this project's subject. If it names another product, or
   was not supplied, leave the follow-up unassigned despite its cwd. Exclude it
   from current findings, status, activity, issues, threads and next action.
-- Audit the final `Now`, `Where it stands` and `Open threads` claims against
-  each cited original before writing the candidate. A short input reporting a
+- Audit every concrete claim in `Insight`, `What it is`, `Why it exists`,
+  `Where it stands` and `Open threads` against its adjacent cited original
+  before writing the candidate. A question about a filter proves only that
+  the user asked; a request to organize files does not authorize a commit or
+  push. A short input reporting a
   missed reply establishes that report only; it does not establish whether a
   listener is event-driven, what caused the miss, or what was implemented.
   Remove any mechanism, cause, status or next action absent from the cited

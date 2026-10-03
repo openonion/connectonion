@@ -1,0 +1,83 @@
+"""A Project citation audit must preserve the last accepted page on refusal."""
+
+import json
+import importlib
+from types import SimpleNamespace
+
+import pytest
+
+from connectonion.rem import project_claim_review, runner
+from connectonion.rem.config import prepare
+from connectonion.rem.files import Notebook
+
+
+def test_missing_cited_original_never_reaches_the_model(tmp_path):
+    prepare(tmp_path)
+    candidate = '# Atlas\n\nA factual claim [1].\n\n## Sources\n- [1] codex:missing — 2026-10-01\n'
+
+    def should_not_run(*args):
+        raise AssertionError('The audit cannot judge an unavailable original')
+
+    report, usage = project_claim_review.review(Notebook(tmp_path), candidate, {}, tmp_path, should_not_run)
+    assert report == {'verdict': 'insufficient', 'findings': [], 'missing_citations': ['1']}
+    assert usage == {}
+
+
+def test_truncated_original_is_shown_with_its_limit(tmp_path, monkeypatch):
+    monkeypatch.setattr(project_claim_review, 'cited_context', lambda *_args, **_kwargs: {
+        'codex:session': {'excerpt': 'A question about filtering', 'truncated': True}})
+    candidate = '# Atlas\n\nFiltering was discussed [1].\n\n## Sources\n- [1] codex:session — 2026-10-01\n'
+    material, missing = project_claim_review.packet(Notebook(tmp_path), candidate)
+    assert missing == []
+    assert material['sources'][0]['context']['truncated'] is True
+    assert material['sources'][0]['context']['excerpt'] == 'A question about filtering'
+
+
+def test_failed_project_claim_review_preserves_previous_page(tmp_path, monkeypatch):
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    record = 'projects/atlas.md'
+    notebook.stub_project(record, 'Atlas')
+    before = notebook.read(record)
+    candidate = (before.replace('- Unknown — not investigated yet', '- Unknown')
+                 .replace('## What it is\n- Unknown', '## What it is\nA local demo. [1]')
+                 .replace('- (none yet)', '- [1] codex:session — 2026-10-01'))
+    path = tmp_path / 'candidate.md'
+    path.write_text(candidate)
+
+    def rejected(*args):
+        return {'verdict': 'fail', 'findings': [{'issue': 'The original only asked a question',
+                                               'evidence': 'No answer is present',
+                                               'required_correction': 'State the question as open'}]}, {
+            'input_tokens': 100, 'output_tokens': 20}
+
+    monkeypatch.setattr(project_claim_review, 'review', rejected)
+    items = [{'role': 'page', 'record': record, 'text': before},
+             {'source': 'codex:session', 'text': 'A local demo.'}]
+    with pytest.raises(runner.RunFailed, match='Cited-claim audit did not pass') as raised:
+        runner._promote_candidate(notebook, record, path, before, items, tmp_path,
+                                  {'input_tokens': 200}, claim_config={})
+    assert notebook.read(record) == before
+    assert raised.value.usage == {'input_tokens': 300, 'output_tokens': 20}
+    assert json.loads((tmp_path / 'claim-review.json').read_text())['verdict'] == 'fail'
+    assert json.loads((tmp_path / 'review.json').read_text())['factual_quality'] == 'bounded citation audit failed'
+
+
+def test_codex_audit_sends_private_sources_over_stdin(tmp_path, monkeypatch):
+    codex = importlib.import_module('connectonion.useful_tools.codex')
+
+    monkeypatch.setattr(codex, '_base_command', lambda: ['codex', 'app-server'])
+    seen = {}
+
+    def completed(command, **kwargs):
+        seen.update(command=command, input=kwargs['input'])
+        (tmp_path / 'claim-answer.json').write_text('{"verdict":"FAIL","findings":[]}')
+        event = {'type': 'turn.completed', 'usage': {'input_tokens': 42, 'output_tokens': 4}}
+        return SimpleNamespace(returncode=0, stdout=json.dumps(event), stderr='')
+
+    monkeypatch.setattr(runner.subprocess, 'run', completed)
+    config = {'runner': 'codex', 'model': 'gpt-6-luna', 'limits': {'timeout_seconds': 600}}
+    result = runner.run_claim_task(tmp_path, 'PRIVATE SOURCE BODY', config, 'claim-audit')
+    assert seen['input'] == 'PRIVATE SOURCE BODY'
+    assert 'PRIVATE SOURCE BODY' not in ' '.join(seen['command'])
+    assert result['usage'] == {'input_tokens': 42, 'cached_input_tokens': 0, 'output_tokens': 4}
