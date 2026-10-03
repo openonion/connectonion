@@ -400,7 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a22
+## Current Version: 1.9.0a23
+
+1.9.0a23 clarifies map-derived contact dates in the reader and keeps table
+headers visible beside the sticky Name column during horizontal scroll on
+mobile. When a person note lacks a confirmed contact date, the reader shows the
+mapped email date with an explicit source label, explains the distinction in
+expanded Facts, and preserves readable headers beside the sticky Name column
+during horizontal scroll on 375px screens. Stable remains 1.8.10. See
+[1.9.0a23 notes](docs/releases/1.9.0a23.md).
+
+- 1.9.0a23 (#2199, #2205; map-derived contact dates and mobile table header visibility).
+
+## Previous preview: 1.9.0a22
 
 1.9.0a22 leads project pages with a current, source-backed finding when one is
 supported; otherwise it shows the sourced project purpose and says current

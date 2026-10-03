@@ -23,6 +23,17 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a23** clarifies map-derived contact dates in the reader and keeps
+table headers visible beside sticky columns on mobile. See
+[1.9.0a23 notes](releases/1.9.0a23.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a23'
+co rem open --live
+```
+
+Earlier alpha previews remain available:
+
 Alpha **1.9.0a22** makes project findings and their evidence easier to check:
 the current finding leads, partial session coverage is visible, and every
 numbered source can be opened from the reader. See
