@@ -62,6 +62,8 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
     assert 'Snapshot ' in page.locator('#mobile-status').inner_text()
+    assert 'Background updates off' in page.locator('#mobile-status').inner_text()
+    assert 'Not started' not in page.locator('#mobile-status').inner_text()
     assert page.locator('#mobile-status').is_visible()
     for selector in ('#q', '.nav-toggle', '.mobile-back a'):
         assert page.locator(selector).bounding_box()['height'] >= 44
@@ -70,6 +72,11 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     assert page.locator('.deep-note .note').bounding_box()['y'] < page.locator('.deep-note .side').bounding_box()['y']
     assert 'co\u00a0rem\u00a0start' in page.locator('#mobile-status').text_content()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    page.set_viewport_size({'width': 1440, 'height': 900})
+    page.reload()
+    assert 'Background updates off' in page.locator('#foot').inner_text()
+    assert 'Not started' not in page.locator('#foot').inner_text()
+    assert '`' not in page.locator('#foot').inner_text()
 
 
 @pytest.fixture
@@ -259,7 +266,7 @@ def test_first_map_shows_results_next_step_and_held_count_on_phone(reader, tmp_p
     assert page.locator(".first-map-actions a").inner_text() == f"Browse {visible_people} people →"
     assert page.locator(".first-map-actions a").is_visible()
     assert page.locator(".first-map-actions button").evaluate("e => e.getBoundingClientRect().bottom <= innerHeight")
-    assert "Background passes off" in page.locator("#mobile-status").inner_text()
+    assert "Background updates off" in page.locator("#mobile-status").inner_text()
     page.locator(".first-map-actions a").click()
     assert "1 possible contact" in page.locator(".held-note").inner_text()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

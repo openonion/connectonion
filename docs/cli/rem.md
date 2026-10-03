@@ -354,6 +354,9 @@ findings first, then newest last contact. The Markdown file is unchanged, and
 
 The reader returns the context REM carried forward, then helps you recall an
 older page before showing its answer. It remains a point-in-time snapshot.
+When pages already exist but no background schedule is authorized, its status
+says **Background updates off** and offers `co rem start`; the written pages
+remain available. A wholly empty notebook still says **Not started**.
 
 - **Home** opens with up to three pages changed in the latest pass, labeling
   their statements as current context. When the new run log has cited Facts or
