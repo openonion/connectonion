@@ -1383,7 +1383,8 @@ function facts(r) {
     open: t.items, calm: t.calm,
     what: lineOf("what it is") || lineOf("who they are") || lineOf("what it does"),
     domain: plainLine(rawSection(r, "Domains")).replace(/\s*\[\d+\]/g, ""),
-    people: listItems((section(r, "people here") || section(r, "people and ownership") || { text: "" }).text).length,
+    people: listItems((section(r, "people here") || section(r, "people and ownership") || { text: "" }).text)
+      .filter(item => /\]\((?:\.\.\/|\.\/)?people\/[^)]+\.md\)/.test(item)).length,
     repo: (paths.find(p => /^\/|^~|^[A-Z]:\\/.test(p)) || "").replace(/\s*\[\d+\].*$/, ""),
     sessions: Number(field(/^Sessions:\s*(\d+)/)) || null
   };
