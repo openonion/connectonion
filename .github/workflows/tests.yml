@@ -42,8 +42,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    # The whole offline suite takes about a minute in parallel. A job still
-    # running at fifteen is hung; the per-test timeout in pytest.ini has
+    # The offline suite can take several minutes on a two-worker runner. A job
+    # still running at fifteen is hung; the per-test timeout in pytest.ini has
     # already named the culprit, and this is the backstop for a hang outside
     # any test (collection, a fixture that never yields, an atexit hook).
     timeout-minutes: 15
@@ -94,6 +94,34 @@ jobs:
           name: coverage-xml
           path: coverage.xml
           if-no-files-found: ignore
+
+  cli-help-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Audit every co help page once
+        env:
+          OPENONION_API_KEY: test-key
+        run: |
+          pytest -q tests/unit/test_cli_help_contract.py::test_co_meets_the_contract_and_its_house_style \
+            -m slow --tb=short
 
   # The Remote Browser gateway is a security boundary built directly on each
   # platform's asyncio/TCP implementation. Keep its small focused suite on every

@@ -48,6 +48,7 @@ def test_the_look_baseline_can_only_shrink():
 
 
 @pytest.mark.timeout(900)
+@pytest.mark.slow
 def test_co_meets_the_contract_and_its_house_style():
     findings, checked = audit.audit(["co"])
     ours = {path: page for path, page in checked.items() if not path.startswith(OWN_PAGES)}
