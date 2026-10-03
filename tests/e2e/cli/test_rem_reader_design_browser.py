@@ -987,6 +987,58 @@ def test_instruction_excerpt_is_not_a_verified_result_and_respects_privacy(reade
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
+def test_long_skill_source_find_reaches_passages_and_keeps_original(reader):
+    page, uri = reader
+    for width in (1440, 375):
+        page.set_viewport_size({'width': width, 'height': 812})
+        page.goto(uri + '#r=skills%2Fcatalog%2Fweekly-brief.md')
+        page.evaluate("""() => {
+          const r = byPath('skills/catalog/weekly-brief.md');
+          const source = 'skill-record:' + 'b'.repeat(64);
+          r.text = '# weekly-brief\\n\\n## Insight\\nA queue readback checked the saved draft. [1]'
+            + '\\n\\n## Sources\\n- [1] ' + source;
+          const part = ('{"step":"invented source"},\\n').repeat(650);
+          REM.source_context[source] = {source: 'skill-record',
+            excerpt: 'İstanbul\\n' + part + 'Queue readback checked the first draft.\\n' + part
+              + 'Queue readback checked the second draft.\\n', truncated: true};
+          KNOWN.delete(r.path);
+          render();
+        }""", isolated_context=False)
+        cite = page.locator('a.cite').first
+        cite.click()
+        dialog = page.locator('#evidence-dialog')
+        find = dialog.get_by_role('searchbox', name='Find in archived source')
+        assert find.is_visible()
+        assert 'truncated' in dialog.inner_text().lower()
+        original = dialog.locator('blockquote').inner_text()
+        assert len(original) > 30000
+        find.fill('Queue readback')
+        assert dialog.locator('mark').inner_text() == 'Queue readback'
+        assert 'Match 1 of 2' in dialog.locator('.evidence-find-status').inner_text()
+        next_match = dialog.get_by_role('button', name='Next match')
+        assert next_match.bounding_box()['height'] >= 44
+        next_match.click()
+        assert 'Match 2 of 2' in dialog.locator('.evidence-find-status').inner_text()
+        assert dialog.locator('blockquote').inner_text() == original
+        find.fill('not in this invented run')
+        assert 'No match' in dialog.locator('.evidence-find-status').inner_text()
+        assert not dialog.locator('mark').count()
+        find.fill('.*')
+        assert 'No match' in dialog.locator('.evidence-find-status').inner_text()
+        find.fill('')
+        assert dialog.locator('.evidence-find-status').inner_text() == ''
+        assert dialog.locator('blockquote').inner_text() == original
+        assert find.is_visible()
+        assert dialog.evaluate('e => e.scrollWidth <= e.clientWidth')
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        page.evaluate('togglePrivate()', isolated_context=False)
+        assert not find.is_visible()
+        page.evaluate('togglePrivate()', isolated_context=False)
+        assert find.is_visible()
+        page.get_by_role('button', name='Close source context').click()
+        assert cite.evaluate('e => e === document.activeElement')
+
+
 def test_skill_opens_on_its_finding_and_keeps_usage_in_full_note(reader):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})

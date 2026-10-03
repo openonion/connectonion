@@ -708,6 +708,15 @@
   .evidence-meta { font: 11px var(--mono); color: var(--ink-3); }
   .evidence-participants > summary { cursor: pointer; padding: 12px 0; }
   .evidence-original blockquote { margin: 12px 0 0; padding: 14px 18px; border-left: 3px solid var(--blue); background: var(--blue-soft); font: 16px/1.55 var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .evidence-find { position: sticky; top: 44px; z-index: 1; display: grid; gap: 8px; margin-top: 16px; padding: 8px 0; background: var(--sheet); }
+  .evidence-find label { font: 600 13px var(--ui); }
+  .evidence-find-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+  .evidence-find input { flex: 1 1 180px; min-width: 0; min-height: 44px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); font: 16px var(--ui); }
+  .evidence-find button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); cursor: pointer; }
+  .evidence-find input:focus-visible, .evidence-find button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .evidence-find button:disabled { opacity: .5; cursor: default; }
+  .evidence-find-status { min-height: 18px; font: 12px var(--mono); color: var(--ink-3); }
+  .evidence-original mark { background: #ffe083; color: #171717; }
   .evidence-unavailable { color: var(--ink-2); }
   @media (prefers-reduced-motion: reduce) { .relation-card { transition: none; } .relation-card:hover, .relation-card:focus-visible { transform: none; } }
 
@@ -2847,6 +2856,39 @@ function render() {
   refreshFocusExpansion();
 }
 
+function sourceFind(excerpt, quote) {
+  const input = el("input", { type: "search", id: "evidence-find-input", "aria-label": "Find in archived source" });
+  const next = el("button", { type: "button", text: "Next match", disabled: "" });
+  const status = el("span", { class: "evidence-find-status", role: "status" });
+  let matches = [], current = 0, term = "";
+  function show() {
+    const at = matches[current];
+    const mark = el("mark", { text: excerpt.slice(at, at + term.length) });
+    quote.replaceChildren(document.createTextNode(excerpt.slice(0, at)), mark,
+      document.createTextNode(excerpt.slice(at + term.length)));
+    status.textContent = "Match " + (current + 1) + " of " + matches.length + " in the archived excerpt";
+    mark.scrollIntoView({ block: "center" });
+  }
+  input.oninput = () => {
+    term = input.value.trim();
+    matches = [];
+    quote.textContent = excerpt;
+    next.disabled = true;
+    if (!term) { status.textContent = ""; return; }
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    matches = [...excerpt.matchAll(new RegExp(escaped, "gi"))].map(match => match.index);
+    if (!matches.length) { status.textContent = "No match in the archived excerpt"; return; }
+    current = 0;
+    next.disabled = matches.length < 2;
+    show();
+  };
+  next.onclick = () => { current = (current + 1) % matches.length; show(); };
+  input.onkeydown = event => { if (event.key === "Enter") { event.preventDefault(); if (!next.disabled) next.click(); } };
+  return el("div", { class: "evidence-find" }, [
+    el("label", { for: "evidence-find-input", text: "Find a word or phrase in this source" }),
+    el("div", { class: "evidence-find-controls" }, [input, next]), status]);
+}
+
 function openEvidence(r, number, trigger) {
   const source = sourceList(r).find(item => item.n.toLowerCase() === number.toLowerCase());
   if (!source) return false;
@@ -2869,7 +2911,10 @@ function openEvidence(r, number, trigger) {
   if (revision) dialog.appendChild(el("details", { class: "evidence-source-id private" }, [
     el("summary", { text: "Full source ID" }), el("code", { text: id })]));
   dialog.appendChild(el("p", { class: "private-hidden-notice", text: "Source descriptions and original excerpts are hidden because their private content has not been classified. Use Show labelled passages in the menu to read them." }));
-  if (context) dialog.append(el("div", { class: "evidence-original private" }, [
+  if (context) {
+    const excerpt = context.excerpt + (context.truncated ? "…" : "");
+    const quote = el("blockquote", { text: excerpt });
+    dialog.append(el("div", { class: "evidence-original private" }, [
     el("span", { class: "focus-kicker", text: (/^skill-(source|reference)$/.test(context.source) ? "Instruction excerpt" : context.source === "project-source" ? "Repository snapshot" : mail ? context.body_empty ? "Mail headers" : "Mail body excerpt" : "Original source context") + " · not a validated claim span" }),
     ...(origin ? [el("p", { class: "evidence-meta", text: origin })] : []),
     el("p", { class: "evidence-meta", text: [context.source, context.sender,
@@ -2883,8 +2928,11 @@ function openEvidence(r, number, trigger) {
     ...(mail && context.subject ? [el("p", { class: "evidence-meta evidence-subject", text: "Subject: " + context.subject })] : []),
     ...(context.mapped_session_folder ? [el("p", { class: "evidence-meta", text: "Mapped project session folder: " + context.mapped_session_folder + " · source routing only; does not verify completion" })] : []),
     ...(context.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(context.input_scope) })] : []),
+    ...(context.truncated ? [el("p", { class: "evidence-meta", text: "This archived excerpt is truncated; find searches only the text shown." })] : []),
+    ...(context.excerpt.length > 2000 ? [sourceFind(excerpt, quote)] : []),
     context.body_empty ? el("p", { class: "evidence-empty-body", text: "The retained message has no body text. Its headers are available." })
-      : el("blockquote", { text: context.excerpt + (context.truncated ? "…" : "") })]));
+      : quote]));
+  }
   else dialog.appendChild(el("p", { class: "evidence-unavailable", text: "The original source is not archived in this snapshot. The citation above identifies a source; it does not show its original text." }));
   dialog.addEventListener("close", () => trigger.focus(), { once: true });
   if (dialog.showModal) dialog.showModal(); else dialog.setAttribute("open", "");
