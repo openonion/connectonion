@@ -603,6 +603,9 @@
   .focus-statement { max-width: 64ch; position: relative; z-index: 1; font: 26px/1.28 var(--display); margin: 16px 0 0; }
   .focus-limit { position: relative; z-index: 1; max-width: 64ch; margin: 12px 0 0; font: 13px/1.5 var(--ui); color: var(--night-2); }
   .focus-statement.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+  .focus-source { position: relative; z-index: 1; display: inline-flex; align-items: center; min-height: 44px; margin-top: 12px; padding: 0 12px; border: 1px solid var(--night-line); border-radius: 8px; color: var(--night-ink); background: rgba(255, 255, 255, .06); font: 600 12px var(--ui); }
+  .focus-source:hover { color: var(--night-ink); background: rgba(255, 255, 255, .12); text-decoration: none; }
+  .focus-source:focus-visible { outline-color: var(--night-ink); }
   .focus-next { position: relative; z-index: 1; max-width: 68ch; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--night-line); }
   .focus-next .k { display: block; font: 600 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--night-2); }
   .focus-next p { margin: 5px 0 0; font: 15px/1.45 var(--text); }
@@ -616,7 +619,6 @@
   .project-workspace ul { margin: 0; padding-left: 18px; }
   .project-workspace li { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .project-workspace .open-note { display: inline-block; margin-top: 12px; font: 600 12px var(--ui); }
-  .record-focus > .open-note { display: flex; align-items: center; min-height: 44px; }
   .focus-section { background: var(--sheet); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; min-width: 0; }
   .focus-section h2 { margin: 0 0 14px; font: 600 17px var(--ui); }
   .focus-section .threads { margin: 0; padding: 0; }
@@ -714,6 +716,7 @@
     .record-focus { grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
     .focus-head { padding: 20px; min-height: 0; }
     .focus-statement { font-size: 22px; }
+    .focus-source { display: flex; }
     .record-focus.people { gap: 8px; }
     .record-focus.people .focus-head { padding: 16px; }
     .record-focus.people .focus-statement { font-size: 20px; margin-top: 12px; }
@@ -788,6 +791,16 @@
     .sheet .name .nm a { overflow-wrap: anywhere; }
     .sheet th.c-last button { gap: 0; padding-right: 2px; }
     .mobile-status-label { display: block; padding-left: 21px; color: var(--ink-3); font: 11px var(--mono); }
+  }
+  @media (max-width: 600px) {
+    main { padding-top: 18px; }
+    .mobile-back { margin-bottom: 8px; }
+    .page-head { margin-bottom: 4px; }
+    .leadrow { margin-top: 8px; }
+    .record-focus, .record-focus.people { margin-top: 4px; }
+    .focus-head { padding-top: 16px; }
+    .record-focus.people .focus-head { padding-top: 12px; }
+    .focus-source { margin-top: 8px; }
   }
   @media (prefers-reduced-motion: no-preference) {
     a, button, nav a, .cite, .thread { transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease; }
@@ -2375,6 +2388,7 @@ function recordFocus(r) {
       : "The " + (days ? days + "-day " : "supplied ") + "session sample did not confirm current project work.";
     focusHead.appendChild(el("p", { class: "focus-limit", text: limit }));
   }
+  if (sourceList(r).length) focusHead.appendChild(el("a", { class: "focus-source", href: href(r) + "&h=sources", text: "View sources →" }));
   if (r.path === REM.owner) {
     const insight = section(r, "insight");
     const items = insight ? listItems(insight.text) : [];
@@ -2410,7 +2424,6 @@ function recordFocus(r) {
       : "Partial project history: " + coverage.inputs_read + " session inputs were supplied in this " +
         (coverage.days ? coverage.days + "-day " : "") + "investigation; " + coverage.inputs_available +
         " inputs are archived for this workspace. Earlier inputs may be outside this pass." }) : null;
-  if (sourceList(r).length) out.appendChild(el("a", { class: "open-note", href: href(r) + "&h=sources", text: "View sources →" }));
   const open = threads(r).items;
   if (open.length) out.appendChild(el("div", { class: "focus-section next-exchanges" }, [
     el("h2", { text: "Open threads" }), el("ul", { class: "threads", "aria-label": "Open threads on this record" },

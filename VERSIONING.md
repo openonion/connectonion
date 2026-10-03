@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a34
+## Current Version: 1.9.0a35
+
+1.9.0a35 places the full-size source action beside the useful lead on written
+REM pages and keeps it inside the first 375×812 viewport on the five sampled
+page types. Full memory remains visible. Stable remains 1.8.10. See
+[1.9.0a35 notes](docs/releases/1.9.0a35.md).
+
+- 1.9.0a35 (phone first-fold source action).
+
+## Previous preview: 1.9.0a34
 
 1.9.0a34 keeps a private parsed window of typed coding-session input so a
 scoped investigation checks source changes without rereading every unchanged
