@@ -8,6 +8,12 @@ on:
   pull_request:
   workflow_call:
 
+# A newer head makes the older PR result obsolete. Preserve every main,
+# release-branch and called workflow run, including immutable-tag verification.
+concurrency:
+  group: tests-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   lockfile:
     runs-on: ubuntu-latest
