@@ -1,6 +1,6 @@
 # co rem — 1.9 preview guide
 
-Updated 2026-10-04 for opt-in preview **1.9.0a33**. The exact commands are
+Updated 2026-10-04 for opt-in preview **1.9.0a34**. The exact commands are
 also available through `co rem --help` and each subcommand's `--help` page.
 Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
 `unsubscribe`, `route`, `usage`) still work until 1.9.0 and print their new name.
@@ -263,7 +263,7 @@ an exhaustive plugin-cache or remote-catalog scan. Repeat `--skills-dir` for
 explicit roots; supplying it replaces defaults for that scan. Coverage and
 unreadable files are reported in the index and command result.
 
-The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0a33/connectonion/useful_skills/rem-init/CLI.md) explains
+The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0a34/connectonion/useful_skills/rem-init/CLI.md) explains
 mail IDs, browser tabs, source/working/output directories and failure recovery.
 
 ## One execution path
@@ -545,6 +545,13 @@ rather than stopping at 40 messages. It searches aliases and project paths;
 an owner identified by mailbox address receives their own typed session
 messages. Injected Skill prompts are not reingested as user experience.
 The importer still labels oversized pasted session text as truncated.
+
+The first investigation saves the parsed, typed coding messages it scanned in
+the notebook's private `.state/session-windows/` directory. Later CLI runs
+check the local session files and read only changed files, then select messages
+within the requested page window. The cache contains message text and source
+IDs, but not whole tool-output transcripts. It is not included in reader
+exports. Deleting that directory forces the next investigation to rebuild it.
 
 What counts as a message you typed to Codex (#1978). Codex Desktop puts every
 message in the user slot under a metadata block, typed or injected, and says

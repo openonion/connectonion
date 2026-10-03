@@ -1578,6 +1578,69 @@ def test_one_run_reads_the_sessions_once_for_every_subject(tmp_path, monkeypatch
     assert "2 messages" in next(line for line in coverage if line.startswith("codex"))
 
 
+def test_scoped_sessions_reuse_disk_window_and_find_new_input(tmp_path, monkeypatch):
+    """A second CLI run reads no unchanged transcript, but sees a newly appended turn."""
+    from contextlib import contextmanager
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem import source
+
+    sessions, notebook = tmp_path / "sessions", tmp_path / "book"
+    sessions.mkdir()
+    old, current = sessions / "rollout-old.jsonl", sessions / "rollout-current.jsonl"
+    now = datetime.now(timezone.utc)
+
+    def rollout(path, when, words):
+        meta = {"type": "session_meta", "payload": {"id": path.stem, "cwd": "/work/demo"}}
+        row = {"type": "response_item", "timestamp": when.isoformat(), "payload": {
+            "type": "message", "role": "user", "content": [{"type": "input_text", "text": words}]}}
+        path.write_text(json.dumps(meta) + "\n" + json.dumps(row) + "\n")
+
+    rollout(old, now - timedelta(days=5), "Vern's earlier decision")
+    rollout(current, now - timedelta(minutes=30), "Vern's current decision")
+    reads, original = [], source._read_rollout
+
+    @contextmanager
+    def counted(*args):
+        reads.append(args[0])
+        with original(*args) as opened:
+            yield opened
+
+    monkeypatch.setattr(source, "_read_rollout", counted)
+    subs = {"codex": {"kind": "codex", "root": str(sessions)}}
+
+    first, _ = inv.gather("Vern", ["Vern"], days=10, clients={}, subscriptions=subs,
+                          archive_root=notebook)
+    assert {item["text"] for item in first} == {"Vern's earlier decision", "Vern's current decision"}
+    assert len(reads) == 2
+
+    recent, _ = inv.gather("Vern", ["Vern"], days=1, clients={}, subscriptions=subs,
+                           archive_root=notebook)
+    assert [item["text"] for item in recent] == ["Vern's current decision"]
+    assert len(reads) == 2
+
+    with current.open("a") as output:
+        output.write(json.dumps({"type": "response_item", "timestamp": now.isoformat(), "payload": {
+            "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Vern's new input"}]}}) + "\n")
+    updated, _ = inv.gather("Vern", ["Vern"], days=1, clients={}, subscriptions=subs,
+                            archive_root=notebook)
+    assert {item["text"] for item in updated} == {"Vern's current decision", "Vern's new input"}
+    assert next(item["source"] for item in updated if item["text"] == "Vern's current decision") == recent[0]["source"]
+    assert reads == [old, current, current]
+
+    added = sessions / "rollout-added.jsonl"
+    rollout(added, now, "Vern's separate new session")
+    with_new_file, _ = inv.gather("Vern", ["Vern"], days=1, clients={}, subscriptions=subs,
+                                  archive_root=notebook)
+    assert {item["text"] for item in with_new_file} == {
+        "Vern's current decision", "Vern's new input", "Vern's separate new session"}
+    assert reads == [old, current, current, added]
+
+    old.unlink()
+    after_deletion, _ = inv.gather("Vern", ["Vern"], days=10, clients={}, subscriptions=subs,
+                                   archive_root=notebook)
+    assert {item["text"] for item in after_deletion} == {item["text"] for item in with_new_file}
+
+
 def test_historical_person_gather_keeps_legacy_and_current_codex_messages(tmp_path, monkeypatch):
     legacy = [{"id": "legacy", "timestamp": "2025-11-04T15:24:50Z", "instructions": "Harness"},
               {"type": "message", "id": "old-user", "role": "user",

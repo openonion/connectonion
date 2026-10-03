@@ -648,7 +648,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 said += " " + item.get("speaker", "") + " " + item.get("correspondent", "")
             return any(h in said.lower() for h in handles)
         try:
-            window, unfamiliar = _window_items(read, scoped, f"{name} {'chats' if chat else 'sessions'}", stage_progress)
+            window, unfamiliar = _window_items(read, scoped, f"{name} {'chats' if chat else 'sessions'}",
+                                               stage_progress, archive_root)
             scanned, picked = len(window), [i for i in window if related(i)]
             if unfamiliar:
                 coverage.append(f"{name}: {unfamiliar} user-slot message(s) in an unfamiliar format were not read")
@@ -706,17 +707,19 @@ def _project_session_inputs(window: list[dict], picked: list[dict], subject: str
     return kept, len(picked) - len(kept)
 
 
-# Every item of a session source's window, read once and shared by the
-# subjects investigated after it (2026-10-01). A real first run re-read 1,300
-# session files for every person, and six threads under one GIL took 13 minutes
-# a person. Kept for SESSION_REUSE_SECONDS: a long-lived host sees new sessions.
+# Share non-persisted windows within one run. Real notebook investigations use
+# the disk-backed session window below and check for changed files on each call.
 _WINDOWS: dict = {}
 _WINDOWS_LOCK = threading.Lock()
 SESSION_REUSE_SECONDS = 600
 
 
-def _window_items(read, scoped: dict, label: str, stage_progress=None) -> tuple[list[dict], int]:
+def _window_items(read, scoped: dict, label: str, stage_progress=None,
+                  archive_root: Path | None = None) -> tuple[list[dict], int]:
     """All items `read` returns for `scoped`; one thread reads, the others wait for it."""
+    if read is collect and archive_root is not None:
+        with _WINDOWS_LOCK:
+            return _session_window(scoped, label, stage_progress, archive_root)
     key = (read, json.dumps({**scoped, "since": scoped["since"][:10]}, sort_keys=True, default=str))
     with _WINDOWS_LOCK:
         kept = _WINDOWS.get(key)
@@ -742,6 +745,40 @@ def _window_items(read, scoped: dict, label: str, stage_progress=None) -> tuple[
         result = items, unfamiliar
         _WINDOWS[key] = (time.monotonic(), result)
         return result
+
+
+SESSION_WINDOW_VERSION = 1  # Bump when source.collect changes which messages it accepts.
+
+
+def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tuple[list[dict], int]:
+    """Reuse typed session messages across CLI runs; collect reads only changed files."""
+    identity = json.dumps({key: value for key, value in scoped.items() if key != "since"},
+                          sort_keys=True, default=str)
+    cache_path = state_path(root, f"session-windows/{hashlib.sha256(identity.encode()).hexdigest()[:16]}.json")
+    saved = read_json(cache_path, {})
+    since = timestamp(scoped["since"])
+    if (saved.get("version") != SESSION_WINDOW_VERSION or saved.get("subscription") != identity
+            or timestamp(saved["since"]) > since
+            or any(not (Path(scoped["root"]) / name).is_file() for name in saved["progress"])):
+        saved = {"version": SESSION_WINDOW_VERSION, "subscription": identity, "since": scoped["since"],
+                 "items": [], "progress": {}, "unfamiliar": 0}
+    items, cursor = saved["items"], saved["progress"]
+    unfamiliar, told = saved["unfamiliar"], len(items)
+    while True:
+        batch = collect({**scoped, "since": saved["since"]}, cursor, 4_000, 20_000_000)
+        items.extend(batch.items)
+        unfamiliar += batch.unrecognised
+        if stage_progress and len(items) > told:
+            told = len(items)
+            stage_progress(f"gathering {label}: {told:,} scanned", told)
+        if batch.progress == cursor:
+            break
+        cursor = batch.progress
+    if saved["progress"] != cursor or not cache_path.is_file():
+        write_json(cache_path, {**saved, "items": items, "progress": cursor, "unfamiliar": unfamiliar})
+    if timestamp(saved["since"]) < since:
+        items = [item for item in items if timestamp(item["timestamp"]) >= since]
+    return items, unfamiliar
 
 
 SEARCH_RESULTS = 20
