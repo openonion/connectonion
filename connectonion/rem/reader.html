@@ -2133,7 +2133,7 @@ function factList(r) {
     const items = parsed.has(label) ? parsed.get(label) : legacyFact(r, label);
     if (items.length) filled++;
     const missing = label === "Last contact" && mappedContact(r) && known(r).last
-      ? "— not in this note; map date shown above" : "— not found";
+      ? "— map date shown above" : "— not found";
     const dd = el("dd", { class: items.length ? "" : "none" }, items.length ? items.map(i => factValue(i, r.path)) : [el("span", { text: missing })]);
     if (items.length && COPYABLE.has(label)) {
       const btn = el("button", { type: "button", class: "copy", "aria-label": "Copy " + label.toLowerCase(), text: "Copy" });

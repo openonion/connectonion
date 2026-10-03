@@ -930,7 +930,7 @@ def test_mapped_person_distinguishes_map_date_from_missing_note_fact(reader):
         page.get_by_role('heading', name='Quinn Alder', exact=True).wait_for()
         assert 'Last contact in map' in page.locator('.leadrow').inner_text()
         assert page.locator('.focus-facts').count() == 0
-        assert '— not in this note; map date shown above' in page.locator(
+        assert '— map date shown above' in page.locator(
             '.factlist dt:text-is("Last contact") + dd').inner_text()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         if width == 375:
