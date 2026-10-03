@@ -25,6 +25,12 @@ that pass fell from 9.35 to 5.36 seconds. Full private HTML rebuilds took
 49.44-second review measurement. The output remained mode 0600. These are
 one-machine measurements, not a general speed guarantee.
 
+An independent role-based review reran the tagged a25 code and this candidate
+on the same notebook and machine. The tagged reader took 41.92 seconds to
+rebuild and this candidate took 8.78 seconds. The reviewer compared all 810
+record texts and paths, 2,504 relation edges and 738 source contexts without
+a difference, then opened the desktop and phone reader states in Chrome.
+
 The next review opens the actual written reader on desktop and phone, checks
 an investigated page, citation dialog and privacy controls, then repeats the
 timing after future source or relationship changes. The larger first-run goal
