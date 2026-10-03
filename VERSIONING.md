@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a33
+## Current Version: 1.9.0a34
+
+1.9.0a34 keeps a private parsed window of typed coding-session input so a
+scoped investigation checks source changes without rereading every unchanged
+transcript in a new CLI process. A 90-day local source-only trial read 4,957
+messages in 103.5 seconds, then the same count in 2.1 seconds in another
+process. Stable remains 1.8.10. See
+[1.9.0a34 notes](docs/releases/1.9.0a34.md).
+
+- 1.9.0a34 (incremental scoped session reading across CLI runs).
+
+## Previous preview: 1.9.0a33
 
 1.9.0a33 leaves first contact unknown when the earliest retained reply points
 to an earlier exchange, and keeps the People index tied to explicit page facts.

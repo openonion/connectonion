@@ -23,6 +23,17 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a34** speeds scoped REM investigations by reusing a private
+parsed window of typed coding-session inputs. On one 90-day notebook, a
+source-only repeat in a new process fell from 103.5 to 2.1 seconds while
+finding the same 4,957 messages. See
+[1.9.0a34 notes](releases/1.9.0a34.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a34'
+co rem open --live
+```
+
 Alpha **1.9.0a33** keeps Person first-contact facts and the People index tied
 to evidence, updates first-run token and quota guidance from measured samples,
 and shortens the release path without skipping its test gate. See
@@ -30,7 +41,6 @@ and shortens the release path without skipping its test gate. See
 
 ```bash
 python -m pip install --upgrade 'connectonion==1.9.0a33'
-co rem open --live
 ```
 
 Alpha **1.9.0a32** keeps Skill pages tied to their invocation names, makes

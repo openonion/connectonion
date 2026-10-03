@@ -33,8 +33,9 @@ an id a page can cite.
 - **Mail bodies** (`.state/mail/messages/<provider>/<sha256>.json`) and
   **session messages** (`.state/projects/<page>/messages.jsonl`). The store
   holds where each body is (`body_path`, relative to `.state`, and `body_line` for a JSONL), not the body. The
-  thread view loads bodies on demand, so the index stays small and a body is
-  never copied into a second place.
+  thread view loads bodies on demand, so the index stays small. Investigation
+  also keeps a private parsed session window in `.state/session-windows/` to
+  avoid rereading unchanged transcripts across CLI runs; see [REM](rem.md).
 - **All the JSON** (`map.json`, `source-inventory.jsonl`, `runs/*.json`,
   `aliases.json`, `tidy.json`, `archive.json`) stays authoritative in this
   step. The store is a derived index: delete it and the next map or sync
