@@ -653,9 +653,10 @@ def link_people(record: str, text: str, names: dict) -> str:
             if len(hits) != 1:
                 continue
             name = hits.pop()
-        # A page titled "Nora" may be about "Nora Vale", but a separate
-        # same-name map page is not identity proof. Leave that mention unlinked.
-        if record.startswith('people/') and len(title.split()) == 1 and name.casefold().startswith(title.casefold() + ' '):
+        # A separate same-name map page is not identity proof, even when this
+        # page's title is a first name or the same full name.
+        if record.startswith('people/') and (name.casefold() == title.casefold() or
+                (len(title.split()) == 1 and name.casefold().startswith(title.casefold() + ' '))):
             continue
         if target == record or f'[{name}](' in head:
             continue

@@ -34,6 +34,17 @@ def test_a_future_event_is_not_mistaken_for_a_next_day_correction():
     assert claim_audit.date_findings(packet, "Australia/Sydney") == []
 
 
+def test_same_day_after_a_correction_is_not_read_as_the_day_after():
+    packet = {"candidate": "Corrected it minutes later on the same day after checking [8][10].\n\n## Sources\n",
+              "sources": [
+                  {"citation": "8", "definition": "- [8] gmail:first — 2026-08-12",
+                   "context": {"time": "2026-08-12T01:34:42+00:00"}},
+                  {"citation": "10", "definition": "- [10] gmail:correction — 2026-08-12",
+                   "context": {"time": "2026-08-12T01:36:40+00:00"}},
+              ]}
+    assert claim_audit.date_findings(packet, "Australia/Sydney") == []
+
+
 def test_missing_cited_original_never_reaches_the_model(tmp_path):
     prepare(tmp_path)
     candidate = "# Mia\n\nMia leads the team [1].\n\n## Sources\n- [1] gmail:missing — 2026-08-12\n"

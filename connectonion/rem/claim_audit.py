@@ -10,7 +10,7 @@ from .files import read_json
 from .reader_model import SOURCE, cited_context
 
 
-NEXT_DAY = re.compile(r"\b(?:next day|following day|day after)\b|隔天|次日|第二天", re.I)
+NEXT_DAY = re.compile(r"\b(?:next day|following day|(?:the|a) day after)\b|隔天|次日|第二天", re.I)
 CORRECTION = re.compile(r"\b(?:corrected|clarified|revised|withdrew)\b|更正|澄清|修正|撤回", re.I)
 STAMP = re.compile(r"(?:—|–)\s*(\d{4}-\d{2}-\d{2})")
 MARK = re.compile(r"\[(W?\d{1,3})\]")

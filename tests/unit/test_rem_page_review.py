@@ -766,13 +766,14 @@ def test_the_first_mention_of_a_person_with_a_page_links_to_it(tmp_path):
     assert link_people('people/richard.md', linked, person_names(nb)) == linked  # idempotent
 
 
-def test_a_first_name_page_does_not_link_its_subject_to_a_same_name_map_page(tmp_path):
+@pytest.mark.parametrize('title', ['Nora', 'Nora Vale'])
+def test_a_person_page_does_not_link_its_subject_to_a_same_name_map_page(tmp_path, title):
     from connectonion.rem.page_review import link_people, person_names
     prepare(tmp_path)
     nb = Notebook(tmp_path)
     nb.stub_person('people/nora-vale.md', 'Nora Vale', ['other@example.org'], email='other@example.org')
     nb.stub_person('people/mara-chen.md', 'Mara Chen', ['mara@example.org'], email='mara@example.org')
-    page = '# Nora\n\nNora Vale worked with Mara Chen. [1]\n\n## Sources\n- [1] gmail:one — 2026-08-12\n'
+    page = f'# {title}\n\nNora Vale worked with Mara Chen. [1]\n\n## Sources\n- [1] gmail:one — 2026-08-12\n'
     linked = link_people('people/nora.md', page, person_names(nb))
     assert 'Nora Vale worked with [Mara Chen](../people/mara-chen.md)' in linked
     assert '[Nora Vale]' not in linked
