@@ -81,6 +81,7 @@ def test_project_paths_cannot_be_cited_as_file_evidence(tmp_path):
 
 def test_live_file_citation_is_hash_pinned_and_openable_after_file_changes(tmp_path, monkeypatch):
     from connectonion.rem.reader_model import cited_context
+    from connectonion.rem import project_claim_review
 
     repo = tmp_path / "reader"
     repo.mkdir()
@@ -104,6 +105,14 @@ def test_live_file_citation_is_hash_pinned_and_openable_after_file_changes(tmp_p
         return {"result": f"Inspected {file}", "usage": None}
 
     monkeypatch.setattr(rem_runner, "run_task", write_candidate)
+
+    def audited(notebook, candidate, *_args, **_kwargs):
+        material, missing = project_claim_review.packet(notebook, candidate)
+        assert missing == []
+        assert material['sources'][0]['context']['excerpt'] == 'Verified feature design.'
+        return {'verdict': 'pass', 'findings': []}, {}
+
+    monkeypatch.setattr(project_claim_review, 'review', audited)
     result = rem_runner.run_stage(notebook, [{"role": "page", "record": record,
                                               "source": "investigation:page", "text": notebook.read(record)}],
                                   default_config(), stage="investigate")
@@ -118,26 +127,30 @@ def test_live_file_citation_is_hash_pinned_and_openable_after_file_changes(tmp_p
                          default_config(), stage="investigate")
 
 
-def test_historical_git_file_outside_prepared_snapshots_is_openable(tmp_path, monkeypatch):
+@pytest.mark.parametrize('subdirectory', [False, True])
+def test_historical_git_file_outside_prepared_snapshots_is_openable(tmp_path, monkeypatch, subdirectory):
     from connectonion.rem.reader_model import cited_context
 
     repo = tmp_path / "reader"
     repo.mkdir()
     subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True)
-    file = repo / "feature.md"
+    mapped = repo / 'gtm' if subdirectory else repo
+    mapped.mkdir(exist_ok=True)
+    file = mapped / "feature.md"
     file.write_text("Original feature design.\n")
-    subprocess.run(["git", "-C", str(repo), "add", "feature.md"], check=True)
+    relative = str(file.relative_to(repo))
+    subprocess.run(["git", "-C", str(repo), "add", relative], check=True)
     subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.org",
                     "commit", "-qm", "Add feature"], check=True)
     commit = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
                             capture_output=True, text=True, check=True).stdout.strip()
     file.write_text("New working tree design.\n")
-    source = f"git:{repo}:{commit}:feature.md"
+    source = f"git:{repo}:{commit}:{relative}"
     root = tmp_path / "rem"
     prepare(root)
     notebook = Notebook(root)
     record = "projects/reader.md"
-    notebook.stub_project(record, "Reader", [str(repo)])
+    notebook.stub_project(record, "Reader", [str(mapped)])
 
     def write_candidate(workdir, prompt, config, stage):
         candidate = next(path for path in workdir.glob("investigate-*")
@@ -148,6 +161,8 @@ def test_historical_git_file_outside_prepared_snapshots_is_openable(tmp_path, mo
         return {"result": f"Inspected {source}", "usage": None}
 
     monkeypatch.setattr(rem_runner, "run_task", write_candidate)
+    monkeypatch.setattr(rem_runner, "run_claim_task", lambda *_args: {
+        "result": '{"verdict":"PASS","findings":[]}', "usage": {}})
     rem_runner.run_stage(notebook, [{"role": "page", "record": record,
                                      "source": "investigation:page", "text": notebook.read(record)}],
                          default_config(), stage="investigate")

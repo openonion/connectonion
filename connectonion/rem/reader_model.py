@@ -166,7 +166,7 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000) -
             mail = message.get("source") in ("gmail", "outlook") and not message.get("body_line")
             if mail and "--- Email Body ---" in raw:
                 raw = raw.partition("--- Email Body ---")[2]
-            excerpt = raw.strip()[: min(16_384 if mail else 640, budget)]
+            excerpt = raw.strip()[: min(16_384 if mail else 2_048, budget)]
             if not excerpt and not mail:
                 continue
             output[source] = {"excerpt": excerpt, "truncated": len(raw.strip()) > len(excerpt),

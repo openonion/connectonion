@@ -279,7 +279,9 @@ def live_git_snapshot(page: str, source: str) -> dict | None:
     if not match or Path(match[3]).is_absolute() or ".." in Path(match[3]).parts:
         return None
     repo = Path(match[1]).resolve()
-    if repo not in [Path(path).resolve() for path in project_paths(page)]:
+    target = repo / match[3]
+    if not any(root == target or root in target.parents
+               for root in (Path(path).resolve() for path in project_paths(page))):
         return None
     content = subprocess.run(["git", "-C", str(repo), "show", f"{match[2]}:{match[3]}"],
                              capture_output=True)

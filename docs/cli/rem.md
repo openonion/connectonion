@@ -1,6 +1,6 @@
 # co rem — 1.9 preview guide
 
-Updated 2026-10-03 for opt-in preview **1.9.0a30**. The exact commands are
+Updated 2026-10-04 for opt-in preview **1.9.0a31**. The exact commands are
 also available through `co rem --help` and each subcommand's `--help` page.
 Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
 `unsubscribe`, `route`, `usage`) still work until 1.9.0 and print their new name.
@@ -124,6 +124,7 @@ names in old help text, such as `people/emma.md`, are not built-in records.
 
 ```bash
 co rem investigate          # What is left to investigate, by category; no model
+co rem investigate PAGE --retry-refused  # Retry a refused Person/Project/Org page on the same sources
 co rem investigate me --quick --days 5  # Bounded first pass; disclose uncovered sources
 co rem open                 # Open a fresh snapshot of the notebook in your browser
 co rem sync --dry-run       # Inspect pending metadata, without running a model
@@ -258,7 +259,7 @@ an exhaustive plugin-cache or remote-catalog scan. Repeat `--skills-dir` for
 explicit roots; supplying it replaces defaults for that scan. Coverage and
 unreadable files are reported in the index and command result.
 
-The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0a30/connectonion/useful_skills/rem-init/CLI.md) explains
+The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0a31/connectonion/useful_skills/rem-init/CLI.md) explains
 mail IDs, browser tabs, source/working/output directories and failure recovery.
 
 ## One execution path

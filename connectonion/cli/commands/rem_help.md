@@ -122,6 +122,7 @@ refused page is kept, with the reason, so the model's work is never lost.
 Usage:
   co rem investigate                          List what is left to investigate, by category. No model.
   co rem investigate PAGE                     Investigate one page.
+  co rem investigate PAGE --retry-refused     Retry a refused Person, Project or Org page on the same sources.
   co rem investigate CATEGORY [--limit N]     Investigate all unfinished pages in one category,
                                                most useful first, up to 10 at once.
   co rem investigate me                       Investigate your own page from your recent work.
@@ -164,6 +165,8 @@ Options:
                  the Codex week (1-100).
   --handle TEXT  PAGE only: another address or name for the subject (repeatable)
   --eval-dir DIR skills only: where the run records are
+  --retry-refused  People, projects or orgs PAGE: retry the same evidence after a refusal;
+                   automatic category runs still wait for newer material
 
 Order within a category: pages still marked Unknown first, then those with the
 most mail or sessions. A page investigated in the last 7 days is skipped. Your

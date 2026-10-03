@@ -23,15 +23,19 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
-Alpha **1.9.0a30** implements full-cohort concurrent onboarding and CLI
-investigations, running across a 10-worker thread pool with thread-safe client
-isolation and zero dry-run capping. See
-[1.9.0a30 notes](releases/1.9.0a30.md).
+Alpha **1.9.0a31** checks Project claims against their original sources before
+replacing a page, lets you retry one refused page, and clarifies the reader's
+first screen. It includes the full-cohort concurrent onboarding code from the
+a30 tag. See [1.9.0a31 notes](releases/1.9.0a31.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.0a30'
+python -m pip install --upgrade 'connectonion==1.9.0a31'
 co rem open --live
 ```
+
+The a30 tag did not publish to PyPI after its release CI failed; see
+[#2253](https://github.com/openonion/connectonion/issues/2253). Its full-cohort
+changes are included in a31.
 
 Earlier alpha previews remain available:
 

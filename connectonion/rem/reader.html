@@ -553,6 +553,7 @@
   .lead-open .more { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
   .lead-calm { font: 600 10.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); background: var(--well); padding: 5px 9px; border-radius: 4px; }
   .lead-meta { font-size: 12.5px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 8px; }
+  .lead-meta.project-purpose-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 100%; font: 500 15px/1.4 var(--text); color: var(--ink); }
   .lead-meta .k { color: var(--ink-3); }
   .lead-meta.usage .bar { width: 120px; height: 5px; border-radius: 3px; background: var(--well); overflow: hidden; display: inline-block; }
   .lead-meta.usage .bar i { display: block; height: 100%; background: var(--blue); }
@@ -615,6 +616,7 @@
   .project-workspace ul { margin: 0; padding-left: 18px; }
   .project-workspace li { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .project-workspace .open-note { display: inline-block; margin-top: 12px; font: 600 12px var(--ui); }
+  .record-focus > .open-note { display: flex; align-items: center; min-height: 44px; }
   .focus-section { background: var(--sheet); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; min-width: 0; }
   .focus-section h2 { margin: 0 0 14px; font: 600 17px var(--ui); }
   .focus-section .threads { margin: 0; padding: 0; }
@@ -730,7 +732,12 @@
     .search .kbd { display: none; }
     main { padding: 22px 16px 64px; }
     .rail .foot { display: none; }
-    .rail[data-open="true"] .foot { display: flex; }
+    .rail[data-open="true"] .foot { display: flex; padding: 0 0 12px; }
+    .rail[data-open="true"] .foot > .theme-btn { min-height: 44px; text-align: left; }
+    .rail[data-open="true"] #nav { padding-bottom: 64px; }
+    .rail[data-open="true"] #privacy-toggle { position: fixed; z-index: 20; left: 16px; right: 16px; bottom: 12px;
+      min-height: 44px; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet);
+      box-shadow: var(--shadow); text-align: center; }
     .nav-toggle { display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 9px 12px; text-align: left; color: var(--ink); background: var(--sheet); border: 1px solid var(--line); border-radius: 6px; font: 14px var(--ui); cursor: pointer; }
     .nav-toggle::after { content: "▾"; color: var(--ink-3); }
     .nav-toggle[aria-expanded="true"]::after { content: "▴"; }
@@ -823,7 +830,10 @@ function togglePrivate() {
   try {
     if (location.protocol === "file:") localStorage.setItem("co-rem-private", hidden ? "hidden" : "shown");
   } catch (_) { /* choice lasts this view only */ }
-  renderRail(railActive());
+  const button = document.getElementById("privacy-toggle");
+  button.classList.toggle("active", hidden);
+  button.setAttribute("aria-pressed", String(hidden));
+  button.textContent = hidden ? "Show labelled passages" : "Hide labelled passages";
 }
 
 // Theme: auto follows the system; light or dark is remembered for file:// only.
@@ -1256,7 +1266,7 @@ function owing() {
   const me = "(?:the user|you" + (first ? "|" + first : "") + ")";
   OWING = {
     mine: new RegExp("\\b" + me + "(?:['’]s)?\\s+(?:has |have |had |still )?(?:owes?|owed|promised|offered|agreed|needs? to|must|should|said (?:he|she|they) would|to (?:send|reply|sign|confirm|pay|review|decide)|has not|have not|hasn't|haven't)\\b" +
-      "|^\\s*" + me + "\\s*:|\\b(?:requested|asked for|awaits?|awaiting|waiting (?:on|for))\\s+(?:" + me + "(?:['’]s)?|your)\\b|\\brequested (?:confirmation|approval|a reply|an answer)\\b|\\byou owe\\b", "i"),
+      "|^\\s*" + me + "\\s*:|\\b(?:asked|requested)\\s+" + me + "\\s+to\\b|\\b(?:requested|asked for|awaits?|awaiting|waiting (?:on|for))\\s+(?:" + me + "(?:['’]s)?|your)\\b|\\brequested (?:confirmation|approval|a reply|an answer)\\b|\\byou owe\\b", "i"),
     theirs: /\b(?:owes?|owed) (?:the user|you)\b|\bwaiting (?:on|for) (?:them|him|her|their)\b|\bunanswered\b|\b(?:he|she|they) (?:has|have) not (?:replied|answered|sent|confirmed)\b|\bno reply\b|\b[A-Z][\w-]+(?:['’]s)? (?:promised|is expected to|agreed to|owes|said (?:he|she|they) would)\b|\bpromised\b/
   };
   return OWING;
@@ -1282,7 +1292,7 @@ function threads(r) {
   const all = listItems(s.text);
   const calm = all.find(t => /^nothing open\b/i.test(t.replace(/\*/g, ""))) || "";
   const today = calendarDay(REM.as_of);
-  const items = all.filter(t => t !== calm && !/^unknown\b/i.test(t)).map(text => {
+  const items = all.filter(t => t !== calm && !/^(?:unknown\b|no (?:confirmed|known) pending work\b)/i.test(t)).map(text => {
     const days = text.match(/\d{4}-\d{2}-\d{2}/g) || [];
     // A stated deadline stays a deadline after it passes. Other event dates
     // do not establish a due date merely because they are in the future.
@@ -1722,7 +1732,7 @@ function renderRail(active) {
   }
   foot.appendChild(themeSwitch);
   const hidden = document.documentElement.classList.contains("hide-private");
-  const privacy = el("button", { class: "theme-btn" + (hidden ? " active" : ""), type: "button",
+  const privacy = el("button", { id: "privacy-toggle", class: "theme-btn" + (hidden ? " active" : ""), type: "button",
     "aria-pressed": String(hidden), text: hidden ? "Show labelled passages" : "Hide labelled passages",
     title: "Also hides raw source and conversation excerpts. Names and unlabelled text stay visible." });
   privacy.onclick = togglePrivate;
@@ -1864,7 +1874,8 @@ function morningBrief() {
   }
   const cards = el("div", { class: "memory-grid" });
   for (const r of changed.slice(0, 3)) cards.appendChild(el("article", { class: "memory-card" }, [
-    el("span", { class: "kind", text: singular(r.category) + " · Current context on an updated page" }),
+    el("span", { class: "kind", text: singular(r.category) + " · Page rewritten" +
+      (r.category === "projects" && known(r).last ? " · last mapped session " + fmtDate(known(r).last) : "") }),
     el("h3", {}, [el("a", { href: href(r), text: r.title })]),
     el("p", { html: inline(memoryStatement(r) || "This page was updated. Open it to see the current context.", r.path) }),
     el("a", { class: "open", href: href(r), text: "Read the page and sources →" })]));
@@ -2230,7 +2241,11 @@ function age(day) {
 // Show an explicit deadline first, without inferring whether it was met.
 function threadAge(t) {
   if (t.due) return "due " + (t.due === calendarDay(REM.as_of) ? "today" : shortDate(t.due));
-  return t.since ? age(t.since) : "";
+  return t.since ? (daysSince(t.since) === 0 ? "opened today" : "open for " + age(t.since)) : "";
+}
+function threadPreview(text) {
+  const summary = plainLine(text).replace(/\s*[—–-]\s.*$/, "");
+  return summary.length > 100 ? summary.slice(0, 97).replace(/\s+\S*$/, "") + "…" : summary;
 }
 // Under the title: what is open and how long, when you last spoke, how sure the page is.
 function leadRow(r) {
@@ -2238,11 +2253,15 @@ function leadRow(r) {
   if (t.items.length) {
     const first = t.items[0];
     row.appendChild(el("a", { class: "lead-open " + first.dir, href: "#r=" + encodeURIComponent(r.path) + "&h=open-threads" }, [
-      el("span", { class: "dir", text: DIRECTION_LABEL[first.dir] }), el("span", { class: "txt", text: plainLine(first.text).replace(/\s*[—–-]\s.*$/, "") }),
+      el("span", { class: "dir", text: DIRECTION_LABEL[first.dir] }), el("span", { class: "txt", text: threadPreview(first.text) }),
       threadAge(first) ? el("span", { class: "age mono" + (threadAge(first).endsWith("today") ? " today" : ""), text: threadAge(first) }) : null,
       t.items.length > 1 ? el("span", { class: "more mono", text: "+" + (t.items.length - 1) + " more" }) : null]));
   } else if (t.calm) row.appendChild(el("span", { class: "lead-calm", text: "Nothing open" }));
-  if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "projects" ? "Last mapped session " : r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map " : "Last contact ") : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
+  const purpose = r.category === "projects" && k.status !== "Mapped" ? section(r, "what it is") : null;
+  const projectLead = purpose ? listItems(purpose.text)[0] || purpose.text : "";
+  if (projectLead && !/^\s*-?\s*Unknown\b/i.test(projectLead))
+    row.appendChild(privateFallback(el("span", { class: "lead-meta project-purpose-preview", html: inline(projectLead, r.path) })));
+  else if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "projects" ? "Last mapped session " : r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map " : "Last contact ") : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u) row.appendChild(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: usageCaption(u) + (u.tools ? " · " + u.tools : "") })]));
   if (section(r, "uncertainties")) row.appendChild(el("a", { class: "unsure", href: "#r=" + encodeURIComponent(r.path) + "&h=uncertainties", title: "What this page is not sure of" }, ["?", el("span", { text: " Uncertain points" })]));
@@ -2374,8 +2393,8 @@ function recordFocus(r) {
   }
   out.appendChild(focusHead);
   const coverage = r.category === "projects" ? r.project_coverage : null;
-  if (coverage && coverage.inputs_available > coverage.inputs_read)
-    out.appendChild(el("p", { class: "scope-note", text: coverage.scope === "queued"
+  const coverageNote = coverage && coverage.inputs_available > coverage.inputs_read
+    ? el("p", { class: "scope-note", text: coverage.scope === "queued"
       ? "Partial project update: " + coverage.inputs_read + " of " + coverage.inputs_available +
         " queued inputs were supplied. Older queued inputs were left out."
       : coverage.inputs_read === 0
@@ -2384,7 +2403,7 @@ function recordFocus(r) {
         "Current project activity is unknown."
       : "Partial project history: " + coverage.inputs_read + " session inputs were supplied in this " +
         (coverage.days ? coverage.days + "-day " : "") + "investigation; " + coverage.inputs_available +
-        " inputs are archived for this workspace. Earlier inputs may be outside this pass." }));
+        " inputs are archived for this workspace. Earlier inputs may be outside this pass." }) : null;
   if (sourceList(r).length) out.appendChild(el("a", { class: "open-note", href: href(r) + "&h=sources", text: "View sources →" }));
   const open = threads(r).items;
   if (open.length) out.appendChild(el("div", { class: "focus-section next-exchanges" }, [
@@ -2400,6 +2419,7 @@ function recordFocus(r) {
       el("a", { class: "open-note", href: href(r) + "&h=key-decisions", text: "View all decisions →" })]));
     if (blocks.length) out.appendChild(el("div", { class: "project-workspace" + (blocks.length === 1 ? " single" : "") }, blocks));
   }
+  if (coverageNote) out.appendChild(coverageNote);
   const f = facts(r);
   const labels = r.path === REM.owner ? [["Role", f.role], ["Location", f.location], ["Company", f.company]]
     : r.category === "people" ? [["Role", f.role], ["Company", f.company], ...(mappedContact(r) ? [] : [["Last contact", f.last]])]
@@ -2812,6 +2832,7 @@ function openEvidence(r, number, trigger) {
       ...["from", "to", "cc"].map(key => el("p", { class: "evidence-meta", text: ({from: "From", to: "To", cc: "Cc"}[key]) + ": " + headerText(headers[key]) }))])] : []),
     ...(context.body_format ? [el("p", { class: "evidence-meta", text: context.body_format })] : []),
     ...(mail && context.subject ? [el("p", { class: "evidence-meta evidence-subject", text: "Subject: " + context.subject })] : []),
+    ...(context.mapped_session_folder ? [el("p", { class: "evidence-meta", text: "Mapped project session folder: " + context.mapped_session_folder + " · source routing only; does not verify completion" })] : []),
     ...(context.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(context.input_scope) })] : []),
     context.body_empty ? el("p", { class: "evidence-empty-body", text: "The retained message has no body text. Its headers are available." })
       : el("blockquote", { text: context.excerpt + (context.truncated ? "…" : "") })]));

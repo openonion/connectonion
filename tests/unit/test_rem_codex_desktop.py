@@ -334,3 +334,26 @@ def test_reader_preserves_voice_scope_in_source_and_conversation(tmp_path):
     assert context[source]['excerpt'] == 'Keep it unchanged.' and context[source]['input_scope'] == scope
     thread = cited_conversations(root, context)[context[source]['thread']]
     assert thread['messages'][0]['input_scope'] == scope
+
+
+def test_cited_desktop_message_keeps_a_table_cell_after_640_chars(tmp_path):
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import state_path, write_json, atomic_write
+    from connectonion.rem.reader_model import cited_context
+    from connectonion.rem.store import refresh
+
+    prepare(tmp_path)
+    folder = state_path(tmp_path, 'projects/demo')
+    folder.mkdir(parents=True)
+    write_json(folder / 'state.json', {'record': 'projects/demo.md'})
+    source = 'codex:session:100'
+    message = 'Earlier table rows. ' * 35 + '| Last row | branch only | hard filter |'
+    atomic_write(folder / 'messages.jsonl', json.dumps({
+        'source': source, 'tool': 'codex', 'text': message,
+        'timestamp': ago(1), 'input_scope': 'Owner input only'}) + '\n')
+    refresh(tmp_path)
+
+    context = cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + source}])[source]
+    assert len(message) > 640
+    assert context['excerpt'] == message
+    assert not context['truncated']

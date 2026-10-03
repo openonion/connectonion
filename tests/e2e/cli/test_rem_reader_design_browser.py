@@ -79,6 +79,26 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     assert '`' not in page.locator('#foot').inner_text()
 
 
+def test_mobile_browse_privacy_control_remains_a_full_touch_target(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.locator('.nav-toggle').click()
+    privacy = page.get_by_role('button', name='Hide labelled passages')
+    box = privacy.bounding_box()
+    assert box['height'] >= 44 and box['width'] >= 44
+    assert box['y'] >= 0 and box['y'] + box['height'] <= 812
+    privacy.focus()
+    privacy.press('Enter')
+    shown = page.get_by_role('button', name='Show labelled passages')
+    assert shown.get_attribute('aria-pressed') == 'true'
+    assert shown.evaluate('(node) => node === document.activeElement')
+    shown.press('Space')
+    assert privacy.get_attribute('aria-pressed') == 'false'
+    assert privacy.evaluate('(node) => node === document.activeElement')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
 @pytest.fixture
 def reader(tmp_path, monkeypatch):
     from patchright.sync_api import sync_playwright
@@ -582,6 +602,7 @@ def test_private_project_summary_and_partial_scope_are_clear_on_desktop_and_phon
         assert 'clamped' not in page.locator('.focus-statement').get_attribute('class')
         page.evaluate('togglePrivate()', isolated_context=False)
         assert page.locator('.focus-statement').inner_text() == 'Hidden labelled passage'
+        assert page.locator('.project-purpose-preview').inner_text() == 'Hidden labelled passage'
         assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').count() == 2
         assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').first.is_visible()
         page.evaluate("() => { location.hash = '#c=projects'; render(); }", isolated_context=False)
@@ -625,6 +646,31 @@ def test_project_without_a_current_insight_leads_with_purpose_and_scope(reader):
         assert 'No coding-session input was assigned' in page.locator('.focus-limit').inner_text()
         assert '5 inputs are archived for this workspace' in page.locator('.scope-note').inner_text()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_written_project_purpose_precedes_partial_scope_on_phone(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.evaluate("""() => {
+      const r = byPath('projects/harbour.md');
+      r.text = '# Harbour\\n\\n## Insight\\n- Now: The user asked to organize a folder in August; whether the requested work was completed is unknown. [1]\\n'
+        + '\\n## What it is\\nA property lead workflow to collect contacts and ask owners whether they permit short stays. [1]\\n'
+        + '\\n## Key decisions\\n- Collect property details before filtering. [1]\\n'
+        + '\\n## Sources\\n- [1] codex:example — 2026-08-02\\n'
+        + '\\nInvestigation: mapped 2026-10-03 · investigated 2026-10-04 (codex)';
+      r.project_coverage = {inputs_read: 114, inputs_available: 116, days: 90, scope: 'archived'};
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    purpose = page.locator('.project-purpose-preview')
+    scope = page.locator('.scope-note')
+    assert 'property lead workflow' in purpose.inner_text()
+    assert purpose.bounding_box()['y'] < 812
+    assert purpose.bounding_box()['y'] < scope.bounding_box()['y']
+    assert '114 session inputs' in scope.inner_text()
+    sources = page.locator('.record-focus > .open-note').bounding_box()
+    assert sources['height'] >= 44 and sources['y'] + sources['height'] <= 812
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
 def test_open_context_is_not_counted_as_waiting_on_other_people(reader):
@@ -782,6 +828,25 @@ def test_open_request_dates_keep_explicit_deadlines_on_the_notebook_calendar(rea
       KNOWN.clear(); return threads(r).items[0];
     }""", isolated_context=False)
     assert dates['since'] == '2026-10-01' and dates['due'] == ''
+
+
+def test_phone_open_preview_names_elapsed_age_and_keeps_the_full_thread(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate(r"""() => {
+      REM.status.timezone = 'Australia/Sydney'; REM.as_of = '2026-10-03T14:30:00Z';
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace(/## Open threads[\s\S]*?(?=\n## )/, '## Open threads' + String.fromCharCode(10) +
+        '- Mara asked Avery to confirm the scope on 2026-09-29, followed up twice, and offered several detailed ways to answer before a time-sensitive proposal, while the exact due day still needs confirmation [5].' + String.fromCharCode(10));
+      KNOWN.clear(); render();
+    }""", isolated_context=False)
+    preview = page.locator('.lead-open')
+    assert preview.locator('.dir').inner_text() == 'YOU OWE'
+    assert preview.locator('.age').inner_text() == 'open for 5 days'
+    assert len(preview.locator('.txt').inner_text()) <= 100
+    assert 'exact due day still needs confirmation' in page.locator('.next-exchanges').inner_text()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
 def test_dates_and_contact_age_use_notebook_calendar_on_another_browser_timezone(reader):
