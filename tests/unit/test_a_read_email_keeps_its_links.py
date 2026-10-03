@@ -92,6 +92,19 @@ class TestALinkSurvives:
 
 class TestNothingElseChanges:
 
+    def test_calendar_fields_and_follow_up_stay_separate(self):
+        out = body_rendered_from(
+            '<div>Appointment cancelled</div><table>'
+            '<tr><td>When</td><td>October 5, 2 PM</td></tr>'
+            '<tr><td>Reason</td><td>Travel changed</td></tr>'
+            '</table><p>No follow-up<br class="outlook">required.</p>'
+        )
+
+        assert 'When\nOctober 5, 2 PM' in out
+        assert 'Reason\nTravel changed' in out
+        assert 'Travel changed\nNo follow-up\nrequired.' in out
+
+
     def test_a_bare_url_as_link_text_is_not_printed_twice(self):
         """Mail clients often render the URL as its own anchor text."""
         url = "https://a.example/1"

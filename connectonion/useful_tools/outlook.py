@@ -490,13 +490,19 @@ class Outlook:
                 body_content,
                 flags=re.DOTALL | re.IGNORECASE,
             )
+            # Mail tables and paragraphs carry meaning: joining their cells
+            # turned event time, cancellation reason and follow-up into one line.
+            body_content = re.sub(r'<br\b[^>]*>|</?(?:p|div|li|tr|td|th|h[1-6]|blockquote)\b[^>]*>',
+                                  '\n', body_content, flags=re.IGNORECASE)
             # Everything that is markup, but not the `<scheme://…>` the step
             # above just wrote — `<[^>]+>` cannot tell those apart and ate the
             # very addresses it was meant to preserve.
             body_content = re.sub(r'<(?![a-zA-Z][a-zA-Z0-9+.-]*://)[^>]+>', '',
                                   body_content)
             body_content = unescape(body_content)
-            body_content = re.sub(r'\s+', ' ', body_content).strip()
+            body_content = re.sub(r'[^\S\n]+', ' ', body_content)
+            body_content = re.sub(r' *\n *', '\n', body_content)
+            body_content = re.sub(r'\n+', '\n', body_content).strip()
 
         output = [
             f"From: {from_addr}",
