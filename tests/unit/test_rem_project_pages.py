@@ -314,6 +314,20 @@ def test_repository_context_survives_mutable_file_changes_and_rejects_tampering(
     assert cited_context(tmp_path, [{"text": "- [1] " + item["source"]}]) == {}
 
 
+def test_repository_context_shows_a_cited_note_deep_in_a_large_file(tmp_path):
+    from connectonion.rem.files import maintenance_lock
+    from connectonion.rem.reader_model import cited_context
+    original = "Background.\n" * 4_500 + "This dated note records the pending branch.\n"
+    item = project_pages.repository_snapshots([{
+        "role": "project-file", "snapshot_kind": "git-file", "source": "git:/repo:" + "a" * 40 + ":NOW.md",
+        "text": original, "timestamp": "2026-07-24T00:00:00Z"}])[0]
+    with maintenance_lock(tmp_path):
+        assert project_pages.retain_repository_context(tmp_path, [item], {item["source"]}) == 1
+    context = cited_context(tmp_path, [{"text": "- [1] " + item["source"]}])[item["source"]]
+    assert "pending branch" in context["excerpt"]
+    assert not context["truncated"]
+
+
 def _page_citing(source):
     page = Notebook.__new__(Notebook)  # only for PROJECT_SECTIONS
     lines = ["# tide"]

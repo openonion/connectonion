@@ -805,6 +805,62 @@ def test_a_mailbox_left_out_on_purpose_says_why_not_that_it_is_disconnected():
     assert not any("co auth" in line for line in coverage)
 
 
+def test_project_gather_withholds_unnamed_followup_after_other_project_in_same_session(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    stamp = datetime.now(timezone.utc).isoformat()
+    window = [
+        {"role": "user", "source": "claude-code:session:12", "project": "/work/other",
+         "timestamp": stamp, "text": "Build the Other product's reply listener."},
+        {"role": "user", "source": "claude-code:session:50", "project": "/work/tide",
+         "timestamp": stamp, "text": "Why no reply?"},
+        {"role": "user", "source": "claude-code:session:90", "project": "/work/tide",
+         "timestamp": stamp, "text": "Tide: fix the parser."},
+    ]
+    monkeypatch.setattr(inv, "_window_items", lambda *args, **kwargs: (window, 0))
+    items, coverage = inv.gather("Tide", ["/work/tide", "Tide"], days=7, clients={},
+                                 subscriptions={"claude": {"kind": "claude-code", "root": str(tmp_path),
+                                                           "enabled": True}}, record="projects/tide.md")
+    assert [item["source"] for item in items] == ["claude-code:session:90"]
+    assert any("1 unnamed follow-up(s) withheld" in line for line in coverage)
+
+
+def test_project_writer_does_not_receive_collector_coverage_as_evidence(tmp_path, monkeypatch):
+    root = _notebook(tmp_path, "codex")
+    repo = tmp_path / "tide"
+    repo.mkdir()
+    (repo / "README.md").write_text("Tide reads a local log.\n")
+    inv.Notebook(root).stub_project("projects/tide.md", "Tide", [str(repo)])
+    messages = [{"role": "user", "source": "codex:session:10", "project": str(repo),
+                 "timestamp": "2026-10-02T00:00:00+00:00", "text": "Check Tide's local log."}]
+    monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: (messages, ["codex: one input read"]))
+    seen = []
+    result = inv.investigate(root, "projects/tide.md", "Tide", [str(repo)], days=7,
+                             clients={}, subscriptions={},
+                             runner=lambda notebook, items, config, stage: seen.extend(items) or {"changed": []})
+    assert not any(item.get("source") == "investigation:coverage" for item in seen)
+    assert "codex: one input read" in result["coverage"]
+
+
+def test_repository_only_project_investigation_records_zero_session_coverage(tmp_path, monkeypatch):
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.project_material import page_state
+    root = _notebook(tmp_path, "codex")
+    repo = tmp_path / "tide"
+    repo.mkdir()
+    (repo / "README.md").write_text("Tide reads a local log.\n")
+    inv.Notebook(root).stub_project("projects/tide.md", "Tide", [str(repo)])
+    write_json(state_path(root, "projects/tide/state.json"), {"messages": 5})
+    monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: ([], ["no session inputs assigned"]))
+    seen = []
+    inv.investigate(root, "projects/tide.md", "Tide", [str(repo)], days=7,
+                    clients={}, subscriptions={},
+                    runner=lambda notebook, items, config, stage: seen.extend(items) or {"changed": []})
+    assert any(item.get("role") == "project-input-scope" and item.get("inputs_read") == 0 for item in seen)
+    assert not any(item.get("source") == "investigation:coverage" for item in seen)
+    assert page_state(root, "projects/tide.md")["last_page_coverage"] == {
+        "inputs_read": 0, "inputs_available": 5, "days": 7, "scope": "archived"}
+
+
 def test_the_status_line_never_names_the_evidence_layout_as_a_source():
     """#1962: pages were stamped `(outlook, gmail, codex, claude-code, evidence)`;
     evidence is how the material was laid out, not where it came from."""

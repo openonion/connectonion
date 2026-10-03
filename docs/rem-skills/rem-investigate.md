@@ -280,7 +280,7 @@ open. Longer pages and higher token counts are not evidence of a better finding.
   open their original text with the input-only provenance warning. A rejected
   page retains none. This also covers person pages citing coding sessions.
 - A cited repository file's first 640 characters hid a release-policy passage
-  after character 5,000 and a hook signature after 9,000. The source dialog now allows 16,384 characters for a
+  after character 5,000 and a hook signature after 9,000. The source dialog now allows 65,536 characters for a
   cited repository snapshot, and each Sources row opens its own source on touch
   even when inline citations are grouped into one chip.
 - An auto-eligible page then joined generic release requests captured in a
@@ -473,7 +473,7 @@ read: unchanged uncited candidates must not trigger another paid run. Changed
 file content can trigger a new investigation without a new coding message.
 Rejected identical file material also waits for a change.
 
-The reader displays up to 16,384 characters of a retained repository source,
+The reader displays up to 65,536 characters of a retained repository source,
 not a validated claim span.
 Extra files discovered directly under Paths are not automatically historical
 snapshots. Legacy raw-path citations cannot be reconstructed from a current
@@ -513,6 +513,52 @@ preserving the exact source order in `Overview` and `Try it`. They keep `Open
 threads` as bare `Unknown` when no current exchange is supported. A later
 seven-day candidate corrected the order and cited only repository snapshots,
 but was rejected for omitting that heading; the original page stayed intact.
+The next accepted seven-day page reopened its ten substantive sources, but
+quoted unnamed follow-ups from a session whose earlier explicit request named
+a different product. Those follow-ups cannot establish this project's status,
+activity, open work or next action, regardless of the session folder. Project
+instructions now require reading the earlier named subject in the same
+session before using short follow-ups. That page also described a dated source
+comment reporting tests as the latest verified execution; a comment is only a
+source note until an independent run record supports the result.
+The following candidate still cited `investigation:coverage`, and validation
+rejected it without changing the notebook. The project writer no longer
+receives that collector note; it remains in the run report, where search-window
+limits belong. Validation still rejects stale or fabricated references to it.
+An accepted seven-day page then made a checkout branch and commit timestamp
+its `Status` and `Last activity`, while `Insight` was Unknown. Those values are
+real repository facts but do not establish the user's current project work.
+The next project-writing rule keeps checkout state in `Where it stands` and
+leaves progress Facts Unknown until a dated project-specific original supports
+them. The reader uses a sourced project purpose and an explicit sample limit
+when no current insight is supported.
+Another accepted seven-day page still promoted an unnamed, one-line follow-up
+to `Now` and `Latest issues`. Earlier user input in the same Claude session
+explicitly named another product, but the project-folder selection had omitted
+that earlier input. The gatherer now withholds an unnamed project-folder input
+when an earlier user input in that session used another project folder. An
+input that explicitly names the investigated project remains available. The
+run report counts withheld follow-ups; this is a conservative attribution rule,
+not a semantic check for every session or a complete-history claim.
+The sampled Skill page had two legacy source rows that opened no original:
+the mutable run-summary note and the carried page. Skill-writing guidance now
+uses retained `skill-record` run pieces and `skill-source` or `skill-reference`
+instruction bodies, and validation rejects those two legacy rows. Cited run
+excerpts show up to 4,096 characters; retained instructions show up to 16,384
+characters, so the actual decision thresholds can be checked. An older short
+instruction excerpt widens only when a new accepted investigation supplies the
+same content hash. These are bounded private source excerpts, not proof that a
+Skill's documented behavior was executed.
+The repository-only v12 page exposed the next boundary: all 55 ambiguous
+session inputs were withheld, but the writer promoted an old file note about a
+branch into a `Now` finding. With zero assigned session inputs, the new prompt
+scope and candidate validation require bare `Unknown` in `Insight` and `Open
+threads`. The dated note may remain in `Where it stands` as history. Its cited
+54.9k-character source also had the relevant line beyond the former 16,384
+character reader cutoff; the repository dialog now shows up to 65,536
+characters from the retained snapshot. This makes the sampled original
+checkable without reading a mutable checkout. It still does not prove the old
+branch remains pending today.
 These trials establish narrow failures and fixes, not semantic reliability
 across all project pages. [The independent review](../design-evidence/rem-source-review-2026-10-03/REVIEW.md)
 records the actual rendered states and remaining checks.

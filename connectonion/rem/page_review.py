@@ -460,6 +460,11 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     known = _known_sources(items)
     if record.startswith('projects/'):
         errors += _project_overview_errors(candidate)
+        if any(item.get('role') == 'project-input-scope' and item.get('inputs_read') == 0 for item in items):
+            for heading in ('Insight', 'Open threads'):
+                section = re.search(rf'(?ms)^## {heading}\n(.*?)(?=^## |\Z)', body)
+                if section and not re.fullmatch(r'-?\s*Unknown', section[1].strip(), re.I):
+                    errors.append(f'No assigned project session inputs: keep {heading} Unknown')
         for label in ('Sessions', 'First seen', 'Last seen'):
             pattern = r'^- ' + re.escape(label) + r': [0-9-]+$'
             previous = re.findall(pattern, prose(original), re.M)
@@ -469,6 +474,12 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     for key, value in definitions:
         if record.startswith('projects/') and value.strip().startswith('investigation:project-inventory'):
             errors.append(f'Candidate file inventory is not a citable original: {key}')
+        if record.startswith('projects/') and value.strip().startswith('investigation:coverage'):
+            errors.append(f'Investigation coverage belongs in the run report, not page Sources: {key}')
+        if record.startswith('projects/') and value.strip().startswith('investigation:project-scope'):
+            errors.append(f'Project input scope is not a citable original: {key}')
+        if record.startswith('skills/') and value.strip().startswith(('skill-runs:', 'investigation:page')):
+            errors.append(f'Skill run summaries and carried pages are not citable originals: {key}')
         files = {path for path in re.findall(r'`(/[^`]+)`', value) if Path(path).is_file()}
         if len(files) > 1:
             errors.append(f'Citation bundles multiple files: {key}')

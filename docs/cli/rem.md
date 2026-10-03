@@ -392,7 +392,7 @@ older page before showing its answer. It remains a point-in-time snapshot.
   explicit investigation retains the live coding-session inputs it cites,
   even when they were absent from the older map. Cited mail bodies show up to
   4,096 characters, retained coding inputs up to 4,096, and repository
-  snapshots up to 16,384, with truncation
+  snapshots up to 65,536, with truncation
   marked. Cited conversations show up to twelve recent archived
   messages with the total count. Missing original bodies are labeled, never
   replaced by a generated summary. A page only mapped from metadata says so

@@ -255,7 +255,7 @@ def skill_record_context(root: Path, source: str) -> dict | None:
     if saved.get('source') != source or not _valid_skill_record(saved):
         return None
     text = saved['text'].strip()
-    return {'excerpt': text[:640], 'truncated': len(text) > 640, 'source': 'skill-record',
+    return {'excerpt': text[:4_096], 'truncated': len(text) > 4_096, 'source': 'skill-record',
             'time': saved.get('timestamp') or '', 'captured_at': saved.get('captured_at') or '',
             'origin': saved['origin'], 'sender': '', 'thread': '', 'input_scope': saved['input_scope']}
 
@@ -279,7 +279,7 @@ def retain_instruction_context(root: Path, items: list[dict], cited: set[str]) -
             if identifier != source and part is None:
                 continue
             raw = text if part is None else text[(int(part[1]) - 1) * FILE_CHARS:int(part[1]) * FILE_CHARS]
-            excerpt = raw.strip()[:640]
+            excerpt = raw.strip()[:16_384]
             if not excerpt:
                 continue
             scope = 'Skill instructions; intended behavior, not verified execution.'
@@ -302,6 +302,8 @@ def _save_instruction_context(root: Path, value: dict) -> None:
         if previous:
             if previous.get('content_sha256') != value['content_sha256']:
                 raise RemError('Retained instruction citation has conflicting content; preserve it for review')
+            if len(value['excerpt']) > len(previous.get('excerpt', '')):
+                write_json(path, {**previous, 'excerpt': value['excerpt'], 'truncated': value['truncated']})
             return
         write_json(path, value)
 
@@ -315,7 +317,7 @@ def instruction_context(root: Path, source: str) -> dict | None:
     row = read_json(state_path(root, 'skill-sources/' + hashlib.sha256(source.encode()).hexdigest() + '.json'), {})
     text = row.get('excerpt')
     digest = row.get('content_sha256', '')
-    if (row.get('id') != source or not isinstance(text, str) or not 0 < len(text) <= 640
+    if (row.get('id') != source or not isinstance(text, str) or not 0 < len(text) <= 16_384
             or not re.fullmatch(r'[0-9a-f]{64}', digest) or digest[:16] != source.split(':')[1]
             or SECRET_SHAPES.search(text) or PRIVATE.search(text)):
         return None

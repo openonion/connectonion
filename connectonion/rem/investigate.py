@@ -675,6 +675,11 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         except RemError as error:
             coverage.append(f"{name}: unreadable ({error})")
         related = len(picked)
+        if record.startswith("projects/") and not chat:
+            picked, withheld = _project_session_inputs(window, picked, subject)
+            if withheld:
+                coverage.append(f"{name}: {withheld} unnamed follow-up(s) withheld: earlier user input "
+                                "in the same session used another project folder")
         legacy = sum(bool(item.get("timestamp_scope")) for item in picked)
         if legacy:
             coverage.append(f"{name}: {legacy} related legacy message(s) have only a session-start date; "
@@ -701,6 +706,27 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
     for item in items:
         item.pop("_mail_id", None)
     return items, coverage
+
+
+def _project_session_inputs(window: list[dict], picked: list[dict], subject: str) -> tuple[list[dict], int]:
+    """Withhold unnamed follow-ups after the same session used another project folder."""
+    sessions = {}
+    for item in window:
+        source = str(item.get("source", ""))
+        if item.get("role") == "user" and source.rpartition(":")[2].isdigit():
+            sessions.setdefault(source.rpartition(":")[0], []).append(item)
+    named = re.compile(rf"(?<!\w){re.escape(subject.strip())}(?!\w)", re.IGNORECASE)
+    kept = []
+    for item in picked:
+        source = str(item.get("source", ""))
+        session, _, offset = source.rpartition(":")
+        crossed = offset.isdigit() and any(
+            int(row["source"].rpartition(":")[2]) < int(offset)
+            and row.get("project") and row.get("project") != item.get("project")
+            for row in sessions.get(session, []))
+        if not crossed or named.search(item.get("text", "")):
+            kept.append(item)
+    return kept, len(picked) - len(kept)
 
 
 # Every item of a session source's window, read once and shared by the
@@ -1266,9 +1292,15 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
          "text": f"The page as it stands, at {record}. Fill its Unknowns, update what "
                  f"has moved, keep what is right:\n\n{current_page}",
          "timestamp": now, "source": "investigation:page"},
+    ] + ([{"role": "project-input-scope", "source": "investigation:project-scope", "inputs_read": 0,
+           "timestamp": now, "text": "No coding-session input was assigned to this project in this run. "
+           "Repository snapshots show dated file content, not current user work. Leave Insight and Open "
+           "threads as bare Unknown; describe historical file notes with their dates in Where it stands. "
+           "This is run scope, not an original source; do not cite it."}]
+         if record.startswith("projects/") and project_inputs == 0 else []) + ([] if record.startswith("projects/") else [
         {"role": "coverage", "text": "Sources searched for handles " + ", ".join(search_handles) + ":\n"
-                                     + "\n".join(coverage), "timestamp": now, "source": "investigation:coverage"},
-    ] + ([{"role": "org-contact-context", "source": "investigation:org-contact-context", "timestamp": now,
+                             + "\n".join(coverage), "timestamp": now, "source": "investigation:coverage"},
+    ]) + ([{"role": "org-contact-context", "source": "investigation:org-contact-context", "timestamp": now,
            "candidates": related["candidates"], "text": "These domain pages share a canonical contact candidate. "
            "The map may have grouped addresses by display name; this is not proof of common person, company "
            "or legal identity. Compare the dated primary messages before using cross-domain terms or closing "
@@ -1334,7 +1366,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                   session_items=original_items,
                   project_coverage={"inputs_read": project_inputs,
                                     "inputs_available": page_state(root, record).get("messages", 0),
-                                    "days": days, "scope": "archived"} if project_inputs else None)
+                                    "days": days, "scope": "archived"}
+                  if record.startswith("projects/") else None)
     return {"record": record, "items": len(items), "items_available": available_items,
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,

@@ -490,6 +490,36 @@ def test_private_project_summary_and_partial_scope_are_clear_on_desktop_and_phon
         page.evaluate('togglePrivate()', isolated_context=False)
 
 
+def test_project_without_a_current_insight_leads_with_purpose_and_scope(reader):
+    page, uri = reader
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.evaluate("""() => {
+      const r = byPath('projects/harbour.md');
+      r.text = '# Harbour\\n\\n## Insight\\n- Unknown\\n'
+        + '\\n## What it is\\n- Harbour reads a local daily log. [1]\\n'
+        + '\\n## Where it stands\\n- The checkout snapshot has a recent commit. [1]\\n'
+        + '\\n## Sources\\n- [1] project-source:fixture — README snapshot\\n'
+        + '\\nInvestigation: mapped 2026-09-01 · investigated 2026-10-01 (codex)';
+      r.project_coverage = {inputs_read: 3, inputs_available: 5, days: 7, scope: 'archived'};
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    for width in (1440, 375):
+        page.set_viewport_size({'width': width, 'height': 812})
+        assert page.locator('.focus-kicker').first.inner_text() == 'WHAT THIS PROJECT DOES'
+        assert 'reads a local daily log' in page.locator('.focus-statement').inner_text()
+        assert 'recent commit' not in page.locator('.focus-statement').inner_text()
+        assert '7-day session sample did not confirm current project work' in page.locator('.focus-limit').inner_text()
+        assert page.locator('.project-workspace').get_by_text('What this is').count() == 0
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    page.evaluate("() => { byPath('projects/harbour.md').project_coverage.inputs_read = 0; render(); }",
+                  isolated_context=False)
+    for width in (1440, 375):
+        page.set_viewport_size({'width': width, 'height': 812})
+        assert 'No coding-session input was assigned' in page.locator('.focus-limit').inner_text()
+        assert '5 inputs are archived for this workspace' in page.locator('.scope-note').inner_text()
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
 def test_open_context_is_not_counted_as_waiting_on_other_people(reader):
     page, _ = reader
     page.evaluate("() => { const r = byPath('people/mara-ostrowski.md'); r.text = r.text.replace('## Open threads\\n', '## Open threads\\n- Completion evidence not recorded.\\n'); KNOWN.clear(); render(); }", isolated_context=False)

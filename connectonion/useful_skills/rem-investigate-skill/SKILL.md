@@ -17,6 +17,10 @@ Why these rules: docs/rem-skills/rem-investigate.md
   promised outcome, required inputs and stopping conditions with the retained
   tasks and outputs. A documented command is source-defined, not verified by
   execution. Preserve the map-owned `Source` section and usage markers.
+- Cite retained `skill-record:<hash>` pieces for run evidence and
+  `skill-source:<hash>` or `skill-reference:<hash>` for instructions. The old
+  `skill-runs:<name>` collector summary and `investigation:page` have no
+  immutable original in the reader; do not put them in page `Sources`.
 - Search the evidence for an actual result, a reproducible starting point and
   a limitation that changes the user's choice. If no runs were retained, give
   the source-backed starting point and the specific output to verify; do not

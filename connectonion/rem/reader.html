@@ -584,6 +584,7 @@
   .focus-head::after { content: ""; position: absolute; width: 420px; height: 420px; border: 1px solid var(--night-line); border-radius: 50%; right: -100px; top: -296px; box-shadow: 0 0 0 45px rgba(105, 128, 217, .035), 0 0 0 90px rgba(105, 128, 217, .025); pointer-events: none; }
   .focus-kicker { display: block; font: 600 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--night-2); }
   .focus-statement { max-width: 64ch; position: relative; z-index: 1; font: 26px/1.28 var(--display); margin: 16px 0 0; }
+  .focus-limit { position: relative; z-index: 1; max-width: 64ch; margin: 12px 0 0; font: 13px/1.5 var(--ui); color: var(--night-2); }
   .focus-statement.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
   .focus-next { position: relative; z-index: 1; max-width: 68ch; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--night-line); }
   .focus-next .k { display: block; font: 600 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--night-2); }
@@ -591,6 +592,7 @@
   .focus-more { position: relative; z-index: 1; border: 0; background: transparent; color: var(--night-ink); cursor: pointer; margin: 4px 0 0; padding: 0; min-height: 44px; font: 600 12px var(--ui); text-decoration: underline; text-underline-offset: 3px; }
   .focus-section.next-exchanges { grid-column: 1 / -1; }
   .project-workspace { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .project-workspace.single { grid-template-columns: 1fr; }
   .project-workspace .focus-section { min-width: 0; }
   .project-workspace p, .project-workspace li { font: 15px/1.5 var(--text); }
   .project-workspace p { margin: 0; }
@@ -744,6 +746,7 @@
     .mobile-back { display: block; }
     .mobile-back a { display: inline-flex; align-items: center; min-height: 44px; }
     .note { font-size: 16px; }
+    .code-block.diagram pre, .code-block.diagram pre code { white-space: pre-wrap; overflow-wrap: anywhere; }
     .maint > summary .n { display: none; }
     .side .toc-panel { display: none; }
     .factlist .copy { opacity: 1; }
@@ -2210,15 +2213,29 @@ function recordFocus(r) {
     "aria-label": "At a glance" });
   const privateMapped = r.private_project && k.status === "Mapped";
   const purpose = section(r, r.category === "orgs" ? "our relationship" : r.category === "skills" ? "when to use" : "");
+  const projectPurpose = r.category === "projects" ? section(r, "what it is") : null;
+  const projectInsight = r.category === "projects" ? section(r, "insight") : null;
+  const projectDescription = projectPurpose ? plainLine(listItems(projectPurpose.text)[0] || projectPurpose.text) : "";
+  const projectNeedsContext = r.category === "projects" && k.status !== "Mapped" &&
+    (!projectInsight || /^-?\s*Unknown\b/i.test(projectInsight.text.trim()));
   const finding = r.category === "skills" ? plainLine(section(r, "insight")?.text || "") : "";
   const statement = privateMapped ? "Automatic investigations skip this private project. Name this page to request a write."
+    : projectNeedsContext ? projectDescription || "Current project work is unconfirmed in the supplied evidence."
     : finding || plainLine(purpose?.text || "") || memoryStatement(r) || facts(r).what || k.summary;
-  const question = privateMapped ? "Needs your explicit request" : ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
+  const question = privateMapped ? "Needs your explicit request" : projectNeedsContext ?
+    (projectDescription ? "What this project does" : "Current work") : ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
     skills: finding ? "Useful finding" : "When this helps" })[r.category] || "What matters now";
   const focusHead = el("div", { class: "focus-head" }, [el("span", { class: "focus-kicker", text: question })]);
   const statementNode = privateFallback(el("p", { class: "focus-statement" + (privateMapped || r.category === "projects" ? "" : " clamped"), html: inline(statement || (k.status === "Mapped"
     ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet."), r.path) }));
   focusHead.appendChild(statementNode);
+  if (projectNeedsContext) {
+    const days = r.project_coverage?.days;
+    const limit = r.project_coverage?.inputs_read === 0
+      ? "No coding-session input was assigned to this project in this " + (days ? days + "-day " : "") + "investigation."
+      : "The " + (days ? days + "-day " : "supplied ") + "session sample did not confirm current project work.";
+    focusHead.appendChild(el("p", { class: "focus-limit", text: limit }));
+  }
   if (r.path === REM.owner) {
     const insight = section(r, "insight");
     const items = insight ? listItems(insight.text) : [];
@@ -2247,6 +2264,10 @@ function recordFocus(r) {
     out.appendChild(el("p", { class: "scope-note", text: coverage.scope === "queued"
       ? "Partial project update: " + coverage.inputs_read + " of " + coverage.inputs_available +
         " queued inputs were supplied. Older queued inputs were left out."
+      : coverage.inputs_read === 0
+      ? "No session inputs were supplied in this " + (coverage.days ? coverage.days + "-day " : "") +
+        "investigation; " + coverage.inputs_available + " inputs are archived for this workspace. " +
+        "Current project activity is unknown."
       : "Partial project history: " + coverage.inputs_read + " session inputs were supplied in this " +
         (coverage.days ? coverage.days + "-day " : "") + "investigation; " + coverage.inputs_available +
         " inputs are archived for this workspace. Earlier inputs may be outside this pass." }));
@@ -2258,12 +2279,12 @@ function recordFocus(r) {
   if (r.category === "projects") {
     const purpose = section(r, "what it is"), decisions = section(r, "key decisions");
     const blocks = [];
-    if (purpose) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: "What this is" }),
+    if (purpose && !projectNeedsContext) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: "What this is" }),
       privateFallback(el("p", { html: inline(listItems(purpose.text)[0] || purpose.text, r.path) }))]));
     if (decisions) blocks.push(el("section", { class: "focus-section" }, [el("h2", { text: "Recorded direction" }),
       el("ul", {}, listItems(decisions.text).slice(-1).map(item => privateFallback(el("li", { html: inline(item, r.path) })))),
       el("a", { class: "open-note", href: href(r) + "&h=key-decisions", text: "View all decisions →" })]));
-    if (blocks.length) out.appendChild(el("div", { class: "project-workspace" }, blocks));
+    if (blocks.length) out.appendChild(el("div", { class: "project-workspace" + (blocks.length === 1 ? " single" : "") }, blocks));
   }
   const f = facts(r);
   const labels = r.path === REM.owner ? [["Role", f.role], ["Location", f.location], ["Company", f.company]]

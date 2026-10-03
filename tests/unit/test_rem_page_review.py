@@ -38,6 +38,35 @@ def test_project_cannot_cite_the_candidate_file_list_as_file_evidence():
         'projects/atlas.md', candidate, '# Atlas\n', items)
 
 
+def test_project_cannot_cite_the_run_coverage_as_subject_evidence():
+    candidate = '# Atlas\n\nNo matching messages were found [1].\n\n## Sources\n- [1] investigation:coverage — today\n'
+    items = [{'role': 'coverage', 'source': 'investigation:coverage',
+              'text': 'No related coding messages in seven days'}]
+    assert 'Investigation coverage belongs in the run report, not page Sources: 1' in validate(
+        'projects/atlas.md', candidate, '# Atlas\n', items)
+
+
+def test_project_with_no_assigned_session_input_cannot_claim_current_work():
+    candidate = ('# Atlas\n\n## Insight\n- Now: branch merge is pending. [1]\n'
+                 '\n## Open threads\n- Merge the branch. [1]\n'
+                 '\n## Sources\n- [1] investigation:project-scope — today\n')
+    items = [{'role': 'project-input-scope', 'source': 'investigation:project-scope',
+              'inputs_read': 0}]
+    errors = validate('projects/atlas.md', candidate, '# Atlas\n', items)
+    assert 'No assigned project session inputs: keep Insight Unknown' in errors
+    assert 'No assigned project session inputs: keep Open threads Unknown' in errors
+    assert 'Project input scope is not a citable original: 1' in errors
+
+
+def test_skill_cannot_cite_collector_summary_or_old_page_as_original():
+    candidate = ('# abstract\n\n## Sources\n- [1] skill-runs:abstract — sampled runs\n'
+                 '- [2] investigation:page — old note\n')
+    errors = validate('skills/catalog/abstract.md', candidate, '# abstract\n', [
+        {'source': 'skill-runs:abstract'}, {'source': 'investigation:page'}])
+    assert 'Skill run summaries and carried pages are not citable originals: 1' in errors
+    assert 'Skill run summaries and carried pages are not citable originals: 2' in errors
+
+
 def test_owner_links_a_unique_project_name_without_linking_sources_or_partial_words(tmp_path):
     from connectonion.rem.page_review import link_projects, project_names
 
