@@ -17,7 +17,7 @@ Placeholders are not evidence.
 ```markdown
 # <observed name>
 
-<lead>. Last contact: <date>.
+<lead>. Last contact: <date> via <channel> in checked sources.
 
 ## Facts
 - Email: Unknown
@@ -51,22 +51,24 @@ Placeholders are not evidence.
 Rules:
 
 - **Lead**: 2–3 cited sentences. Start with a supported current obligation or
-  relationship finding; end with `Last contact: <date>` and channel. Historical
-  gaps go in `Uncertainties`. `Nothing open as of <date>` needs closure evidence.
-- **`Facts` is data, written first.** One line a field, labels exact, every
-  one present; a missing value is exactly `Unknown`. Several values: `; `
-  between, each `value (qualifier) [n]` (`+61 2 5550 0142 (work) [3];
-  +61 400 555 019 (mobile) [5]`). Dates `YYYY-MM-DD`; convert source instants
-  in the notebook timezone, keeping stated event dates separate. Every value is cited
-  except `Email`, `Handles`, `Also known as`. A contact detail never goes in a
-  sentence instead of its field. `Links`: LinkedIn, personal or company site.
-  `How we know them`: who introduced whom, or the first thread.
-- **`Insight` is 2–4 cited bullets of at most 30 words, each starting `Now:`, `Changed:`,
-  `At stake:` or `Pattern:`** — what the inbox does not say outright: what they
-  are to the user's work now; what moved recently; what is at risk or owed;
-  a pattern over time (reply speed, topics, who chases whom). Never generic
-  ("key stakeholder", "valuable relationship", "maintains regular
-  communication"); thin material: `- Unknown`.
+  relationship finding; end with `Last contact: <date>` and channel, qualified
+  to the sources actually checked. Historical gaps go in `Uncertainties`.
+  `Nothing open as of <date>` needs closure evidence.
+- **`Facts` is data, written first.** Keep every exact label, one per line;
+  missing is `Unknown`. Separate multiple qualified, cited values with `; `.
+  Dates are `YYYY-MM-DD` in the notebook timezone; keep event dates separate.
+  Cite values except `Email`, `Handles`, `Also known as`. Put contact details
+  here, not in prose. `Links`: cited LinkedIn or site URL, never an email domain.
+  `How we know them`: introduction or first thread.
+- In Facts write `Last contact: YYYY-MM-DD (latest observed in checked sources)
+  [n]`; the lead also states its checked scope. Other channels may be unknown.
+- **`Insight`**: 2–4 cited bullets, at most 30 words each, starting `Now:`,
+  `Changed:`, `At stake:` or `Pattern:`. State a useful consequence supported
+  by its exact citations, not a generic role or repeated Fact. Use `At stake:`
+  only for an evidenced unresolved ask, promised deliverable, deadline or
+  consequence. A signed plan, quantity and proposed start prove none of these;
+  do not invent launch, fulfillment, delivery work or an owner. Thin material:
+  `- Unknown`.
 - **`Language` is observed**: the language they write to the user in.
 - Attribute group replies to their sender using exact From/To/Cc metadata.
   Greetings do not bind names by recipient order; the owner's phone is not
@@ -74,37 +76,31 @@ Rules:
   evidence does not make them current pending work.
 - **`Company` needs stated employment.** Student or mailbox affiliation proves
   none: `Unknown`. Link schools/groups in relationship text, not as employers.
-- **`Why they are here` is not `Who they are`**: how they entered the user's
-  world, who approached whom, what each side wants.
-- **`Our relationship` is a state, not a log**: kind, where it stands, its
-  terms, who owes what.
+- **`Why they are here`**: how they met, who approached whom, each side's aim.
+- **`Our relationship`**: kind, current state, terms and obligations.
+  “We signed” alone makes this contact about a plan, not a contract with the user.
   Keep each local link with its relationship, citations and privacy markers;
   separate different events onto separate lines.
-- **`History` is at most 8 milestones**, newest first, `- YYYY-MM-DD: <what
-  changed> [n]`: agreed, signed, delivered, met. Not a send or a newsletter.
-  Past 8, fold the oldest into one line per year.
+- **`History`**: at most 8 dated, cited milestones, newest first: agreements,
+  signing, delivery or meetings. Fold older years; omit routine sends.
 - **Open threads keep exact asks.** Check later replies; separate terms/forms.
   Reports/optional offers create none. Prerequisites aren't agreed commitments;
   missing historical outcomes aren't current debts.
   Accepting an invitation or trial proves intent; attendance/activation need
   separate evidence.
   Name debtor, request date and explicit due date; never hardcode its age.
-  Preserve permission to proceed without a reply. Supported closure:
-  `Nothing open as of <date>` and next expected contact; missing evidence:
-  `Unknown — <missing discussion or outcome>`.
-- **Say things once.** Doubt goes in `Uncertainties`; omit collection counts
-  and prior-page metadata.
+  Preserve permission to proceed without a reply. Sparse mail proves no global
+  no-debt state. `Nothing open` needs evidence closing each known ask; otherwise
+  use `Unknown`. Name next contact only if arranged; a planned start is not one.
+- Say things once; put doubt in `Uncertainties`; omit collection counts.
 - **Label inference.** Empty sections stay `Unknown`; don't infer "no prior
   history" or "cannot be assessed".
 - **Keep what the map already knew.** `Email`, `Handles`, `Also known as`
   arrive filled; keep them. Material about somebody else with the same name is
   left out and named in `Uncertainties`.
-- **`Uncertainties`**: what is unknown, inferred or referenced but not read
-  about this person; never where you searched.
-- **Sources**: `- [n] <source id> — <date>`; claims stay in sentences.
-  Reuse numbers and list only cited sources.
+- **`Uncertainties`**: unknowns, inferences and unread references; omit search logs.
+- **Sources**: `- [n] <source id> — <date>`; list only cited sources.
 
 ## Exact headings
 
-Never annotate headings or rename `Facts` labels. Preserve the runner's
-`Investigation:` line unchanged.
+Keep headings, `Facts` labels and the runner's `Investigation:` line exact.

@@ -29,10 +29,12 @@ description: Rules for investigating someone other than the user — composed af
   page requires. Combine older events by year; do not turn every message or
   thread into a milestone. Keep the current relationship and obligations in
   their own sections.
-- **`How the user writes to them`** comes from the user's own messages to them
-  (language, tone, length, how they open, what they ask); **`Cadence`** from the
-  dates (`about weekly, July–September`). Each is `Unknown` only when there is
-  no such message, or a single one.
+- **`How the user writes to them`** uses the user's own messages. With one,
+  give a dated, cited *single observed note* of what they said, not a style
+  pattern. With none, write `Unknown`; with several, describe supported tone,
+  language, length and requests. Apply the same one-note rule to `How they
+  communicate` for the subject's own mail. **`Cadence`** needs repeated dates;
+  with one or none, write `Unknown`.
 - `First contact` needs a cited direct exchange that establishes the beginning
   of this relationship. The earliest retained message is only the earliest
   observed message: a reply mentioning an earlier application, introduction or
