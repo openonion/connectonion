@@ -104,6 +104,15 @@ class TestNothingElseChanges:
         assert 'Reason\nTravel changed' in out
         assert 'Travel changed\nNo follow-up\nrequired.' in out
 
+    def test_calendar_participant_names_and_roles_stay_separate(self):
+        out = body_rendered_from(
+            '<p><span><span>Alex Example</span></span><span><span>Organizer</span></span></p>'
+            '<p><span><span>Sam Example</span></span><span><span>Guest</span></span></p>'
+        )
+
+        assert 'Alex Example\nOrganizer' in out
+        assert 'Sam Example\nGuest' in out
+
 
     def test_a_bare_url_as_link_text_is_not_printed_twice(self):
         """Mail clients often render the URL as its own anchor text."""

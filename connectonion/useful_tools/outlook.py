@@ -494,6 +494,9 @@ class Outlook:
             # turned event time, cancellation reason and follow-up into one line.
             body_content = re.sub(r'<br\b[^>]*>|</?(?:p|div|li|tr|td|th|h[1-6]|blockquote)\b[^>]*>',
                                   '\n', body_content, flags=re.IGNORECASE)
+            # Outlook event cards put the name and role in adjacent spans.
+            body_content = re.sub(r'<span\b[^>]*>\s*(Organizer|Guest)\s*</span>',
+                                  r'\n\1', body_content, flags=re.IGNORECASE)
             # Everything that is markup, but not the `<scheme://…>` the step
             # above just wrote — `<[^>]+>` cannot tell those apart and ate the
             # very addresses it was meant to preserve.
