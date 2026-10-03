@@ -6,8 +6,8 @@ ConnectOnion has two release channels:
 - **Preview** contains opt-in alpha, beta, and release-candidate builds.
 
 Preview releases never replace the stable recommendation. Install one by
-pinning its exact version: `pip install --upgrade 'connectonion==X.YbN'`. The
-pin alone lets pip take that one preview. Do not add `--pre`: it applies to
+pinning the exact version shown below. The pin alone lets pip take that one
+preview. Do not add `--pre`: it applies to
 every dependency too, and under it 1.8.8b7 resolved httpx 1.0.dev6, which has
 no `AsyncClient`, and every remote agent call crashed.
 
