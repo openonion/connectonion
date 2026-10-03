@@ -556,11 +556,12 @@
   .lead-calm { font: 600 10.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); background: var(--well); padding: 5px 9px; border-radius: 4px; }
   .lead-meta { font-size: 12.5px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 8px; }
   .lead-meta.project-purpose-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 100%; font: 500 15px/1.4 var(--text); color: var(--ink); }
-  .project-purpose-cites { display: flex; align-items: center; gap: 6px; width: 100%; font: 12px var(--ui); color: var(--ink-3); }
-  .project-purpose-cites a.cite { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
-  .focus-head .project-purpose-cites { position: relative; z-index: 1; margin-top: 8px; color: var(--night-2); }
-  .focus-head .project-purpose-cites a.cite { color: var(--night-ink); background: rgba(255, 255, 255, .12); }
-  .focus-head .project-purpose-cites a.cite:hover, .focus-head .project-purpose-cites a.cite:focus-visible { background: var(--blue); }
+  .project-purpose-cites, .skill-finding-cites { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; font: 12px var(--ui); color: var(--ink-3); }
+  .project-purpose-cites a.cite, .skill-finding-cites a.cite { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+  .focus-head :is(.project-purpose-cites, .skill-finding-cites) { position: relative; z-index: 1; margin-top: 8px; color: var(--night-2); }
+  .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite { color: var(--night-ink); background: rgba(255, 255, 255, .12); }
+  .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:hover, .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:focus-visible { background: var(--blue); }
+  .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:focus-visible { outline: 2px solid var(--night-ink); outline-offset: 2px; }
   .lead-meta .k { color: var(--ink-3); }
   .lead-meta.usage .bar { width: 120px; height: 5px; border-radius: 3px; background: var(--well); overflow: hidden; display: inline-block; }
   .lead-meta.usage .bar i { display: block; height: 100%; background: var(--blue); }
@@ -823,6 +824,11 @@
     .focus-head.purpose-lead .focus-source { margin-top: 4px; }
     .record-focus.people .focus-head { padding-top: 12px; }
     .focus-source { margin-top: 8px; }
+    .record-focus.skills { margin-top: 0; }
+    .record-focus.skills .focus-head { padding-top: 12px; }
+    .record-focus.skills .focus-statement { margin-top: 10px; }
+    .record-focus.skills .skill-finding-cites { margin-top: 4px; }
+    .record-focus.skills .skill-finding-cites + .focus-source { margin-top: 4px; }
   }
   @media (prefers-reduced-motion: no-preference) {
     a, button, nav a, .cite, .thread { transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease; }
@@ -2405,7 +2411,8 @@ function recordFocus(r) {
   const projectDescription = plainLine(projectPurposeLine);
   const projectNeedsContext = r.category === "projects" && k.status !== "Mapped" &&
     (!projectInsight || /^-?\s*Unknown\b/i.test(projectInsight.text.trim()));
-  const finding = r.category === "skills" ? plainLine(section(r, "insight")?.text || "") : "";
+  const findingLine = r.category === "skills" ? (section(r, "insight")?.text || "").split("\n").find(line => plainLine(line)) || "" : "";
+  const finding = plainLine(findingLine);
   const statement = privateMapped ? "Automatic investigations skip this private project. Name this page to request a write."
     : projectNeedsContext ? projectDescription || "Current project work is unconfirmed in the supplied evidence."
     : finding || plainLine(purpose?.text || "") || memoryStatement(r) || facts(r).what || k.summary;
@@ -2416,6 +2423,13 @@ function recordFocus(r) {
   const statementNode = privateFallback(el("p", { class: "focus-statement" + (privateMapped || r.category === "projects" && !projectNeedsContext ? "" : " clamped"), html: inline(statement || (k.status === "Mapped"
     ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet."), r.path) }));
   focusHead.appendChild(statementNode);
+  if (finding) {
+    const findingSources = [...new Set(findingLine.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
+    if (findingSources.length) focusHead.appendChild(el("span", { class: "skill-finding-cites" + (/\[(?:personal|sensitive)\]/i.test(findingLine) ? " private" : ""),
+      role: "group", "aria-label": "Finding sources" },
+      [el("span", { text: findingSources.length === 1 ? "Finding source" : "Finding sources" }),
+        ...findingSources.map(n => el("span", { html: citeChip(n, r.path, false) }))]));
+  }
   if (projectNeedsContext) {
     const purposeSources = [...new Set(projectPurposeLine.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
     if (purposeSources.length) focusHead.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": "Purpose sources" },
