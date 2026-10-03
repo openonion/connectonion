@@ -456,6 +456,11 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     errors = size_errors(candidate, original) + history_errors(candidate, original)
     if len(re.findall(r'^# .+', body, re.M)) != 1:
         errors.append('Expected exactly one page title')
+    if record.startswith('skills/catalog/'):
+        old_title = re.search(r'^# (.+)$', prose(original), re.M)
+        new_title = re.search(r'^# (.+)$', body, re.M)
+        if old_title and new_title and old_title[1] != new_title[1]:
+            errors.append('Preserve the exact skill invocation name as the page title')
     counts = Counter(re.findall(r'^## (.+)$', body, re.M))
     errors += [f'Section must occur once: {h}' for h in headings(record, owner) if counts[h] != 1]
     errors += [f'Duplicate section: {h}' for h, n in counts.items() if n > 1]

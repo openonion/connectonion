@@ -67,6 +67,17 @@ def test_skill_cannot_cite_collector_summary_or_old_page_as_original():
     assert 'Skill run summaries and carried pages are not citable originals: 2' in errors
 
 
+def test_written_skill_keeps_the_invocation_title_needed_for_reinvestigation(tmp_path):
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    record = 'skills/catalog/example.md'
+    notebook.stub_skill(record, 'example', '/tmp/example/SKILL.md')
+    original = notebook.read(record)
+    candidate = original.replace('# example\n', '# Example result reviewer\n', 1)
+    assert 'Preserve the exact skill invocation name as the page title' in validate(
+        record, candidate, original, [])
+
+
 def test_owner_links_a_unique_project_name_without_linking_sources_or_partial_words(tmp_path):
     from connectonion.rem.page_review import link_projects, project_names
 

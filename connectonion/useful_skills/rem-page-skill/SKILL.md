@@ -9,6 +9,8 @@ Why these rules: docs/rem-skills/rem-page-skill.md
 
 Help a reader choose and start a task. Keep the lead short; link, don't paste,
 the source. State missing execution evidence once in `Current status`.
+Keep `#` title exactly the mapped invocation name, without a descriptive suffix;
+`co rem investigate` uses it to find the skill's runs.
 
 Keep the core headings `What it does`, `Insight`, `When to use`, `Current status`,
 `How to use`, `Inputs and outputs`, `Usage history`, `Limitations`, `Uncertainties`,
@@ -58,16 +60,17 @@ an optional section whose whole body would be Unknown. Keep the order below:
   failure condition, consequence and next check. Prefer a specific trap or
   conflicting rule over listing prerequisites. Put the execution-evidence
   caveat in `Current status`, not in each Insight. Counts do not prove success.
-- `What it does`: one plain sentence: the task and useful outcome. Metadata is
-  advertised capability, not verified behaviour.
+- `What it does`: one plain sentence: the task and intended outcome. Say the
+  skill aims to produce checked work until an openable artifact proves it did.
 - `When to use`: a concrete suitable task and an important unsuitable case, when
   known. Never present invented examples as observed successes.
 - `Current status`: latest observed run date, version/model, whether the task
   was completed, actual output, quality assessment, known blockers; a few lines
   linking the detailed run. With no reviewed run evidence: `Unknown — not
   verified` (not "never ran").
-- `Example result`: one real artifact or short excerpt with its run reference.
-  Label illustrative examples and failed/partial outputs.
+- `Example result`: a retained, openable artifact or excerpt with its run
+  reference. If only a run report survives, label its output as reported;
+  leave uninspected artifact details Unknown. Label partial results.
 - `How to use`: shortest verified invocation, prerequisites, working directory,
   ideally at most three steps. Never expose credentials.
 - `Inputs and outputs`: required inputs, expected outputs and their locations.
@@ -117,15 +120,11 @@ Link older records when numerous.
 
 **Mapping and later review**
 
-Mapping owns installed copies and session counts. Review adds evidence and
-preserves those markers, identity, useful prior content and `Investigation:`.
-Never execute a skill merely to document it.
+Mapping owns installed copies, usage and identity; preserve them and
+`Investigation:`. Catalog pages stay under `skills/catalog/`; never run the skill.
+Eval counts /skill inputs, while sessions also include file loads. Neither
+proves installed version or goal achievement without artifacts.
 
-Catalog pages go in `skills/catalog/`. Review source and retained eval summaries;
-never read mail or execute the skill for this review.
-Eval counts explicit /skill inputs; sessions also include file loads/direct CLI.
-Neither proves installed version or goal achievement without artifacts.
-
-Match inherited claims to their exact task, date and original; cite supplied
-snapshot IDs. Treat outputs/handbacks as reports until artifact review.
+Match claims to exact tasks and originals; cite snapshot IDs. Treat handbacks
+as reports until artifact review.
 Open threads need a current, source-backed pending request.

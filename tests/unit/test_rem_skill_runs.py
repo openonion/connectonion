@@ -339,7 +339,7 @@ def test_skill_record_original_survives_cleanup_and_mutable_run_report(tmp_path,
     assert not captured['directory'].exists()
     source.unlink()
     context = cited_context(root, [{'text': '- [1] ' + captured['id']}])[captured['id']]
-    assert context['excerpt'] == original[:4_096]
+    assert context['excerpt'] == original[:40_000] and not context['truncated']
     assert context['time'] == '2026-09-30T23:40:00Z'
     assert context['captured_at'] != context['time']
     assert 'not independently verified' in context['input_scope']
@@ -369,7 +369,7 @@ def test_skill_record_snapshot_bounds_privacy_and_identity(tmp_path):
     good = packets[1]
     context = skill_record_context(tmp_path, good['source'])
     assert context['time'] == '2026-09-01' and context['captured_at'] == '2026-10-02T00:00:00Z'
-    assert 'part 1 of 2' in context['input_scope'] and context['truncated']
+    assert 'part 1 of 2' in context['input_scope'] and not context['truncated']
     assert skill_record_context(tmp_path, packets[2]['source']) is None
     path = state_path(tmp_path, 'skill-records/' + good['source'].split(':')[1] + '.json')
     saved = read_json(path, {})
