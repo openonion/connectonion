@@ -937,8 +937,8 @@ def make_rem_app(factory):
                          days: Optional[int] = typer.Option(None, "--days", min=1),
                          quick: bool = typer.Option(False, "--quick", help="Bounded first pass for your own page"),
                          limit: Optional[int] = typer.Option(None, "--limit", min=0),
-                         workers: int = typer.Option(10, "--workers", "-w", min=1, max=32,
-                                                     help="Number of concurrent investigation workers (default: 10)"),
+                         workers: Optional[int] = typer.Option(None, "--workers", "-w", min=1, max=32,
+                                                               help="Number of concurrent investigation workers (default: 10 for full runs, 1 with limit/budget)"),
                          budget: Optional[int] = typer.Option(None, "--budget", min=1, max=100),
                          list_only: bool = typer.Option(False, "--list"),
                          recent_days: Optional[int] = typer.Option(None, "--recent-days", min=1),
@@ -951,6 +951,7 @@ def make_rem_app(factory):
         from ...rem.runner import RunFailed
         from ...rem.service import subscriptions
         clients_for, progress = _mail_clients, _mail_progress
+        effective_workers = workers if workers is not None else (1 if (limit or budget) else 10)
 
         def one(root, notebook, record):
             return _investigate_page(root, notebook, record, handle=handle, days=days, eval_dir=eval_dir,
@@ -1006,7 +1007,7 @@ def make_rem_app(factory):
             gate = budget_gate(root)
             if chosen:
                 rem_look.line(f"Investigating {len(chosen)} of {len(queue)} pending {category} pages "
-                              f"with up to {min(workers, len(chosen))} workers.", err=True)
+                              f"with up to {min(effective_workers, len(chosen))} workers.", err=True)
 
             def investigate_one(record):
                 try:
@@ -1020,9 +1021,9 @@ def make_rem_app(factory):
                     return {"page": record, "outcome": outcome, "why": str(error)}
 
             pending, running = iter(chosen), {}
-            with ThreadPoolExecutor(max_workers=workers) as pool:
+            with ThreadPoolExecutor(max_workers=effective_workers) as pool:
                 while True:
-                    while len(running) < workers and not stopped:
+                    while len(running) < effective_workers and not stopped:
                         row = next(pending, None)
                         if row is None:
                             break
@@ -1057,11 +1058,11 @@ def make_rem_app(factory):
             start, began = quota.read(config), now().isoformat()
 
             def gate():
-                meter = quota.read(config)
-                stop = quota.floor_block(meter, config["limits"])
+                meter, logs = quota.read(config), run_logs(root)
+                stop = quota.blocks(meter, quota.points_spent(logs, meter), config["limits"])
                 if stop or not budget or "unknown" in meter or "unknown" in start:
                     return stop
-                used = quota.run_spent(start, meter, run_logs(root), began)
+                used = quota.run_spent(start, meter, logs, began)
                 return f"this run has used {used} of its {budget}-point budget" if used >= budget else ""
             return gate
 
@@ -1087,7 +1088,7 @@ def make_rem_app(factory):
                 return run_people(ctx, root, limit=pages_limit, recent_days=recent_days or 14, days=days,
                                   list_only=list_only, gate=None if list_only else budget_gate(root),
                                   clients_for=clients_for, subscriptions=subscriptions, logged=_logged,
-                                  workers=workers)
+                                  workers=effective_workers)
             if target == "me":
                 return me(root)
             if target in runnable:
