@@ -448,6 +448,7 @@ def test_over_input_limit_the_writer_searches_evidence_files_instead_of_digests(
     assert any(line.startswith("evidence: ") and "searched, not summarised" in line for line in out["coverage"])
     assert not seen["folder"].exists(), "private mail copies are removed after the run"
     assert "investigated" in inv.Notebook(root).read("people/vern.md")
+    assert out["report"] == inv.Notebook(root).read("people/vern.md")
 
 
 def test_over_input_limit_a_summary_tier_model_is_handed_digests_not_files(tmp_path, monkeypatch):

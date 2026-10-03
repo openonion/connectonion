@@ -949,12 +949,13 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         write_json(directory / "result.json", {**metrics, "status": "failed", "error": str(error),
                    "usage": usage, "duration_seconds": time.monotonic() - started, "changed": changed()})
         raise RunFailed(str(error), usage, changed()) from error
+    report = notebook.read(record) if candidate else result.get("result")
     write_json(directory / "result.json", {**metrics, "status": "candidate_accepted" if candidate else "execution_finished",
                "usage": result.get("usage"), "duration_seconds": time.monotonic() - started,
-               "changed": changed(), "report": result.get("result")})
+               "changed": changed(), "report": report})
     outcome = {"usage": result.get("usage"), "changed": changed(), "refused": len(refusals), "refusals": refusals,
                "instructions_chars": metrics["instructions_chars"],
-               "report": str(result.get("result") or ""),
+               "report": str(report or ""),
                "review_candidates": read_json(directory / "review-candidates.json", [])}
     if record and record in before and notebook.path(record).is_file():
         # Before and after, so a run that doubles a page shows it (#1956).

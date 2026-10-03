@@ -780,6 +780,9 @@ def test_failed_cited_claim_audit_gets_one_source_based_repair(notebook, monkeyp
     assert promotions == [{'input_tokens': 10}, {'input_tokens': 18}]
     assert result['usage'] == {'input_tokens': 20}
     assert 'Supported' in notebook.read(record)
+    assert result['report'] == notebook.read(record)
+    receipt = next((notebook.root / '.state' / 'tasks').glob('investigate-*/result.json'))
+    assert json.loads(receipt.read_text())['report'] == notebook.read(record)
 
 
 @pytest.mark.parametrize('repaired', [True, False])
