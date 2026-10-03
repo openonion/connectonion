@@ -188,6 +188,17 @@ longer supplies the oldest mail as `First contact`; the People index reads the
 date only from an explicit page fact. A cited date alone is not proof of the
 field's meaning.
 
+One a33 Person trial also attributed a calendar booking's displayed
+Australia/Sydney event time to the guest. A booking's event time zone does not
+establish either person's own time zone; the correspondent instruction now
+requires an explicit person-level label before making that claim.
+
+A later a33 rerun cited an attachment that did label the invitee's zone, but
+its first-fold `Now` summary omitted the sourced reason a recruiting thread
+closed. The Person instruction requires the `Now` sentence to state that
+reason before any no-follow-up guidance, because Home and the Person hero use
+it directly.
+
 Fact extraction converts source timestamps to `schedule.timezone` before
 deriving contact and source dates. It sorts full instants, rather than date
 strings, so reversed inputs on the same UTC day still cite the correct first
