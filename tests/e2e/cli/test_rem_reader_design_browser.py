@@ -668,9 +668,35 @@ def test_written_project_purpose_precedes_partial_scope_on_phone(reader):
     assert purpose.bounding_box()['y'] < 812
     assert purpose.bounding_box()['y'] < scope.bounding_box()['y']
     assert '114 session inputs' in scope.inner_text()
-    sources = page.locator('.record-focus > .open-note').bounding_box()
+    sources = page.locator('.focus-source').bounding_box()
     assert sources['height'] >= 44 and sources['y'] + sources['height'] <= 812
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_written_pages_show_the_complete_source_action_on_phone(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    paths = ('people/avery-lin.md', 'orgs/fernhill-labs.md',
+             'people/mara-ostrowski.md', 'projects/harbour.md',
+             'skills/catalog/weekly-brief.md')
+    for path in paths:
+        page.goto(uri + '#r=' + path.replace('/', '%2F'))
+        if path == 'skills/catalog/weekly-brief.md':
+            page.evaluate("""() => {
+              const r = byPath('skills/catalog/weekly-brief.md');
+              r.text = '# weekly-brief\\n\\n## Insight\\nA saved draft needs a queue readback before it can be sent. [1]\\n'
+                + '\\n## When to use\\nUse for a weekly brief. [1]\\n'
+                + '\\n## Sources\\n- [1] skill-record:test — saved draft and queue readback.';
+              KNOWN.delete(r.path); render();
+            }""", isolated_context=False)
+        link = page.get_by_role('link', name='View sources →')
+        assert link.count() == 1, path
+        box = link.bounding_box()
+        assert box['height'] >= 44 and box['y'] + box['height'] <= 812, path
+        assert page.get_by_role('heading', name='Full memory and sources').is_visible()
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        link.click()
+        assert page.locator('.deep-note .block-sources').is_visible()
 
 
 def test_open_context_is_not_counted_as_waiting_on_other_people(reader):

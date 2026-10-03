@@ -23,6 +23,16 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a35** puts the full-size source action beside the useful lead
+on written REM pages. In a five-type 375×812 trial, each action fit within
+the first viewport and still opened Sources. See
+[1.9.0a35 notes](releases/1.9.0a35.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a35'
+co rem open --live
+```
+
 Alpha **1.9.0a34** speeds scoped REM investigations by reusing a private
 parsed window of typed coding-session inputs. On one 90-day notebook, a
 source-only repeat in a new process fell from 103.5 to 2.1 seconds while
