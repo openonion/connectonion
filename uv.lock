@@ -373,7 +373,7 @@ wheels = [
 
 [[package]]
 name = "connectonion"
-version = "1.9.0a35"
+version = "1.9.0a36"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
