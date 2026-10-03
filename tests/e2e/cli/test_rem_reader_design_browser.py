@@ -186,6 +186,19 @@ def test_a_person_opens_on_a_fact_card_with_cited_values(reader):
     assert page.locator("#src-6").count() == 1
 
 
+def test_grouped_citation_sources_are_each_openable_on_phone(reader):
+    page, uri = reader
+    page.set_viewport_size({"width": 375, "height": 812})
+    page.goto(uri + "#r=people%2Fmara-ostrowski.md")
+    assert page.locator(".insight .cite.run").count() == 1
+    page.locator("#src-6 .source-open").click()
+    assert "source 6" in page.locator("#evidence-dialog .evidence-top").inner_text().lower()
+    assert page.locator("#evidence-dialog .evidence-original").is_visible()
+    target = page.locator("#src-6 .source-open").bounding_box()
+    assert target["height"] >= 44 and target["width"] >= 44
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
 def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reader):
     page, _ = reader
     cases = {
@@ -381,7 +394,7 @@ def test_project_first_seen_does_not_establish_an_unknown_start_date(reader):
     assert 'not found' in started.inner_text()
 
 
-def test_project_hero_keeps_the_first_finding_before_later_tagged_updates(reader):
+def test_project_hero_leads_with_current_finding_before_historical_pattern(reader):
     page, uri = reader
     page.goto(uri + '#r=projects%2Fharbour.md')
     page.evaluate("""() => {
@@ -392,8 +405,7 @@ def test_project_hero_keeps_the_first_finding_before_later_tagged_updates(reader
     }""", isolated_context=False)
     for width in (1440, 768, 375):
         page.set_viewport_size({'width': width, 'height': 1000})
-        assert page.locator('.focus-statement').inner_text() == (
-            'Historical send rule: verified recipient, approved text, screenshot, no retries.')
+        assert page.locator('.focus-statement').inner_text() == 'A release was requested in July.'
 
 
 def test_unknown_repository_stays_unknown_while_workspace_path_remains_visible(reader):
@@ -441,6 +453,41 @@ def test_private_mode_hides_raw_sources_and_conversations_already_open(reader):
     assert page.locator('#evidence-dialog .private-hidden-notice').is_visible()
     page.evaluate('togglePrivate()', isolated_context=False)
     assert original.is_visible() and 'I will send the usage export' in original.inner_text()
+
+
+def test_private_project_summary_and_partial_scope_are_clear_on_desktop_and_phone(reader):
+    page, uri = reader
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.evaluate("""() => {
+      const r = byPath('projects/harbour.md');
+      r.text = '# Harbour\\n\\n## Insight\\n- Now: A hidden finding [personal].\\n'
+        + '\\n## What it is\\n- A hidden description [personal].\\n'
+        + '\\n## Key decisions\\n- A hidden decision [personal].\\n'
+        + '\\n## Sources\\n- [1] codex:example — 2026-09-01\\n'
+        + '\\nInvestigation: mapped 2026-09-01 · investigated 2026-10-01 (codex)';
+      r.project_coverage = {inputs_read: 3, inputs_available: 5, days: 150, scope: 'archived'};
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    for width in (1440, 375):
+        page.set_viewport_size({'width': width, 'height': 812})
+        assert '3 session inputs were supplied' in page.locator('.scope-note').inner_text()
+        assert '5 inputs are archived' in page.locator('.scope-note').inner_text()
+        assert 'clamped' not in page.locator('.focus-statement').get_attribute('class')
+        page.evaluate('togglePrivate()', isolated_context=False)
+        assert page.locator('.focus-statement').inner_text() == 'Hidden labelled passage'
+        assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').count() == 2
+        assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').first.is_visible()
+        page.evaluate("() => { location.hash = '#c=projects'; render(); }", isolated_context=False)
+        row = page.locator('tr', has=page.get_by_role('link', name='Harbour'))
+        cell = row.locator('td').nth(1)
+        assert cell.inner_text() == 'Hidden labelled passage'
+        assert cell.locator('.clamp').get_attribute('title') == ''
+        if width == 375:
+            assert row.locator('.mobile-status-label').inner_text() == 'Investigated'
+            assert row.locator('.mobile-status-label').is_visible()
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        page.evaluate("() => { location.hash = '#r=projects%2Fharbour.md'; render(); }", isolated_context=False)
+        page.evaluate('togglePrivate()', isolated_context=False)
 
 
 def test_open_context_is_not_counted_as_waiting_on_other_people(reader):
@@ -757,7 +804,23 @@ def test_unknown_open_status_is_not_a_current_exchange(reader):
     assert page.get_by_role('heading', name='Next exchanges').count() == 0
     note = page.locator('.deep-note')
     assert 'Historical requests do not establish currently pending work.' in note.inner_text()
-    assert note.locator('a.cite[href$="h=src-1"]').is_visible()
+    assert note.locator('a.cite[href$="h=src-1"]').first.is_visible()
+
+
+def test_project_map_date_is_labelled_as_a_session_not_verified_activity(reader):
+    page, uri = reader
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.evaluate("""() => {
+      const r = byPath('projects/harbour.md');
+      r.last_activity = '2026-09-16';
+      KNOWN.delete(r.path); render();
+    }""", isolated_context=False)
+    assert 'Last mapped session' in page.locator('.leadrow').inner_text()
+    assert 'LAST MAPPED SESSION' in page.locator('.focus-facts').inner_text()
+    assert 'last mapped session' in page.locator('.eyebrow').inner_text()
+    assert 'Last active' not in page.locator('.leadrow').inner_text()
+    page.goto(uri + '#c=projects')
+    assert 'LAST MAPPED SESSION' in page.locator('.sheet thead').inner_text()
 
 
 def test_completed_delivery_is_conversation_instead_of_a_commitment(reader):
@@ -798,6 +861,8 @@ def test_marked_sentence_with_a_markdown_link_and_code_respects_private_mode(rea
     assert not page.locator('.deep-note code').filter(has_text='case.txt').is_visible()
     assert page.get_by_text('Public setup.', exact=False).is_visible()
     assert 'Public follow-up.' in page.locator('.deep-note').inner_text()
+    visible = page.locator('.deep-note p').filter(has_text='Public setup.').inner_text()
+    assert ' '.join(visible.split()) == 'Public setup. Public follow-up.'
     page.evaluate('togglePrivate()', isolated_context=False)
     assert sentence.is_visible()
 

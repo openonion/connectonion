@@ -177,9 +177,9 @@ page unmarked.
 
 Budget: with the Codex runner every investigation records your Codex week before
 and after, and counts toward investigation's weekly budget (limits.
-investigation_quota_points, default 20). A CATEGORY run stops starting pages when
+investigation_quota_points, default 35). A CATEGORY run stops starting pages when
 that budget is spent, when --budget is spent, or once the week is at
-limits.quota_floor_percent (default 70%), and says which. The page in flight
+limits.quota_floor_percent (default 90%), and says which. The page in flight
 finishes. Without a meter (another runner, Codex signed out) --limit is the bound.
 
 Effects:  Reads message bodies and files. Calls the model configured in co rem config:
@@ -190,7 +190,7 @@ Effects:  Reads message bodies and files. Calls the model configured in co rem c
           parallel reads.
 
 For the model writing a page: the Skill covers the common case. Use supplied
-material and, for projects, bounded files under the page's Paths. Unsupported
+material and, for projects, the supplied bounded repository snapshots. Unsupported
 fields stay Unknown. Cite source IDs from evidence headings. Runs are offline;
 the runner may offer one read-only mail follow-up outside a quick first pass.
 Requires: co rem init.

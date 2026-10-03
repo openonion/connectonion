@@ -249,11 +249,47 @@ open. Longer pages and higher token counts are not evidence of a better finding.
 - **New address → `Handles`**: the next investigation searches it.
 - **`evidence-index`** means the material was too large for one turn and was
   written to files rather than summarised (#1850). Reading every file would
-  recreate the size problem; searching per field keeps each turn bounded.
-- **Project `Paths` limits** (four levels, twelve files, no hidden files or
-  credentials) keep an offline run from sweeping private data. A
-  `project-inventory` is a list, not evidence. Sessions show what the user
-  asked for, not what the repository holds.
+  recreate the size problem; searching per field keeps each turn bounded. Its
+  exact supplied path can be outside the disposable task directory while still
+  inside the private notebook. The model may read that index and the snapshots
+  it names, and writes only in the task directory.
+- **Project repository snapshots** are gathered by co rem before the offline
+  turn. The model reads only the bounded files named by the supplied source
+  index; the page's `Paths` do not authorize opening
+  the original checkout. The index names omitted files, so absence from the
+  packet is not proof of absent implementation. A `project-inventory` is a
+  list, not evidence. Sessions show what the user asked for, not what the
+  repository holds.
+- A source-heavy project trial cited several real snapshots but opened Insight
+  with a branch name and commit date. Those are useful status facts, not a
+  decision-changing finding. Project writers now ask for a sourced constraint,
+  change or mismatch with a consequence, and leave Insight Unknown if the
+  packet has none. This is a prompt criterion, not a claim that the rerun passed.
+- A second trial treated two short complaints in a session run from a project
+  folder as defects in that project, although neither named its product or a
+  matching component. Project writers now require a source-to-project link
+  before using session input in status, issue or Insight sections. Folder
+  location alone establishes the workspace, not the complaint's subject.
+- A later explicit project page treated an older README description as a
+  current storage fact and the first observed folder session as the project's
+  start. Writers must attribute dated documentation to that snapshot and leave
+  `Started` Unknown unless the project start itself is evidenced.
+- An explicit project investigation cited live coding-session inputs that were
+  absent from the older mapped session archive. An accepted page now retains
+  only the cited live inputs in private operational state, so the reader can
+  open their original text with the input-only provenance warning. A rejected
+  page retains none. This also covers person pages citing coding sessions.
+- A cited repository file's first 640 characters hid a release-policy passage
+  after character 5,000 and a hook signature after 9,000. The source dialog now allows 16,384 characters for a
+  cited repository snapshot, and each Sources row opens its own source on touch
+  even when inline citations are grouped into one chip.
+- An auto-eligible page then joined generic release requests captured in a
+  project's folder to that package's release status. Those requests did not
+  name the package or its version. A common verb such as release, patch or test
+  is not a source-to-project link; the writer must leave those requests out of
+  project status and lead with a finding supported by that project's own
+  snapshots. The first Insight sentence must put the conclusion before detail
+  so it remains useful in the phone preview.
 - **`Quick first pass`**: only the sample was evaluated, so the page must not
   read as a final profile. The runner must not append the optional mailbox
   search instruction to this pass.
@@ -437,7 +473,8 @@ read: unchanged uncited candidates must not trigger another paid run. Changed
 file content can trigger a new investigation without a new coding message.
 Rejected identical file material also waits for a change.
 
-The reader still displays a 640-character prefix, not a validated claim span.
+The reader displays up to 16,384 characters of a retained repository source,
+not a validated claim span.
 Extra files discovered directly under Paths are not automatically historical
 snapshots. Legacy raw-path citations cannot be reconstructed from a current
 checkout. New captures and manual repairs do not prove model semantic reliability.
@@ -455,7 +492,7 @@ provider rendering cannot silently replace the cited body.
 Opening archived mail checks its exact provider and native message identity.
 The short citation hash identifies a message, not a validated claim or body
 revision. Mail excerpts begin after the provider's Email Body delimiter and
-remain bounded to 640 characters; the uncleaned rendering stays on disk.
+remain bounded to 4,096 characters; the uncleaned rendering stays on disk.
 From/To/Cc are available through a private disclosure. Sent time, retrieval
 time and later recovery-retention time have separate meanings. A recovered
 body with no recorded original retrieval time leaves it unknown; its Archived
@@ -463,3 +500,19 @@ time does not prove the body was available during the original investigation.
 Provider-rendered text is not original MIME. Private mode hides these headers,
 clocks, limits and excerpts together. Manual recovery does not verify automatic
 writing or complete historical coverage.
+
+## a22 source-reading trial
+
+An explicit private project trial exposed three distinct writing errors: a
+generated candidate-file inventory cited as if it were a source; a short,
+unrelated missed-reply input expanded into a project listener mechanism; and
+two documented workflow steps written in reverse order. The validator now
+rejects the inventory citation. Project instructions require a distinctive
+project cue for session claims, reopening originals for current findings, and
+preserving the exact source order in `Overview` and `Try it`. They keep `Open
+threads` as bare `Unknown` when no current exchange is supported. A later
+seven-day candidate corrected the order and cited only repository snapshots,
+but was rejected for omitting that heading; the original page stayed intact.
+These trials establish narrow failures and fixes, not semantic reliability
+across all project pages. [The independent review](../design-evidence/rem-source-review-2026-10-03/REVIEW.md)
+records the actual rendered states and remaining checks.

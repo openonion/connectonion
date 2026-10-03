@@ -467,6 +467,8 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
                 errors.append(f'Preserve mapped project metadata: {label}')
     old_sources = original.partition('\n## Sources\n')[2]
     for key, value in definitions:
+        if record.startswith('projects/') and value.strip().startswith('investigation:project-inventory'):
+            errors.append(f'Candidate file inventory is not a citable original: {key}')
         files = {path for path in re.findall(r'`(/[^`]+)`', value) if Path(path).is_file()}
         if len(files) > 1:
             errors.append(f'Citation bundles multiple files: {key}')

@@ -20,6 +20,7 @@ messages and no page gets the map's page when it was active recently.
 from __future__ import annotations
 
 import collections
+import hashlib
 import json
 import os
 import re
@@ -296,6 +297,44 @@ def stored(root: Path, record: str) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def retain_cited_sessions(root: Path, items: list[dict], cited: set[str]) -> None:
+    """Keep only cited inputs from an explicit investigation's live session scan."""
+    for item in items:
+        source, body = item.get("source"), item.get("text")
+        if (source not in cited or item.get("role") != "user"
+                or not isinstance(source, str)
+                or not re.fullmatch(r"(?:codex|claude-code):[^\s:]+:\d+", source)
+                or not isinstance(body, str)):
+            continue
+        text = SECRET_SHAPES.sub(REDACTED, body)
+        path = state_path(root, "session-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
+        previous = read_json(path, {})
+        if previous and (previous.get("source") != source or previous.get("text") != text):
+            raise RemError("Retained session citation has conflicting content")
+        if not previous:
+            write_json(path, {"source": source, "text": text, "timestamp": item.get("timestamp") or "",
+                              "input_scope": item.get("input_scope") or ""})
+
+
+def retained_session_context(root: Path, source: str) -> dict | None:
+    """A cited original unavailable in the mapped archive, from the accepted run."""
+    from .reader_model import PRIVATE
+    if not re.fullmatch(r"(?:codex|claude-code):[^\s:]+:\d+", source):
+        return None
+    path = state_path(root, "session-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
+    saved = read_json(path, {})
+    body = saved.get("text")
+    if (saved.get("source") != source or not isinstance(body, str)
+            or SECRET_SHAPES.search(body) or PRIVATE.search(body)):
+        return None
+    excerpt = body.strip()[:4_096]
+    return {"excerpt": excerpt, "truncated": len(body.strip()) > len(excerpt),
+            "time": saved.get("timestamp") or "", "sender": "", "thread": "",
+            "source": source.split(":", 1)[0],
+            "input_scope": saved.get("input_scope") or
+                           "Your input only. Assistant replies and tool results are not included, so this does not verify what was completed."}
+
+
 def page_state(root: Path, record: str) -> dict:
     return read_json(_folder(root, record) / "state.json", {})
 
@@ -428,11 +467,18 @@ def _merge(root: Path, record: str, new: list[dict], *, full: bool, now: datetim
             "last_activity": state["last_activity"], "written_through": state["written_through"]}
 
 
-def mark_written(root: Path, record: str, through: str, *, now: datetime | None = None) -> None:
+def mark_written(root: Path, record: str, through: str, *, now: datetime | None = None,
+                 inputs_read: int = 0, inputs_available: int = 0) -> None:
     """The page now reflects every message up to `through`; an update starts after it."""
     folder = _private_dir(_folder(root, record))
     state = page_state(root, record)
     state.update(written_through=through, written_at=(now or datetime.now(timezone.utc)).isoformat())
+    if inputs_read:
+        prior = state.get("last_page_coverage") or {}
+        # A later small update does not supply older inputs omitted on the first write.
+        if inputs_available > inputs_read or prior.get("inputs_available", 0) <= prior.get("inputs_read", 0):
+            state["last_page_coverage"] = {"inputs_read": inputs_read, "inputs_available": inputs_available,
+                                           "scope": "queued"}
     write_json(folder / "state.json", state)
 
 

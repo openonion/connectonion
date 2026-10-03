@@ -1127,6 +1127,9 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                         "comparison originals are old evidence, not new contact. Unavailable originals or "
                         "unknown provider threads remain unreviewed; the page is not a substitute original.")
     available_items = len(items)
+    project_inputs = (sum(item.get("role") == "user" and str(item.get("source", "")).split(":", 1)[0]
+                          in ("codex", "claude-code") for item in items)
+                      if record.startswith("projects/") else 0)
     if quick:
         items = quick_evidence(items)
         coverage.append(f"Quick first pass: reviewed {len(items)} of {available_items} gathered items; "
@@ -1324,9 +1327,14 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # The status line names the sources this code searched. Whether the web
     # was reached is the Skill's to report, on the page: a real run (2026-09-14)
     # had `co browser` fail inside the thread while this line still said "web".
+    from .project_material import page_state
     record_result(root, notebook, record, result.get("review_candidates", []),
                   searched_sources(coverage), changed=record in result.get("changed", []),
-                  repository_items=repository_items)
+                  repository_items=repository_items,
+                  session_items=original_items,
+                  project_coverage={"inputs_read": project_inputs,
+                                    "inputs_available": page_state(root, record).get("messages", 0),
+                                    "days": days, "scope": "archived"} if project_inputs else None)
     return {"record": record, "items": len(items), "items_available": available_items,
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
@@ -1338,7 +1346,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
 
 
 def record_result(root, notebook, record: str, review_candidates: list, searched: list[str],
-                  *, changed: bool = False, repository_items=(), skill_records=()) -> None:
+                  *, changed: bool = False, repository_items=(), session_items=(), skill_records=(),
+                  project_coverage=None) -> None:
     """Keep what a finished investigation proposed and mark its page investigated.
 
     It waits for the lock: the model turn is already paid for, and with several
@@ -1350,13 +1359,22 @@ def record_result(root, notebook, record: str, review_candidates: list, searched
         if changed:
             from .project_pages import retain_repository_context
             from .reader_model import _source_ids
-            retain_repository_context(root, repository_items, _source_ids([{"text": notebook.read(record)}]))
+            cited = _source_ids([{"text": notebook.read(record)}])
+            retain_repository_context(root, repository_items, cited)
+            from .project_material import retain_cited_sessions
+            retain_cited_sessions(root, session_items, cited)
             from .skill_runs import retain_skill_records
-            retain_skill_records(root, skill_records, _source_ids([{"text": notebook.read(record)}]))
+            retain_skill_records(root, skill_records, cited)
             page = notebook.read(record)
             if drop_map_count(page) != page:
                 notebook.write(record, drop_map_count(page))
         notebook.note_investigation(record, ", ".join(searched))
+        if project_coverage:
+            from .project_material import page_state
+            path = state_path(root, f"projects/{Path(record).stem}/state.json")
+            state = page_state(root, record)
+            state["last_page_coverage"] = project_coverage
+            write_json(path, state)
         if repository_items and record.startswith("projects/"):
             write_json(state_path(root, f"projects/{Path(record).stem}/file-inventory.json"), {
                 "provided_sources": sorted({item["source"] for item in repository_items}),

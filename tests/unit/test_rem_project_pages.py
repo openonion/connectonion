@@ -199,6 +199,14 @@ def test_a_written_page_waits_for_new_messages_and_then_gets_only_those(world):
     assert "This is an update" in items[1]["text"]
 
 
+def test_a_small_update_does_not_hide_older_inputs_omitted_from_the_page(world):
+    record = "projects/tide.md"
+    mark_written(world.root, record, "2026-09-20T00:00:00+00:00", inputs_read=3, inputs_available=5)
+    mark_written(world.root, record, "2026-09-21T00:00:00+00:00", inputs_read=1, inputs_available=1)
+    assert page_state(world.root, record)["last_page_coverage"] == {
+        "inputs_read": 3, "inputs_available": 5, "scope": "queued"}
+
+
 def test_one_call_carries_the_newest_messages_that_fit_and_says_what_it_left_out(world, monkeypatch):
     monkeypatch.setattr(project_pages, "PROMPT_CHARS", 25)
     codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide",
@@ -332,6 +340,8 @@ def test_a_page_is_written_once_from_the_material_and_the_status_line_says_so(wo
     assert "A swell warning tool for surfers. [1]" in page
     assert re.search(r"^Investigation: .*written \d{4}-\d\d-\d\d \(own messages: codex\)$", page, re.M)
     assert page_state(world.root, "projects/tide.md")["written_through"] == out["through"]
+    assert page_state(world.root, "projects/tide.md")["last_page_coverage"] == {
+        "inputs_read": 1, "inputs_available": 1, "scope": "queued"}
     from connectonion.rem import store
     indexed = store._rows(world.root, "select * from projects where record = ?", ("projects/tide.md",))
     assert indexed[0]["written"] is True
@@ -566,7 +576,7 @@ def test_initial_writer_can_search_fixed_implementation_and_declared_cli(tmp_pat
     with maintenance_lock(tmp_path / "rem"):
         assert project_pages.retain_repository_context(tmp_path / "rem", code, {page["source"]}) == 1
     context = project_pages.repository_context(tmp_path / "rem", page["source"])
-    assert context["excerpt"] == page["text"].strip()[:640]
+    assert context["excerpt"] == page["text"].strip()[:project_pages.REPOSITORY_EXCERPT_CHARS]
     assert context["time"] == "" and context["captured_at"] == NOW.isoformat()
 
 

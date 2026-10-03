@@ -1,14 +1,9 @@
-# co rem — current branch contract
+# co rem — 1.9 preview guide
 
-Updated 2026-10-02. co rem ships in the opt-in 1.9.0 previews and becomes
-long-term supported in 1.9.0 (#1664 names it first). The command surface and
-every `--help` page are the agreed design in #1656; the pages themselves live
-in `connectonion/cli/commands/rem_help.md` and a test holds them to the code.
+Updated 2026-10-03 for opt-in preview **1.9.0a22**. The exact commands are
+also available through `co rem --help` and each subcommand's `--help` page.
 Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
 `unsubscribe`, `route`, `usage`) still work until 1.9.0 and print their new name.
-
-See the [2026-09-17 progress review](rem-progress.md) for the feature inventory,
-current CI blockers and remaining work.
 
 ## What it is
 
@@ -25,9 +20,11 @@ in its owner-only `.state/` and never go into a page; a model reads them only
 through the login you choose. By default it runs on your own Codex plan and
 spends no OpenOnion credits.
 
-What it costs, measured: the first run writes 12 pages at a time. On a real
-notebook it wrote 198 of 242 people, project and organisation pages in about 25
-minutes, and it stops starting pages at 60 points of your Codex week.
+What it costs, measured: the first run writes 12 pages at a time. An earlier
+real notebook trial wrote 198 of 242 people, project and organisation pages in
+about 25 minutes under its configured 60-point weekly cap. The current default
+routine budget is 35 points, with a 90% weekly safety floor; `co rem status`
+shows your effective limits.
 Investigating a very large subject can still cost millions of tokens; searching
 instead of summarising is
 [#1850](https://github.com/openonion/connectonion/issues/1850).
@@ -353,7 +350,7 @@ the headings still empty are named once at the foot of the page with the
 findings first, then newest last contact. The Markdown file is unchanged, and
 **Copy Markdown** at the foot copies it as written, unknowns included.
 
-### What the reader shows (1.9.0a13 preview)
+### What the reader shows
 
 The reader returns the context REM carried forward, then helps you recall an
 older page before showing its answer. It remains a point-in-time snapshot.
@@ -382,13 +379,21 @@ older page before showing its answer. It remains a point-in-time snapshot.
   time only, so the Markdown and Copy Markdown keep the words as written.
 - **A page** opens on a focused status, next exchanges, compact facts, related
   records and filterable dated Activity. Project pages add purpose and a
-  recorded decision when supported. Explicit links and unambiguous name
+  recorded decision when supported. A project opens on its current supported
+  finding; when only part of its queued or archived session history was read,
+  the page says how many inputs were supplied. Explicit links and unambiguous name
   mentions make cross-page cards and backlinks; their labels distinguish a
   link from a mention. The original prose, every Facts/Contact field,
   Insight, History and Sources stay under the always-visible **Full memory and
   sources** section. A claim
   number `[n]` opens its source description and, when locally archived, an
-  original excerpt. Cited conversations show up to twelve recent archived
+  original excerpt. Grouped citations keep the page compact; each numbered
+  row under Sources can also open its own original on a phone. An accepted
+  explicit investigation retains the live coding-session inputs it cites,
+  even when they were absent from the older map. Cited mail bodies show up to
+  4,096 characters, retained coding inputs up to 4,096, and repository
+  snapshots up to 16,384, with truncation
+  marked. Cited conversations show up to twelve recent archived
   messages with the total count. Missing original bodies are labeled, never
   replaced by a generated summary. A page only mapped from metadata says so
   and gives the command to investigate it.
@@ -1175,8 +1180,9 @@ without review.
 preparation, extraction chunk counts when the material exceeds one model turn,
 and candidate writing in its run log and terminal. A failed model or provider
 call exits nonzero and keeps the page unchanged. Project investigations may
-inspect a bounded set of files in the page's recorded local Paths; the file
-inventory is a lead, not proof of file contents. Review the candidate and its
+inspect a fixed, bounded snapshot of files collected from the page's recorded
+local Paths; the candidate file inventory is a lead, not a citable original or
+proof of file contents. Review the candidate and its
 citations before treating it as a verified notebook page.
 Completed extraction chunks are checkpointed under `.state/extracts/investigate/`;
 rerunning the same evidence and model settings can reuse them after an

@@ -56,6 +56,23 @@ or decided, attributed and dated. So:
   A folder or tool-attributed repository does not establish the request's subject.
   Keep unrelated backend, release or model requests as related context, not this
   project's progress, activity date or pending work.
+- A session's working directory only says where the assistant ran. Before using
+  a message for this project, find a distinctive project or package name,
+  component, file, version or behavior that ties the message to the supplied
+  project evidence. Generic requests to release, patch, test, reply or use a
+  package manager do not identify which project they concern. A short complaint
+  about an unnamed service does not establish a defect in this project's
+  listener, even if that session ran in its folder. Leave ambiguous messages
+  out of `Insight`, `Latest issues`, `Where it stands` and `Open threads`;
+  do not assign their dates or outcomes to this project.
+- Before handing off the page, reopen the exact original for every current
+  finding and open thread. If an input only says a reply was missed, do not
+  add an event-driven mechanism, root cause or implementation status. Keep the
+  supported report and mark the rest Unknown unless another cited original
+  supplies it.
+- `Overview` and `Try it` must preserve the source's step order. Reopen the
+  cited instructions and compare the two sections before writing; if the
+  source does not establish the order, omit `Try it`.
 - Task history alone establishes a session workspace, not a software product:
   describe that scope; unsupported repository, stack and ownership stay `Unknown`.
   Separate subjects. Historical identity checks, save-only rules, recipients or
@@ -64,8 +81,12 @@ or decided, attributed and dated. So:
 - The local checkout can lag behind the latest session. `checkout-state` says
   which ref is current and whether the working tree is stale. Use recent local
   commits to describe what was committed, not to claim tests, deployment or
-  user adoption. A README or manifest is a product/source description, not a
-  live-service health check.
+  user adoption. A dated README or manifest documents what that snapshot says;
+  do not present it as the project's current runtime behavior unless current
+  implementation or a dated user report supports that. Name the document and
+  its date or revision when a finding depends on it. The first observed folder
+  session is not the project's start date; leave `Started` Unknown without
+  explicit evidence of when the project began.
 
 ## What to write
 
@@ -76,9 +97,13 @@ sections are usually:
   README or manifest when supplied, not the most-discussed side thread.
 - `Insight`: compare relevant sources to surface a concrete constraint, changed
   choice or recurring need and its consequence. A shift in requests is a shift
-  in requirements, not completed work. Lead with that useful finding. A stale
-  checkout or latest request alone is not an insight; keep housekeeping in
-  `Where it stands`. Do not join unrelated sources or infer no fix from commits.
+  in requirements, not completed work. Lead with the decision-changing
+  conclusion in a short first sentence that fits a phone preview; put evidence
+  and qualification after it. A stale
+  checkout, branch name, commit date, README topic list or latest request alone
+  is not an insight; keep housekeeping in `Where it stands` and descriptions
+  in `What it is`. If no decision-changing finding is supported, write
+  `- Unknown`. Do not join unrelated sources or infer no fix from commits.
   Compare documented flows with supplied implementation and test coverage when
   relevant. A missing handler in a complete fixed tree is a source finding,
   not an observed runtime error. A fixture gate proves only what its checks cover.

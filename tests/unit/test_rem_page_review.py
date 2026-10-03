@@ -30,6 +30,14 @@ def test_an_owner_work_excerpt_keeps_its_original_citation_after_quick_filtering
     assert not any('Citation has no identifiable source' in error for error in errors)
 
 
+def test_project_cannot_cite_the_candidate_file_list_as_file_evidence():
+    candidate = '# Atlas\n\nA reminder script is present [1].\n\n## Sources\n- [1] investigation:project-inventory — today\n'
+    items = [{'role': 'project-inventory', 'source': 'investigation:project-inventory',
+              'text': 'Candidate local evidence files: remind.py'}]
+    assert 'Candidate file inventory is not a citable original: 1' in validate(
+        'projects/atlas.md', candidate, '# Atlas\n', items)
+
+
 def test_owner_links_a_unique_project_name_without_linking_sources_or_partial_words(tmp_path):
     from connectonion.rem.page_review import link_projects, project_names
 
