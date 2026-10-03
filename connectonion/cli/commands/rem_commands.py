@@ -1196,6 +1196,26 @@ def make_rem_app(factory):
             return found, ["show", found[0]["record"]] if found else ["list"]
         _handle(ctx, operation, ["list"])
 
+    @rem.command("merge", cls=V("co rem merge"))
+    def merge_pages(ctx: typer.Context, kept: str, old: str,
+                    reason: str = typer.Option("manual merge", "--reason", "-r")):
+        from ...rem.files import Notebook, RemError, maintenance_lock
+        from ...rem.merge import merge_into, resolve
+
+        def operation(root):
+            with maintenance_lock(root):
+                notebook = Notebook(root)
+                target_kept, target_old = resolve(root, kept), resolve(root, old)
+                if target_kept == target_old:
+                    raise RemError("Choose two different pages to merge")
+                for page in (target_kept, target_old):
+                    if not notebook.exists(page):
+                        raise RemError(f"Record not found: {page}; list the notebook for current record paths")
+                result = merge_into(notebook, target_kept, target_old, reason)
+                return {**result, "archived": f".state/archived/{target_old}"}, ["show", target_kept]
+
+        _handle(ctx, operation, ["list"])
+
     # -------------------------------------------------------- Keep it current
 
     @rem.command("start", cls=V("co rem start"))
@@ -1741,7 +1761,7 @@ def make_rem_app(factory):
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
     order = ("init investigate open list show search start stop status sync sources config logs doctor "
-             "advanced scan map-skills stub reflect reflections propose review abstract capture "
+             "advanced scan map-skills stub merge reflect reflections propose review abstract capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))
     return rem

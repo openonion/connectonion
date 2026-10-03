@@ -13,7 +13,7 @@ from connectonion.rem.config import prepare
 from connectonion.rem.files import Notebook
 from connectonion.rem.map import build_map, file_project, project_groups
 from connectonion.rem.merge import aliases
-from connectonion.rem.scan import main_checkout, not_a_project, scan_projects
+from connectonion.rem.scan import ONE_OFF_TASK, main_checkout, not_a_project, scan_projects
 
 
 def repo(path: Path) -> Path:
@@ -50,10 +50,10 @@ def test_folders_that_are_not_projects(tmp_path, monkeypatch):
     chat = home / "Documents/Codex/2026-08-17/create-a-scheduled-task-called-weekday"
     assert not_a_project(row(home)) == "home directory"
     assert not_a_project(row(tmp_path)) == "home directory"                   # above home
-    assert not_a_project(row(chat, sessions=1, turns=1)) == "one short session outside a repository"
-    assert not_a_project(row(chat, sessions=1, turns=9)) == ""                # a long conversation is work
-    assert not_a_project(row(chat, sessions=2, turns=None)) == ""             # came back to it
-    assert not_a_project(row(chat, sessions=1, turns=None)) == ""             # not counted: kept
+    assert not_a_project(row(chat, sessions=1, turns=1)) == ONE_OFF_TASK
+    assert not_a_project(row(chat, sessions=1, turns=9)) == ONE_OFF_TASK
+    assert not_a_project(row(chat, sessions=2, turns=None)) == ONE_OFF_TASK
+    assert not_a_project(row(chat, sessions=1, turns=None)) == ONE_OFF_TASK
     assert "hidden folder" in not_a_project(row(home / ".claude/plugins/cache/linear", sessions=4))
     assert "hidden folder" in not_a_project(row(home / "projects/.artifacts/live/host", sessions=2))
     assert not_a_project(row(home / ".claude/scheduled-tasks/daily", sessions=5)) == "scheduled-task folder"
@@ -89,7 +89,7 @@ def test_worktrees_fold_into_their_repository_and_are_counted(tmp_path):
     assert list(groups) == ["github.com/o/connectonion"]
     group = groups["github.com/o/connectonion"]
     assert group["paths"] == [str(home)] and group["worktrees"] == 2 and group["sessions"] == 9
-    assert dropped == [{"path": str(chat), "sessions": 1, "reason": "one short session outside a repository"}]
+    assert dropped == [{"path": str(chat), "sessions": 1, "reason": ONE_OFF_TASK}]
 
 
 def test_split_pages_for_one_repository_merge_into_the_written_one(tmp_path):
@@ -165,8 +165,12 @@ def test_the_map_leaves_junk_folders_out_and_archives_their_mapped_pages(tmp_pat
 
 def test_a_short_dated_scratch_folder_stays_with_the_rest_of_its_project(tmp_path):
     base = tmp_path / "Documents/Codex"
+    for date in ("2026-08-26", "2026-08-23"):
+        project = base / date / "acme-project"
+        project.mkdir(parents=True)
+        (project / "package.json").write_text('{"name": "acme-project"}')
     dropped = []
-    groups = project_groups([row(base / "2026-08-26/realtime-voice-chat", sessions=14),
-                             row(base / "2026-08-23/realtime-voice-chat", sessions=1, turns=1)], dropped)
+    groups = project_groups([row(base / "2026-08-26/acme-project", sessions=14),
+                             row(base / "2026-08-23/acme-project", sessions=1, turns=1)], dropped)
     assert len(groups) == 1 and dropped == []
     assert next(iter(groups.values()))["sessions"] == 15

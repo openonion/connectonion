@@ -23,7 +23,7 @@ def attachment_context(root: Path, source: str) -> dict | None:
     path = state_path(root, f"attachments/{provider}/{message}/{filename}")
     if not path.is_file():
         return None
-    text = extract_text(path, limit=None)
+    text = extract_text(path, limit=None, preview_limit=640)
     if not text:
         return None
     return {"source": "attachment", "excerpt": text[:640], "truncated": len(text) > 640,
@@ -45,14 +45,19 @@ def _pdf_page_text(page, number: int) -> str:
     return f"PDF page {number}\n" + "\n".join(annotations + [body])
 
 
-def extract_text(path: Path, limit: int | None = 20_000) -> str:
+def extract_text(path: Path, limit: int | None = 20_000, *, preview_limit: int | None = None) -> str:
+    """Read attachment text; a PDF preview stops once its excerpt is long enough."""
     path = Path(path)
     suffix = path.suffix.lower()
     if suffix == ".pdf":
         from pypdf import PdfReader
         try:
-            pages = PdfReader(str(path)).pages
-            text = "\n".join(_pdf_page_text(page, number) for number, page in enumerate(pages, 1))
+            parts = []
+            for number, page in enumerate(PdfReader(str(path)).pages, 1):
+                parts.append(_pdf_page_text(page, number))
+                if preview_limit is not None and len(" ".join("\n".join(parts).split())) > preview_limit:
+                    break
+            text = "\n".join(parts)
         except Exception as error:  # noqa: BLE001 -- a broken PDF is a finding, not a crash
             return f"[could not read PDF: {type(error).__name__}]"
     elif suffix == ".docx":

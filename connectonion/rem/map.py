@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .files import Notebook, atomic_write, maintenance_lock, read_json, state_path
 from .scan import (scan_people, scan_projects, canonical_origin, main_checkout, not_a_project,
-                   AUTOMATED_HINT, SHORT_SESSION)
+                   institutional_name, AUTOMATED_HINT, SHORT_SESSION, ONE_OFF_TASK)
 from .skill_map import map_skills
 from .org_map import _domain, map_orgs, organisation
 
@@ -195,6 +195,8 @@ def _service(group: list[dict]) -> bool:
     domain named after them writes from their name (aaron@aaron.dev), and a desk
     the owner answers as often as it writes stays a correspondent.
     """
+    if any(institutional_name(str(row.get('name') or '')) for row in group):
+        return True
     received = sum(row.get('received', 0) for row in group)
     sent = sum(row.get('sent', 0) for row in group)
     if not sent and all(_named_by_domain(row['address']) for row in group):
@@ -254,6 +256,8 @@ def service_page(title: str, emails: list[str], row: dict | None, automated: set
     addresses = [address.casefold() for address in emails]
     if not addresses:
         return False
+    if institutional_name(title):
+        return True
     if row:
         group = [{'address': address, 'name': row.get('name') or title, 'sent': row.get('sent', 0),
                   'received': row.get('received', 0),
@@ -488,14 +492,10 @@ def owner_summary(notebook: Notebook, report: dict) -> dict | None:
 
 
 SCRATCH = re.compile(r'/Documents/Codex/\d{4}-\d{2}-\d{2}/([^/]+?)(?:-\d+)?$')
-# A scratch folder is a project once its work has come back to it: realtime-voice-chat
-# had 23 sessions across dated folders, a one-off request has one or two.
-SCRATCH_MIN_SESSIONS = 2
-ONE_OFF_TASK = 'a one-off Codex task folder (two sessions or fewer)'
 
 
 def _scratch_identity(path: str) -> str:
-    """Codex's dated scratch folders: one project, however many days it was opened.
+    """Group dated Codex folders that contain project manifests by their name.
 
     `Documents/Codex/2026-08-22/realtime-voice-chat`, `…/2026-08-26/…` and
     `…-2`, `…-3` were six project pages on a real notebook -- no repository to
@@ -606,8 +606,7 @@ def project_groups(rows: list[dict], dropped: list | None = None) -> dict:
     kept, short, out = [], {}, []
     for row in rows:
         why = not_a_project(row)
-        # A lone short chat is judged with the rest of its project: one of six
-        # dated scratch folders for one piece of work is not a one-off.
+        # A lone short chat is judged with the rest of its project.
         if why == SHORT_SESSION:
             short[row['path']] = why
         elif why:
@@ -635,12 +634,6 @@ def project_groups(rows: list[dict], dropped: list | None = None) -> dict:
         members = [row for row in kept if row['path'] in group['members']]
         if group['sessions'] <= 1 and all(row['path'] in short for row in members):
             out += [{'path': row['path'], 'sessions': row['sessions'], 'reason': SHORT_SESSION} for row in members]
-            del groups[key]
-            continue
-        if str(key).startswith('codex-scratch:') and group['sessions'] <= SCRATCH_MIN_SESSIONS:
-            # A Codex scratch folder named after one request: "install-github-cli-gh-on-this",
-            # 2 sessions, became a project page on a fresh init (#2079).
-            out += [{'path': row['path'], 'sessions': row['sessions'], 'reason': ONE_OFF_TASK} for row in members]
             del groups[key]
             continue
         group['worktrees'] = len(group['worktrees'])
@@ -824,12 +817,14 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
         addresses = [row['address'] for row in group]
         first = group[0]
         automated = all(AUTOMATED_HINT.search(row['address']) for row in group)
+        institutional = any(institutional_name(str(row.get('name') or '')) for row in group)
         # A notice sender that never hears back, or someone reachable only through
         # an event platform's relay, is not a person the user deals with. On one
         # real mailbox this was 165 of 565 people pages (Neon Changelog, Airwallex,
         # event platforms). They stay in the map report; they get no page.
-        if all(_notice(row) for row in group) or _service(group):
-            report['automated_correspondents'].extend(group)
+        if institutional or all(_notice(row) for row in group) or _service(group):
+            report['automated_correspondents'].extend(
+                [{**row, 'classification': 'service desk'} for row in group] if institutional else group)
             org_rows += [{'address': a, 'record': None} for a in addresses]
             continue
         existing = next((p['path'] for p in roster if {a.casefold() for a in addresses} & set(p['emails'])), None)
@@ -872,7 +867,10 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
             if title.startswith('# ') and '@' in title and _mapped_only(page):
                 notebook.write(record, f'# {name}\n' + page.split('\n', 1)[1])
         mails = sum(row.get('mails', 0) for row in group)
+        first_dates = [row['first'] for row in group if row.get('first')]
+        last_dates = [row['last'] for row in group if row.get('last')]
         report['people'].append({**first, 'mails': mails, 'addresses': addresses, 'record': record,
+                                 'first': min(first_dates, default=''), 'last': max(last_dates, default=''),
                                  'sent': sum(row.get('sent', 0) for row in group),
                                  'received': sum(row.get('received', 0) for row in group),
                                  'boxes': sorted({box for row in group for box in row.get('boxes', [])}),
@@ -902,12 +900,11 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
                           "Confirm they are one person before relying on it.\n")
             notebook.write(record, notebook.read(record).replace('## Uncertainties\n', '## Uncertainties\n' + notes))
             page = notebook.read(record)
-            dates = [row.get('first') for row in group if row.get('first')], [row.get('last') for row in group if row.get('last')]
             boxes = sorted({box for row in group for box in row.get('boxes', [])})
             # The count is the map's, not the person's history: 379 of 424 History
             # bullets on the owner's people pages were this line (#2059). It goes in
             # the lead, where the reader shows it and the census dates the page.
-            last = max(dates[1]) if dates[1] else 'Unknown'
+            last = max(last_dates) if last_dates else 'Unknown'
             plural = '' if mails == 1 else 's'
             page = page.replace(Notebook.PERSON_LEAD, f"Unknown — not investigated yet. Last contact: {last}; "
                                 f"{mails} mail{plural} ({', '.join(boxes) or 'mail'}).", 1)

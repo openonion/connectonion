@@ -6,8 +6,8 @@ ConnectOnion has two release channels:
 - **Preview** contains opt-in alpha, beta, and release-candidate builds.
 
 Preview releases never replace the stable recommendation. Install one by
-pinning its exact version: `pip install --upgrade 'connectonion==X.YbN'`. The
-pin alone lets pip take that one preview. Do not add `--pre`: it applies to
+pinning the exact version shown below. The pin alone lets pip take that one
+preview. Do not add `--pre`: it applies to
 every dependency too, and under it 1.8.8b7 resolved httpx 1.0.dev6, which has
 no `AsyncClient`, and every remote agent call crashed.
 
@@ -23,6 +23,54 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a27** keeps institutional and service desk senders out of the
+People notebook and filters dated scratch tasks and prompt fragments from the
+Projects notebook unless they have project evidence. See
+[1.9.0a27 notes](releases/1.9.0a27.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a27'
+co rem open --live
+```
+
+Earlier alpha previews remain available:
+
+Alpha **1.9.0a26** reopens written `co rem` notebooks faster and makes it clear
+when background updates are off while existing memories remain available. The
+package README now checks its exact preview pin against the shipped version.
+See [1.9.0a26 notes](releases/1.9.0a26.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a26'
+co rem open --live
+```
+
+Alpha **1.9.0a25** shows what a first `co rem init` mapped, reconciles held
+contacts, and corrects grouped mail dates on a fresh map. See
+[1.9.0a25 notes](releases/1.9.0a25.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a25'
+co rem open --live
+```
+
+Alpha **1.9.0a24** adds `co rem merge` to fold duplicate pages and preserve aliases.
+See [1.9.0a24 notes](releases/1.9.0a24.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a24'
+co rem open --live
+```
+
+Alpha **1.9.0a23** clarifies map-derived contact dates in the reader and keeps
+table headers visible beside sticky columns on mobile. See
+[1.9.0a23 notes](releases/1.9.0a23.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a23'
+co rem open --live
+```
+
 Alpha **1.9.0a22** makes project findings and their evidence easier to check:
 the current finding leads, partial session coverage is visible, and every
 numbered source can be opened from the reader. See
@@ -32,8 +80,6 @@ numbered source can be opened from the reader. See
 python -m pip install --upgrade 'connectonion==1.9.0a22'
 co rem open --live
 ```
-
-Earlier alpha previews remain available:
 
 Alpha **1.9.0a21** shows the complete REM note and citations by default,
 puts the note before Facts on phones, and gives investigation more weekly

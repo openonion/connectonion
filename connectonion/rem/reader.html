@@ -190,6 +190,10 @@
   .morning-kicker { display: block; color: #aab7e8; font: 600 11px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .13em; }
   .morning h2 { max-width: 22ch; font: 400 clamp(28px, 3vw, 42px)/1.12 var(--display); letter-spacing: -.02em; margin: 9px 0 0; text-wrap: balance; }
   .morning-time { flex-shrink: 0; color: #b3bfed; font: 11px/1.5 var(--mono); }
+  .first-map-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+  .first-map-actions a, .first-map-actions button { display: inline-flex; align-items: center; min-height: 44px; padding: 9px 14px; border: 1px solid rgba(194, 205, 255, .42); border-radius: 7px; background: transparent; color: #f4f5fb; font: 600 13px var(--ui); text-decoration: none; cursor: pointer; }
+  .first-map-actions a { background: #f4f5fb; color: #111931; }
+  .first-map-held { margin: 16px 0 0; color: #b3bfed; font-size: 12.5px; }
   .memory-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; }
   .memory-card { min-width: 0; padding: 24px 22px 12px 0; }
   .memory-card + .memory-card { border-left: 1px solid rgba(194, 205, 255, .18); padding-left: 22px; }
@@ -406,9 +410,10 @@
   .missing.primary .lead { font-size: 11px; }
   .missing.primary .why { margin: 4px 0 8px; font: 16px/1.5 var(--text); color: var(--ink); }
   .missing.primary .names { color: var(--ink-2); font-size: 13px; }
-  .btn-primary { font: 600 13px var(--ui); color: var(--sheet); background: var(--blue); border: 0; border-radius: 6px; padding: 7px 14px; cursor: pointer; }
+  .btn-primary { min-height: 44px; font: 600 13px var(--ui); color: var(--sheet); background: var(--blue); border: 0; border-radius: 6px; padding: 7px 14px; cursor: pointer; }
   .btn-primary:hover { filter: brightness(1.1); }
   .missing .cmd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+  .missing.primary .cmd { margin-top: 0; }
   .missing code, .empty code { font: 12.5px var(--mono); color: var(--ink); background: var(--well); border-radius: 4px; padding: 3px 8px; overflow-wrap: anywhere; }
   .aside { max-width: 66ch; margin-top: 34px; padding-top: 16px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px 18px; font-size: 14px; }
   .aside .k { font: 10.5px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); padding-top: 4px; }
@@ -470,6 +475,8 @@
   .seg button.on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
   .seg button.on .n { color: var(--paper); opacity: 0.7; }
   .sheet-count { margin-left: auto; font-size: 11.5px; color: var(--ink-3); }
+  .held-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: -18px 0 20px; color: var(--ink-3); font-size: 12.5px; }
+  .held-note button { min-height: 44px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet); color: var(--ink-2); font: 600 12px var(--ui); cursor: pointer; }
   .sheet-scroll { overflow: auto; max-height: calc(100vh - 150px); border: 1px solid var(--line); border-radius: 8px; background: var(--sheet); }
   table.sheet { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13.5px; }
   .sheet th { position: sticky; top: 0; z-index: 2; background: var(--well); text-align: left; padding: 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -746,7 +753,6 @@
     .mobile-back { display: block; }
     .mobile-back a { display: inline-flex; align-items: center; min-height: 44px; }
     .note { font-size: 16px; }
-    .code-block.diagram pre, .code-block.diagram pre code { white-space: pre-wrap; overflow-wrap: anywhere; }
     .maint > summary .n { display: none; }
     .side .toc-panel { display: none; }
     .factlist .copy { opacity: 1; }
@@ -755,7 +761,9 @@
     .fact { padding: 9px 11px 10px; }
     .sheet-find { flex: 1 1 100%; font-size: 16px; }
     .sheet-count { margin-left: 0; }
-    .sheet .name { min-width: 170px; }
+    .sheet .name { box-sizing: border-box; width: 170px; min-width: 170px; max-width: 170px; }
+    .sheet .name .nm a { overflow-wrap: anywhere; }
+    .sheet th.c-last button { gap: 0; padding-right: 2px; }
     .mobile-status-label { display: block; padding-left: 21px; color: var(--ink-3); font: 11px var(--mono); }
   }
   @media (prefers-reduced-motion: no-preference) {
@@ -865,7 +873,8 @@ function byPath(path) { return REM.records.find(r => r.path === path); }
 // Services still on a people page (census.py) are left off like held pages (#2008).
 function listedRecords() { return REM.records.filter(r => !r.catalog_parent && !r.needs_review && !r.service && r.path !== "skills/catalog/index.md"); }
 function inCategory(category) { return listedRecords().filter(r => r.category === category); }
-function initCommand() { return "co rem --root '" + String(REM.root).replace(/'/g, "'\\''") + "' init --mail outlook"; }
+function remCommand(args) { return "co rem --root '" + String(REM.root).replace(/'/g, "'\\''") + "' " + args; }
+function initCommand() { return remCommand("init --mail outlook"); }
 function href(r) { return "#r=" + encodeURIComponent(r.path); }
 function calendarDay(iso) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(iso))) return String(iso);
@@ -1189,13 +1198,15 @@ function known(r) {
     : !r.written ? "Mapped" : investigated ? "Investigated" : "Some findings";
   // The page's own last activity (census.py), never the file's mtime: a map
   // rewrites every project page, and "Recently active" dated them all today.
-  const last = r.category === "skills" ? (skillUsage(r)?.last || "") : r.last_activity !== undefined ? r.last_activity
-    : (/\blast(?: contact)?:\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || String(r.updated || "").slice(0, 10);
+  const mapLast = r.category === "people" ? (r.mail?.last || "") : "";
+  const last = r.category === "skills" ? (skillUsage(r)?.last || "") : r.last_activity !== undefined ? (r.last_activity || mapLast)
+    : (/\blast(?: contact)?:\s*(\d{4}-\d{2}-\d{2})/i.exec(r.text) || [])[1] || mapLast || String(r.updated || "").slice(0, 10);
   const summary = plainLine((intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || { text: "" }).text);
   const k = { intro, kept, missing, status, last, summary, stamp: stamp.replace(/^Investigation:\s*/, "") };
   KNOWN.set(r.path, k);
   return k;
 }
+function mappedContact(r) { return r.category === "people" && r.path !== REM.owner && known(r).status === "Mapped" && !!(r.last_activity || r.mail?.last); }
 // The first readable line of some Markdown, without its markup or claim numbers.
 function plainLine(text) {
   const line = String(text).split("\n").map(l => l.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
@@ -1372,7 +1383,8 @@ function facts(r) {
     open: t.items, calm: t.calm,
     what: lineOf("what it is") || lineOf("who they are") || lineOf("what it does"),
     domain: plainLine(rawSection(r, "Domains")).replace(/\s*\[\d+\]/g, ""),
-    people: listItems((section(r, "people here") || section(r, "people and ownership") || { text: "" }).text).length,
+    people: listItems((section(r, "people here") || section(r, "people and ownership") || { text: "" }).text)
+      .filter(item => /\]\((?:\.\.\/|\.\/)?people\/[^)]+\.md\)/.test(item)).length,
     repo: (paths.find(p => /^\/|^~|^[A-Z]:\\/.test(p)) || "").replace(/\s*\[\d+\].*$/, ""),
     sessions: Number(field(/^Sessions:\s*(\d+)/)) || null
   };
@@ -1406,7 +1418,8 @@ function openCell(f) {
   return el("span", { class: "open-cell " + t.dir, title: plainLine(t.text) }, [el("span", { class: "dir", text: DIRECTION_LABEL[t.dir] }),
     el("span", { class: "txt", text: plainLine(t.text) }), f.open.length > 1 ? el("span", { class: "more", text: "+" + (f.open.length - 1) }) : null]);
 }
-function dateCell(day) { return day ? el("span", { class: "mono", text: shortDate(day) }) : el("span", { class: "unk", text: "—" }); }
+function dateCell(day, fromMap=false) { return day ? el("span", { class: "mono", title: fromMap ? "Last contact in map" : "",
+  text: shortDate(day) + (fromMap ? " · map" : "") }) : el("span", { class: "unk", text: "—" }); }
 function privateFallback(node) {
   const visible = node.cloneNode(true);
   visible.querySelectorAll(".private").forEach(span => span.remove());
@@ -1437,7 +1450,7 @@ const COLUMNS = {
     { key: "role", label: "Role", sort: (r, f) => plainValue(f.role).toLowerCase() || "￿", cell: (r, f) => textCell(f.role) },
     { key: "email", label: "Email", cls: "mono-col", sort: (r, f) => f.email.toLowerCase() || "￿", cell: (r, f) => f.email ? el("a", { href: "mailto:" + plainValue(f.email).split(/[,;\s]/)[0], class: "mono trunc", title: plainValue(f.email), text: plainValue(f.email) }) : textCell("") },
     { key: "phone", label: "Phone", cls: "mono-col", sort: (r, f) => f.phone || "￿", cell: (r, f) => f.phone ? el("span", { class: "mono", text: plainValue(f.phone) }) : textCell("") },
-    { key: "last", label: "Last contact", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last), desc: true },
+    { key: "last", label: "Last contact", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last, mappedContact(r)), desc: true },
     { key: "mails", label: "Mails", num: true, sort: (r, f) => f.mails ?? -1, cell: (r, f) => f.mails == null ? textCell("") : el("span", { class: "mono", title: f.sent != null ? f.received + " from them, " + f.sent + " from you" : "", text: String(f.mails) }), desc: true },
   ],
   orgs: [
@@ -1650,6 +1663,12 @@ function railActive() {
   const { record: r, category: c, query, view, reviews } = route();
   return reviews ? "reviews" : view || c || (r ? r.split("/")[0] : (query ? "search" : "today"));
 }
+function scheduleState(s) {
+  const state = s.state || "";
+  return REM.records.length && /^Not started/.test(state)
+    ? "Background updates off — run `co rem start` to enable"
+    : state;
+}
 function renderRail(active) {
   const nav = document.getElementById("nav");
   nav.textContent = "";
@@ -1692,10 +1711,11 @@ function renderRail(active) {
   foot.appendChild(privacy);
   foot.appendChild(el("div", { text: "Also hides raw excerpts; other details stay visible." }));
   foot.appendChild(el("div", { text: "Snapshot " + fmtTime(REM.as_of) }));
-  foot.appendChild(el("div", { text: s.next_run ? "Next pass " + fmtTime(s.next_run) : (s.state || "") }));
+  const schedule = s.next_run ? "Next pass " + fmtTime(s.next_run)
+    : (scheduleState(s) || "No pass scheduled");
+  foot.appendChild(el("div", { text: plainLine(schedule) }));
   foot.appendChild(el("div", { text: location.protocol === "about:" ? "Reload for latest" : "co rem open re-renders" }));
-  document.getElementById("mobile-status").textContent = ("Snapshot " + fmtTime(REM.as_of)
-    + " · " + (s.next_run ? "Next pass " + fmtTime(s.next_run) : (s.state || "No pass scheduled")))
+  document.getElementById("mobile-status").textContent = ("Snapshot " + fmtTime(REM.as_of) + " · " + schedule)
     .replace(/`([^`]+)`/g, (_, command) => command.replaceAll(" ", "\u00a0"));
   document.getElementById("brand-sub").textContent = (REM.root || "").split("/").filter(Boolean).slice(-2).join("/");
 }
@@ -1767,6 +1787,25 @@ function changeCard(claim) {
     el("a", { href: href(r) + "&h=src-" + (claim.sources || [""])[0].toLowerCase(),
       text: "Open the page and source →" })]);
   return card;
+}
+function firstMapBrief() {
+  const counts = Object.values(REM.counts || {});
+  const mapped = counts.reduce((n, row) => n + (row.mapped || 0), 0);
+  const written = counts.reduce((n, row) => n + (row.written || 0), 0);
+  if (lastPass() || !mapped || written) return null;
+  const people = inCategory("people").length;
+  const held = REM.records.filter(r => r.category === "people" && r.needs_review).length;
+  const preview = el("button", { type: "button", text: "Copy investigation preview" });
+  preview.onclick = () => copyToClipboard(remCommand("investigate people --list"), preview, "Copied — paste it in a terminal");
+  const brief = el("section", { class: "morning first-map", "aria-label": "Source map and next step" }, [
+    el("div", { class: "morning-top" }, [el("div", {}, [
+      el("span", { class: "morning-kicker", text: "co rem / source map" }),
+      el("h2", { text: mapped + " records mapped" })]),
+      el("span", { class: "morning-time", text: "0 memories written" })]),
+    el("p", { class: "memory-empty", text: "People, projects, organisations and skills are ready to explore. These are metadata starting points, not investigated findings." }),
+    el("div", { class: "first-map-actions" }, [el("a", { href: "#c=people", text: "Browse " + people + " people →" }), preview])]);
+  if (held) brief.appendChild(el("p", { class: "first-map-held", text: held + " possible contacts are held for review and excluded from the People count." }));
+  return brief;
 }
 function morningBrief() {
   const pass = lastPass();
@@ -1869,13 +1908,15 @@ function overview() {
   const s = REM.status || {};
   const main = document.getElementById("main");
   main.textContent = "";
+  const firstMap = firstMapBrief();
   main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: "co rem / Today" }), el("span", { class: "sep", text: "/" }), el("span", { class: "when", text: fmtDate(REM.as_of) })]));
-  main.appendChild(el("h1", { text: "What co rem carried forward" }));
+  main.appendChild(el("h1", { text: firstMap ? "Your source map" : "What co rem carried forward" }));
   const n = listedRecords().length;
   const mapped = listedRecords().filter(r => known(r).status === "Mapped").length;
-  main.appendChild(el("p", { class: "lede", text: n === 0 ? "Once co rem has read your permitted sources, it will bring back the context worth keeping." :
+  main.appendChild(el("p", { class: "lede", text: firstMap ? "Your sources are mapped. Investigate a person or project to add source-backed findings." :
+    n === 0 ? "Once co rem has read your permitted sources, it will bring back the context worth keeping." :
     "A short return to what changed, what is still open, and what is worth remembering." }));
-  main.appendChild(morningBrief());
+  main.appendChild(firstMap || morningBrief());
   const recall = recallPrompt();
   if (recall) main.appendChild(recall);
   const review = connectionReview();
@@ -1934,8 +1975,9 @@ function overview() {
 
 function maintenance(s) {
   const maint = el("details", { class: "maint" });
-  maint.appendChild(el("summary", {}, [el("span", {}, [el("h2", { text: "Maintenance" })]), el("span", { class: "n", text: s.state ? plainLine(s.state).slice(0, 80) : "" })]));
-  maint.appendChild(el("p", { class: "state", html: inline(s.state || "", "") }));
+  const state = scheduleState(s);
+  maint.appendChild(el("summary", {}, [el("span", {}, [el("h2", { text: "Maintenance" })]), el("span", { class: "n", text: state ? plainLine(state).slice(0, 80) : "" })]));
+  maint.appendChild(el("p", { class: "state", html: inline(state, "") }));
   const usage = s.usage_today || {};
   const cells = el("div", { class: "row" });
   const cell = (k, v) => cells.appendChild(el("div", {}, [el("div", { class: "k", text: k }), el("div", { class: "v", text: v })]));
@@ -1985,6 +2027,12 @@ function category(c) {
   main.appendChild(el("h1", { text: c === "all" ? "Explore memory" : label(c) }));
   const lede = (c === "all" ? "People, projects, skills and ideas in one place" : CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
   main.appendChild(el("p", { class: "lede" }, [lede + (items.length ? (/[?.]$/.test(lede) ? " " : ". ") : ""), items.length ? el("span", { class: "mono", text: counts ? counts.written + " written of " + counts.mapped : items.length + " pages" }) : null]));
+  const held = c === "people" ? REM.records.filter(r => r.category === "people" && r.needs_review).length : 0;
+  if (held) {
+    const review = el("button", { type: "button", text: "Copy review list command" });
+    review.onclick = () => copyToClipboard(remCommand("list people --review"), review, "Copied — paste it in a terminal");
+    main.appendChild(el("p", { class: "held-note" }, [held + " possible contacts are held for review, outside this list.", review]));
+  }
   if (!items.length) {
     main.appendChild(c === "people"
       ? el("div", { class: "empty" }, [el("span", { class: "lead", text: "Not mapped yet" }), "No people mapped yet. Run ", el("code", { text: initCommand() }), " (or select gmail) to read correspondent metadata. No background schedule is started."])
@@ -2091,7 +2139,9 @@ function factList(r) {
   for (const label of order) {
     const items = parsed.has(label) ? parsed.get(label) : legacyFact(r, label);
     if (items.length) filled++;
-    const dd = el("dd", { class: items.length ? "" : "none" }, items.length ? items.map(i => factValue(i, r.path)) : [el("span", { text: "— not found" })]);
+    const missing = label === "Last contact" && mappedContact(r) && known(r).last
+      ? "— map date shown above" : "— not found";
+    const dd = el("dd", { class: items.length ? "" : "none" }, items.length ? items.map(i => factValue(i, r.path)) : [el("span", { text: missing })]);
     if (items.length && COPYABLE.has(label)) {
       const btn = el("button", { type: "button", class: "copy", "aria-label": "Copy " + label.toLowerCase(), text: "Copy" });
       btn.onclick = () => copyToClipboard(items.map(i => i.value).join("; "), btn, "Copied");
@@ -2128,7 +2178,7 @@ function leadRow(r) {
       threadAge(first) ? el("span", { class: "age mono" + (threadAge(first).endsWith("today") ? " today" : ""), text: threadAge(first) }) : null,
       t.items.length > 1 ? el("span", { class: "more mono", text: "+" + (t.items.length - 1) + " more" }) : null]));
   } else if (t.calm) row.appendChild(el("span", { class: "lead-calm", text: "Nothing open" }));
-  if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "projects" ? "Last mapped session " : r.category === "people" && r.path !== REM.owner ? "Last contact " : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
+  if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "projects" ? "Last mapped session " : r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map " : "Last contact ") : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u) row.appendChild(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: usageCaption(u) + (u.tools ? " · " + u.tools : "") })]));
   if (section(r, "uncertainties")) row.appendChild(el("a", { class: "unsure", href: "#r=" + encodeURIComponent(r.path) + "&h=uncertainties", title: "What this page is not sure of" }, ["?", el("span", { text: " Uncertain points" })]));
@@ -2141,7 +2191,7 @@ function sidePanels(r, k) {
   const glance = el("dl", {});
   const add = (dt, dd) => glance.append(el("dt", { text: dt }), el("dd", {}, [dd]));
   add("Status", statusPill(r));
-  if (k.last) add(r.category === "people" ? "Last contact" : r.category === "skills" ? "Last invocation" : r.category === "projects" ? "Last mapped session" : "Last active", el("span", { class: "mono", text: fmtDate(k.last) }));
+  if (k.last) add(r.category === "people" ? (mappedContact(r) ? "Last contact in map" : "Last contact") : r.category === "skills" ? "Last invocation" : r.category === "projects" ? "Last mapped session" : "Last active", el("span", { class: "mono", text: fmtDate(k.last) }));
   const mail = /Observed mail count:\s*(\d+);\s*first:\s*(\d{4}-\d{2}-\d{2});\s*last:\s*(\d{4}-\d{2}-\d{2})/.exec(r.text);
   if (mail) add("Mail", el("span", { class: "mono", text: mail[1] + " · " + shortDate(mail[2]) + "–" + shortDate(mail[3]) }));
   const sessions = /^- Sessions:\s*(\d+)/m.exec(r.text), first = /^- First seen:\s*(\S+)/m.exec(r.text);
@@ -2288,7 +2338,7 @@ function recordFocus(r) {
   }
   const f = facts(r);
   const labels = r.path === REM.owner ? [["Role", f.role], ["Location", f.location], ["Company", f.company]]
-    : r.category === "people" ? [["Role", f.role], ["Company", f.company], ["Last contact", f.last]]
+    : r.category === "people" ? [["Role", f.role], ["Company", f.company], ...(mappedContact(r) ? [] : [["Last contact", f.last]])]
     : r.category === "projects" ? [["Last mapped session", f.last], ["Mapped sessions", f.sessions], ["Local path", f.repo]]
       : r.category === "orgs" ? [["Domain", f.domain], ["Last contact", f.last]]
         : r.category === "skills" ? [["Recorded invocations", skillUsage(r) ? String(skillUsage(r).count) : ""], ["Last invocation", f.last]] : [];
@@ -2403,7 +2453,7 @@ function record(path, heading) {
   CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
   main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: "#c=" + r.category }, ["← " + label(r.category)])]));
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#c=" + r.category, text: label(r.category) }), el("span", { class: "sep", text: "/" }),
-    statusPill(r), el("span", { class: "when", text: (k.last ? (r.category === "skills" ? "last invocation " : r.category === "projects" ? "last mapped session " : "last activity ") + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })]));
+    statusPill(r), el("span", { class: "when", text: (k.last && !mappedContact(r) ? (r.category === "skills" ? "last invocation " : r.category === "projects" ? "last mapped session " : "last activity ") + fmtDate(k.last) + " · " : "") + "file updated " + fmtDate(r.updated) })]));
   const head = el("header", { class: "page-head" }, [el("h1", { text: r.title })]);
   // Keep the original prose in the full note. The first screen uses the
   // structured status, actions, facts and connections above that note.
@@ -2491,11 +2541,12 @@ function record(path, heading) {
     // a written page names its remaining gaps in one quiet line at the foot.
     const box = el("div", { class: "missing" + (mapped ? " primary" : "") }, [
       el("span", { class: "lead", text: mapped ? "Only mapped so far" : k.missing.length + (k.missing.length === 1 ? " unresolved section" : " unresolved sections") }),
+      mapped ? el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd]) : null,
       mapped ? el("p", { class: "why", text: r.private_project
         ? "Automatic investigation skips this private project. To request a write, run the command for this page."
         : "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in." }) : null,
       el("div", { class: "names", text: (mapped ? "Not investigated yet: " : "Still unknown: ") + youify(k.missing.join(", ")) + "." }),
-      el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]);
+      mapped ? null : el("div", { class: "cmd" }, [el("code", { text: command }), copyCmd])]);
     if (mapped) deep.parentNode.insertBefore(box, deep); else column.appendChild(box);
   }
 
@@ -2600,7 +2651,7 @@ function bestMatch(r) {
   const f = facts(r), k = known(r), parsed = parseFacts(r);
   const first = l => ((parsed.get(l) || [])[0] || {}).value || "";
   const cells = r.category === "people"
-    ? [["Email", plainValue(first("Email") || f.email)], ["Phone", plainValue(first("Phone"))], ["Company", plainValue(first("Company") || f.company)], ["Last contact", k.last ? fmtDate(k.last) : ""]]
+    ? [["Email", plainValue(first("Email") || f.email)], ["Phone", plainValue(first("Phone"))], ["Company", plainValue(first("Company") || f.company)], [mappedContact(r) ? "Last contact in map" : "Last contact", k.last ? fmtDate(k.last) : ""]]
     : r.category === "orgs"
       ? [["What they do", plainValue(first("What they do") || f.what)], ["Website", plainValue(first("Website") || f.domain)], ["Last contact", k.last ? fmtDate(k.last) : ""]]
       : [[first("Repository") ? "Repository" : "Local path", plainValue(first("Repository") || f.repo)], ["Status", plainValue(first("Status"))], ["Last activity", k.last ? fmtDate(k.last) : ""]];
