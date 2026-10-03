@@ -50,6 +50,8 @@ def review(notebook, candidate: str, config: dict, workspace: Path, run) -> tupl
         "A truncated excerpt supports only the words shown; omitted text is not evidence. "
         "Do not infer a project purpose, location, architecture, command, URL, recipient or permission from "
         "nearby but different work. A source elsewhere in the packet does not fix a wrong adjacent citation. "
+        "The Paths section preserves runner-mapped path and session metadata; structural validation checks it, "
+        "so do not demand prose citations for those rows. Audit every claim outside Paths. "
         "Fail if any material claim is unsupported, even if other claims are sound; name the exact correction. "
         "Return only JSON with verdict PASS, FAIL or INSUFFICIENT and findings containing issue, evidence and "
         "required_correction. No markdown fences.\n\n"

@@ -81,6 +81,7 @@ def test_project_paths_cannot_be_cited_as_file_evidence(tmp_path):
 
 def test_live_file_citation_is_hash_pinned_and_openable_after_file_changes(tmp_path, monkeypatch):
     from connectonion.rem.reader_model import cited_context
+    from connectonion.rem import project_claim_review
 
     repo = tmp_path / "reader"
     repo.mkdir()
@@ -104,6 +105,14 @@ def test_live_file_citation_is_hash_pinned_and_openable_after_file_changes(tmp_p
         return {"result": f"Inspected {file}", "usage": None}
 
     monkeypatch.setattr(rem_runner, "run_task", write_candidate)
+
+    def audited(notebook, candidate, *_args):
+        material, missing = project_claim_review.packet(notebook, candidate)
+        assert missing == []
+        assert material['sources'][0]['context']['excerpt'] == 'Verified feature design.'
+        return {'verdict': 'pass', 'findings': []}, {}
+
+    monkeypatch.setattr(project_claim_review, 'review', audited)
     result = rem_runner.run_stage(notebook, [{"role": "page", "record": record,
                                               "source": "investigation:page", "text": notebook.read(record)}],
                                   default_config(), stage="investigate")

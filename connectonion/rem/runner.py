@@ -559,6 +559,9 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         errors += placeholder_errors(text)
     audit_usage = {}
     audit_status = "not automatically assessed"
+    if not errors and investigation and record.startswith("projects/"):
+        from .project_pages import retain_live_source_context
+        retain_live_source_context(notebook.root, original, text)
     if not errors and claim_config is not None and investigation and record.startswith("projects/"):
         from .project_claim_review import review as review_claims
         report, audit_usage = review_claims(notebook, text, claim_config, directory, run_claim_task)
@@ -592,9 +595,6 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             # The run is paid for; the page it wrote is kept where the reader can see
             # what was refused and why, not discarded behind a one-line error.
             raise RunFailed(f"Candidate rejected, kept at {candidate}: " + "; ".join(errors), total_usage)
-        if record.startswith("projects/"):
-            from .project_pages import retain_live_source_context
-            retain_live_source_context(notebook.root, original, text)
         notebook.write(record, text)
     return audit_usage
 

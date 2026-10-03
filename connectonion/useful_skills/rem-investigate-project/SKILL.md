@@ -15,55 +15,44 @@ Why these rules: docs/rem-skills/rem-investigate.md
   Record the inspected path and revision or timestamp in each source
   citation. For a live file outside snapshots, cite
   `file:/absolute/path@<sha256>` (hash full bytes with `shasum -a 256`)
-  so the cited version can be retained. The index names omitted files and size limits; an omitted body is
-  not evidence that implementation is absent.
-- A file in a nearby checkout outside this page's mapped `Paths` cannot be
-  retained as this project's source, even if it exists and its hash is correct.
-  Do not carry its architecture or commands into the page. If the mapped path
-  has no inspectable original for a section, use `Unknown` there.
-- `project-inventory` lists candidate files, not their contents. Do not cite
-  `investigation:project-inventory`; cite the inspected file or a retained
-  snapshot for file facts.
+  so the cited version can be retained. An omitted index body is not proof
+  that implementation is absent.
+- Files outside mapped `Paths` cannot support this page, even with a valid
+  hash. Use `Unknown` without an inspectable original under mapped paths.
+- `project-inventory` names files, not contents; cite inspected originals,
+  never `investigation:project-inventory`.
 - Keep existing `Paths` without citing `investigation:page`. A new path needs
   a retained source.
 - Put search-window limits in your final reply, not page `Uncertainties` or
   `Sources`; `investigation:coverage` is not citable project evidence.
-- If the `project-input-scope` item says zero session inputs were assigned,
-  keep `Insight` and `Open threads` as bare `Unknown`. Dated repository notes
-  can explain the project and its history in `What it is` and `Where it
-  stands`; they do not establish current user work or a live next action.
-  The scope item is not an original and must not appear in `Sources`.
+- With zero assigned session inputs, keep `Insight` and `Open threads` bare
+  `Unknown`. Dated repo notes may explain history, not current user work.
+  `project-input-scope` is not a citable original.
 - Old files are not recent activity. Attribute README/manifest claims to their
   snapshot date or revision unless current code or a dated user report confirms
   them. `First seen` is an observed session, not project `Started`; leave
   `Started` Unknown without explicit evidence.
-- `Status` and `Last activity` mean demonstrated project progress, not a Git
-  branch or commit timestamp. Put a branch or commit in `Where it stands` as a
-  dated checkout snapshot; leave those Facts Unknown unless a dated original
-  ties actual work to this project. A commit alone does not establish the
-  user's current task or next step.
-- A workspace holds unrelated requests. An old request with no outcome is not
-  necessarily pending. Cwd does not identify the subject. Require a distinctive
-  project, package, component, file, version or behavior match to the supplied
-  project evidence. Generic release, patch, test, reply or package-manager
-  requests do not identify a project. Omit ambiguous status, insight and action.
-- Assign unnamed follow-ups only when an earlier supplied input in the same
-  session establishes this project's subject. If it names another product, or
-  was not supplied, leave the follow-up unassigned despite its cwd. Exclude it
-  from current findings, status, activity, issues, threads and next action.
+- `Status` and `Last activity` need dated evidence of progress, not a branch
+  or commit timestamp. A checkout snapshot belongs in `Where it stands`,
+  not as proof of a current task or next step.
+- Cwd alone does not assign a request to this project. Match a distinctive
+  project, package, file, version or behavior; omit generic or old requests
+  with no verified outcome from status, insight and action.
+- Assign unnamed follow-ups only when an earlier supplied input in that
+  session establishes this project. Otherwise leave them unassigned.
 - Audit every concrete claim in `Insight`, `What it is`, `Why it exists`,
   `Where it stands` and `Open threads` against its adjacent cited original
   before writing the candidate. A question about a filter proves only that
   the user asked; a request to organize files does not authorize a commit or
-  push. A short input reporting a
-  missed reply establishes that report only; it does not establish whether a
-  listener is event-driven, what caused the miss, or what was implemented.
+  push. Data collection does not prove assessment, outreach or a product goal;
+  saving a crawler does not prove it resumes. A short input reporting a
+  missed reply or continued process establishes that report only; it does not
+  prove a prior stop request, an event-driven listener, a cause, or a separate
+  browser failure.
   Remove any mechanism, cause, status or next action absent from the cited
   original unless a second, separately cited source establishes it.
-- A comment in source code reporting a test is a dated source note, not an
-  independently verified execution result. Attribute it to the file and date;
-  do not call it the latest run or a current outcome without a run log or
-  another dated original that verifies that claim.
+- A source comment about a test is not a verified run; require a run log for
+  a current test outcome.
 - For `Overview` and `Try it`, compare each step with the original source and
   with the other section. Preserve the documented order exactly; do not
   reverse prerequisite, capture, load or write steps. If the order is not
