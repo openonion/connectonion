@@ -35,3 +35,11 @@ The next review opens the actual written reader on desktop and phone, checks
 an investigated page, citation dialog and privacy controls, then repeats the
 timing after future source or relationship changes. The larger first-run goal
 still requires a live model batch and a source-by-source memory review.
+
+Preparing the next preview exposed a separate trap: the previous package's
+uploaded description still recommended an older alpha, even though its docs
+site showed the current one. PyPI preserves that uploaded description. The
+candidate build checks the README's exact preview command against the package
+version, and its release review inspects the wheel metadata before tagging.
+That keeps the command a reader copies from the package page tied to the code
+they will actually install.
