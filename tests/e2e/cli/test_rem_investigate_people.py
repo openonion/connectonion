@@ -42,6 +42,20 @@ def test_list_shows_recent_first_and_the_cost_and_reads_nothing(root, monkeypatc
     assert "Nothing was read or spent." in result.output
 
 
+def test_budgeted_list_next_keeps_the_cost_and_scope_controls(root):
+    result = invoke(root, "investigate", "people", "--list", "--budget", "3",
+                    "--limit", "1", "--days", "5", "--recent-days", "7")
+    assert result.exit_code == 0, result.output
+    assert "Budget: 3 points is advisory" in result.output
+    assert "Next: co rem --root" in result.output
+    assert "investigate people --limit 1 --budget 3 --days 5 --recent-days 7" in result.output
+
+    machine = invoke(root, "--json", "investigate", "people", "--list", "--budget", "3")
+    assert machine.exit_code == 0, machine.output
+    assert json.loads(machine.stdout)["next"].endswith(
+        "investigate people --limit 0 --budget 3")
+
+
 def test_a_run_states_the_cost_before_the_first_call_and_says_what_is_left(root, monkeypatch):
     order = []
 

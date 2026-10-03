@@ -93,9 +93,16 @@ def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool
     budget_note = (f" Budget: {budget} points is advisory; up to four already-started pages can finish "
                    "after it is reached." if budget else "")
     if list_only:
+        next_step = ["investigate", "people", "--limit", str(limit)]
+        if budget:
+            next_step += ["--budget", str(budget)]
+        if days:
+            next_step += ["--days", str(days)]
+        if recent_days != 14:
+            next_step += ["--recent-days", str(recent_days)]
         if ctx.obj["json"]:
             return ({"category": "people", "order": rows, "estimate": estimate(chosen),
-                     "first": owner_first(ctx, root)}, ["investigate", "people"], False)
+                     "first": owner_first(ctx, root)}, next_step, False)
         text = "\n".join([*owner_first(ctx, root),
                           f"{counted(len(rows), 'person', 'people')} to investigate: people you wrote to first, "
                           f"then people who wrote more than once, then one-mail contacts; the last {recent_days} "
@@ -103,7 +110,7 @@ def run_people(ctx, root, *, limit: int, recent_days: int, days, list_only: bool
                           f"The next {len(chosen)}: " + cost_line(estimate(chosen), quota.read(config))
                           + budget_note,
                           "Nothing was read or spent."])
-        return text, ["investigate", "people"], False
+        return text, next_step, False
     if not chosen:
         return "No people to investigate: every page is investigated and nothing new has arrived.", \
             ["list", "people"], False
