@@ -167,6 +167,35 @@ def test_the_people_sheet_fits_1440_and_says_when_it_is_cut(reader):
     assert page.locator("td.name").first.evaluate("e => e.getBoundingClientRect().left") >= scroller.evaluate("e => e.getBoundingClientRect().left") - 1
 
 
+def test_people_last_contact_heading_is_visible_beside_sticky_name_on_phone(reader):
+    page, uri = reader
+    page.set_viewport_size({"width": 375, "height": 812})
+    page.goto(uri + "#c=people")
+    scroller = page.locator(".sheet-scroll")
+    assert page.locator(".sheet th.c-last button").text_content().startswith("Last contact")
+    assert any("· map" in date for date in page.locator(".sheet td.c-last").all_inner_texts())
+    header_positions = """() => {
+      const button = document.querySelector('.sheet th.c-last button');
+      const firstLetter = document.createRange();
+      firstLetter.setStart(button.firstChild, 0);
+      firstLetter.setEnd(button.firstChild, 1);
+      const letter = firstLetter.getBoundingClientRect();
+      const name = document.querySelector('.sheet th.name').getBoundingClientRect();
+      const edge = document.querySelector('.sheet-scroll').getBoundingClientRect();
+      return { letterLeft: letter.left, nameLeft: name.left, nameRight: name.right,
+        headingRight: button.getBoundingClientRect().right, edgeLeft: edge.left, edgeRight: edge.right };
+    }"""
+    for without_map_suffix in (False, True):
+        if without_map_suffix:
+            page.locator(".sheet td.c-last .mono").evaluate_all(
+                "cells => cells.forEach(cell => cell.textContent = cell.textContent.replace(' · map', ''))")
+        scroller.evaluate("e => { e.scrollLeft = e.scrollWidth; }")
+        positions = page.evaluate(header_positions)
+        assert positions["nameLeft"] >= positions["edgeLeft"] - 1, positions
+        assert positions["letterLeft"] >= positions["nameRight"], positions
+        assert positions["headingRight"] <= positions["edgeRight"], positions
+
+
 def test_a_person_opens_on_a_fact_card_with_cited_values(reader):
     page, _ = reader
     page.goto(page.url.split("#")[0] + "#r=people%2Fmara-ostrowski.md")
