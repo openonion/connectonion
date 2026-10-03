@@ -19,7 +19,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import RemError, state_path
-from .store_build import GROUPS, SCHEMA, SCHEMA_VERSION, build_pages, fingerprints, inputs
+from .store_build import GROUPS, SCHEMA, SCHEMA_VERSION, build_pages, columns, fingerprints, inputs
 from .store_messages import body, build_mail, build_runs, build_sessions
 
 BUILDERS = {"pages": build_pages, "mail": build_mail, "sessions": build_sessions, "runs": build_runs}
@@ -144,6 +144,10 @@ def _rows(root: Path, sql: str, parameters=()) -> list:
         for column in JSON_COLUMNS:
             if isinstance(row.get(column), str):
                 row[column] = json.loads(row[column])
+        if "first_contact" in row and isinstance(row.get("facts"), dict):
+            # Older indexes filled this from the earliest mapped mail. A page's
+            # explicit fact is the only source for an actual first contact.
+            row["first_contact"] = columns(row["facts"])["first_contact"]
         for column in FLAGS:
             if column in row:
                 row[column] = bool(row[column])
@@ -170,8 +174,13 @@ def people_table(root: Path, *, company: str = "", query: str = "", open_only: b
         where.append("last_contact >= ?")
         parameters.append(since.isoformat())
     order = f"({sort} is null or {sort} = ''), {sort} {'desc' if descending else 'asc'}, name, record"
-    return _rows(root, f"select * from people {'where ' + ' and '.join(where) if where else ''} order by {order}",
+    rows = _rows(root, f"select * from people {'where ' + ' and '.join(where) if where else ''} order by {order}",
                  parameters)
+    if sort == "first_contact":
+        rows.sort(key=lambda row: (not row["first_contact"],
+                                   (-1 if descending else 1) * int((row["first_contact"] or "0").replace("-", "")),
+                                   row["name"], row["record"]))
+    return rows
 
 
 def edges(root: Path, record: str) -> list[dict]:

@@ -23,15 +23,20 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a33** keeps Person first-contact facts and the People index tied
+to evidence, updates first-run token and quota guidance from measured samples,
+and shortens the release path without skipping its test gate. See
+[1.9.0a33 notes](releases/1.9.0a33.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a33'
+co rem open --live
+```
+
 Alpha **1.9.0a32** keeps Skill pages tied to their invocation names, makes
 cited run parts and local output files openable in the owner-only reader, and
 labels intended outcomes separately from observed work. See
 [1.9.0a32 notes](releases/1.9.0a32.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.0a32'
-co rem open --live
-```
 
 The a30 tag did not publish to PyPI after its release CI failed; see
 [#2253](https://github.com/openonion/connectonion/issues/2253). Its full-cohort

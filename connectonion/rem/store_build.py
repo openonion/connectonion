@@ -181,7 +181,7 @@ def _person(record: str, text: str, entry: dict, row: dict) -> dict:
     page_last = max(LAST_CONTACT.findall(text), default="")
     return {**known, "record": record, "name": title(text, record),
             "emails": dumps(known["emails"] or sorted({a.casefold() for a in addresses})),
-            "first_contact": known["first_contact"] or (row.get("first") or "")[:10],
+            "first_contact": known["first_contact"],
             "last_contact": max(known["last_contact"], page_last, (row.get("last") or "")[:10]),
             "mails": row.get("mails") or 0, "sent": row.get("sent") or 0, "received": row.get("received") or 0,
             "open_threads": open_threads(text), "written": entry["written"], "listed": entry["listed"],

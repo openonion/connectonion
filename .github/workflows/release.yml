@@ -25,7 +25,6 @@ jobs:
       contents: read
 
   build:
-    needs: tests
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -146,7 +145,8 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: build
+    # Build and the test matrix can run together; publication still requires both.
+    needs: [tests, build]
     runs-on: ubuntu-latest
     environment:
       name: pypi
