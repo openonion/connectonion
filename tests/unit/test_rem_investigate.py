@@ -1460,6 +1460,37 @@ def test_a_gmail_date_with_no_timezone_is_read_as_utc():
     assert _iso_date("not a date", "2026-07-01T00:00:00+00:00") == "2026-07-01T00:00:00+00:00"
 
 
+def test_person_mail_evidence_uses_the_notebook_day_across_provider_offsets():
+    items = [
+        {"source": "gmail:proposal", "timestamp": "2026-08-11T18:34:42-07:00"},
+        {"source": "gmail:correction", "timestamp": "2026-08-12T01:36:40+00:00"},
+        {"source": "codex:session", "timestamp": "2026-08-12T01:36:40+00:00"},
+    ]
+
+    inv._local_mail_times(items, "Australia/Sydney")
+
+    assert [item["timestamp"] for item in items[:2]] == [
+        "2026-08-12T11:34:42+10:00", "2026-08-12T11:36:40+10:00"]
+    assert items[2]["timestamp"] == "2026-08-12T01:36:40+00:00"
+
+
+def test_person_writer_receives_notebook_local_mail_times(tmp_path, monkeypatch):
+    root = _notebook(tmp_path, "codex")
+    set_config(root, ["schedule.timezone", "Australia/Sydney"])
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: ([
+        {"source": "gmail:proposal", "timestamp": "2026-08-11T18:34:42-07:00", "text": "A proposal"},
+        {"source": "gmail:correction", "timestamp": "2026-08-12T01:36:40+00:00", "text": "A correction"},
+    ], ["gmail: two matching messages"]))
+    received = []
+
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=857,
+                    clients={}, subscriptions={},
+                    runner=lambda notebook, items, config, stage: received.extend(items) or {"changed": []})
+
+    assert [item["timestamp"] for item in received if item.get("source", "").startswith("gmail:")] == [
+        "2026-08-12T11:34:42+10:00", "2026-08-12T11:36:40+10:00"]
+
+
 def test_one_saved_mail_with_an_unreadable_date_is_skipped_not_the_whole_run(tmp_path, monkeypatch):
     """#2013: one naive date in the init archive stopped `investigate me` and init's
     first page with "Source contains an invalid timestamp"."""

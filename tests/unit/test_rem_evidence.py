@@ -33,6 +33,16 @@ def test_a_mail_is_one_file_and_a_session_or_chat_is_one_conversation(tmp_path):
     assert "6 items in 4 files" in index and "cite that source id" in index
 
 
+def test_local_mail_keeps_instant_order_when_daylight_saving_ends(tmp_path):
+    write_evidence(tmp_path / "ev", [
+        item("outlook:later", "2026-04-05T02:10:00+10:00", "Later"),
+        item("outlook:earlier", "2026-04-05T02:50:00+11:00", "Earlier"),
+    ])
+
+    packet = next(p.read_text() for p in (tmp_path / "ev").rglob("*.md") if p.name != "index.md")
+    assert packet.index("### outlook:earlier") < packet.index("### outlook:later")
+
+
 def test_an_odd_source_id_cannot_escape_the_evidence_directory(tmp_path):
     out = write_evidence(tmp_path / "ev", [item("outlook:../../etc/passwd", "2026-09-01", "x")])
 

@@ -70,3 +70,19 @@ validator. The first source audit found one page describing messages as a day
 apart even though both fall on the same Sydney date. That is a different
 quality gate from throughput, and the draft cannot use a successful batch
 exit as evidence that its relationship timeline is correct.
+
+I repeated one of those first reads from the untouched map after shortening
+the evidence instructions to fit the 15,000-character task limit. It read a
+857-day window with 114 matched mail bodies and 24 attachments, then accepted
+the page. The turn used 1,379,943 input tokens (1,262,080 cached) and 18,286
+output tokens. Independent review still found a same-day correction called
+“the next day,” an earlier request carried past its correction, and claims
+whose adjacent originals did not say what the page asserted. A same-name map
+page also made identity and last-contact scope unclear. Acceptance checked
+structure, not those meanings.
+
+Mail evidence headers now show the notebook's local time before the writer
+reads them; the file index keeps actual instant order across daylight-saving
+changes. This addresses one source of date confusion. The independent
+claim-to-original gate remains a prerequisite for promoting the broader
+people batch.

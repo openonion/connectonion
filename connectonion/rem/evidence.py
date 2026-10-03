@@ -25,6 +25,7 @@ import re
 from pathlib import Path
 
 from .chat import CHAT_KINDS
+from .source import timestamp
 
 INDEX = "index.md"
 
@@ -34,6 +35,12 @@ INDEX = "index.md"
 # it opens, and the turn cost 2.77M input tokens (#2080). A month of one
 # mailbox is one file, split when it passes this.
 FILE_CHARS = 40_000
+
+
+def _order(item: dict) -> str:
+    """Keep actual instant order when local offsets change across daylight saving."""
+    stamp = str(item.get("timestamp", ""))
+    return timestamp(stamp).isoformat() if re.search(r"T.*(?:Z|[+-]\d{2}:\d{2})$", stamp) else stamp
 
 
 def _group(item: dict) -> str:
@@ -95,11 +102,11 @@ def write_evidence(directory: Path, items: list[dict]) -> dict:
     """Write every item, oldest first within each file; return the index path and every citable id."""
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     groups: dict[str, list[dict]] = {}
-    for item in sorted(items, key=lambda i: str(i.get("timestamp", ""))):
+    for item in sorted(items, key=_order):
         groups.setdefault(_group(item), []).append(item)
     groups = {name: part for group, entries in groups.items() for name, part in _split(group, entries)}
     lines, sources, total = [], [], 0
-    for group, entries in sorted(groups.items(), key=lambda pair: str(pair[1][0].get("timestamp", ""))):
+    for group, entries in sorted(groups.items(), key=lambda pair: _order(pair[1][0])):
         name = _file_name(group, str(entries[0].get("timestamp", "")))
         text = "\n".join(_entry(item) for item in entries)
         path = directory / name

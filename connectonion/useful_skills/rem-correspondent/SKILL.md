@@ -6,9 +6,8 @@ description: Rules for investigating someone other than the user — composed af
 # Investigating someone the user corresponds with
 
 - Before choosing milestones, survey the whole supplied date range. For an
-  evidence index, scan all entry headers and subjects in one bounded shell
-  read, then open the messages behind each distinct relationship thread across
-  older and newer months. Search for introductions, agreements, changes,
+  evidence index, scan headers and subjects once, then open each relevant
+  relationship thread across months. Search for introductions, agreements, changes,
   unanswered requests and changed signatures. Do not stop at the newest mail
   or read every repeated notice in full. Report the files and months actually
   read and any skipped relevant thread in the final reply.
@@ -42,6 +41,7 @@ description: Rules for investigating someone other than the user — composed af
   need their respective messages; a cited alias must appear in that original.
   Use notebook-timezone source dates in every section, with stated event dates
   separate. Remove claims that only sound plausible from adjacent mail.
-- No later reply in retained sources means `Open`, with a conditional action:
-  `Check whether you replied elsewhere; if not, answer`. An incoming question
-  alone does not prove `you owe` or `waiting on you`.
+- A correction can withdraw an earlier ask; a pending decision about the
+  corrected subject needs a new request. With no later reply in retained
+  sources, use `Open` and `Check whether you replied elsewhere; if not, answer`.
+  An incoming question alone does not prove `you owe`.

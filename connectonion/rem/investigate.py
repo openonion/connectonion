@@ -15,6 +15,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from .config import read_config
 from ..provider_credentials import ProviderCredentialError
@@ -1074,6 +1075,16 @@ def _mail_comparison(root, record, handles, items, fresh, cited, subscriptions, 
             and (not sent_only or item.get("role") == "user")]
 
 
+def _local_mail_times(items: list[dict], zone_name: str) -> None:
+    """Show person-mail instants in the notebook's calendar before the writer sees them."""
+    zone = ZoneInfo(zone_name or "UTC")
+    for item in items:
+        stamp = str(item.get("timestamp") or "")
+        if str(item.get("source") or "").split(":", 1)[0] in MAIL_KINDS and re.search(
+                r"T.*(?:Z|[+-]\d{2}:\d{2})$", stamp):
+            item["timestamp"] = timestamp(stamp).astimezone(zone).isoformat()
+
+
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
@@ -1096,6 +1107,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                              progress=progress, attachments_dir=root / ".state" / "attachments",
                              sent_only=sent_only, mail_skipped=mail_skipped, stage_progress=stage_progress,
                              quick=quick, archive_root=root, record=record)
+    config = read_config(root)
     # Build the bounded comparison before a full pass drops items already cited
     # by its quick page. That citation only says the first pass saw them; the
     # final writer still needs the earlier and later words side by side.
@@ -1119,7 +1131,6 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # the first contact.
     from . import facts
     from .fact_extract import extract, facts_item
-    config = read_config(root)
     fact_rows = [] if record.startswith("projects/") else [
         row for row in extract([item for item in items if not item.get("relationship_scope")], handles,
                                owner=sent_only, timezone=config["schedule"]["timezone"])
@@ -1149,6 +1160,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                                 f"{len(comparison)} previously cited mail source(s) retained for exact "
                                 "provider-thread comparison; comparison is old evidence, not new contact")
             items = [*fresh, *comparison]
+    if record.startswith("people/"):
+        _local_mail_times(items, config["schedule"]["timezone"])
     if last and not items and not record.startswith("projects/"):
         _keep_facts(notebook, root, record, fact_rows)
         raise _nothing_new(record, subject, coverage, last)
