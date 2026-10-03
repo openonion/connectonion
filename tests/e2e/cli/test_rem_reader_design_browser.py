@@ -297,7 +297,7 @@ def test_a_person_opens_on_a_fact_card_with_cited_values(reader):
     page.goto(page.url.split("#")[0] + "#r=people%2Fmara-ostrowski.md")
     # Under the title: what you owe and for how long.
     lead = page.locator(".leadrow .lead-open")
-    assert lead.locator(".dir").inner_text().upper() == "YOU OWE" and lead.locator(".age").inner_text() == "9 days"
+    assert lead.locator(".dir").inner_text().upper() == "YOU OWE" and lead.locator(".age").inner_text() == "open for 9 days"
     card = page.locator(".factlist")
     value = lambda label: card.locator(f"dt:text-is('{label}') + dd")  # noqa: E731
     assert "Head of Partnerships" in value("Role").inner_text()
@@ -449,7 +449,7 @@ def test_short_focus_text_clipped_on_phone_can_expand_and_collapse(reader):
     page, uri = reader
     page.set_viewport_size({"width": 375, "height": 812})
     page.goto(uri + "#r=people%2Fmara-ostrowski.md")
-    statement = "Mara needs the revised pilot agreement before deciding whether her team can renew, including the usage export and the pricing proposal."
+    statement = "Mara needs the revised pilot agreement before deciding whether her team can renew, including the usage export, the pricing proposal, and a signed data-sharing addendum by Friday."
     assert len(statement) < 180
     page.evaluate("text => { const r = byPath('people/mara-ostrowski.md'); r.text = '# Mara Ostrowski\\n\\n' + text; KNOWN.clear(); FACTS.clear(); render(); }", statement, isolated_context=False)
     lead = page.locator('.focus-statement')
@@ -668,8 +668,33 @@ def test_written_project_purpose_precedes_partial_scope_on_phone(reader):
     assert purpose.bounding_box()['y'] < 812
     assert purpose.bounding_box()['y'] < scope.bounding_box()['y']
     assert '114 session inputs' in scope.inner_text()
+    purpose_source = page.locator('.project-purpose-cites a.cite').first
+    assert purpose_source.get_attribute('aria-label') == 'Source 1'
+    assert purpose_source.get_attribute('data-tip') is None
     sources = page.locator('.focus-source').bounding_box()
     assert sources['height'] >= 44 and sources['y'] + sources['height'] <= 812
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_long_project_purpose_keeps_a_source_in_the_phone_first_screen(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.evaluate("""() => {
+      const r = byPath('projects/harbour.md');
+      const purpose = 'A shared-inbox tool for a team to review long threads, identify decisions and unresolved follow-ups, and prepare a weekly brief before a renewal call. '.repeat(2);
+      r.text = r.text.replace(/## What it is\\n- [^\\n]+/, '## What it is\\n- ' + purpose + '[1].');
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    statement = page.locator('.focus-statement')
+    assert statement.evaluate('(node) => node.scrollHeight > node.clientHeight')
+    chip = page.locator('.project-purpose-cites a.cite').first
+    source = page.locator('.focus-source')
+    assert chip.bounding_box()['y'] + chip.bounding_box()['height'] <= 812
+    assert source.bounding_box()['y'] + source.bounding_box()['height'] <= 812
+    page.get_by_role('button', name='Read full purpose').click()
+    assert not statement.evaluate('(node) => node.scrollHeight > node.clientHeight')
+    assert 'weekly brief before a renewal call' in page.locator('.deep-note').inner_text()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -696,7 +721,7 @@ def test_written_pages_show_the_complete_source_action_on_phone(reader):
         assert page.get_by_role('heading', name='Full memory and sources').is_visible()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         link.click()
-        assert page.locator('.deep-note .block-sources').is_visible()
+        page.locator('.deep-note .block-sources').wait_for(state='visible')
 
 
 def test_open_context_is_not_counted_as_waiting_on_other_people(reader):
@@ -1080,7 +1105,7 @@ def test_project_map_date_is_labelled_as_a_session_not_verified_activity(reader)
       r.last_activity = '2026-09-16';
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
-    assert 'Last mapped session' in page.locator('.leadrow').inner_text()
+    assert 'Last mapped session' not in page.locator('.leadrow').inner_text()
     assert 'LAST MAPPED SESSION' in page.locator('.focus-facts').inner_text()
     assert 'last mapped session' in page.locator('.eyebrow').inner_text()
     assert 'Last active' not in page.locator('.leadrow').inner_text()

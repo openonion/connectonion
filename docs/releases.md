@@ -23,6 +23,16 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a37** shows a compact Project purpose on changed Home cards,
+keeps the purpose's individual source links openable beside a clipped preview,
+and enlarges the desktop privacy control. Saved memories do not change. See
+[1.9.0a37 notes](releases/1.9.0a37.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a37'
+co rem open --local
+```
+
 Alpha **1.9.0a36** keeps paragraph and table-field separators when Outlook
 HTML mail becomes text. New REM source captures and `co outlook read` can show
 event times, reasons and follow-up clauses separately. Already saved excerpts

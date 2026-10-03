@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a36
+## Current Version: 1.9.0a37
+
+1.9.0a37 puts a short, source-backed Project purpose on changed Home cards,
+keeps each cited purpose source directly openable beside the clipped phone and
+desktop preview, and gives the desktop privacy control a 44-pixel target. The
+reader changes presentation only; saved memories and sources are unchanged.
+Stable remains 1.8.10. See
+[1.9.0a37 notes](docs/releases/1.9.0a37.md).
+
+- 1.9.0a37 (Project purpose and source access in the reader).
+
+## Previous preview: 1.9.0a36
 
 1.9.0a36 keeps Outlook HTML mail's paragraph, table-field and participant-role separators in
 provider-rendered text. In a synthetic cancellation source, the phone reader
