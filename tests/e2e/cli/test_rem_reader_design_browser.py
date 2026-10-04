@@ -90,6 +90,7 @@ def test_manual_memory_precedes_no_pass_status_on_phone(reader):
     page.evaluate('() => { REM.logs = []; render(); }', isolated_context=False)
     recall = page.locator('.recall')
     link = recall.get_by_role('link', name='Open page and sources →')
+    assert link.bounding_box()['height'] >= 44
     assert link.bounding_box()['y'] + link.bounding_box()['height'] <= 812
     assert recall.bounding_box()['y'] < page.locator('.morning').bounding_box()['y']
     assert 'No pass yet' in page.locator('.morning').inner_text()
