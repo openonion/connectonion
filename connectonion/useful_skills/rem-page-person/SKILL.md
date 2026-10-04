@@ -66,8 +66,9 @@ Rules:
   Missing completion does not make a historical plan current work.
 - **`Company` needs stated employment.** Student or mailbox affiliation is
   insufficient; link schools or groups in relationship text.
-- An employee's “we signed” does not name the legal signer; keep `Signing entity`
-  Unknown unless the source names it.
+- An employee's “we signed” does not name the legal signer. Say “the sender
+  reported that their side signed”; never “[employer] signed” unless the
+  source names the employer as signer. Keep `Signing entity` Unknown otherwise.
 - **`Why they are here`**: how they met, who approached whom, each aim.
 - **`Our relationship`**: kind, state, terms, obligations. “We signed” alone
   proves no contract with the user. Keep links, citations and privacy markers;
