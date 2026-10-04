@@ -5,7 +5,7 @@
 The 1.9.0a41 candidate's private two-mailbox map had 590 visible mapped
 People rows and 803 other contacts. The People intro named the 803 contacts,
 but their disclosure followed the entire mapped table. At 390×844 its top was
-at y=1265, outside the first screen. The first fixture review had only a few
+at y=1314, outside the first screen. The first fixture review had only a few
 People rows and missed the scale effect. Private names and screenshots remain
 local; the images here use invented fixture identities.
 
@@ -13,9 +13,9 @@ local; the images here use invented fixture identities.
 
 The collapsed other-contacts disclosure now precedes the mapped People roster.
 The two groups keep their existing filters, search, source-coverage text and
-actions. A real-data recheck placed its top at y=515 on a 390×844 phone and
-y=249 at 1440×900, with zero horizontal overflow. No private screenshot was
-committed.
+actions. A real-data recheck moved its top from y=1314 to y=515 on a 390×844
+phone and from y=1067 to y=249 at 1440×900, with zero horizontal overflow.
+No private screenshot was committed.
 
 An invented 576-person fixture produced these viewport measurements:
 

@@ -13,7 +13,7 @@ that distinction. Hiding the second list at the end of the first made the
 distinction practically useless.
 
 We moved the collapsed other-contacts section above the mapped roster. On the
-real 390-pixel phone view, its top moved from y=1265 to y=515; on a 576-person
+real 390-pixel phone view, its top moved from y=1314 to y=515; on a 576-person
 invented fixture it moved from y=1297 to y=441. The disclosure still leads to
 its own search and “Prepare in terminal” command, while the mapped roster's
 filters and sorting remain below. The browser check opens it with the keyboard
