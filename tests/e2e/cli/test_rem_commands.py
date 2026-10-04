@@ -148,7 +148,7 @@ def test_config_set_model_checks_it_on_a_fixture_page_and_records_its_tier(tmp_p
     assert "In force: summary" in shown and shown.rstrip().endswith(f"Next: co rem --root {root} status")
     invoke(root, "config", "set", "model", "gpt-7-pico", "--no-check")
     shown = invoke(root, "config").output
-    assert "last checked for codex gpt-7-nova" in shown
+    assert "last checked for claude-code gpt-7-nova" in shown
     # The check is named in the tier's note; Next no longer reads as "set the model" (#1974).
     assert f"co rem --root {root} config set model gpt-7-pico (one or two model calls)" in shown
     assert shown.rstrip().endswith(f"Next: co rem --root {root} status")
@@ -571,6 +571,8 @@ def test_init_builds_all_maps_without_model_or_investigation(tmp_path, monkeypat
 
 def test_init_archives_connected_mail_body_for_later_investigation(tmp_path, monkeypatch):
     from datetime import datetime, timedelta, timezone
+    # The archive is under test, not the runner: no model turn whatever is installed.
+    monkeypatch.setattr('connectonion.rem.runner.ready', lambda config: ('Claude Code is not installed', 'npm install -g @anthropic-ai/claude-code'))
     monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
     monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: kind == 'gmail')
     when = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
@@ -613,6 +615,8 @@ def test_init_archives_connected_mail_body_for_later_investigation(tmp_path, mon
 
 def test_init_reports_failed_body_without_claiming_complete_archive(tmp_path, monkeypatch):
     from datetime import datetime, timedelta, timezone
+    # The archive is under test, not the runner: no model turn whatever is installed.
+    monkeypatch.setattr('connectonion.rem.runner.ready', lambda config: ('Claude Code is not installed', 'npm install -g @anthropic-ai/claude-code'))
     monkeypatch.setattr('connectonion.rem.service.subscriptions', lambda root: {})
     monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: kind == 'gmail')
     when = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()

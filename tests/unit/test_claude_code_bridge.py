@@ -59,6 +59,24 @@ def test_headless_does_not_start_while_terminal_owns_workspace(tmp_path, monkeyp
     launched.assert_not_called()
 
 
+def test_fresh_headless_turns_share_a_workspace(tmp_path, monkeypatch):
+    """co rem runs ten fresh turns from one task folder; each starts its own session.
+
+    Only a resumed session or a bridged turn can touch a transcript another
+    writer owns. Locking fresh turns made nine of ten first-run pages fail
+    with "already owns this workspace" (#2283).
+    """
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(claude, "_claude_command", lambda: (["claude"], ""))
+    launched = MagicMock(side_effect=FileNotFoundError)
+    monkeypatch.setattr(claude, "_run_process", launched)
+
+    with exclusive_workspace_writer(tmp_path):
+        claude._run_claude_code("write the page", cwd=str(tmp_path))
+
+    launched.assert_called_once()
+
+
 def _post_hook(hook, event, *, token=None):
     request = Request(
         hook["args"][1],

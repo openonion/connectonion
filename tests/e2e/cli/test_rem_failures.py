@@ -46,7 +46,7 @@ def test_no_co_on_path_still_runs_this_installation(consented, tmp_path):
     code, payload, stderr = co(consented, "sync", env=env)
     assert code == 1, stderr
     record = json.loads(next((consented / ".state" / "runs").glob("*.json")).read_text())
-    assert "codex CLI not found" in record["error"], record
+    assert "Claude Code CLI not found" in record["error"], record
     assert not (consented / ".state" / "progress.json").exists()
 
 
@@ -89,5 +89,5 @@ def test_a_batch_that_fails_past_preflight_exits_nonzero_and_is_logged(consented
     runs = list((consented / ".state" / "runs").glob("*.json"))
     record = json.loads(runs[0].read_text())
     assert len(runs) == 1 and record["outcome"] == "failed"
-    assert "codex CLI not found" in record["error"] and "codex login" not in record["error"]
+    assert "Claude Code CLI not found" in record["error"] and "codex login" not in record["error"]
     assert not (consented / ".state" / "progress.json").exists()

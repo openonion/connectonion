@@ -231,6 +231,7 @@ def _notebook(tmp_path, runner):
 
 def test_runner_codex_is_co_ai_delegating_with_investigation_tools(tmp_path, co_ai):
     root = _notebook(tmp_path, "codex")
+    set_config(root, ["model", "gpt-6-luna"])
     inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=7,
                     clients={"outlook": Quiet()}, subscriptions={})
     argv = co_ai[0]
