@@ -83,6 +83,28 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     assert '`' not in page.locator('#foot').inner_text()
 
 
+def test_long_person_lead_keeps_sources_in_mobile_first_fold(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      const facts = r.text.indexOf('## Facts');
+      r.text = '# Mara Ostrowski\\n\\nMara wrote about a pilot and described her role at Fernhill Labs [1][2]. '
+        + 'The user replied with a proposed date, but the two checked messages do not establish a shared start date [3]. '
+        + 'Earlier correspondence and contract terms remain unknown from these messages [1][3]. '
+        + 'Last contact: 2026-09-30 via email in checked sources [3].\\n\\n' + r.text.slice(facts);
+      KNOWN.delete(r.path); render();
+    }""", isolated_context=False)
+    source = page.get_by_role('link', name='View sources →')
+    box = source.bounding_box()
+    assert box['height'] >= 44 and box['y'] + box['height'] <= 812
+    assert page.get_by_role('heading', name='Full memory and sources').is_visible()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    source.click()
+    assert page.locator('#src-1').is_visible()
+
+
 def test_mobile_browse_privacy_control_remains_a_full_touch_target(reader):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})
