@@ -18,21 +18,25 @@ prepare a memory when the owner recognizes them.
 
 The history question has a cost before a model writes anything. An isolated
 metadata-only scan of one connected Outlook account traversed its available
-years since 1970 in 461 seconds. It observed 18,737 message headers, mapped
-501 people and ten projects, and retained 556 low-signal correspondent groups
-for review. The other connected mailbox timed out before its address list was
-read, so these are a lower bound. The directory says when coverage is
-incomplete. A timed-out time window is split, and any day still unavailable is
-recorded rather than counted as scanned.
+years since 1970 in 461 seconds, but Gmail timed out before its address list
+was read. REM called that first result a lower bound. After the Gmail path
+switched to bounded direct metadata reads, the two-mailbox scan finished in
+844 seconds. It observed 22,411 headers and mapped 634 People records and ten
+projects. Another 803 low-signal contacts stayed searchable for review. Both
+providers reported zero incomplete windows. The directory still explains
+coverage because a later mailbox or time window can fail. A timed-out window
+is split, and any day still unavailable is recorded rather than counted as
+scanned.
 
-The partial map alone offered 457 person investigations, eight projects, and
-the owner's page. The current defaults estimate 515 million billed input tokens
-and about 234 minutes for those 466 pages with ten workers. Adding mapped
-organizations and installed Skills brings the selected queue to 733 pages,
-603 million input tokens, and 296 minutes. There are no completed page samples
-in this isolated notebook, so those are planning numbers, not promises. The
-twenty percent weekly target is advisory; the configured safety floor still
-stops new model work. REM can now show this forecast without a model turn or a
+The combined map offers 589 person investigations, eight projects and the
+owner's page. The current defaults estimate 660 million billed input tokens
+and about 297 minutes for those 598 pages with ten workers. Adding mapped
+organizations and installed Skills brings the selected queue to 886 pages,
+751 million input tokens and 364 minutes. There are no completed page samples
+in this isolated notebook, so those are planning numbers, not promises or
+weekly quota percentages. The configured investigation target is advisory;
+the weekly safety floor still stops new model work. REM can show the forecast
+without a model turn or a
 historical body archive. After a foreground init, it also offers the source
 and schedule approval needed for nightly upkeep without repeating the first
 batch. A full all-person run and claim-by-claim review remain separate work,
