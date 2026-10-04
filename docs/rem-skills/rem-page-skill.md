@@ -68,6 +68,8 @@ and `/name` commands in Claude Code, `$name` in a typed Codex message and a tool
 call reading the skill's `SKILL.md`, once per turn. It is stated as invocations,
 never as runs completed, because nothing in a transcript line says the task
 succeeded.
+The reader labels this number as skill-name matches beside the Skill page, then
+explains that retained evaluation attempts are counted separately.
 
 ## Merging never deletes
 

@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a39
+## Current Version: 1.9.0a40
+
+1.9.0a40 labels Skill usage as coding-session matches by invocation name,
+separates retained evaluation attempts from those matches, and keeps the
+mapped Skill investigation command inside the phone's first screen. Skill
+roster links now have full-size touch targets. These are bounded reader and
+label changes; saved invocation identities are unchanged. Stable remains
+1.8.10. See [1.9.0a40 notes](docs/releases/1.9.0a40.md).
+
+- 1.9.0a40 (Skill usage scope and mapped-page action).
+
+## Previous preview: 1.9.0a39
 
 1.9.0a39 gives cited Skill findings a direct 44-pixel source link beside the
 lead statement, keeps keyboard focus visible on the dark lead card, and hides

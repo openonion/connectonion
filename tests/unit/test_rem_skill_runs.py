@@ -56,6 +56,8 @@ def test_investigation_preserves_page_and_status_and_is_repeatable(tmp_path):
     stamp = n.read(record).split('Investigation:')[1]
     result = investigate_skill_runs(root, record, [logs])
     first = n.read(record)
+    assert 'Retained evaluation attempts: 2' in first
+    assert 'Retained evaluation attempts: 2' in n.read(result['report'])
     investigate_skill_runs(root, record, [logs])
     assert n.read(record) == first and 'A reviewed fact.' in first
     assert first.split('Investigation:')[1] == stamp
