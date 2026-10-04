@@ -259,6 +259,10 @@ def test_people_last_contact_heading_is_visible_beside_sticky_name_on_phone(read
         assert positions["nameLeft"] >= positions["edgeLeft"] - 1, positions
         assert positions["letterLeft"] >= positions["nameRight"], positions
         assert positions["headingRight"] <= positions["edgeRight"], positions
+    page.locator(".sheet-find").fill("Mara Ostrowski")
+    scroller.evaluate("e => { e.scrollLeft = e.scrollWidth; }")
+    positions = page.evaluate(header_positions)
+    assert positions["letterLeft"] >= positions["nameRight"], positions
 
 
 def test_large_people_roster_keeps_the_mobile_last_contact_heading_visible(reader, tmp_path, monkeypatch):
