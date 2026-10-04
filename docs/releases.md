@@ -25,7 +25,8 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 Alpha **1.9.0a41** adds a searchable directory of historical mail contacts,
 an all-history first-run cost estimate, and the option to approve nightly REM
-upkeep from `co rem init`. Gmail history uses bounded metadata requests. See
+upkeep from `co rem init`. Gmail history uses bounded metadata requests. New
+notebooks run on Claude Code with Sonnet 5.5 by default. See
 [1.9.0a41 notes](releases/1.9.0a41.md).
 
 ```bash

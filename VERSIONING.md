@@ -409,9 +409,12 @@ metadata reads so a connected mailbox is not silently absent from the census.
 The reader gains phone-sized contact cards and contained citation tips. This
 is a preview: a metadata census is not a verified memory of every person, and
 the all-person investigation remains to be measured on the owner's account.
+New notebooks now run on Claude Code with Sonnet (`claude-sonnet-5-5`), and
+ten first-run workers no longer lock each other out on that runner; saved
+configurations keep their runner.
 Stable remains 1.8.10. See [1.9.0a41 notes](docs/releases/1.9.0a41.md).
 
-- 1.9.0a41 (Historical contacts, first-run forecast and nightly upkeep).
+- 1.9.0a41 (Historical contacts, first-run forecast, nightly upkeep, Sonnet default).
 
 ## Previous preview: 1.9.0a40
 
