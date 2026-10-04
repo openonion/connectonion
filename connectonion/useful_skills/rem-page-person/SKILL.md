@@ -7,12 +7,8 @@ description: Fixed sections, roster labels and evidence rules for a person's pag
 
 Why these rules: docs/rem-skills/rem-page-person.md
 
-Read supplied page/material. Write, check, fix once, stop; use this format.
-
-This is a growing relationship memory; never shrink it to a summary. Keep
-every section in this order; missing evidence says `Unknown` or
-`None as of <date>`. Every factual sentence cites `[n]` into `Sources`.
-Placeholders are not evidence.
+Read supplied material; write a growing memory in this order. Unsupported
+values are `Unknown`; each factual sentence cites `[n]` in `Sources`.
 
 ```markdown
 # <observed name>
@@ -54,11 +50,10 @@ Rules:
   relationship finding; end with `Last contact: <date>` and channel, qualified
   to the sources actually checked. Historical gaps go in `Uncertainties`.
   `Nothing open as of <date>` needs closure evidence.
-- **`Facts` is data, written first.** Keep every exact label, one per line;
-  missing is `Unknown`. Separate multiple qualified, cited values with `; `.
-  Dates are `YYYY-MM-DD` in the notebook timezone; keep event dates separate.
-  Cite values except `Email`, `Handles`, `Also known as`. Put contact details
-  here, not in prose. `Links`: cited LinkedIn or site URL, never an email domain.
+- **`Facts` first.** Keep exact labels, one per line; separate qualified
+  values with `; `. Use notebook-timezone `YYYY-MM-DD`; keep event dates
+  distinct. Cite values except `Email`, `Handles`, `Also known as`. Contact
+  details go here. `Links` are cited sites, not email domains.
   `How we know them`: introduction or first thread.
 - In Facts write `Last contact: YYYY-MM-DD (latest observed in checked sources)
   [n]`; the lead also states its checked scope. Other channels may be unknown.
@@ -76,6 +71,8 @@ Rules:
   evidence does not make them current pending work.
 - **`Company` needs stated employment.** Student or mailbox affiliation proves
   none: `Unknown`. Link schools/groups in relationship text, not as employers.
+- An employee's “we signed” does not name the legal signer; keep `Signing entity`
+  Unknown unless the source names it.
 - **`Why they are here`**: how they met, who approached whom, each side's aim.
 - **`Our relationship`**: kind, current state, terms and obligations.
   “We signed” alone makes this contact about a plan, not a contract with the user.
