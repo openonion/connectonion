@@ -245,3 +245,11 @@ def test_person_investigation_has_one_history_and_source_contract():
     assert "oldest first" not in person
     assert "local mail" in person
     assert "runner-owned `Investigation:` footer stays unchanged" in person
+
+
+def test_person_investigation_keeps_booking_time_zone_separate_from_a_persons():
+    person = instructions("investigate", page_kind="person")
+    assert "booking's displayed time zone belongs to the event display" in person
+    assert "unless the source explicitly labels" in person
+    assert "`Now` sentence names the source-backed reason for closure" in person
+    assert len(person) <= 15_000

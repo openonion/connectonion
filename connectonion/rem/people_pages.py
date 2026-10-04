@@ -236,22 +236,38 @@ def correspondents_since(root: Path, clients: dict, *, since: datetime, now: dat
     return {"records": sorted(found), "listed": listed}
 
 
-def write_pages(rows: list[dict], *, write, gate=None, on_page=None) -> dict:
-    """Investigate `rows` one after another; `gate()` says why not to start the next, or ''.
+def write_pages(rows: list[dict], *, write, gate=None, on_page=None, workers: int = 1) -> dict:
+    """Investigate `rows` with bounded concurrency; gate before each submission.
 
     A refused or failed page does not stop the others; it stays in the queue.
     """
-    done, stopped = [], ""
-    for number, row in enumerate(rows, 1):
-        stopped = gate() if gate else ""
-        if stopped:
-            break
-        if on_page:
-            on_page(number, len(rows), row)
+    from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+
+    def one(row):
         try:
             write(row)
-            done.append({"page": row["record"], "mode": row["mode"], "outcome": "accepted"})
+            return {"page": row["record"], "mode": row["mode"], "outcome": "accepted"}
         except RemError as error:
-            done.append({"page": row["record"], "mode": row["mode"],
-                         "outcome": "refused" if "rejected" in str(error) else "failed", "why": str(error)[:300]})
+            return {"page": row["record"], "mode": row["mode"],
+                    "outcome": "refused" if "rejected" in str(error) else "failed", "why": str(error)[:300]}
+
+    done, stopped, pending, running = [], "", iter(rows), {}
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        while True:
+            while len(running) < workers and not stopped:
+                row = next(pending, None)
+                if row is None:
+                    break
+                stopped = gate() if gate else ""
+                if not stopped:
+                    running[pool.submit(one, row)] = row
+            if not running:
+                break
+            finished, _ = wait(running, return_when=FIRST_COMPLETED)
+            for future in finished:
+                row = running.pop(future)
+                outcome = future.result()
+                done.append(outcome)
+                if on_page:
+                    on_page(len(done), len(rows), row, outcome)
     return {"pages": done, **({"stopped": stopped} if stopped else {})}

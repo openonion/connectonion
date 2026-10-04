@@ -519,20 +519,21 @@ def test_after_me_the_people_you_wrote_to_and_projects_four_at_a_time(people):
     assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
     text = Text.from_ansi(result.output).plain
     assert "back to each person's first mapped mail" in text
-    assert "12 at a time" in text and "about 35% of a weekly runner allowance is a planning target" in text
-    assert "Written this run: your page, 5 people and 3 project pages." in text
+    assert "10 at a time" in text and "about 35% of a weekly runner allowance is a planning target" in text
+    assert "90% weekly safety floor; pages already in flight finish" in text
+    assert "Written this run: your page, 5 people" in text and "3 project pages" in text
 
 
 def test_the_first_run_finishes_selected_pages_past_target(people, monkeypatch):
-    """The 35-point target is advisory; the selected cohort finishes below the safety floor."""
-    from connectonion.cli.commands.rem_commands import FIRST_RUN_TARGET_POINTS
+    """The configured target is advisory; the cohort finishes below the safety floor."""
+    from connectonion.rem.config import default_config
     root, init, calls, people_written, projects_written = people
     meter = {"used_percent": 10, "window_minutes": 10080, "resets_at": 4102444800, "plan": "plus"}
     monkeypatch.setattr("connectonion.rem.quota.read", lambda config: dict(meter))
 
     def one_person_costs_the_whole_budget(root, row, **kw):
         people_written.append(row["record"])
-        meter["used_percent"] += FIRST_RUN_TARGET_POINTS + 1
+        meter["used_percent"] += default_config()["limits"]["investigation_quota_points"] + 1
         return {"record": row["record"], "changed": [row["record"]]}
 
     monkeypatch.setattr("connectonion.rem.people_pages.investigate_person", one_person_costs_the_whole_budget)
@@ -541,7 +542,7 @@ def test_the_first_run_finishes_selected_pages_past_target(people, monkeypatch):
     data = json.loads(result.stdout)["data"]
     assert len(people_written) == 5 and len(projects_written) == 3
     assert data["people_pages"]["left"] == 0
-    assert data["org_pages"]["started"] is False
+    assert data["org_pages"]["started"] is True
 
 
 def test_first_run_gate_uses_safety_floor_not_the_target(tmp_path, monkeypatch):
@@ -600,6 +601,9 @@ def test_the_first_run_writes_every_page_and_a_flag_caps_a_kind(people, monkeypa
 
 def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
     from connectonion.rem import first_run as fr
+    from connectonion.cli.commands.rem_commands import FIRST_RUN_WORKERS
+
+    assert fr.WORKERS == FIRST_RUN_WORKERS == 10
 
     def run(phase, record, tokens, seconds, outcome="completed"):
         return {"phase": phase, "record": record, "outcome": outcome, "seconds": seconds,
@@ -613,10 +617,10 @@ def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
     assert fr.per_page(runs, "person") == {**fr.DEFAULTS["person"], "measured": 0}
     total = fr.plan(runs, owner=False, people=0, projects=2, workers=1)
     assert total["input_tokens"] == 1_400_000 and total["minutes"] == 9
-    assert fr.plan(runs, owner=False, people=0, projects=24, workers=12)["minutes"] == 9  # wall clock, shared
-    owner_only = fr.plan(runs, owner=True, people=0, projects=0, workers=12)
+    assert fr.plan(runs, owner=False, people=0, projects=20, workers=10)["minutes"] == 9  # wall clock, shared
+    owner_only = fr.plan(runs, owner=True, people=0, projects=0, workers=10)
     assert owner_only["input_tokens"] == 2 * fr.DEFAULTS["owner"]["input_tokens"]
-    assert owner_only["minutes"] == 10  # quick and full are two turns, not one
+    assert owner_only["minutes"] == 14  # quick and full are two turns, not one
     line = fr.announce(total, "on your Codex plan")
     assert line == ("About 2 pages (2 projects), ~1.4M billed input tokens on your Codex plan, ~9 minutes "
                     "(an estimate from this notebook's own runs).")
@@ -669,6 +673,28 @@ def test_the_first_run_covers_eligible_correspondents_including_older(people):
     assert result.exit_code == 0, result.output
     assert sorted(people_written) == [f"people/p{n}.md" for n in range(5)]
     assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
+
+
+def test_first_run_uses_full_requested_window_and_all_pending_orgs(tmp_path, monkeypatch):
+    from connectonion.cli.commands.rem_commands import _first_org_rows, _first_people_rows
+
+    people = [{"record": f"people/p{n}.md"} for n in range(20)]
+    windows = []
+
+    def queue(root, *, recent_days):
+        windows.append(recent_days)
+        return people
+
+    monkeypatch.setattr("connectonion.rem.people_pages.queue", queue)
+    assert _first_people_rows(tmp_path, None, 90) == people
+    assert _first_people_rows(tmp_path, 3, 90) == people[:3]
+    assert windows == [90, 90]
+
+    orgs = [{"path": "orgs/linked.md", "recent": False},
+            {"path": "orgs/unlinked.md", "recent": False}]
+    monkeypatch.setattr("connectonion.rem.queue.order", lambda root, category: orgs)
+    assert _first_org_rows(tmp_path, None) == orgs
+    assert _first_org_rows(tmp_path, 1) == orgs[:1]
 
 
 def test_marking_people_investigated_at_once_loses_none(tmp_path, monkeypatch):
@@ -727,7 +753,7 @@ def test_the_first_run_selects_older_projects_and_related_organisations(people):
     result = init()
     assert result.exit_code == 0, result.output
     assert "projects/old.md" in projects_written
-    assert not any(call["record"].startswith("orgs/") for call in calls)
+    assert any(call["record"].startswith("orgs/") for call in calls)
 
 
 def test_a_refused_owner_page_does_not_cost_the_rest_of_the_first_run(people, monkeypatch):

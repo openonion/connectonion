@@ -120,6 +120,7 @@
   .rail .foot { margin-top: auto; font: 11px/1.6 var(--mono); color: var(--ink-3); display: flex; flex-direction: column; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
   .theme-switch { display: inline-flex; background: var(--well); border-radius: 6px; padding: 2px; gap: 2px; align-self: flex-start; }
   .theme-btn { background: none; border: none; padding: 3px 9px; font: 11.5px var(--ui); color: var(--ink-2); border-radius: 4px; cursor: pointer; }
+  .rail .foot > .theme-btn { min-height: 44px; text-align: left; }
   .theme-btn:hover { color: var(--ink); }
   .theme-btn.active { background: var(--sheet); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.12); }
   .rail .privacy-btn { min-height: 44px; text-align: left; }
@@ -191,6 +192,7 @@
   .morning-kicker { display: block; color: #aab7e8; font: 600 11px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .13em; }
   .morning h2 { max-width: 22ch; font: 400 clamp(28px, 3vw, 42px)/1.12 var(--display); letter-spacing: -.02em; margin: 9px 0 0; text-wrap: balance; }
   .morning-time { flex-shrink: 0; color: #b3bfed; font: 11px/1.5 var(--mono); }
+  .inspection-link { display: inline-block; margin-top: 14px; padding: 0; border: 0; background: none; color: #fff; font: 12px var(--ui); text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
   .first-map-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
   .first-map-actions a, .first-map-actions button { display: inline-flex; align-items: center; min-height: 44px; padding: 9px 14px; border: 1px solid rgba(194, 205, 255, .42); border-radius: 7px; background: transparent; color: #f4f5fb; font: 600 13px var(--ui); text-decoration: none; cursor: pointer; }
   .first-map-actions a { background: #f4f5fb; color: #111931; }
@@ -202,7 +204,8 @@
   .memory-card h3 { font: 500 20px/1.25 var(--display); margin: 9px 0 10px; }
   .memory-card h3 a, .memory-card .open { color: #fff; }
   .memory-card p { margin: 0 0 12px; color: #d4daf2; font: 15px/1.5 var(--text); }
-  .memory-card .open { display: inline-block; font: 12px var(--ui); text-decoration: underline; text-underline-offset: 4px; }
+  .memory-card .project-purpose { color: #b3bfed; font-size: 13.5px; }
+  .memory-card .open { display: inline-flex; min-height: 44px; align-items: center; font: 12px var(--ui); text-decoration: underline; text-underline-offset: 4px; }
   .memory-empty { margin: 22px 0 0; color: #c8d0ed; font: 16px/1.5 var(--text); }
   .audit-notice { margin: 0 0 20px; padding: 16px 20px; max-width: 900px; border: 1px solid var(--lamp-line); border-left: 4px solid var(--lamp); border-radius: 9px; background: var(--lamp-soft); }
   .audit-notice .label { color: var(--lamp); font: 600 10.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
@@ -314,6 +317,12 @@
   table.runs th { text-align: left; font-weight: 500; color: var(--ink-3); padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
   table.runs td { padding: 7px 12px 7px 0; border-bottom: 1px solid var(--line-2); color: var(--ink-2); white-space: nowrap; }
   table.runs td:first-child { color: var(--ink); }
+  .run-trace { margin: 8px 0; border-bottom: 1px solid var(--line-2); }
+  .run-trace > summary { cursor: pointer; padding: 8px 0; font: 12px var(--mono); color: var(--ink-2); }
+  .run-trace h3 { font: 600 12px var(--ui); margin: 12px 0 4px; }
+  .run-trace ul { padding-left: 20px; margin: 4px 0 12px; }
+  .run-trace li, .run-trace pre { font: 12px/1.5 var(--mono); overflow-wrap: anywhere; white-space: pre-wrap; }
+  .run-trace pre { max-height: 240px; overflow: auto; }
 
   /* ---- a page ---- */
   .page-head { margin-bottom: 26px; }
@@ -405,6 +414,8 @@
   .code-block { position: relative; margin: 0 0 1.3em; }
   .note pre { background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; overflow-x: auto; font: 12.5px/1.55 var(--mono); max-width: 100%; tab-size: 4; margin: 0; color: var(--ink); }
   .code-block.diagram pre { background-color: var(--sheet); background-image: radial-gradient(var(--line) 1px, transparent 1.2px); background-size: 14px 14px; background-position: 7px 7px; padding: 22px 22px 20px; }
+  .pan-hint { display: none; font: 11px var(--mono); color: var(--ink-3); margin-top: 5px; }
+  @media (max-width: 600px) { .code-block.diagram .pan-hint { display: block; } }
   .code-block .cap { position: absolute; left: 12px; top: -8px; font: 600 9.5px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); background: var(--paper); padding: 3px 6px; border-radius: 3px; }
   .note pre code { background: none; padding: 0; font: inherit; white-space: pre; overflow-wrap: normal; }
   .code-copy { position: absolute; top: 8px; right: 8px; font: 11px var(--mono); color: var(--ink-2); background: var(--sheet); border: 1px solid var(--line); border-radius: 5px; padding: 2px 8px; opacity: 0; cursor: pointer; }
@@ -557,6 +568,13 @@
   .lead-open .more { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
   .lead-calm { font: 600 10.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); background: var(--well); padding: 5px 9px; border-radius: 4px; }
   .lead-meta { font-size: 12.5px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 8px; }
+  .lead-meta.project-purpose-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 100%; font: 500 15px/1.4 var(--text); color: var(--ink); }
+  .project-purpose-cites, .skill-finding-cites { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; font: 12px var(--ui); color: var(--ink-3); }
+  .project-purpose-cites a.cite, .skill-finding-cites a.cite { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+  .focus-head :is(.project-purpose-cites, .skill-finding-cites) { position: relative; z-index: 1; margin-top: 8px; color: var(--night-2); }
+  .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite { color: var(--night-ink); background: rgba(255, 255, 255, .12); }
+  .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:hover, .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:focus-visible { background: var(--blue); }
+  .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite:focus-visible { outline: 2px solid var(--night-ink); outline-offset: 2px; }
   .lead-meta .k { color: var(--ink-3); }
   .lead-meta.usage .bar { width: 120px; height: 5px; border-radius: 3px; background: var(--well); overflow: hidden; display: inline-block; }
   .lead-meta.usage .bar i { display: block; height: 100%; background: var(--blue); }
@@ -609,10 +627,13 @@
   .focus-statement { max-width: 64ch; position: relative; z-index: 1; font: 26px/1.28 var(--display); margin: 16px 0 0; }
   .focus-limit { position: relative; z-index: 1; max-width: 64ch; margin: 12px 0 0; font: 13px/1.5 var(--ui); color: var(--night-2); }
   .focus-statement.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+  .focus-source { position: relative; z-index: 1; display: inline-flex; align-items: center; min-height: 44px; margin-top: 12px; padding: 0 12px; border: 1px solid var(--night-line); border-radius: 8px; color: var(--night-ink); background: rgba(255, 255, 255, .06); font: 600 12px var(--ui); }
+  .focus-source:hover { color: var(--night-ink); background: rgba(255, 255, 255, .12); text-decoration: none; }
+  .focus-source:focus-visible { outline-color: var(--night-ink); }
   .focus-next { position: relative; z-index: 1; max-width: 68ch; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--night-line); }
   .focus-next .k { display: block; font: 600 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--night-2); }
   .focus-next p { margin: 5px 0 0; font: 15px/1.45 var(--text); }
-  .focus-more { position: relative; z-index: 1; border: 0; background: transparent; color: var(--night-ink); cursor: pointer; margin: 4px 0 0; padding: 0; min-height: 44px; font: 600 12px var(--ui); text-decoration: underline; text-underline-offset: 3px; }
+  .focus-more { position: relative; z-index: 1; border: 0; background: transparent; color: var(--night-ink); cursor: pointer; margin: 4px 0 0 12px; padding: 0; min-height: 44px; font: 600 12px var(--ui); text-decoration: underline; text-underline-offset: 3px; }
   .focus-section.next-exchanges { grid-column: 1 / -1; }
   .project-workspace { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
   .project-workspace.single { grid-template-columns: 1fr; }
@@ -680,6 +701,7 @@
   .claim-card p { margin: 7px 0; }
   .claim-card > a:last-child { font-size: 12px; }
   .memory-card > p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+  .memory-card > p.project-purpose { -webkit-line-clamp: 2; }
   .category-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 9px; margin: 15px 0 25px; }
   .category-card { border: 1px solid var(--line); border-radius: 9px; padding: 14px; background: var(--sheet); text-decoration: none !important; }
   .category-card:hover, .category-card:focus-visible { border-color: var(--blue); }
@@ -695,11 +717,23 @@
   .evidence-dialog h2 { font: 25px var(--display); margin: 14px 0; }
   .evidence-summary { color: var(--ink-2); }
   .evidence-summary, .evidence-meta { overflow-wrap: anywhere; }
+  .evidence-source-id { margin: 8px 0; font: 11px var(--mono); color: var(--ink-3); }
+  .evidence-source-id summary { cursor: pointer; }
+  .evidence-source-id code { display: block; overflow-wrap: anywhere; margin-top: 6px; }
   .evidence-original { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 18px; }
   .evidence-original .focus-kicker { color: var(--blue); }
   .evidence-meta { font: 11px var(--mono); color: var(--ink-3); }
   .evidence-participants > summary { cursor: pointer; padding: 12px 0; }
   .evidence-original blockquote { margin: 12px 0 0; padding: 14px 18px; border-left: 3px solid var(--blue); background: var(--blue-soft); font: 16px/1.55 var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .evidence-find { position: sticky; top: 44px; z-index: 1; display: grid; gap: 8px; margin-top: 16px; padding: 8px 0; background: var(--sheet); }
+  .evidence-find label { font: 600 13px var(--ui); }
+  .evidence-find-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+  .evidence-find input { flex: 1 1 180px; min-width: 0; min-height: 44px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); font: 16px var(--ui); }
+  .evidence-find button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); cursor: pointer; }
+  .evidence-find input:focus-visible, .evidence-find button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .evidence-find button:disabled { opacity: .5; cursor: default; }
+  .evidence-find-status { min-height: 18px; font: 12px var(--mono); color: var(--ink-3); }
+  .evidence-original mark { background: #ffe083; color: #171717; }
   .evidence-unavailable { color: var(--ink-2); }
   @media (prefers-reduced-motion: reduce) { .relation-card { transition: none; } .relation-card:hover, .relation-card:focus-visible { transform: none; } }
 
@@ -716,7 +750,12 @@
     .record-focus { grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
     .focus-head { padding: 20px; min-height: 0; }
     .focus-statement { font-size: 22px; }
-    .focus-statement.clamped { -webkit-line-clamp: 5; }
+    .focus-source { display: flex; }
+    .focus-more { margin-left: 0; }
+    .record-focus.people { gap: 8px; }
+    .record-focus.people .focus-head { padding: 16px; }
+    .record-focus.people .focus-statement { font-size: 20px; margin-top: 12px; }
+    .record-focus.people .focus-statement.clamped { -webkit-line-clamp: 5; }
     .focus-section { padding: 16px; }
     .focus-facts, .related-records, .activity-view, .conversation-view, .project-workspace { grid-column: 1; }
     .project-workspace { grid-template-columns: 1fr; }
@@ -735,9 +774,10 @@
     .search .kbd { display: none; }
     main { padding: 22px 16px 64px; }
     .rail .foot { display: none; }
-    .rail[data-open="true"] .foot { display: flex; }
+    .rail[data-open="true"] .foot { display: flex; padding: 0 0 12px; }
+    .rail[data-open="true"] .foot > .theme-btn { min-height: 44px; text-align: left; }
     .rail[data-open="true"] #nav { padding-bottom: 64px; }
-    .rail[data-open="true"] .privacy-btn { position: fixed; z-index: 20; left: 16px; right: 16px; bottom: 12px;
+    .rail[data-open="true"] #privacy-toggle { position: fixed; z-index: 20; left: 16px; right: 16px; bottom: 12px;
       min-height: 44px; border: 1px solid var(--line); border-radius: 6px; background: var(--sheet);
       box-shadow: var(--shadow); text-align: center; }
     .nav-toggle { display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 9px 12px; text-align: left; color: var(--ink); background: var(--sheet); border: 1px solid var(--line); border-radius: 6px; font: 14px var(--ui); cursor: pointer; }
@@ -789,6 +829,25 @@
     .sheet th.c-last button { gap: 0; padding-right: 2px; }
     .mobile-status-label { display: block; padding-left: 21px; color: var(--ink-3); font: 11px var(--mono); }
   }
+  @media (max-width: 600px) {
+    main { padding-top: 18px; }
+    .mobile-back { margin-bottom: 8px; }
+    .page-head { margin-bottom: 4px; }
+    .leadrow { margin-top: 8px; }
+    .record-focus, .record-focus.people { margin-top: 4px; }
+    .focus-head { padding-top: 16px; }
+    .focus-head.purpose-lead .focus-statement { margin-top: 10px; }
+    .focus-head.purpose-lead .project-purpose-cites { margin-top: 4px; }
+    .focus-head.purpose-lead .focus-limit { margin-top: 8px; }
+    .focus-head.purpose-lead .focus-source { margin-top: 4px; }
+    .record-focus.people .focus-head { padding-top: 12px; }
+    .focus-source { margin-top: 8px; }
+    .record-focus.skills { margin-top: 0; }
+    .record-focus.skills .focus-head { padding-top: 12px; }
+    .record-focus.skills .focus-statement { margin-top: 10px; }
+    .record-focus.skills .skill-finding-cites { margin-top: 4px; }
+    .record-focus.skills .skill-finding-cites + .focus-source { margin-top: 4px; }
+  }
   @media (prefers-reduced-motion: no-preference) {
     a, button, nav a, .cite, .thread { transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease; }
     .hypno .trace { stroke-dasharray: 2400; stroke-dashoffset: 2400; animation: draw 1.4s ease-out 120ms forwards; }
@@ -830,13 +889,13 @@ window.REM = REM;
 })();
 
 function togglePrivate() {
-  const restoreFocus = document.activeElement?.classList.contains("privacy-btn");
+  const restoreFocus = document.activeElement?.id === "privacy-toggle";
   const hidden = document.documentElement.classList.toggle("hide-private");
   try {
     if (location.protocol === "file:") localStorage.setItem("co-rem-private", hidden ? "hidden" : "shown");
   } catch (_) { /* choice lasts this view only */ }
   renderRail(railActive());
-  if (restoreFocus) document.querySelector(".privacy-btn")?.focus();
+  if (restoreFocus) document.getElementById("privacy-toggle")?.focus();
 }
 
 // Theme: auto follows the system; light or dark is remembered for file:// only.
@@ -944,6 +1003,8 @@ function resolve(from, path) {
 function safeHref(from, raw) {
   const target = raw.trim();
   if (/^(https?:|file:|mailto:)/i.test(target)) return { href: target, external: true };
+  if (target.startsWith("/") && !target.startsWith("//"))
+    return { href: "file://" + target.split("/").map(encodeURIComponent).join("/"), external: true };
   if (target.startsWith("#")) return { href: "#r=" + encodeURIComponent(from) + "&h=" + encodeURIComponent(target.slice(1)), external: false };
   if (/\.md(#.*)?$/i.test(target) && !/^[a-z]+:/i.test(target)) {
     const path = resolve(from, target.split("#")[0]);
@@ -976,8 +1037,8 @@ function citeRun(ns, from) {
   return '<a class="cite run" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + ns[0].toLowerCase() + '" data-tip="' + esc(tips.join("\n")) +
     '" aria-label="' + ns.length + " sources: " + esc(tips.join("; ")) + '">' + ns.length + " sources</a>";
 }
-function citeChip(n, from) {
-  const tip = from === CITES.from ? CITES.sources[n] : "";
+function citeChip(n, from, showDescription = true) {
+  const tip = showDescription && from === CITES.from ? CITES.sources[n] : "";
   return '<a class="cite" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + n.toLowerCase() + '"' +
     (tip ? ' data-tip="' + esc(tip) + '"' : "") + ' aria-label="Source ' + n + (tip ? ": " + esc(tip) : "") + '">' + n + "</a>";
 }
@@ -1076,7 +1137,8 @@ function codeBlock(code, info) {
   const cap = diagram ? "Diagram" : lang && lang !== "text" ? lang : "";
   return '<div class="code-block' + (diagram ? " diagram" : "") + '">' + (cap ? '<span class="cap" aria-hidden="true">' + esc(cap) + "</span>" : "") +
     '<pre tabindex="0" aria-label="' + (diagram ? "Diagram" : "Code block") + '"><code>' + esc(code) +
-    '</code></pre><button class="code-copy" type="button" aria-label="Copy code">Copy</button></div>';
+    '</code></pre>' + (diagram ? '<span class="pan-hint">Swipe diagram sideways to see all steps →</span>' : '') +
+    '<button class="code-copy" type="button" aria-label="Copy code">Copy</button></div>';
 }
 
 function markdown(text, from) {
@@ -1305,7 +1367,8 @@ function threads(r) {
   const calm = all.find(t => /^nothing open\b/i.test(t.replace(/\*/g, ""))) || "";
   const today = calendarDay(REM.as_of);
   const items = all.filter(t => t !== calm && !/^(?:unknown|none)\b/i.test(t)
-    && !/^no (?:explicit |supported |known |clear )?(?:open |outstanding )?(?:requests?|threads?|actions?)\b/i.test(t)).map(text => {
+    && !/^no (?:explicit |supported |known |clear )?(?:open |outstanding )?(?:requests?|threads?|actions?)\b/i.test(t)
+    && !/^no (?:confirmed|known) pending work\b/i.test(t)).map(text => {
     const days = text.match(/\d{4}-\d{2}-\d{2}/g) || [];
     // A stated deadline stays a deadline after it passes. Other event dates
     // do not establish a due date merely because they are in the future.
@@ -1790,7 +1853,7 @@ function renderRail(active) {
   }
   foot.appendChild(themeSwitch);
   const hidden = document.documentElement.classList.contains("hide-private");
-  const privacy = el("button", { class: "theme-btn privacy-btn" + (hidden ? " active" : ""), type: "button",
+  const privacy = el("button", { id: "privacy-toggle", class: "theme-btn privacy-btn" + (hidden ? " active" : ""), type: "button",
     "aria-pressed": String(hidden), text: hidden ? "Show labelled passages" : "Hide labelled passages",
     title: "Also hides raw source and conversation excerpts. Names and unlabelled text stay visible." });
   privacy.onclick = togglePrivate;
@@ -1910,6 +1973,18 @@ function morningBrief() {
           ? "The context to carry into today" : "The context from the last pass") : "Ready when there is something new" })]),
     el("span", { class: "morning-time", text: pass ? fmtTime(new Date(pass.latest).toISOString()) : "No pass yet" })]);
   brief.appendChild(top);
+  if ((REM.logs || []).some(run => run.evidence?.length || run.report || run.pages?.some(page => page.evidence?.length || page.report))) {
+    const trail = el("button", { type: "button", class: "inspection-link", text: "View recent inspection trail →" });
+    trail.onclick = () => {
+      const maintenance = document.querySelector("details.maint");
+      const trace = maintenance?.querySelector("details.run-trace");
+      if (!maintenance) return;
+      maintenance.open = true;
+      if (trace) trace.open = true;
+      (trace || maintenance).scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+    brief.appendChild(trail);
+  }
   if (pass?.claims?.length) {
     const found = el("div", { class: "claim-grid", "aria-label": "Source-backed memory changes" },
       pass.claims.slice(0, 4).map(changeCard).filter(Boolean));
@@ -1926,11 +2001,19 @@ function morningBrief() {
     return brief;
   }
   const cards = el("div", { class: "memory-grid" });
-  for (const r of changed.slice(0, 3)) cards.appendChild(el("article", { class: "memory-card" }, [
-    el("span", { class: "kind", text: singular(r.category) + " · Current context on an updated page" }),
-    el("h3", {}, [el("a", { href: href(r), text: r.title })]),
-    el("p", { html: inline(memoryStatement(r) || "This page was updated. Open it to see the current context.", r.path) }),
-    el("a", { class: "open", href: href(r), text: "Read the page and sources →" })]));
+  for (const r of changed.slice(0, 3)) {
+    const purpose = r.category === "projects" ? section(r, "what it is") : null;
+    const purposeLine = purpose ? listItems(purpose.text)[0] || purpose.text : "";
+    const purposePreview = purposeLine.replace(/(?:\s*\[W?\d{1,3}\])+\s*([.!?])?\s*$/, "$1").trim();
+    cards.appendChild(el("article", { class: "memory-card" }, [
+      el("span", { class: "kind", text: singular(r.category) + " · Page rewritten" +
+        (r.category === "projects" && known(r).last ? " · last mapped session " + fmtDate(known(r).last) : "") }),
+      el("h3", {}, [el("a", { href: href(r), text: r.title })]),
+      purposePreview && !/^\s*-?\s*Unknown\b/i.test(purposePreview)
+        ? el("p", { class: "project-purpose" }, [el("strong", { text: "What this is · " }), el("span", { html: inline(purposePreview, r.path) })]) : null,
+      el("p", { html: inline(memoryStatement(r) || "This page was updated. Open it to see the current context.", r.path) }),
+      el("a", { class: "open", href: href(r), text: "Read the page and sources →" })]));
+  }
   brief.appendChild(cards);
   const connection = memoryConnection(changed);
   if (connection) brief.appendChild(connection);
@@ -2116,6 +2199,32 @@ function maintenance(s) {
         el("td", { text: run.seconds == null ? "—" : String(run.seconds) })]));
     }
     maint.appendChild(el("div", { class: "table-scroll", role: "region", "aria-label": "Recent runs", tabindex: "0" }, [table]));
+    for (const run of REM.logs.slice(0, 8)) {
+      const pages = run.pages?.length ? run.pages : [run];
+      if (!pages.some(page => page.evidence?.length || page.report)) continue;
+      const count = pages.reduce((total, page) => total + (page.evidence?.length || 0), 0);
+      const trace = el("details", { class: "run-trace" }, [el("summary", {
+        text: fmtTime(run.started_at) + " · " + count + " supplied items · inspection report"
+      })]);
+      trace.addEventListener("toggle", () => {
+        if (!trace.open || trace.dataset.loaded) return;
+        trace.dataset.loaded = "true";
+        for (const page of pages) {
+          const record = page.page || page.record;
+          if (record) trace.appendChild(el("h3", {}, [el("a", { href: "#r=" + encodeURIComponent(record), text: record })]));
+          if (page.report) trace.appendChild(el("pre", { text: "Model's inspection report\n" + page.report }));
+          if (!page.evidence?.length) continue;
+          trace.appendChild(el("h3", { text: "Inputs supplied to this run (including context; not proof of inspection)" }));
+          const sources = el("ul");
+          for (const item of page.evidence) sources.appendChild(el("li", { text: [
+            item.source, item.file || item.origin, item.timestamp && "source: " + item.timestamp,
+            item.captured_at && "captured: " + item.captured_at,
+            item.paths?.join(", ")].filter(Boolean).join(" · ") }));
+          trace.appendChild(sources);
+        }
+      });
+      maint.appendChild(trace);
+    }
   }
   return maint;
 }
@@ -2294,7 +2403,16 @@ function leadRow(r) {
       threadAge(first) ? el("span", { class: "age mono" + (threadAge(first).endsWith("today") ? " today" : ""), text: threadAge(first) }) : null,
       t.items.length > 1 ? el("span", { class: "more mono", text: "+" + (t.items.length - 1) + " more" }) : null]));
   } else if (t.calm) row.appendChild(el("span", { class: "lead-calm", text: "Nothing open" }));
-  if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "projects" ? "Last mapped session " : r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map " : "Last contact in checked sources ") : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
+  const hasProjectFinding = r.category === "projects" && !/^\s*-?\s*Unknown\b/i.test(section(r, "insight")?.text.trim() || "Unknown");
+  const purpose = r.category === "projects" && k.status !== "Mapped" && hasProjectFinding ? section(r, "what it is") : null;
+  const projectLead = purpose ? listItems(purpose.text)[0] || purpose.text : "";
+  if (projectLead && !/^\s*-?\s*Unknown\b/i.test(projectLead)) {
+    const preview = projectLead.replace(/(?:\s*\[W?\d{1,3}\])+\s*([.!?])?\s*$/, "$1").trim();
+    row.appendChild(privateFallback(el("span", { class: "lead-meta project-purpose-preview", html: inline(preview, r.path) })));
+    const purposeSources = [...new Set(projectLead.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
+    if (purposeSources.length) row.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": "Purpose sources" },
+      [el("span", { text: "Purpose sources" }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false) }))]));
+  } else if (k.last && r.category !== "skills") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "projects" ? "Last mapped session " : r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map " : "Last contact in checked sources ") : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u) row.appendChild(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: usageCaption(u) + (u.tools ? " · " + u.tools : "") })]));
   if (section(r, "uncertainties")) row.appendChild(el("a", { class: "unsure", href: "#r=" + encodeURIComponent(r.path) + "&h=uncertainties", title: "What this page is not sure of" }, ["?", el("span", { text: " Uncertain points" })]));
@@ -2381,29 +2499,45 @@ function recordFocus(r) {
   const purpose = section(r, r.category === "orgs" ? "our relationship" : r.category === "skills" ? "when to use" : "");
   const projectPurpose = r.category === "projects" ? section(r, "what it is") : null;
   const projectInsight = r.category === "projects" ? section(r, "insight") : null;
-  const projectDescription = projectPurpose ? plainLine(listItems(projectPurpose.text)[0] || projectPurpose.text) : "";
+  const projectPurposeLine = projectPurpose ? listItems(projectPurpose.text)[0] || projectPurpose.text : "";
+  const projectDescription = plainLine(projectPurposeLine);
   const projectNeedsContext = r.category === "projects" && k.status !== "Mapped" &&
     (!projectInsight || /^-?\s*Unknown\b/i.test(projectInsight.text.trim()));
-  const finding = r.category === "skills" ? plainLine(section(r, "insight")?.text || "") : "";
+  const findingLine = r.category === "skills" ? (section(r, "insight")?.text || "").split("\n").find(line => plainLine(line)) || "" : "";
+  const finding = plainLine(findingLine);
   const statement = privateMapped ? "Automatic investigations skip this private project. Name this page to request a write."
     : projectNeedsContext ? projectDescription || "Current project work is unconfirmed in the supplied evidence."
     : finding || plainLine(purpose?.text || "") || memoryStatement(r) || facts(r).what || k.summary;
   const question = privateMapped ? "Needs your explicit request" : projectNeedsContext ?
     (projectDescription ? "What this project does" : "Current work") : ({ people: "Where we stand", projects: "Where the work stands", orgs: "The relationship now",
     skills: finding ? "Useful finding" : "When this helps" })[r.category] || "What matters now";
-  const focusTop = el("div", { class: "focus-top" }, [el("span", { class: "focus-kicker", text: question })]);
-  if (sourceList(r).length) focusTop.appendChild(el("a", { class: "focus-source", href: href(r) + "&h=sources", text: "View sources →" }));
-  const focusHead = el("div", { class: "focus-head" }, [focusTop]);
-  const statementNode = privateFallback(el("p", { class: "focus-statement" + (privateMapped || r.category === "projects" ? "" : " clamped"), html: inline(statement || (k.status === "Mapped"
+  const focusHead = el("div", { class: "focus-head" + (projectNeedsContext ? " purpose-lead" : "") });
+  if (r.category === "people") {
+    const focusTop = el("div", { class: "focus-top" }, [el("span", { class: "focus-kicker", text: question })]);
+    if (sourceList(r).length) focusTop.appendChild(el("a", { class: "focus-source", href: href(r) + "&h=sources", text: "View sources →" }));
+    focusHead.appendChild(focusTop);
+  } else focusHead.appendChild(el("span", { class: "focus-kicker", text: question }));
+  const statementNode = privateFallback(el("p", { class: "focus-statement" + (privateMapped || r.category === "projects" && !projectNeedsContext ? "" : " clamped"), html: inline(statement || (k.status === "Mapped"
     ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet."), r.path) }));
   focusHead.appendChild(statementNode);
+  if (finding) {
+    const findingSources = [...new Set(findingLine.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
+    if (findingSources.length) focusHead.appendChild(el("span", { class: "skill-finding-cites" + (/\[(?:personal|sensitive)\]/i.test(findingLine) ? " private" : ""),
+      role: "group", "aria-label": "Finding sources" },
+      [el("span", { text: findingSources.length === 1 ? "Finding source" : "Finding sources" }),
+        ...findingSources.map(n => el("span", { html: citeChip(n, r.path, false) }))]));
+  }
   if (projectNeedsContext) {
+    const purposeSources = [...new Set(projectPurposeLine.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
+    if (purposeSources.length) focusHead.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": "Purpose sources" },
+      [el("span", { text: "Purpose sources" }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false) }))]));
     const days = r.project_coverage?.days;
     const limit = r.project_coverage?.inputs_read === 0
       ? "No coding-session input was assigned to this project in this " + (days ? days + "-day " : "") + "investigation."
       : "The " + (days ? days + "-day " : "supplied ") + "session sample did not confirm current project work.";
     focusHead.appendChild(el("p", { class: "focus-limit", text: limit }));
   }
+  if (r.category !== "people" && sourceList(r).length) focusHead.appendChild(el("a", { class: "focus-source", href: href(r) + "&h=sources", text: "View sources →" }));
   if (r.path === REM.owner) {
     const insight = section(r, "insight");
     const items = insight ? listItems(insight.text) : [];
@@ -2416,20 +2550,21 @@ function recordFocus(r) {
         el("p", { html: inline(step[0].toUpperCase() + step.slice(1), r.path) })]));
     }
   }
-  if (statement && !privateMapped && r.category !== "projects") {
-    const more = el("button", { type: "button", class: "focus-more", "aria-expanded": "false", text: "Read full context", hidden: "" });
+  if (statement && !privateMapped && (r.category !== "projects" || projectNeedsContext)) {
+    const label = projectNeedsContext ? "Read full purpose" : "Read full context";
+    const more = el("button", { type: "button", class: "focus-more", "aria-expanded": "false", text: label, hidden: "" });
     more.onclick = () => {
       const expanded = statementNode.classList.toggle("clamped");
       more.setAttribute("aria-expanded", String(!expanded));
-      more.textContent = expanded ? "Read full context" : "Show less";
+      more.textContent = expanded ? label : "Show less";
       refreshFocusExpansion();
     };
     focusHead.appendChild(more);
   }
   out.appendChild(focusHead);
   const coverage = r.category === "projects" ? r.project_coverage : null;
-  if (coverage && coverage.inputs_available > coverage.inputs_read)
-    out.appendChild(el("p", { class: "scope-note", text: coverage.scope === "queued"
+  const coverageNote = coverage && coverage.inputs_available > coverage.inputs_read
+    ? el("p", { class: "scope-note", text: coverage.scope === "queued"
       ? "Partial project update: " + coverage.inputs_read + " of " + coverage.inputs_available +
         " queued inputs were supplied. Older queued inputs were left out."
       : coverage.inputs_read === 0
@@ -2438,7 +2573,7 @@ function recordFocus(r) {
         "Current project activity is unknown."
       : "Partial project history: " + coverage.inputs_read + " session inputs were supplied in this " +
         (coverage.days ? coverage.days + "-day " : "") + "investigation; " + coverage.inputs_available +
-        " inputs are archived for this workspace. Earlier inputs may be outside this pass." }));
+        " inputs are archived for this workspace. Earlier inputs may be outside this pass." }) : null;
   const open = threads(r).items;
   if (open.length) out.appendChild(el("div", { class: "focus-section next-exchanges" }, [
     el("h2", { text: "Open threads" }), el("ul", { class: "threads", "aria-label": "Open threads on this record" },
@@ -2453,6 +2588,7 @@ function recordFocus(r) {
       el("a", { class: "open-note", href: href(r) + "&h=key-decisions", text: "View all decisions →" })]));
     if (blocks.length) out.appendChild(el("div", { class: "project-workspace" + (blocks.length === 1 ? " single" : "") }, blocks));
   }
+  if (coverageNote) out.appendChild(coverageNote);
   const f = facts(r);
   const labels = r.path === REM.owner ? [["Role", f.role], ["Location", f.location], ["Company", f.company]]
     : r.category === "people" ? [["Role", f.role], ["Company", f.company], ...(mappedContact(r) ? [] : [["Last contact", f.last]])]
@@ -2835,6 +2971,39 @@ function render() {
   refreshFocusExpansion();
 }
 
+function sourceFind(excerpt, quote) {
+  const input = el("input", { type: "search", id: "evidence-find-input", "aria-label": "Find in archived source" });
+  const next = el("button", { type: "button", text: "Next match", disabled: "" });
+  const status = el("span", { class: "evidence-find-status", role: "status" });
+  let matches = [], current = 0, term = "";
+  function show() {
+    const at = matches[current];
+    const mark = el("mark", { text: excerpt.slice(at, at + term.length) });
+    quote.replaceChildren(document.createTextNode(excerpt.slice(0, at)), mark,
+      document.createTextNode(excerpt.slice(at + term.length)));
+    status.textContent = "Match " + (current + 1) + " of " + matches.length + " in the archived excerpt";
+    mark.scrollIntoView({ block: "center" });
+  }
+  input.oninput = () => {
+    term = input.value.trim();
+    matches = [];
+    quote.textContent = excerpt;
+    next.disabled = true;
+    if (!term) { status.textContent = ""; return; }
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    matches = [...excerpt.matchAll(new RegExp(escaped, "gi"))].map(match => match.index);
+    if (!matches.length) { status.textContent = "No match in the archived excerpt"; return; }
+    current = 0;
+    next.disabled = matches.length < 2;
+    show();
+  };
+  next.onclick = () => { current = (current + 1) % matches.length; show(); };
+  input.onkeydown = event => { if (event.key === "Enter") { event.preventDefault(); if (!next.disabled) next.click(); } };
+  return el("div", { class: "evidence-find" }, [
+    el("label", { for: "evidence-find-input", text: "Find a word or phrase in this source" }),
+    el("div", { class: "evidence-find-controls" }, [input, next]), status]);
+}
+
 function openEvidence(r, number, trigger) {
   const source = sourceList(r).find(item => item.n.toLowerCase() === number.toLowerCase());
   if (!source) return false;
@@ -2843,7 +3012,7 @@ function openEvidence(r, number, trigger) {
   const mail = /^(gmail|outlook)$/.test(context?.source || "");
   const headers = context?.participants;
   const headerText = value => Array.isArray(value) ? value.join(", ") : value || "Not recorded";
-  const revision = /:([0-9a-f]{40}):(.+)$/.exec(context?.origin || "");
+  const revision = /:([0-9a-f]{40,64}):(.+)$/.exec(context?.origin || "");
   const origin = revision ? revision[2] + " @ " + revision[1].slice(0, 8)
     : context?.origin ? context.origin.split("/").at(-1).replace(/.*:checkout-state$/, "Checkout state") : "";
   let dialog = document.getElementById("evidence-dialog");
@@ -2853,9 +3022,14 @@ function openEvidence(r, number, trigger) {
   close.onclick = () => dialog.close();
   dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: "co rem / source " + number }), close]),
     el("h2", { text: "Why this appears on " + r.title }),
-    el("p", { class: "evidence-summary private", text: source.text }));
+    el("p", { class: "evidence-summary private", text: revision ? origin : source.text }));
+  if (revision) dialog.appendChild(el("details", { class: "evidence-source-id private" }, [
+    el("summary", { text: "Full source ID" }), el("code", { text: id })]));
   dialog.appendChild(el("p", { class: "private-hidden-notice", text: "Source descriptions and original excerpts are hidden because their private content has not been classified. Use Show labelled passages in the menu to read them." }));
-  if (context) dialog.append(el("div", { class: "evidence-original private" }, [
+  if (context) {
+    const excerpt = context.excerpt + (context.truncated ? "…" : "");
+    const quote = el("blockquote", { text: excerpt });
+    dialog.append(el("div", { class: "evidence-original private" }, [
     el("span", { class: "focus-kicker", text: (/^skill-(source|reference)$/.test(context.source) ? "Instruction excerpt" : context.source === "project-source" ? "Repository snapshot" : mail ? context.body_empty ? "Mail headers" : "Mail body excerpt" : "Original source context") + " · not a validated claim span" }),
     ...(origin ? [el("p", { class: "evidence-meta", text: origin })] : []),
     el("p", { class: "evidence-meta", text: [context.source, context.sender,
@@ -2867,9 +3041,13 @@ function openEvidence(r, number, trigger) {
       ...["from", "to", "cc"].map(key => el("p", { class: "evidence-meta", text: ({from: "From", to: "To", cc: "Cc"}[key]) + ": " + headerText(headers[key]) }))])] : []),
     ...(context.body_format ? [el("p", { class: "evidence-meta", text: context.body_format })] : []),
     ...(mail && context.subject ? [el("p", { class: "evidence-meta evidence-subject", text: "Subject: " + context.subject })] : []),
+    ...(context.mapped_session_folder ? [el("p", { class: "evidence-meta", text: "Mapped project session folder: " + context.mapped_session_folder + " · source routing only; does not verify completion" })] : []),
     ...(context.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(context.input_scope) })] : []),
+    ...(context.truncated ? [el("p", { class: "evidence-meta", text: "This archived excerpt is truncated; find searches only the text shown." })] : []),
+    ...(context.excerpt.length > 2000 ? [sourceFind(excerpt, quote)] : []),
     context.body_empty ? el("p", { class: "evidence-empty-body", text: "The retained message has no body text. Its headers are available." })
-      : el("blockquote", { text: context.excerpt + (context.truncated ? "…" : "") })]));
+      : quote]));
+  }
   else dialog.appendChild(el("p", { class: "evidence-unavailable", text: "The original source is not archived in this snapshot. The citation above identifies a source; it does not show its original text." }));
   dialog.addEventListener("close", () => trigger.focus(), { once: true });
   if (dialog.showModal) dialog.showModal(); else dialog.setAttribute("open", "");

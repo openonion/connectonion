@@ -531,7 +531,7 @@ def test_failed_body_fetch_resumes_without_refetching_successful_mail(tmp_path):
     assert first["phase"] == "partial" and (first["saved"], first["failed"]) == (1, 1)
     second = archive_init(tmp_path, report, {"gmail": mail})
     assert second["phase"] == "complete" and (second["reused"], second["saved"]) == (1, 1)
-    assert mail.calls == ["one", "two", "two"]
+    assert sorted(mail.calls[:2]) == ["one", "two"] and mail.calls[2:] == ["two"]
 
 
 # ------------------------------------------- the 1.9.0a6 acceptance run (#2035)
@@ -567,6 +567,24 @@ def _inventory(root, count=6):
               "owner": {"record": "people/me.md", "addresses": ["me@example.org"]}}
     write_json(state_path(root, "map.json"), report)
     return report
+
+
+def test_first_archive_fetches_bodies_concurrently_and_reuses_them(tmp_path):
+    import threading
+
+    prepare(tmp_path)
+    report = _inventory(tmp_path, count=10)
+    together = threading.Barrier(10, timeout=5)
+
+    class Mail:
+        def get_email_body(self, message_id):
+            together.wait()
+            return message_id
+
+    archived = archive_init(tmp_path, report, {"gmail": Mail()})
+    assert archived["phase"] == "complete" and archived["saved"] == 10
+    reused = archive_init(tmp_path, report, {"gmail": Mail()})
+    assert reused["reused"] == 10 and reused["saved"] == 0
 
 
 def test_a_stalled_archive_says_so_with_the_command_that_resumes_it(tmp_path):

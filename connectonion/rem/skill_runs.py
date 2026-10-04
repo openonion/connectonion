@@ -255,7 +255,7 @@ def skill_record_context(root: Path, source: str) -> dict | None:
     if saved.get('source') != source or not _valid_skill_record(saved):
         return None
     text = saved['text'].strip()
-    return {'excerpt': text[:4_096], 'truncated': len(text) > 4_096, 'source': 'skill-record',
+    return {'excerpt': text, 'truncated': False, 'source': 'skill-record',
             'time': saved.get('timestamp') or '', 'captured_at': saved.get('captured_at') or '',
             'origin': saved['origin'], 'sender': '', 'thread': '', 'input_scope': saved['input_scope']}
 

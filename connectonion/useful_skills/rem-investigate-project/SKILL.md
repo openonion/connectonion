@@ -9,54 +9,56 @@ Why these rules: docs/rem-skills/rem-investigate.md
 
 - **Sessions show intent, not repository state.** Check files before claiming
   anything shipped or passed.
-- **Inspect the live repository paths supplied in the task.** Start with the
-  evidence index and mapped paths. Use `git log`, `git show`, `README.md`,
-  `pyproject.toml`, `package.json` and relevant source files to verify claims.
-  Record the inspected path and revision or timestamp in each source
-  citation. For a live file outside snapshots, cite
-  `file:/absolute/path@<sha256>` (hash full bytes with `shasum -a 256`)
-  so the cited version can be retained. The index names omitted files and size limits; an omitted body is
-  not evidence that implementation is absent.
-- `project-inventory` lists candidate files, not their contents. Do not cite
-  `investigation:project-inventory`; cite the inspected file or a retained
-  snapshot for file facts.
-- Keep existing `Paths` without citing `investigation:page`. A new path needs
-  a retained source.
-- Put search-window limits in your final reply, not page `Uncertainties` or
-  `Sources`; `investigation:coverage` is not citable project evidence.
-- If the `project-input-scope` item says zero session inputs were assigned,
-  keep `Insight` and `Open threads` as bare `Unknown`. Dated repository notes
-  can explain the project and its history in `What it is` and `Where it
-  stands`; they do not establish current user work or a live next action.
-  The scope item is not an original and must not appear in `Sources`.
-- Old files are not recent activity. Attribute README/manifest claims to their
-  snapshot date or revision unless current code or a dated user report confirms
-  them. `First seen` is an observed session, not project `Started`; leave
-  `Started` Unknown without explicit evidence.
-- `Status` and `Last activity` mean demonstrated project progress, not a Git
-  branch or commit timestamp. Put a branch or commit in `Where it stands` as a
-  dated checkout snapshot; leave those Facts Unknown unless a dated original
-  ties actual work to this project. A commit alone does not establish the
-  user's current task or next step.
-- A workspace holds unrelated requests. An old request with no outcome is not
-  necessarily pending. Cwd does not identify the subject. Require a distinctive
-  project, package, component, file, version or behavior match to the supplied
-  project evidence. Generic release, patch, test, reply or package-manager
-  requests do not identify a project. Omit ambiguous status, insight and action.
-- Assign unnamed follow-ups only when an earlier supplied input in the same
-  session establishes this project's subject. If it names another product, or
-  was not supplied, leave the follow-up unassigned despite its cwd. Exclude it
-  from current findings, status, activity, issues, threads and next action.
-- Audit the final `Now`, `Where it stands` and `Open threads` claims against
-  each cited original before writing the candidate. A short input reporting a
-  missed reply establishes that report only; it does not establish whether a
-  listener is event-driven, what caused the miss, or what was implemented.
-  Remove any mechanism, cause, status or next action absent from the cited
-  original unless a second, separately cited source establishes it.
-- A comment in source code reporting a test is a dated source note, not an
-  independently verified execution result. Attribute it to the file and date;
-  do not call it the latest run or a current outcome without a run log or
-  another dated original that verifies that claim.
+- **Inspect mapped repository paths.** Use the evidence index, `git log`,
+  `git show`, manifests and source files. Cite supplied `project-source:` or
+  `codex:` IDs. `origin: git:`, command output, paths and revisions are not
+  source IDs. For a new historical file, inspect exact bytes at a full commit
+  and cite `git:/absolute/mapped/repository:<full-commit-sha>:relative/file`.
+  For a live file, use `test -f` and `shasum -a 256`, then cite
+  `file:/absolute/path@<sha256>`. A missing index body does not prove absent work.
+- Files outside mapped `Paths` cannot support this page, even with a valid
+  hash. Use `Unknown` without an inspectable original under mapped paths.
+- `project-inventory` names files, not contents; cite inspected originals,
+  never `investigation:project-inventory`.
+- Keep existing `Paths` and its `Sessions`, `First seen`, and `Last seen`
+  mapping lines exactly. These are source routing, not project evidence;
+  do not cite `investigation:page`. A new path needs a retained source.
+- Put search-window limits in your reply, not the page;
+  `investigation:coverage` is not citable evidence.
+- With zero assigned session inputs, keep `Insight` and `Open threads` bare
+  `Unknown`. Dated repo notes may explain history, not current user work.
+  `project-input-scope` is not a citable original.
+- Date README/manifest claims to their revision unless current code or a
+  dated report confirms them. `First seen` is not project `Started`.
+- `Status` and `Last activity` need dated progress, not a commit timestamp.
+  If newer requests follow verified work, date the requests and leave current
+  progress Unknown. A checkout is not a next step.
+- Cwd alone does not assign a request here. Match a distinctive project, file,
+  version or behavior; omit generic or old requests from current status.
+- A newer subfolder link does not assign older requests to it without an
+  original joining them.
+- A `Website` Fact needs an adjacent original that explicitly connects the
+  site to this Project. A user calling a URL "the official website" in a
+  session mapped here does not establish which project owns it. Leave the
+  Fact `Unknown` or describe it as an unverified mention in prose.
+- Assign unnamed follow-ups only when an earlier supplied input in that
+  session establishes this project. Otherwise leave them unassigned.
+- Check every claim in `Insight`, `What it is`, `Why it exists`, `Where it
+  stands` and `Open threads` against its adjacent original. A question proves
+  an ask; collection does not prove assessment or outreach. A saved crawler
+  may not resume. Reports do not prove cause or listener; a domain does not
+  prove `Organisation`. Frame requests as goals.
+- An organization request does not authorize a commit. A later generic "you
+  can commit and push" proves permission, not its target without adjacent
+  context. A message left for someone does not prove delivery or receipt.
+- Keep actors and actions exact: "professional Airbnb hosts; ask the owner"
+  does not mean professionally managed homes or calling agents. For a table,
+  verify the row's scope and action cell; a clipped row cannot prove a filter.
+  Preserve the source's noun and scope: a request for more property listings
+  does not establish more details about each property; houses or property
+  listings are not necessarily rental listings.
+- A source comment about a test is not a verified run; require a run log for
+  a current test outcome.
 - For `Overview` and `Try it`, compare each step with the original source and
   with the other section. Preserve the documented order exactly; do not
   reverse prerequisite, capture, load or write steps. If the order is not
@@ -64,18 +66,14 @@ Why these rules: docs/rem-skills/rem-investigate.md
 
 ## What to produce
 
-`Facts` first (the repository remote, the stack from manifests, the first and
-last session dates), then `Insight`. Three shapes, never their facts:
-- `Now: stopped 2026-09-28 with the import half-merged; next the retry; blocked on review [3]`
-- `Changed: moved from SQLite to files on 2026-09-02 after the lock bug [5][7]`
-- `At stake: the 1 October demo needs the login, still failing [8]`
+`Facts` first (remote, stack from manifests, dated sessions), then a short
+source-backed `Insight` using `Now:`, `Changed:` or `At stake:`.
 
-Before writing `Insight`, ask what changes a teammate's next decision. A branch
-name, last commit date or list of README topics belongs in `Facts`, `Where it
-stands` or `What it is`; it is not an Insight. Lead with a sourced constraint,
-change or mismatch and its consequence. Put the decision-changing conclusion in
-a short first sentence that fits a phone preview, then add evidence and limits.
-If the packet supports none, write
+`Insight` should change a teammate's next decision. A branch, commit date or
+README topic belongs elsewhere. Lead with a sourced constraint or change and
+its consequence in one phone-length sentence, then add evidence and limits.
+`Now:` needs the latest supported constraint, not older progress after newer
+requests. If the packet supports none, write
 `- Unknown` instead of filling the section with housekeeping.
 
 Follow `rem-page-project`, skeleton headings exact. **`Overview` is required
@@ -86,3 +84,5 @@ prove an output. Current code is not a decision (local code ≠ a decision to st
 local).
 Always keep the required `Open threads` heading. Write bare `Unknown` if no
 current exchange is supported; do not omit the heading or invent an obligation.
+Do not put a “no confirmed pending work” summary under this heading as a
+thread; it would appear as an open task in the reader.

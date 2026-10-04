@@ -21,6 +21,12 @@ Why these rules: docs/rem-skills/rem-investigate.md
   `skill-source:<hash>` or `skill-reference:<hash>` for instructions. The old
   `skill-runs:<name>` collector summary and `investigation:page` have no
   immutable original in the reader; do not put them in page `Sources`.
+- A run record may mention an output without retaining that artifact. Open a
+  retained artifact before saying it was directly inspected or describing
+  its layout, quality or contents. Otherwise attribute only what the run
+  reported and say the artifact itself is unavailable for review.
+- Link each inspected output file beside a specific quality finding, using
+  its absolute local path. A run summary alone cannot verify that finding.
 - Search the evidence for an actual result, a reproducible starting point and
   a limitation that changes the user's choice. If no runs were retained, give
   the source-backed starting point and the specific output to verify; do not

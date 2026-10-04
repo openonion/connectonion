@@ -44,7 +44,7 @@ Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, 
 ## co rem init
 
 ```
-Build the notebook and investigate what matters now. One command.
+Build the notebook and investigate the full mapped cohort. One command.
 
 First the map is made without a model: a page for each person you write to, each organization,
 each coding project and each installed Skill, plus your own page, titled with your
@@ -57,24 +57,23 @@ body, once, so investigating a person later reads it from disk.
 Then it writes your own page by itself from everything you sent
 and your coding sessions of the last 30 days (co rem investigate me): a quick
 first pass in about 4 minutes, then the whole page alongside the rest. It also
-investigates eligible people, those active in the last 14 days first (at least two
-years of their mail, back to the first mapped message when older), projects
-(recent first), organizations linked to those people,
+investigates all eligible mapped people, recent first (at least two years of
+their mail, back to the first mapped message when older), projects (recent
+first), all pending mapped organizations,
 and installed skills from their source instructions and retained run evidence,
-12 pages at a time. The result should let you recognize useful relationships
+10 pages at a time. The result should let you recognize useful relationships
 and work immediately, with evidence cited on each page.
 --first-people, --first-projects, --first-orgs and --first-skills cap a kind (0 for none).
 Before the first page it says one total: about how many pages, ~how many billed
 input tokens on your plan and ~how many minutes, an estimate from the median of
 this notebook's own runs (before there are any, measured defaults). It names the
-runner and model. Around 35% of a weekly runner allowance is a target,
+runner and model. The configured investigation budget (35% by default) is a target,
 not a hard limit: the selected investigation finishes even if it uses more.
 The configured weekly safety floor still stops new pages when measurable.
 Ctrl-C stops it, says which pages were written, and
 keeps the map and every page. It is skipped, with the reason, when the runner is missing
 or signed out, when no mailbox gave an address of yours, or when your page was
-already written. More people: co rem investigate people. More projects: co rem
-projects write.
+already written. Later new evidence: co rem investigate all.
 
 Usage:    co rem init [--days N] [--mine ADDRESS[,ADDRESS...]] [--name NAME] [--mail gmail|outlook]...
                        [--no-mail-archive] [--investigate | --no-investigate]
@@ -89,7 +88,7 @@ Options:  --investigate     Explicitly request the default investigation.
           --no-investigate  Build the map only.
           --first-people N    Cap eligible people (default all selected; 0 for none).
           --first-projects N  Cap queued projects (default all selected; 0 for none).
-          --first-orgs N     Cap related organizations (default all selected; 0 for none).
+          --first-orgs N     Cap pending mapped organizations (default all; 0 for none).
           --first-skills N   Cap installed skill investigations (default all mapped; 0 for none).
 Output:   Your page's facts and where it is; one progress line per stage on stderr
           (every step in .state/init-progress.log); pages under ~/.co/rem (or
@@ -124,8 +123,9 @@ refused page is kept, with the reason, so the model's work is never lost.
 Usage:
   co rem investigate                          List what is left to investigate, by category. No model.
   co rem investigate PAGE                     Investigate one page.
-  co rem investigate CATEGORY [--limit N]     Investigate the unfinished pages in one category,
-                                               most useful first. Default --limit 5.
+  co rem investigate PAGE --retry-refused     Retry a refused Person, Project or Org page on the same sources.
+  co rem investigate CATEGORY [--limit N]     Investigate all unfinished pages in one category,
+                                               most useful first, up to 10 at once.
   co rem investigate me                       Investigate your own page from your recent work.
   co rem investigate me --quick               Bounded first pass; says what it did not cover.
                                                init runs this for you in a terminal.
@@ -158,13 +158,16 @@ What each kind reads:
 Options:
   --days N       How far back to read (730 for a full page; 30 for me; updates since last run)
   --quick        With me: sample recent evidence for one model turn; explicitly partial
-  --limit N      With CATEGORY: at most N pages this run (default 5; 0 for all)
+  --limit N      With CATEGORY: at most N pages this run (default all)
+  --workers N    With CATEGORY: concurrent pages (default 10; 1-32)
   --list         With CATEGORY: print the order and stop; no model
   --recent-days N  With people: people written to in the last N days first (default 14)
   --budget N     With CATEGORY: stop starting pages once this run has used N points of
-                 the Codex week (1-100). With --budget, --limit defaults to 0 (all).
+                 the Codex week (1-100).
   --handle TEXT  PAGE only: another address or name for the subject (repeatable)
   --eval-dir DIR skills only: where the run records are
+  --retry-refused  People, projects or orgs PAGE: retry the same evidence after a refusal;
+                   automatic category runs still wait for newer material
 
 Order within a category: pages still marked Unknown first, then those with the
 most mail or sessions. A page investigated in the last 7 days is skipped. Your
@@ -188,8 +191,8 @@ Effects:  Reads message bodies and files. Calls the model configured in co rem c
           one call per page. Material too large for one turn is written to evidence
           files the model searches, not summarised first; files are removed after the
           run. A page investigated before reads only what is new since then. Pages
-          in the people category run up to four at once, each with its own
-          mailbox client. Other category runs start one page at a time.
+          and mail body downloads run concurrently, up to their worker limits.
+          Each people worker uses its own mailbox client.
 
 For the model writing a page: the Skill covers the common case. Use supplied
 material and, for projects, the supplied bounded repository snapshots. Unsupported

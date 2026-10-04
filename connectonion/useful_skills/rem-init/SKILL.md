@@ -14,9 +14,9 @@ Run `co rem --root '<absolute-notebook-root>' init --days 90`. It maps connected
 sources, saves their private evidence, then uses the configured runner to write
 the owner's page and investigate eligible people, queued projects, related
 organizations and installed skills, recent first. It announces the model-work
-estimate. Roughly
-20% of a weekly runner allowance is a **target**, not a stopping point: finish
-the selected investigation even when it takes more, unless the configured
+estimate. The configured weekly investigation budget (35% by default) is a
+**target**, not a stopping point. Finish the selected investigation even when
+it takes more, unless the configured
 weekly safety floor, runner failure, or interruption stops it. Do not pass
 `--no-investigate` for a normal first run.
 

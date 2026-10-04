@@ -54,6 +54,7 @@ Example:
 
 import base64
 import os
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -140,6 +141,7 @@ class Gmail(GmailMailbox):
             )
 
         self._service = None
+        self._local = threading.local()
         self._scopes = scopes
         self.emails_csv = emails_csv
         self.contacts_csv = contacts_csv
@@ -157,8 +159,11 @@ class Gmail(GmailMailbox):
         since /google/credentials returns expires_at: null when the stored row
         has no expiry. That produced 401s that looked like broken auth.
         """
-        if self._service:
-            return self._service
+        if not hasattr(self, "_local"):
+            self._local = threading.local()
+        service = getattr(self._local, "service", None)
+        if service:
+            return service
 
         self._credentials.require_configured()
         access_token = self._credentials.get("ACCESS_TOKEN")
@@ -177,8 +182,10 @@ class Gmail(GmailMailbox):
             refresh_handler=self._refresh_handler,
         )
 
-        self._service = build('gmail', 'v1', http=_authorized_http(creds))
-        return self._service
+        service = build('gmail', 'v1', http=_authorized_http(creds))
+        self._local.service = service
+        self._service = service
+        return service
 
     def _token_expiry(self) -> datetime | None:
         expiry = token_expiry(self._credentials.get("TOKEN_EXPIRES_AT"))

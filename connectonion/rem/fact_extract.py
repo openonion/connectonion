@@ -154,7 +154,7 @@ def extract(items: list[dict], handles: list[str], *, owner: bool = False, timez
     return rows
 
 
-ORDER = ("Email", "Phone", "Links", "First contact", "Last contact", "Company domain", "Signature", "Calendar")
+ORDER = ("Email", "Phone", "Links", "Last contact", "Company domain", "Signature", "Calendar")
 
 
 def facts_item(rows: list[dict], timezone: str = "UTC") -> dict:
@@ -167,7 +167,8 @@ def facts_item(rows: list[dict], timezone: str = "UTC") -> dict:
                     "from: put it in its Facts field and cite that source id, not this item. Signature and "
                     "Calendar lines are the text itself: read the role, company, location or time zone from "
                     "them. Correct a fact only where the material contradicts it, and say so in "
-                    "Uncertainties; a phone, address, link or last-mail date left off the page is put back "
-                    f"after the turn. First contact requires evidence of a personal exchange. "
-                    f"Contact and source dates use {timezone}; event dates are separate.\n"
+                    "Uncertainties; a phone, address, link or last-contact date left off the page is put back "
+                    f"after the turn. Dates use {timezone} for contacts and sources; event dates are separate. "
+                    "First contact requires a personal exchange; the earliest retained mail does not "
+                    "establish first contact.\n"
                     + "\n".join(lines)}

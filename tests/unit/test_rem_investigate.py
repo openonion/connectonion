@@ -40,6 +40,29 @@ def test_transient_connection_error_retries_body_fetch(monkeypatch):
     assert len(attempts) == 3
 
 
+def test_gather_fetches_mail_bodies_concurrently_and_keeps_source_order():
+    import threading
+    from datetime import datetime, timedelta, timezone
+
+    together = threading.Barrier(4, timeout=5)
+
+    class Mail:
+        def my_addresses(self): return {"me@example.org"}
+        def list_with(self, address, start, finish):
+            return [{"id": str(n), "date": (datetime.now(timezone.utc) - timedelta(days=5 - n)).isoformat(),
+                     "from": "friend@example.org", "to": ["me@example.org"], "subject": "Hi"}
+                    for n in range(1, 5)]
+        def get_email_body(self, message_id):
+            together.wait()
+            return f"Body {message_id}"
+
+    items, coverage = inv.gather("Friend", ["friend@example.org"], days=30,
+                                 clients={"gmail": Mail()}, subscriptions={})
+    assert [item["text"] for item in items if item["source"].startswith("gmail:")] == [
+        "Body 1", "Body 2", "Body 3", "Body 4"]
+    assert any("4 bodies read" in line for line in coverage)
+
+
 def test_quick_evidence_keeps_complete_gathered_sources():
     items = [{'source': 'gmail:old', 'timestamp': '2026-09-20', 'text': 'a' * 9000},
              *[{'source': f'codex:{i}', 'timestamp': f'2026-09-{21 + i:02d}',
@@ -171,7 +194,7 @@ def test_quick_owner_fetches_all_matching_mail_bodies():
     items, coverage = inv.gather('Me', ['me@example.org'], days=5,
                                  clients={'outlook': box}, subscriptions={},
                                  sent_only=True, quick=True)
-    assert len(items) == 20 and box.fetched == [str(i) for i in range(20)]
+    assert len(items) == 20 and sorted(box.fetched, key=int) == [str(i) for i in range(20)]
     assert any('20 matched, 20 bodies read' in line for line in coverage)
 
 
@@ -1370,6 +1393,21 @@ def test_a_refused_investigation_is_not_retried_on_the_same_material(tmp_path, m
         inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], **args,
                         runner=lambda *a, **kw: pytest.fail('no model call for material already refused'))
     assert 'waits for newer material' in str(caught.value) and '20,000 limit' in str(caught.value)
+    assert 'co rem investigate people/vern.md --retry-refused' in str(caught.value)
+
+
+def test_an_explicit_retry_can_use_material_that_was_refused(tmp_path, monkeypatch):
+    from connectonion.rem.runner import RunFailed
+    root = _notebook(tmp_path, 'codex')
+    mail = {'source': 'gmail:aaa', 'timestamp': '2026-09-30T09:00:00+00:00', 'text': 'Ody wrote.'}
+    monkeypatch.setattr(inv, 'gather', lambda *a, **kw: ([mail], ['gmail: 1 matched']))
+    args = dict(days=4, clients={}, subscriptions={})
+    with pytest.raises(RunFailed):
+        inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], runner=_refusing, **args)
+    called = []
+    inv.investigate(root, 'people/vern.md', 'Vern Chan', ['vern'], retry_refused=True, **args,
+                    runner=lambda *a, **kw: called.append(1) or {'changed': [], 'usage': None})
+    assert called == [1] and inv.refused_for(root, 'people/vern.md') == {}
 
 
 def test_newer_material_after_a_refusal_runs_again_and_clears_it(tmp_path, monkeypatch):
@@ -1593,6 +1631,69 @@ def test_one_run_reads_the_sessions_once_for_every_subject(tmp_path, monkeypatch
     assert [i["source"] for i in ody] == ["codex:1"] and [i["source"] for i in vern] == ["codex:2"]
     assert seen == [{}, {"offset": 40}, {"offset": 80}]
     assert "2 messages" in next(line for line in coverage if line.startswith("codex"))
+
+
+def test_scoped_sessions_reuse_disk_window_and_find_new_input(tmp_path, monkeypatch):
+    """A second CLI run reads no unchanged transcript, but sees a newly appended turn."""
+    from contextlib import contextmanager
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem import source
+
+    sessions, notebook = tmp_path / "sessions", tmp_path / "book"
+    sessions.mkdir()
+    old, current = sessions / "rollout-old.jsonl", sessions / "rollout-current.jsonl"
+    now = datetime.now(timezone.utc)
+
+    def rollout(path, when, words):
+        meta = {"type": "session_meta", "payload": {"id": path.stem, "cwd": "/work/demo"}}
+        row = {"type": "response_item", "timestamp": when.isoformat(), "payload": {
+            "type": "message", "role": "user", "content": [{"type": "input_text", "text": words}]}}
+        path.write_text(json.dumps(meta) + "\n" + json.dumps(row) + "\n")
+
+    rollout(old, now - timedelta(days=5), "Vern's earlier decision")
+    rollout(current, now - timedelta(minutes=30), "Vern's current decision")
+    reads, original = [], source._read_rollout
+
+    @contextmanager
+    def counted(*args):
+        reads.append(args[0])
+        with original(*args) as opened:
+            yield opened
+
+    monkeypatch.setattr(source, "_read_rollout", counted)
+    subs = {"codex": {"kind": "codex", "root": str(sessions)}}
+
+    first, _ = inv.gather("Vern", ["Vern"], days=10, clients={}, subscriptions=subs,
+                          archive_root=notebook)
+    assert {item["text"] for item in first} == {"Vern's earlier decision", "Vern's current decision"}
+    assert len(reads) == 2
+
+    recent, _ = inv.gather("Vern", ["Vern"], days=1, clients={}, subscriptions=subs,
+                           archive_root=notebook)
+    assert [item["text"] for item in recent] == ["Vern's current decision"]
+    assert len(reads) == 2
+
+    with current.open("a") as output:
+        output.write(json.dumps({"type": "response_item", "timestamp": now.isoformat(), "payload": {
+            "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Vern's new input"}]}}) + "\n")
+    updated, _ = inv.gather("Vern", ["Vern"], days=1, clients={}, subscriptions=subs,
+                            archive_root=notebook)
+    assert {item["text"] for item in updated} == {"Vern's current decision", "Vern's new input"}
+    assert next(item["source"] for item in updated if item["text"] == "Vern's current decision") == recent[0]["source"]
+    assert reads == [old, current, current]
+
+    added = sessions / "rollout-added.jsonl"
+    rollout(added, now, "Vern's separate new session")
+    with_new_file, _ = inv.gather("Vern", ["Vern"], days=1, clients={}, subscriptions=subs,
+                                  archive_root=notebook)
+    assert {item["text"] for item in with_new_file} == {
+        "Vern's current decision", "Vern's new input", "Vern's separate new session"}
+    assert reads == [old, current, current, added]
+
+    old.unlink()
+    after_deletion, _ = inv.gather("Vern", ["Vern"], days=10, clients={}, subscriptions=subs,
+                                   archive_root=notebook)
+    assert {item["text"] for item in after_deletion} == {item["text"] for item in with_new_file}
 
 
 def test_historical_person_gather_keeps_legacy_and_current_codex_messages(tmp_path, monkeypatch):

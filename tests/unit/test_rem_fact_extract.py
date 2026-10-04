@@ -107,7 +107,7 @@ def test_a_role_only_in_a_calendar_invite_is_handed_over_as_the_invite_line():
     assert any("Procurement Lead" in line for line in lines)
 
 
-def test_earliest_mail_does_not_become_first_contact_automatically():
+def test_earliest_retained_mail_does_not_become_first_contact():
     rows = extract([mail("gmail:a1", "2026-08-04T01:00:00+00:00", "hi"),
                     mail("gmail:a2", "2026-09-10T01:00:00+00:00", "ok", role="user", speaker="Alex <a@r.example>")],
                    HANDLES)
@@ -189,7 +189,7 @@ def test_a_date_the_model_corrected_is_not_overwritten():
     assert facts.keep_extracted("people/mia.md", PAGE, rows) == (PAGE, [])
 
 
-def test_last_contact_uses_the_notebook_calendar_when_it_cites_the_same_original():
+def test_a_last_contact_date_uses_the_notebook_calendar_when_it_cites_the_same_original():
     item = mail('gmail:a2', '2026-09-09T23:30:00Z', SIGNED)
     rows = [r for r in extract([item], HANDLES, timezone='Australia/Sydney') if r['field'] == 'Last contact']
     page = PAGE.replace('- Last contact: 2026-09-10 [1]', '- Last contact: 2026-09-09 [1]')
@@ -262,11 +262,12 @@ def test_the_turn_is_handed_the_facts_and_the_dropped_phone_comes_back(tmp_path,
                              clients={"outlook": Signed()}, subscriptions={}, runner=write)
     assert "Phone: +61 412 000 111 (mobile)" in seen["facts"]["text"]
     assert found(seen["facts"]["facts"], "Last contact")[0]["value"] == "2026-10-01"
-    assert "Contact and source dates use Australia/Sydney" in seen["facts"]["text"]
+    assert "Dates use Australia/Sydney" in seen["facts"]["text"]
+    assert "earliest retained mail does not establish first contact" in seen["facts"]["text"]
     page = notebook.read("people/vern.md")
     assert "- Phone: +61 412 000 111 (mobile) [1]" in page        # same message, same number
     assert result["facts"]["after"]["filled"] > result["facts"]["before"]["filled"]
-    assert result["facts"]["extracted"] >= 2                        # email, phone and last contact
+    assert result["facts"]["extracted"] >= 3                        # email, phone and last contact
 
 
 def test_a_page_that_already_cites_the_mail_gets_its_lost_phone_without_a_model_call(tmp_path, monkeypatch):
