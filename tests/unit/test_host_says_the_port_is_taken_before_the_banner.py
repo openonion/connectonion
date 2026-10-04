@@ -14,6 +14,7 @@ error that followed named neither host.yaml nor AGENT_PORT.
 """
 
 import socket
+from types import SimpleNamespace
 
 import pytest
 
@@ -74,6 +75,45 @@ def test_it_says_which_port_and_how_to_change_it(project, taken_port, monkeypatc
     assert "already in use" in text
     assert "port:" in text and ".co/host.yaml" in text
     assert "AGENT_PORT=" in text
+
+
+class _RecordingSocket:
+    """Stands in for a socket and remembers which options the probe set."""
+
+    def __init__(self, *args):
+        self.options = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def setsockopt(self, level, option, value):
+        self.options.append(option)
+
+    def bind(self, address):
+        pass
+
+
+@pytest.mark.parametrize("os_name, reuses", [("posix", True), ("nt", False)])
+def test_the_probe_binds_the_way_asyncio_does_on_this_platform(monkeypatch, os_name, reuses):
+    # On Windows SO_REUSEADDR lets a bind succeed over a port another process is
+    # listening on, so a probe that set it reported a held port as free, and
+    # uvicorn -- whose asyncio bind does not set it on Windows -- then failed
+    # after the banner. asyncio sets it only on POSIX; the probe must match.
+    sockets = []
+
+    def make(*args):
+        sockets.append(_RecordingSocket())
+        return sockets[-1]
+
+    monkeypatch.setattr(socket, "socket", make)
+    monkeypatch.setattr(server, "os", SimpleNamespace(name=os_name))
+
+    REAL_PORT_CHECK(8000)
+
+    assert (socket.SO_REUSEADDR in sockets[0].options) is reuses
 
 
 def test_a_free_port_is_not_reported(tmp_path):
