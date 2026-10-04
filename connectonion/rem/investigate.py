@@ -133,15 +133,19 @@ def org_pages(notebook: Notebook, record: str, handles: list[str], *, limit: int
 
 
 def quick_evidence(items: list[dict], *, max_items: int = 24,
-                   chars_per_item: int = 2500) -> list[dict]:
+                   chars_per_item: int = 2500,
+                   pinned_sources: tuple[str, ...] = ()) -> list[dict]:
     """A bounded first look, with source diversity and recent items.
 
     This is explicitly partial evidence. A quick onboarding turn should not
     quietly spawn a sequence of expensive extraction agents for the owner.
     """
     latest = list(reversed(items))
-    chosen, seen = [], set()
+    chosen = [item for item in items if item.get("source") in pinned_sources][:max_items]
+    seen = {item.get("source", "").split(":", 1)[0] for item in chosen}
     for item in latest:
+        if len(chosen) >= max_items:
+            break
         source = item.get("source", "").split(":", 1)[0]
         if source not in seen:
             chosen.append(item)
@@ -578,6 +582,7 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                    else f"not connected (co auth {'google' if kind == 'gmail' else 'microsoft'})"))
             coverage.append(f"{kind}: {why}; not searched")
     from .chat import CHAT_KINDS, collect_chat
+    owner_turns = []
     for name, sub in subscriptions.items():
         chat = sub.get("kind") in CHAT_KINDS
         if sub.get("kind") not in KINDS and not chat:
@@ -616,6 +621,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             coverage.append(f"{name}: unreadable ({error})")
         related = len(picked)
         if quick:
+            if sent_only and not chat:
+                owner_turns.extend(picked)
             picked = picked[-12:]
         coverage.append(f"{name}: {scanned} messages in window, {related} related to subject, "
                         f"{len(picked)} read"
@@ -623,6 +630,19 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                         + (" (account owner's own messages)" if is_owner or (chat and sent_only)
                            else " (handle, sender or chat match)" if chat else " (handle or project match)"))
         items += picked
+    if quick and sent_only and owner_turns:
+        # Select across coding sources before each source's recent twelve
+        # replace the wider window. A choice can start in Claude Code and be
+        # reversed in Codex; neither source alone has the temporal contrast.
+        packet = owner_work_evidence(owner_turns)
+        pinned = re.findall(r"(?m)^### (\S+) —", packet)
+        anchors = [next(item for item in owner_turns if item.get("source") == source)
+                   for source in pinned]
+        extra = [item for item in anchors if item not in items]
+        items.extend(extra)
+        if extra:
+            coverage.append(f"Owner decision packet: {len(extra)} original coding turn(s) retained "
+                            "outside the recent quick sample")
     items.sort(key=lambda i: i["timestamp"])
     for item in items:
         item.pop("_mail_id", None)
@@ -998,7 +1018,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # Build the bounded comparison before a full pass drops items already cited
     # by its quick page. That citation only says the first pass saw them; the
     # final writer still needs the earlier and later words side by side.
-    owner_packet = owner_work_evidence(items) if sent_only and not quick else ""
+    owner_packet = owner_work_evidence(items) if sent_only else ""
     coverage.append(f"Requested investigation window: {days} days ending "
                     f"{datetime.now(timezone.utc).date().isoformat()}")
     last = last_investigated(notebook.read(record))
@@ -1037,7 +1057,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                         "material before that date; add only what this material says that is new.")
     available_items = len(items)
     if quick:
-        items = quick_evidence(items)
+        pinned = tuple(re.findall(r"(?m)^### (\S+) —", owner_packet))
+        items = quick_evidence(items, pinned_sources=pinned)
         coverage.append(f"Quick first pass: reviewed {len(items)} of {available_items} gathered items; "
                         "individual texts capped at 2,500 characters. Other material was not evaluated; "
                         "do not claim comprehensive coverage or resolve unsupported conflicts.")
