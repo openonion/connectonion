@@ -1,6 +1,6 @@
 # co rem — 1.9 preview guide
 
-Updated 2026-10-04 for opt-in preview **1.9.0a39**. The exact commands are
+Updated 2026-10-04 for opt-in preview **1.9.0a40**. The exact commands are
 also available through `co rem --help` and each subcommand's `--help` page.
 Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
 `unsubscribe`, `route`, `usage`) still work until 1.9.0 and print their new name.
@@ -246,6 +246,11 @@ not a completed run: `Current status` and `Performance` still wait for run
 evidence. Counts are cached per session file under `.state/skill-usage.json`,
 so a rerun reads only what changed.
 
+The reader calls these **skill-name matches**: invocation attempts in coding
+sessions matched by name. `Run evidence` counts retained evaluation attempts
+separately; it may show zero even when coding sessions contain name matches.
+Neither count proves that this installed version ran or that the task succeeded.
+
 Rerunning the map (`init`, `sync`'s map, or `map-skills`) moves an older
 notebook to this shape. Pages made one per copy are merged into the name's page:
 a page with written content keeps it (sections are merged line by line, citations
@@ -263,7 +268,7 @@ an exhaustive plugin-cache or remote-catalog scan. Repeat `--skills-dir` for
 explicit roots; supplying it replaces defaults for that scan. Coverage and
 unreadable files are reported in the index and command result.
 
-The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0a39/connectonion/useful_skills/rem-init/CLI.md) explains
+The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0a40/connectonion/useful_skills/rem-init/CLI.md) explains
 mail IDs, browser tabs, source/working/output directories and failure recovery.
 
 ## One execution path
@@ -697,7 +702,7 @@ that the page was reviewed; it does not certify execution success. Without
 reviewed artifacts, reliability remains unverified. Unsupported optional
 sections are omitted after investigation.
 
-Counts describe observed invocation attempts, not proven starts or lifetime runs.
+Counts describe retained evaluation attempts, not proven starts or lifetime runs.
 Tool-invoked skills and other harnesses are not yet covered. Historical outputs
 may be missing, current summary model labels may not establish each run's model,
 and same-name installed copies cannot be attributed. Goal achievement and

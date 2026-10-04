@@ -114,7 +114,7 @@ def investigate_skill_runs(root: Path, record: str, directories: list[Path]) -> 
         page = re.sub(r'(?ms)^## Run evidence\n.*?(?=^## |^Investigation:|\Z)', '', page)
         page = page.replace(start, '').replace(end, '')
         block = (f'{start}\n## Run evidence\n\n'
-                 f'- Observed invocation attempts: {result["invocation_attempts"]}; '
+                 f'- Retained evaluation attempts: {result["invocation_attempts"]}; '
                  f'outputs retained: {result["outputs_retained"]}; goal achievement unassessed: '
                  f'{result["completion_unassessed"]}.\n'
                  f'- [Run-by-run evidence and coverage](../../{report})\n'
@@ -371,7 +371,7 @@ def _record_index(directory: Path, records: list[dict], samples: dict, stamp: st
 
 def _report(name: str, result: dict) -> str:
     lines = [f'# Run evidence: {name}', '',
-             f'Observed invocation attempts: {result["invocation_attempts"]}. '
+             f'Retained evaluation attempts: {result["invocation_attempts"]}. '
              f'Outputs retained: {result["outputs_retained"]}. '
              f'Goal achievement unassessed: {result["completion_unassessed"]}.', '',
              '## Coverage and limitations', *['- ' + x for x in result['limits']], '',

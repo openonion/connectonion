@@ -23,6 +23,17 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a40** distinguishes coding-session Skill name matches from
+retained evaluation attempts and says explicitly that neither verifies the
+installed version or task outcome. Mapped Skill pages put the investigation
+command in the phone's first screen; Skill list links are easier to tap. See
+[1.9.0a40 notes](releases/1.9.0a40.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a40'
+co rem open --local
+```
+
 Alpha **1.9.0a39** puts direct 44-pixel source links beside a cited Skill
 finding, so the specific original remains easy to open on a phone. Labelled
 private findings hide those links when the reader hides private passages. See

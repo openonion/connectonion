@@ -1088,17 +1088,59 @@ def test_skill_activity_uses_invocation_dates_instead_of_investigation_dates(rea
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#r=skills%2Fcatalog%2Ftalk-outline.md')
-    assert 'RECORDED INVOCATIONS\n0' in page.locator('.focus-facts').inner_text()
+    assert 'SKILL-NAME MATCHES\n0' in page.locator('.focus-facts').inner_text()
     assert 'LAST ACTIVE' not in page.locator('.focus-facts').inner_text()
-    assert 'LAST INVOCATION' not in page.locator('.focus-facts').inner_text()
+    assert 'LAST NAME MATCH' not in page.locator('.focus-facts').inner_text()
     assert 'last activity' not in page.locator('.eyebrow').inner_text()
-    assert 'last invocation' not in page.locator('.eyebrow').inner_text()
+    assert 'last name match' not in page.locator('.eyebrow').inner_text()
     assert 'file updated' in page.locator('.eyebrow').inner_text()
     page.goto(uri + '#r=skills%2Fcatalog%2Fweekly-brief.md')
-    assert 'LAST INVOCATION' in page.locator('.focus-facts').inner_text()
-    assert 'last invocation' in page.locator('.eyebrow').inner_text()
+    assert 'LAST NAME MATCH' in page.locator('.focus-facts').inner_text()
+    assert 'last name match' in page.locator('.eyebrow').inner_text()
     assert page.evaluate('known(byPath("skills/catalog/weekly-brief.md")).last === skillUsage(byPath("skills/catalog/weekly-brief.md")).last', isolated_context=False)
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_skill_name_matches_are_not_presented_as_installed_version_runs(reader):
+    page, uri = reader
+    for width in (1440, 375):
+        page.set_viewport_size({'width': width, 'height': 812})
+        page.goto(uri + '#r=skills%2Fcatalog%2Finvoice-check.md')
+        page.evaluate("""() => {
+          const r = byPath('skills/catalog/invoice-check.md');
+          r.text = r.text.replace('## Source\\n',
+            '## Run evidence\\n- Retained evaluation attempts: 0; installed version unverified.\\n\\n## Source\\n');
+          KNOWN.delete(r.path);
+          render();
+        }""", isolated_context=False)
+        assert 'SKILL-NAME MATCHES\n3' in page.locator('.focus-facts').inner_text()
+        assert '3 skill-name matches' in page.locator('.lead-meta.usage').inner_text()
+        assert 'retained eval attempts are counted separately' in page.locator('.usage-scope').inner_text()
+        usage = page.locator('.panel').filter(has_text='Matched by skill name in coding sessions.')
+        assert usage.is_visible()
+        assert 'neither confirms this installed version or task outcome' in usage.inner_text()
+        assert '3 matches in Claude Code' in usage.inner_text()
+        assert 'Claude Code 3' not in page.locator('.leadrow').inner_text()
+        assert 'Retained evaluation attempts: 0' in page.locator('.deep-note').inner_text()
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=skills%2Fcatalog%2Finvoice-check.md')
+    action = page.get_by_role('button', name='Copy investigation command')
+    assert action.bounding_box()['y'] + action.bounding_box()['height'] <= 812
+    assert page.locator('.missing.primary button').count() == 0
+
+
+def test_skill_roster_links_are_touch_sized_on_phone(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#c=skills')
+    for link in page.locator('.hits.skills .t a').all():
+        box = link.bounding_box()
+        assert box['width'] >= 44 and box['height'] >= 44
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    page.locator('.hits.skills .t a').first.click()
+    assert page.locator('.record-focus.skills').is_visible()
 
 
 def test_written_unknown_sections_are_distinct_from_uninvestigated_pages(reader):
