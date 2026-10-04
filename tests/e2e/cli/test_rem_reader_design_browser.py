@@ -237,6 +237,7 @@ def test_people_last_contact_heading_is_visible_beside_sticky_name_on_phone(read
     page.set_viewport_size({"width": 375, "height": 812})
     page.goto(uri + "#c=people")
     scroller = page.locator(".sheet-scroll")
+    assert page.locator(".sheet td.name a").first.bounding_box()["height"] >= 44
     assert page.locator(".sheet th.c-last button").text_content().startswith("Last contact")
     assert any("· map" in date for date in page.locator(".sheet td.c-last").all_inner_texts())
     header_positions = """() => {
