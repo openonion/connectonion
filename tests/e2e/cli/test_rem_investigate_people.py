@@ -135,7 +135,7 @@ def test_two_people_make_progress_at_the_same_time(root, monkeypatch):
         return {"changed": [record], "usage": None}
 
     monkeypatch.setattr("connectonion.rem.investigate.investigate", investigate)
-    result = invoke(root, "--json", "investigate", "people", "--limit", "2")
+    result = invoke(root, "--json", "investigate", "people", "--limit", "2", "--workers", "2")
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)["data"]
     assert [page["page"] for page in data["pages"]] == ["people/new.md", "people/old.md"]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -118,6 +119,30 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _archive_message(root: Path, row: dict, clients: dict) -> str:
+    """Reuse one saved body or fetch and save it; each message has its own path."""
+    provider, message_id = row["source"], row["id"]
+    path = message_path(root, provider, message_id)
+    if path.is_file():
+        stored = read_json(path, {})
+        if stored.get("provider") != provider or stored.get("id") != message_id:
+            raise RemError("Existing mail snapshot does not match its source ID")
+        return "reused"
+    client = clients.get(provider)
+    if client is None:
+        raise RemError("Mail provider unavailable during body archive")
+    body = client.get_email_body(message_id)
+    if not isinstance(body, str):
+        raise RemError("Mail provider returned no text body")
+    snapshot = {"provider": provider, "id": message_id, "date": row.get("date", ""),
+                "from": row.get("from", ""), "to": row.get("to", []), "cc": row.get("cc", []),
+                "subject": row.get("subject", ""), "body": body,
+                "body_format": "provider-rendered text, not original MIME",
+                "fetched_at": datetime.now(timezone.utc).isoformat()}
+    write_json(path, snapshot)
+    return "saved"
+
+
 def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seconds: float | None = None,
                  clock=time.monotonic, now=_utcnow, on_saved=None) -> dict:
     """Fetch 90-day provider body snapshots once; keep files if interrupted.
@@ -159,47 +184,31 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seco
               "attachments": "not downloaded", "updated": now().isoformat()}
     write_json(state, result)
     deadline = None if seconds is None else clock() + seconds
-    for index, row in enumerate(messages, 1):
-        provider, message_id = row["source"], row["id"]
-        key = _key(provider + ":" + message_id)
-        try:
-            path = message_path(root, provider, message_id)
-            if path.is_file():
-                stored = read_json(path, {})
-                if stored.get("provider") != provider or stored.get("id") != message_id:
-                    raise RemError("Existing mail snapshot does not match its source ID")
-                result["reused"] += 1
-            elif deadline is not None and clock() >= deadline:
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        futures = [pool.submit(_archive_message, root, row, clients) for row in messages] if deadline is None else []
+        for index, row in enumerate(messages, 1):
+            provider, message_id = row["source"], row["id"]
+            key = _key(provider + ":" + message_id)
+            if deadline is not None and not message_path(root, provider, message_id).is_file() and clock() >= deadline:
                 result["people_indexes"] = _person_indexes(root, report, messages)
                 result["project_indexes"] = _project_indexes(root, report, sessions)
                 result.update(phase="paused", updated=now().isoformat())
                 write_json(state, result)
                 return {key: value for key, value in result.items() if key not in ("failed_keys", "owner_addresses")}
-            else:
-                client = clients.get(provider)
-                if client is None:
-                    raise RemError("Mail provider unavailable during body archive")
-                body = client.get_email_body(message_id)
-                if not isinstance(body, str):
-                    raise RemError("Mail provider returned no text body")
-                snapshot = {"provider": provider, "id": message_id, "date": row.get("date", ""),
-                            "from": row.get("from", ""), "to": row.get("to", []), "cc": row.get("cc", []),
-                            "subject": row.get("subject", ""), "body": body,
-                            "body_format": "provider-rendered text, not original MIME",
-                            "fetched_at": datetime.now(timezone.utc).isoformat()}
-                write_json(path, snapshot)
-                result["saved"] += 1
-        except Exception as error:  # A single unavailable message must not discard the map.
-            result["failed"] += 1
-            result["failed_keys"].append({"key": key, "error": type(error).__name__})
-        if progress and (index == 1 or index % 25 == 0 or index == len(messages)):
-            progress(f"saving mail bodies ({result['saved']} saved, {result['reused']} reused, "
-                     f"{result['failed']} failed)", f"{index}/{len(messages)}")
-        if on_saved and (index % 25 == 0 or index == len(messages)):
-            on_saved(result["saved"] + result["reused"], len(messages))
-        if index % 25 == 0:
-            result["updated"] = now().isoformat()
-            write_json(state, result)
+            try:
+                saved = futures[index - 1].result() if futures else _archive_message(root, row, clients)
+                result[saved] += 1
+            except Exception as error:  # A single unavailable message must not discard the map.
+                result["failed"] += 1
+                result["failed_keys"].append({"key": key, "error": type(error).__name__})
+            if progress and (index == 1 or index % 25 == 0 or index == len(messages)):
+                progress(f"saving mail bodies ({result['saved']} saved, {result['reused']} reused, "
+                         f"{result['failed']} failed)", f"{index}/{len(messages)}")
+            if on_saved and (index % 25 == 0 or index == len(messages)):
+                on_saved(result["saved"] + result["reused"], len(messages))
+            if index % 25 == 0:
+                result["updated"] = now().isoformat()
+                write_json(state, result)
     result["people_indexes"] = _person_indexes(root, report, messages)
     result["project_indexes"] = _project_indexes(root, report, sessions)
     mail_scan_errors = [error for error in report.get("errors", [])

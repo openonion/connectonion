@@ -12,7 +12,7 @@ import pytest
 from connectonion.rem.config import default_config, prepare
 from connectonion.rem.extract import run_extract
 from connectonion.rem.files import Notebook
-from connectonion.rem.runner import RunFailed, _project_window_notice, run_stage, task_prompt
+from connectonion.rem.runner import RunFailed, run_stage, task_prompt
 
 
 @pytest.fixture
@@ -67,7 +67,7 @@ def test_model_runs_use_the_running_installation_not_the_first_co_on_path(notebo
     assert calls[0][:5] == ["/work/venv/bin/python", "-m", "connectonion.cli.main", "ai", "--json"]
 
 
-def test_project_investigation_bounds_local_file_search(notebook, monkeypatch):
+def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch):
     notebook.stub_project('projects/reader.md', 'Reader', ['/work/reader'])
     prompts = []
 
@@ -80,11 +80,16 @@ def test_project_investigation_bounds_local_file_search(notebook, monkeypatch):
         run_stage(notebook, [{'role': 'page', 'record': 'projects/reader.md',
                               'text': notebook.read('projects/reader.md'),
                               'source': 'investigation:page'}], default_config(), stage='investigate')
-    assert 'Read the supplied repository snapshots, not the original checkout' in prompts[0]
-    assert "`Paths` identify where co rem gathered evidence" in prompts[0]
-    assert 'A branch' in prompts[0] and 'not an Insight' in prompts[0]
-    assert 'including exact evidence-index paths and the snapshot files they name' in prompts[0]
+    assert 'Inspect mapped repository paths' in prompts[0]
+    assert 'git log' in prompts[0] and 'git show' in prompts[0]
+    assert 'A branch, commit date or' in prompts[0] and 'belongs elsewhere' in prompts[0]
+    assert 'local mail archives and project repositories' in prompts[0]
     assert 'stop using tools and return a brief coverage summary' in prompts[0]
+    assert 'investigation:coverage, investigation:project-scope' in prompts[0]
+    assert 'reading guides, never citable originals' in prompts[0]
+    assert 'nearby checkouts outside those Paths cannot be retained' in prompts[0]
+    assert 'Every concrete purpose, architecture, command, URL' in prompts[0]
+    assert 'write bare Unknown, not a no-pending-work summary' in prompts[0]
 
 
 def test_a_person_page_near_the_limit_is_told_its_size_before_the_turn(notebook, monkeypatch):
@@ -114,23 +119,10 @@ def test_quick_investigation_reads_complete_bounded_material_once(tmp_path):
              {'role': 'page', 'record': 'people/me.md', 'text': 'A' * 200}]
     prompt = task_prompt(tmp_path, items, 'investigate')
     assert f'at {tmp_path / "material.json"}' in prompt
-    assert 'once' in prompt
+    assert 'Search the evidence index' in prompt
     assert 'continued_text' not in prompt
     assert json.loads((tmp_path / 'material.json').read_text()) == items
     assert (tmp_path / 'material.md').exists()
-
-
-def test_project_page_keeps_zero_session_window_separate_from_old_files():
-    page = ('# Reader\n\n## Uncertainties\n- Unknown\n\n## Sources\n'
-            '- [1] project-file — observed today\n\nInvestigation: mapped today')
-    items = [{'role': 'coverage', 'source': 'investigation:coverage',
-              'text': 'codex: 10 messages in window, 0 related to subject, 0 read\n'
-                      'claude-code: 101 messages in window, 0 related to subject, 0 read\n'
-                      'Requested investigation window: 5 days ending 2026-09-26'}]
-    result = _project_window_notice(page, items)
-    assert 'No related Codex and Claude Code messages were found in the requested 5-day window' in result
-    assert '- [2] investigation:coverage' in result
-    assert _project_window_notice(result, items) == result
 
 
 def test_investigation_does_not_claim_another_concurrent_page_change(notebook, monkeypatch):
@@ -172,14 +164,15 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
     assert options["timeout"] == seconds + (0 if harness == "coai" else 15)
     if harness != "coai":
         assert argv[argv.index("--timeout") + 1] == str(seconds)
-    # Every stage, not only investigation, reads untrusted source text. Codex
-    # may use its sandboxed shell for local file operations, never the network.
+    investigating = stage in ("init", "investigate")
     if harness == "claude-code":
-        assert argv[argv.index("--permission-mode") + 1] == "acceptEdits"
+        assert argv[argv.index("--permission-mode") + 1] == (
+            "bypassPermissions" if investigating else "acceptEdits")
     else:
         assert "--permission-mode" not in argv
     if harness == "codex":
-        assert argv[argv.index("--sandbox") + 1] == "workspace-write"
+        assert argv[argv.index("--sandbox") + 1] == (
+            "danger-full-access" if investigating else "workspace-write")
     else:
         assert "--sandbox" not in argv
     assert options["material"] == [item]
@@ -533,8 +526,8 @@ def test_a_sync_that_outlasts_the_wait_leaves_the_page_where_it_can_be_found(tmp
 
 def test_finished_tasks_lose_their_private_copies_and_running_ones_are_left_alone(tmp_path):
     """#1958: 98 task folders held 75 MB of the owner's mail. A folder is scrubbed
-    once its run wrote result.json; a run still working keeps its material."""
-    from connectonion.rem.runner import scrub_finished_tasks
+    after its result is old enough; a run still finishing keeps its material."""
+    from connectonion.rem.runner import FINISHED_TASK_GRACE_SECONDS, scrub_finished_tasks
 
     done, running = tmp_path / "maintain-a", tmp_path / "investigate-b"
     for folder in (done, running):
@@ -545,6 +538,10 @@ def test_finished_tasks_lose_their_private_copies_and_running_ones_are_left_alon
     (done / "result.json").write_text("{}")
     (done / "candidate.md").write_text("# X")
 
+    scrub_finished_tasks(tmp_path)
+    assert (done / "material.json").is_file()
+    old = time.time() - FINISHED_TASK_GRACE_SECONDS - 1
+    os.utime(done / "result.json", (old, old))
     scrub_finished_tasks(tmp_path)
 
     assert sorted(p.name for p in done.iterdir()) == ["candidate.md", "result.json"]
@@ -575,6 +572,34 @@ def test_task_files_are_owner_only_even_those_the_model_writes(notebook, monkeyp
     finally:
         os.umask(before)
     assert seen and all(mode == 0o600 for mode in seen.values()), seen
+
+
+def test_overlapping_runner_tasks_keep_private_mask_until_both_finish(notebook, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+
+    together = threading.Barrier(2, timeout=5)
+    observed = []
+
+    def run(argv, **kw):
+        observed.append(os.umask(0o077))
+        together.wait()
+        if threading.current_thread().name.endswith("_0"):
+            time.sleep(0.05)
+            observed.append(os.umask(0o077))
+        return SimpleNamespace(returncode=0, stdout='{"outcome":"natural"}', stderr="")
+
+    monkeypatch.setattr("connectonion.rem.runner.subprocess.run", run)
+    original = os.umask(0o022)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(run_stage, notebook, [], default_config(), stage="abstract") for _ in range(2)]
+            for future in futures:
+                future.result()
+        assert os.umask(0o022) == 0o022
+    finally:
+        os.umask(original)
+    assert observed == [0o077] * 3
 
 
 def test_an_interrupted_task_loses_its_copies_too(notebook, monkeypatch):
@@ -742,6 +767,89 @@ def test_failed_history_repair_counts_both_model_turns(notebook, monkeypatch):
                   default_config(), stage='investigate')
     assert len(calls) == 2
     assert caught.value.usage == {'input_tokens': 13}
+
+
+@pytest.mark.parametrize(('failure', 'repair_hint'), [
+    ('Cited local file needs its current SHA-256 and a mapped path: file:/missing',
+     'Replace invented `git:` or `file:` citations'),
+    ('Cited-claim audit did not pass; see claim-review.json', 'Fix every audit finding'),
+])
+def test_project_refusal_gets_one_source_based_repair(notebook, monkeypatch, failure, repair_hint):
+    import re
+    from connectonion.rem.files import write_json
+
+    record = 'projects/example.md'
+    notebook.stub_project(record, 'Example', [])
+    prompts, promotions = [], []
+
+    def run_model(workdir, prompt, config, stage):
+        prompts.append(prompt)
+        candidate = Path(re.search(r'(/\S+/candidate\.md)', prompt).group(1))
+        candidate.write_text('# Example\n' + ('Corrected' if len(prompts) == 2 else 'Bad file citation'))
+        return {'usage': {'input_tokens': 10 if len(prompts) == 1 else 5}, 'result': 'done'}
+
+    def promote(book, record, candidate, original, items, directory, usage, **options):
+        promotions.append(usage)
+        if len(promotions) == 1:
+            write_json(directory / 'review.json', {'accepted': False, 'errors': [failure]})
+            if failure.startswith('Cited-claim'):
+                write_json(directory / 'claim-review.json', {'verdict': 'fail', 'findings': []})
+            raise RunFailed('Bad file citation', usage)
+        book.write(record, candidate.read_text())
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
+    monkeypatch.setattr('connectonion.rem.runner._promote_candidate', promote)
+    result = run_stage(notebook, [{'role': 'page', 'record': record,
+                                   'text': notebook.read(record), 'source': 'investigation:page'}],
+                       default_config(), stage='investigate')
+    assert len(prompts) == 2 and repair_hint in prompts[1]
+    assert 'material.md' in prompts[1]
+    assert 'exact Sessions, First seen, and Last seen lines' in prompts[1]
+    assert 'Read the original mapped page at ' in prompts[1]
+    assert '/projects/example.md' in prompts[1]
+    if failure.startswith('Cited local'):
+        assert 'mapped Paths' in prompts[1]
+    else:
+        assert 'claim-review.json' in prompts[1]
+    assert promotions == [{'input_tokens': 10}, {'input_tokens': 15}]
+    assert result['usage'] == {'input_tokens': 15}
+    assert 'Corrected' in notebook.read(record)
+
+
+def test_project_claim_audit_can_surface_new_findings_on_a_second_repair(notebook, monkeypatch):
+    import re
+    from connectonion.rem.files import write_json
+
+    record = 'projects/example.md'
+    notebook.stub_project(record, 'Example', [])
+    prompts, promotions = [], []
+
+    def run_model(workdir, prompt, config, stage):
+        prompts.append(prompt)
+        candidate = Path(re.search(r'(/\S+/candidate\.md)', prompt).group(1))
+        candidate.write_text('# Example\nCandidate ' + str(len(prompts)))
+        return {'usage': {'input_tokens': 10}, 'result': 'done'}
+
+    def promote(book, record, candidate, original, items, directory, usage, **options):
+        promotions.append(usage['input_tokens'])
+        if len(promotions) < 3:
+            write_json(directory / 'review.json', {'accepted': False,
+                'errors': ['Cited-claim audit did not pass; see claim-review.json']})
+            write_json(directory / 'claim-review.json', {'verdict': 'fail',
+                'findings': [{'issue': 'A different adjacent claim needs correction'}]})
+            raise RunFailed('Claim audit failed', {'input_tokens': usage['input_tokens'] + 2})
+        book.write(record, candidate.read_text())
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
+    monkeypatch.setattr('connectonion.rem.runner._promote_candidate', promote)
+    result = run_stage(notebook, [{'role': 'page', 'record': record,
+                                   'text': notebook.read(record), 'source': 'investigation:page'}],
+                       default_config(), stage='investigate')
+    assert len(prompts) == 3 and all('Fix every audit finding' in prompt for prompt in prompts[1:])
+    assert all('exact Sessions, First seen, and Last seen lines' in prompt for prompt in prompts[1:])
+    assert promotions == [10, 22, 34]
+    assert result['usage'] == {'input_tokens': 34}
+    assert 'Candidate 3' in notebook.read(record)
 
 
 @pytest.mark.parametrize('repaired', [True, False])

@@ -79,6 +79,26 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     assert '`' not in page.locator('#foot').inner_text()
 
 
+def test_mobile_browse_privacy_control_remains_a_full_touch_target(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.locator('.nav-toggle').click()
+    privacy = page.get_by_role('button', name='Hide labelled passages')
+    box = privacy.bounding_box()
+    assert box['height'] >= 44 and box['width'] >= 44
+    assert box['y'] >= 0 and box['y'] + box['height'] <= 812
+    privacy.focus()
+    privacy.press('Enter')
+    shown = page.get_by_role('button', name='Show labelled passages')
+    assert shown.get_attribute('aria-pressed') == 'true'
+    assert shown.evaluate('(node) => node === document.activeElement')
+    shown.press('Space')
+    assert privacy.get_attribute('aria-pressed') == 'false'
+    assert privacy.evaluate('(node) => node === document.activeElement')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
 @pytest.fixture
 def reader(tmp_path, monkeypatch):
     from patchright.sync_api import sync_playwright
@@ -277,7 +297,7 @@ def test_a_person_opens_on_a_fact_card_with_cited_values(reader):
     page.goto(page.url.split("#")[0] + "#r=people%2Fmara-ostrowski.md")
     # Under the title: what you owe and for how long.
     lead = page.locator(".leadrow .lead-open")
-    assert lead.locator(".dir").inner_text().upper() == "YOU OWE" and lead.locator(".age").inner_text() == "9 days"
+    assert lead.locator(".dir").inner_text().upper() == "YOU OWE" and lead.locator(".age").inner_text() == "open for 9 days"
     card = page.locator(".factlist")
     value = lambda label: card.locator(f"dt:text-is('{label}') + dd")  # noqa: E731
     assert "Head of Partnerships" in value("Role").inner_text()
@@ -429,7 +449,7 @@ def test_short_focus_text_clipped_on_phone_can_expand_and_collapse(reader):
     page, uri = reader
     page.set_viewport_size({"width": 375, "height": 812})
     page.goto(uri + "#r=people%2Fmara-ostrowski.md")
-    statement = "Mara needs the revised pilot agreement before deciding whether her team can renew, including the usage export and the pricing proposal."
+    statement = "Mara needs the revised pilot agreement before deciding whether her team can renew, including the usage export, the pricing proposal, and a signed data-sharing addendum by Friday."
     assert len(statement) < 180
     page.evaluate("text => { const r = byPath('people/mara-ostrowski.md'); r.text = '# Mara Ostrowski\\n\\n' + text; KNOWN.clear(); FACTS.clear(); render(); }", statement, isolated_context=False)
     lead = page.locator('.focus-statement')
@@ -582,6 +602,7 @@ def test_private_project_summary_and_partial_scope_are_clear_on_desktop_and_phon
         assert 'clamped' not in page.locator('.focus-statement').get_attribute('class')
         page.evaluate('togglePrivate()', isolated_context=False)
         assert page.locator('.focus-statement').inner_text() == 'Hidden labelled passage'
+        assert page.locator('.project-purpose-preview').inner_text() == 'Hidden labelled passage'
         assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').count() == 2
         assert page.locator('.project-workspace').get_by_text('Hidden labelled passage').first.is_visible()
         page.evaluate("() => { location.hash = '#c=projects'; render(); }", isolated_context=False)
@@ -625,6 +646,82 @@ def test_project_without_a_current_insight_leads_with_purpose_and_scope(reader):
         assert 'No coding-session input was assigned' in page.locator('.focus-limit').inner_text()
         assert '5 inputs are archived for this workspace' in page.locator('.scope-note').inner_text()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_written_project_purpose_precedes_partial_scope_on_phone(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.evaluate("""() => {
+      const r = byPath('projects/harbour.md');
+      r.text = '# Harbour\\n\\n## Insight\\n- Now: The user asked to organize a folder in August; whether the requested work was completed is unknown. [1]\\n'
+        + '\\n## What it is\\nA property lead workflow to collect contacts and ask owners whether they permit short stays. [1]\\n'
+        + '\\n## Key decisions\\n- Collect property details before filtering. [1]\\n'
+        + '\\n## Sources\\n- [1] codex:example — 2026-08-02\\n'
+        + '\\nInvestigation: mapped 2026-10-03 · investigated 2026-10-04 (codex)';
+      r.project_coverage = {inputs_read: 114, inputs_available: 116, days: 90, scope: 'archived'};
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    purpose = page.locator('.project-purpose-preview')
+    scope = page.locator('.scope-note')
+    assert 'property lead workflow' in purpose.inner_text()
+    assert purpose.bounding_box()['y'] < 812
+    assert purpose.bounding_box()['y'] < scope.bounding_box()['y']
+    assert '114 session inputs' in scope.inner_text()
+    purpose_source = page.locator('.project-purpose-cites a.cite').first
+    assert purpose_source.get_attribute('aria-label') == 'Source 1'
+    assert purpose_source.get_attribute('data-tip') is None
+    sources = page.locator('.focus-source').bounding_box()
+    assert sources['height'] >= 44 and sources['y'] + sources['height'] <= 812
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_long_project_purpose_keeps_a_source_in_the_phone_first_screen(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    page.evaluate("""() => {
+      const r = byPath('projects/harbour.md');
+      const purpose = 'A shared-inbox tool for a team to review long threads, identify decisions and unresolved follow-ups, and prepare a weekly brief before a renewal call. '.repeat(2);
+      r.text = r.text.replace(/## What it is\\n- [^\\n]+/, '## What it is\\n- ' + purpose + '[1].');
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    statement = page.locator('.focus-statement')
+    assert statement.evaluate('(node) => node.scrollHeight > node.clientHeight')
+    chip = page.locator('.project-purpose-cites a.cite').first
+    source = page.locator('.focus-source')
+    assert chip.bounding_box()['y'] + chip.bounding_box()['height'] <= 812
+    assert source.bounding_box()['y'] + source.bounding_box()['height'] <= 812
+    page.get_by_role('button', name='Read full purpose').click()
+    assert not statement.evaluate('(node) => node.scrollHeight > node.clientHeight')
+    assert 'weekly brief before a renewal call' in page.locator('.deep-note').inner_text()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_written_pages_show_the_complete_source_action_on_phone(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    paths = ('people/avery-lin.md', 'orgs/fernhill-labs.md',
+             'people/mara-ostrowski.md', 'projects/harbour.md',
+             'skills/catalog/weekly-brief.md')
+    for path in paths:
+        page.goto(uri + '#r=' + path.replace('/', '%2F'))
+        if path == 'skills/catalog/weekly-brief.md':
+            page.evaluate("""() => {
+              const r = byPath('skills/catalog/weekly-brief.md');
+              r.text = '# weekly-brief\\n\\n## Insight\\nA saved draft needs a queue readback before it can be sent. [1]\\n'
+                + '\\n## When to use\\nUse for a weekly brief. [1]\\n'
+                + '\\n## Sources\\n- [1] skill-record:test — saved draft and queue readback.';
+              KNOWN.delete(r.path); render();
+            }""", isolated_context=False)
+        link = page.get_by_role('link', name='View sources →')
+        assert link.count() == 1, path
+        box = link.bounding_box()
+        assert box['height'] >= 44 and box['y'] + box['height'] <= 812, path
+        assert page.get_by_role('heading', name='Full memory and sources').is_visible()
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        link.click()
+        page.locator('.deep-note .block-sources').wait_for(state='visible')
 
 
 def test_open_context_is_not_counted_as_waiting_on_other_people(reader):
@@ -784,6 +881,25 @@ def test_open_request_dates_keep_explicit_deadlines_on_the_notebook_calendar(rea
     assert dates['since'] == '2026-10-01' and dates['due'] == ''
 
 
+def test_phone_open_preview_names_elapsed_age_and_keeps_the_full_thread(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate(r"""() => {
+      REM.status.timezone = 'Australia/Sydney'; REM.as_of = '2026-10-03T14:30:00Z';
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace(/## Open threads[\s\S]*?(?=\n## )/, '## Open threads' + String.fromCharCode(10) +
+        '- Mara asked Avery to confirm the scope on 2026-09-29, followed up twice, and offered several detailed ways to answer before a time-sensitive proposal, while the exact due day still needs confirmation [5].' + String.fromCharCode(10));
+      KNOWN.clear(); render();
+    }""", isolated_context=False)
+    preview = page.locator('.lead-open')
+    assert preview.locator('.dir').inner_text() == 'YOU OWE'
+    assert preview.locator('.age').inner_text() == 'open for 5 days'
+    assert len(preview.locator('.txt').inner_text()) <= 100
+    assert 'exact due day still needs confirmation' in page.locator('.next-exchanges').inner_text()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
 def test_dates_and_contact_age_use_notebook_calendar_on_another_browser_timezone(reader):
     page, uri = reader
     other = page.context.browser.new_page(timezone_id='America/Los_Angeles', locale='en-US')
@@ -871,6 +987,58 @@ def test_instruction_excerpt_is_not_a_verified_result_and_respects_privacy(reade
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
+def test_long_skill_source_find_reaches_passages_and_keeps_original(reader):
+    page, uri = reader
+    for width in (1440, 375):
+        page.set_viewport_size({'width': width, 'height': 812})
+        page.goto(uri + '#r=skills%2Fcatalog%2Fweekly-brief.md')
+        page.evaluate("""() => {
+          const r = byPath('skills/catalog/weekly-brief.md');
+          const source = 'skill-record:' + 'b'.repeat(64);
+          r.text = '# weekly-brief\\n\\n## Insight\\nA queue readback checked the saved draft. [1]'
+            + '\\n\\n## Sources\\n- [1] ' + source;
+          const part = ('{"step":"invented source"},\\n').repeat(650);
+          REM.source_context[source] = {source: 'skill-record',
+            excerpt: 'İstanbul\\n' + part + 'Queue readback checked the first draft.\\n' + part
+              + 'Queue readback checked the second draft.\\n', truncated: true};
+          KNOWN.delete(r.path);
+          render();
+        }""", isolated_context=False)
+        cite = page.locator('a.cite').first
+        cite.click()
+        dialog = page.locator('#evidence-dialog')
+        find = dialog.get_by_role('searchbox', name='Find in archived source')
+        assert find.is_visible()
+        assert 'truncated' in dialog.inner_text().lower()
+        original = dialog.locator('blockquote').inner_text()
+        assert len(original) > 30000
+        find.fill('Queue readback')
+        assert dialog.locator('mark').inner_text() == 'Queue readback'
+        assert 'Match 1 of 2' in dialog.locator('.evidence-find-status').inner_text()
+        next_match = dialog.get_by_role('button', name='Next match')
+        assert next_match.bounding_box()['height'] >= 44
+        next_match.click()
+        assert 'Match 2 of 2' in dialog.locator('.evidence-find-status').inner_text()
+        assert dialog.locator('blockquote').inner_text() == original
+        find.fill('not in this invented run')
+        assert 'No match' in dialog.locator('.evidence-find-status').inner_text()
+        assert not dialog.locator('mark').count()
+        find.fill('.*')
+        assert 'No match' in dialog.locator('.evidence-find-status').inner_text()
+        find.fill('')
+        assert dialog.locator('.evidence-find-status').inner_text() == ''
+        assert dialog.locator('blockquote').inner_text() == original
+        assert find.is_visible()
+        assert dialog.evaluate('e => e.scrollWidth <= e.clientWidth')
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        page.evaluate('togglePrivate()', isolated_context=False)
+        assert not find.is_visible()
+        page.evaluate('togglePrivate()', isolated_context=False)
+        assert find.is_visible()
+        page.get_by_role('button', name='Close source context').click()
+        assert cite.evaluate('e => e === document.activeElement')
+
+
 def test_skill_opens_on_its_finding_and_keeps_usage_in_full_note(reader):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})
@@ -886,12 +1054,34 @@ def test_skill_opens_on_its_finding_and_keeps_usage_in_full_note(reader):
     assert page.locator('.focus-statement').inner_text() == 'A saved draft still needs a queue readback.'
     assert page.locator('.focus-head .focus-kicker').inner_text() == 'USEFUL FINDING'
     assert not page.locator('.focus-more').is_visible()
+    finding_source = page.locator('.skill-finding-cites a.cite').first
+    assert finding_source.get_attribute('href').endswith('h=src-1')
+    assert finding_source.bounding_box()['width'] >= 44
+    assert finding_source.bounding_box()['height'] >= 44
+    finding_source.click()
+    assert page.locator('#evidence-dialog blockquote').inner_text() == 'Recorded queue readback.'
+    page.get_by_role('button', name='Close source context').click()
+    assert finding_source.evaluate('e => e === document.activeElement')
     page.get_by_role('link', name='View sources →').click()
     assert page.locator('.deep-note .block-sources').is_visible()
     assert 'Use for a weekly brief.' in page.locator('.deep-note').inner_text()
     page.locator('.deep-note a.cite').first.click()
     assert page.locator('#evidence-dialog .evidence-summary').evaluate('e => e.scrollWidth <= e.clientWidth')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    page.get_by_role('button', name='Close source context').click()
+    page.evaluate("""() => {
+      const r = byPath('skills/catalog/weekly-brief.md');
+      r.text = r.text.replace('A saved draft still needs a queue readback. [1]',
+        'A saved draft still needs a queue readback. [personal] [1]');
+      KNOWN.delete(r.path);
+      render();
+    }""", isolated_context=False)
+    private_source = page.locator('.skill-finding-cites a.cite').first
+    assert private_source.is_visible()
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert not private_source.is_visible()
+    page.evaluate('togglePrivate()', isolated_context=False)
+    assert private_source.is_visible()
 
 
 def test_skill_activity_uses_invocation_dates_instead_of_investigation_dates(reader):
@@ -989,7 +1179,7 @@ def test_project_map_date_is_labelled_as_a_session_not_verified_activity(reader)
       r.last_activity = '2026-09-16';
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
-    assert 'Last mapped session' in page.locator('.leadrow').inner_text()
+    assert 'Last mapped session' not in page.locator('.leadrow').inner_text()
     assert 'LAST MAPPED SESSION' in page.locator('.focus-facts').inner_text()
     assert 'last mapped session' in page.locator('.eyebrow').inner_text()
     assert 'Last active' not in page.locator('.leadrow').inner_text()

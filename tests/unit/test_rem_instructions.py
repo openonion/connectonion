@@ -110,8 +110,8 @@ def test_an_investigation_carries_only_its_own_kind_s_steps():
     assert "# Investigating a person" in person and "# Investigating a project" not in person
     assert "# Investigating a project" in project and "Signature block first" not in project
     for text in (person, project):
-        assert "co browser" not in text                       # offline: the web block is not runtime text
-        assert "A field the material does not answer stays `Unknown`" in text
+        assert "Unknown stays Unknown without evidence" in text
+        assert "local mail" in text and "repositories with shell tools" in text
         assert "## Only what is new" in text
 
 
@@ -243,5 +243,13 @@ def test_person_investigation_has_one_history_and_source_contract():
     assert "at most eight milestones, newest first" in person
     assert "covers every thread" not in person
     assert "oldest first" not in person
-    assert "No direct mail or" in person
+    assert "local mail" in person
     assert "runner-owned `Investigation:` footer stays unchanged" in person
+
+
+def test_person_investigation_keeps_booking_time_zone_separate_from_a_persons():
+    person = instructions("investigate", page_kind="person")
+    assert "booking's displayed time zone belongs to the event display" in person
+    assert "unless the source explicitly labels" in person
+    assert "`Now` sentence names the source-backed reason for closure" in person
+    assert len(person) <= 15_000

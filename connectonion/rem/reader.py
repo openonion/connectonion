@@ -115,6 +115,14 @@ def snapshot(root: Path) -> dict:
     for record in records:
         record["relations"] = links.get(record["path"], [])
     contexts = cited_context(root, records)
+    from .project_material import stored
+    for record in records:
+        if record["category"] != "projects":
+            continue
+        for message in stored(root, record["path"]):
+            context = contexts.get(message["source"])
+            if context:
+                context.setdefault("mapped_session_folder", message["cwd"])
     return {"as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "categories": list(CATEGORIES), "records": records,
             "source_context": contexts, "conversations": cited_conversations(root, contexts),

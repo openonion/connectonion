@@ -400,7 +400,129 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a27
+## Current Version: 1.9.0a39
+
+1.9.0a39 gives cited Skill findings a direct 44-pixel source link beside the
+lead statement, keeps keyboard focus visible on the dark lead card, and hides
+labelled private finding links when private passages are hidden. The reader
+changes presentation only. Stable remains 1.8.10. See
+[1.9.0a39 notes](docs/releases/1.9.0a39.md).
+
+- 1.9.0a39 (Skill finding source access on phones).
+
+## Previous preview: 1.9.0a38
+
+1.9.0a38 adds Find and Next match inside long archived REM source excerpts.
+The dialog names truncation, and search stays inside the private source
+section. Existing saved memories and source bodies are unchanged. Stable
+remains 1.8.10. See [1.9.0a38 notes](docs/releases/1.9.0a38.md).
+
+- 1.9.0a38 (Find within long archived sources).
+
+## Previous preview: 1.9.0a37
+
+1.9.0a37 puts a short, source-backed Project purpose on changed Home cards,
+keeps each cited purpose source directly openable beside the clipped phone and
+desktop preview, and gives the desktop privacy control a 44-pixel target. The
+reader changes presentation only; saved memories and sources are unchanged.
+Stable remains 1.8.10. See
+[1.9.0a37 notes](docs/releases/1.9.0a37.md).
+
+- 1.9.0a37 (Project purpose and source access in the reader).
+
+## Previous preview: 1.9.0a36
+
+1.9.0a36 keeps Outlook HTML mail's paragraph, table-field and participant-role separators in
+provider-rendered text. In a synthetic cancellation source, the phone reader
+shows event time, reason and follow-up as separate lines; one privately
+re-read affected Outlook message went from 8 to 34 lines with the same
+non-whitespace characters. Previously retained mail is not rewritten. Stable
+remains 1.8.10. See
+[1.9.0a36 notes](docs/releases/1.9.0a36.md).
+
+- 1.9.0a36 (Outlook HTML source separators).
+
+## Previous preview: 1.9.0a35
+
+1.9.0a35 places the full-size source action beside the useful lead on written
+REM pages and keeps it inside the first 375×812 viewport on the five sampled
+page types. Full memory remains visible. Stable remains 1.8.10. See
+[1.9.0a35 notes](docs/releases/1.9.0a35.md).
+
+- 1.9.0a35 (phone first-fold source action).
+
+## Previous preview: 1.9.0a34
+
+1.9.0a34 keeps a private parsed window of typed coding-session input so a
+scoped investigation checks source changes without rereading every unchanged
+transcript in a new CLI process. A 90-day local source-only trial read 4,957
+messages in 103.5 seconds, then the same count in 2.1 seconds in another
+process. Stable remains 1.8.10. See
+[1.9.0a34 notes](docs/releases/1.9.0a34.md).
+
+- 1.9.0a34 (incremental scoped session reading across CLI runs).
+
+## Previous preview: 1.9.0a33
+
+1.9.0a33 leaves first contact unknown when the earliest retained reply points
+to an earlier exchange, and keeps the People index tied to explicit page facts.
+It aligns first-run cost and quota guidance with measured samples and configured
+limits, and runs release building beside the test matrix while keeping
+publication gated on both. Stable remains 1.8.10. See
+[1.9.0a33 notes](docs/releases/1.9.0a33.md).
+
+- 1.9.0a33 (Person first-contact provenance, first-run cost guidance, release latency).
+
+## Previous preview: 1.9.0a32
+
+1.9.0a32 keeps Skill invocation names stable across investigations, opens the
+full bounded cited run part and local artifacts in the owner-only reader, and
+separates an intended Skill outcome from observed output. Stable remains
+1.8.10. See [1.9.0a32 notes](docs/releases/1.9.0a32.md).
+
+- 1.9.0a32 (Skill source access, artifact-grounded findings, stable Skill identity).
+
+## Previous preview: 1.9.0a31
+
+1.9.0a31 checks Project claims against retained originals before a page is
+replaced, adds a deliberate retry for refused pages, and improves the reader's
+first screen. It includes the full-cohort concurrency work tagged as a30.
+Stable remains 1.8.10. See [1.9.0a31 notes](docs/releases/1.9.0a31.md).
+
+- 1.9.0a31 (Project source audit, explicit retry, reader evidence clarity).
+
+## Previous tag: 1.9.0a30
+
+1.9.0a30 implements full-cohort concurrent onboarding and CLI investigations,
+running across a 10-worker thread pool with thread-safe client isolation and
+zero dry-run capping. Stable remains 1.8.10. See
+[1.9.0a30 notes](docs/releases/1.9.0a30.md).
+
+The a30 release workflow failed before publishing GitHub Release or PyPI;
+[#2253](https://github.com/openonion/connectonion/issues/2253) tracks the
+order-sensitive concurrent fetch test. The a30 tag remains unchanged.
+
+- 1.9.0a30 (full-cohort onboarding, 10-worker thread pool, thread-safe mail client isolation).
+
+## Previous preview: 1.9.0a29
+
+1.9.0a29 brings the mapped page's investigation action into the phone's first
+screen, explains what a mapped project does and does not yet know, and makes the
+phone privacy action easier to tap. Stable remains 1.8.10. See
+[1.9.0a29 notes](docs/releases/1.9.0a29.md).
+
+- 1.9.0a29 (mapped first-screen action, honest project lead, phone privacy target).
+
+## Previous preview: 1.9.0a28
+
+1.9.0a28 implements context over control in `co rem investigate`:
+pre-authorizes local search and shell tools upfront, supplies live project
+repository paths, and records full audit provenance. Stable remains 1.8.10. See
+[1.9.0a28 notes](docs/releases/1.9.0a28.md).
+
+- 1.9.0a28 (context over control, live repository paths, full investigation provenance).
+
+## Previous preview: 1.9.0a27
 
 1.9.0a27 keeps institutional and service desk correspondents out of `people/`
 and requires project evidence before dated scratchpad folders or prompt

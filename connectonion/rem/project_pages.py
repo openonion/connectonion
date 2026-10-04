@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import hashlib
 import re
+import subprocess
 import tempfile
 import time
 from datetime import datetime, timedelta, timezone
@@ -209,6 +210,29 @@ def retain_repository_context(root: Path, items: list[dict], cited: set[str]) ->
 def repository_context(root: Path, source: str) -> dict | None:
     """Use the retained packet only; never reread a mutable Git ref or working file."""
     from .reader_model import PRIVATE
+    if source.startswith("file:"):
+        saved = read_json(state_path(root, "project-sources/live-" + hashlib.sha256(source.encode()).hexdigest() + ".json"), {})
+        if (saved.get("id") != source or not isinstance(saved.get("text"), str)
+                or hashlib.sha256(saved["text"].encode()).hexdigest() != source.rsplit("@", 1)[-1]):
+            return None
+        excerpt = saved["text"].strip()
+        return {"excerpt": excerpt[:REPOSITORY_EXCERPT_CHARS], "truncated": len(excerpt) > REPOSITORY_EXCERPT_CHARS,
+                "source": "project-source", "time": saved["file_modified_at"], "sender": "", "thread": "",
+                "origin": source.rsplit("@", 1)[0], "captured_at": saved["captured_at"],
+                "input_scope": "Inspected local file snapshot; modified " + saved["file_modified_at"] +
+                               "; SHA-256 " + source.rsplit("@", 1)[-1][:12] + "."}
+    if source.startswith("git:"):
+        saved = read_json(state_path(root, "project-sources/live-" + hashlib.sha256(source.encode()).hexdigest() + ".json"), {})
+        text = saved.get("text")
+        if (saved.get("id") != source or not isinstance(text, str)
+                or hashlib.sha256(text.encode()).hexdigest() != saved.get("sha256")):
+            return None
+        excerpt = text.strip()
+        return {"excerpt": excerpt[:REPOSITORY_EXCERPT_CHARS], "truncated": len(excerpt) > REPOSITORY_EXCERPT_CHARS,
+                "source": "project-source", "time": saved["commit_at"], "sender": "", "thread": "",
+                "origin": source, "captured_at": saved["captured_at"],
+                "input_scope": "Inspected Git file at commit " + saved["commit"][:12] +
+                               "; full revision is in the source ID."}
     if not re.fullmatch(r"project-source:[0-9a-f]{64}", source):
         return None
     saved = read_json(state_path(root, "project-sources/" + source.split(":")[1] + ".json"), {})
@@ -223,6 +247,75 @@ def repository_context(root: Path, source: str) -> dict | None:
             "time": "", "sender": "", "thread": "", "origin": origin,
             "captured_at": saved.get("captured_at") or "",
             "input_scope": saved.get("input_scope") or "Local repository snapshot. Files and commit records do not verify tests or deployment."}
+
+
+def live_file_snapshot(page: str, source: str) -> dict | None:
+    """Read a hash-pinned file cited under a mapped project repository."""
+    from .investigate import project_paths
+    from .reader_model import PRIVATE
+    match = re.fullmatch(r"file:(/.+)@([0-9a-f]{64})", source)
+    if not match:
+        return None
+    path = Path(match[1])
+    roots = [Path(root).resolve() for root in project_paths(page)]
+    if (path.is_symlink() or not path.is_file() or path.stat().st_size > FILE_SNAPSHOT_CHARS
+            or not any(root in path.resolve().parents for root in roots)):
+        return None
+    raw = path.read_bytes()
+    if len(raw) > FILE_SNAPSHOT_CHARS or hashlib.sha256(raw).hexdigest() != match[2] or b"\0" in raw:
+        return None
+    text = raw.decode("utf-8")
+    if SECRET_SHAPES.search(text) or PRIVATE.search(text):
+        return None
+    return {"id": source, "text": text, "captured_at": datetime.now(timezone.utc).isoformat(),
+            "file_modified_at": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()}
+
+
+def live_git_snapshot(page: str, source: str) -> dict | None:
+    """Read a file at an exact commit in a mapped repository."""
+    from .investigate import project_paths
+    from .reader_model import PRIVATE
+    match = re.fullmatch(r"git:(/.+):([0-9a-f]{40,64}):(.+)", source)
+    if not match or Path(match[3]).is_absolute() or ".." in Path(match[3]).parts:
+        return None
+    repo = Path(match[1]).resolve()
+    target = repo / match[3]
+    if not any(root == target or root in target.parents
+               for root in (Path(path).resolve() for path in project_paths(page))):
+        return None
+    content = subprocess.run(["git", "-C", str(repo), "show", f"{match[2]}:{match[3]}"],
+                             capture_output=True)
+    if content.returncode or len(content.stdout) > FILE_SNAPSHOT_CHARS or b"\0" in content.stdout:
+        return None
+    text = content.stdout.decode("utf-8")
+    if SECRET_SHAPES.search(text) or PRIVATE.search(text):
+        return None
+    date = subprocess.run(["git", "-C", str(repo), "show", "-s", "--format=%cI", match[2]],
+                          capture_output=True, text=True)
+    if date.returncode or not date.stdout.strip():
+        return None
+    return {"id": source, "text": text, "sha256": hashlib.sha256(content.stdout).hexdigest(),
+            "commit": match[2], "commit_at": date.stdout.strip(),
+            "captured_at": datetime.now(timezone.utc).isoformat()}
+
+
+def live_source_snapshot(page: str, source: str) -> dict | None:
+    return live_file_snapshot(page, source) if source.startswith("file:") else live_git_snapshot(page, source)
+
+
+def retain_live_source_context(root: Path, original: str, candidate: str) -> None:
+    """Archive exact cited files and Git revisions before page promotion."""
+    from .reader_model import _source_ids
+    for source in _source_ids([{"text": candidate}]):
+        if not source.startswith(("file:", "git:")):
+            continue
+        path = state_path(root, "project-sources/live-" + hashlib.sha256(source.encode()).hexdigest() + ".json")
+        if path.is_file():
+            continue
+        saved = live_source_snapshot(original, source)
+        if saved is None:
+            raise RemError(f"Cited local file changed or cannot be inspected: {source}")
+        write_json(path, saved)
 
 
 def _excerpt(value: str, limit: int) -> str:

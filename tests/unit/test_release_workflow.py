@@ -8,10 +8,13 @@ TESTS = (ROOT / ".github/workflows/tests.yml").read_text()
 WHEEL_ACCEPTANCE = (ROOT / "tests/e2e/test_the_wheel_works_when_installed.py").read_text()
 
 
-def test_release_reuses_the_full_test_workflow():
+def test_release_reuses_full_tests_and_waits_for_them_before_publication():
     assert "workflow_call:" in TESTS
     assert "uses: ./.github/workflows/tests.yml" in RELEASE
-    assert "needs: tests" in RELEASE
+    build_job = RELEASE.split("  build:", 1)[1].split("  publish:", 1)[0]
+    publish_job = RELEASE.split("  publish:", 1)[1].split("  finalize:", 1)[0]
+    assert "needs: tests" not in build_job
+    assert "needs: [tests, build]" in publish_job
 
 
 def test_ci_audits_the_exact_dependency_lock():

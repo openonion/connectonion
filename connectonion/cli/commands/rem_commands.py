@@ -239,7 +239,8 @@ def _logged(root, record, phase, call, quiet=False):
         run.update(outcome="completed", usage=result.get("usage"), usage_by_stage=result.get("usage_by_stage") or {},
                    changed=result.get("changed") or [], items=result.get("items", 0),
                    chars_in=result.get("chars_gathered") or 0, coverage=result.get("coverage") or [],
-                   instructions_chars=result.get("instructions_chars") or {})
+                   instructions_chars=result.get("instructions_chars") or {},
+                   evidence=result.get("evidence") or [], report=result.get("report") or "")
         _WRITTEN.append(record)
         # Said, not left to the record: an accepted page had no outcome line (#2044).
         rem_look.step(f"Updated {record}: accepted, {len(run['changed'])} page"
@@ -396,12 +397,15 @@ def _spending_skipped(ctx, *, want, problem, fix) -> str:
     return ""
 
 
-def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=(), progress=None, quiet=False):
+def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=(), progress=None,
+                      quiet=False, retry_refused=False):
     """One page of `co rem investigate PAGE|CATEGORY`, and of the first run's organisations."""
     from ...rem import investigate as rem_investigate
     from ...rem.files import RemError, split_handles
     from ...rem.service import subscriptions
     if record.startswith("skills/"):
+        if retry_refused:
+            raise RemError("--retry-refused applies to people, projects and orgs pages")
         from ...rem.skill_runs import investigate_skill_page
         return _logged(root, record, "investigate", lambda update: investigate_skill_page(
             root, record, eval_dir or [Path.home() / ".co/evals"]), quiet=quiet)
@@ -432,22 +436,20 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
     return _logged(root, record, "investigate", lambda update: rem_investigate.investigate(
         root, record, title, handles, days=days or rem_investigate.window_since(text), clients=clients,
         subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped,
-        stage_progress=update), quiet=quiet)
+        stage_progress=update, retry_refused=retry_refused), quiet=quiet)
 
 
-# The first run investigates the owner and the recent, relevant pages, with
-# enough allowance for roughly 35 points of the runner's week. The target is
-# advisory: finish the selected cohort unless the configured weekly floor is
-# reached. --first-people, --first-projects and --first-orgs cap a kind.
-FIRST_RUN_TARGET_POINTS = 35
-FIRST_RUN_WORKERS = 12
+# The first run investigates the owner and every eligible mapped page. The
+# configured weekly budget is an advisory target here; explicit --first-*
+# flags cap a kind for a trial.
+FIRST_RUN_WORKERS = 10
 
 
 def _first_run_gate(root, config):
     """Before each first-run page: why not to start it, or ''.
 
     The configured weekly floor still protects the user's work. The first run
-    targets 35 points but does not abandon its selected pages at that point.
+    shows the configured budget as a target but does not abandon selected pages there.
     A runner without a meter can still finish the bounded cohort.
     """
     from ...rem import quota
@@ -493,14 +495,10 @@ def _first_project_rows(root, cap) -> list[dict]:
     return _capped(rows, cap)
 
 
-def _first_org_rows(root, cap, people: list[dict]) -> list[dict]:
-    """Organizations linked to the selected people, most relevant first."""
-    from ...rem.files import read_json, state_path
+def _first_org_rows(root, cap) -> list[dict]:
+    """Every pending mapped organization, most relevant first."""
     from ...rem.queue import order
-    selected = {row["record"] for row in people}
-    mapped = {row["record"]: row for row in read_json(state_path(root, "map.json"), {}).get("orgs", [])}
-    rows = [row for row in order(root, "orgs") if not row["recent"]
-            and selected.intersection(mapped.get(row["path"], {}).get("people") or [])]
+    rows = [row for row in order(root, "orgs") if not row["recent"]]
     return _capped(rows, cap)
 
 
@@ -868,10 +866,9 @@ def make_rem_app(factory):
             from ...rem import first_run
             from .rem_people import counted
             from ...rem.service import run_logs
-            recent = min(14, days)
-            people_rows = _first_people_rows(root, first_people, recent)
+            people_rows = _first_people_rows(root, first_people, days)
             project_rows = _first_project_rows(root, first_projects) if first_projects != 0 else []
-            org_rows = _first_org_rows(root, first_orgs, people_rows)
+            org_rows = _first_org_rows(root, first_orgs)
             from ...rem.queue import order
             skill_rows = _capped([row for row in order(root, "skills") if not row["recent"]], first_skills)
             total = first_run.plan(run_logs(root), owner=not reason, people=len(people_rows),
@@ -891,12 +888,16 @@ def make_rem_app(factory):
             steps += ([f"{counted(len(skill_rows), 'installed skill')} (source and retained run evidence)"] if skill_rows else [])
             if not steps:
                 return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
+            target = config["limits"]["investigation_quota_points"]
+            floor = config["limits"]["quota_floor_percent"]
             cost = (f"First run with {config['runner']} ({config['model']}): "
                     + ", ".join(steps) + f"; up to {FIRST_RUN_WORKERS} at a time.\n"
                     + "Estimate: " + first_run.announce(total, plan) + "\n"
-                    + f"Budget: about {FIRST_RUN_TARGET_POINTS}% of a weekly runner allowance is a planning "
-                    "target, not a stop. The selected investigation finishes even if it uses more; "
-                    "a runner without a weekly meter cannot verify the percentage.\n"
+                    + "Input estimate includes cached tokens; it is not weekly quota points.\n"
+                    + f"Budget: about {target}% of a weekly runner allowance is a planning "
+                    f"target, not a stop. Selected pages may continue past it until the {floor}% "
+                    "weekly safety floor; pages already in flight finish. A runner without a "
+                    "weekly meter cannot verify the percentage.\n"
                     "Controls: --first-people, --first-projects, --first-orgs and --first-skills cap a kind; Ctrl-C "
                     "keeps the map and completed pages; --no-investigate skips model work.")
             rem_look.say(rem_look.highlight(cost, counts=True), err=ctx.obj["json"], plain=cost)
@@ -945,23 +946,26 @@ def make_rem_app(factory):
                          days: Optional[int] = typer.Option(None, "--days", min=1),
                          quick: bool = typer.Option(False, "--quick", help="Bounded first pass for your own page"),
                          limit: Optional[int] = typer.Option(None, "--limit", min=0),
+                         workers: Optional[int] = typer.Option(None, "--workers", "-w", min=1, max=32,
+                                                               help="Number of concurrent investigation workers (default: 10 for full runs, 1 with limit/budget)"),
                          budget: Optional[int] = typer.Option(None, "--budget", min=1, max=100),
                          list_only: bool = typer.Option(False, "--list"),
                          recent_days: Optional[int] = typer.Option(None, "--recent-days", min=1),
-                         eval_dir: List[Path] = typer.Option([], "--eval-dir")):
+                         eval_dir: List[Path] = typer.Option([], "--eval-dir"),
+                         retry_refused: bool = typer.Option(False, "--retry-refused")):
         from ...rem.files import Notebook, RemError, read_json, state_path
         from ...rem import queue as rem_queue
         from ...rem.queue import CATEGORIES, order
-        # With a budget the budget is the bound; otherwise five pages, as before.
-        pages_limit = limit if limit is not None else (0 if budget else 5)
+        pages_limit = limit if limit is not None else 0
         runnable = (*CATEGORIES, "all")
         from ...rem.runner import RunFailed
         from ...rem.service import subscriptions
         clients_for, progress = _mail_clients, _mail_progress
+        effective_workers = workers if workers is not None else (1 if (limit or budget) else 10)
 
         def one(root, notebook, record):
             return _investigate_page(root, notebook, record, handle=handle, days=days, eval_dir=eval_dir,
-                                     progress=progress)
+                                     progress=progress, retry_refused=retry_refused)
 
         def overview(root):
             from ...rem.people_pages import queue as people_queue
@@ -1008,33 +1012,55 @@ def make_rem_app(factory):
                                else "not investigated") + (", skipped: this week" if row["recent"] else "") + ")"
                             for row in rows]
                 return {"category": category, "order": rows}, ["investigate", category]
+            from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
             notebook, done, stopped = Notebook(root), [], ""
             gate = budget_gate(root)
-            for number, row in enumerate(chosen, 1):
-                stopped = gate()
-                if stopped:
-                    rem_look.line(f"Stopped: {stopped}", err=True)
-                    break
-                rem_look.line(f"[{number}/{len(chosen)}] {row['path']}", err=True)
+            if chosen:
+                rem_look.line(f"Investigating {len(chosen)} of {len(queue)} pending {category} pages "
+                              f"with up to {min(effective_workers, len(chosen))} workers.", err=True)
+
+            def investigate_one(record):
                 try:
-                    one(root, notebook, row["path"])
-                    done.append({"page": row["path"], "outcome": "accepted"})
+                    one(root, notebook, record)
+                    return {"page": record, "outcome": "accepted"}
                 except RunFailed as error:
-                    done.append({"page": row["path"], "outcome": "refused", "why": str(error)})
+                    return {"page": record, "outcome": "refused", "why": str(error)}
                 except RemError as error:
                     from ...rem.investigate import NothingNew
                     outcome = "nothing_new" if isinstance(error, NothingNew) else "failed"
-                    done.append({"page": row["path"], "outcome": outcome, "why": str(error)})
+                    return {"page": record, "outcome": outcome, "why": str(error)}
+
+            pending, running = iter(chosen), {}
+            with ThreadPoolExecutor(max_workers=effective_workers) as pool:
+                while True:
+                    while len(running) < effective_workers and not stopped:
+                        row = next(pending, None)
+                        if row is None:
+                            break
+                        stopped = gate()
+                        if not stopped:
+                            running[pool.submit(investigate_one, row["path"])] = row
+                    if not running:
+                        break
+                    finished, _ = wait(running, return_when=FIRST_COMPLETED)
+                    for future in finished:
+                        running.pop(future)
+                        outcome = future.result()
+                        done.append(outcome)
+                        rem_look.line(f"[{len(done)}/{len(chosen)}] {outcome['page']}: {outcome['outcome']}", err=True)
+            if stopped:
+                rem_look.line(f"Stopped: {stopped}", err=True)
             skipped = [row["path"] for row in ranked() if row["recent"]]
             accepted = [row["page"] for row in done if row["outcome"] == "accepted"]
-            return ({"category": category, "pages": done, "skipped_recent": skipped,
-                     "left": max(len(queue) - len(done), 0), **({"stopped": stopped} if stopped else {})},
-                    ["show", accepted[0]] if accepted else ["logs"],
-                    any(row["outcome"] != "accepted" for row in done))
+            failed = any(row["outcome"] not in ("accepted", "nothing_new") for row in done)
+            return ({"category": category, "pages": done, "left": max(len(queue) - len(accepted), 0),
+                     **({"show_accepted": _next(ctx, ["show", accepted[0]])} if accepted else {}),
+                     **({"skipped_recent": skipped} if skipped else {}),
+                     **({"stopped": stopped} if stopped else {})},
+                    ["logs"] if failed else ["show", accepted[0]] if accepted else ["list", category], failed)
 
         def budget_gate(root):
-            """Before each page: why not to start it, or ''. Reads the Codex week
-            (#1843): the weekly budget, this run's --budget, and the floor."""
+            """Before each page: the weekly safety floor or an explicit --budget."""
             from ...rem import quota
             from ...rem.config import read_config
             from ...rem.service import now, run_logs
@@ -1057,6 +1083,8 @@ def make_rem_app(factory):
         def run(root):
             if quick and target != "me":
                 raise RemError("--quick is for `co rem investigate me` only")
+            if retry_refused and (not target or target in runnable or target == "me"):
+                raise RemError("--retry-refused needs one page: co rem investigate PAGE --retry-refused")
             if budget and target not in runnable:
                 raise RemError("--budget goes with a category: co rem investigate all --budget 10")
             if list_only and target not in runnable:
@@ -1072,7 +1100,7 @@ def make_rem_app(factory):
                 return run_people(ctx, root, limit=pages_limit, recent_days=recent_days or 14, days=days,
                                   list_only=list_only, gate=None if list_only else budget_gate(root),
                                   clients_for=clients_for, subscriptions=subscriptions, logged=_logged,
-                                  budget=budget)
+                                  budget=budget, workers=effective_workers)
             if target == "me":
                 return me(root)
             if target in runnable:
@@ -1090,7 +1118,8 @@ def make_rem_app(factory):
             return result, ["show", result["report"] if record.startswith("skills/") else record]
         retry = ["investigate", *([target] if target else []),
                  *(["--days", str(days)] if days is not None else []),
-                 *(["--quick"] if quick else [])]
+                 *(["--quick"] if quick else []),
+                 *(["--retry-refused"] if retry_refused else [])]
         _handle(ctx, run, ["investigate"], retry=retry, resume=retry)
 
     # ------------------------------------------------------------------- Read

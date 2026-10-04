@@ -149,12 +149,11 @@ def extract(items: list[dict], handles: list[str], *, owner: bool = False, timez
                 if at >= 0:   # a flattened invite is one long line: the window around the name
                     add(_row("Calendar", line[max(0, at - 60):at + 140] if len(line) > 200 else line, item, zone))
     if mail and not owner:
-        add(_row("First contact", _date(mail[0], zone), mail[0], zone))
         add(_row("Last contact", _date(mail[-1], zone), mail[-1], zone))
     return rows
 
 
-ORDER = ("Email", "Phone", "Links", "First contact", "Last contact", "Company domain", "Signature", "Calendar")
+ORDER = ("Email", "Phone", "Links", "Last contact", "Company domain", "Signature", "Calendar")
 
 
 def facts_item(rows: list[dict], timezone: str = "UTC") -> dict:
@@ -167,6 +166,7 @@ def facts_item(rows: list[dict], timezone: str = "UTC") -> dict:
                     "from: put it in its Facts field and cite that source id, not this item. Signature and "
                     "Calendar lines are the text itself: read the role, company, location or time zone from "
                     "them. Correct a fact only where the material contradicts it, and say so in "
-                    "Uncertainties; a phone, address, link or contact date left off the page is put back "
-                    f"after the turn. Contact and source dates use {timezone}; event dates are separate.\n"
+                    "Uncertainties; a phone, address, link or last-contact date left off the page is put back "
+                    f"after the turn. Dates use {timezone}; event dates are separate. The earliest "
+                    "retained mail does not establish first contact.\n"
                     + "\n".join(lines)}

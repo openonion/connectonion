@@ -197,6 +197,27 @@ def test_fixture_carries_original_source_and_bounded_conversation(tmp_path, monk
     assert "outlook:9a03f1c2be77" not in data["source_context"]
 
 
+def test_project_source_dialog_carries_the_mapped_session_folder(tmp_path, monkeypatch):
+    import json
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook, state_path
+    from connectonion.rem.project_material import retain_cited_sessions
+
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    prepare(tmp_path)
+    record, source = 'projects/work.md', 'codex:session:5121301'
+    Notebook(tmp_path).write(record, '# Work\n\n## Sources\n- [1] ' + source + ' — 2026-10-01\n')
+    retain_cited_sessions(tmp_path, [{'role': 'user', 'source': source,
+        'text': 'Research houses', 'timestamp': '2026-10-01T00:00:00Z'}], {source})
+    path = state_path(tmp_path, 'projects/work/messages.jsonl')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({'source': source, 'cwd': '/work/gtm'}) + '\n')
+
+    context = snapshot(tmp_path)['source_context'][source]
+    assert context['excerpt'] == 'Research houses'
+    assert context['mapped_session_folder'] == '/work/gtm'
+
+
 def test_hashed_mail_citations_resolve_native_provider_ids_without_migrating_them(tmp_path):
     import hashlib
     from connectonion.rem.config import prepare
@@ -231,7 +252,7 @@ def test_mail_source_dialog_keeps_a_reply_request_beyond_the_old_preview_limit(t
     prepare(tmp_path)
     native = 'long-reply-request'
     source = 'outlook:' + hashlib.sha256(native.encode()).hexdigest()[:12]
-    body = 'Background. ' * 80 + 'Please reply with the proposed time.'
+    body = 'Background. ' * 700 + 'Please reply with the proposed time.'
     write_json(message_path(tmp_path, 'outlook', native), {'id': native, 'provider': 'outlook', 'body': body})
     import json
     atomic_write(state_path(tmp_path, 'source-inventory.jsonl'), json.dumps({

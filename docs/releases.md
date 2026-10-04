@@ -23,6 +23,99 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a39** puts direct 44-pixel source links beside a cited Skill
+finding, so the specific original remains easy to open on a phone. Labelled
+private findings hide those links when the reader hides private passages. See
+[1.9.0a39 notes](releases/1.9.0a39.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a39'
+co rem open --local
+```
+
+Alpha **1.9.0a38** adds a within-source find and Next match control to long
+archived REM excerpts. It shows when an excerpt was truncated and searches only
+the text shown; saved source bodies and memory pages do not change. See
+[1.9.0a38 notes](releases/1.9.0a38.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a38'
+co rem open --local
+```
+
+Alpha **1.9.0a37** shows a compact Project purpose on changed Home cards,
+keeps the purpose's individual source links openable beside a clipped preview,
+and enlarges the desktop privacy control. Saved memories do not change. See
+[1.9.0a37 notes](releases/1.9.0a37.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a37'
+co rem open --local
+```
+
+Alpha **1.9.0a36** keeps paragraph and table-field separators when Outlook
+HTML mail becomes text. New REM source captures and `co outlook read` can show
+event times, reasons and follow-up clauses separately. Already saved excerpts
+are not rewritten. See [1.9.0a36 notes](releases/1.9.0a36.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a36'
+co rem open --live
+```
+
+Alpha **1.9.0a35** puts the full-size source action beside the useful lead
+on written REM pages. In a five-type 375×812 trial, each action fit within
+the first viewport and still opened Sources. See
+[1.9.0a35 notes](releases/1.9.0a35.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a35'
+co rem open --live
+```
+
+Alpha **1.9.0a34** speeds scoped REM investigations by reusing a private
+parsed window of typed coding-session inputs. On one 90-day notebook, a
+source-only repeat in a new process fell from 103.5 to 2.1 seconds while
+finding the same 4,957 messages. See
+[1.9.0a34 notes](releases/1.9.0a34.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a34'
+co rem open --live
+```
+
+Alpha **1.9.0a33** keeps Person first-contact facts and the People index tied
+to evidence, updates first-run token and quota guidance from measured samples,
+and shortens the release path without skipping its test gate. See
+[1.9.0a33 notes](releases/1.9.0a33.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a33'
+```
+
+Alpha **1.9.0a32** keeps Skill pages tied to their invocation names, makes
+cited run parts and local output files openable in the owner-only reader, and
+labels intended outcomes separately from observed work. See
+[1.9.0a32 notes](releases/1.9.0a32.md).
+
+The a30 tag did not publish to PyPI after its release CI failed; see
+[#2253](https://github.com/openonion/connectonion/issues/2253). Its full-cohort
+changes are included in a31.
+
+Earlier alpha previews remain available:
+
+Alpha **1.9.0a31** checks Project claims against their adjacent originals
+before replacing a page, supports deliberate retry, and includes the a30
+full-cohort onboarding code. See [1.9.0a31 notes](releases/1.9.0a31.md).
+
+Alpha **1.9.0a29** puts the mapped-page investigate action within phone reach
+on the first screen. See [1.9.0a29 notes](releases/1.9.0a29.md).
+
+Alpha **1.9.0a28** implements context over control in `co rem investigate`:
+pre-authorizes local search and shell tools upfront, supplies live project
+repository paths, and records full audit provenance. See
+[1.9.0a28 notes](releases/1.9.0a28.md).
+
 Alpha **1.9.0a27** keeps institutional and service desk senders out of the
 People notebook and filters dated scratch tasks and prompt fragments from the
 Projects notebook unless they have project evidence. See
