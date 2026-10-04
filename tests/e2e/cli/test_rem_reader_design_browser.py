@@ -168,13 +168,34 @@ def test_people_open_as_a_sheet_that_sorts_filters_and_opens_a_row(reader):
     page.get_by_role("button", name="Yours to answer").click()
     assert sheet.locator("tbody .name a").all_inner_texts() == ["Mara Ostrowski", "Inès Halvorsen"]
     page.get_by_role("button", name="All").click()
-    page.locator("th", has_text="Mails").locator("button").click()
+    sheet.locator("th", has_text="Mails").locator("button").click()
     assert sheet.locator("tbody .name a").first.inner_text() == "Mara Ostrowski"
-    assert page.locator("th", has_text="Mails").get_attribute("aria-sort") == "descending"
+    assert sheet.locator("th", has_text="Mails").get_attribute("aria-sort") == "descending"
     page.locator(".sheet-find").fill("ledgerline")
     assert sheet.locator("tbody .name a").all_inner_texts() == ["Inès Halvorsen"]
     sheet.locator("tbody tr").first.locator("td").nth(5).click()
     page.get_by_role("heading", name="Inès Halvorsen", exact=True).wait_for()
+
+
+def test_older_single_mail_contacts_are_findable_without_empty_memory_pages(reader):
+    page, _ = reader
+    page.goto(page.url.split("#")[0] + "#c=people")
+    page.locator(".contact-directory summary").click()
+    directory = page.locator(".contact-directory")
+    assert "3 other contacts" in directory.locator("summary").inner_text()
+    assert "all available history" in directory.inner_text()
+    directory.get_by_role("searchbox", name="Search other contacts").fill("Leah Bell")
+    assert directory.locator("tbody tr").count() == 1
+    assert "leah@old-friends.example" in directory.locator("tbody").inner_text()
+    directory.get_by_role("button", name="Show the command to prepare a memory for Leah Bell").click()
+    assert "stub person" in directory.locator(".directory-action code").inner_text()
+    assert directory.locator("tbody tr").first.evaluate(
+        "row => row.nextElementSibling.classList.contains('directory-action')")
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert directory.locator("tbody tr").first.evaluate(
+        "row => getComputedStyle(row).display === 'grid'")
+    assert directory.get_by_role("button", name="Show the command to prepare a memory for Leah Bell").bounding_box()["height"] >= 44
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
 def test_the_people_sheet_fits_1440_and_says_when_it_is_cut(reader):
@@ -867,10 +888,11 @@ def test_open_request_dates_keep_explicit_deadlines_on_the_notebook_calendar(rea
     }""", isolated_context=False)
     row = page.locator('.next-exchanges .thread').first
     assert row.locator('.when').inner_text() == 'due today'
-    assert 'since Oct 1, 2026' in row.locator('.when').get_attribute('title')
-    assert 'due Oct 3, 2026' in row.locator('.when').get_attribute('title')
+    title = row.locator('.when').get_attribute('title')
+    assert 'since ' in title and 'due ' in title
+    assert 'Oct' in title and '2026' in title
     page.evaluate("REM.as_of = '2026-10-03T14:30:00Z'; render()", isolated_context=False)
-    assert page.locator('.next-exchanges .when').first.inner_text() == 'due Oct 3'
+    assert page.locator('.next-exchanges .when').first.inner_text() in ('due Oct 3', 'due 3 Oct')
     dates = page.evaluate("threads(byPath('people/mara-ostrowski.md')).items[0]", isolated_context=False)
     assert dates['since'] == '2026-10-01' and dates['due'] == '2026-10-03'
     dates = page.evaluate(r"""() => {

@@ -165,7 +165,8 @@ def _count_owner_names(row: dict, own: bool, mine: set, names: dict) -> None:
 
 
 def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
-                on_row=None, on_window=None, own_names=None) -> list[dict]:
+                on_row=None, on_window=None, own_names=None, *, all_history: bool = False,
+                on_error=None, own_addresses_complete: bool = False) -> list[dict]:
     """Every correspondent across every mailbox, with the signals a Skill ranks by.
 
     `own_names`, {"addressed": Counter, "sent": Counter}, is given what the
@@ -175,10 +176,14 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
     it on every sent mail; correspondents wrote "Aaron Xie".
     """
     mine = {a.lower() for a in own_addresses}
-    for client in clients.values():
-        mine |= {a.lower() for a in client.my_addresses()}
+    if not own_addresses_complete:
+        for client in clients.values():
+            mine |= {a.lower() for a in client.my_addresses()}
     end = datetime.now(timezone.utc)
-    start = end - timedelta(days=days)
+    start = datetime(1970, 1, 1, tzinfo=timezone.utc) if all_history else end - timedelta(days=days)
+    # A year at a time keeps a lifetime scan observable. The provider's 200
+    # item cap is still split recursively by _list_all.
+    window = timedelta(days=366 if all_history else 7)
     people = collections.defaultdict(lambda: {"names": collections.Counter(), "greetings": collections.Counter(),
                                               "mails": 0, "sent": 0,
                                               "received": 0, "first": "", "last": "", "boxes": set(),
@@ -188,11 +193,26 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
     for kind, client in clients.items():
         cursor = start
         while cursor < end:
-            stop = min(cursor + timedelta(days=7), end)
+            stop = min(cursor + window, end)
             # Both providers cap a listing at 200, but at opposite ends of the
             # window. Reuse the importer that bisects a full window until every
             # message in this interval has been enumerated.
-            rows = _list_all(client, cursor, stop)
+            failed = []
+            def error_window(since, until, error):
+                failed.append((since, until))
+                if on_error is not None:
+                    on_error(kind, since, until, error)
+            try:
+                rows = _list_all(client, cursor, stop,
+                                 on_error=error_window if all_history and on_error is not None else None)
+            except Exception as error:
+                if not all_history or on_error is None or 'timeout' not in type(error).__name__.lower():
+                    raise
+                # Keep every completed year and mark this one incomplete; do
+                # not turn a provider timeout into a false "all people" claim.
+                on_error(kind, cursor, stop, error)
+                cursor = stop
+                continue
             for row in rows:
                 if on_row:
                     on_row(kind, row)
@@ -229,7 +249,7 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
             if progress:
                 progress(kind, stop, len(people))
             if on_window:
-                on_window(kind, cursor.isoformat(), stop.isoformat(), len(rows), 200, True)
+                on_window(kind, cursor.isoformat(), stop.isoformat(), len(rows), 200, not failed)
             cursor = stop
     saved = _contact_names(clients)
     out = []

@@ -270,6 +270,19 @@ def test_first_start_consents_installs_and_runs_one_batch_then_repeat_start_does
     assert len(calls) == 1
 
 
+def test_init_can_start_the_schedule_without_repeating_its_first_batch(tmp_path, monkeypatch):
+    from connectonion.rem.service import start
+    root, sessions = tmp_path / "rem", tmp_path / "sessions"
+    monkeypatch.setattr("connectonion.rem.service.codex_sessions_root", lambda: sessions)
+    rollout(sessions / "rollout-a.jsonl", [("user", "hello")])
+    calls, scheduler = [], FakeScheduler()
+    result = start(root, confirm=lambda summary: True, scheduler=scheduler,
+                   runner=_runner_recording(calls), run_first_batch=False)
+    assert result["started"] is True and result["first_batch"] is None
+    assert calls == [] and scheduler.installed == [root.resolve()]
+    assert state_path(root, "consent.json").is_file()
+
+
 def test_stop_disables_background_but_manual_sync_still_works(tmp_path, monkeypatch):
     from connectonion.rem.service import start, stop
     root, sessions = tmp_path / "rem", tmp_path / "sessions"

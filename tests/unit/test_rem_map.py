@@ -335,6 +335,27 @@ def test_coverage_separates_scanned_empty_from_never_scanned(tmp_path):
     assert f'claude-code: {off} — disabled; not scanned' in coverage
 
 
+def test_transient_account_timeout_does_not_hide_a_mailbox(tmp_path, monkeypatch):
+    from connectonion.rem.map import _mail_rows
+    monkeypatch.setattr('time.sleep', lambda seconds: None)
+
+    class Mail:
+        calls = 0
+        def my_addresses(self):
+            self.calls += 1
+            if self.calls == 1:
+                raise TimeoutError('temporary')
+            return {'me@example.org'}
+        def list_between(self, start, end, limit):
+            return []
+
+    mail, coverage, errors = Mail(), [], []
+    rows, own = _mail_rows({'gmail': mail}, 1, set(), coverage, errors)
+    assert rows == [] and own == {'me@example.org'}
+    assert mail.calls == 2 and not errors
+    assert 'no correspondents in this window' in coverage[0]
+
+
 def test_the_map_reports_the_absence_reason_it_was_given(tmp_path):
     """Why a mailbox is missing is the command layer's knowledge; the map states it
     rather than guessing, and still says something true when told nothing."""

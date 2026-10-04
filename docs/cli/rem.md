@@ -49,7 +49,7 @@ instead of summarising is
 ```bash
 co rem init                 # Map sources, then investigate your people, work and installed skills
 co rem open                 # Read your page
-co rem start                # Keep it current: approve sources, turn on the daily round
+co rem start                # Reapprove changed sources or resume a stopped daily round
 ```
 
 The first run is one command (#1943). `init` first maps 90 days of
@@ -76,6 +76,20 @@ read 150 days at the time; a real contact went back 15 months, so the window is
 now two years. The mail is searched, not pasted: a wider window widens what the
 model can find, not what every turn reads. `--first-people N`,
 `--first-projects N`, `--first-orgs N` and `--first-skills N` cap a kind (0 for none).
+
+For a historical census, `co rem init --all-history --investigate-all
+--estimate-only` lists connected mail metadata since 1970 and local session
+history, then forecasts every mapped person and project without a model turn
+or body archive. Yearly mail listings still split past the provider cap; a
+timeout is retried in smaller windows and any missing day is marked incomplete.
+The People reader also shows one-off correspondents in a separate searchable
+directory, labelled as unreviewed contacts rather than as established people.
+`--investigate-all` also enables the historical map when used alone. Without
+`--estimate-only` it selects all eligible mapped pages, but the
+weekly safety floor still stops new starts. Each person currently retains its
+per-page source window; reading back to the first mapped message is tracked in
+draft PR #2209. An all-history map archives only the most recent 90 days of
+mail bodies; older material is fetched for a selected investigation.
 
 Before it spends anything it says one total (#2008): which runner and model,
 that it runs on your own plan, and "About N pages (...), ~X billed input tokens,
@@ -162,10 +176,15 @@ Piping human output does not hide the next step. Grouped help covers:
 | Sources and background | `sources`, `sources add`, `sources remove`, `start`, `stop` |
 | Settings and diagnostics | `config`, `config set`, `logs`, `doctor` |
 
-`start` explicitly authorizes collection and installs background maintenance
-plus at most one unfinished-page investigation per local day when the day's
-call budget allows;
-`init` does neither. A mapped page is not an investigated or quality-approved page.
+After the first run, `init` offers the same source and schedule approval as
+`start`, then installs background maintenance without repeating the first sync.
+In a script, `init --yes` supplies that approval; without it the foreground
+result remains available and scheduling is deferred. `init --no-start` leaves
+background work off, and `init --estimate-only` never grants consent or schedules.
+`start` can reapprove changed sources or resume a stopped schedule. The daily
+round investigates at most one unfinished page per local day when its call
+budget allows.
+A mapped page is not an investigated or quality-approved page.
 For an initial trial, `co rem init --days 5` investigates your page over the same
 five-day window. `investigate me --quick` is the older bounded pass: it samples
 recent evidence, takes one synthesis turn, and marks its coverage as partial.
@@ -434,8 +453,8 @@ To see every view on an invented notebook, light and dark, desktop and phone:
 `tests/fixtures/rem_reader_notebook.py`; `--root COPY` renders a copy of a
 real notebook, and those screenshots stay local).
 
-`init` is the foreground Skill workflow. `start` remains the explicit
-background lifecycle command; initialization does not install a schedule.
+`init` is the foreground Skill workflow and offers the background schedule at
+the end. `start` remains the explicit command to resume or change that schedule.
 Map is a stage inside rem-init, not a separate model runner.
 
 Map reads known information before leaving basic fields unknown. It uses the
@@ -741,15 +760,21 @@ to add People. To restrict mapping to a specific mailbox:
 co rem init --mail outlook
 # or: co rem init --mail gmail
 co rem init --days 5       # small first-run trial
+co rem init --all-history --investigate-all --estimate-only  # historical census and cost preview
 co rem open
 ```
 
 This lists 90 days of mail by default: correspondent metadata plus the short
 preview the provider lists with each message. A seven-day window that fills the
 provider's 200-message listing cap is split until every message in it is
-listed, so a busy week is no longer cut off at 200 without a word. Init does not
-install a schedule. It subscribes the mailboxes it read, so `start` offers them,
-but nothing is read in the background until `start` is approved.
+listed, so a busy week is no longer cut off at 200 without a word. Init offers
+the schedule after its first run and subscribes the mailboxes it read. Nothing
+is read in the background until that source and schedule summary is approved.
+
+The historical census may take several minutes and can be a lower bound when
+one mailbox is unavailable. The status and private source inventory name every
+failed mailbox or time window. A contact seen only once remains findable in the
+reader's unreviewed directory without creating an empty person page.
 
 #### Private mail materials
 

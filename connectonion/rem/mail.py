@@ -195,7 +195,7 @@ def _scan(subscription: dict, progress: dict, client, mine: set, end: datetime) 
     return updated
 
 
-def _list_all(client, start: datetime, end: datetime) -> list:
+def _list_all(client, start: datetime, end: datetime, *, on_error=None) -> list:
     """Every mail in [start, end), however many there are.
 
     A full listing means there may be more, and nothing after it asks again: a
@@ -206,7 +206,23 @@ def _list_all(client, start: datetime, end: datetime) -> list:
     half fits works for both.
     """
     listing = getattr(client, 'list_between_for_rem', client.list_between)
-    rows = listing(start.isoformat(), end.isoformat(), LISTING_LIMIT)
+    try:
+        rows = listing(start.isoformat(), end.isoformat(), LISTING_LIMIT)
+    except Exception as error:
+        # A real all-history Outlook scan reached 2010 and lost its whole map
+        # when a year-wide listing timed out. Smaller queries often succeed.
+        # Auth and other errors still surface; a one-day timeout is incomplete.
+        if 'timeout' not in type(error).__name__.lower():
+            raise
+        if end - start <= timedelta(days=1):
+            if on_error is not None:
+                on_error(start, end, error)
+                return []
+            raise
+        middle = start + timedelta(seconds=(end - start).total_seconds() // 2)
+        unique = {row['id']: row for row in _list_all(client, start, middle, on_error=on_error)
+                  + _list_all(client, middle, end, on_error=on_error)}
+        return list(unique.values())
     if len(rows) < LISTING_LIMIT:
         return rows
     # Whole seconds: Gmail's search takes epoch seconds, so a finer split asks the same question twice.
@@ -214,7 +230,8 @@ def _list_all(client, start: datetime, end: datetime) -> list:
     if middle <= start:
         raise RemError(f"The mailbox lists more than {LISTING_LIMIT} mails in the second at {start.isoformat()}; "
                         "the scan stopped there rather than skip any of them")
-    unique = {row["id"]: row for row in _list_all(client, start, middle) + _list_all(client, middle, end)}
+    unique = {row["id"]: row for row in _list_all(client, start, middle, on_error=on_error)
+              + _list_all(client, middle, end, on_error=on_error)}
     return list(unique.values())
 
 

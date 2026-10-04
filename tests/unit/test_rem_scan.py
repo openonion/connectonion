@@ -55,6 +55,26 @@ def test_a_named_corecipient_can_identify_an_existing_outgoing_contact(reply_fir
     assert "me@x.y" not in people
 
 
+def test_all_history_finds_old_people_and_splits_full_provider_listings():
+    class Capped(Box):
+        def list_between(self, start, end, n):
+            return super().list_between(start, end, n)[:n]
+
+    rows = [{"id": "old", "from": "Old Friend <old@example.org>", "to": ["me@x.y"],
+             "cc": [], "date": "1998-06-01T00:00:00+00:00", "subject": "hello"}]
+    rows += [{"id": f"recent-{n}", "from": "New Friend <new@example.org>", "to": ["me@x.y"],
+              "cc": [], "date": f"2025-02-{1 + n % 25:02d}T00:00:00+00:00", "subject": "hello"}
+             for n in range(211)]
+    observed, windows = [], []
+    people = scan_people({"gmail": Capped("me@x.y", rows)}, 90, set(),
+                         on_row=lambda provider, row: observed.append(row["id"]),
+                         on_window=lambda *args: windows.append(args), all_history=True)
+    assert {row["address"]: row["mails"] for row in people} == {
+        "old@example.org": 1, "new@example.org": 211}
+    assert len(observed) == len(set(observed)) == 212
+    assert any(window[1].startswith("1998") for window in windows)
+
+
 def test_signals_are_handed_over_and_verdicts_are_not():
     rows = [{"id": "1", "from": "no-reply.products@edm.bank.au", "to": ["me@x.y"], "cc": [], "date": "2026-09-10", "subject": "Statement"},
             {"id": "2", "from": "no-reply.products@edm.bank.au", "to": ["me@x.y"], "cc": [], "date": "2026-09-11", "subject": "Statement"},

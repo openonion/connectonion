@@ -381,6 +381,31 @@ def test_start_yes_then_stop(lifecycle):
     assert _CliScheduler.uninstalled and "start" in stopped.output.split("Next:")[1]
 
 
+def test_init_offers_start_and_yes_installs_without_a_duplicate_sync(lifecycle, monkeypatch):
+    root, sessions, calls = lifecycle
+    monkeypatch.setattr("connectonion.rem.service.run_sync", lambda *a, **kw: pytest.fail("init repeated sync"))
+    deferred = invoke(root, "--json", "init", "--no-investigate")
+    assert deferred.exit_code == 0, deferred.output
+    assert json.loads(deferred.stdout)["data"]["background"]["started"] is False
+    assert not (root / ".state" / "consent.json").exists()
+    approved = invoke(root, "--json", "init", "--no-investigate", "--yes")
+    assert approved.exit_code == 0, approved.output
+    assert json.loads(approved.stdout)["data"]["background"]["started"] is True
+    assert (root / ".state" / "consent.json").is_file()
+    assert _CliScheduler.installed[-1] == root.resolve() and calls == []
+
+
+def test_init_estimate_and_no_start_leave_the_scheduler_alone(lifecycle):
+    root, sessions, calls = lifecycle
+    _CliScheduler.installed.clear()
+    for args in (("--estimate-only", "--yes"), ("--no-investigate", "--no-start", "--yes")):
+        result = invoke(root, "--json", "init", *args)
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.stdout)["data"]["background"]["started"] is False
+    assert _CliScheduler.installed == []
+    assert not (root / ".state" / "consent.json").exists()
+
+
 def test_subscribe_and_unsubscribe_round_trip(lifecycle):
     root, sessions, calls = lifecycle
     result = invoke(root, "subscribe", "codex", "--project", str(sessions.parent), "--since", "30d")

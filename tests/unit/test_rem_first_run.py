@@ -257,7 +257,8 @@ def test_init_ends_with_what_is_in_the_notebook_what_was_written_and_what_is_nex
     assert tail[0] == "Your notebook: 4 people, 3 organizations, 0 projects and 0 skills."
     assert tail[1] == "Written this run: your page, 1 person and 1 organisation page."
     assert tail[2].startswith("Your page: ") and tail[2].endswith(".md")
-    assert tail[3].startswith(f"Then keep it current: co rem --root {root} start")
+    assert tail[3].startswith("Background upkeep: Background upkeep needs approval.")
+    assert f"co rem --root {root} start --yes" in tail[3]
     assert tail[4] == f"Next: co rem --root {root} open"
 
 
@@ -597,6 +598,36 @@ def test_the_first_run_writes_every_page_and_a_flag_caps_a_kind(people, monkeypa
     assert len(projects_written) == 3 and people_written == ["people/p0.md"]
     plan = json.loads(result.stdout)["data"]["first_run"]
     assert plan["counts"] == {"owner": 1, "person": 1, "project": 3, "org": 0}
+
+
+def test_all_history_estimate_maps_without_model_turns_or_body_archive(first_run):
+    root, init, calls = first_run
+    result = init("--investigate-all", "--estimate-only", "--first-orgs", "0", "--json")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert data["all_history"] and data["estimate_only"]
+    assert data["first_run"]["counts"]["owner"] == 1
+    assert data["first_run"]["counts"]["person"] >= 1
+    assert calls == []
+    assert not (root / ".state/mail/archive.json").exists()
+    assert "all available history since 1970" in (root / ".state/source-inventory.md").read_text()
+
+
+def test_all_history_estimate_marks_a_failed_mailbox_as_a_lower_bound(first_run, monkeypatch):
+    root, init, calls = first_run
+    monkeypatch.setattr("time.sleep", lambda seconds: None)
+
+    class Down:
+        def my_addresses(self): raise TimeoutError("mailbox unavailable")
+
+    monkeypatch.setattr("connectonion.rem.service.mail_client", lambda kind, **kw: Down())
+    result = init("--all-history", "--investigate-all", "--estimate-only", "--name", "Ada Owner", "--json")
+    assert result.exit_code == 1, result.output
+    data = json.loads(result.stdout)["data"]
+    assert data["estimate_only"] and data["first_run"]["source_coverage"] == "incomplete"
+    assert data["errors"][0]["stage"] == "account"
+    assert calls == []
+    assert not (root / ".state/mail/archive.json").exists()
 
 
 def test_the_estimate_is_the_median_of_this_notebooks_own_runs():

@@ -35,6 +35,31 @@ def test_rem_uses_deferred_full_window_and_lists_each_mail_after_split(monkeypat
     assert len(calls) == 3
 
 
+def test_timeout_splits_history_and_preserves_other_days():
+    from connectonion.rem.mail import _list_all
+
+    class ReadTimeout(Exception):
+        pass
+
+    rows = [{"id": str(day), "date": f"2026-01-{day:02d}T12:00:00+00:00"}
+            for day in range(1, 9)]
+
+    class Client:
+        def list_between(self, start, end, limit):
+            if (datetime.fromisoformat(end) - datetime.fromisoformat(start)).days > 2:
+                raise ReadTimeout("wide query")
+            if start[:10] <= "2026-01-03" < end[:10]:
+                raise ReadTimeout("one day unavailable")
+            return [row for row in rows if start <= row["date"] < end][:limit]
+
+    errors = []
+    found = _list_all(Client(), datetime(2026, 1, 1, tzinfo=timezone.utc),
+                      datetime(2026, 1, 9, tzinfo=timezone.utc),
+                      on_error=lambda start, end, error: errors.append((start, end)))
+    assert {row["id"] for row in found} == {"1", "2", "4", "5", "6", "7", "8"}
+    assert len(errors) == 1 and errors[0][0].date().isoformat() == "2026-01-03"
+
+
 class FakeMail:
     """The two calls an adapter needs: a date-bounded ascending listing and one body."""
 
