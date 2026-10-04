@@ -462,13 +462,13 @@ def _capped(rows: list, cap) -> list:
     return rows if cap is None else rows[:cap]
 
 
-def _first_people_rows(root, cap, recent_days: int) -> list[dict]:
+def _first_people_rows(root, cap, recent_days: int, *, all_people: bool = False) -> list[dict]:
     """Eligible people in queue order, recent first; automated and own addresses excluded."""
     from ...rem.people_pages import queue
     return _capped(queue(root, recent_days=recent_days), cap)
 
 
-def _first_project_rows(root, cap) -> list[dict]:
+def _first_project_rows(root, cap, *, all_projects: bool = False) -> list[dict]:
     """Unwritten messages, then mapped projects with readable local evidence."""
     from ...rem.files import Notebook
     from ...rem.investigate import project_file_inventory
@@ -723,6 +723,9 @@ def make_rem_app(factory):
                   name: str = typer.Option("", "--name"),
                   archive_mail: bool = typer.Option(True, "--archive-mail/--no-mail-archive"),
                   write_mine: Optional[bool] = typer.Option(None, "--investigate/--no-investigate"),
+                  all_history: bool = typer.Option(False, "--all-history", help="Map every available mail year; archive only recent bodies"),
+                  investigate_all: bool = typer.Option(False, "--investigate-all", help="Select every mapped person and project, subject to the safety floor"),
+                  estimate_only: bool = typer.Option(False, "--estimate-only", help="Map and estimate the selected work without model turns or body archive"),
                   first_people: Optional[int] = typer.Option(None, "--first-people", min=0),
                   first_projects: Optional[int] = typer.Option(None, "--first-projects", min=0),
                   first_orgs: Optional[int] = typer.Option(None, "--first-orgs", min=0),
@@ -743,6 +746,8 @@ def make_rem_app(factory):
             config = read_config(root)
             problem, fix = rem_runner.ready(config)
             window = [] if days == 90 else ["--days", str(days)]
+            init_window = [*window, *(["--all-history"] if all_history else [])]
+            map_days = 36500 if all_history else days
             sources = subscriptions(root)
             from ...rem.files import RemError
             selected = set(mail)
@@ -764,13 +769,13 @@ def make_rem_app(factory):
                     errors.append({"source": kind, "stage": "client", "error": type(error).__name__})
             failed = {row["source"]: row["error"] for row in errors}
             # One line per stage on the terminal; every step in the log (#1943).
-            progress = StageProgress(log=state_path(root, "init-progress.log"), quiet=ctx.obj["json"], days=days)
+            progress = StageProgress(log=state_path(root, "init-progress.log"), quiet=ctx.obj["json"], days=map_days)
             try:
-                result = build_map(root, sources, clients, days=days,
+                result = build_map(root, sources, clients, days=map_days, all_history=all_history,
                                    skill_directories=skills_dir or None, mine=owned, source_errors=errors,
                                    absent=_absent_mail(selected, available, failed, sources, bool(mail)), name=name,
                                    capture_sources=True, progress=progress)
-                if archive_mail and result.get("source_inventory"):
+                if archive_mail and not estimate_only and result.get("source_inventory"):
                     from ...rem.files import read_json, write_json
                     from ...rem.mail_archive import archive_init
                     previous = read_json(state_path(root, "mail/archive.json"), {})
@@ -781,7 +786,8 @@ def make_rem_app(factory):
                                        "target": previous.get("target", 0),
                                        "reason": "Current mail enumeration unavailable; previous private archive retained"}
                     else:
-                        body_report = archive_init(root, result, clients, progress=progress)
+                        body_report = archive_init(root, result, clients, progress=progress,
+                                                   archive_days=90 if all_history else None)
                     result["mail_archive"] = body_report
                     write_json(state_path(root, "map.json"), result)
             finally:
@@ -799,7 +805,7 @@ def make_rem_app(factory):
             for kind, provider in (("gmail", "google"), ("outlook", "microsoft")):
                 if kind not in available:
                     tips.append(f"Connect {provider.title()} for People: co auth {provider}; then run "
-                                + _next(ctx, ["init", *window]) + ".")
+                                + _next(ctx, ["init", *init_window]) + ".")
             if result.get("needs_review"):
                 tips.append(f"Held for review, not investigated or listed (no name, never replied): "
                             f"{len(result['needs_review'])}. See " + _next(ctx, ["list", "people", "--review"]))
@@ -818,7 +824,7 @@ def make_rem_app(factory):
                     + ", ".join(f"{row['address']} ({row['sent']} sent, none received)" for row in shown)
                     + (f", and {more} more in .state/map.json" if more else "")
                     + ".\nConfirm the ones that are yours in one run: "
-                    + _next(ctx, ["init", *window, "--mine", ",".join(row["address"] for row in shown)])
+                    + _next(ctx, ["init", *init_window, "--mine", ",".join(row["address"] for row in shown)])
                     + " (leave out an assistant's or a relative's; nothing is merged without --mine)."]
             summary = owner_summary(Notebook(root), result) if result.get("owner") else None
             if summary:
@@ -826,18 +832,20 @@ def make_rem_app(factory):
             if not selected:
                 result["people_setup"] = "No connected mail source. Local maps are ready; connect mail to add People."
             if result.get("errors"):
-                retry = ["init", *window]
+                retry = ["init", *init_window]
                 if mail:
                     retry += [part for kind in mail for part in ("--mail", kind)]
                 result["recovery"] = ("Check mailbox access with co auth status; retry init after resolving access. "
                                       "Completed maps and saved mail bodies are reused.")
-                _emit(ctx, result, retry, failed=True)
-                raise typer.Exit(1)
+                if not estimate_only:
+                    _emit(ctx, result, retry, failed=True)
+                    raise typer.Exit(1)
             result["runner"] = {"runner": config["runner"], "model": config["model"], "ready": not problem,
                                 **({"problem": problem, "fix": fix} if problem else {})}
             retry_me = ["investigate", "me", *window]
-            reason = _first_page_skipped(ctx, root, result, want=write_mine, problem=problem, fix=fix,
-                                         retry=retry_me, init=["init", *window])
+            reason = ("" if estimate_only else _first_page_skipped(
+                ctx, root, result, want=write_mine, problem=problem, fix=fix,
+                retry=retry_me, init=["init", *init_window]))
             if not ctx.obj["json"]:
                 # The map's summary and your page's facts first: value before any spending.
                 text = render(result, "init")
@@ -852,7 +860,7 @@ def make_rem_app(factory):
             if reason:
                 result["investigate_me"] = {"started": False, "reason": reason}
                 say(reason)
-            if skipped:
+            if skipped and not estimate_only:
                 result["people_pages"] = {"started": False, "reason": "People pages were not written: " + skipped}
                 result["project_pages"] = {"started": False, "reason": "Project pages were not written: " + skipped}
                 if skipped not in (reason or ""):  # said once: the owner-page line may already say why
@@ -864,8 +872,8 @@ def make_rem_app(factory):
             from ...rem import first_run
             from .rem_people import counted
             from ...rem.service import run_logs
-            people_rows = _first_people_rows(root, first_people, days)
-            project_rows = _first_project_rows(root, first_projects) if first_projects != 0 else []
+            people_rows = _first_people_rows(root, first_people, days, all_people=investigate_all)
+            project_rows = _first_project_rows(root, first_projects, all_projects=investigate_all) if first_projects != 0 else []
             org_rows = _first_org_rows(root, first_orgs)
             from ...rem.queue import order
             skill_rows = _capped([row for row in order(root, "skills") if not row["recent"]], first_skills)
@@ -875,13 +883,18 @@ def make_rem_app(factory):
             result["first_run"] = {**total, "people": [row["record"] for row in people_rows],
                                    "projects": [row["record"] for row in project_rows],
                                    "orgs": [row["path"] for row in org_rows],
-                                   "skills": [row["path"] for row in skill_rows]}
+                                   "skills": [row["path"] for row in skill_rows],
+                                   "source_coverage": "incomplete" if result.get("errors") else "complete"}
             me_days = days if window else 30  # what `investigate me` reads without --days
             steps = ([f"your page (quick first, then full; {me_days} days of your mail and sessions)"]
                      if not reason else [])
             steps += ([f"{counted(len(people_rows), 'person', 'people')} "
-                       f"(recent first; up to two years of evidence each)"] if people_rows else [])
-            steps += ([f"{counted(len(project_rows), 'project')} (recent first)"] if project_rows else [])
+                       + ("(every mapped person; current source window per page)" if investigate_all else
+                          "(recent first; up to two years of evidence each)")]
+                      if people_rows else [])
+            steps += ([f"{counted(len(project_rows), 'project')}" +
+                       (" (every mapped project)" if investigate_all else " (recent first)")]
+                      if project_rows else [])
             steps += ([f"{counted(len(org_rows), 'related organisation')}"] if org_rows else [])
             steps += ([f"{counted(len(skill_rows), 'installed skill')} (source and retained run evidence)"] if skill_rows else [])
             if not steps:
@@ -899,6 +912,13 @@ def make_rem_app(factory):
                     "Controls: --first-people, --first-projects, --first-orgs and --first-skills cap a kind; Ctrl-C "
                     "keeps the map and completed pages; --no-investigate skips model work.")
             rem_look.say(rem_look.highlight(cost, counts=True), err=ctx.obj["json"], plain=cost)
+            if estimate_only:
+                result["estimate_only"] = True
+                state = ("Partial estimate: one or more sources failed; counts are a lower bound. "
+                         if result.get("errors") else "Estimate only: ")
+                say(state + "No model turn or mail body archive was started. The map and coverage are saved.")
+                return ((result if ctx.obj["json"] else _init_done(ctx, result)),
+                        ["init", *init_window], bool(result.get("errors")))
             gate = _first_run_gate(root, config)
             if not reason:
                 try:

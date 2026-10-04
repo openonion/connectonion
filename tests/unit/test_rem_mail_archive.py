@@ -456,6 +456,8 @@ def test_init_archive_is_private_resumable_and_people_read_it_without_listing(tm
     items, _ = gather("Other", ["other.org"], days=1, clients={}, subscriptions={},
                       archive_root=tmp_path, record="orgs/other.md")
     assert items == []
+
+
     class DeltaMail:
         calls = []
         attachments = []
@@ -477,6 +479,34 @@ def test_init_archive_is_private_resumable_and_people_read_it_without_listing(tm
     assert delta.calls[0][1] >= archive["range_end"]
     assert delta.attachments == ["shared", "reply"]
     assert any(item["role"] == "attachment" and item["text"] == "Decision attached" for item in items)
+
+
+def test_all_history_map_archives_recent_bodies_only(tmp_path):
+    prepare(tmp_path)
+    skills = tmp_path / "source-skills"
+    skills.mkdir()
+    recent = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    old = "1998-06-01T00:00:00+00:00"
+    rows = [{"id": "old", "date": old, "from": "old@example.org", "to": ["me@example.org"]},
+            {"id": "recent", "date": recent, "from": "recent@example.org", "to": ["me@example.org"]}]
+
+    class Mail:
+        read = []
+        def my_addresses(self): return {"me@example.org"}
+        def list_between(self, start, end, limit):
+            return [row for row in rows if start <= row["date"] < end][:limit]
+        def get_email_body(self, message_id):
+            self.read.append(message_id)
+            return "body"
+
+    mail = Mail()
+    report = build_map(tmp_path, {}, {"gmail": mail}, days=36500,
+                       all_history=True, skill_directories=[skills], capture_sources=True)
+    assert report["all_history"] and report["source_inventory"]["mail_observed"] == 2
+    archive = archive_init(tmp_path, report, {"gmail": mail}, archive_days=90)
+    assert archive["target"] == archive["saved"] == 1
+    assert mail.read == ["recent"]
+    assert "1998" not in (tmp_path / ".state/mail/summary.md").read_text()
 
 
 def test_init_archive_builds_project_source_file(tmp_path, monkeypatch):

@@ -317,7 +317,16 @@ def build(root: Path, now: datetime | None = None) -> Path:
              "first": _day(now, first), "last": _day(now, last), "one_way": False}
             for address, record, received, sent, first, last in mail]
     (root / ".state").mkdir(exist_ok=True)
-    (root / ".state" / "map.json").write_text(json.dumps({"people": rows, "owner": {"record": "people/avery-lin.md"}}))
+    other = [{"address": "leah@old-friends.example", "name": "Leah Bell", "mails": 1,
+              "sent": 1, "received": 0, "last": _day(now, 610)},
+             {"address": "ivy@fieldwork.example", "name": "Ivy Chen", "mails": 1,
+              "sent": 0, "received": 1, "last": _day(now, 390)},
+             {"address": "hello@single-note.example", "name": "", "mails": 1,
+              "sent": 1, "received": 0, "last": _day(now, 950)}]
+    (root / ".state" / "map.json").write_text(json.dumps({
+        "people": rows, "without_page": other, "all_history": True,
+        "automated_correspondents": [{"address": "notice@robot.example"}],
+        "owner": {"record": "people/avery-lin.md"}}))
     runs = root / ".state" / "runs"
     runs.mkdir(parents=True, exist_ok=True)
     for i, run in enumerate(_runs(now)):

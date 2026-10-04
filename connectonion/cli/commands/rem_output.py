@@ -230,8 +230,9 @@ def _init_text(value: dict, failed: bool) -> str:
 
     def labelled(label, text):
         return label + ' ' * (COLUMN - len(label)) + text
+    scope = ('all available history' if value.get('all_history') else f"{value.get('days', '?')} days")
     title = 'co rem init' + (' — needs attention' if failed else
-                             f" · {value.get('phase', 'unknown')} · {value.get('days', '?')} days")
+                             f" · {value.get('phase', 'unknown')} · {scope}")
     lines = [title, '', *(labelled(label, f"{number:,}".rjust(wide) + tail) for label, number, tail in counts),
              labelled('Detailed map', '.state/map.json in this notebook, or rerun with --json')]
     for error in value.get('errors') or []:

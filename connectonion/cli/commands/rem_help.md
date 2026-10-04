@@ -63,6 +63,12 @@ and installed skills from their source instructions and retained run evidence,
 10 pages at a time. The result should let you recognize useful relationships
 and work immediately, with evidence cited on each page.
 --first-people, --first-projects, --first-orgs and --first-skills cap a kind (0 for none).
+`--all-history` maps available mail metadata since 1970 and local session
+history, while keeping the first mail-body archive to 90 days. `--investigate-all`
+selects every mapped person and project instead of only the recent cohort;
+each person still uses its current per-page source window. `--estimate-only`
+builds the map and prints that selection's cost without a model turn or body
+archive. A mailbox error makes the estimate a clearly marked lower bound.
 Before the first page it says one total: about how many pages, ~how many billed
 input tokens on your plan and ~how many minutes, an estimate from the median of
 this notebook's own runs (before there are any, measured defaults). It names the
@@ -76,6 +82,7 @@ already written. Later new evidence: co rem investigate all.
 
 Usage:    co rem init [--days N] [--mine ADDRESS[,ADDRESS...]] [--name NAME] [--mail gmail|outlook]...
                        [--no-mail-archive] [--investigate | --no-investigate]
+                       [--all-history] [--investigate-all] [--estimate-only]
                        [--first-people N] [--first-projects N] [--first-orgs N] [--first-skills N]
 Example:  co rem init --days 90 --name "Aaron Xie" --mine aaron@mail.openonion.ai,aaron@openonion.ai
 
@@ -85,6 +92,9 @@ Inputs:   Connected mailboxes (co auth google, co auth microsoft) and local Code
           one command that confirms the ones you keep.
 Options:  --investigate     Explicitly request the default investigation.
           --no-investigate  Build the map only.
+          --all-history    Discover all available mail years; recent bodies only.
+          --investigate-all Select every mapped person and project; quota floor still applies.
+          --estimate-only  Map and forecast, with no model turns or body archive.
           --first-people N    Cap eligible people (default all selected; 0 for none).
           --first-projects N  Cap queued projects (default all selected; 0 for none).
           --first-orgs N     Cap pending mapped organizations (default all; 0 for none).

@@ -177,6 +177,22 @@ def test_people_open_as_a_sheet_that_sorts_filters_and_opens_a_row(reader):
     page.get_by_role("heading", name="Inès Halvorsen", exact=True).wait_for()
 
 
+def test_older_single_mail_contacts_are_findable_without_empty_memory_pages(reader):
+    page, _ = reader
+    page.goto(page.url.split("#")[0] + "#c=people")
+    page.locator(".contact-directory summary").click()
+    directory = page.locator(".contact-directory")
+    assert "3 other contacts" in directory.locator("summary").inner_text()
+    assert "all available history" in directory.inner_text()
+    directory.get_by_role("searchbox", name="Search other contacts").fill("Leah Bell")
+    assert directory.locator("tbody tr").count() == 1
+    assert "leah@old-friends.example" in directory.locator("tbody").inner_text()
+    directory.get_by_role("button", name="Prepare a memory for Leah Bell").click()
+    assert "stub person" in directory.locator(".directory-action code").inner_text()
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
 def test_the_people_sheet_fits_1440_and_says_when_it_is_cut(reader):
     page, _ = reader
     page.goto(page.url.split("#")[0] + "#c=people")

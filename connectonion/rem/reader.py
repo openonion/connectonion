@@ -65,6 +65,33 @@ def index_rows(root: Path) -> dict:
     return {row["record"]: row for row in store.people_table(root, include_unlisted=True) or []}
 
 
+def contact_candidates(root: Path) -> tuple[list[dict], dict]:
+    """Mail correspondents without a memory page, plus honest scan coverage.
+
+    The map intentionally omits one-off addresses from Markdown pages. They
+    must still be findable, without pretending a header established a person.
+    Subjects and message bodies never enter the reader's directory.
+    """
+    from .files import read_json, state_path
+    mapped = read_json(state_path(root, "map.json"), {})
+    seen, rows = set(), []
+    for row in mapped.get("without_page", []):
+        address = str(row.get("address") or "").strip()
+        if not address or address.casefold() in seen:
+            continue
+        seen.add(address.casefold())
+        rows.append({"name": str(row.get("name") or ""), "email": address,
+                     "last": str(row.get("last") or ""),
+                     "mails": row.get("mails") if type(row.get("mails")) is int else 0,
+                     "sent": row.get("sent") if type(row.get("sent")) is int else 0,
+                     "received": row.get("received") if type(row.get("received")) is int else 0})
+    rows.sort(key=lambda row: (-row["mails"], row["email"].casefold()))
+    errors = [row for row in mapped.get("errors", []) if row.get("source") in ("gmail", "outlook")]
+    return rows, {"scope": "all available history since 1970" if mapped.get("all_history") else
+                   f"last {mapped.get('days', 90)} days", "incomplete": bool(errors),
+                   "mailbox_errors": len(errors), "automated": len(mapped.get("automated_correspondents", []))}
+
+
 def snapshot(root: Path) -> dict:
     """Everything the page shows, read once; no model, no writes into the notebook."""
     from .map import needs_review
@@ -123,8 +150,10 @@ def snapshot(root: Path) -> dict:
             context = contexts.get(message["source"])
             if context:
                 context.setdefault("mapped_session_folder", message["cwd"])
+    candidates, contact_coverage = contact_candidates(root)
     return {"as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root), "categories": list(CATEGORIES), "records": records,
+            "contact_candidates": candidates, "contact_coverage": contact_coverage,
             "source_context": contexts, "conversations": cited_conversations(root, contexts),
             "status": status(root), "subscriptions": subscriptions(root),
             "logs": run_logs(root)[:20], "reviews": listing(root), "counts": counts(root, found),

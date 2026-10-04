@@ -20,11 +20,21 @@ def _record(category: str, name: str, identity: str) -> str:
 
 
 def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None, progress=None,
-               inventory=None, own_names=None) -> tuple[list[dict], set]:
+               inventory=None, own_names=None, *, all_history: bool = False) -> tuple[list[dict], set]:
     own, available, merged = set(mine), {}, {}
     for kind, client in clients.items():
         try:
-            own.update(client.my_addresses())
+            for attempt in range(3):
+                try:
+                    own.update(client.my_addresses())
+                    break
+                except Exception as error:
+                    if 'timeout' not in type(error).__name__.lower() or attempt == 2:
+                        raise
+                    # Only transient address discovery is retried. An auth
+                    # failure must still leave this mailbox visibly incomplete.
+                    import time
+                    time.sleep(0.5 * (attempt + 1))
             available[kind] = client
         except Exception as error:  # Provider failures must not block other maps.
             coverage.append(f'{kind}: unavailable ({type(error).__name__}); not searched')
@@ -33,9 +43,18 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None, prog
         if progress:
             progress(f"scanning {kind} mail metadata")
         try:
+            incomplete = []
+            def window_error(provider, start, end, error):
+                incomplete.append((start, end))
+                if errors is not None:
+                    errors.append({'source': provider, 'stage': 'metadata-window',
+                                   'start': start.isoformat(), 'end': end.isoformat(),
+                                   'error': type(error).__name__})
             rows = scan_people({kind: client}, days, own,
                                on_row=inventory.mail if inventory else None,
-                               on_window=inventory.window if inventory else None, own_names=own_names)
+                               on_window=inventory.window if inventory else None, own_names=own_names,
+                               all_history=all_history, on_error=window_error if all_history else None,
+                               own_addresses_complete=True)
         except Exception as error:
             coverage.append(f'{kind}: metadata scan failed ({type(error).__name__}); incomplete')
             if errors is not None: errors.append({'source': kind, 'stage': 'metadata', 'error': type(error).__name__})
@@ -45,8 +64,11 @@ def _mail_rows(clients: dict, days: int, mine, coverage: list, errors=None, prog
         # and an empty one read identically, which is the state the init contract
         # names first (#1616).
         found = f'{len(rows)} correspondents' if rows else 'no correspondents in this window'
-        coverage.append(f'{kind}: metadata only, {days} days; a seven-day window at the 200-message '
-                        'listing cap is split until every message in it is listed; ' + found)
+        scope = 'all available history since 1970' if all_history else f'{days} days'
+        interval = 'yearly listing window' if all_history else 'seven-day window'
+        coverage.append(f'{kind}: metadata only, {scope}; a {interval} at the 200-message '
+                        'listing cap is split until every message in it is listed; ' + found
+                        + (f'; {len(incomplete)} windows incomplete' if incomplete else ''))
         if progress:
             progress(f"scanned {kind} mail metadata", len(rows))
         for row in rows:
@@ -333,7 +355,8 @@ def _owner_name(clients: dict, given: str = '', sent_names=None) -> str:
 UNFILLED = '- Unknown — not investigated yet'
 POSSIBLY = "- Possibly also the owner's: "
 # The History lines the map itself writes on the owner's page, by how they begin.
-OWNER_HISTORY = ('- In the ', '- Most mail with: ', '- Coding sessions in the same window: ')
+OWNER_HISTORY = ('- In the ', '- Across available history ', '- Most mail with: ',
+                 '- Coding sessions in the same window: ')
 ENUMERATION = re.compile(r'^- \[(\d+)\] Enumeration metadata, observed [^ ]+', re.M)
 
 
@@ -438,7 +461,8 @@ def _fill_owner(notebook: Notebook, report: dict, name: str) -> None:
         'Why they are here': ['This is the owner\'s own page. [1]'],
         # With no mailbox (a page made from --name alone) there is no mail
         # history to state; leaving it Unknown lets a later init fill it.
-        'History': (([f"In the {days} days to {date}: wrote {sent} and received {received} messages with "
+        'History': (([f"{'Across available history' if report.get('all_history') else f'In the {days} days'} to {date}: "
+                      f"wrote {sent} and received {received} messages with "
                       f"{len(people)} correspondents in {', '.join(boxes) or 'no mailbox'}. [1]"]
                      if owner['addresses'] else [])
                     + ([f"Most mail with: {top}. [1]"] if top else [])
@@ -741,13 +765,15 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *args, **options) 
 
 def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90,
                skill_directories=None, mine=(), source_errors=None, absent=None, name: str = '',
-               progress=None, capture_sources: bool = False) -> dict:
+               progress=None, capture_sources: bool = False, all_history: bool = False) -> dict:
     """Map observed identities; correspondent classification remains unassessed."""
     notebook = Notebook(root)
     report = {'phase': 'mapping', 'started': datetime.now(timezone.utc).isoformat(),
               'days': days, 'coverage': [], 'people': [], 'projects': [], 'orgs': [], 'created': [],
               'errors': list(source_errors or []), 'automated_correspondents': [], 'without_page': [],
               'possible_own_addresses': []}
+    if all_history:
+        report['all_history'] = True
     state = root / '.state' / 'map.json'
     from .source_inventory import SourceInventory
     inventory = SourceInventory(root, progress) if capture_sources else None
@@ -783,10 +809,10 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
     sent_names = {"addressed": collections.Counter(), "sent": collections.Counter()}
     if inventory:
         people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress,
-                                 inventory=inventory, own_names=sent_names)
+                                 inventory=inventory, own_names=sent_names, all_history=all_history)
     else:
         people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress,
-                                 own_names=sent_names)
+                                 own_names=sent_names, all_history=all_history)
     roster = notebook.people()
     if own:
         aliases = sorted({address.casefold() for address in own})

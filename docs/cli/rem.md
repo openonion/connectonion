@@ -77,6 +77,19 @@ now two years. The mail is searched, not pasted: a wider window widens what the
 model can find, not what every turn reads. `--first-people N`,
 `--first-projects N`, `--first-orgs N` and `--first-skills N` cap a kind (0 for none).
 
+For a historical census, `co rem init --all-history --investigate-all
+--estimate-only` lists connected mail metadata since 1970 and local session
+history, then forecasts every mapped person and project without a model turn
+or body archive. Yearly mail listings still split past the provider cap; a
+timeout is retried in smaller windows and any missing day is marked incomplete.
+The People reader also shows one-off correspondents in a separate searchable
+directory, labelled as unreviewed contacts rather than as established people.
+`--investigate-all` without `--estimate-only` selects all mapped pages, but the
+weekly safety floor still stops new starts. Each person currently retains its
+per-page source window; reading back to the first mapped message is tracked in
+draft PR #2209. An all-history map archives only the most recent 90 days of
+mail bodies; older material is fetched for a selected investigation.
+
 Before it spends anything it says one total (#2008): which runner and model,
 that it runs on your own plan, and "About N pages (...), ~X billed input tokens,
 ~Y minutes (an estimate ...)". Per page it is the median of this notebook's own
@@ -741,6 +754,7 @@ to add People. To restrict mapping to a specific mailbox:
 co rem init --mail outlook
 # or: co rem init --mail gmail
 co rem init --days 5       # small first-run trial
+co rem init --all-history --investigate-all --estimate-only  # historical census and cost preview
 co rem open
 ```
 
@@ -750,6 +764,11 @@ provider's 200-message listing cap is split until every message in it is
 listed, so a busy week is no longer cut off at 200 without a word. Init does not
 install a schedule. It subscribes the mailboxes it read, so `start` offers them,
 but nothing is read in the background until `start` is approved.
+
+The historical census may take several minutes and can be a lower bound when
+one mailbox is unavailable. The status and private source inventory name every
+failed mailbox or time window. A contact seen only once remains findable in the
+reader's unreviewed directory without creating an empty person page.
 
 #### Private mail materials
 

@@ -523,6 +523,25 @@
   .open-cell .more { font: 11px var(--mono); color: var(--ink-3); }
   .sheet td.none { text-align: center; color: var(--ink-3); padding: 28px; cursor: default; }
 
+  .contact-directory { margin-top: 24px; border: 1px solid var(--line); border-radius: 8px; background: var(--sheet); overflow: hidden; }
+  .contact-directory summary { cursor: pointer; padding: 15px 18px; font-weight: 650; color: var(--ink); }
+  .contact-directory summary:focus-visible { outline: 2px solid var(--blue); outline-offset: -3px; }
+  .contact-directory .directory-body { padding: 0 18px 18px; }
+  .contact-directory .directory-note { margin: 0 0 12px; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
+  .contact-directory .directory-note.warn { color: var(--lamp); }
+  .contact-directory .directory-find { width: 100%; max-width: 420px; margin: 3px 0 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--sheet); color: var(--ink); font: inherit; }
+  .contact-directory .directory-scroll { overflow-x: auto; }
+  .contact-directory table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .contact-directory th, .contact-directory td { padding: 8px 9px; border-bottom: 1px solid var(--line); text-align: left; }
+  .contact-directory th { color: var(--ink-3); font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .06em; }
+  .contact-directory td:last-child, .contact-directory th:last-child { text-align: right; }
+  .contact-directory .candidate-name { font-weight: 600; }
+  .contact-directory .candidate-email { color: var(--ink-2); font: 12px var(--mono); }
+  .contact-directory button { cursor: pointer; }
+  .contact-directory .directory-more { margin-top: 10px; border: 1px solid var(--line); border-radius: 5px; padding: 6px 10px; background: var(--well); color: var(--ink); }
+  .contact-directory .directory-action { margin-top: 14px; padding: 12px; border-radius: 5px; background: var(--well); color: var(--ink-2); font-size: 13px; }
+  .contact-directory .directory-action code { display: block; overflow-wrap: anywhere; margin-top: 6px; color: var(--ink); }
+
   /* People at 1440: every column fits (main 1136px); narrower, the sheet scrolls inside itself. */
   @media (min-width: 821px) { main.wide { padding-left: 28px; padding-right: 28px; } }
   .sheet th button { padding: 9px 9px; }
@@ -2143,6 +2162,58 @@ function maintenance(s) {
   return maint;
 }
 
+function shellArg(value) { return "'" + String(value).replace(/'/g, "'\\''") + "'"; }
+function contactDirectory() {
+  const candidates = REM.contact_candidates || [];
+  const coverage = REM.contact_coverage || {};
+  if (!candidates.length && !coverage.incomplete) return null;
+  const details = el("details", { class: "contact-directory" });
+  details.appendChild(el("summary", { text: candidates.length + " other contacts found in mail" }));
+  const body = el("div", { class: "directory-body" });
+  body.appendChild(el("p", { class: "directory-note", text:
+    "Found in " + (coverage.scope || "mail") + ". These headers have not established a person or a memory page. Search here before deciding whom REM should investigate." }));
+  if (coverage.incomplete) body.appendChild(el("p", { class: "directory-note warn", text:
+    "Coverage is incomplete: " + coverage.mailbox_errors + " mailbox scan error(s). Retry init before treating this as every contact." }));
+  const find = el("input", { type: "search", class: "directory-find", "aria-label": "Search other contacts", placeholder: "Find a name or email…" });
+  const count = el("span", { class: "mono", "aria-live": "polite" });
+  const table = el("table");
+  table.appendChild(el("thead", {}, [el("tr", {}, ["Name", "Email", "Last contact", "Mails", "Memory"].map(name => el("th", { scope: "col", text: name })))]));
+  const tbody = el("tbody"); table.appendChild(tbody);
+  const scroller = el("div", { class: "directory-scroll", role: "region", tabindex: "0", "aria-label": "Other contacts table" }, [table]);
+  const action = el("div", { class: "directory-action" }); action.hidden = true;
+  const more = el("button", { type: "button", class: "directory-more", text: "Show more contacts" });
+  let limit = 100;
+  const draw = () => {
+    const needle = find.value.trim().toLowerCase();
+    const matched = candidates.filter(row => !needle || (row.name + " " + row.email).toLowerCase().includes(needle));
+    tbody.textContent = "";
+    for (const row of matched.slice(0, limit)) {
+      const name = row.name || row.email;
+      const prepare = el("button", { type: "button", text: "Prepare memory", "aria-label": "Prepare a memory for " + name });
+      prepare.onclick = () => {
+        const command = "co rem --root " + shellArg(REM.root) + " stub person " + shellArg(name)
+          + " --email " + shellArg(row.email) + " --handle " + shellArg(row.email);
+        action.textContent = "Run this in a terminal, then follow the next investigation command:";
+        action.appendChild(el("code", { text: command }));
+        action.hidden = false;
+      };
+      tbody.appendChild(el("tr", {}, [
+        el("td", { class: "candidate-name", text: name }),
+        el("td", {}, [el("a", { class: "candidate-email", href: "mailto:" + row.email, text: row.email })]),
+        el("td", { text: row.last ? shortDate(row.last) : "—" }),
+        el("td", { text: String(row.mails) }), el("td", {}, [prepare])]));
+    }
+    if (!matched.length) tbody.appendChild(el("tr", {}, [el("td", { colspan: "5", text: "No contact matches this search." })]));
+    count.textContent = " · " + matched.length + " found";
+    more.hidden = matched.length <= limit;
+  };
+  find.addEventListener("input", () => { limit = 100; draw(); });
+  more.onclick = () => { limit += 100; draw(); };
+  body.append(find, count, scroller, more, action);
+  details.appendChild(body); draw();
+  return details;
+}
+
 function category(c) {
   const main = document.getElementById("main");
   main.textContent = "";
@@ -2152,7 +2223,10 @@ function category(c) {
   main.appendChild(el("div", { class: "eyebrow" }, [el("a", { href: "#", text: "Contents" }), el("span", { class: "sep", text: "/" }), el("span", { text: "Category" })]));
   main.appendChild(el("h1", { text: c === "all" ? "Explore memory" : label(c) }));
   const lede = (c === "all" ? "People, projects, skills and ideas in one place" : CATEGORY_ASK[c] || "").replace(/^./, ch => ch.toUpperCase());
-  main.appendChild(el("p", { class: "lede" }, [lede + (items.length ? (/[?.]$/.test(lede) ? " " : ". ") : ""), items.length ? el("span", { class: "mono", text: counts ? counts.written + " written of " + counts.mapped : items.length + " pages" }) : null]));
+  const other = c === "people" ? (REM.contact_candidates || []).length : 0;
+  main.appendChild(el("p", { class: "lede" }, [lede + (items.length || other ? (/[?.]$/.test(lede) ? " " : ". ") : ""),
+    items.length || other ? el("span", { class: "mono", text: (counts ? counts.written + " written of " + counts.mapped : items.length + " pages")
+      + (other ? " · " + other + " other contacts" : "") }) : null]));
   const { held, service } = c === "people" ? peopleExclusions() : { held: 0, service: 0 };
   if (held || service) {
     const note = el("p", { class: "held-note" }, [el("span", { text:
@@ -2165,14 +2239,18 @@ function category(c) {
     }
     main.appendChild(note);
   }
-  if (!items.length) {
+  if (!items.length && !other && !(c === "people" && (REM.contact_coverage || {}).incomplete)) {
     main.appendChild(c === "people"
       ? el("div", { class: "empty" }, [el("span", { class: "lead", text: "Not mapped yet" }), "No people mapped yet. Run ", el("code", { text: initCommand() }), " (or select gmail) to read correspondent metadata. No background schedule is started."])
       : el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing here yet" }), "Nothing here yet. The notebook fills what the sources support."]));
     return;
   }
-  if (COLUMNS[c]) main.appendChild(sheet(c, items));
-  else main.appendChild(el("ul", { class: "hits" + (c === "skills" ? " skills" : "") }, items.sort(byActivity).map(r => row(r))));
+  if (COLUMNS[c] && items.length) main.appendChild(sheet(c, items));
+  else if (items.length) main.appendChild(el("ul", { class: "hits" + (c === "skills" ? " skills" : "") }, items.sort(byActivity).map(r => row(r))));
+  if (c === "people") {
+    const directory = contactDirectory();
+    if (directory) main.appendChild(directory);
+  }
 }
 
 // ---------- a page ----------

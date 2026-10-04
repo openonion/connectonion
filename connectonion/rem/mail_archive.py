@@ -144,7 +144,8 @@ def _archive_message(root: Path, row: dict, clients: dict) -> str:
 
 
 def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seconds: float | None = None,
-                 clock=time.monotonic, now=_utcnow, on_saved=None) -> dict:
+                 clock=time.monotonic, now=_utcnow, on_saved=None,
+                 archive_days: int | None = None) -> dict:
     """Fetch 90-day provider body snapshots once; keep files if interrupted.
 
     The inventory is the bounded enumeration. This pass uses its IDs, never a
@@ -161,13 +162,19 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seco
     """
     inventory = state_path(root, "source-inventory.jsonl")
     rows = [json.loads(line) for line in inventory.read_text(encoding="utf-8").splitlines() if line]
+    started = report["started"]
+    end = datetime.fromisoformat(started)
+    window_days = archive_days if archive_days is not None else report["days"]
+    start = end - timedelta(days=window_days)
+    if archive_days is not None:
+        # All-history discovery indexes headers, while the first body archive
+        # stays recent. Older people fetch their own material on demand.
+        rows = [row for row in rows if row.get("type") != "mail"
+                or str(row.get("date") or "")[:10] >= start.date().isoformat()]
     missing_ids = sum(row.get("type") == "mail" and not row.get("id") for row in rows)
     messages = list({(row["source"], row["id"]): row for row in rows
                      if row.get("type") == "mail" and row.get("id")}.values())
     sessions = [row for row in rows if row.get("type") == "session"]
-    started = report["started"]
-    end = datetime.fromisoformat(started)
-    start = end - timedelta(days=report["days"])
     # Owner-only all the way down: .state is 0700 already, but a directory made
     # by parents=True takes the umask, and these hold other people's mail.
     for folder in ("mail", "mail/messages", "mail/messages/gmail", "mail/messages/outlook",
@@ -220,7 +227,7 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seco
     write_json(state, result)
     summary = state_path(root, "mail/summary.md")
     atomic_write(summary, "\n".join(["# Initial mail materials", "",
-                                      f"Range: {start.date()} to {end.date()} ({report['days']} days)",
+                                      f"Range: {start.date()} to {end.date()} ({window_days} days)",
                                       f"Status: {result['phase']}",
                                       f"Messages observed: {result['target']}",
                                       f"Bodies saved: {result['saved']}; reused: {result['reused']}; failed: {result['failed']}",
