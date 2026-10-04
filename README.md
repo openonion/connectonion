@@ -134,10 +134,9 @@ for account setup, source choices and model costs. Daily scheduling currently
 requires **macOS**. Then run:
 
 ```bash
-pip install --upgrade 'connectonion==1.9.0a40'
-co rem init                # build your map and first pages
+pip install --upgrade 'connectonion==1.9.0a41'
+co rem init                # build your map and first pages; approve nightly upkeep when prompted
 co rem open                # read the local notebook
-co rem start               # approve a daily schedule (macOS)
 ```
 
 Pages stay in `~/.co/rem`. Selected source content is sent to the configured

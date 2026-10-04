@@ -400,7 +400,20 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a40
+## Current Version: 1.9.0a41
+
+1.9.0a41 makes historical mail contacts discoverable in the People reader,
+forecasts the full mapped first run without model work, and offers the nightly
+REM schedule after init's foreground pass. Gmail history uses bounded direct
+metadata reads so a connected mailbox is not silently absent from the census.
+The reader gains phone-sized contact cards and contained citation tips. This
+is a preview: a metadata census is not a verified memory of every person, and
+the all-person investigation remains to be measured on the owner's account.
+Stable remains 1.8.10. See [1.9.0a41 notes](docs/releases/1.9.0a41.md).
+
+- 1.9.0a41 (Historical contacts, first-run forecast and nightly upkeep).
+
+## Previous preview: 1.9.0a40
 
 1.9.0a40 labels Skill usage as coding-session matches by invocation name,
 separates retained evaluation attempts from those matches, and keeps the
