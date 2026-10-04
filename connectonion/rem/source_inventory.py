@@ -82,7 +82,8 @@ class SourceInventory:
                  "- Contents: private metadata pointers only; no mail bodies, attachments, or session text", "",
                  "## Mail windows", ""]
         lines += [f"- {row['source']}: {row['start'][:10]} to {row['end'][:10]} — "
-                  f"{row['observed']} observed" + ("; incomplete" if row['incomplete'] else
+                  f"{row['observed']} observed" + ("; incomplete, possibly truncated" if row['possibly_truncated'] else
+                                                   "; incomplete" if row['incomplete'] else
                                                    "; split past cap" if row['subdivided'] else "")
                   for row in self.windows] or ["- No connected mail source was scanned."]
         lines += ["", "## Coverage and errors", ""]
