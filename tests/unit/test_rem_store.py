@@ -339,6 +339,9 @@ def test_rem_full_gmail_window_defers_headers_until_after_split():
 
     gmail = Gmail.__new__(Gmail)
     gmail._get_service = lambda: Service()
+    gmail._mailbox_get = lambda path, **kw: (
+        {"messages": [{"id": "a"}, {"id": "b"}]} if path == "messages"
+        else gets.append(path) or {"payload": {"headers": []}})
     window = gmail.list_between_for_rem("2026-09-01T00:00:00+00:00",
                                         "2026-09-08T00:00:00+00:00", 2)
     assert window == [{"id": "a"}, {"id": "b"}]
