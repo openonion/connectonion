@@ -1,0 +1,30 @@
+version: v1.9.0a40
+images:
+  - file: after-skill-desktop.png
+    alt: "Desktop Skill page showing name-match scope and a mapped-page investigation action"
+    caption: "The Skill page distinguishes name matches from retained evaluation evidence before the full memory."
+    scenario: "Invented mapped Skill with three coding-session name matches and zero retained eval attempts"
+    viewport: "1440x900, light"
+    commit: fefbbb0b
+    source_run: "invented fixture tests/fixtures/rem_reader_notebook.py; Chrome trial a55-skill-count-scope-20261004"
+  - file: after-skill-phone.png
+    alt: "Phone Skill page with scope label and Copy investigation command inside the first screen"
+    caption: "A mapped Skill names the limit of its count and keeps the next action in phone reach."
+    scenario: "Same invented mapped Skill after the a40 reader change"
+    viewport: "375x812, light"
+    commit: fefbbb0b
+    source_run: "invented fixture tests/fixtures/rem_reader_notebook.py; Chrome trial a55-skill-count-scope-20261004"
+  - file: after-skills-list-phone.png
+    alt: "Phone Skills list with name-match counts and enlarged record links"
+    caption: "Skills list rows say the matches are version-unverified; each name link has a 44-pixel touch target."
+    scenario: "Invented three-Skill list after the a40 reader change"
+    viewport: "375x812, light"
+    commit: fefbbb0b
+    source_run: "invented fixture tests/fixtures/rem_reader_notebook.py; Chrome trial a55-skill-count-scope-20261004"
+  - file: before-skill-phone.png
+    alt: "Published a39 phone Skill page with a recorded invocations label and no visible investigation action"
+    caption: "Before: the count's installed-version scope was unclear and the action fell just below the first screen."
+    scenario: "Same invented mapped Skill rendered with the published a39 reader template"
+    viewport: "375x812, light"
+    commit: c49ddfe1
+    source_run: "invented fixture tests/fixtures/rem_reader_notebook.py; Chrome trial a55-skill-count-scope-20261004 using published a39 reader template"
