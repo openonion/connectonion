@@ -298,7 +298,13 @@ def run_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
 
 
 def run_claim_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
-    """Give the auditor full evidence over stdin, never in process arguments."""
+    """Give the auditor full evidence without exposing it in process arguments."""
+    if config["runner"] == "coai":
+        from ..core.llm import create_llm
+        response = create_llm(config["model"]).complete([{"role": "user", "content": prompt}], tools=None)
+        usage = response.usage.model_dump(exclude_none=True) if response.usage else {}
+        return {"result": response.content,
+                "usage": {key: value for key, value in usage.items() if type(value) in (int, float)}}
     if config["runner"] != "codex":
         packet = workspace / "claim-input.txt"
         packet.write_text(prompt, encoding="utf-8")

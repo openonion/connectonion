@@ -170,13 +170,27 @@ def test_codex_audit_sends_private_sources_over_stdin(tmp_path, monkeypatch):
     assert result["usage"] == {"input_tokens": 42, "cached_input_tokens": 0, "output_tokens": 4}
 
 
-def test_coai_audit_reads_its_packet_without_putting_sources_in_the_prompt(tmp_path, monkeypatch):
-    def read_packet(workspace, prompt, config, stage):
-        assert stage == "claim-audit"
-        assert "PRIVATE SOURCE BODY" not in prompt
-        assert (workspace / "claim-input.txt").read_text() == "PRIVATE SOURCE BODY"
-        return {"result": '{"verdict":"PASS","findings":[]}', "usage": {"input_tokens": 12}}
+def test_coai_audit_is_one_tool_free_call_with_private_evidence_in_the_api_body(tmp_path, monkeypatch):
+    from connectonion.core import llm
+    from connectonion.core.usage import TokenUsage
 
-    monkeypatch.setattr(runner, "run_task", read_packet)
-    result = runner.run_claim_task(tmp_path, "PRIVATE SOURCE BODY", {"runner": "coai"}, "claim-audit")
+    seen = {}
+
+    def complete(messages, tools):
+        seen.update(messages=messages, tools=tools)
+        return SimpleNamespace(content='{"verdict":"PASS","findings":[]}',
+                               usage=TokenUsage(input_tokens=12, output_tokens=4, cost=0.001))
+
+    def create(model):
+        seen["model"] = model
+        return SimpleNamespace(complete=complete)
+
+    monkeypatch.setattr(llm, "create_llm", create)
+    result = runner.run_claim_task(tmp_path, "PRIVATE SOURCE BODY",
+                                   {"runner": "coai", "model": "co/gemini-3.8-flash"}, "claim-audit")
     assert json.loads(result["result"])["verdict"] == "PASS"
+    assert seen["messages"] == [{"role": "user", "content": "PRIVATE SOURCE BODY"}]
+    assert seen["model"] == "co/gemini-3.8-flash"
+    assert seen["tools"] is None
+    assert not (tmp_path / "claim-input.txt").exists()
+    assert result["usage"]["input_tokens"] == 12
