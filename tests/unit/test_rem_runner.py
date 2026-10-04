@@ -769,6 +769,50 @@ def test_failed_history_repair_counts_both_model_turns(notebook, monkeypatch):
     assert caught.value.usage == {'input_tokens': 13}
 
 
+def test_failed_cited_claim_audit_gets_one_source_based_repair(notebook, monkeypatch):
+    import re
+    from connectonion.rem.files import write_json
+
+    record = 'people/first.md'
+    notebook.stub_person(record, 'First', ['first@example.org'], email='first@example.org')
+    prompts, promotions = [], []
+
+    def run_model(workdir, prompt, config, stage):
+        prompts.append(prompt)
+        candidate = Path(re.search(r'(/\S+/candidate\.md)', prompt).group(1))
+        candidate.write_text('# First\n' + ('Supported' if len(prompts) == 2 else 'Overstated'))
+        return {'usage': {'input_tokens': 10 if len(prompts) == 1 else 5}, 'result': 'done'}
+
+    def promote(book, record, candidate, original, items, directory, usage, **options):
+        promotions.append(usage)
+        if len(promotions) == 1:
+            write_json(directory / 'claim-review.json', {'verdict': 'fail', 'findings': [
+                {'issue': 'Overstated', 'required_correction': 'Use the source wording'}]})
+            write_json(directory / 'review.json', {'accepted': False,
+                       'errors': ['Cited-claim audit did not pass; see claim-review.json']})
+            raise RunFailed('Cited-claim audit failed', {'input_tokens': 13})
+        write_json(directory / 'claim-review.json', {'verdict': 'pass', 'findings': []})
+        book.write(record, candidate.read_text())
+        return {'input_tokens': 2}
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
+    monkeypatch.setattr('connectonion.rem.runner._promote_candidate', promote)
+    result = run_stage(notebook, [{'role': 'page', 'record': record,
+                                   'text': notebook.read(record), 'source': 'investigation:page'}],
+                       default_config(), stage='investigate')
+    assert len(prompts) == 2 and 'claim-review.json' in prompts[1]
+    assert 'material.md' in prompts[1] and 'report is a correction guide, not a source' in prompts[1]
+    assert promotions == [{'input_tokens': 10}, {'input_tokens': 18}]
+    assert result['usage'] == {'input_tokens': 20}
+    assert 'Supported' in notebook.read(record)
+    assert result['report'] == notebook.read(record)
+    receipt = next((notebook.root / '.state' / 'tasks').glob('investigate-*/result.json'))
+    assert json.loads(receipt.read_text())['report'] == notebook.read(record)
+    first_audit = receipt.with_name('claim-review-first.json')
+    assert json.loads(first_audit.read_text())['findings'][0]['issue'] == 'Overstated'
+    assert json.loads(receipt.with_name('claim-review.json').read_text())['verdict'] == 'pass'
+
+
 @pytest.mark.parametrize(('failure', 'repair_hint'), [
     ('Cited local file needs its current SHA-256 and a mapped path: file:/missing',
      'Replace invented `git:` or `file:` citations'),

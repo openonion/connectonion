@@ -11,8 +11,9 @@ Why these rules: docs/rem-skills/rem-investigate.md
 
 - The user's addresses (the mailbox names in coverage) are never the subject's;
   `Email`/`Handles` take only addresses the subject writes from.
-- Every handle you were given, wrong spellings too, goes in `Also known as:`;
-  add the ones you discover (signature, second address, other script). Company
+- Given handles are search leads, not verified aliases. Put one in `Also known
+  as:` only with a cited signature, cross-reference or reply thread tying it
+  to this person; otherwise leave it unverified in `Uncertainties`. Company
   names go in their own field.
 - The subject is the owner of a coverage mailbox → the user's own page: follow
   `rem-owner-page`.
@@ -40,6 +41,18 @@ Why these rules: docs/rem-skills/rem-investigate.md
 - Check asks/promises across topics before `Nothing open`; unrelated replies
   close none. Questions promise no deadline. Invites, confirmed logistics,
   arrival, empty forwards or samples do not prove completion.
+- Mail gives identity and commitments; sessions give intent. Sources disagree →
+  say so; stated in one and implied in another → cite both.
+- Compare the latest replies across related proposal and approval threads before
+  naming an unresolved version, pending answer or due date. A newer request may
+  settle a version; conflicting dates stay conflicting. Without a verified
+  answer, a sent request is still a request, not a settled approval or refusal.
+  Unrelated replies close none; invites, logistics or samples prove no completion.
+- Resolve each "tomorrow" against its message's local date; conflicting
+  implied due days stay uncertain, even in the latest mail.
+- Check each adjacent citation's sender, Subject and body. A sender-owned
+  "Accepted" calendar Subject proves RSVP, not attendance. A welcome for a
+  copied colleague to reply is not delegated approval authority.
 - Thread context can resolve a group ask after recipients drop. Match the team
   and ask; one thread can mix both. Preserve requester, decision maker and debtor;
   context is not this person's statement, contact date or assigned work.
@@ -51,7 +64,4 @@ Follow `rem-page-person` exactly, the lead above `Facts` included:
 `co rem list people --aliases` reads its headings and `Contact` labels. **`Open threads` is mandatory**: who owes what,
 since when.
 
-**Insight, three shapes** (never copy these facts):
-- `At stake: Mia requested the revised SOW on 2026-09-21; it is due 2026-10-03 [5]`
-- `Changed: replies went from same-day to none since 2026-08-20, after the price went to A$15k [6][8]`
-- `Pattern: every thread since June is invoices; she chases, the user answers in 2–4 days [2][7]`
+**Insight**: follow the cited shapes in `rem-page-person`; do not copy Facts.

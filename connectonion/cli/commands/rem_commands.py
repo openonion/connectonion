@@ -433,6 +433,9 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
         clients = {kind: client for kind, client in clients.items() if handle}
     skipped = "" if clients or not record.startswith("projects/") else \
         "not read for a project page; name its mail with --handle"
+    if days is None and record.startswith("people/") and not rem_investigate.last_investigated(text):
+        from ...rem.people_pages import first_window
+        days = first_window(root, record)
     return _logged(root, record, "investigate", lambda update: rem_investigate.investigate(
         root, record, title, handles, days=days or rem_investigate.window_since(text), clients=clients,
         subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped,
@@ -502,11 +505,12 @@ def _first_org_rows(root, cap) -> list[dict]:
     return _capped(rows, cap)
 
 
-def _in_parallel(jobs, *, workers, gate, done):
+def _in_parallel(jobs, *, workers, gate, done=None):
     """Run `jobs` with up to `workers` at once; `gate()` says why not to start the next, or ''.
 
-    A refused or failed page does not stop the others. `done(job, outcome)` is
-    called in this thread as each one finishes. Returns (outcomes, stopped).
+    A refused or failed page does not stop the others. When supplied,
+    `done(job, outcome)` is called in this thread as each one finishes.
+    Returns (outcomes, stopped).
     """
     from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
@@ -531,7 +535,8 @@ def _in_parallel(jobs, *, workers, gate, done):
                     "page": job["record"], "mode": job["mode"], "why": str(error)[:300],
                     "outcome": "refused" if "rejected" in str(error) else "failed"}
                 outcomes.append((job, outcome))
-                done(job, outcome)
+                if done:
+                    done(job, outcome)
     finally:
         pool.shutdown(wait=False, cancel_futures=True)
     return outcomes, stopped
@@ -862,6 +867,7 @@ def make_rem_app(factory):
             # project page, about a minute" and spent 614k-922k and 4-5 minutes
             # each, on every project active in the window, with no total at all.
             from ...rem import first_run
+            from ...rem.people_pages import FIRST_WINDOW_DAYS
             from .rem_people import counted
             from ...rem.service import run_logs
             people_rows = _first_people_rows(root, first_people, days)
@@ -880,22 +886,26 @@ def make_rem_app(factory):
             steps = ([f"your page (quick first, then full; {me_days} days of your mail and sessions)"]
                      if not reason else [])
             steps += ([f"{counted(len(people_rows), 'person', 'people')} "
-                       f"(recent first; up to two years of evidence each)"] if people_rows else [])
+                       f"(recent first; at least two years, back to each person's first mapped mail)"] if people_rows else [])
             steps += ([f"{counted(len(project_rows), 'project')} (recent first)"] if project_rows else [])
             steps += ([f"{counted(len(org_rows), 'related organisation')}"] if org_rows else [])
             steps += ([f"{counted(len(skill_rows), 'installed skill')} (source and retained run evidence)"] if skill_rows else [])
             if not steps:
                 return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
+            window_warning = ("Earlier mapped mail extends some person reads beyond two years. "
+                              "The measured example covered 150 days, so actual cost may be higher.\n"
+                              if any(row["days"] > FIRST_WINDOW_DAYS for row in people_rows) else "")
             target = config["limits"]["investigation_quota_points"]
             floor = config["limits"]["quota_floor_percent"]
             cost = (f"First run with {config['runner']} ({config['model']}): "
-                    + ", ".join(steps) + f"; up to {FIRST_RUN_WORKERS} at a time.\n"
-                    + "Estimate: " + first_run.announce(total, plan) + "\n"
-                    + "Input estimate includes cached tokens; it is not weekly quota points.\n"
+                     + ", ".join(steps) + f"; up to {FIRST_RUN_WORKERS} at a time.\n"
+                     + "Estimate: " + first_run.announce(total, plan) + "\n"
+                     + window_warning
+                     + "Input estimate includes cached tokens; it is not weekly quota points.\n"
                     + f"Budget: about {target}% of a weekly runner allowance is a planning "
                     f"target, not a stop. Selected pages may continue past it until the {floor}% "
                     "weekly safety floor; pages already in flight finish. A runner without a "
-                    "weekly meter cannot verify the percentage.\n"
+                     "weekly meter cannot verify the percentage.\n"
                     "Controls: --first-people, --first-projects, --first-orgs and --first-skills cap a kind; Ctrl-C "
                     "keeps the map and completed pages; --no-investigate skips model work.")
             rem_look.say(rem_look.highlight(cost, counts=True), err=ctx.obj["json"], plain=cost)
@@ -1098,7 +1108,7 @@ def make_rem_app(factory):
                 return run_people(ctx, root, limit=pages_limit, recent_days=recent_days or 14, days=days,
                                   list_only=list_only, gate=None if list_only else budget_gate(root),
                                   clients_for=clients_for, subscriptions=subscriptions, logged=_logged,
-                                  workers=effective_workers)
+                                  budget=budget, workers=effective_workers)
             if target == "me":
                 return me(root)
             if target in runnable:

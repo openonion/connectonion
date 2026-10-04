@@ -162,6 +162,8 @@ def test_under_coai_the_page_is_read_back_from_disk(tmp_path, monkeypatch):
     the status line names the sources this code searched."""
     from connectonion.rem.config import prepare, set_config
     from connectonion.rem import investigate as inv
+    # This test exercises the coai page file, not a second provider audit turn.
+    monkeypatch.setattr("connectonion.rem.claim_audit.review", lambda *args: ({"verdict": "pass", "findings": []}, {}))
     root = tmp_path / "rem"; prepare(root); set_config(root, ["runner", "coai"])
     nb = inv.Notebook(root)
     nb.stub_person("people/vern.md", "Vern Chan", ["vern"], email="vern.chan@unsw.edu.au")

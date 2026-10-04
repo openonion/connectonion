@@ -42,7 +42,7 @@ UNCITED = ("Email", "Handles", "Also known as")
 MULTI = ("Email", "Phone", "Links", "Handles", "Also known as")
 # What the extractor reads with certainty. Company and role off a signature are
 # a judgement, handed to the turn but never written back by code.
-RESTORABLE = ("Email", "Phone", "Links", "First contact", "Last contact")
+RESTORABLE = ("Email", "Phone", "Links", "Last contact")
 INSIGHT_KINDS = ("Now", "Changed", "At stake", "Pattern")
 LEGACY = "Contact"
 CITES = re.compile(r"((?:\s*\[W?\d+\])*)\s*$")

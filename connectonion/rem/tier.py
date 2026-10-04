@@ -116,8 +116,9 @@ def attempt(config: dict, tier: str) -> list[str]:
         write_json(state_path(root, RECORD), {"tier": tier, "runner": config["runner"], "model": config["model"]})
         Notebook(root).stub_person(PAGE, SUBJECT, [ADDRESS], email=ADDRESS)
         try:
+            # This fixture measures page-writing ability; live claim review runs on real investigations.
             investigate(root, PAGE, SUBJECT, [ADDRESS], days=30, clients={"gmail": FixtureMail()},
-                        subscriptions={})
+                        subscriptions={}, audit_claims=False)
         except RemError as error:
             return [f"investigation failed: {error}"]
         return grade(Notebook(root).read(PAGE))
