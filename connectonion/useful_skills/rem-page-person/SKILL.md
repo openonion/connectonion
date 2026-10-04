@@ -7,17 +7,13 @@ description: Fixed sections, roster labels and evidence rules for a person's pag
 
 Why these rules: docs/rem-skills/rem-page-person.md
 
-Read supplied page/material. Write, check, fix once, stop; use this format.
-
-This is a growing relationship memory; never shrink it to a summary. Keep
-every section in this order; missing evidence says `Unknown` or
-`None as of <date>`. Every factual sentence cites `[n]` into `Sources`.
-Placeholders are not evidence.
+Read supplied material; write a growing memory in this order. Unsupported
+values are `Unknown`; each factual sentence cites `[n]` in `Sources`.
 
 ```markdown
 # <observed name>
 
-<lead>. Last contact: <date> (latest in supplied sources).
+<lead>. Last contact: <date> via <channel> (latest in checked sources).
 
 ## Facts
 - Email: Unknown
@@ -50,55 +46,49 @@ Placeholders are not evidence.
 
 Rules:
 
-- **Lead**: 2–3 cited sentences. Start with a supported current obligation or
-  relationship finding; end with `Last contact: <date> (latest in supplied sources)`.
-  `Nothing open as of <date>` needs closure evidence.
-- **`Facts` first.** Keep every exact label; missing values are `Unknown`.
-  Separate multiple values with `; ` and cite each as `value (qualifier) [n]`.
-  Dates use `YYYY-MM-DD`; convert source instants in notebook time zone, but
-  preserve stated event dates. Cite all except mapped `Email`, `Handles`,
-  `Also known as`. Put contact details in their fields. `Links` are sites;
-  `How we know them` is the introduction or first thread. Write `Last contact`
-  as `<date> (latest in supplied sources) [n]`. `Email` uses the envelope sender; a
-  different signature address needs an explicit cross-reference to be an alias.
-- **`Insight`**: 2–4 cited bullets, at most 30 words each, starting `Now:`,
-  `Changed:`, `At stake:` or `Pattern:`. Name a useful current relationship,
-  change, risk or repeated pattern; skip generic praise. Thin evidence: `- Unknown`.
-- **`Language` is observed**: the language they write to the user in.
-- Attribute group replies to their sender using exact From/To/Cc metadata.
-  Greetings do not bind names by recipient order; the owner's phone is not
-  the contact's. Date historical plans and handoffs; missing completion
-  evidence does not make them current pending work.
-- **`Company` needs stated employment.** Student or mailbox affiliation proves
-  none: `Unknown`. Link schools/groups in relationship text, not as employers.
-- **`Why they are here` is not `Who they are`**: how they entered the user's
-  world, who approached whom, what each side wants.
-- **`Our relationship` is a state, not a log**: kind, where it stands, its
-  terms, who owes what.
-  Keep each local link with its relationship, citations and privacy markers;
-  separate different events onto separate lines.
-- **`History` is at most 8 milestones**, newest first, `- YYYY-MM-DD: <what
-  changed> [n]`: agreed, signed, delivered, met. Not a send or a newsletter.
-  Past 8, fold the oldest into one line per year.
-- **Open threads keep exact asks.** Check later replies and separate terms.
-  Reports, optional offers, prerequisites and missing historical outcomes do
-  not create debts. Acceptance proves intent, not attendance or activation.
-  Name debtor, request date and explicit due date; preserve permission to
-  proceed without a reply. Closure needs evidence; otherwise say what outcome
-  is unknown. Never hardcode a request's age.
-- **Say things once.** Doubt goes in `Uncertainties`; omit collection counts
-  and prior-page metadata.
-- **Label inference.** Empty sections stay `Unknown`; don't infer "no prior
-  history" or "cannot be assessed".
-- **Keep what the map already knew.** `Email`, `Handles`, `Also known as`
-  arrive filled; keep them. Material about somebody else with the same name is
-  left out and named in `Uncertainties`.
-- **`Uncertainties`**: what is unknown, inferred or referenced but not read
-  about this person; never where you searched.
-- **Sources**: `- [n] <source id> — <date>`; claims stay in sentences.
-  Reuse numbers and list only cited sources.
+- **Lead**: 2–3 cited sentences. Put current event and user action before role;
+  end with last contact, channel and checked scope. Put historical gaps in
+  `Uncertainties`; `Nothing open` needs closure evidence.
+- **`Facts` first**: exact labels, one per line; qualify multiple values with
+  `; `. Use notebook-timezone `YYYY-MM-DD`, apart from stated event dates.
+  Cite values except `Email`, `Handles`, `Also known as`. `Links` are sites,
+  not email domains. `How we know them` is an introduction or first thread.
+  `Email` uses the envelope sender; a signature alias needs a cross-reference.
+  Write `Last contact: YYYY-MM-DD (latest observed in checked sources) [n]`;
+  other channels may be unknown.
+- **`Insight`**: 2–4 cited bullets, at most 30 words each: `Now:`, `Changed:`,
+  `At stake:` or `Pattern:`. Give a sourced consequence, not repeated Facts.
+  `At stake:` requires an evidenced unresolved ask, delivery, deadline or
+  consequence. A signed plan, quantity or proposed start proves none; invent
+  no launch, fulfillment or owner. Thin material: `- Unknown`.
+- **`Language` is observed** in their mail to the user. Attribute group replies
+  by From/To/Cc, not greeting order. The owner's phone is not the contact's.
+  Missing completion does not make a historical plan current work.
+- **`Company` needs stated employment.** Student or mailbox affiliation is
+  insufficient; link schools or groups in relationship text.
+- An employee's “we signed” does not name the legal signer. Say “the sender
+  reported that their side signed”; never “[employer] signed” unless the
+  source names the employer as signer. Keep `Signing entity` Unknown otherwise.
+- **`Why they are here`**: how they met, who approached whom, each aim.
+- **`Our relationship`**: kind, state, terms, obligations. “We signed” alone
+  proves no contract with the user. Keep links, citations and privacy markers;
+  separate events.
+- **`History`**: at most 8 dated, cited milestones, newest first. Fold older
+  years; omit routine sends.
+- **Open threads keep exact asks.** Check later replies; separate terms/forms.
+  Reports, offers, prerequisites and missing old outcomes create no debt.
+  Acceptance proves intent, not attendance or activation. Name debtor,
+  request date and explicit due date; never hardcode age. Preserve permission
+  to proceed without a reply. Sparse mail proves no global no-debt state;
+  `Nothing open` needs closure evidence, else `Unknown`. A planned start is
+  not an arranged next contact.
+- Avoid repetition and collection counts. Put doubt and unread references in
+  `Uncertainties`; empty sections stay `Unknown`. Name only missing fields:
+  a known `Email` rules out saying contact details are unevidenced.
+- Keep mapped `Email`, `Handles`, `Also known as`. Exclude same-name material
+  about someone else and note the ambiguity in `Uncertainties`.
+- **Sources**: `- [n] <source id> — <date>`; list only cited sources.
 
 ## Exact headings
 
-Never annotate headings or rename `Facts` labels. Preserve the runner's
-`Investigation:` line unchanged.
+Keep headings, `Facts` labels and the runner's `Investigation:` line exact.

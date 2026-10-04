@@ -155,8 +155,8 @@ def check_and_record(root: Path, config: dict) -> dict:
 REPLY = ("Summary tier: no tool loop. Everything you need is in this message. Do not call tools and do "
          "not read or write files; where the instructions say to write a candidate file, your reply is "
          "that file. Reply with ONLY the complete revised page in Markdown, from its `# ` title line "
-         "through its `## Sources`, with no preamble and no code fence. Under Sources define each "
-         "citation as `- [1] source-id`, using the source ids in the material. ")
+         "through its `## Sources`, with no preamble and no code fence. Under Sources use the page "
+         "type's required citation format and the real source ids in the material. ")
 
 
 def summary_prompt(directory: Path) -> str:

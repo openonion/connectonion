@@ -1949,7 +1949,7 @@ function firstMapBrief() {
   const brief = el("section", { class: "morning first-map", "aria-label": "Source map and next step" }, [
     el("div", { class: "morning-top" }, [el("div", {}, [
       el("span", { class: "morning-kicker", text: "co rem / source map" }),
-      el("h2", { text: mapped + " records mapped" })]),
+      el("h2", { text: mapped + (mapped === 1 ? " record mapped" : " records mapped") })]),
       el("span", { class: "morning-time", text: "0 memories written" })]),
     el("p", { class: "memory-empty", text: "People, projects, organisations and skills are ready to explore. These are metadata starting points, not investigated findings." }),
     el("div", { class: "first-map-actions" }, [el("a", { href: "#c=people", text: "Browse " + people + " people →" }), preview])]);
@@ -2151,7 +2151,7 @@ function overview() {
 
   const categories = REM.categories.map(c => ({ c, count: inCategory(c).length })).filter(item => item.count);
   if (categories.length) {
-    main.appendChild(sectionHead("Explore the memory", n + " pages" + (mapped ? " · " + mapped + " mapped only" : "")));
+    main.appendChild(sectionHead("Explore the memory", n + (n === 1 ? " page" : " pages") + (mapped ? " · " + mapped + " mapped only" : "")));
     main.appendChild(el("div", { class: "category-cards" }, categories.map(({ c, count }) =>
       el("a", { class: "category-card", href: "#c=" + c }, [el("strong", { text: label(c) }),
         el("span", { text: count + (count === 1 ? " record" : " records") })]))));

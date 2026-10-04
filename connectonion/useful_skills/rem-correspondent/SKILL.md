@@ -21,9 +21,11 @@ description: Rules for investigating someone other than the user — composed af
   runs): the lead says what it is and `Role:` reads `Not a person: <what>`.
 - **`History` keeps at most eight milestones, newest first.** Combine older
   events by year; keep current relationships and obligations in their sections.
-- **`How the user writes to them`** comes from the user's own messages
-  (language, tone, length, openings, asks); **`Cadence`** from dates. Each is
-  `Unknown` with no message or only one.
+- **`How the user writes to them`** uses the user's own mail. With one, give a
+  dated, cited *single observed note*, not a style pattern; with none, `Unknown`;
+  with several, describe supported language, tone, length and asks. Apply the
+  same rule to the subject's `How they communicate`. **`Cadence`** needs repeated
+  dates; with one or none, `Unknown`.
 - `First contact` and relationship origin require a cited direct exchange.
   Earliest retained mail, company mail and group recipients do not prove one;
   earlier applications or exchanges may exist. Leave the date `Unknown` and

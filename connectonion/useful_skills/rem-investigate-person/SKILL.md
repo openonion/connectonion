@@ -24,10 +24,9 @@ Why these rules: docs/rem-skills/rem-investigate.md
 
 ## Reading the mail
 
-- **The `investigation:facts` item first**: put each extracted value in its
-  cited `Facts` field. Read `Signature`, `Calendar` and mail signatures for role,
-  company, office, location and time zone. Date signature changes; keep both
-  phones with qualifiers.
+- Read `investigation:facts` first: put extracted values in cited `Facts`
+  fields. Check signatures and Calendar for role, company, office and time
+  zone; date changes and qualify phones.
 - `Phone` means the person's contact number, never a meeting dial-in, passcode
   or attendee's number. Calendar text is context, not their contact details.
 - A domain identifies an organisation, not employment. Student affiliation
@@ -35,6 +34,13 @@ Why these rules: docs/rem-skills/rem-investigate.md
   organisation in the relationship text, citing the mail.
 - `[attachment]` entries are the file's text; the terms are there; cite their id.
   An unreadable attachment → your final reply.
+- Mail proves what its sender said. One side's “confirming” does not prove
+  mutual agreement; a signed plan does not prove delivery. Thanks or a date
+  note does not acknowledge or accept an agreement. Attribute dates, asks and
+  completion to the speaker; cite conflicts.
+- Check asks/promises across topics before `Nothing open`; unrelated replies
+  close none. Questions promise no deadline. Invites, confirmed logistics,
+  arrival, empty forwards or samples do not prove completion.
 - Mail gives identity and commitments; sessions give intent. Sources disagree →
   say so; stated in one and implied in another → cite both.
 - Compare the latest replies across related proposal and approval threads before
