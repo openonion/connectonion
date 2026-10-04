@@ -37,7 +37,10 @@ def default_config() -> dict:
     # starting name, not a rule: what a model can do -- drive tools, or only
     # reply with a page -- is measured when the model changes and recorded in
     # .state/tier.json (tier.py, #1847), never read off its name or generation.
-    return {"version": 1, "runner": "codex", "model": "gpt-6-luna",
+    # Claude Code with Sonnet since 1.9.0a41: on one real 260-page first run it
+    # wrote 259 pages and matched Codex on the benchmark pages, while Haiku had
+    # 13 of 17 project pages refused (#2283). Saved configs keep their runner.
+    return {"version": 1, "runner": "claude-code", "model": "claude-sonnet-5-5",
             "schedule": {"times": ["03:00", "04:00", "06:00", "17:00", "18:00", "19:00"],
                          "timezone": local_timezone()},
             # input_chars_per_batch bounds the source messages plus every notebook page
@@ -139,7 +142,7 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     _drop_superseded(root, config)
     # Older coai notebooks retained the Codex default even though it was never
     # forwarded. Preserve their effective behavior when all stages start using COAI.
-    if config.get("runner") == "coai" and config.get("model") == default_config()["model"]:
+    if config.get("runner") == "coai" and config.get("model") == "gpt-6-luna":
         config["model"] = "default"
     return validate(config) if validated else config
 
