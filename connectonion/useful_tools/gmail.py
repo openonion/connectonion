@@ -55,8 +55,10 @@ Example:
 import base64
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import httplib2
 from google_auth_httplib2 import AuthorizedHttp
@@ -1233,8 +1235,43 @@ class Gmail(GmailMailbox):
         return self._list_between(start, end, max_results, defer_full=False)
 
     def list_between_for_rem(self, start: str, end: str, max_results: int = 200) -> list:
-        """Defer metadata for a full window that REM will split and discard."""
-        return self._list_between(start, end, max_results, defer_full=True)
+        """List REM metadata with bounded direct reads and split full windows early.
+
+        The Google SDK transport can time out before a historical scan begins.
+        REM needs the same bound and account binding as GmailMailbox's direct
+        reads, and its contact scan benefits from independent metadata calls.
+        """
+        first = int(datetime.fromisoformat(start).timestamp())
+        last = int(datetime.fromisoformat(end).timestamp())
+        page = self._mailbox_get('messages', params={
+            'q': f'after:{first} before:{last}', 'maxResults': max_results})
+        self._last_message_page = page
+        stubs = page.get('messages', [])
+        if len(stubs) >= max_results:
+            return [{'id': row['id']} for row in stubs]
+
+        def fetch(stub):
+            message = self._mailbox_get(f'messages/{quote(stub["id"], safe="")}', params={
+                'format': 'metadata',
+                'metadataHeaders': ['From', 'To', 'Cc', 'Subject', 'Date']},
+                ensure_service=False)
+            headers = message.get('payload', {}).get('headers', [])
+            def value(name):
+                return next((h['value'] for h in headers if h['name'].lower() == name), '')
+
+            cc = value('cc')
+            return {'id': stub['id'], 'thread_id': stub.get('threadId', ''),
+                    'from': value('from'), 'to': [value('to')],
+                    'cc': [cc] if cc else [],
+                    'subject': value('subject'), 'date': _iso_date(value('date'), start),
+                    'snippet': message.get('snippet', ''),
+                    'unread': 'UNREAD' in message.get('labelIds', [])}
+
+        if not stubs:
+            return []
+        with ThreadPoolExecutor(max_workers=min(8, len(stubs))) as pool:
+            rows = list(pool.map(fetch, stubs))
+        return sorted(rows, key=lambda row: (row['date'], row['id']))
 
     def _list_between(self, start: str, end: str, max_results: int, *, defer_full: bool) -> list:
         from datetime import datetime
@@ -1260,9 +1297,8 @@ class Gmail(GmailMailbox):
 
     def my_addresses(self) -> set:
         """Primary address plus send-as aliases, lower-cased; what counts as the user's own mail."""
-        service = self._get_service()
-        addresses = {service.users().getProfile(userId='me').execute().get('emailAddress', '').lower()}
-        for alias in service.users().settings().sendAs().list(userId='me').execute().get('sendAs', []):
+        addresses = {self._mailbox_get('profile').get('emailAddress', '').lower()}
+        for alias in self._mailbox_get('settings/sendAs').get('sendAs', []):
             if alias.get('sendAsEmail'):
                 addresses.add(alias['sendAsEmail'].lower())
         return {address for address in addresses if address}

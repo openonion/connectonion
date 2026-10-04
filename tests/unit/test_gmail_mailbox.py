@@ -121,6 +121,26 @@ def test_response_stream_is_bounded_before_json_decode(gmail, monkeypatch):
     assert module.requests.get.call_args.kwargs['allow_redirects'] is False
 
 
+def test_rem_parallel_read_reuses_the_authenticated_list_call(gmail, monkeypatch):
+    from connectonion.useful_tools import gmail_mailbox as module
+
+    class Credentials:
+        def get(self, name):
+            return 'token' if name == 'ACCESS_TOKEN' else None
+
+    gmail._credentials = Credentials()
+    service = MagicMock()
+    monkeypatch.setattr(gmail, '_get_service', service)
+    response = MagicMock(status_code=200)
+    response.iter_content.return_value = [b'{"messages":[]}']
+    response.__enter__.return_value = response
+    monkeypatch.setattr(module.requests, 'get', MagicMock(return_value=response))
+
+    gmail._mailbox_get('messages')
+    gmail._mailbox_get('messages/id', ensure_service=False)
+    service.assert_called_once()
+
+
 def test_recent_draft_does_not_make_old_incoming_message_unanswered(gmail, monkeypatch):
     old = message('old', 'other@example.test', -60 * 86400 * 1000)
     draft = message('draft', 'me@example.test', 0, ['DRAFT'])
