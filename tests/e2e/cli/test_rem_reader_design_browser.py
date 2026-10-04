@@ -244,7 +244,7 @@ def test_people_last_contact_heading_is_visible_beside_sticky_name_on_phone(read
         assert positions["headingRight"] <= positions["edgeRight"], positions
 
 
-def test_large_people_roster_keeps_the_mobile_last_contact_heading_visible(reader, tmp_path, monkeypatch):
+def test_large_people_roster_keeps_mobile_controls_visible(reader, tmp_path, monkeypatch):
     from connectonion.rem import reader as rem_reader
 
     data = rem_reader.snapshot(tmp_path / "rem")
@@ -261,6 +261,14 @@ def test_large_people_roster_keeps_the_mobile_last_contact_heading_visible(reade
     page.goto(path.as_uri() + "#c=people")
     sheet = page.locator(".sheet-scroll")
     assert page.locator(".sheet tbody tr").count() >= 575
+    directory = page.locator(".contact-directory summary")
+    assert 0 <= directory.bounding_box()["y"] < 812
+    assert directory.bounding_box()["y"] < sheet.bounding_box()["y"]
+    directory.focus()
+    directory.press("Enter")
+    assert page.locator(".contact-directory").get_attribute("open") is not None
+    page.locator(".contact-directory").get_by_role("searchbox", name="Search other contacts").fill("Leah Bell")
+    assert page.locator(".contact-directory tbody tr").count() == 1
     for _ in range(2):
         sheet.evaluate("e => e.scrollLeft = e.scrollWidth")
         positions = page.evaluate("""() => {
