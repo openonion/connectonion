@@ -46,10 +46,9 @@ values are `Unknown`; each factual sentence cites `[n]` in `Sources`.
 
 Rules:
 
-- **Lead**: 2–3 cited sentences. Start with a supported current obligation or
-  relationship finding; end with `Last contact: <date>` and channel, qualified
-  to the sources actually checked. Historical gaps go in `Uncertainties`.
-  `Nothing open as of <date>` needs closure evidence.
+- **Lead**: 2–3 short cited sentences. Put the current event and any user action
+  before role detail; end with last contact, channel and checked-source scope.
+  Historical gaps go in `Uncertainties`; `Nothing open` needs closure evidence.
 - **`Facts` first.** Keep exact labels, one per line; separate qualified
   values with `; `. Use notebook-timezone `YYYY-MM-DD`; keep event dates
   distinct. Cite values except `Email`, `Handles`, `Also known as`. Contact
