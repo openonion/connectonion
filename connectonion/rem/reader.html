@@ -366,6 +366,9 @@
   .cite { display: inline-block; position: relative; vertical-align: super; font: 600 9.5px/1 var(--mono); color: var(--blue); background: var(--blue-soft); border-radius: 3px; padding: 2px 3px 1px; margin: 0 1px; text-decoration: none !important; }
   .cite:hover, .cite:focus-visible { background: var(--blue); color: var(--sheet); }
   .cite[data-tip]:hover::after, .cite[data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; z-index: 5; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); width: max-content; max-width: min(340px, 80vw); padding: 7px 10px; border-radius: 6px; background: var(--ink); color: var(--paper); font: 400 12px/1.45 var(--ui); white-space: pre-line; text-align: left; box-shadow: var(--shadow); }
+  @media (max-width: 600px) {
+    .cite[data-tip]:hover::after, .cite[data-tip]:focus-visible::after { position: fixed; left: 16px; right: 16px; bottom: 16px; transform: none; width: auto; max-width: none; overflow-wrap: anywhere; white-space: pre-wrap; }
+  }
 
   /* open threads on a page: the visual centre */
   .block-threads { margin: 0 0 8px; }
@@ -538,9 +541,31 @@
   .contact-directory .candidate-name { font-weight: 600; }
   .contact-directory .candidate-email { color: var(--ink-2); font: 12px var(--mono); }
   .contact-directory button { cursor: pointer; }
+  .contact-directory td button { min-height: 36px; padding: 7px 10px; border: 1px solid var(--blue); border-radius: 5px; background: var(--blue-soft); color: var(--blue); font: 600 12px var(--ui); white-space: nowrap; }
+  .contact-directory td button:hover, .contact-directory td button:focus-visible { background: var(--blue); color: var(--sheet); }
+  .contact-directory td button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .contact-directory .directory-more { margin-top: 10px; border: 1px solid var(--line); border-radius: 5px; padding: 6px 10px; background: var(--well); color: var(--ink); }
-  .contact-directory .directory-action { margin-top: 14px; padding: 12px; border-radius: 5px; background: var(--well); color: var(--ink-2); font-size: 13px; }
-  .contact-directory .directory-action code { display: block; overflow-wrap: anywhere; margin-top: 6px; color: var(--ink); }
+  .contact-directory .directory-action td { padding: 12px; text-align: left; background: var(--well); color: var(--ink-2); font-size: 13px; }
+  .contact-directory .directory-action code { display: block; overflow-wrap: anywhere; white-space: pre-wrap; margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--sheet); color: var(--ink); font: 11px/1.45 var(--mono); text-align: left; }
+  .contact-directory .directory-action button { display: block; margin-top: 8px; }
+  @media (max-width: 600px) {
+    .contact-directory .directory-body { padding: 0 12px 14px; }
+    .contact-directory .directory-scroll { overflow-x: visible; }
+    .contact-directory table, .contact-directory tbody { display: block; width: 100%; }
+    .contact-directory thead { display: none; }
+    .contact-directory tbody > tr:not(.directory-action) { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; padding: 12px; margin: 0 0 9px; border: 1px solid var(--line); border-radius: 7px; }
+    .contact-directory tbody > tr:not(.directory-action) > td { display: block; padding: 0; border: 0; min-width: 0; }
+    .contact-directory tbody > tr:not(.directory-action) > td:nth-child(1) { grid-column: 1 / -1; font-size: 15px; overflow-wrap: anywhere; }
+    .contact-directory tbody > tr:not(.directory-action) > td:nth-child(2) { grid-column: 1 / -1; overflow-wrap: anywhere; }
+    .contact-directory tbody > tr:not(.directory-action) > td:nth-child(3) { grid-column: 1; color: var(--ink-3); }
+    .contact-directory tbody > tr:not(.directory-action) > td:nth-child(3)::before { content: "Last · "; }
+    .contact-directory tbody > tr:not(.directory-action) > td:nth-child(4) { grid-column: 2; text-align: right; color: var(--ink-3); }
+    .contact-directory tbody > tr:not(.directory-action) > td:nth-child(4)::after { content: " mail"; }
+    .contact-directory tbody > tr:not(.directory-action) > td:nth-child(5) { grid-column: 1 / -1; text-align: left; margin-top: 5px; }
+    .contact-directory td button { min-height: 44px; }
+    .contact-directory .directory-action { display: block; margin: -9px 0 9px; }
+    .contact-directory .directory-action td { display: block; border: 1px solid var(--line); border-radius: 0 0 7px 7px; }
+  }
 
   /* People at 1440: every column fits (main 1136px); narrower, the sheet scrolls inside itself. */
   @media (min-width: 821px) { main.wide { padding-left: 28px; padding-right: 28px; } }
@@ -2180,7 +2205,7 @@ function contactDirectory() {
   table.appendChild(el("thead", {}, [el("tr", {}, ["Name", "Email", "Last contact", "Mails", "Memory"].map(name => el("th", { scope: "col", text: name })))]));
   const tbody = el("tbody"); table.appendChild(tbody);
   const scroller = el("div", { class: "directory-scroll", role: "region", tabindex: "0", "aria-label": "Other contacts table" }, [table]);
-  const action = el("div", { class: "directory-action" }); action.hidden = true;
+  const action = el("tr", { class: "directory-action" }, [el("td", { colspan: "5" })]);
   const more = el("button", { type: "button", class: "directory-more", text: "Show more contacts" });
   let limit = 100;
   const draw = () => {
@@ -2189,13 +2214,18 @@ function contactDirectory() {
     tbody.textContent = "";
     for (const row of matched.slice(0, limit)) {
       const name = row.name || row.email;
-      const prepare = el("button", { type: "button", text: "Prepare memory", "aria-label": "Prepare a memory for " + name });
+      const prepare = el("button", { type: "button", text: "Prepare in terminal", "aria-label": "Show the command to prepare a memory for " + name });
       prepare.onclick = () => {
         const command = "co rem --root " + shellArg(REM.root) + " stub person " + shellArg(name)
           + " --email " + shellArg(row.email) + " --handle " + shellArg(row.email);
-        action.textContent = "Run this in a terminal, then follow the next investigation command:";
-        action.appendChild(el("code", { text: command }));
-        action.hidden = false;
+        const cell = action.firstChild;
+        cell.textContent = "Run this in a terminal, then follow the next investigation command:";
+        const copy = el("button", { type: "button", text: "Copy command" });
+        copy.onclick = () => copyToClipboard(command, copy, "Copied — paste in a terminal");
+        cell.appendChild(copy);
+        cell.appendChild(el("code", { text: command }));
+        const selected = prepare.closest("tr");
+        selected.after(action);
       };
       tbody.appendChild(el("tr", {}, [
         el("td", { class: "candidate-name", text: name }),
@@ -2209,7 +2239,7 @@ function contactDirectory() {
   };
   find.addEventListener("input", () => { limit = 100; draw(); });
   more.onclick = () => { limit += 100; draw(); };
-  body.append(find, count, scroller, more, action);
+  body.append(find, count, scroller, more);
   details.appendChild(body); draw();
   return details;
 }
@@ -2241,7 +2271,7 @@ function category(c) {
   }
   if (!items.length && !other && !(c === "people" && (REM.contact_coverage || {}).incomplete)) {
     main.appendChild(c === "people"
-      ? el("div", { class: "empty" }, [el("span", { class: "lead", text: "Not mapped yet" }), "No people mapped yet. Run ", el("code", { text: initCommand() }), " (or select gmail) to read correspondent metadata. No background schedule is started."])
+      ? el("div", { class: "empty" }, [el("span", { class: "lead", text: "Not mapped yet" }), "No people mapped yet. Run ", el("code", { text: initCommand() }), " (or select gmail) to read correspondent metadata."])
       : el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing here yet" }), "Nothing here yet. The notebook fills what the sources support."]));
     return;
   }
