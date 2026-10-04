@@ -767,6 +767,7 @@ def test_failed_cited_claim_audit_gets_one_source_based_repair(notebook, monkeyp
             write_json(directory / 'review.json', {'accepted': False,
                        'errors': ['Cited-claim audit did not pass; see claim-review.json']})
             raise RunFailed('Cited-claim audit failed', {'input_tokens': 13})
+        write_json(directory / 'claim-review.json', {'verdict': 'pass', 'findings': []})
         book.write(record, candidate.read_text())
         return {'input_tokens': 2}
 
@@ -783,6 +784,9 @@ def test_failed_cited_claim_audit_gets_one_source_based_repair(notebook, monkeyp
     assert result['report'] == notebook.read(record)
     receipt = next((notebook.root / '.state' / 'tasks').glob('investigate-*/result.json'))
     assert json.loads(receipt.read_text())['report'] == notebook.read(record)
+    first_audit = receipt.with_name('claim-review-first.json')
+    assert json.loads(first_audit.read_text())['findings'][0]['issue'] == 'Overstated'
+    assert json.loads(receipt.with_name('claim-review.json').read_text())['verdict'] == 'pass'
 
 
 @pytest.mark.parametrize('repaired', [True, False])

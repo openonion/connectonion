@@ -686,7 +686,7 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
 
 # What a finished task keeps: its record, the page it proposed, the review
 # questions and the Skill text it was given. The rest is a private copy of the owner's mail and pages.
-TASK_KEEPS = ("result.json", "candidate.md", "review.json", "claim-review.json",
+TASK_KEEPS = ("result.json", "candidate.md", "review.json", "claim-review.json", "claim-review-first.json",
               "review-candidates.json", "instructions.md")
 
 
@@ -911,6 +911,8 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                 if not errors or (not audit_failed and any(not error.startswith(
                         ("History has ", "Finding has unresolved citations")) for error in errors)):
                     raise
+                if audit_failed:
+                    write_json(directory / "claim-review-first.json", read_json(directory / "claim-review.json", {}))
                 # Repair bounded history and miscopied evidence ids once,
                 # keeping the paid-for candidate and accounting for both turns.
                 instruction = (f"Read {directory / 'claim-review.json'} and the cited originals in "
