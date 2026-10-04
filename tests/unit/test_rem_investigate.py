@@ -169,6 +169,49 @@ def test_quick_owner_run_uses_one_turn_and_reports_partial_coverage(tmp_path, mo
     assert received[2]['role'] == 'quick-first-pass'
 
 
+def test_quick_owner_keeps_cross_source_decision_and_cites_original_turns(tmp_path, monkeypatch):
+    from connectonion.rem.source import Batch
+
+    class Owner:
+        def my_addresses(self): return ['me@example.org']
+        def list_between(self, start, end, limit): return []
+
+    older = [{'source': 'claude-code:old', 'role': 'user', 'project': '/work/rem',
+              'timestamp': '2026-10-01T00:00:00Z',
+              'text': 'Maybe REM init should keep a static owner page.'},
+             *[{'source': f'claude-code:recent-{n}', 'role': 'user', 'project': '/work/rem',
+                'timestamp': f'2026-10-02T{n + 1:02d}:00:00Z',
+                'text': f'Check the REM page and its sources again {n}.'}
+               for n in range(18)]]
+    newer = [
+        {'source': 'codex:reversal', 'role': 'user', 'project': '/work/rem',
+         'timestamp': '2026-10-02T00:00:00Z',
+         'text': '不对，REM init 不启动模型是错的，应该用模型调查后再写页面。'},
+        *[{'source': f'codex:recent-{n}', 'role': 'user', 'project': '/work/rem',
+           'timestamp': f'2026-10-02T{n + 1:02d}:00:00Z',
+           'text': f'Check the REM page and its sources again {n}.'}
+          for n in range(18)],
+    ]
+    monkeypatch.setattr(inv, 'collect',
+                        lambda sub, cursor, *limits: Batch(older if sub['kind'] == 'claude-code' else newer,
+                                                           cursor))
+    root = _notebook(tmp_path, 'codex')
+    received = []
+    result = inv.investigate(root, 'people/vern.md', 'Vern', ['me@example.org'], days=5,
+                             clients={'gmail': Owner()},
+                             subscriptions={'claude': {'kind': 'claude-code', 'root': str(tmp_path)},
+                                            'codex': {'kind': 'codex', 'root': str(tmp_path)}},
+                             sent_only=True, quick=True,
+                             runner=lambda notebook, items, config, stage: received.extend(items) or {'changed': []})
+    packet = next(item for item in received if item['role'] == 'owner-work-evidence')
+    assert 'claude-code:old' in packet['sources'] and 'codex:reversal' in packet['sources']
+    assert 'candidate leads, not a digest or evidence of completion' in packet['text']
+    assert len(packet['sources']) <= 6 and len(packet['text']) < 10_000
+    assert 'codex:reversal' in [item['source'] for item in received]
+    assert result['items_available'] <= 30  # twelve recent turns per source plus at most six anchors
+    assert len([item for item in received if item.get('role') == 'user']) <= 24
+
+
 def test_quick_owner_fetches_only_recent_mail_bodies():
     class Mailbox:
         def __init__(self):
