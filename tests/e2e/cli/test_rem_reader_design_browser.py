@@ -83,6 +83,20 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     assert '`' not in page.locator('#foot').inner_text()
 
 
+def test_manual_memory_precedes_no_pass_status_on_phone(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri)
+    page.evaluate('() => { REM.logs = []; render(); }', isolated_context=False)
+    recall = page.locator('.recall')
+    link = recall.get_by_role('link', name='Open page and sources →')
+    assert link.bounding_box()['y'] + link.bounding_box()['height'] <= 812
+    assert recall.bounding_box()['y'] < page.locator('.morning').bounding_box()['y']
+    assert 'No pass yet' in page.locator('.morning').inner_text()
+    link.click()
+    assert page.get_by_role('heading', name='Full memory and sources').is_visible()
+
+
 def test_long_person_lead_keeps_sources_in_mobile_first_fold(reader):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})

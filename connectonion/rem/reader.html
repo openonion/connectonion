@@ -1975,7 +1975,7 @@ function recallPrompt() {
   const answerText = plainLine(relationship?.text || known(r).summary);
   const card = el("section", { class: "recall", "aria-label": "Recall a memory" });
   const answer = el("div", { id: "recall-answer", class: "recall-answer", hidden: "", "aria-live": "polite" }, [
-    el("p", { text: answerText }), el("a", { href: href(r), text: "Open " + r.title + " and its sources →" })]);
+    el("p", { text: answerText })]);
   const button = el("button", { class: "recall-toggle", type: "button", "aria-controls": "recall-answer", "aria-expanded": "false", text: "Reveal the context" });
   button.onclick = () => {
     answer.hidden = !answer.hidden;
@@ -1984,7 +1984,8 @@ function recallPrompt() {
   };
   card.append(el("span", { class: "label", text: "Remember with co rem" }),
     el("h2", { text: relationship ? "How do you know " + r.title + "?" : "What should you remember about " + r.title + "?" }),
-    el("p", { class: "why", text: "Pause before revealing. The answer comes from a page co rem already wrote." }), button, answer);
+    el("p", { class: "why" }, ["Pause before revealing. The answer comes from a page co rem already wrote. ",
+      el("a", { href: href(r), text: "Open page and sources →" })]), button, answer);
   return card;
 }
 function connectionReview() {
@@ -2012,9 +2013,10 @@ function overview() {
     "A short return to what changed, what is still open, and what is worth remembering." }));
   const refused = latestClaimRefusal();
   if (refused && REM.logs[0]?.id === refused.id) main.appendChild(auditNotice(refused, false));
-  main.appendChild(firstMap || morningBrief());
   const recall = recallPrompt();
-  if (recall) main.appendChild(recall);
+  if (recall && !lastPass()) main.appendChild(recall);
+  main.appendChild(firstMap || morningBrief());
+  if (recall && lastPass()) main.appendChild(recall);
   const review = connectionReview();
   if (review) main.appendChild(review);
 
