@@ -65,10 +65,10 @@ and work immediately, with evidence cited on each page.
 --first-people, --first-projects, --first-orgs and --first-skills cap a kind (0 for none).
 `--all-history` maps available mail metadata since 1970 and local session
 history, while keeping the first mail-body archive to 90 days. `--investigate-all`
-selects every mapped person and project instead of only the recent cohort;
+includes that history scan and explicitly selects every mapped person and project;
 each person still uses its current per-page source window. `--estimate-only`
 builds the map and prints that selection's cost without a model turn or body
-archive. A mailbox error makes the estimate a clearly marked lower bound.
+archive or schedule. A mailbox error makes the estimate a clearly marked lower bound.
 Before the first page it says one total: about how many pages, ~how many billed
 input tokens on your plan and ~how many minutes, an estimate from the median of
 this notebook's own runs (before there are any, measured defaults). It names the
@@ -83,6 +83,7 @@ already written. Later new evidence: co rem investigate all.
 Usage:    co rem init [--days N] [--mine ADDRESS[,ADDRESS...]] [--name NAME] [--mail gmail|outlook]...
                        [--no-mail-archive] [--investigate | --no-investigate]
                        [--all-history] [--investigate-all] [--estimate-only]
+                       [--start | --no-start] [--yes]
                        [--first-people N] [--first-projects N] [--first-orgs N] [--first-skills N]
 Example:  co rem init --days 90 --name "Aaron Xie" --mine aaron@mail.openonion.ai,aaron@openonion.ai
 
@@ -93,8 +94,11 @@ Inputs:   Connected mailboxes (co auth google, co auth microsoft) and local Code
 Options:  --investigate     Explicitly request the default investigation.
           --no-investigate  Build the map only.
           --all-history    Discover all available mail years; recent bodies only.
-          --investigate-all Select every mapped person and project; quota floor still applies.
+          --investigate-all Scan history and select every eligible person and project; quota floor still applies.
           --estimate-only  Map and forecast, with no model turns or body archive.
+          --start         Offer the source and schedule approval after the first run (default).
+          --no-start      Leave background upkeep off.
+          --yes           Explicitly approve the shown background source access and schedule.
           --first-people N    Cap eligible people (default all selected; 0 for none).
           --first-projects N  Cap queued projects (default all selected; 0 for none).
           --first-orgs N     Cap pending mapped organizations (default all; 0 for none).
@@ -109,14 +113,15 @@ Output:   Your page's facts and where it is; one progress line per stage on stde
           anything written and reuses saved bodies.
 Effects:  Writes pages and private files (owner-only). Reads mail bodies unless
           --no-mail-archive. Mailboxes it read are subscribed for the daily round;
-          nothing is read in the background until co rem start is approved. The
-          map costs nothing; the subsequent investigation uses the configured
-          model for the selected people, projects and organizations. No schedule.
+          background upkeep is installed only after its source and schedule
+          summary is approved. Noninteractive init without --yes leaves it off.
+          The map costs nothing; the subsequent investigation uses the configured
+          model for the selected people, projects and organizations.
 Takes:    About 10 minutes to map 90 days of two mailboxes; saving bodies takes
           longer; investigation time depends on the selected pages and runner.
           An interrupted run resumes where it stopped.
 
-Next:     co rem open   (read your page), then co rem start (keep it current)
+Next:     co rem open   (read your page); co rem start --yes if schedule approval was deferred
 Back:     co rem --help
 ```
 

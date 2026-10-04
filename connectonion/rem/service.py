@@ -566,7 +566,7 @@ def consent_summary(root: Path) -> dict:
                           "asleep runs once on wake); co rem stop removes it"}
 
 
-def start(root: Path, *, confirm, scheduler, runner=None) -> dict:
+def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool = True) -> dict:
     """Prepare what is missing, confirm access once, install the clock, run the first batch.
 
     `confirm` receives the summary and returns True to proceed. Declining leaves
@@ -600,7 +600,7 @@ def start(root: Path, *, confirm, scheduler, runner=None) -> dict:
     # The first batch runs before the clock is installed: loading a launchd job
     # fires its run-at-load batch immediately, and two batches would race for the
     # notebook lock, with the one the user is watching likely to lose.
-    first_batch = run_sync(root, runner=runner) if first else None
+    first_batch = run_sync(root, runner=runner) if first and run_first_batch else None
     try:
         installed = scheduler.install(root, read_config(root))
     except RemError:

@@ -462,13 +462,13 @@ def _capped(rows: list, cap) -> list:
     return rows if cap is None else rows[:cap]
 
 
-def _first_people_rows(root, cap, recent_days: int, *, all_people: bool = False) -> list[dict]:
+def _first_people_rows(root, cap, recent_days: int) -> list[dict]:
     """Eligible people in queue order, recent first; automated and own addresses excluded."""
     from ...rem.people_pages import queue
     return _capped(queue(root, recent_days=recent_days), cap)
 
 
-def _first_project_rows(root, cap, *, all_projects: bool = False) -> list[dict]:
+def _first_project_rows(root, cap) -> list[dict]:
     """Unwritten messages, then mapped projects with readable local evidence."""
     from ...rem.files import Notebook
     from ...rem.investigate import project_file_inventory
@@ -655,8 +655,26 @@ def _init_done(ctx, result) -> str:
         f"Your notebook: {', '.join(counts)} and {names} skill{'s' if names != 1 else ''}.",
         "Written this run: " + (", ".join(written[:-1]) + " and " + written[-1] if len(written) > 1
                                 else written[0] if written else "nothing yet") + ".",
-        *([f"Your page: {owner}"] if owner else []),
-        "Then keep it current: " + _next(ctx, ["start"]) + " (it asks before anything is read in the background)."])
+        *([f"Your page: {owner}"] if owner else [])])
+
+
+def _start_consent(ctx, summary, *, yes: bool) -> bool:
+    """Use the same visible source and schedule approval in init and start."""
+    import sys
+
+    if ctx.obj["json"]:
+        return yes
+    message = render(summary, "start — source access and schedule")
+    if yes:
+        rem_look.say(rem_look.result(message), err=True, plain=message)
+        return True
+    if not sys.stdin.isatty():
+        rem_look.say(rem_look.result(message), err=True, plain=message)
+        rem_look.line("A noninteractive run cannot consent silently. Run with --yes after reading "
+                      "the source and schedule summary, or use a terminal.", err=True)
+        return False
+    rem_look.say(rem_look.result(message), plain=message)
+    return typer.confirm("Read these sources with this model and schedule?", default=False)
 
 
 def _people_table(ctx, root, category, *, company, open_only, sort):
@@ -726,6 +744,8 @@ def make_rem_app(factory):
                   all_history: bool = typer.Option(False, "--all-history", help="Map every available mail year; archive only recent bodies"),
                   investigate_all: bool = typer.Option(False, "--investigate-all", help="Select every mapped person and project, subject to the safety floor"),
                   estimate_only: bool = typer.Option(False, "--estimate-only", help="Map and estimate the selected work without model turns or body archive"),
+                  start_background: bool = typer.Option(True, "--start/--no-start", help="Install nightly upkeep after the first run"),
+                  yes: bool = typer.Option(False, "--yes", help="Approve the shown source access and background schedule"),
                   first_people: Optional[int] = typer.Option(None, "--first-people", min=0),
                   first_projects: Optional[int] = typer.Option(None, "--first-projects", min=0),
                   first_orgs: Optional[int] = typer.Option(None, "--first-orgs", min=0),
@@ -736,6 +756,7 @@ def make_rem_app(factory):
         from ...rem import runner as rem_runner
         from ...rem.service import mail_available, mail_client, subscribe_read_mail, subscriptions
         from .rem_output import StageProgress
+        all_history = all_history or investigate_all
         # One run confirms several addresses: `--mine a,b,c` as well as repeating it.
         owned = [part.strip() for value in mine for part in value.split(",") if part.strip()]
 
@@ -872,8 +893,8 @@ def make_rem_app(factory):
             from ...rem import first_run
             from .rem_people import counted
             from ...rem.service import run_logs
-            people_rows = _first_people_rows(root, first_people, days, all_people=investigate_all)
-            project_rows = _first_project_rows(root, first_projects, all_projects=investigate_all) if first_projects != 0 else []
+            people_rows = _first_people_rows(root, first_people, days)
+            project_rows = _first_project_rows(root, first_projects) if first_projects != 0 else []
             org_rows = _first_org_rows(root, first_orgs)
             from ...rem.queue import order
             skill_rows = _capped([row for row in order(root, "skills") if not row["recent"]], first_skills)
@@ -955,7 +976,34 @@ def make_rem_app(factory):
             if result.get("investigation") == "failed":
                 return (result if ctx.obj["json"] else _init_done(ctx, result)), retry_me, True
             return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
-        _handle(ctx, run, ["sources"])
+        def run_and_start(root):
+            response = run(root)
+            value, next_step = response[:2]
+            if estimate_only:
+                background = {"started": False, "reason": "Estimate only; no consent or schedule installed."}
+            elif not start_background:
+                background = {"started": False, "reason": "Background upkeep left off by --no-start."}
+            else:
+                from ...rem import schedule as rem_schedule
+                from ...rem.files import RemError
+                from ...rem.service import start
+                try:
+                    background = start(root, confirm=lambda summary: _start_consent(ctx, summary, yes=yes),
+                                       scheduler=rem_schedule.default_scheduler(), run_first_batch=False)
+                    if not background["started"]:
+                        background["reason"] = ("Background upkeep needs approval. Run "
+                                                + _next(ctx, ["start", "--yes"]) + " after reviewing its summary.")
+                except RemError as error:
+                    background = {"started": False, "reason": f"Background upkeep could not start: {error}"}
+            if isinstance(value, dict):
+                value["background"] = background
+            else:
+                detail = ("Background upkeep: scheduled." if background["started"] else
+                          "Background upkeep: " + background["reason"])
+                value += "\n" + detail
+            return (value, next_step, *response[2:])
+
+        _handle(ctx, run_and_start, ["sources"])
 
     @rem.command("investigate", cls=V("co rem investigate"))
     def investigate_page(ctx: typer.Context,
@@ -1267,27 +1315,12 @@ def make_rem_app(factory):
 
     @rem.command("start", cls=V("co rem start"))
     def start_rem(ctx: typer.Context, yes: bool = typer.Option(False, "--yes")):
-        import sys
-
         from ...rem import schedule as rem_schedule
         from ...rem.files import RemError
         from ...rem.service import start
 
         def confirm(summary):
-            text = render(summary, "start — source access and schedule")
-            if yes:
-                if any("if you approve" in str(source.get("state")) for source in summary["sources"].values()):
-                    # --yes approves what was shown before; a mailbox offered for
-                    # the first time is shown now, on stderr (#1974).
-                    rem_look.say(rem_look.result(text), err=True, plain=text)
-                return True
-            if not sys.stdin.isatty():
-                rem_look.say(rem_look.result(text), err=True, plain=text)
-                rem_look.line("A noninteractive start cannot consent silently; read the summary above "
-                           "and run with --yes, or run `co rem start` in a terminal.", err=True)
-                return False
-            rem_look.say(rem_look.result(text), plain=text)
-            return typer.confirm("Read these sources with this model and schedule?", default=False)
+            return _start_consent(ctx, summary, yes=yes)
 
         def operation(root):
             result = start(root, confirm=confirm, scheduler=rem_schedule.default_scheduler())

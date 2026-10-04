@@ -257,7 +257,8 @@ def test_init_ends_with_what_is_in_the_notebook_what_was_written_and_what_is_nex
     assert tail[0] == "Your notebook: 4 people, 3 organizations, 0 projects and 0 skills."
     assert tail[1] == "Written this run: your page, 1 person and 1 organisation page."
     assert tail[2].startswith("Your page: ") and tail[2].endswith(".md")
-    assert tail[3].startswith(f"Then keep it current: co rem --root {root} start")
+    assert tail[3].startswith("Background upkeep: Background upkeep needs approval.")
+    assert f"co rem --root {root} start --yes" in tail[3]
     assert tail[4] == f"Next: co rem --root {root} open"
 
 
@@ -601,7 +602,7 @@ def test_the_first_run_writes_every_page_and_a_flag_caps_a_kind(people, monkeypa
 
 def test_all_history_estimate_maps_without_model_turns_or_body_archive(first_run):
     root, init, calls = first_run
-    result = init("--all-history", "--investigate-all", "--estimate-only", "--first-orgs", "0", "--json")
+    result = init("--investigate-all", "--estimate-only", "--first-orgs", "0", "--json")
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)["data"]
     assert data["all_history"] and data["estimate_only"]
