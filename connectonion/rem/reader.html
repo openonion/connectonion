@@ -526,7 +526,7 @@
   .open-cell .more { font: 11px var(--mono); color: var(--ink-3); }
   .sheet td.none { text-align: center; color: var(--ink-3); padding: 28px; cursor: default; }
 
-  .contact-directory { margin-top: 24px; border: 1px solid var(--line); border-radius: 8px; background: var(--sheet); overflow: hidden; }
+  .contact-directory { margin: 18px 0 24px; border: 1px solid var(--line); border-radius: 8px; background: var(--sheet); overflow: hidden; }
   .contact-directory summary { cursor: pointer; padding: 15px 18px; font-weight: 650; color: var(--ink); }
   .contact-directory summary:focus-visible { outline: 2px solid var(--blue); outline-offset: -3px; }
   .contact-directory .directory-body { padding: 0 18px 18px; }
@@ -2275,12 +2275,12 @@ function category(c) {
       : el("div", { class: "empty" }, [el("span", { class: "lead", text: "Nothing here yet" }), "Nothing here yet. The notebook fills what the sources support."]));
     return;
   }
-  if (COLUMNS[c] && items.length) main.appendChild(sheet(c, items));
-  else if (items.length) main.appendChild(el("ul", { class: "hits" + (c === "skills" ? " skills" : "") }, items.sort(byActivity).map(r => row(r))));
   if (c === "people") {
     const directory = contactDirectory();
     if (directory) main.appendChild(directory);
   }
+  if (COLUMNS[c] && items.length) main.appendChild(sheet(c, items));
+  else if (items.length) main.appendChild(el("ul", { class: "hits" + (c === "skills" ? " skills" : "") }, items.sort(byActivity).map(r => row(r))));
 }
 
 // ---------- a page ----------
