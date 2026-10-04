@@ -57,8 +57,9 @@ body, once, so investigating a person later reads it from disk.
 Then it writes your own page by itself from everything you sent
 and your coding sessions of the last 30 days (co rem investigate me): a quick
 first pass in about 4 minutes, then the whole page alongside the rest. It also
-investigates all eligible mapped people, recent first (up to two years of
-their mail), projects (recent first), all pending mapped organizations,
+investigates all eligible mapped people, recent first (at least two years of
+their mail, back to the first mapped message when older), projects (recent
+first), all pending mapped organizations,
 and installed skills from their source instructions and retained run evidence,
 10 pages at a time. The result should let you recognize useful relationships
 and work immediately, with evidence cited on each page.

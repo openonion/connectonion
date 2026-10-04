@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from .config import read_config
 from ..provider_credentials import ProviderCredentialError
@@ -1088,10 +1089,20 @@ def _mail_comparison(root, record, handles, items, fresh, cited, subscriptions, 
             and (not sent_only or item.get("role") == "user")]
 
 
+def _local_mail_times(items: list[dict], zone_name: str) -> None:
+    """Show person-mail instants in the notebook's calendar before the writer sees them."""
+    zone = ZoneInfo(zone_name or "UTC")
+    for item in items:
+        stamp = str(item.get("timestamp") or "")
+        if str(item.get("source") or "").split(":", 1)[0] in MAIL_KINDS and re.search(
+                r"T.*(?:Z|[+-]\d{2}:\d{2})$", stamp):
+            item["timestamp"] = timestamp(stamp).astimezone(zone).isoformat()
+
+
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
-                quick: bool = False, retry_refused: bool = False) -> dict:
+                 quick: bool = False, retry_refused: bool = False, audit_claims: bool = True) -> dict:
     """Fill the page's gaps from everything gathered; the page itself is the first input."""
     notebook = Notebook(root)
     if not notebook.path(record).is_file():
@@ -1110,6 +1121,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                              progress=progress, attachments_dir=root / ".state" / "attachments",
                              sent_only=sent_only, mail_skipped=mail_skipped, stage_progress=stage_progress,
                              quick=quick, archive_root=root, record=record)
+    config = read_config(root)
     # Build the bounded comparison before a full pass drops items already cited
     # by its quick page. That citation only says the first pass saw them; the
     # final writer still needs the earlier and later words side by side.
@@ -1117,6 +1129,14 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     coverage.append(f"Requested investigation window: {days} days ending "
                     f"{datetime.now(timezone.utc).date().isoformat()}")
     last = last_investigated(notebook.read(record))
+    if record.startswith("people/") and not last:
+        mapped = read_json(state_path(root, "map.json"), {})
+        person = next((row for row in mapped.get("people", []) if row.get("record") == record), {})
+        if person.get("first"):
+            coverage.append(f"Earliest person-linked mapped mail metadata: {person['first']}. "
+                            "Its body may be unavailable, and inclusion as sender or recipient does not "
+                            "prove a personal exchange. Do not claim a later message is first contact "
+                            "without checking this earlier evidence.")
     # Read from everything gathered, before anything is filtered, laid out in
     # files or sampled: the turn searches files for what it thinks to look for,
     # and Ody's phone sat in a signature it never opened (#2068). A mail the
@@ -1125,7 +1145,6 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # earliest retained mail cannot establish when this relationship began.
     from . import facts
     from .fact_extract import extract, facts_item
-    config = read_config(root)
     fact_rows = [] if record.startswith("projects/") else [
         row for row in extract([item for item in items if not item.get("relationship_scope")], handles,
                                owner=sent_only, timezone=config["schedule"]["timezone"])
@@ -1154,6 +1173,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                                 f"{len(comparison)} previously cited mail source(s) retained for exact "
                                 "provider-thread comparison; comparison is old evidence, not new contact")
             items = [*fresh, *comparison]
+    if record.startswith("people/"):
+        _local_mail_times(items, config["schedule"]["timezone"])
     if last and not items and not record.startswith("projects/"):
         _keep_facts(notebook, root, record, fact_rows)
         raise _nothing_new(record, subject, coverage, last)
@@ -1351,7 +1372,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     # only picks which harness answers the Skill -- our own loop, or Codex
     # delegated through `co ai --harness codex`. Either one can reach the web.
     if runner is None:
-        runner = partial(run_stage, search=mail_search(clients)) if clients else run_stage
+        runner = partial(run_stage, search=mail_search(clients) if clients else None,
+                         audit_claims=audit_claims)
     if stage_progress:
         stage_progress("writing investigation")
     try:
@@ -1402,7 +1424,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,
-            "usage_by_stage": usage_by_stage, "report": result.get("report", ""),
+            "usage_by_stage": usage_by_stage,
+            "report": notebook.read(record) if record in result.get("changed", []) else result.get("report", ""),
             "evidence": cited_live + [{key: item[key] for key in ("source", "file", "timestamp", "captured_at", "origin", "paths")
                           if key in item} for item in [*prompt_items, *evidence_items]
                          if item.get("source") and item.get("role") not in ("evidence-index", "original_evidence")],

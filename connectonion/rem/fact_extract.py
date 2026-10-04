@@ -2,12 +2,13 @@
 
 The phone number on Ody's page was in a signature block; the turn searched its
 evidence files for what it thought to look for and wrote "no phone number
-appears in the material". A signature, a From address and the dates of the
-first and last message are text a regular expression reads exactly, so they
+appears in the material". A signature, a From address and the date of the
+latest message are text a regular expression reads exactly, so they
 are read here and handed to the turn as one `investigation:facts` item, each
 with the source id to cite. What only a reader can judge -- which signature
-line is a title, which domain is the employer -- is handed over as the lines
-themselves (`Signature`, `Calendar`, `Company domain`), never as a field value.
+line is a title, which domain is the employer, or whether the earliest mail is
+a personal exchange -- is handed over as context or left for the reader, never
+as an automatic field value.
 
 Each row: {"field", "value", "qualifier", "source", "date"}; `field` is a
 Facts label (see facts.FIELDS) or one of the context kinds above.
@@ -167,6 +168,7 @@ def facts_item(rows: list[dict], timezone: str = "UTC") -> dict:
                     "Calendar lines are the text itself: read the role, company, location or time zone from "
                     "them. Correct a fact only where the material contradicts it, and say so in "
                     "Uncertainties; a phone, address, link or last-contact date left off the page is put back "
-                    f"after the turn. Dates use {timezone}; event dates are separate. The earliest "
-                    "retained mail does not establish first contact.\n"
+                    f"after the turn. Dates use {timezone} for contacts and sources; event dates are separate. "
+                    "First contact requires a personal exchange; the earliest retained mail does not "
+                    "establish first contact.\n"
                     + "\n".join(lines)}

@@ -72,11 +72,52 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
     assert page.locator('.deep-note .note').bounding_box()['y'] < page.locator('.deep-note .side').bounding_box()['y']
     assert 'co\u00a0rem\u00a0start' in page.locator('#mobile-status').text_content()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    sources = page.get_by_role('link', name='View sources →')
+    assert sources.bounding_box()['height'] >= 44
+    sources.click()
+    assert page.locator('#src-1').is_visible()
     page.set_viewport_size({'width': 1440, 'height': 900})
     page.reload()
     assert 'Background updates off' in page.locator('#foot').inner_text()
     assert 'Not started' not in page.locator('#foot').inner_text()
     assert '`' not in page.locator('#foot').inner_text()
+
+
+def test_manual_memory_precedes_no_pass_status_on_phone(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri)
+    page.evaluate('() => { REM.logs = []; render(); }', isolated_context=False)
+    recall = page.locator('.recall')
+    link = recall.get_by_role('link', name='Open page and sources →')
+    assert link.bounding_box()['height'] >= 44
+    assert link.bounding_box()['y'] + link.bounding_box()['height'] <= 812
+    assert recall.bounding_box()['y'] < page.locator('.morning').bounding_box()['y']
+    assert 'No pass yet' in page.locator('.morning').inner_text()
+    link.click()
+    assert page.get_by_role('heading', name='Full memory and sources').is_visible()
+
+
+def test_long_person_lead_keeps_sources_in_mobile_first_fold(reader):
+    page, uri = reader
+    page.set_viewport_size({'width': 375, 'height': 812})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      const facts = r.text.indexOf('## Facts');
+      r.text = '# Mara Ostrowski\\n\\nMara wrote about a pilot and described her role at Fernhill Labs [1][2]. '
+        + 'The user replied with a proposed date, but the two checked messages do not establish a shared start date [3]. '
+        + 'Earlier correspondence and contract terms remain unknown from these messages [1][3]. '
+        + 'Last contact: 2026-09-30 via email in checked sources [3].\\n\\n' + r.text.slice(facts);
+      KNOWN.delete(r.path); render();
+    }""", isolated_context=False)
+    source = page.get_by_role('link', name='View sources →')
+    box = source.bounding_box()
+    assert box['height'] >= 44 and box['y'] + box['height'] <= 812
+    assert page.get_by_role('heading', name='Full memory and sources').is_visible()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    source.click()
+    assert page.locator('#src-1').is_visible()
 
 
 def test_mobile_browse_privacy_control_remains_a_full_touch_target(reader):
@@ -150,7 +191,7 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     assert page.locator(".night-details").count() == 1
     page.locator(".night-details summary").click()
     night = page.locator(".night")
-    assert "46 items" in night.inner_text() and "4 pages" in night.inner_text()
+    assert "46 items" in night.inner_text() and "4 investigated pages" in night.inner_text()
     assert night.locator(".hypno .dot.woke").count() == 1  # the night that stopped early
     assert set(night.locator(".changes a").all_inner_texts()) == {"Mara Ostrowski", "Harbour", "Fernhill Labs", "Avery Lin"}  # runs, and stamps of the night
     # Yours first, then what others owe you.
@@ -168,9 +209,9 @@ def test_people_open_as_a_sheet_that_sorts_filters_and_opens_a_row(reader):
     page.get_by_role("button", name="Yours to answer").click()
     assert sheet.locator("tbody .name a").all_inner_texts() == ["Mara Ostrowski", "Inès Halvorsen"]
     page.get_by_role("button", name="All").click()
-    page.locator("th", has_text="Mails").locator("button").click()
+    page.locator("th", has_text="Mapped mail").locator("button").click()
     assert sheet.locator("tbody .name a").first.inner_text() == "Mara Ostrowski"
-    assert page.locator("th", has_text="Mails").get_attribute("aria-sort") == "descending"
+    assert page.locator("th", has_text="Mapped mail").get_attribute("aria-sort") == "descending"
     page.locator(".sheet-find").fill("ledgerline")
     assert sheet.locator("tbody .name a").all_inner_texts() == ["Inès Halvorsen"]
     sheet.locator("tbody tr").first.locator("td").nth(5).click()
@@ -199,6 +240,7 @@ def test_people_last_contact_heading_is_visible_beside_sticky_name_on_phone(read
     page.set_viewport_size({"width": 375, "height": 812})
     page.goto(uri + "#c=people")
     scroller = page.locator(".sheet-scroll")
+    assert page.locator(".sheet td.name a").first.bounding_box()["height"] >= 44
     assert page.locator(".sheet th.c-last button").text_content().startswith("Last contact")
     assert any("· map" in date for date in page.locator(".sheet td.c-last").all_inner_texts())
     header_positions = """() => {
@@ -221,6 +263,10 @@ def test_people_last_contact_heading_is_visible_beside_sticky_name_on_phone(read
         assert positions["nameLeft"] >= positions["edgeLeft"] - 1, positions
         assert positions["letterLeft"] >= positions["nameRight"], positions
         assert positions["headingRight"] <= positions["edgeRight"], positions
+    page.locator(".sheet-find").fill("Mara Ostrowski")
+    scroller.evaluate("e => { e.scrollLeft = e.scrollWidth; }")
+    positions = page.evaluate(header_positions)
+    assert positions["letterLeft"] >= positions["nameRight"], positions
 
 
 def test_large_people_roster_keeps_the_mobile_last_contact_heading_visible(reader, tmp_path, monkeypatch):
@@ -339,6 +385,8 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
     assert page.evaluate("cases => Object.keys(cases).map(youify)", cases, isolated_context=False) == list(cases.values())
     # A thread addressed to the owner by name ("Avery: collect …") is the owner's to do.
     assert page.evaluate("direction('Avery: collect the swipe card from Security')", isolated_context=False) == "mine"
+    # Missing mail in this notebook does not say who owes the next response.
+    assert page.evaluate("direction('Purnjay asks for rates; no reply found here; check whether you replied elsewhere')", isolated_context=False) == "plain"
     home_threads = page.locator("ul.threads").first.inner_text()
     assert "you have owed them" in home_threads and "the user" not in home_threads.lower()
     page.goto(page.url.split("#")[0] + "#r=people%2Fmara-ostrowski.md")
@@ -354,6 +402,14 @@ def test_the_owner_focus_prefers_a_supported_change_to_a_generic_now(reader):
     assert "Last active" in page.locator(".leadrow").inner_text()
     assert "Last contact" not in page.locator(".focus-facts").inner_text()
     assert "Wellington" in page.locator(".focus-facts").inner_text()
+    page.evaluate("""() => {
+      const r = byPath('people/avery-lin.md');
+      r.last_activity = '2026-10-03';
+      r.text = r.text.replace(/- Last contact:[^\\n]+/, '- Last contact: Unknown');
+      KNOWN.delete(r.path); FACTS.delete(r.path); render();
+    }""", isolated_context=False)
+    assert page.evaluate("known(byPath('people/avery-lin.md')).last === '2026-10-03'", isolated_context=False)
+    assert 'Last active' in page.locator('.leadrow').inner_text()
     selected = page.evaluate("""() => {
       const owner = REM.records.find(r => r.path === REM.owner);
       const insight = section(owner, 'insight');
@@ -1155,6 +1211,67 @@ def test_mapped_person_distinguishes_map_date_from_missing_note_fact(reader):
         assert '— not found' in page.locator('.factlist dt:text-is("Last contact") + dd').inner_text()
 
 
+def test_investigated_person_unknown_contact_does_not_show_file_or_map_date(reader):
+    page, uri = reader
+    for width in (1440, 375):
+        page.set_viewport_size({'width': width, 'height': 812})
+        page.goto(uri + '#r=people%2Fquinn-alder.md')
+        page.evaluate("""() => {
+          const r = byPath('people/quinn-alder.md');
+          r.written = true;
+          r.last_activity = '2026-10-03';
+          r.mail.last = '2026-08-30';
+          r.updated = '2026-10-03';
+          r.text = '# Quinn Alder\\n\\nA cited note whose last contact remains unverified.\\n\\n'
+            + '## Facts\\n- Last contact: Unknown across addresses; latest cited mail 2026-08-12 [1]\\n\\n'
+            + '## Who they are\\nQuinn appears in a mail thread [1].\\n\\n'
+            + '## Sources\\n- [1] test:mail\\n\\nInvestigation: investigated 2026-10-03';
+          KNOWN.delete(r.path); FACTS.delete(r.path); render();
+        }""", isolated_context=False)
+        assert page.evaluate("known(byPath('people/quinn-alder.md')).last === ''", isolated_context=False)
+        assert 'Last contact' not in page.locator('.leadrow').inner_text()
+        assert '— not found' in page.locator('.factlist dt:text-is("Last contact") + dd').inner_text()
+        page.evaluate("""() => {
+          const r = byPath('people/quinn-alder.md');
+          delete r.last_activity;
+          r.index = { last_contact: '2026-08-30' };
+          KNOWN.delete(r.path); FACTS.delete(r.path); render();
+        }""", isolated_context=False)
+        assert page.evaluate("facts(byPath('people/quinn-alder.md')).last === ''", isolated_context=False)
+        assert '— not found' in page.locator('.factlist dt:text-is("Last contact") + dd').inner_text()
+        page.evaluate("""() => {
+          const r = byPath('people/quinn-alder.md');
+          r.text = r.text.replace('- Last contact: Unknown across addresses; latest cited mail 2026-08-12 [1]',
+            '- Last contact: 2026-08-12 [1]').replace('## Sources\\n',
+            '## Uncertainties\\n- Last contact: Unknown across other addresses [1]\\n\\n## Sources\\n');
+          KNOWN.delete(r.path); FACTS.delete(r.path); render();
+        }""", isolated_context=False)
+        assert page.evaluate("known(byPath('people/quinn-alder.md')).last === '2026-08-12'", isolated_context=False)
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_reviewed_person_email_overrides_derived_index_identity(reader):
+    page, uri = reader
+    page.goto(uri + '#r=people%2Fquinn-alder.md')
+    page.evaluate("""() => {
+      const r = byPath('people/quinn-alder.md');
+      r.written = true;
+      r.index = { emails: ['shared@example.org'] };
+      r.text = '# Quinn Alder\\n\\n## Facts\\n- Email: Unknown\\n\\n'
+        + '## Uncertainties\\n- shared@example.org appears in a cited team thread [1].\\n\\n'
+        + '## Sources\\n- [1] test:mail\\n\\nInvestigation: investigated 2026-10-03';
+      KNOWN.delete(r.path); FACTS.delete(r.path); render();
+    }""", isolated_context=False)
+    assert page.evaluate("facts(byPath('people/quinn-alder.md')).email === ''", isolated_context=False)
+    assert '— not found' in page.locator('.factlist dt:text-is("Email") + dd').inner_text()
+    page.evaluate("""() => {
+      const r = byPath('people/quinn-alder.md');
+      r.text = r.text.replace('- Email: Unknown', '- Email: quinn@alder.example [1]');
+      KNOWN.delete(r.path); FACTS.delete(r.path); render();
+    }""", isolated_context=False)
+    assert page.evaluate("facts(byPath('people/quinn-alder.md')).email === 'quinn@alder.example'", isolated_context=False)
+
+
 def test_unknown_open_status_is_not_a_current_exchange(reader):
     page, uri = reader
     page.goto(uri + '#r=projects%2Fharbour.md')
@@ -1169,6 +1286,26 @@ def test_unknown_open_status_is_not_a_current_exchange(reader):
     note = page.locator('.deep-note')
     assert 'Historical requests do not establish currently pending work.' in note.inner_text()
     assert note.locator('a.cite[href$="h=src-1"]').first.is_visible()
+
+
+def test_a_none_line_is_not_shown_as_an_open_thread(reader):
+    page, uri = reader
+    page.goto(uri + '#r=people%2Fquinn-alder.md')
+    page.evaluate("""() => {
+      const r = byPath('people/quinn-alder.md');
+      r.text = '# Quinn Alder\\n\\n## Insight\\n- Now: They signed [1], [2].\\n\\n'
+        + '## Open threads\\n- None as of 2026-10-02 [1].\\n\\n'
+        + '## Sources\\n- [1] gmail:reply';
+      REM.source_context['gmail:reply'] = { source: 'gmail', time: '2026-10-02T00:00:00Z' };
+      KNOWN.delete(r.path);
+      render();
+    }""", isolated_context=False)
+    assert page.evaluate("threads(byPath('people/quinn-alder.md')).items.length", isolated_context=False) == 0
+    assert page.locator('.next-exchanges').count() == 0
+    assert page.locator('.focus-statement').inner_text() == 'They signed.'
+    assert page.evaluate("fmtDate('2026-10-02T00:00:00Z')", isolated_context=False) in page.locator('#src-1').inner_text()
+    page.evaluate("location.hash = '#view=open'")
+    assert page.locator('.thread', has_text='None as of 2026-10-02').count() == 0
 
 
 def test_project_map_date_is_labelled_as_a_session_not_verified_activity(reader):

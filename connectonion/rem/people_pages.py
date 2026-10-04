@@ -22,7 +22,7 @@ investigate turn searches that material as files instead of digesting it
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
@@ -30,7 +30,7 @@ from .source import timestamp
 
 # Correspondents of the last two weeks are investigated before anyone older (owner, 2026-09-30).
 RECENT_DAYS = 14
-# The window a page is read over when it has not been investigated from new mail.
+# The minimum window for a first investigation; older mapped mail extends it.
 FIRST_WINDOW_DAYS = 730  # two years: a real contact went back to July 2025, 38 mails; 150 days read 13 (2026-10-01)
 # Measured on the owner's machine, 2026-09-30 (docs/cli/rem-people-pages.md):
 # one full investigation of a 157-mail person, the #1850 baseline subject.
@@ -42,6 +42,16 @@ OVERLAP = timedelta(hours=1)
 
 def _map(root: Path) -> dict:
     return read_json(state_path(root, "map.json"), {})
+
+
+def first_window(root: Path, record: str, *, mapped_row: dict | None = None,
+                 today: date | None = None) -> int:
+    """First person read reaches their earliest mapped mail, with two years minimum."""
+    if mapped_row is None:
+        mapped_row = next((r for r in _map(root).get("people", []) if r.get("record") == record), {})
+    today = today or datetime.now(timezone.utc).date()
+    first = _stamp(mapped_row.get("first"))
+    return max(FIRST_WINDOW_DAYS, (today - first.date()).days + 1) if first else FIRST_WINDOW_DAYS
 
 
 def rank(row: dict, now: datetime) -> tuple:
@@ -113,18 +123,19 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
         at = _stamp(done.get(record)) or (datetime.combine(investigated, datetime.max.time(), timezone.utc)
                                           if investigated else None)
         hollow = unfinished.get(record, {}).get("hollow")
+        row = mapped.get(record, {})
+        full_window = first_window(root, record, mapped_row=row, today=today)
         if hollow:
             # Stamped by a run that read nothing (#1974): read again in full.
-            mode, window, investigated = "full", FIRST_WINDOW_DAYS, None
+            mode, window, investigated = "full", full_window, None
         elif at and last and _stamp(last) > at:
             mode, window = "update", max(1, (today - at.date()).days + 1)
         elif record in unfinished and not unfinished[record]["recent"]:
-            mode, window = "full", FIRST_WINDOW_DAYS
+            mode, window = "full", full_window
         else:
             continue
         if since and not last > since:
             continue
-        row = mapped.get(record, {})
         rows.append({"record": record, "mode": mode, "days": window, "last_activity": last,
                      "recent": last >= cutoff, "mails": row.get("mails") or 0,
                      "sent": row.get("sent") or 0, "received": row.get("received") or 0,
@@ -142,7 +153,7 @@ def estimate(rows: list[dict]) -> dict:
     return {"people": len(rows), "model_calls": len(rows), "recent": sum(1 for r in rows if r["recent"]),
             "updates": sum(1 for r in rows if r["mode"] == "update"),
             "mails_mapped": sum(r["mails"] for r in rows if r["mode"] == "full"), "measured": MEASURED,
-            "window_days": next((row["days"] for row in rows if row["mode"] == "full"), FIRST_WINDOW_DAYS)}
+            "window_days": max((row["days"] for row in rows if row["mode"] == "full"), default=FIRST_WINDOW_DAYS)}
 
 
 def handles(root: Path, record: str) -> tuple[str, list[str]]:

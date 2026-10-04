@@ -20,8 +20,10 @@ class Quiet:
 
 @pytest.fixture(autouse=True)
 def skill_found(monkeypatch):
-    """The real check spawns the interpreter; its own tests are in test_rem_runner."""
+    """These tests exercise gathering/writing; the claim gate has its own tests."""
     monkeypatch.setattr("connectonion.rem.runner.check_skill", lambda root, stage: None)
+    monkeypatch.setattr("connectonion.rem.claim_audit.review",
+                        lambda *args: ({"verdict": "pass", "findings": []}, {}))
 
 
 def test_transient_connection_error_retries_body_fetch(monkeypatch):
@@ -469,6 +471,7 @@ def test_over_input_limit_the_writer_searches_evidence_files_instead_of_digests(
     assert any(line.startswith("evidence: ") and "searched, not summarised" in line for line in out["coverage"])
     assert not seen["folder"].exists(), "private mail copies are removed after the run"
     assert "investigated" in inv.Notebook(root).read("people/vern.md")
+    assert out["report"] == inv.Notebook(root).read("people/vern.md")
 
 
 def test_over_input_limit_a_summary_tier_model_is_handed_digests_not_files(tmp_path, monkeypatch):
@@ -964,6 +967,27 @@ def test_a_page_investigated_before_is_read_again_only_since_then(tmp_path, monk
     assert f"Page last investigated {ten_days_ago}" in seen["coverage"]
     assert "Newly supplied originals may predate that run" in seen["coverage"]
     assert not any(s.startswith("Page last") for s in inv.searched_sources(out["coverage"]))
+
+
+def test_first_person_read_tells_writer_about_earlier_mapped_mail(tmp_path, monkeypatch):
+    from connectonion.rem.files import state_path, write_json
+
+    root = _notebook(tmp_path, "codex")
+    write_json(state_path(root, "map.json"), {"people": [
+        {"record": "people/vern.md", "first": "2024-08-02T01:44:00Z"}]})
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: ([
+        {"source": "outlook:new", "role": "other", "speaker": "Vern <vern.chan@unsw.edu.au>",
+         "timestamp": "2026-09-29T00:00:00Z", "text": "New message"}], []))
+    seen = {}
+
+    def write(book, material, config, **kw):
+        seen["coverage"] = next(i["text"] for i in material if i["role"] == "coverage")
+        return {"changed": [], "usage": None}
+
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern.chan@unsw.edu.au"],
+                    days=730, clients={}, subscriptions={}, runner=write)
+    assert "Earliest person-linked mapped mail metadata: 2024-08-02" in seen["coverage"]
+    assert "Do not claim a later message is first contact" in seen["coverage"]
 
 
 def test_a_page_written_from_its_sources_starts_the_next_window_too():
@@ -1470,6 +1494,37 @@ def test_a_gmail_date_with_no_timezone_is_read_as_utc():
     assert _iso_date("Thu, 09 Jul 2026 01:50:17 -0000", "2026-07-01T00:00:00+00:00") == "2026-07-09T01:50:17+00:00"
     assert _iso_date("Thu, 09 Jul 2026 11:50:17 +1000", "x") == "2026-07-09T11:50:17+10:00"
     assert _iso_date("not a date", "2026-07-01T00:00:00+00:00") == "2026-07-01T00:00:00+00:00"
+
+
+def test_person_mail_evidence_uses_the_notebook_day_across_provider_offsets():
+    items = [
+        {"source": "gmail:proposal", "timestamp": "2026-08-11T18:34:42-07:00"},
+        {"source": "gmail:correction", "timestamp": "2026-08-12T01:36:40+00:00"},
+        {"source": "codex:session", "timestamp": "2026-08-12T01:36:40+00:00"},
+    ]
+
+    inv._local_mail_times(items, "Australia/Sydney")
+
+    assert [item["timestamp"] for item in items[:2]] == [
+        "2026-08-12T11:34:42+10:00", "2026-08-12T11:36:40+10:00"]
+    assert items[2]["timestamp"] == "2026-08-12T01:36:40+00:00"
+
+
+def test_person_writer_receives_notebook_local_mail_times(tmp_path, monkeypatch):
+    root = _notebook(tmp_path, "codex")
+    set_config(root, ["schedule.timezone", "Australia/Sydney"])
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: ([
+        {"source": "gmail:proposal", "timestamp": "2026-08-11T18:34:42-07:00", "text": "A proposal"},
+        {"source": "gmail:correction", "timestamp": "2026-08-12T01:36:40+00:00", "text": "A correction"},
+    ], ["gmail: two matching messages"]))
+    received = []
+
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern"], days=857,
+                    clients={}, subscriptions={},
+                    runner=lambda notebook, items, config, stage: received.extend(items) or {"changed": []})
+
+    assert [item["timestamp"] for item in received if item.get("source", "").startswith("gmail:")] == [
+        "2026-08-12T11:34:42+10:00", "2026-08-12T11:36:40+10:00"]
 
 
 def test_one_saved_mail_with_an_unreadable_date_is_skipped_not_the_whole_run(tmp_path, monkeypatch):

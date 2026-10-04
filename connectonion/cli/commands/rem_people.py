@@ -35,7 +35,7 @@ def cost_line(estimate: dict, meter: dict) -> str:
              if measured.get("input_tokens") else "")
     return (f"Cost: {counted(estimate['model_calls'], 'model call')}, one per person; at least "
             f"{counted(estimate['mails_mapped'], 'mail')} for the full investigations (the map's count: they read "
-            f"{estimate.get('window_days', 150)} days and search the server, which finds more), and "
+            f"up to {estimate.get('window_days', 150)} days and search the server, which finds more), and "
             f"{counted(estimate['updates'], 'update')} that read only mail since their last "
             f"investigation.{known}{week}")
 

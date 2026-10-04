@@ -240,7 +240,8 @@ def harness_flags(config: dict, stage: str) -> list[str]:
     # tool authorization, and complete context come first.
     investigating = stage in ("init", "investigate")
     if harness == "codex":
-        flags += ["--sandbox", "danger-full-access" if investigating else "workspace-write"]
+        flags += ["--sandbox", "read-only" if stage == "claim-audit" else
+                  "danger-full-access" if investigating else "workspace-write"]
     elif harness == "claude-code":
         flags += ["--permission-mode", "bypassPermissions" if investigating else "acceptEdits"]
     if config["model"] != "default":
@@ -298,14 +299,20 @@ def run_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
 
 
 def run_claim_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
-    """Audit cited originals in a read-only Codex turn with structured output."""
+    """Give the auditor full evidence without exposing it in process arguments."""
+    if config["runner"] == "coai":
+        from ..core.llm import create_llm
+        response = create_llm(config["model"]).complete([{"role": "user", "content": prompt}], tools=None)
+        usage = response.usage.model_dump(exclude_none=True) if response.usage else {}
+        return {"result": response.content,
+                "usage": {key: value for key, value in usage.items() if type(value) in (int, float)}}
     if config["runner"] != "codex":
         packet = workspace / "claim-input.txt"
         packet.write_text(prompt, encoding="utf-8")
         return run_task(workspace, f"Read {packet} fully and return its requested JSON decision. "
                         "Do not edit the packet or any page.", config, stage)
     from ..useful_tools.codex import _base_command
-    from .project_claim_review import SCHEMA
+    from .claim_audit import SCHEMA
     binary = _base_command()
     if not binary:
         raise RunFailed("Codex is not installed; cited-claim audit could not run")
@@ -562,6 +569,16 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     if not errors and investigation and record.startswith("projects/"):
         from .project_pages import retain_live_source_context
         retain_live_source_context(notebook.root, original, text)
+    if (not errors and claim_config and investigation and record.startswith("people/")
+            and record != owner.get("record")
+            and not any(item.get("role") == "quick-first-pass" for item in items)):
+        from .claim_audit import review as review_claims
+        report, audit_usage = review_claims(notebook, text, items, claim_config["schedule"]["timezone"],
+                                            claim_config, directory, run_claim_task)
+        write_json(directory / "claim-review.json", report)
+        audit_status = "bounded citation audit passed" if report["verdict"] == "pass" else "bounded citation audit failed"
+        if report["verdict"] != "pass":
+            errors.append("Cited-claim audit did not pass; see claim-review.json")
     if not errors and claim_config is not None and investigation and record.startswith("projects/"):
         from .project_claim_review import retain_cited_originals, review as review_claims
         with nullcontext() if lock_held else maintenance_lock(notebook.root):
@@ -652,8 +669,8 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
 # What a finished task keeps: its record, the page it proposed, the review
 # questions, rejection reasons and the Skill text it was given. The rest is a
 # private copy of the owner's mail and pages.
-TASK_KEEPS = ("result.json", "candidate.md", "review.json", "claim-review.json",
-              "review-candidates.json", "instructions.md")
+TASK_KEEPS = ("result.json", "candidate.md", "review.json", "claim-review.json", "claim-review-first.json",
+               "review-candidates.json", "instructions.md")
 
 
 def scrub_task(directory: Path) -> None:
@@ -720,7 +737,8 @@ def private_task_mask():
 
 
 def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "",
-              *, stage: str = "maintain", maintenance_lock_held: bool = False, search=None) -> dict:
+              *, stage: str = "maintain", maintenance_lock_held: bool = False, search=None,
+              audit_claims: bool = True) -> dict:
     """Run investigation and maintenance on disposable page copies before promotion."""
     workdir = notebook.root / ".state" / "tasks"
     workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -731,14 +749,16 @@ def run_stage(notebook: Notebook, items: list[dict], config: dict, kind: str = "
     # the last task finishes.
     with private_task_mask():
         try:
-            return _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory, search)
+            return _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory,
+                              search, audit_claims)
         finally:
             # Ctrl-C and anything else unexpected too, not only a RemError.
             with _TASK_CLEANUP_LOCK:
                 scrub_task(directory)
 
 
-def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory, search=None):
+def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, workdir, directory,
+               search=None, audit_claims=True):
     from .reflections import POLICY
     from .reflections import context as reflections
     from .reviews import context as reviews
@@ -898,7 +918,8 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
             def promote():
                 audit_usage = _promote_candidate(notebook, record, candidate, before[record], items, directory,
                                                  result.get("usage"), lock_held=maintenance_lock_held,
-                                                 investigation=stage == "investigate", claim_config=selected_config)
+                                                 investigation=stage == "investigate",
+                                                 claim_config=selected_config if audit_claims else None)
                 if audit_usage:
                     result["usage"] = {key: (result.get("usage") or {}).get(key, 0) + audit_usage.get(key, 0)
                                        for key in (result.get("usage") or {}).keys() | audit_usage.keys()}
@@ -919,6 +940,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                                 ("History has ", "Finding has unresolved citations")) for error in errors))):
                         raise
                     if audit_failed:
+                        if not (directory / "claim-review-first.json").is_file():
+                            write_json(directory / "claim-review-first.json",
+                                       read_json(directory / "claim-review.json", {}))
                         instruction = (f"Read {directory / 'claim-review.json'} and the cited originals in "
                                        f"{directory / 'material.md'} and its evidence index. Fix every audit finding "
                                        "in the existing candidate: state only what the originals prove, or remove "
@@ -973,12 +997,13 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         write_json(directory / "result.json", {**metrics, "status": "failed", "error": str(error),
                    "usage": usage, "duration_seconds": time.monotonic() - started, "changed": changed()})
         raise RunFailed(str(error), usage, changed()) from error
+    report = notebook.read(record) if candidate else result.get("result")
     write_json(directory / "result.json", {**metrics, "status": "candidate_accepted" if candidate else "execution_finished",
                "usage": result.get("usage"), "duration_seconds": time.monotonic() - started,
-               "changed": changed(), "report": result.get("result")})
+               "changed": changed(), "report": report})
     outcome = {"usage": result.get("usage"), "changed": changed(), "refused": len(refusals), "refusals": refusals,
                "instructions_chars": metrics["instructions_chars"],
-               "report": str(result.get("result") or ""),
+               "report": str(report or ""),
                "review_candidates": read_json(directory / "review-candidates.json", [])}
     if record and record in before and notebook.path(record).is_file():
         # Before and after, so a run that doubles a page shows it (#1956).
