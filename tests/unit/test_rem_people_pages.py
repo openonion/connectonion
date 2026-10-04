@@ -6,6 +6,7 @@ A fake mailbox and fake investigations; never the operator's mail or a model.
 import json
 import stat
 from datetime import datetime, timedelta, timezone
+from threading import Event
 
 import pytest
 
@@ -171,6 +172,26 @@ def test_one_refusal_does_not_stop_the_portion(root):
             raise RunFailed("Candidate rejected, kept at x: bad")
     result = write_pages(queue(root)[:2], write=write)
     assert [row["outcome"] for row in result["pages"]] == ["refused", "accepted"]
+
+
+def test_concurrent_portion_returns_queue_order_after_out_of_order_completion():
+    rows = [{"record": "people/first.md", "mode": "full"},
+            {"record": "people/second.md", "mode": "full"}]
+    release_first = Event()
+    completed = []
+
+    def write(row):
+        if row["record"] == "people/first.md":
+            assert release_first.wait(5)
+
+    def on_page(number, total, row, outcome):
+        completed.append(row["record"])
+        if row["record"] == "people/second.md":
+            release_first.set()
+
+    result = write_pages(rows, write=write, workers=2, on_page=on_page)
+    assert completed == ["people/second.md", "people/first.md"]
+    assert [page["page"] for page in result["pages"]] == ["people/first.md", "people/second.md"]
 
 
 # ---------------------------------------------------------------- the daily round (#1723)

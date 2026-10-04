@@ -259,4 +259,6 @@ def write_pages(rows: list[dict], *, write, gate=None, on_page=None, workers: in
                 done.append(outcome)
                 if on_page:
                     on_page(len(done), len(rows), row, outcome)
+    order = {row["record"]: index for index, row in enumerate(rows)}
+    done.sort(key=lambda outcome: order[outcome["page"]])
     return {"pages": done, **({"stopped": stopped} if stopped else {})}
