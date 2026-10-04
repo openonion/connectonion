@@ -143,6 +143,9 @@ def review(notebook, text: str, items: list[dict], zone_name: str, config: dict,
         "does not establish a website. A recipient's thanks or start-date reply does not prove "
         "acceptance of an agreement or its terms. Also flag wording that the recipient "
         "'acknowledged the agreement' if the reply only thanks the sender and names a date. "
+        "Compare the page's Facts, lead, and Uncertainties with each other, too. Reject a blanket "
+        "absence claim such as 'contact details are unevidenced' if a verified Email appears in "
+        "Facts; name only the specific contact fields still unknown. "
         "Fail on an unsupported action or factual contradiction. An incomplete contact history cannot prove an "
         "unqualified global last-contact claim. Return only JSON: "
         '{"verdict":"PASS|FAIL|INSUFFICIENT","findings":[{"issue":"...","evidence":"...",'
