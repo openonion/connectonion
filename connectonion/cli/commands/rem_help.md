@@ -389,8 +389,8 @@ starts a run on your mail or sessions.
 
 Usage:    co rem config
           co rem config set KEY VALUE [KEY VALUE]... [--no-check]
-Keys:     model                          gpt-6-luna (default); a new one is checked on a fixture page
-          runner                         codex | claude-code | coai
+Keys:     model                          claude-sonnet-5-5 (default); a new one is checked on a fixture page
+          runner                         claude-code (default) | codex | coai
           schedule.times                 "03:00,17:00"
           schedule.timezone              Australia/Sydney
           limits.runner_calls_per_day    6

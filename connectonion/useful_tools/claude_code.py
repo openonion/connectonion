@@ -223,8 +223,11 @@ def _run_claude_code(
             provider_started()
         forwarder.handle(event)
 
+    # A fresh turn without the bridge starts its own session and cannot touch a
+    # transcript another writer owns; only resumes and bridged turns take the lock.
+    owns = session_id or bridge_events is not None
     try:
-        with exclusive_workspace_writer(working_directory):
+        with exclusive_workspace_writer(working_directory) if owns else contextlib.nullcontext():
             completed = _run_process(
                 argv,
                 cwd=str(working_directory),

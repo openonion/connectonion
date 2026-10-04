@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest.mock import patch
 from typer.testing import CliRunner
 from connectonion.cli.main import app
-from connectonion.rem.config import prepare
+from connectonion.rem.config import prepare, set_config
 from connectonion.rem.files import Notebook
 from connectonion.rem.map import build_map
 from connectonion.rem.scan import canonical_origin
@@ -38,6 +38,8 @@ def test_setup_commands_keep_custom_root(tmp_path):
 
 def test_init_keeps_five_day_window_in_next_steps_and_partial_retry(tmp_path):
     root = tmp_path / 'rem'
+    prepare(root)
+    set_config(root, ['runner', 'codex', 'model', 'gpt-6-luna'])
     with patch('connectonion.rem.map.build_map', return_value={
         'owner': {'addresses': ['me@example.org']}, 'possible_own_addresses': []
     }), patch('connectonion.rem.service.mail_available', return_value=False):
