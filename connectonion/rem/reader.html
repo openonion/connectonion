@@ -1496,7 +1496,7 @@ const COLUMNS = {
     { key: "email", label: "Email", cls: "mono-col", sort: (r, f) => f.email.toLowerCase() || "￿", cell: (r, f) => f.email ? el("a", { href: "mailto:" + plainValue(f.email).split(/[,;\s]/)[0], class: "mono trunc", title: plainValue(f.email), text: plainValue(f.email) }) : textCell("") },
     { key: "phone", label: "Phone", cls: "mono-col", sort: (r, f) => f.phone || "￿", cell: (r, f) => f.phone ? el("span", { class: "mono", text: plainValue(f.phone) }) : textCell("") },
     { key: "last", label: "Last contact", num: true, sort: (r, f) => f.last || "", cell: (r, f) => dateCell(f.last, mappedContact(r)), desc: true },
-    { key: "mails", label: "Mails", num: true, sort: (r, f) => f.mails ?? -1, cell: (r, f) => f.mails == null ? textCell("") : el("span", { class: "mono", title: f.sent != null ? f.received + " from them, " + f.sent + " from you" : "", text: String(f.mails) }), desc: true },
+    { key: "mails", label: "Mapped mail", num: true, sort: (r, f) => f.mails ?? -1, cell: (r, f) => f.mails == null ? textCell("") : el("span", { class: "mono", title: f.sent != null ? f.received + " from them, " + f.sent + " from you in the map" : "Mail in the map; cited investigation sources may differ", text: String(f.mails) }), desc: true },
   ],
   orgs: [
     { key: "name", label: "Name", cls: "name", sort: r => r.title.toLowerCase(), cell: (r, f) => nameCell(r, f, false) },
@@ -2259,7 +2259,7 @@ function factList(r) {
     dl.append(el("dt", { text: label }), dd);
   }
   if (r.category === "people" && r.mail) {
-    dl.append(el("dt", { text: "Mail" }), el("dd", {}, [el("span", { class: "val mono", text: r.mail.mails + " · " + r.mail.received + " in, " + r.mail.sent + " out" })]));
+    dl.append(el("dt", { text: "Mapped mail" }), el("dd", {}, [el("span", { class: "val mono", text: r.mail.mails + " · " + r.mail.received + " in, " + r.mail.sent + " out" })]));
   }
   return panel("Facts", [el("p", { class: "fill mono", text: filled + " of " + order.length + " known" }), dl]);
 }

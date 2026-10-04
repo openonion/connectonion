@@ -191,9 +191,9 @@ def test_people_open_as_a_sheet_that_sorts_filters_and_opens_a_row(reader):
     page.get_by_role("button", name="Yours to answer").click()
     assert sheet.locator("tbody .name a").all_inner_texts() == ["Mara Ostrowski", "Inès Halvorsen"]
     page.get_by_role("button", name="All").click()
-    page.locator("th", has_text="Mails").locator("button").click()
+    page.locator("th", has_text="Mapped mail").locator("button").click()
     assert sheet.locator("tbody .name a").first.inner_text() == "Mara Ostrowski"
-    assert page.locator("th", has_text="Mails").get_attribute("aria-sort") == "descending"
+    assert page.locator("th", has_text="Mapped mail").get_attribute("aria-sort") == "descending"
     page.locator(".sheet-find").fill("ledgerline")
     assert sheet.locator("tbody .name a").all_inner_texts() == ["Inès Halvorsen"]
     sheet.locator("tbody tr").first.locator("td").nth(5).click()
