@@ -82,7 +82,8 @@ Rules:
   `Nothing open` needs closure evidence, else `Unknown`. A planned start is
   not an arranged next contact.
 - Avoid repetition and collection counts. Put doubt and unread references in
-  `Uncertainties`; empty sections stay `Unknown`.
+  `Uncertainties`; empty sections stay `Unknown`. Name only missing fields:
+  a known `Email` rules out saying contact details are unevidenced.
 - Keep mapped `Email`, `Handles`, `Also known as`. Exclude same-name material
   about someone else and note the ambiguity in `Uncertainties`.
 - **Sources**: `- [n] <source id> — <date>`; list only cited sources.
