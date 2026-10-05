@@ -72,6 +72,40 @@ class TestTheScan:
         preset = register.shown[0].get("app_preset") or {}
         assert "ConnectOnion" in (preset.get("name") or "")
 
+    def test_the_link_and_code_are_printed_before_the_qr_code(self, rig, monkeypatch, capsys):
+        register = FakeRegistration()
+        run(register, monkeypatch)
+        out = capsys.readouterr().out
+        url = "https://open.feishu.cn/page/cli?user_code=ABC"
+        assert url in out
+        assert "Code: ABC" in out
+        qr_idx = next(out.index(ch) for ch in "█▀▄" if ch in out)
+        assert out.index("Code: ABC") < qr_idx
+        assert out.index(url) < qr_idx
+
+    def test_the_output_is_flushed_before_approval_wait_returns(self, rig, monkeypatch):
+        import io
+        import sys
+
+        flushed_snapshots = []
+
+        class FlushingBuffer(io.StringIO):
+            def flush(self):
+                flushed_snapshots.append(self.getvalue())
+                super().flush()
+
+        buffer = FlushingBuffer()
+        monkeypatch.setattr(sys, "stdout", buffer)
+
+        class BlockingRegistration(FakeRegistration):
+            def __call__(self, on_qr_code, on_status_change=None, **kwargs):
+                on_qr_code({"url": "https://open.feishu.cn/page/cli?user_code=ABC", "expire_in": 600})
+                assert any("https://open.feishu.cn/page/cli?user_code=ABC" in s for s in flushed_snapshots)
+                assert any(any(ch in s for ch in "█▀▄") for s in flushed_snapshots)
+                return self.result
+
+        run(BlockingRegistration(), monkeypatch)
+
 
 class TestWhatGetsWritten:
     def test_credentials_land_in_the_selected_env_file(self, rig, monkeypatch):
