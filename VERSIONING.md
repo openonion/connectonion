@@ -400,7 +400,24 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a41
+## Current Version: 1.9.0a42
+
+1.9.0a42 brings the historical contact directory ahead of a long mapped
+People roster. On the owner's local real-data reader, its collapsed entrance
+moved from y=1314 to y=515 at 390px width, and from y=1067 to y=249 at
+1440px width. The published a41 release carried the historical census and
+directory, but not this reachability fix. The a41 visual evidence manifest,
+missing from its tagged source, is recorded as an append-only documentation
+repair alongside a42's own before-and-after evidence. This remains a preview:
+the metadata census does not establish the quality of all written memories.
+The public a41 wheel also exposed a late-connection failure that discarded
+completed mail years; a42 retains those correspondents and marks the remainder
+incomplete. Durable checkpointed retries remain in #2298.
+Stable remains 1.8.10. See [1.9.0a42 notes](docs/releases/1.9.0a42.md).
+
+- 1.9.0a42 (Keep completed mail years after failure and make the contact directory reachable).
+
+## Previous preview: 1.9.0a41
 
 1.9.0a41 makes historical mail contacts discoverable in the People reader,
 forecasts the full mapped first run without model work, and offers the nightly

@@ -23,6 +23,16 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a42** keeps completed People discovery after a later mail
+connection failure and puts the historical contact directory before the mapped
+People roster so a large first run does not bury it. See
+[1.9.0a42 notes](releases/1.9.0a42.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a42'
+co rem init --investigate-all --estimate-only
+```
+
 Alpha **1.9.0a41** adds a searchable directory of historical mail contacts,
 an all-history first-run cost estimate, and the option to approve nightly REM
 upkeep from `co rem init`. Gmail history uses bounded metadata requests. New
