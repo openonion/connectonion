@@ -83,6 +83,8 @@ For a historical census, `co rem init --all-history --investigate-all
 history, then forecasts every mapped person and project without a model turn
 or body archive. Yearly mail listings still split past the provider cap; a
 timeout is retried in smaller windows and any missing day is marked incomplete.
+Completed years remain in a lower-bound map if a later connection fails; the
+failed remainder is marked incomplete and a retry may still rescan it.
 The People reader also shows one-off correspondents in a separate searchable
 directory, labelled as unreviewed contacts rather than as established people.
 `--investigate-all` also enables the historical map when used alone. Without

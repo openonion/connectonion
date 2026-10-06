@@ -1,5 +1,6 @@
 """The terms are in the contract, not the mail that carried it."""
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from connectonion.rem.attachments import extract_text
@@ -92,7 +93,8 @@ def test_gather_reads_attachments_of_matched_mail_into_items(tmp_path, monkeypat
         def list_between(self, s, e, n):
             # window-aware, like a provider: one mail, in one week, not once per week
             rows = [{"id": "m1", "from": "Emma <szh526@gmail.com>", "to": ["me@x.y"], "cc": [],
-                     "date": "2026-08-06T00:00:00+00:00", "subject": "contract v9"}]
+                     "date": (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
+                     "subject": "contract v9"}]
             return [r for r in rows if s[:10] <= r["date"][:10] < e[:10]]
         def get_email_body(self, i): return "--- Email Body ---\nplease see attached"
         def download_attachments(self, email_id, out_dir):

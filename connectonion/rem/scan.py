@@ -206,11 +206,17 @@ def scan_people(clients: dict, days: int, own_addresses: set, progress=None,
                 rows = _list_all(client, cursor, stop,
                                  on_error=error_window if all_history and on_error is not None else None)
             except Exception as error:
-                if not all_history or on_error is None or 'timeout' not in type(error).__name__.lower():
+                if not all_history or on_error is None:
                     raise
-                # Keep every completed year and mark this one incomplete; do
-                # not turn a provider timeout into a false "all people" claim.
-                on_error(kind, cursor, stop, error)
+                # Completed years are already mapped. A timeout can be local to
+                # one year; a broken connection may affect everything after it.
+                timed_out = 'timeout' in type(error).__name__.lower()
+                failed_until = stop if timed_out else end
+                on_error(kind, cursor, failed_until, error)
+                if on_window:
+                    on_window(kind, cursor.isoformat(), failed_until.isoformat(), 0, 200, False)
+                if not timed_out:
+                    break
                 cursor = stop
                 continue
             for row in rows:

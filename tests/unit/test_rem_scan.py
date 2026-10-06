@@ -1,5 +1,7 @@
 """The census: what the sources already list, handed over as signals."""
 
+import ssl
+
 import pytest
 
 from connectonion.rem.scan import _display_name, scan_people
@@ -73,6 +75,38 @@ def test_all_history_finds_old_people_and_splits_full_provider_listings():
         "old@example.org": 1, "new@example.org": 211}
     assert len(observed) == len(set(observed)) == 212
     assert any(window[1].startswith("1998") for window in windows)
+
+
+@pytest.mark.parametrize("failure", [ssl.SSLError, ConnectionError])
+def test_all_history_keeps_completed_years_after_a_later_connection_failure(failure):
+    from connectonion.rem.map import _mail_rows
+
+    class Interrupted(Box):
+        def list_between(self, start, end, n):
+            if start[:4] >= "1999":
+                raise failure("connection lost")
+            return super().list_between(start, end, n)
+
+    old = {"id": "old", "from": "Old Friend <old@example.org>", "to": ["me@x.y"],
+           "cc": [], "date": "1998-06-01T00:00:00+00:00", "subject": "hello"}
+    other = {"id": "other", "from": "Other Friend <other@example.org>", "to": ["me2@x.y"],
+             "cc": [], "date": "1998-07-01T00:00:00+00:00", "subject": "hello"}
+    class Inventory:
+        def __init__(self): self.windows = []
+        def mail(self, *args): pass
+        def window(self, *args): self.windows.append(args)
+
+    errors, coverage = [], []
+    inventory = Inventory()
+    people, _ = _mail_rows({"outlook": Interrupted("me@x.y", [old]),
+                            "gmail": Box("me2@x.y", [other])}, 36500, set(),
+                           coverage, errors, inventory=inventory, all_history=True)
+    assert {person["address"]: person["mails"] for person in people} == {
+        "old@example.org": 1, "other@example.org": 1}
+    assert len(errors) == 1 and errors[0]["stage"] == "metadata-window"
+    assert errors[0]["start"].startswith("1999")
+    assert any("outlook" in note and "incomplete" in note for note in coverage)
+    assert any(row[0] == "outlook" and row[-1] is False for row in inventory.windows)
 
 
 def test_signals_are_handed_over_and_verdicts_are_not():
