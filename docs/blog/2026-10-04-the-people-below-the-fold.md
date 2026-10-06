@@ -22,3 +22,11 @@ and sees no horizontal overflow in phone or desktop layouts.
 This is a reachability fix, not a claim that 803 addresses have been understood.
 An all-person model run and a review of what its pages actually say remain the
 next test of REM's promise.
+
+Checking the published a41 wheel exposed an earlier break in the same promise:
+it read 15,551 mail headers before two later connection failures left the
+People map with only the owner. A reachable directory cannot help when its
+entries disappear during init. The a42 candidate therefore includes both the
+directory position and preservation of completed mail years. The
+[failure analysis](2026-10-06-the-mailbox-that-failed-at-the-end.md) records
+what remains: durable checkpoints and a complete real investigation.
