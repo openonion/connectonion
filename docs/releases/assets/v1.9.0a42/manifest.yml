@@ -1,0 +1,37 @@
+version: v1.9.0a42
+images:
+  - file: after-phone-light.png
+    alt: "Phone People view with the historical contact directory above the long roster"
+    caption: "The directory is reachable in the first phone screen even with hundreds of mapped people."
+    scenario: "Invented large People roster after the directory reachability fix"
+    viewport: "390x844, light"
+    commit: 8287ae75
+    source_run: "Chrome trial rem-directory-reachability-2026-10-04; invented fixture"
+  - file: after-phone-dark.png
+    alt: "Dark phone People view with the historical contact directory before the roster"
+    caption: "The first-screen directory position works in dark mode."
+    scenario: "Same invented large People roster in dark mode"
+    viewport: "390x844, dark"
+    commit: 8287ae75
+    source_run: "Chrome trial rem-directory-reachability-2026-10-04; invented fixture"
+  - file: after-desktop-light.png
+    alt: "Desktop People view with the contact directory above the mapped roster"
+    caption: "The directory now comes before the long mapped table on desktop too."
+    scenario: "Same invented large People roster"
+    viewport: "1440x900, light"
+    commit: 8287ae75
+    source_run: "Chrome trial rem-directory-reachability-2026-10-04; invented fixture"
+  - file: before-phone-light.png
+    alt: "Phone People view with the contact directory below the long roster"
+    caption: "Before a42: the contact directory began below the first screen."
+    scenario: "Same invented large People roster using a41 layout"
+    viewport: "390x844, light"
+    commit: d1767944
+    source_run: "Chrome trial rem-directory-reachability-2026-10-04; invented fixture"
+  - file: before-desktop-light.png
+    alt: "Desktop People view with the contact directory below the long roster"
+    caption: "Before a42: desktop users passed hundreds of rows to reach the directory."
+    scenario: "Same invented large People roster using a41 layout"
+    viewport: "1440x900, light"
+    commit: d1767944
+    source_run: "Chrome trial rem-directory-reachability-2026-10-04; invented fixture"
