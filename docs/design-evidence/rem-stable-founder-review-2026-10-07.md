@@ -27,5 +27,11 @@ navigation, typography, spacing, state labels, phone layout and progressive
 disclosure in those selected views and the five named docs pages. It did not
 inspect every generated page or every possible interaction state. The trial's
 aggregate page outcomes and source coverage belong in the release acceptance
-record, not in this visual sample. These fixes require a rendered recheck after
-the final site sync; local preview is not a public deployment check.
+record, not in this visual sample. After the fixes, local Chrome rechecked the
+four formerly broken links at 390px: each target returned 200. The stable CLI
+title, quick command, and jump links rendered without horizontal overflow;
+the first two jump links began at y=624px in a 390×844 viewport. On the real
+reader, clicking “Review failed runs” focused the failed row at y=405px in the
+same viewport. The release note and blog no longer promise future trial
+results. These are local preview checks; public deployment links still need a
+post-release check.
