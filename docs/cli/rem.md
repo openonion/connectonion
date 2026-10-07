@@ -1,9 +1,17 @@
-# co rem — 1.9 preview guide
+# co rem — 1.9.0 stable guide
 
-Updated 2026-10-07 for opt-in preview **1.9.0a43**. The exact commands are
+**Start in one command:** `co rem init` maps the last 90 days and investigates
+every eligible page. Run `co rem status` to see coverage and `co rem open` to
+read it. A refused page stays visible in the run history with its retry command.
+
+Jump to [Start here](#start-here) · [Commands](#commands) ·
+[Source controls](#source) · [Scheduling](#scheduling-and-accounting) ·
+[Reader layout](#what-the-reader-shows).
+
+Updated 2026-10-07 for stable **1.9.0**. The exact commands are
 also available through `co rem --help` and each subcommand's `--help` page.
 Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
-`unsubscribe`, `route`, `usage`) still work until 1.9.0 and print their new name.
+`unsubscribe`, `route`, `usage`) remain aliases in 1.9.0 and print their new name.
 
 ## What it is
 
@@ -23,9 +31,9 @@ before 1.9.0a41 keep the runner saved in their `config.yaml`.
 
 What it costs, measured: the first run writes up to 10 pages at a time. An earlier
 real notebook trial wrote 198 of 242 people, project and organisation pages in
-about 25 minutes under its configured 60-point weekly cap. The current default
-routine budget is 35 points, with a 90% weekly safety floor; `co rem status`
-shows your effective limits.
+about 25 minutes. Init has no REM page or weekly quota cap; the scheduled daily
+round still uses a 35-point budget and a 90% weekly safety floor. The model
+provider may enforce its own limits. `co rem status` shows the routine limits.
 Investigating a very large subject can still cost millions of tokens; searching
 instead of summarising is
 [#1850](https://github.com/openonion/connectonion/issues/1850).
@@ -88,8 +96,8 @@ failed remainder is marked incomplete and a retry may still rescan it.
 The People reader also shows one-off correspondents in a separate searchable
 directory, labelled as unreviewed contacts rather than as established people.
 `--investigate-all` also enables the historical map when used alone. Without
-`--estimate-only` it selects all eligible mapped pages, but the
-weekly safety floor still stops new starts. Each person currently retains its
+`--estimate-only` it selects all eligible mapped pages without a REM quota stop.
+Each person currently retains its
 per-page source window; reading back to the first mapped message is tracked in
 draft PR #2209. An all-history map archives only the most recent 90 days of
 mail bodies; older material is fetched for a selected investigation.
@@ -105,11 +113,14 @@ person 1.1M and ~5 minutes, a project 1.2M and ~4 minutes, an organisation
 interrupted, so these rates do not predict every retry or refusal. Minutes are
 wall clock: after the quick owner turn, the
 full turn and selected pages share up to 10 workers. The estimate simulates
-that queue so a slow last page is not hidden by an average. The configured
-investigation budget (35% of a weekly runner allowance by default) is a target,
-not a hard stop. The selected investigation finishes
-even if it uses more, unless the configured weekly safety floor is reached;
-pages already in flight finish. The input-token estimate includes cached tokens
+that queue so a slow last page is not hidden by an average. Init starts every
+selected page and keeps going after individual refusals; there is no REM quota
+gate on this foreground run. A model provider may still refuse new turns at its
+own limit. Before the first page, init runs one source-free turn against the
+selected model. If access is denied, it keeps the map and mail archive, reports
+the login or model change to make, and leaves background upkeep off. If access
+expires while pages are running, in-flight pages finish and the remaining queue
+stops. The input-token estimate includes cached tokens
 and is not weekly quota points. Ctrl-C stops it, says which pages
 were written, keeps the map and every page, and names the command that
 continues. It skips the model steps, with a one-line reason, when
@@ -128,8 +139,10 @@ account the configured name was "Aaron x", and Outlook stamps it on every sent
 mail too; correspondents wrote "Aaron Xie". A new notebook names the file after
 you (`people/aaron-xie-….md`); an existing page keeps its path.
 
-Progress is one line per stage (updated in place in a terminal); every step is
-kept in `.state/init-progress.log`. Addresses that look like yours (you wrote,
+Progress shows the mail scan and body archive counts, then a live total bar and
+completed counts for You, People, Projects, Organisations and Skills. Each page
+prints a result line. The scan steps are kept in `.state/init-progress.log`.
+Addresses that look like yours (you wrote,
 nobody replied) are listed on one line with one command that confirms the ones
 you keep: `co rem init --mine a@example.org,b@example.org`. Mailboxes init read
 are subscribed, so `co rem start`'s summary lists them as sources to read; start
@@ -184,6 +197,8 @@ After the first run, `init` offers the same source and schedule approval as
 In a script, `init --yes` supplies that approval; without it the foreground
 result remains available and scheduling is deferred. `init --no-start` leaves
 background work off, and `init --estimate-only` never grants consent or schedules.
+If a selected page fails or is refused, init reports a nonzero exit and leaves
+nightly upkeep off until the unfinished pages are repaired.
 `start` can reapprove changed sources or resume a stopped schedule. The daily
 round investigates at most one unfinished page per local day when its call
 budget allows.
@@ -191,8 +206,8 @@ A mapped page is not an investigated or quality-approved page.
 For an initial trial, `co rem init --days 5` investigates your page over the same
 five-day window. `investigate me --quick` is the older bounded pass: it samples
 recent evidence, takes one synthesis turn, and marks its coverage as partial.
-init no longer uses it, since #1850's evidence files let one turn search
-everything you sent.
+init uses the quick pass first so a useful owner page arrives early, then runs
+the full pass with the other selected pages.
 
 ## Installed-skill skeletons at initialization
 
@@ -290,7 +305,7 @@ an exhaustive plugin-cache or remote-catalog scan. Repeat `--skills-dir` for
 explicit roots; supplying it replaces defaults for that scan. Coverage and
 unreadable files are reported in the index and command result.
 
-The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0a43/connectonion/useful_skills/rem-init/CLI.md) explains
+The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0/connectonion/useful_skills/rem-init/CLI.md) explains
 mail IDs, browser tabs, source/working/output directories and failure recovery.
 
 ## One execution path
@@ -659,13 +674,11 @@ below is good to about one point.
   default **35** points of the weekly window. The
   scheduled round adds up the points its investigation runs used since the
   window last reset, and starts no new page once that reaches the budget.
-- **The initial investigation uses the configured budget as a soft target**
-  (35% by default). It finishes the
-  selected pages beyond that target and the normal investigation
-  budget. The configured safety floor still protects the rest of the week.
+- **The initial investigation has no REM quota gate.** It attempts the whole
+  selected cohort, even when the weekly meter passes the routine budget or
+  safety floor. The runner provider can still enforce its own account limit.
   Claude Code and other runners without a readable weekly meter show an
-  estimate and finish the selected cohort; the CLI cannot claim to have
-  measured 35% of their plan.
+  estimate; the CLI cannot claim to have measured their plan usage.
 - **Manual investigation is metered too** (#1842). `co rem investigate PAGE`,
   `me` and CATEGORY runs record usage. A CATEGORY run covers all pending pages
   by default, with up to 10 workers; `--limit N` and `--workers N` bound a trial.
@@ -675,9 +688,9 @@ below is good to about one point.
   one queue over people, projects and organisations by weight (the same order
   the round uses), until 10 points of the week are spent. `--list` shows that
   order without running a model.
-- **A floor protects your own coding.** No investigation page starts once the
-  week is at `limits.quota_floor_percent` or more, default **90%**, however much
-  of co rem's budget is left. co rem shares this quota with your real work.
+- **A floor protects your own coding during routine and manual runs.** These
+  start no new investigation page once the week is at
+  `limits.quota_floor_percent` or more, default **90%**. Init is the exception.
 - `co rem status` reads the meter now and says it in two lines, for example
   `Codex week: 5% used on pro; resets Sun 04 Oct 09:49` and
   `Investigation this week: 0 of 35 points; nothing starts once the week is at 90%`.

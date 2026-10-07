@@ -577,8 +577,8 @@
   .sheet .c-company .clamp, .sheet .c-role .clamp { max-width: 112px; }
   .sheet .c-email { max-width: 140px; }
   .sheet .trunc { display: block; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sheet .c-phone { min-width: 128px; }
-  .sheet .c-phone .mono { white-space: nowrap; }
+  .sheet .c-phone { min-width: 128px; max-width: 180px; white-space: normal; }
+  .sheet .c-phone .mono { white-space: normal; overflow-wrap: anywhere; }
   .open-cell { flex-wrap: wrap; row-gap: 2px; }
   .open-cell .txt { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; flex-basis: 100%; }
   .name-cell .st { display: inline-flex; }
@@ -663,7 +663,8 @@
   .focus-next { position: relative; z-index: 1; max-width: 68ch; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--night-line); }
   .focus-next .k { display: block; font: 600 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--night-2); }
   .focus-next p { margin: 5px 0 0; font: 15px/1.45 var(--text); }
-  .focus-more { position: relative; z-index: 1; border: 0; background: transparent; color: var(--night-ink); cursor: pointer; margin: 4px 0 0 12px; padding: 0; min-height: 44px; font: 600 12px var(--ui); text-decoration: underline; text-underline-offset: 3px; }
+  .focus-more { position: relative; z-index: 1; display: block; border: 0; background: transparent; color: var(--night-ink); cursor: pointer; margin: 4px 0 0; padding: 0; min-height: 44px; font: 600 12px var(--ui); text-decoration: underline; text-underline-offset: 3px; }
+  .focus-more[hidden] { display: none; }
   .focus-section.next-exchanges { grid-column: 1 / -1; }
   .project-workspace { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
   .project-workspace.single { grid-template-columns: 1fr; }
@@ -862,6 +863,14 @@
     .mobile-back { margin-bottom: 8px; }
     .page-head { margin-bottom: 4px; }
     .leadrow { margin-top: 8px; }
+    .lead-open { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start;
+      gap: 4px 10px; width: 100%; box-sizing: border-box; }
+    .lead-open .dir, .lead-open .txt { grid-column: 1 / -1; }
+    .lead-open .txt { max-width: none; }
+    .lead-open .age { grid-column: 1; }
+    .lead-open .more { grid-column: 2; justify-self: end; }
+    .lead-meta.usage { display: block; width: 100%; }
+    .lead-meta.usage .bar { display: none; }
     .record-focus, .record-focus.people { margin-top: 4px; }
     .focus-head { padding-top: 16px; }
     .focus-head.purpose-lead .focus-statement { margin-top: 10px; }
@@ -1066,10 +1075,10 @@ function citeRun(ns, from) {
   return '<a class="cite run" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + ns[0].toLowerCase() + '" data-tip="' + esc(tips.join("\n")) +
     '" aria-label="' + ns.length + " sources: " + esc(tips.join("; ")) + '">' + ns.length + " sources</a>";
 }
-function citeChip(n, from, showDescription = true) {
+function citeChip(n, from, showDescription = true, visibleLabel = false) {
   const tip = showDescription && from === CITES.from ? CITES.sources[n] : "";
   return '<a class="cite" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + n.toLowerCase() + '"' +
-    (tip ? ' data-tip="' + esc(tip) + '"' : "") + ' aria-label="Source ' + n + (tip ? ": " + esc(tip) : "") + '">' + n + "</a>";
+    (tip ? ' data-tip="' + esc(tip) + '"' : "") + ' aria-label="Source ' + n + (tip ? ": " + esc(tip) : "") + '">' + (visibleLabel ? "Source " : "") + n + "</a>";
 }
 // Pages are written about "the user"; the reader is read by them. At render time
 // only (the Markdown keeps its wording, and Copy Markdown copies it as written)
@@ -1344,7 +1353,8 @@ function byActivity(a, b) {
 }
 function statusPill(r) {
   const st = known(r).status;
-  return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: known(r).stamp || st }, [moon(st), st]);
+  const label = r.category === "skills" && st === "Investigated" ? "Source reviewed" : st;
+  return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: known(r).stamp || label }, [moon(st), label]);
 }
 
 // ---------- reading a page's parts ----------
@@ -1833,7 +1843,8 @@ function renderRail(active) {
   foot.appendChild(privacy);
   foot.appendChild(el("div", { text: "Also hides raw excerpts; other details stay visible." }));
   foot.appendChild(el("div", { text: "Snapshot " + fmtTime(REM.as_of) }));
-  const schedule = s.next_run ? "Next pass " + fmtTime(s.next_run)
+  const schedule = /^Background needs attention/.test(s.state || "") ? scheduleState(s)
+    : s.next_run ? "Next pass " + fmtTime(s.next_run)
     : (scheduleState(s) || "No pass scheduled");
   foot.appendChild(el("div", { text: plainLine(schedule) }));
   foot.appendChild(el("div", { text: location.protocol === "about:" ? "Reload for latest" : "co rem open re-renders" }));
@@ -1957,9 +1968,10 @@ function morningBrief() {
       const maintenance = document.querySelector("details.maint");
       if (!maintenance) return;
       maintenance.open = true;
-      const summary = maintenance.querySelector(":scope > summary");
-      summary?.focus();
-      maintenance.scrollIntoView({ behavior: "smooth", block: "start" });
+      const failedRun = maintenance.querySelector(".runs tr.failed-run");
+      const target = failedRun || maintenance.querySelector(":scope > summary");
+      target?.focus();
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
     };
     brief.appendChild(el("div", { class: "first-map-actions" }, [review]));
   }
@@ -2167,7 +2179,7 @@ function maintenance(s) {
       const u = run.usage || {};
       const outcome = String(run.outcome || "");
       const ok = /^(completed|pass)$/i.test(outcome);
-      table.appendChild(el("tr", {}, [
+      table.appendChild(el("tr", FAILED.test(outcome) ? { class: "failed-run", tabindex: "-1" } : {}, [
         el("td", { text: fmtTime(run.started_at) }),
         el("td", {}, [el("span", { class: "pill" + (ok ? "" : FAILED.test(outcome) ? " warn" : " quiet"), text: outcome })]),
         el("td", { text: String(run.items ?? "") }),
@@ -2450,7 +2462,7 @@ function leadRow(r) {
     row.appendChild(privateFallback(el("span", { class: "lead-meta project-purpose-preview", html: inline(preview, r.path) })));
     const purposeSources = [...new Set(projectLead.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
     if (purposeSources.length) row.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": "Purpose sources" },
-      [el("span", { text: "Purpose sources" }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false) }))]));
+      [el("span", { text: "Purpose sources" }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
   } else if (k.last && r.category !== "skills" && r.category !== "projects") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map " : "Last contact ") : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u) row.append(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: usageCaption(u) })]),
@@ -2560,6 +2572,18 @@ function recordFocus(r) {
   const statementNode = privateFallback(el("p", { class: "focus-statement" + (privateMapped || r.category === "projects" && !projectNeedsContext ? "" : " clamped"), html: inline(statement || (k.status === "Mapped"
     ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet."), r.path) }));
   focusHead.appendChild(statementNode);
+  if (statement && !privateMapped && (r.category !== "projects" || projectNeedsContext)) {
+    const label = projectNeedsContext ? "Read full purpose" : r.category === "skills" ? "Read complete finding" :
+      r.category === "orgs" ? "Read complete relationship" : "Read full context";
+    const more = el("button", { type: "button", class: "focus-more", "aria-expanded": "false", text: label, hidden: "" });
+    more.onclick = () => {
+      const clamped = statementNode.classList.toggle("clamped");
+      more.setAttribute("aria-expanded", String(!clamped));
+      more.textContent = clamped ? label : "Show less";
+      refreshFocusExpansion();
+    };
+    focusHead.appendChild(more);
+  }
   if (r.category === "skills" && k.status === "Mapped") {
     const copy = el("button", { type: "button", class: "focus-source focus-command", text: "Copy investigation command" });
     copy.onclick = () => copyToClipboard(investigateCommand(r), copy, "Copied — paste it in a terminal");
@@ -2570,12 +2594,12 @@ function recordFocus(r) {
     if (findingSources.length) focusHead.appendChild(el("span", { class: "skill-finding-cites" + (/\[(?:personal|sensitive)\]/i.test(findingLine) ? " private" : ""),
       role: "group", "aria-label": "Finding sources" },
       [el("span", { text: findingSources.length === 1 ? "Finding source" : "Finding sources" }),
-        ...findingSources.map(n => el("span", { html: citeChip(n, r.path, false) }))]));
+        ...findingSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
   }
   if (projectNeedsContext) {
     const purposeSources = [...new Set(projectPurposeLine.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
     if (purposeSources.length) focusHead.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": "Purpose sources" },
-      [el("span", { text: "Purpose sources" }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false) }))]));
+      [el("span", { text: "Purpose sources" }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
     const days = r.project_coverage?.days;
     const limit = r.project_coverage?.inputs_read === 0
       ? "No coding-session input was assigned to this project in this " + (days ? days + "-day " : "") + "investigation."
@@ -2594,17 +2618,6 @@ function recordFocus(r) {
         el("span", { class: "k", text: "Next step" }),
         el("p", { html: inline(step[0].toUpperCase() + step.slice(1), r.path) })]));
     }
-  }
-  if (statement && !privateMapped && (r.category !== "projects" || projectNeedsContext)) {
-    const label = projectNeedsContext ? "Read full purpose" : "Read full context";
-    const more = el("button", { type: "button", class: "focus-more", "aria-expanded": "false", text: label, hidden: "" });
-    more.onclick = () => {
-      const expanded = statementNode.classList.toggle("clamped");
-      more.setAttribute("aria-expanded", String(!expanded));
-      more.textContent = expanded ? label : "Show less";
-      refreshFocusExpansion();
-    };
-    focusHead.appendChild(more);
   }
   out.appendChild(focusHead);
   const coverage = r.category === "projects" ? r.project_coverage : null;

@@ -400,7 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a43
+## Current Version: 1.9.0
+
+Stable 1.9.0 promotes co rem after the 90-day installed-package first-run,
+reader, and scheduled-upkeep acceptance recorded in
+[the release notes](docs/releases/1.9.0.md). Init investigates every eligible
+mapped page without a REM quota cap, reports progress by category, checks model
+access before dispatch, and leaves failed work visible. Rewritten coding-session
+prefixes remain protected while unaffected sessions continue. Remaining quality
+and recovery work is tracked for 1.9.1.
+
+- 1.9.0 (Complete the mapped first run, make progress and upkeep health visible).
+
+## Previous preview: 1.9.0a43
 
 1.9.0a43 makes failed investigations visible on Home, with classified reasons
 and a keyboard-accessible route to the run record. Init's overview now explains

@@ -1,0 +1,44 @@
+version: v1.9.0
+images:
+  - file: init-progress.webp
+    alt: "Redacted first-run terminal progress with mapped mail totals and page category counts"
+    caption: "The installed candidate shows mail coverage and a live total across People, Projects and Skills. Page names are removed."
+    scenario: "Real installed-wheel 90-day incremental init; first eight of 17 queued pages"
+    viewport: "1040px terminal capture, light text on dark background"
+    commit: 34e91b19
+    source_run: "Private local 1.9.0 candidate init log, redacted aggregate excerpt, 2026-10-07"
+  - file: before-person-phone.webp
+    alt: "Invented Person detail before the phone lead layout fix"
+    caption: "The owed item and age compete for one narrow line above the finding."
+    scenario: "Invented notebook, Person detail before the 1.9.0 reader changes"
+    viewport: "390x844, light"
+    commit: 751157e6
+    source_run: "Local Chrome comparison using invented rem_reader_notebook fixture, 2026-10-07"
+  - file: after-person-phone.webp
+    alt: "Invented Person detail after the phone lead layout fix"
+    caption: "The owed item and age have separate lines, keeping the action readable."
+    scenario: "Same invented notebook and viewport, 1.9.0 candidate"
+    viewport: "390x844, light"
+    commit: 34e91b19
+    source_run: "Local Chrome comparison using invented rem_reader_notebook fixture, 2026-10-07"
+  - file: after-project-desktop.webp
+    alt: "Invented Project detail in the 1.9.0 reader"
+    caption: "A purpose, evidence path and next action remain visible on the Project detail."
+    scenario: "Invented notebook, Project detail"
+    viewport: "1440x900, light"
+    commit: 34e91b19
+    source_run: "Local Chrome invented rem_reader_notebook fixture, 2026-10-07"
+  - file: after-skill-phone.webp
+    alt: "Invented Skill detail on a phone"
+    caption: "Mapped Skill status distinguishes a name match from a verified version."
+    scenario: "Invented notebook, mapped Skill detail"
+    viewport: "390x844, light"
+    commit: 34e91b19
+    source_run: "Local Chrome invented rem_reader_notebook fixture, 2026-10-07"
+  - file: after-home-desktop.webp
+    alt: "Invented co rem Today view at desktop width"
+    caption: "The first screen gives a useful lead and route into the notebook."
+    scenario: "Invented notebook, Today after 1.9.0 changes"
+    viewport: "1440x900, light"
+    commit: 34e91b19
+    source_run: "Local Chrome invented rem_reader_notebook fixture, 2026-10-07"

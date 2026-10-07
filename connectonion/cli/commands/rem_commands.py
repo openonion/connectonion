@@ -243,8 +243,9 @@ def _logged(root, record, phase, call, quiet=False):
                    evidence=result.get("evidence") or [], report=result.get("report") or "")
         _WRITTEN.append(record)
         # Said, not left to the record: an accepted page had no outcome line (#2044).
-        rem_look.step(f"Updated {record}: accepted, {len(run['changed'])} page"
-                      f"{'' if len(run['changed']) == 1 else 's'} changed")
+        if not quiet:
+            rem_look.step(f"Updated {record}: accepted, {len(run['changed'])} page"
+                          f"{'' if len(run['changed']) == 1 else 's'} changed")
         return result
     except BaseException as error:
         run.update(outcome=("refused" if isinstance(error, RunFailed) and "rejected" in str(error) else
@@ -445,19 +446,6 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
 FIRST_RUN_WORKERS = 10
 
 
-def _first_run_gate(root, config):
-    """Before each first-run page: why not to start it, or ''.
-
-    The configured weekly floor still protects the user's work. The first run
-    shows the configured budget as a target but does not abandon selected pages there.
-    A runner without a meter can still finish the bounded cohort.
-    """
-    from ...rem import quota
-    def gate():
-        return quota.floor_block(quota.read(config), config["limits"])
-    return gate
-
-
 def _capped(rows: list, cap) -> list:
     return rows if cap is None else rows[:cap]
 
@@ -527,6 +515,10 @@ def _in_parallel(jobs, *, workers, gate, done):
                 job, error = running.pop(future), future.exception()
                 if error is not None and not isinstance(error, RemError):
                     raise error
+                if error is not None:
+                    from ...rem.runner import model_denial
+                    if model_denial(error):
+                        stopped = "The selected model denied access; sign in or choose an available model"
                 outcome = {"page": job["record"], "mode": job["mode"], "outcome": "accepted"} if error is None else {
                     "page": job["record"], "mode": job["mode"], "why": str(error)[:300],
                     "outcome": "refused" if "rejected" in str(error) else "failed"}
@@ -595,17 +587,31 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills
              "people": _people_jobs(root, people), "projects": _project_jobs(root, config, projects),
              "orgs": _org_jobs(root, orgs), "skills": _skill_jobs(root, skills)}
 
-    def done(job, outcome):
-        why = f" ({outcome['why'][:120]})" if outcome["outcome"] != "accepted" else ""
-        say(f"  {job['record']}: {'written' if not why else 'not written' + why}")
-
     from itertools import zip_longest
+    from .rem_output import FirstRunProgress
     jobs = [*kinds["me"], *(job for group in zip_longest(kinds["people"], kinds["projects"],
                                                         kinds["orgs"], kinds["skills"]) for job in group if job)]
-    outcomes, stopped = _in_parallel(jobs, workers=FIRST_RUN_WORKERS, gate=gate, done=done)
+    progress = FirstRunProgress({kind: len(rows) for kind, rows in kinds.items()}, quiet=ctx.obj["json"])
+    if jobs:
+        say(f"Investigating 0/{len(jobs)} pages with up to {FIRST_RUN_WORKERS} workers…")
+
+    def done(job, outcome):
+        why = f" ({outcome['why'][:120]})" if outcome["outcome"] != "accepted" else ""
+        say(f"  {progress.finish(job['kind'])} {job['record']}: "
+            f"{'written' if not why else 'not written' + why}")
+
+    try:
+        outcomes, stopped = _in_parallel(jobs, workers=FIRST_RUN_WORKERS, gate=gate, done=done)
+    finally:
+        progress.close()
     if stopped:
-        say(f"Stopped before the rest: {stopped}. Write them later with "
-            f"{_next(ctx, ['investigate', 'all'])} and {_next(ctx, ['projects', 'write'])}.")
+        if "model denied access" in stopped:
+            fix = {"claude-code": "claude auth login", "codex": "codex login"}.get(config["runner"], "co auth status")
+            say(f"Stopped before the rest: {stopped}. Run {fix}, then retry {_next(ctx, ['init'])}; "
+                "completed pages are retained.")
+        else:
+            say(f"Stopped before the rest: {stopped}. Write them later with "
+                f"{_next(ctx, ['investigate', 'all'])} and {_next(ctx, ['projects', 'write'])}.")
     return {KEYS[kind]: _kind_result(kind, jobs, outcomes, stopped) for kind, jobs in kinds.items()}
 
 
@@ -742,7 +748,7 @@ def make_rem_app(factory):
                   archive_mail: bool = typer.Option(True, "--archive-mail/--no-mail-archive"),
                   write_mine: Optional[bool] = typer.Option(None, "--investigate/--no-investigate"),
                   all_history: bool = typer.Option(False, "--all-history", help="Map every available mail year; archive only recent bodies"),
-                  investigate_all: bool = typer.Option(False, "--investigate-all", help="Select every mapped person and project, subject to the safety floor"),
+                  investigate_all: bool = typer.Option(False, "--investigate-all", help="Select every mapped person and project"),
                   estimate_only: bool = typer.Option(False, "--estimate-only", help="Map and estimate the selected work without model turns or body archive"),
                   start_background: bool = typer.Option(True, "--start/--no-start", help="Install nightly upkeep after the first run"),
                   yes: bool = typer.Option(False, "--yes", help="Approve the shown source access and background schedule"),
@@ -759,6 +765,7 @@ def make_rem_app(factory):
         all_history = all_history or investigate_all
         # One run confirms several addresses: `--mine a,b,c` as well as repeating it.
         owned = [part.strip() for value in mine for part in value.split(",") if part.strip()]
+        run_state = {}
 
         def run(root):
             prepare(root)
@@ -796,6 +803,7 @@ def make_rem_app(factory):
                                    skill_directories=skills_dir or None, mine=owned, source_errors=errors,
                                    absent=_absent_mail(selected, available, failed, sources, bool(mail)), name=name,
                                    capture_sources=True, progress=progress)
+                run_state["result"] = result
                 if archive_mail and not estimate_only and result.get("source_inventory"):
                     from ...rem.files import read_json, write_json
                     from ...rem.mail_archive import archive_init
@@ -920,16 +928,12 @@ def make_rem_app(factory):
             steps += ([f"{counted(len(skill_rows), 'installed skill')} (source and retained run evidence)"] if skill_rows else [])
             if not steps:
                 return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]
-            target = config["limits"]["investigation_quota_points"]
-            floor = config["limits"]["quota_floor_percent"]
             cost = (f"First run with {config['runner']} ({config['model']}): "
                     + ", ".join(steps) + f"; up to {FIRST_RUN_WORKERS} at a time.\n"
                     + "Estimate: " + first_run.announce(total, plan) + "\n"
                     + "Input estimate includes cached tokens; it is not weekly quota points.\n"
-                    + f"Budget: about {target}% of a weekly runner allowance is a planning "
-                    f"target, not a stop. Selected pages may continue past it until the {floor}% "
-                    "weekly safety floor; pages already in flight finish. A runner without a "
-                    "weekly meter cannot verify the percentage.\n"
+                    + "No REM page or weekly quota cap stops this first run; the selected queue "
+                    "continues through failures. The model provider may still enforce its own limit.\n"
                     "Controls: --first-people, --first-projects, --first-orgs and --first-skills cap a kind; Ctrl-C "
                     "keeps the map and completed pages; --no-investigate skips model work.")
             rem_look.say(rem_look.highlight(cost, counts=True), err=ctx.obj["json"], plain=cost)
@@ -940,7 +944,23 @@ def make_rem_app(factory):
                 say(state + "No model turn or mail body archive was started. The map and coverage are saved.")
                 return ((result if ctx.obj["json"] else _init_done(ctx, result)),
                         ["init", *init_window], bool(result.get("errors")))
-            gate = _first_run_gate(root, config)
+            if not problem:
+                say("Checking access to the selected model before the page queue…")
+                access_problem, access_fix = rem_runner.model_access(root, config)
+                if access_problem:
+                    from datetime import datetime, timezone
+                    from uuid import uuid4
+                    from ...rem.files import write_json
+                    stamp = datetime.now(timezone.utc).isoformat()
+                    write_json(state_path(root, f"runs/run_{uuid4().hex}.json"), {
+                        "started_at": stamp, "finished_at": stamp, "phase": "model access",
+                        "outcome": "failed", "error": access_problem[:300], "changed": [], "items": 0,
+                        "model": config["model"], "sources": []})
+                    result["model_access"] = {"ready": False, "problem": access_problem, "fix": access_fix}
+                    say(f"Model access failed: {access_problem}. Run {access_fix}, then retry init; "
+                        "the map and saved mail are retained.")
+                    return (result if ctx.obj["json"] else _init_done(ctx, result)), ["init", *init_window], True
+            gate = lambda: ""
             if not reason:
                 try:
                     # Quick first, so your page is there in minutes; the whole page runs
@@ -979,10 +999,23 @@ def make_rem_app(factory):
         def run_and_start(root):
             response = run(root)
             value, next_step = response[:2]
+            result = run_state.get("result", {})
+            incomplete = any((result.get(key) or {}).get("left", 0) for key in KEYS.values())
+            failed = bool(response[2]) if len(response) > 2 else False
+            if incomplete and next_step == ["open"]:
+                failed_page = next((page for key in KEYS.values()
+                                    for page in (result.get(key) or {}).get("pages", [])
+                                    if page.get("outcome") != "accepted"), None)
+                next_step = (["investigate", failed_page["page"],
+                              *(["--retry-refused"] if failed_page["outcome"] == "refused" else [])]
+                             if failed_page else ["init"])
             if estimate_only:
                 background = {"started": False, "reason": "Estimate only; no consent or schedule installed."}
             elif not start_background:
                 background = {"started": False, "reason": "Background upkeep left off by --no-start."}
+            elif failed or (write_mine is not False and
+                            (incomplete or (result.get("runner") or {}).get("problem"))):
+                background = {"started": False, "reason": "First run needs attention; finish its pages before enabling nightly upkeep."}
             else:
                 from ...rem import schedule as rem_schedule
                 from ...rem.files import RemError
@@ -1001,7 +1034,7 @@ def make_rem_app(factory):
                 detail = ("Background upkeep: scheduled." if background["started"] else
                           "Background upkeep: " + background["reason"])
                 value += "\n" + detail
-            return (value, next_step, *response[2:])
+            return (value, next_step, failed or incomplete)
 
         _handle(ctx, run_and_start, ["sources"])
 
@@ -1625,9 +1658,12 @@ def make_rem_app(factory):
                     check(f"sessions {name}", Path(sub.get("root", "")).is_dir(), sub.get("root", ""),
                           rem_fix=["sources", "remove", name])
             if (root / "config.yaml").exists():
-                slot = status(root).get("next_run")
-                check("schedule", slot is not None, f"next run {slot}" if slot else "not installed",
-                      rem_fix=["start"])
+                schedule = status(root)
+                slot = schedule.get("next_run")
+                attention = str(schedule["state"]).startswith("Background needs attention")
+                check("schedule", slot is not None and not attention,
+                      schedule["state"] if attention else f"next run {slot}" if slot else "not installed",
+                      rem_fix=["logs"] if attention and slot else ["start"])
             return checks, (rem_fixes[0] if rem_fixes else ["status"])
         from .rem_output import doctor_board
         _handle(ctx, operation, ["config"], draw=doctor_board)

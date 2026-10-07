@@ -15,6 +15,19 @@ from connectonion.rem.files import Notebook
 from connectonion.rem.runner import RunFailed, run_stage, task_prompt
 
 
+def test_model_access_probes_without_sources(tmp_path, monkeypatch):
+    from connectonion.rem import runner as rem_runner
+    prompts = []
+    monkeypatch.setattr(rem_runner, "run_task", lambda workspace, prompt, config, stage:
+                        prompts.append((workspace, prompt, stage)) or {"outcome": "natural"})
+    assert rem_runner.model_access(tmp_path, {"runner": "claude-code"}) == ("", "")
+    assert prompts[0][0].is_dir()
+    assert "Do not use tools or read files" in prompts[0][1]
+    assert prompts[0][2] == "abstract"
+    assert rem_runner.model_denial(RunFailed("provider 403 permission_denied"))
+    assert not rem_runner.model_denial(RunFailed("transient timeout"))
+
+
 @pytest.fixture
 def notebook(tmp_path):
     root = tmp_path / "rem"

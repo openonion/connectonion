@@ -66,6 +66,7 @@ def first_run(tmp_path, monkeypatch):
 
     monkeypatch.setattr("connectonion.rem.investigate.investigate", investigate)
     monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("", ""))
+    monkeypatch.setattr("connectonion.rem.runner.model_access", lambda root, config: ("", ""))
     monkeypatch.setattr("connectonion.cli.commands.rem_commands._interactive", lambda: True)
     skills = tmp_path / "empty-skills"
     skills.mkdir()
@@ -82,6 +83,40 @@ def first_run(tmp_path, monkeypatch):
 
 def owner_record(root):
     return json.loads((root / ".state/map.json").read_text())["owner"]["record"]
+
+
+def test_model_denial_stops_first_run_before_writing_pages(first_run, monkeypatch):
+    root, init, calls = first_run
+    monkeypatch.setattr("connectonion.rem.runner.model_access",
+                        lambda root, config: ("provider returned 403", "claude auth login"))
+    result = init("--json")
+    assert result.exit_code == 1
+    data = json.loads(result.stdout)["data"]
+    assert data["model_access"]["ready"] is False
+    assert data["background"]["started"] is False
+    assert "needs attention" in data["background"]["reason"]
+    assert calls == []
+    assert (root / ".state/map.json").exists()
+    from connectonion.rem.service import run_logs
+    assert run_logs(root)[0]["phase"] == "model access"
+    assert run_logs(root)[0]["outcome"] == "failed"
+
+
+def test_provider_denial_stops_dispatching_the_remaining_pages():
+    from connectonion.cli.commands.rem_commands import _in_parallel
+    from connectonion.rem.runner import RunFailed
+    started = []
+
+    def denied():
+        started.append("first")
+        raise RunFailed("API Error: 403 Request not allowed")
+
+    jobs = [{"record": "people/first.md", "mode": "full", "run": denied},
+            {"record": "people/second.md", "mode": "full", "run": lambda: started.append("second")}]
+    outcomes, stopped = _in_parallel(jobs, workers=1, gate=lambda: "", done=lambda job, outcome: None)
+    assert started == ["first"]
+    assert len(outcomes) == 1 and outcomes[0][1]["outcome"] == "failed"
+    assert "model denied access" in stopped
 
 
 def test_init_investigates_skills_and_reports_them_in_plan_and_summary(first_run, monkeypatch):
@@ -455,6 +490,24 @@ def test_after_me_all_queued_projects_are_written_one_line_each(projects):
     assert "projects/old.md: written" in text
 
 
+def test_refused_first_run_page_names_its_retry_and_keeps_schedule_off(projects, monkeypatch):
+    from connectonion.rem.runner import RunFailed
+
+    (root, init, _), _written = projects
+
+    def write_page(root, record, **kw):
+        if record == "projects/alpha.md":
+            raise RunFailed("Candidate rejected; cited-claim audit did not pass")
+        return {"record": record, "changed": [record]}
+
+    monkeypatch.setattr("connectonion.rem.project_pages.write_page", write_page)
+    result = init("--json", "--yes")
+    assert result.exit_code == 1, result.output
+    data = json.loads(result.stdout)
+    assert data["data"]["background"]["started"] is False
+    assert data["next"].endswith("investigate projects/alpha.md --retry-refused")
+
+
 def test_projects_follow_explicit_skip_and_runner_readiness(projects, monkeypatch):
     (root, init, calls), written = projects
     assert init("--no-investigate").exit_code == 0
@@ -477,14 +530,14 @@ def test_json_with_investigate_writes_projects_and_reports_them(projects):
         "projects/alpha.md", "projects/beta.md", "projects/old.md"]
 
 
-def test_the_weekly_floor_stops_project_pages(projects, monkeypatch):
+def test_the_weekly_floor_does_not_stop_init_projects(projects, monkeypatch):
     (root, init, calls), written = projects
     monkeypatch.setattr("connectonion.rem.quota.read", lambda config: {
         "used_percent": 90, "window_minutes": 10080, "resets_at": 4102444800, "plan": "plus"})
     result = init()
     assert result.exit_code == 0, result.output
-    assert written == []
-    assert "90% floor" in Text.from_ansi(result.output).plain
+    assert len(written) == 3
+    assert "No REM page or weekly quota cap stops this first run" in Text.from_ansi(result.output).plain
 
 
 # ------------------------------------------- the people you write to, after me
@@ -520,8 +573,8 @@ def test_after_me_the_people_you_wrote_to_and_projects_four_at_a_time(people):
     assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
     text = Text.from_ansi(result.output).plain
     assert "up to two years of evidence each" in text
-    assert "10 at a time" in text and "about 35% of a weekly runner allowance is a planning target" in text
-    assert "90% weekly safety floor; pages already in flight finish" in text
+    assert "10 at a time" in text and "No REM page or weekly quota cap stops this first run" in text
+    assert "People 5/5" in text and "Projects 3/3" in text
     assert "Written this run: your page, 5 people" in text and "3 project pages" in text
 
 
@@ -546,18 +599,13 @@ def test_the_first_run_finishes_selected_pages_past_target(people, monkeypatch):
     assert data["org_pages"]["started"] is True
 
 
-def test_first_run_gate_uses_safety_floor_not_the_target(tmp_path, monkeypatch):
-    from connectonion.cli.commands.rem_commands import _first_run_gate
-
-    meter = {"used_percent": 35}
-    monkeypatch.setattr("connectonion.rem.quota.read", lambda config: dict(meter))
-    gate = _first_run_gate(tmp_path, {"runner": "codex", "limits": {
-        "quota_floor_percent": 70, "investigation_quota_points": 20}})
-    assert gate() == ""  # already past 20% of the week
-    meter["used_percent"] = 69
-    assert gate() == ""
-    meter["used_percent"] = 70
-    assert "70%" in gate()
+def test_first_run_does_not_stop_at_the_weekly_floor(people, monkeypatch):
+    root, init, _, people_written, projects_written = people
+    monkeypatch.setattr("connectonion.rem.quota.read", lambda config: {"used_percent": 100})
+    result = init("--json")
+    assert result.exit_code == 0, result.output
+    assert len(people_written) == 5 and len(projects_written) == 3
+    assert json.loads(result.stdout)["data"]["people_pages"]["left"] == 0
 
 
 def test_ctrl_c_during_people_keeps_the_pages_and_names_the_rest(people, monkeypatch):
@@ -684,10 +732,16 @@ def test_the_first_run_writes_people_and_projects_several_at_once(people, monkey
     and the owner judged the cost small: the first run writes four at a time."""
     import threading
     root, init, calls, people_written, projects_written = people
-    together = threading.Barrier(4, timeout=5)
+    together = threading.Event()
+    lock = threading.Lock()
+    started = []
 
     def slow_person(root, row, **kw):
-        together.wait()  # only returns once four pages are in flight together
+        with lock:
+            started.append(row["record"])
+            if len(started) == 4:
+                together.set()
+        assert together.wait(10)  # four pages must overlap before any completes
         people_written.append(row["record"])
         return {"record": row["record"], "changed": [row["record"]]}
 
@@ -842,8 +896,9 @@ def test_a_refused_full_owner_page_keeps_the_quick_first_pass(first_run, monkeyp
     monkeypatch.setattr("connectonion.cli.commands.rem_commands._investigate_me", full_refused)
     root, init, _ = first_run
     result = init("--json", "--investigate")
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == 1, result.output
     assert tried == [True, False]
     data = json.loads(result.stdout)["data"]
     assert data["investigate_me"]["outcome"] == "completed"
     assert data["owner_full"]["pages"][0]["outcome"] == "refused"
+    assert data["background"]["started"] is False

@@ -384,6 +384,7 @@ def test_start_yes_then_stop(lifecycle):
 def test_init_offers_start_and_yes_installs_without_a_duplicate_sync(lifecycle, monkeypatch):
     root, sessions, calls = lifecycle
     monkeypatch.setattr("connectonion.rem.service.run_sync", lambda *a, **kw: pytest.fail("init repeated sync"))
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("runner unavailable", "install runner"))
     deferred = invoke(root, "--json", "init", "--no-investigate")
     assert deferred.exit_code == 0, deferred.output
     assert json.loads(deferred.stdout)["data"]["background"]["started"] is False

@@ -120,6 +120,16 @@ def _add_usage(total: dict, usage) -> dict:
     return total
 
 
+def _record_scheduled_result(root: Path, result: dict, scheduled: bool) -> dict:
+    """Keep worker health aligned with the whole scheduled pass, not just mail sync."""
+    if scheduled and result['outcome'] == 'partial':
+        worker_path = state_path(root, 'worker.json')
+        worker = read_json(worker_path, {})
+        write_json(worker_path, {**worker, 'last_scheduled_outcome': 'failed',
+                                 'last_scheduled_reason': 'the last scheduled investigation failed'})
+    return result
+
+
 def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
               maintain=None, investigate_one=None, person_one=None, project_one=None, say=None) -> dict | None:
     """One scheduled run. `investigate_one`, `person_one` and `project_one` replace
@@ -139,7 +149,8 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     if maintenance is None:
         return None
     if maintenance['outcome'] not in ('completed', 'no_change'):
-        return {'outcome': 'partial', 'maintenance': maintenance, 'investigation': None}
+        return _record_scheduled_result(root, {'outcome': 'partial', 'maintenance': maintenance,
+                                                'investigation': None}, scheduled)
     config = read_config(root)
     with maintenance_lock(root):
         state = status(root)
@@ -154,10 +165,12 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
         stop = quota.blocks(meter, quota.points_spent(logs, meter), config['limits'])
     if any(record.get('phase') == 'daily-investigation' for record in today):
         previous = max((record['started_at'] for record in logs if record.get('phase') in PHASES), default='')
-        return _follow_new(root, config, maintenance, remaining, meter, stop, previous,
-                           person_one=person_one, project_one=project_one, say=say)
-    return _unfinished(root, config, maintenance, remaining, meter, stop, days,
-                       investigate_one=investigate_one, person_one=person_one, say=say)
+        result = _follow_new(root, config, maintenance, remaining, meter, stop, previous,
+                             person_one=person_one, project_one=project_one, say=say)
+    else:
+        result = _unfinished(root, config, maintenance, remaining, meter, stop, days,
+                             investigate_one=investigate_one, person_one=person_one, say=say)
+    return _record_scheduled_result(root, result, scheduled)
 
 
 def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, investigate_one, person_one,

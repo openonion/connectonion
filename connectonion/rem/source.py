@@ -5,7 +5,7 @@ import hashlib
 import json
 import re
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -89,6 +89,7 @@ class Batch:
     progress: dict
     skipped: int = 0        # user-slot messages not read: the client's own machinery
     unrecognised: int = 0   # of those, ones whose shape we do not know -- the alarm
+    changed_files: list[str] = field(default_factory=list)  # skipped, with their old checkpoints intact
 
     @property
     def unreadable(self) -> bool:
@@ -294,6 +295,10 @@ def pending_metadata(subscription: dict, progress: dict) -> dict:
             "source_available": root.is_dir(), "body_reads": False}
 
 
+class ChangedPrefix(RemError):
+    """A consumed transcript was rewritten; its checkpoint must remain untouched."""
+
+
 def _verify_prefix(source, offset: int, expected) -> "hashlib._Hash":
     """Re-hash the consumed prefix without holding it; a rewrite must not pass as an append."""
     digest = hashlib.sha256()
@@ -301,11 +306,11 @@ def _verify_prefix(source, offset: int, expected) -> "hashlib._Hash":
     while remaining:
         chunk = source.read(min(1 << 20, remaining))
         if not chunk:
-            raise RemError("Previously processed source prefix changed; progress preserved for diagnosis")
+            raise ChangedPrefix("Previously processed source prefix changed; progress preserved for diagnosis")
         digest.update(chunk)
         remaining -= len(chunk)
     if offset and digest.hexdigest() != expected:
-        raise RemError("Previously processed source prefix changed; progress preserved for diagnosis")
+        raise ChangedPrefix("Previously processed source prefix changed; progress preserved for diagnosis")
     return digest
 
 
@@ -316,14 +321,19 @@ def _read_rollout(path: Path, old: dict, kind: str):
         raise RemError("Invalid source progress; preserve it for diagnosis")
     with path.open("rb") as source:
         try:
+            digest = _verify_prefix(source, offset, old.get("digest"))
+        except ChangedPrefix:
+            yield None, {}, offset, None
+            return
+        source.seek(0)
+        try:
             first = json.loads(source.readline(1_000_000))
         except (ValueError, UnicodeError) as error:
             raise RemError("Invalid session metadata") from error
         if not isinstance(first, dict):
             raise RemError("Unrecognized session transcript format")
         meta = KINDS[kind]["meta"](first)
-        source.seek(0)
-        digest = _verify_prefix(source, offset, old.get("digest"))
+        source.seek(offset)
         yield source, meta, offset, digest
 
 
@@ -350,6 +360,7 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
     root, since = Path(subscription["root"]), timestamp(subscription["since"])
     result, updated, used = [], copy.deepcopy(progress), 0
     skipped = unrecognised = 0
+    changed_files = []
     # Oldest session first. The notebook should grow the way the user's understanding
     # did -- later sessions revising earlier pages -- and a backfill that starts at the
     # lookback and walks forward is also the only way to exercise, in a test, what a
@@ -365,6 +376,9 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
         if datetime.fromtimestamp(stat.st_mtime, timezone.utc) < since:
             continue
         with _read_rollout(path, old, kind) as (source, meta, offset, digest):
+            if source is None:
+                changed_files.append(name)
+                continue
             if meta.get("skip"):
                 continue
             if subscription.get("project") and kind == "codex" and meta.get("cwd") != subscription["project"]:
@@ -408,7 +422,7 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
                         held.append((item, size, offset))
                     else:
                         if len(result) >= max_items or used + size > max_chars:
-                            return Batch(result, updated, skipped, unrecognised)
+                            return Batch(result, updated, skipped, unrecognised, changed_files)
                         result.append(item)
                         used += size
                 offset += len(line)
@@ -422,10 +436,10 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
                         # Stop before this message and leave the file's cursor on it, so
                         # the rest of the session is the next batch rather than lost.
                         updated[name] = {**updated[name], "offset": at, "digest": _digest_to(path, at)}
-                        return Batch(result, updated, skipped, unrecognised)
+                        return Batch(result, updated, skipped, unrecognised, changed_files)
                     result.append(item)
                     used += size
-    return Batch(result, updated, skipped, unrecognised)
+    return Batch(result, updated, skipped, unrecognised, changed_files)
 
 
 def _digest_to(path: Path, offset: int) -> str:

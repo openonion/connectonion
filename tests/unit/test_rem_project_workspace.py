@@ -317,7 +317,7 @@ def test_init_only_writes_mapped_projects_and_keeps_unmapped_workspace_candidate
     result = _first_pages(ctx, ws.root, read_config(ws.root), said.append, lambda: "", people=[],
                           projects=selected, orgs=[])["project_pages"]
     assert result["started"] and written == ["projects/alpha.md"]
-    assert "  projects/alpha.md: written" in said
+    assert any(line.endswith("projects/alpha.md: written") for line in said)
     assert texts(ws.root, "projects/alpha.md") == ["alpha needs a release"]
 
 
