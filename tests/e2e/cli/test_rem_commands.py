@@ -1373,3 +1373,15 @@ def test_an_investigation_off_a_terminal_says_each_stage_once():
         typer.echo = original
     assert seen == ["Investigation: gathering codex sessions: 40 scanned",
                     "Investigation: gathering outlook mail (10/30)", "Investigation: writing investigation"]
+
+
+@pytest.mark.parametrize('args', [(), ('--help',)])
+def test_first_run_guide_includes_init_nightly_upkeep(tmp_path, args):
+    result = invoke(tmp_path / 'notebook', *args)
+    assert result.exit_code == 0, result.output
+    text = ' '.join(result.output.split())
+    assert 'Init offers nightly upkeep after the first run' in text
+    assert '--yes' in text and '--no-start' in text
+    assert 'It starts no background work' not in text
+    assert 'do not treat it as an initialization step' not in text
+    assert not (tmp_path / 'notebook').exists()
