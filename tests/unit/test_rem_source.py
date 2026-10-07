@@ -95,13 +95,17 @@ def test_incomplete_tail_is_not_consumed(tmp_path):
     assert first.progress["rollout-a.jsonl"]["offset"] < file.stat().st_size
 
 
-def test_rewritten_consumed_prefix_fails_without_losing_progress(tmp_path):
+def test_rewritten_consumed_prefix_keeps_checkpoint_and_other_sessions_progress(tmp_path):
     file = tmp_path / "rollout-a.jsonl"
     rollout(file, [("user", "first")])
     first = collect(subscription(tmp_path), {}, 20, 10000)
     rollout(file, [("user", "changed")])
-    with pytest.raises(RemError, match="changed"):
-        collect(subscription(tmp_path), first.progress, 20, 10000)
+    rollout(tmp_path / "rollout-b.jsonl", [("user", "safe later session")])
+    second = collect(subscription(tmp_path), first.progress, 20, 10000)
+    assert second.changed_files == ["rollout-a.jsonl"]
+    assert [item["text"] for item in second.items] == ["safe later session"]
+    assert second.progress["rollout-a.jsonl"] == first.progress["rollout-a.jsonl"]
+    assert "rollout-b.jsonl" in second.progress
 
 
 def test_dry_run_does_not_open_bodies(tmp_path, monkeypatch):

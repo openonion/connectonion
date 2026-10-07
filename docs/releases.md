@@ -13,23 +13,19 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current release
 
-Stable **1.8.10** is the default production channel. It adds `co linear`,
-`co canny`, Slack reads, and `environment.setting()` to 1.8.9. See the
-[1.8.10 GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.8.10).
+Stable **1.9.0** is the default production channel. It brings co rem's
+complete mapped first run, category progress, model-access preflight and
+visible nightly health. See [1.9.0 notes](releases/1.9.0.md) and the
+[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.0).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.8.10'
+python -m pip install --upgrade 'connectonion==1.9.0'
 ```
 
-## Current preview
+## Previous previews
 
 Alpha **1.9.0a43** shows failed investigations on Home and explains the nightly
 upkeep offer in init's overview. See [1.9.0a43 notes](releases/1.9.0a43.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.0a43'
-co rem init
-```
 
 Alpha **1.9.0a42** keeps completed People discovery after a later mail
 connection failure and puts the historical contact directory before the mapped

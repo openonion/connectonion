@@ -78,11 +78,12 @@ def test_cli_map_and_init_seed_skills_before_model_stage(tmp_path, monkeypatch):
 
     fresh = tmp_path / "fresh"
     def run_stage(notebook, items, config, stage):
-        assert stage == "init"
+        assert stage == "investigate"
         assert notebook.path("skills/catalog/index.md").is_file()
         assert len(notebook.list("skills")) == 2
         return {"ok": True}
     monkeypatch.setattr(stage_runner, "run_stage", run_stage)
+    monkeypatch.setattr(stage_runner, "model_access", lambda root, config: ("", ""))
     result = runner.invoke(app, ["rem", "--root", str(fresh), "init"])
     assert result.exit_code == 0, result.output
 

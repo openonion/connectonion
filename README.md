@@ -127,14 +127,14 @@ notebook you can explore without connecting an account.*
 - **Keep context in your hands.** Local Markdown pages can be read by you and
   your agents. An approved schedule keeps them current.
 
-### Try co rem · 1.9.0 preview
+### Try co rem · 1.9.0
 
-co rem is in the opt-in preview. Start with [the setup guide](https://docs.connectonion.com/rem#start)
+Start with [the setup guide](https://docs.connectonion.com/rem#start)
 for account setup, source choices and model costs. Daily scheduling currently
 requires **macOS**. Then run:
 
 ```bash
-pip install --upgrade 'connectonion==1.9.0a43'
+pip install --upgrade 'connectonion==1.9.0'
 co rem init                # build your map and first pages; approve nightly upkeep when prompted
 co rem open                # read the local notebook
 ```
@@ -289,8 +289,8 @@ same harness; see the [documentation](https://docs.connectonion.com).
 
 ## Project
 
-**Stable 1.8.10** is what `pip install connectonion` installs; 1.9.0 previews
-carry new features first ([release channels](docs/releases.md),
+**Stable 1.9.0** is what `pip install connectonion` installs; previews
+remain opt-in ([release channels](docs/releases.md),
 [release notes](https://github.com/openonion/connectonion/releases)).
 Questions go to [Discussions](https://github.com/openonion/connectonion/discussions)
 or the Discord linked above, bugs to [Issues](https://github.com/openonion/connectonion/issues).

@@ -195,6 +195,28 @@ def test_scheduled_run_record_keeps_page_evidence_and_inspection_report(tmp_path
     assert snapshot(root)["logs"][0]["pages"][0]["evidence"] == evidence
 
 
+def test_scheduled_investigation_failure_marks_background_attention(tmp_path, monkeypatch):
+    from connectonion.rem import daily
+
+    root = tmp_path / "rem"
+    prepare(root)
+    worker = root / ".state/worker.json"
+    worker.write_text(json.dumps({"enabled": True, "scheduler": "launchd",
+                                  "last_scheduled_slot": "2026-10-07T19:00:00+11:00",
+                                  "last_scheduled_outcome": "completed"}))
+    monkeypatch.setattr(daily, "_unfinished", lambda *args, **kwargs: {
+        "outcome": "partial", "run": {"outcome": "failed"}})
+
+    result = daily.run_daily(root, scheduled=True,
+                             maintain=lambda root, scheduled: {"outcome": "completed", "items": 0})
+
+    assert result["outcome"] == "partial"
+    saved = json.loads(worker.read_text())
+    assert saved["last_scheduled_slot"] == "2026-10-07T19:00:00+11:00"
+    assert saved["last_scheduled_outcome"] == "failed"
+    assert "investigation failed" in saved["last_scheduled_reason"]
+
+
 def test_manual_run_record_keeps_page_evidence_and_inspection_report(tmp_path):
     from connectonion.cli.commands.rem_commands import _logged
 

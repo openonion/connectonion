@@ -63,6 +63,8 @@ def status_next(value: dict) -> list:
     """
     if not value.get("configured"):
         return ["init"]
+    if str(value.get("state", "")).startswith("Background needs attention"):
+        return ["logs"] if value.get("next_run") else ["start"]
     # The first thing under "To write next", when there is one (#2008): the
     # dashboard said `investigate me` there and then "Next: co rem logs".
     if value.get("root"):

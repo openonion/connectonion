@@ -297,6 +297,25 @@ def run_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
     return envelope
 
 
+def model_access(root: Path, config: dict) -> tuple[str, str]:
+    """Check the selected model with a source-free turn before a long first run."""
+    workspace = root / ".state" / "tasks" / "model-access"
+    workspace.mkdir(parents=True, exist_ok=True)
+    try:
+        run_task(workspace, "Reply READY only. Do not use tools or read files.", config, "abstract")
+    except RunFailed as error:
+        login = {"claude-code": "claude auth login", "codex": "codex login"}.get(config["runner"])
+        return str(error), (login or "co auth status")
+    return "", ""
+
+
+def model_denial(error: Exception) -> bool:
+    """A provider refusal that will also fail the rest of an unattended queue."""
+    detail = str(error).lower()
+    return any(marker in detail for marker in ("403", "401", "authentication_failed",
+                                                "permission_denied", "not supported when using codex"))
+
+
 def run_claim_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
     """Audit cited originals in a read-only Codex turn with structured output."""
     if config["runner"] != "codex":
