@@ -10,7 +10,7 @@ co rem — a notebook about the people, projects and tools in your work, kept up
 Experimental: a preview; its commands may change before 1.9.0.
 
 Build (once)
-  init          Build the notebook from 90 days of mail and sessions, then write your page.
+  init          Build the notebook from mail and sessions, investigate mapped pages, then offer nightly upkeep.
   investigate   Fill a page, a whole category, or your own page, using a model.
 Read
   open          Browse the notebook in your browser.
@@ -33,6 +33,8 @@ Options (before the command):
   --json        Machine-readable output: {"ok", "data", "next"}.
 
 First time:   co rem init
+Init offers nightly upkeep after the first run, once you approve its sources and schedule.
+Use --yes to approve the shown summary noninteractively, or --no-start to leave upkeep off.
 Example:      co rem search "term sheet" --in people
 Every page:   co rem <command> --help
 Advanced:     co rem advanced --help   (scan, map-skills, stub, merge, reflect, reflections,
