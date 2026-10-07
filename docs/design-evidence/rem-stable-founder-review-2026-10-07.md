@@ -21,6 +21,8 @@ show the visual changes without disclosing contacts or source content.
 | P1 | CLI still called itself a preview and said aliases worked only until 1.9.0; the site release note still promised future trial results. This obscured the release state. | `/cli/rem`, `/releases/1.9.0`, and the Design Journal article. | Align 1.9.0 labels and trial facts across all three pages; recheck their rendered text after the final source sync. |
 | P2 | The 390px CLI guide is about 66,569px tall and its command section starts far below the first screen. | `/cli/rem` on a 390px phone. | Put the first command and a short jump list above the long reference; recheck the first viewport and links to the sections. |
 | P2 | “Review failed runs” opened the maintenance section above completed and running rows, leaving the failure out of view. | Default reader Today on a 390px phone. | Focus and scroll the first failed run row; recheck the action on a rendered reader. |
+| P1 | The stable release card linked to a GitHub tag page that was still 404 in the unpublished preview. | `/releases` at 390px. | Link the card to the local stable note; after publication, separately verify the GitHub tag page returns 200. |
+| P2 | The release note sent a screenshot click to a YAML manifest, leaving images hard to view. | `/releases/1.9.0` at 390px. | Link each reviewed image directly and retain the manifest for provenance; recheck one-click image opening. |
 
 The review checked value clarity, cited claims, next actions, hierarchy,
 navigation, typography, spacing, state labels, phone layout and progressive
@@ -33,5 +35,8 @@ title, quick command, and jump links rendered without horizontal overflow;
 the first two jump links began at y=624px in a 390×844 viewport. On the real
 reader, clicking “Review failed runs” focused the failed row at y=405px in the
 same viewport. The release note and blog no longer promise future trial
-results. These are local preview checks; public deployment links still need a
-post-release check.
+results. A second reviewer pass found the stable card's unpublished GitHub link
+and the screenshot manifest detour. After revision, the stable card opened the
+local release note with HTTP 200, and all six direct screenshot links returned
+HTTP 200 with `image/webp` content on the 390px page. These are local preview
+checks; public deployment links still need a post-release check.
