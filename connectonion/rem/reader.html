@@ -1934,15 +1934,35 @@ function firstMapBrief() {
 function morningBrief() {
   const pass = lastPass();
   const changed = (pass?.changed || []).filter(r => r.path !== REM.owner && known(r).status !== "Mapped");
+  const failed = pass?.failed || [];
   const rank = r => ({ people: 0, projects: 1, orgs: 2 })[r.category] ?? 3;
   changed.sort((a, b) => rank(a) - rank(b) || byActivity(a, b));
   const brief = el("section", { class: "morning", "aria-label": "What co rem carried forward" });
   const top = el("div", { class: "morning-top" }, [
     el("div", {}, [el("span", { class: "morning-kicker", text: "co rem / latest pass" }),
       el("h2", { text: changed.length ? (new Date(REM.as_of).getTime() - pass.latest < DAY_MS
-        ? "The context to carry into today" : "The context from the last pass") : "Ready when there is something new" })]),
+        ? "The context to carry into today" : "The context from the last pass") : failed.length ? "The last pass needs attention" : "Ready when there is something new" })]),
     el("span", { class: "morning-time", text: pass ? fmtTime(new Date(pass.latest).toISOString()) : "No pass yet" })]);
   brief.appendChild(top);
+  if (failed.length) {
+    // Classify failures without surfacing private runner output in the morning brief.
+    const errors = failed.map(run => String(run.error || "")).join("\n");
+    const reasons = [];
+    if (/authenticate|authentication|\b40[13]\b|request not allowed/i.test(errors)) reasons.push("Model access was refused. Restore access before retrying.");
+    if (/timeout|timed out/i.test(errors)) reasons.push("A request timed out.");
+    if (/quota|usage limit|rate limit|\b429\b/i.test(errors)) reasons.push("A model usage limit was reached.");
+    brief.appendChild(el("p", { class: "memory-empty", text: failed.length + " investigation" + (failed.length === 1 ? "" : "s") + " failed. " + reasons.join(" ") }));
+    const review = el("button", { type: "button", text: "Review failed runs →" });
+    review.onclick = () => {
+      const maintenance = document.querySelector("details.maint");
+      if (!maintenance) return;
+      maintenance.open = true;
+      const summary = maintenance.querySelector(":scope > summary");
+      summary?.focus();
+      maintenance.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    brief.appendChild(el("div", { class: "first-map-actions" }, [review]));
+  }
   if ((REM.logs || []).some(run => run.evidence?.length || run.report || run.pages?.some(page => page.evidence?.length || page.report))) {
     const trail = el("button", { type: "button", class: "inspection-link", text: "View recent inspection trail →" });
     trail.onclick = () => {
@@ -1962,7 +1982,7 @@ function morningBrief() {
   }
   if (!changed.length) {
     brief.appendChild(el("p", { class: "memory-empty", text: pass
-      ? "The last pass did not update a page. Your existing context is still in the library below."
+      ? failed.length ? "No memory pages were written in the last pass. Your source map and existing pages remain available below. Review the failed runs before retrying." : "The last pass did not update a page. Your existing context is still in the library below."
       : "co rem has not completed a pass yet. Once it has, the pages it updates will appear here." }));
     return brief;
   }

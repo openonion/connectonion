@@ -1352,3 +1352,57 @@ def test_connected_context_hides_private_bases_including_expanded_connections(re
     assert page.locator('.relation-card strong').first.is_visible()
     page.evaluate('togglePrivate()', isolated_context=False)
     assert all(bases.nth(n).is_visible() for n in range(2))
+
+
+@pytest.mark.parametrize('width', [390, 1440])
+def test_failed_init_is_visible_and_keyboard_reachable(reader, tmp_path, monkeypatch, width):
+    from connectonion.rem import reader as rem_reader
+
+    page, _ = reader
+    data = rem_reader.snapshot(tmp_path / 'rem')
+    data['as_of'] = '2026-10-07T12:00:00+00:00'
+    data['logs'] = [
+        {'started_at': '2026-10-07T11:00:00+00:00', 'outcome': 'failed',
+         'error': 'Failed to authenticate. API Error: 403 Request not allowed', 'changed': []},
+        {'started_at': '2026-10-07T11:01:00+00:00', 'outcome': 'failed',
+         'error': 'TimeoutError: private payload must not appear here', 'changed': []},
+    ]
+    monkeypatch.setattr(rem_reader, 'snapshot', lambda _: data)
+    path = tmp_path / 'blocked.html'
+    path.write_text(rem_reader.render(tmp_path / 'rem'))
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(path.as_uri())
+    brief = page.locator('.morning')
+    assert 'The last pass needs attention' in brief.inner_text()
+    assert '2 investigations failed' in brief.inner_text()
+    assert 'Model access was refused' in brief.inner_text()
+    assert 'A request timed out' in brief.inner_text()
+    assert 'private payload' not in brief.inner_text()
+    assert 'No memory pages were written' in brief.inner_text()
+    button = brief.get_by_role('button', name='Review failed runs →')
+    assert button.bounding_box()['height'] >= 44
+    button.focus()
+    button.press('Enter')
+    assert page.locator('details.maint').evaluate('(node) => node.open')
+    assert page.locator('details.maint > summary').evaluate('(node) => node === document.activeElement')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_partial_pass_keeps_written_memory_beside_failure(reader, tmp_path, monkeypatch):
+    from connectonion.rem import reader as rem_reader
+
+    page, _ = reader
+    data = rem_reader.snapshot(tmp_path / 'rem')
+    data['logs'] = [
+        {'started_at': data['as_of'], 'outcome': 'completed',
+         'changed': ['people/mara-ostrowski.md']},
+        {'started_at': data['as_of'], 'outcome': 'failed', 'error': 'TimeoutError', 'changed': []},
+    ]
+    monkeypatch.setattr(rem_reader, 'snapshot', lambda _: data)
+    path = tmp_path / 'partial.html'
+    path.write_text(rem_reader.render(tmp_path / 'rem'))
+    page.goto(path.as_uri())
+    brief = page.locator('.morning')
+    assert '1 investigation failed' in brief.inner_text()
+    assert brief.locator('.memory-card').count() > 0
+    assert 'No memory pages were written' not in brief.inner_text()
