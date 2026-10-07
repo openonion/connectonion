@@ -22,3 +22,10 @@ also returned authentication 403. Preflight and stopping queued work after
 an access failure remain in [#2302](https://github.com/openonion/connectonion/issues/2302).
 A full historical investigation still needs a successful real run; an
 estimate or a rendered map is not evidence that the memory was written.
+
+We prepared the reporting fix for a43 with the same failed logs in phone and
+desktop before-and-after images. The package built and its isolated installed
+wheel passed thirteen acceptance checks. That separation matters: a verified
+artifact can still fail to write a useful memory when the account behind it
+refuses the model request. Publication is a distribution gate, not proof that
+the first morning is ready.

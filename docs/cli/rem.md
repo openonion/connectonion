@@ -1,6 +1,6 @@
 # co rem — 1.9 preview guide
 
-Updated 2026-10-05 for opt-in preview **1.9.0a42**. The exact commands are
+Updated 2026-10-07 for opt-in preview **1.9.0a43**. The exact commands are
 also available through `co rem --help` and each subcommand's `--help` page.
 Old command names (`unfinished`, `people`, `daily`, `subscribe`, `subscriptions`,
 `unsubscribe`, `route`, `usage`) still work until 1.9.0 and print their new name.
@@ -290,7 +290,7 @@ an exhaustive plugin-cache or remote-catalog scan. Repeat `--skills-dir` for
 explicit roots; supplying it replaces defaults for that scan. Coverage and
 unreadable files are reported in the index and command result.
 
-The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0a42/connectonion/useful_skills/rem-init/CLI.md) explains
+The [co rem CLI reference](https://github.com/openonion/connectonion/blob/v1.9.0a43/connectonion/useful_skills/rem-init/CLI.md) explains
 mail IDs, browser tabs, source/working/output directories and failure recovery.
 
 ## One execution path
