@@ -72,7 +72,8 @@ def test_spawn_uses_selected_environment_and_disables_extra_effects(startup, mon
     assert called["command"][:5] == [live_host.sys.executable, "-m", "connectonion.cli.main", "--env-file", str(selected)]
     assert called["command"][-2:] == ["--no-listen", "--no-launch"]
     assert called["start_new_session"] is True
-    assert (startup / "rem-live-host.log").stat().st_mode & 0o777 == 0o600
+    if live_host.os.name != "nt":
+        assert (startup / "rem-live-host.log").stat().st_mode & 0o777 == 0o600
 
 
 def test_live_open_starts_host_before_returning_url(tmp_path, monkeypatch):
@@ -86,7 +87,7 @@ def test_live_open_starts_host_before_returning_url(tmp_path, monkeypatch):
 
 
 def test_reused_pid_with_different_command_is_not_our_host(monkeypatch):
-    monkeypatch.setattr(live_host.os, "getuid", lambda: 501)
+    monkeypatch.setattr(live_host.os, "getuid", lambda: 501, raising=False)
     monkeypatch.setattr(live_host.subprocess, "run", lambda *a, **k:
                         SimpleNamespace(returncode=0, stdout="501 unrelated-server"))
     assert not live_host._alive({"pid": 42, "command": "-m connectonion.cli.main ai --port 8000 --no-listen --no-launch"})
