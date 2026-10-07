@@ -1013,7 +1013,8 @@ def make_rem_app(factory):
                 background = {"started": False, "reason": "Estimate only; no consent or schedule installed."}
             elif not start_background:
                 background = {"started": False, "reason": "Background upkeep left off by --no-start."}
-            elif failed or (incomplete and write_mine is not False) or (result.get("runner") or {}).get("problem"):
+            elif failed or (write_mine is not False and
+                            (incomplete or (result.get("runner") or {}).get("problem"))):
                 background = {"started": False, "reason": "First run needs attention; finish its pages before enabling nightly upkeep."}
             else:
                 from ...rem import schedule as rem_schedule
