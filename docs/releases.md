@@ -23,6 +23,14 @@ python -m pip install --upgrade 'connectonion==1.8.10'
 
 ## Current preview
 
+Alpha **1.9.0a43** shows failed investigations on Home and explains the nightly
+upkeep offer in init's overview. See [1.9.0a43 notes](releases/1.9.0a43.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.0a43'
+co rem init
+```
+
 Alpha **1.9.0a42** keeps completed People discovery after a later mail
 connection failure and puts the historical contact directory before the mapped
 People roster so a large first run does not bury it. See

@@ -1,0 +1,30 @@
+version: v1.9.0a43
+images:
+- file: before-phone.png
+  alt: Phone Home before failed-pass reporting fix
+  caption: A failed pass appeared ready for new content.
+  scenario: Invented notebook with model access refusal and a timeout
+  viewport: 390x900, light
+  commit: b1ae103b
+  source_run: Chrome rem-blocked-init; invented contacts; 2026-10-07
+- file: before-desktop.png
+  alt: Desktop Home before failed-pass reporting fix
+  caption: A failed pass appeared ready for new content.
+  scenario: Invented notebook with model access refusal and a timeout
+  viewport: 1440x900, light
+  commit: b1ae103b
+  source_run: Chrome rem-blocked-init; invented contacts; 2026-10-07
+- file: after-phone.png
+  alt: Phone Home after failed-pass reporting fix
+  caption: Home names the failed investigations and offers run review.
+  scenario: Invented notebook with model access refusal and a timeout
+  viewport: 390x900, light
+  commit: a4fc5f51
+  source_run: Chrome rem-blocked-init; invented contacts; 2026-10-07
+- file: after-desktop.png
+  alt: Desktop Home after failed-pass reporting fix
+  caption: Home names the failed investigations and offers run review.
+  scenario: Invented notebook with model access refusal and a timeout
+  viewport: 1440x900, light
+  commit: a4fc5f51
+  source_run: Chrome rem-blocked-init; invented contacts; 2026-10-07

@@ -400,7 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0a42
+## Current Version: 1.9.0a43
+
+1.9.0a43 makes failed investigations visible on Home, with classified reasons
+and a keyboard-accessible route to the run record. Init's overview now explains
+that it offers nightly upkeep after source/schedule approval. Public a42 real
+init confirmed scheduling, but the five-page writing sample failed with four
+timeouts and one model authentication refusal. This preview fixes reporting;
+it does not restore model access or establish full historical memory quality.
+Stable remains 1.8.10. See [1.9.0a43 notes](docs/releases/1.9.0a43.md).
+
+- 1.9.0a43 (Show failed memory writing on Home and explain init nightly upkeep).
+
+## Previous preview: 1.9.0a42
 
 1.9.0a42 brings the historical contact directory ahead of a long mapped
 People roster. On the owner's local real-data reader, its collapsed entrance
