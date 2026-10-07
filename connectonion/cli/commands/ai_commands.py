@@ -36,6 +36,7 @@ def handle_ai(
     invite_code: str = None,
     invite_code_file: Path = None,
     listen: list | None = None,
+    launch: bool = True,
     harness: str = _harness.OURS,
     sandbox: str = _harness.DEFAULT_SANDBOX,
     permission_mode: str = "default",
@@ -146,6 +147,7 @@ def handle_ai(
             full_access_turns=full_access_turns,
             agent_factory=agent_factory,
             invite_code=runtime_invite_code,
+            launch=launch,
         )
 
 

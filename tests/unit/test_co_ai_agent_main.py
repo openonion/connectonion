@@ -387,3 +387,11 @@ def test_the_real_prompt_differs_with_and_without_a_role(tmp_path, monkeypatch):
     # Behaviour that every agent needs survives dropping the role.
     for prompt in (coding, plain):
         assert "Executing Actions with Care" in prompt
+
+
+def test_start_server_no_launch_never_schedules_extra_browser(monkeypatch):
+    monkeypatch.setattr(main_mod.address, "load", lambda co_dir: {"address": "owner"})
+    monkeypatch.setattr(main_mod, "show_owner_card", lambda address: None)
+    monkeypatch.setattr(main_mod, "host", lambda *a, **k: None)
+    monkeypatch.setattr(main_mod.threading, "Thread", lambda **k: pytest.fail("extra browser thread"))
+    main_mod.start_server(SimpleNamespace(name="agent"), launch=False)
