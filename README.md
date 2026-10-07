@@ -134,7 +134,7 @@ for account setup, source choices and model costs. Daily scheduling currently
 requires **macOS**. Then run:
 
 ```bash
-pip install --upgrade 'connectonion==1.9.0a42'
+pip install --upgrade 'connectonion==1.9.0a43'
 co rem init                # build your map and first pages; approve nightly upkeep when prompted
 co rem open                # read the local notebook
 ```
