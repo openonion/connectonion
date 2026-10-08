@@ -809,3 +809,25 @@ def test_the_first_mention_of_a_person_with_a_page_links_to_it(tmp_path):
     assert 'met [Ivan Zhu](../people/ivan.md) and Harry Cao' in linked           # the only Ivan, ivanxzhu@
     assert '- [1] outlook:aaa — Jiexuan Deng, 2026-09-25' in linked               # Sources untouched
     assert link_people('people/richard.md', linked, person_names(nb)) == linked  # idempotent
+
+
+def test_a_project_page_is_not_refused_for_citing_the_run_or_folding_its_mapped_lines():
+    """4 of the first 8 project pages of a real 1.9.0 Codex init were refused
+    whole for these two, each fixable without the model (2026-10-08)."""
+    from connectonion.rem.page_review import repair_project_page
+    original = ('# Atlas\n\n## Paths\n- `/src/atlas` — mapped project directory\n- Sessions: 30\n'
+                '- First seen: 2026-07-29\n- Last seen: 2026-10-07\n')
+    candidate = ('# Atlas\n\n## Where it stands\n- The importer ships nightly. [1]\n'
+                 '- No sessions mention the exporter. [2]\n- The CLI was renamed. [1][2]\n\n'
+                 '## Paths\n- `/src/atlas` — mapped project directory; Sessions: 30; First seen: 2026-07-29; '
+                 'Last seen: 2026-10-07.\n\n## Sources\n- [1] codex:abc — 2026-10-01\n'
+                 '- [2] investigation:coverage — today\n')
+    repaired = repair_project_page('projects/atlas.md', candidate, original)
+    assert 'The importer ships nightly. [1]' in repaired
+    assert 'exporter' not in repaired and 'investigation:coverage' not in repaired
+    assert '- The CLI was renamed. [1]\n' in repaired
+    assert '- Sessions: 30\n- First seen: 2026-07-29\n- Last seen: 2026-10-07\n' in repaired
+    items = [{'role': 'session', 'source': 'codex:abc', 'text': 'importer ships nightly'}]
+    errors = validate('projects/atlas.md', repaired, original, items)
+    assert not [e for e in errors if 'coverage' in e or 'mapped project metadata' in e]
+    assert repair_project_page('people/x.md', candidate, original) == candidate

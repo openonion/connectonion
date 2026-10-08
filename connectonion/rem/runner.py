@@ -532,8 +532,8 @@ PROMOTE_WAIT_SECONDS = 1800
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None):
     from .page_review import (compact_page, drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
-                              link_company, normalize_numbered_sources, placeholder_errors, restore_runner_fields,
-                              unresolved_findings, validate)
+                              link_company, normalize_numbered_sources, placeholder_errors, repair_project_page,
+                              restore_runner_fields, unresolved_findings, validate)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     from . import facts
@@ -549,7 +549,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text, tool_lines = drop_tool_text(record, text, original)
     # Minor unresolved claims can be omitted, but losing a lead or finding
     # needs a repair turn instead of quietly promoting an impoverished page.
-    cited_text = normalize_numbered_sources(text)
+    cited_text = repair_project_page(record, normalize_numbered_sources(text), original)
     if investigation and record.startswith("projects/"):
         # A dropped citation can strand an uncited diagram or command in the
         # same section. Let validation ask the agent to repair the whole page.
