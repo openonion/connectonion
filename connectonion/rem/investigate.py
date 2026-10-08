@@ -816,7 +816,17 @@ def mail_search(clients: dict):
         for query in queries:
             for kind, client in clients.items():
                 mine = {a.lower() for a in client.my_addresses()}
-                for row in _patient(client.list_search, query, 10) or []:
+                try:
+                    rows = _patient(client.list_search, query, 10) or []
+                except ProviderCredentialError as error:
+                    # A query the provider will not parse is that query's answer, not
+                    # the page's end: Graph's 400 on one lead lost a whole Ody pass.
+                    if error.status != 400 and error.code != "provider_unavailable":
+                        raise
+                    found.append({"role": "search-failure", "source": "", "query": query,
+                                  "text": f"{kind} refused this search (HTTP {error.status or '?'}); rephrase it"})
+                    continue
+                for row in rows:
                     if row["id"] in seen or len(found) >= SEARCH_RESULTS:
                         continue
                     seen.add(row["id"])

@@ -683,6 +683,9 @@
   .focus-fact { min-width: 0; }
   .focus-facts dt { font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--blue); }
   .focus-facts dd { margin: 6px 0 0; font-size: 13px; color: var(--ink); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .contact-strip dd { display: block; }
+  .contact-strip .contact-what { display: block; margin-top: 3px; font-size: 12px; color: var(--ink-2); }
+  .contact-strip .copy { margin-left: 8px; font: 10.5px var(--ui); color: var(--ink-3); background: var(--sheet); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; cursor: pointer; vertical-align: 1px; }
   .relation-description { font: 13px/1.5 var(--ui); color: var(--ink-2); margin: 0 0 10px; }
   .relation-entry { min-width: 0; }
   .relation-provenance { font: 12px/1.5 var(--ui); color: var(--ink-2); padding: 7px 3px; overflow-wrap: anywhere; }
@@ -2550,6 +2553,31 @@ function connectedContext(r) {
 function investigateCommand(r) {
   return "co rem --root '" + String(REM.root).replace(/'/g, "'\\''") + "' investigate '" + r.path.replace(/'/g, "'\\''") + "'";
 }
+// Who they are and how to reach them, first on a person (#2104): the owner
+// asked to see email, phone, what to call them and the company at a glance.
+function contactStrip(r) {
+  const parsed = parseFacts(r);
+  // The parts of one field, put back together: "OpenOnion (internship; 2026)" is one value.
+  const value = label => (parsed.get(label) || []).map(i => i.value + (i.qualifier ? " (" + i.qualifier + ")" : "")).join("; ");
+  const company = value("Company");
+  const org = /\]\((\.\.\/orgs\/[^)]+\.md)\)/.exec(company);
+  const orgRecord = org && byPath(org[1].replace(/^\.\.\//, ""));
+  const what = orgRecord && (parseFacts(orgRecord).get("What they do") || [])[0];
+  const aka = (parsed.get("Also known as") || []).map(i => i.value).filter(v => !v.includes("@")).join("; ");
+  const rows = [["Email", value("Email"), true], ["Phone", value("Phone"), true], ["Also known as", aka, false],
+    ["Company", company, false], ["Role", value("Role"), false]].filter(([, v]) => v);
+  if (!rows.length) return null;
+  return el("dl", { class: "focus-facts contact-strip" }, rows.map(([label, v, copyable]) => {
+    const dd = el("dd", {}, [el("span", { html: inline(v, r.path) })]);
+    if (label === "Company" && what) dd.appendChild(el("span", { class: "contact-what", html: inline(what.value, orgRecord.path) }));
+    if (copyable) {
+      const btn = el("button", { type: "button", class: "copy", "aria-label": "Copy " + label.toLowerCase(), text: "Copy" });
+      btn.onclick = () => copyToClipboard((parsed.get(label) || []).map(i => i.value).join("; "), btn, "Copied");
+      dd.appendChild(btn);
+    }
+    return el("div", { class: "focus-fact" }, [el("dt", { text: label }), dd]);
+  }));
+}
 function recordFocus(r) {
   const k = known(r), out = el("section", { class: "record-focus " + r.category,
     "aria-label": "At a glance" });
@@ -2621,6 +2649,9 @@ function recordFocus(r) {
     }
   }
   out.appendChild(focusHead);
+  const person = r.category === "people" && r.path !== REM.owner;
+  const strip = person && contactStrip(r);
+  if (strip) out.appendChild(strip);
   const coverage = r.category === "projects" ? r.project_coverage : null;
   const coverageNote = coverage && coverage.inputs_available > coverage.inputs_read
     ? el("p", { class: "scope-note", text: coverage.scope === "queued"
@@ -2655,7 +2686,7 @@ function recordFocus(r) {
       : r.category === "orgs" ? [["Domain", f.domain], ["Last contact", f.last]]
       : r.category === "skills" ? [["Skill-name matches", skillUsage(r) ? String(skillUsage(r).count) : ""], ["Last name match", f.last]] : [];
   const shown = labels.filter(([, value]) => value).slice(0, 3);
-  if (shown.length) out.appendChild(el("dl", { class: "focus-facts" }, shown.map(([key, value]) =>
+  if (shown.length && !person) out.appendChild(el("dl", { class: "focus-facts" }, shown.map(([key, value]) =>
     el("div", { class: "focus-fact" }, [el("dt", { text: key }), el("dd", { html: inline(String(value), r.path), title: plainLine(String(value)) })]))));
   const conversations = [...new Set(sourceList(r).map(source => {
     const id = sourceId(source.text);

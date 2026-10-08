@@ -1873,3 +1873,26 @@ def test_a_message_s_attachments_are_asked_for_once_then_read_from_disk(tmp_path
     assert calls == ["with", "without"]
     assert [paths for _, paths, _ in again] == [paths for _, paths, _ in first]
     assert again[0][1][0].endswith("offer.pdf") and again[1][1] == []
+
+
+def test_a_search_the_provider_refuses_is_reported_not_fatal():
+    """An Ody pass in rounds asked Outlook for a lead; Graph answered HTTP 400
+    and the whole investigation failed (2026-10-08)."""
+    from connectonion.provider_credentials import ProviderCredentialError
+
+    class Outlook:
+        def my_addresses(self):
+            return ["me@x.y"]
+
+        def list_search(self, query, limit):
+            if '"' in query:
+                raise ProviderCredentialError("provider_error", "Microsoft Graph API error (HTTP 400).",
+                                              "co outlook inbox", status=400)
+            return [{"id": "m1", "from": "ody@x.y", "date": "2026-10-01", "subject": "Deck"}]
+
+        def get_email_body(self, message_id):
+            return "--- Email Body ---\nThe deck is done."
+
+    found = inv.mail_search({"outlook": Outlook()})(['"Phaedon Stough"', "deck"])
+    assert found[0]["role"] == "search-failure" and "HTTP 400" in found[0]["text"]
+    assert found[1]["source"].startswith("outlook:") and "deck is done" in found[1]["text"]

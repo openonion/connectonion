@@ -510,12 +510,15 @@ def _searched_turn(workdir, prompt, config, stage, directory, search, items, fir
     asked = json.loads((directory / "search-requests.json").read_text(encoding="utf-8"))
     queries = [query.strip()[:200] for query in asked if isinstance(query, str) and query.strip()][:SEARCH_QUERIES]
     known = {item.get("source") for item in items}
-    found = [item for item in search(queries) if item["source"] not in known]
+    answers = search(queries)
+    failed = [item for item in answers if item.get("role") == "search-failure"]
+    found = [item for item in answers if item.get("role") != "search-failure" and item["source"] not in known]
     items.extend(found)
     results = directory / "search-results.md"
     results.write_text("\n\n".join(
-        f"### {item['source']}\nFrom: {item['speaker']}\nDate: {item['timestamp']}\nSubject: {item['subject']}\n"
-        f"Query: {item.get('query', '')}\n\n{item['text']}" for item in found) or "No mail matched.", encoding="utf-8")
+        [f"### {item['source']}\nFrom: {item['speaker']}\nDate: {item['timestamp']}\nSubject: {item['subject']}\n"
+         f"Query: {item.get('query', '')}\n\n{item['text']}" for item in found]
+        + [f"Query {item['query']!r}: {item['text']}" for item in failed]) or "No mail matched.", encoding="utf-8")
     again = run_task(workdir, _followup_prompt(
         prompt, f"Your searches {json.dumps(queries, ensure_ascii=False)} found "
                 f"{len(found)} new message(s), in {results}. Update the candidate with what "
