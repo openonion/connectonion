@@ -573,7 +573,7 @@ def test_after_me_the_people_you_wrote_to_and_projects_four_at_a_time(people):
     assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
     text = Text.from_ansi(result.output).plain
     assert "up to two years of evidence each" in text
-    assert "10 at a time" in text and "No REM page or weekly quota cap stops this first run" in text
+    assert "16 at a time" in text and "No REM page or weekly quota cap stops this first run" in text
     assert "People 5/5" in text and "Projects 3/3" in text
     assert "Written this run: your page, 5 people" in text and "3 project pages" in text
 
@@ -682,7 +682,7 @@ def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
     from connectonion.rem import first_run as fr
     from connectonion.cli.commands.rem_commands import FIRST_RUN_WORKERS
 
-    assert fr.WORKERS == FIRST_RUN_WORKERS == 10
+    assert fr.WORKERS == FIRST_RUN_WORKERS == 16
 
     def run(phase, record, tokens, seconds, outcome="completed"):
         return {"phase": phase, "record": record, "outcome": outcome, "seconds": seconds,

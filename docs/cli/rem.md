@@ -29,7 +29,7 @@ through the login you choose. By default it runs on your own Claude Code plan
 (Sonnet, `claude-sonnet-5-5`) and spends no OpenOnion credits. Notebooks made
 before 1.9.0a41 keep the runner saved in their `config.yaml`.
 
-What it costs, measured: the first run writes up to 10 pages at a time. An earlier
+What it costs, measured: the first run writes up to 16 pages at a time. An earlier
 real notebook trial wrote 198 of 242 people, project and organisation pages in
 about 25 minutes. Init has no REM page or weekly quota cap; the scheduled daily
 round still uses a 35-point budget and a 90% weekly safety floor. The model
@@ -72,7 +72,7 @@ It writes a quick first pass of your page in about 4 minutes, then the whole
 page alongside the selected pages. Next come all eligible mapped people, recent
 first, each investigated from up to two years of their mail; queued projects
 already listed in the map, recent first; all pending mapped organisations; and
-installed skills from source and retained run evidence: 10 pages at a time.
+installed skills from source and retained run evidence: 16 pages at a time.
 Session folders discovered after the map summary remain
 unmapped candidates during this first run. They do not silently add project
 pages or change the project count the owner just saw.
@@ -112,7 +112,7 @@ person 1.1M and ~5 minutes, a project 1.2M and ~4 minutes, an organisation
 120k and ~1.5 minutes, a skill 500k and ~3 minutes. The 90-day run was
 interrupted, so these rates do not predict every retry or refusal. Minutes are
 wall clock: after the quick owner turn, the
-full turn and selected pages share up to 10 workers. The estimate simulates
+full turn and selected pages share up to 16 workers. The estimate simulates
 that queue so a slow last page is not hidden by an average. Init starts every
 selected page and keeps going after individual refusals; there is no REM quota
 gate on this foreground run. A model provider may still refuse new turns at its
