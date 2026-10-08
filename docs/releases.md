@@ -24,14 +24,17 @@ python -m pip install --upgrade 'connectonion==1.9.0'
 
 ## Current preview
 
-Beta **1.9.1b4** scans your coding sessions once per first run instead of once
-per person. See [1.9.1b4 notes](releases/1.9.1b4.md).
+Beta **1.9.1b5** scans coding sessions once per first run whatever window a page
+asks for, and its mail backfill reads only mail. See [1.9.1b5 notes](releases/1.9.1b5.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.1b4'
+python -m pip install --upgrade 'connectonion==1.9.1b5'
 ```
 
 ## Previous previews
+
+Beta **1.9.1b4** scans your coding sessions once per first run instead of once
+per person. See [1.9.1b4 notes](releases/1.9.1b4.md).
 
 Beta **1.9.1b3** writes people's first pages without touching the network,
 fetches attachments with the background backfill, and waits out a throttled

@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.1b4
+## Current Version: 1.9.1b5
+
+1.9.1b5 is a 1.9.1 beta; stable remains 1.9.0. A first run builds its coding-
+session window once over two years and every page filters it by date, instead
+of rescanning whenever a wider window is asked for; the background backfill
+reads mail only. See [1.9.1b5 notes](docs/releases/1.9.1b5.md).
+
+- 1.9.1b5 (One session scan per run, whatever the window).
+
+## Previous preview: 1.9.1b4
 
 1.9.1b4 is a 1.9.1 beta; stable remains 1.9.0. A first run scans the local
 coding-session window once and shares it across people for half an hour,
