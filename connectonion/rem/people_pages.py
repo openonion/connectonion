@@ -186,7 +186,10 @@ def backfill_person(root: Path, row: dict, *, clients: dict, subscriptions: dict
     from . import investigate as investigation
     from .files import MAP_DAYS
     title, names = handles(root, row["record"])
-    items, _ = investigation.gather(title, names, days=FIRST_WINDOW_DAYS, clients=clients, subscriptions=subscriptions,
+    # Mail only: the first pass already read coding sessions, and scanning them
+    # again for two years held every page behind the session lock (1.9.1b4).
+    mail = {name: sub for name, sub in subscriptions.items() if sub.get("kind", name) in investigation.MAIL_KINDS}
+    items, _ = investigation.gather(title, names, days=FIRST_WINDOW_DAYS, clients=clients, subscriptions=mail,
                                     attachments_dir=root / ".state" / "attachments", archive_root=root,
                                     record=row["record"])
     cutoff, older = datetime.now(timezone.utc) - timedelta(days=MAP_DAYS), 0

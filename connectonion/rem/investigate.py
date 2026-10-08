@@ -835,6 +835,7 @@ SESSION_WINDOW_VERSION = 1  # Bump when source.collect changes which messages it
 # A first run is hours long; re-verifying every rollout each ten minutes held all
 # its workers behind one three-minute scan. Half an hour stale is fine for it.
 SESSION_MEMO_SECONDS = 1800
+SESSION_WIDEST_DAYS = 730  # the longest window a first run asks of coding sessions
 
 
 def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tuple[list[dict], int]:
@@ -852,6 +853,12 @@ def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tup
     if kept and time.monotonic() - kept[0] < SESSION_MEMO_SECONDS and kept[1] <= timestamp(scoped["since"]):
         since = timestamp(scoped["since"])
         return [item for item in kept[2] if timestamp(item["timestamp"]) >= since], kept[3]
+    # Built once over the widest window any page asks for: a 180-day person and a
+    # 730-day org alternating each threw the other's window away and re-scanned
+    # behind the lock (1.9.1b4 first run, people stuck 400+ seconds).
+    requested = timestamp(scoped["since"])
+    widest = min(requested, datetime.now(timezone.utc) - timedelta(days=SESSION_WIDEST_DAYS))
+    scoped = {**scoped, "since": widest.isoformat()}
     cache_path = state_path(root, f"session-windows/{hashlib.sha256(identity.encode()).hexdigest()[:16]}.json")
     saved = read_json(cache_path, {})
     since = timestamp(scoped["since"])
@@ -875,8 +882,8 @@ def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tup
     if saved["progress"] != cursor or not cache_path.is_file():
         write_json(cache_path, {**saved, "items": items, "progress": cursor, "unfamiliar": unfamiliar})
     _WINDOWS[memo] = (time.monotonic(), timestamp(saved["since"]), items, unfamiliar)
-    if timestamp(saved["since"]) < since:
-        items = [item for item in items if timestamp(item["timestamp"]) >= since]
+    if timestamp(saved["since"]) < requested:
+        items = [item for item in items if timestamp(item["timestamp"]) >= requested]
     return items, unfamiliar
 
 

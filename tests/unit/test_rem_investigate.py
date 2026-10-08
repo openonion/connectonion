@@ -1969,7 +1969,15 @@ def test_the_first_pass_reads_no_attachments_and_the_backfill_counts_them(tmp_pa
     monkeypatch.setattr(inv, "gather", lambda *a, **kw: ([{"role": "attachment", "timestamp": "2026-10-01T00:00:00Z"},
                                                           {"role": "other", "timestamp": "2024-11-01T00:00:00Z"},
                                                           {"role": "other", "timestamp": "2026-10-01T00:00:00Z"}], []))
-    assert people_pages.backfill_person(tmp_path, {"record": "people/vern.md"}, clients={}, subscriptions={}) == 2
+    asked = {}
+    real_gather = inv.gather
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: asked.update(kw) or real_gather_items)
+    real_gather_items = ([{"role": "attachment", "timestamp": "2026-10-01T00:00:00Z"},
+                          {"role": "other", "timestamp": "2024-11-01T00:00:00Z"},
+                          {"role": "other", "timestamp": "2026-10-01T00:00:00Z"}], [])
+    subs = {"gmail": {"kind": "gmail"}, "codex": {"kind": "codex", "root": "/x"}}
+    assert people_pages.backfill_person(tmp_path, {"record": "people/vern.md"}, clients={}, subscriptions=subs) == 2
+    assert list(asked["subscriptions"]) == ["gmail"]  # mail only; sessions were read by the first pass
 
 
 def test_one_run_scans_its_sessions_once_for_every_person(tmp_path, monkeypatch):
@@ -1988,8 +1996,10 @@ def test_one_run_scans_its_sessions_once_for_every_person(tmp_path, monkeypatch)
     monkeypatch.setattr(inv, "collect", lambda *a, **k: calls.append(1) or original(*a, **k))
     subs = {"codex": {"kind": "codex", "root": str(sessions)}}
     scans = []
-    for name in ("Vern", "Ody"):
-        items, _ = inv.gather(name, [name], days=10, clients={}, subscriptions=subs, archive_root=tmp_path / "book")
+    # A 180-day person, a 730-day organisation, a person again: one scan (1.9.1b4
+    # threw the window away whenever a wider request came in).
+    for name, days in (("Vern", 10), ("Ody", 700), ("Vern", 10)):
+        items, _ = inv.gather(name, [name], days=days, clients={}, subscriptions=subs, archive_root=tmp_path / "book")
         assert [i["text"] for i in items] == ["Vern and Ody decided"]
         scans.append(len(calls))
-    assert scans[0] > 0 and scans[1] == scans[0]  # the second person read the kept window
+    assert scans[0] > 0 and scans[2] == scans[1] == scans[0]  # later pages read the kept window
