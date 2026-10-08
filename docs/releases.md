@@ -13,25 +13,20 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current release
 
-Stable **1.9.0** is the default production channel. It brings co rem's
-complete mapped first run, category progress, model-access preflight and
-visible nightly health. See [1.9.0 notes](releases/1.9.0.md) and the
-[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.0).
+Stable **1.9.1** is the default production channel. co rem's first run now
+investigates every page, deepens people with two years of mail, edits pages in
+place and draws decisions and principles; Person pages lead with contact facts
+and cited mail opens as a message. See [1.9.1 notes](releases/1.9.1.md) and the
+[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.1).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.0'
-```
-
-## Current preview
-
-Release candidate **1.9.1rc1** waits long enough for its notebook and credential
-locks when sixteen workers run at once. See [1.9.1rc1 notes](releases/1.9.1rc1.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.1rc1'
+python -m pip install --upgrade 'connectonion==1.9.1'
 ```
 
 ## Previous previews
+
+Release candidate **1.9.1rc1** waits long enough for its notebook and credential
+locks when sixteen workers run at once. See [1.9.1rc1 notes](releases/1.9.1rc1.md).
 
 Beta **1.9.1b5** scans coding sessions once per first run whatever window a page
 asks for, and its mail backfill reads only mail. See [1.9.1b5 notes](releases/1.9.1b5.md).
