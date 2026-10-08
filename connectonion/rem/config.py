@@ -71,7 +71,10 @@ def default_config() -> dict:
                        # Points of the Codex weekly window (#1843): investigation's
                        # budget, and the level past which it starts nothing so the
                        # owner's own coding keeps the rest of the week.
-                       "investigation_quota_points": 35, "quota_floor_percent": 90}}
+                       "investigation_quota_points": 35, "quota_floor_percent": 90,
+                       # A page whose evidence is more than one turn can hold is read in
+                       # rounds, each part whole, then one synthesis turn (#2314).
+                       "investigation_rounds": 8}}
 
 
 def validate(config: dict) -> dict:

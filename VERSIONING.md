@@ -400,7 +400,20 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.1a1
+## Current Version: 1.9.1a2
+
+1.9.1a2 is a preview; stable remains 1.9.0. co rem investigations read a large
+page's whole evidence in rounds, each editing the page the last left, with a
+reporter's Skill that follows leads and finds how threads ended; a final round
+writes one line per thread. Pages are edited, not rewritten. Organisations are
+enriched from their own site; project and skill pages are repaired instead of
+refused for run citations; attachments are fetched once. The reader shows a
+person's contact facts first and opens a cited mail as a message. See
+[1.9.1a2 notes](docs/releases/1.9.1a2.md).
+
+- 1.9.1a2 (Investigations in rounds, edited in place, reporter's Skill; contact facts first; mail as a message).
+
+## Previous preview: 1.9.1a1
 
 1.9.1a1 is a preview; stable remains 1.9.0. co rem's first map covers the last
 180 days instead of 90, and the reader names its generated files honestly: the
