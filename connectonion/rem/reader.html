@@ -700,7 +700,7 @@
   .more-relations > summary { cursor: pointer; font: 600 14px/1.5 var(--ui); color: var(--blue); min-height: 44px; display: list-item; padding: 11px 0; box-sizing: border-box; }
   .more-relations .relation-list { margin-top: 10px; }
   .related-records { grid-column: 1 / -1; }
-  .conversation-view { grid-column: 1 / -1; }
+  .conversation-view, .documents { grid-column: 1 / -1; }
   .conversation-list { display: flex; flex-wrap: wrap; gap: 9px; }
   .conversation-open { flex: 1 1 210px; text-align: left; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: var(--paper); color: var(--ink); cursor: pointer; }
   .conversation-open:hover, .conversation-open:focus-visible { border-color: var(--blue); }
@@ -809,7 +809,7 @@
     .record-focus.people .focus-statement { font-size: 20px; margin-top: 12px; }
     .record-focus.people .focus-statement.clamped { -webkit-line-clamp: 5; }
     .focus-section { padding: 16px; }
-    .focus-facts, .related-records, .activity-view, .conversation-view, .project-workspace { grid-column: 1; }
+    .focus-facts, .related-records, .activity-view, .conversation-view, .documents, .project-workspace { grid-column: 1; }
     .project-workspace { grid-template-columns: 1fr; }
     .focus-facts { display: grid; grid-template-columns: 1fr; gap: 14px; }
     .focus-facts dd { margin: 0; }
