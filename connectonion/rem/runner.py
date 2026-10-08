@@ -533,7 +533,7 @@ PROMOTE_WAIT_SECONDS = 1800
 
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
-                       investigation=True, claim_config=None):
+                       investigation=True, claim_config=None, last_resort=False):
     from .page_review import (compact_page, drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
                               link_company, normalize_numbered_sources, placeholder_errors, repair_run_citations,
                               restore_runner_fields, unresolved_findings, validate)
@@ -553,9 +553,10 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # Minor unresolved claims can be omitted, but losing a lead or finding
     # needs a repair turn instead of quietly promoting an impoverished page.
     cited_text = repair_run_citations(record, normalize_numbered_sources(text), original)
-    if investigation and record.startswith("projects/"):
+    if investigation and record.startswith("projects/") and not last_resort:
         # A dropped citation can strand an uncited diagram or command in the
-        # same section. Let validation ask the agent to repair the whole page.
+        # same section. Let validation ask the agent to repair the whole page;
+        # after its repairs, the last resort drops only those lines.
         text, dropped = cited_text, {"citations": [], "lines": 0}
     else:
         text, dropped = drop_unresolved(record, cited_text, original, items)
@@ -928,10 +929,11 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         no_change = bool(candidate) and candidate.is_file() and candidate.read_text(encoding="utf-8") == before[record] \
             and "NO CHANGE" in str(result.get("result") or "")
         if candidate and not no_change:
-            def promote():
+            def promote(last_resort=False):
                 audit_usage = _promote_candidate(notebook, record, candidate, before[record], items, directory,
                                                  result.get("usage"), lock_held=maintenance_lock_held,
-                                                 investigation=stage == "investigate", claim_config=selected_config)
+                                                 investigation=stage == "investigate", claim_config=selected_config,
+                                                 last_resort=last_resort)
                 if audit_usage:
                     result["usage"] = {key: (result.get("usage") or {}).get(key, 0) + audit_usage.get(key, 0)
                                        for key in (result.get("usage") or {}).keys() | audit_usage.keys()}
@@ -947,6 +949,13 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                     audit_failed = errors == ["Cited-claim audit did not pass; see claim-review.json"]
                     source_failed = (record.startswith("projects/") and errors and all(error.startswith(
                         ("Cited local file needs ", "Citation has no identifiable source:")) for error in errors))
+                    if attempt == max_repairs and source_failed or attempt == max_repairs and errors and all(
+                            error.startswith(("Citation has no identifiable source:", "Unused citation:"))
+                            for error in errors) and record.startswith("projects/"):
+                        # One untraceable citation drops its lines, not a paid-for page:
+                        # 3 of 4 project refusals on a real 1.9.1a2 init were one citation each.
+                        promote(last_resort=True)
+                        break
                     if (attempt == max_repairs or not errors or
                             (not audit_failed and not source_failed and any(not error.startswith(
                                 ("History has ", "Finding has unresolved citations")) for error in errors))):

@@ -228,7 +228,9 @@ def drop_uncited_sources(text: str) -> str:
     after = re.search(r'^(?:## |Investigation:)', tail, re.M)
     if after:
         sources, rest = tail[:after.start()], tail[after.start():]
-    cited = set(re.findall(r'\[(W?\d+)\](?!\()', head + rest))
+    # Counted as validate counts them, in prose: a [9] only inside a diagram's
+    # code block left its source "unused" and refused a real project page (2026-10-08).
+    cited = set(re.findall(r'\[(W?\d+)\](?!\()', prose(head + rest)))
     kept = [line for line in sources.splitlines(keepends=True)
             if not (m := re.match(r'^\s*(?:- )?\[(W?\d+)\]', line)) or m[1] in cited]
     return head + marker + ''.join(kept) + rest

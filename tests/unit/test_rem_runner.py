@@ -962,3 +962,34 @@ def test_quick_first_pass_never_offers_or_runs_extra_mail_search(notebook, monke
     assert len(prompts) == 1 and not asked
     assert 'Optional runner-mediated mail search' not in prompts[0]
     assert prompts[0].endswith('</co_rem_task>')
+
+
+def test_a_project_still_refused_for_one_citation_after_its_repairs_drops_those_lines(notebook, monkeypatch):
+    """3 of 4 project refusals on a real 1.9.1a2 init were one untraceable
+    citation each, after two repair turns; the page was lost whole."""
+    import re
+    from connectonion.rem.files import write_json
+
+    record = 'projects/example.md'
+    notebook.stub_project(record, 'Example', [])
+    modes = []
+
+    def run_model(workdir, prompt, config, stage):
+        Path(re.search(r'(/\S+/candidate\.md)', prompt).group(1)).write_text('# Example\nStill one bad citation')
+        return {'usage': {'input_tokens': 1}, 'result': 'done'}
+
+    def promote(book, record, candidate, original, items, directory, usage, last_resort=False, **options):
+        modes.append(last_resort)
+        if not last_resort:
+            write_json(directory / 'review.json', {'accepted': False,
+                       'errors': ['Citation has no identifiable source: 13']})
+            raise RunFailed('Candidate rejected', usage)
+        book.write(record, candidate.read_text())
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
+    monkeypatch.setattr('connectonion.rem.runner._promote_candidate', promote)
+    result = run_stage(notebook, [{'role': 'page', 'record': record,
+                                   'text': notebook.read(record), 'source': 'investigation:page'}],
+                       default_config(), stage='investigate')
+    assert modes == [False, False, False, True]  # two repairs, then the lines go, not the page
+    assert result['changed'] == [record]

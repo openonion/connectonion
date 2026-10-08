@@ -862,3 +862,11 @@ def test_a_skill_page_is_not_refused_for_citing_its_run_summary():
     repaired = repair_run_citations('skills/catalog/title-refine.md', candidate, '# title-refine\n')
     assert 'Run 14 times' not in repaired and 'skill-runs:' not in repaired
     assert 'It rewrites titles to name a fact. [1]' in repaired
+
+
+def test_a_source_cited_only_inside_a_diagram_is_dropped_not_left_to_refuse_the_page():
+    from connectonion.rem.page_review import drop_uncited_sources
+    text = ('# GTM\n\n## How it works\n```\nlead -> rank [6][9]\n```\n- Ranks prospects. [6]\n\n'
+            '## Sources\n- [6] codex:a:1 — 2026-07-16\n- [9] codex:b:2 — 2026-07-16\n')
+    out = drop_uncited_sources(text)
+    assert '- [6] codex:a:1' in out and 'codex:b:2' not in out
