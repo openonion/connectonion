@@ -171,11 +171,17 @@ def _refresh_error(record: ProviderCredentials, response) -> None:
     raise ProviderCredentialError("provider_unavailable", f"Authorization service could not refresh credentials (HTTP {response.status_code}).", "co status")
 
 
+REFRESH_WAIT_SECONDS = 120
+
+
 def refresh_credentials(record: ProviderCredentials, *, backend: str, api_key: str,
                         post=None) -> str:
     """Serialize the network refresh and atomic save; process overrides stay in memory."""
     post = post or httpx.post
-    with env_lock(record.path) if record.path is not None else nullcontext():
+    # Twenty mail workers can find a token expired together; each refresh holds the
+    # lock for up to one 15-second request, and Gmail and Outlook share the file.
+    # 30 seconds lost an organisation page in a real 1.9.1b5 first run.
+    with env_lock(record.path, timeout=REFRESH_WAIT_SECONDS) if record.path is not None else nullcontext():
         latest = _latest(record)
         # Another CLI already refreshed this same account while we waited.
         if latest.values != record.values and _fresh(latest):
