@@ -102,7 +102,7 @@ def investigate_skill_runs(root: Path, record: str, directories: list[Path]) -> 
     name = skill_identity(notebook, record)
     result = collect_skill_runs(name, directories)
     key = hashlib.sha256(record.encode()).hexdigest()[:12]
-    report = f'notes/skill-runs-{key}.md'
+    report = f'logs/skill-runs-{key}.md'
     text = _report(name, result)
     with maintenance_lock(root, wait=60):
         notebook.write(report, text)

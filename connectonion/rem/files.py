@@ -42,8 +42,11 @@ CONTACT_LABELS = ALIAS_LABELS + EMAIL_LABELS + (
     "电话:", "电话：", "公司:", "公司：")
 
 CATEGORIES = ("people", "orgs", "projects", "skills", "knowledge", "opportunities",
-              "decisions", "principles", "works", "agenda", "notes")
+              "decisions", "principles", "works", "agenda", "notes", "logs")
 MAX_NOTE_BYTES = 1_000_000
+# The map's default window. 90 days left out people the owner works with every
+# season but had not written to this quarter; the owner chose 180 (2026-10-08).
+MAP_DAYS = 180
 # The maintainer has a read-only shell and this is its only write path; a key it
 # was tricked into cat-ing must not become a page. Shapes, not words: prose about
 # "the API key" is fine, the key itself is not.

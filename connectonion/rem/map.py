@@ -7,7 +7,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .files import Notebook, atomic_write, maintenance_lock, read_json, state_path
+from .files import MAP_DAYS, Notebook, atomic_write, maintenance_lock, read_json, state_path
 from .scan import (scan_people, scan_projects, canonical_origin, main_checkout, not_a_project,
                    institutional_name, AUTOMATED_HINT, SHORT_SESSION, ONE_OFF_TASK)
 from .skill_map import map_skills
@@ -763,7 +763,7 @@ def build_map(root: Path, subscriptions: dict, clients: dict, *args, **options) 
         return _build_map(root, subscriptions, clients, *args, **options)
 
 
-def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90,
+def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MAP_DAYS,
                skill_directories=None, mine=(), source_errors=None, absent=None, name: str = '',
                progress=None, capture_sources: bool = False, all_history: bool = False) -> dict:
     """Map observed identities; correspondent classification remains unassessed."""
@@ -1011,7 +1011,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = 90
     for category in ('people', 'projects', 'orgs'):
         lines = [f'# {category.capitalize()} map', '', 'Generated enumeration; not an investigation or importance ranking.', '']
         lines += [f'- [{Path(row["record"]).stem}](../{row["record"]})' for row in report[category]]
-        notebook.write(f'notes/{category}-map.md', '\n'.join(lines) + '\n')
+        notebook.write(f'logs/{category}-map.md', '\n'.join(lines) + '\n')
     # The index the table and thread views read, from what this map just wrote (#2067).
     # Derived and rebuilt next time, so a failure is reported, never the map's.
     from .store import refresh_safely

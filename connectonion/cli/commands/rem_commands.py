@@ -8,6 +8,7 @@ from typing import List, Optional
 
 import typer
 
+from ...rem.files import MAP_DAYS
 from . import rem_look
 from .rem_help import show, verbatim
 from .rem_output import render
@@ -740,7 +741,7 @@ def make_rem_app(factory):
 
     @rem.command("init", cls=V("co rem init"))
     def init_rem(ctx: typer.Context,
-                  days: int = typer.Option(90, "--days", min=1),
+                  days: int = typer.Option(MAP_DAYS, "--days", min=1),
                   skills_dir: List[Path] = typer.Option([], "--skills-dir"),
                   mine: List[str] = typer.Option([], "--mine"),
                   mail: List[str] = typer.Option([], "--mail"),
@@ -773,7 +774,7 @@ def make_rem_app(factory):
             # runner used to surface only when the first model turn failed.
             config = read_config(root)
             problem, fix = rem_runner.ready(config)
-            window = [] if days == 90 else ["--days", str(days)]
+            window = [] if days == MAP_DAYS else ["--days", str(days)]
             init_window = [*window, *(["--all-history"] if all_history else [])]
             map_days = 36500 if all_history else days
             sources = subscriptions(root)
@@ -816,7 +817,7 @@ def make_rem_app(factory):
                                        "reason": "Current mail enumeration unavailable; previous private archive retained"}
                     else:
                         body_report = archive_init(root, result, clients, progress=progress,
-                                                   archive_days=90 if all_history else None)
+                                                   archive_days=MAP_DAYS if all_history else None)
                     result["mail_archive"] = body_report
                     write_json(state_path(root, "map.json"), result)
             finally:

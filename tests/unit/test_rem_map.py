@@ -105,7 +105,7 @@ def test_init_maps_domain_candidates_without_claiming_employment(tmp_path, monke
             assert nb.path(person).is_file()
         assert row['record'] in result['created']
     assert 'mailbox-provider list is not exhaustive' in ' '.join(result['coverage'])
-    assert nb.path('notes/orgs-map.md').is_file()
+    assert nb.path('logs/orgs-map.md').is_file()
     record = orgs['example.org']['record']
     curated = nb.read(record).replace('not investigated yet', 'reviewed by user') + '\nUser correction.\n'
     nb.write(record, curated)
@@ -329,7 +329,7 @@ def test_coverage_separates_scanned_empty_from_never_scanned(tmp_path):
                      'claude-code': {'kind': 'claude-code', 'root': str(off), 'enabled': False}}
     result = build_map(tmp_path, subscriptions, {'gmail': Empty()}, skill_directories=[skills])
     coverage = '\n'.join(result['coverage'])
-    assert ('gmail: metadata only, 90 days; a seven-day window at the 200-message listing cap is '
+    assert ('gmail: metadata only, 180 days; a seven-day window at the 200-message listing cap is '
             'split until every message in it is listed; no correspondents in this window') in coverage
     assert f'codex: {missing} — no session directory at this path; nothing to scan' in coverage
     assert f'claude-code: {off} — disabled; not scanned' in coverage

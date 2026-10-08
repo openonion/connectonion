@@ -23,7 +23,7 @@ def test_selected_mail_failures_report_partial_and_preserve_maps(tmp_path):
         assert data['ok'] is False and data['data']['phase']=='partial'
         assert data['data']['errors'][0]['source']=='outlook'
         assert 'secret' not in result.stdout
-        assert (root/'notes/projects-map.md').exists()
+        assert (root/'logs/projects-map.md').exists()
 
 
 def test_setup_commands_keep_custom_root(tmp_path):

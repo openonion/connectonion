@@ -1,6 +1,6 @@
 # co rem — 1.9.0 stable guide
 
-**Start in one command:** `co rem init` maps the last 90 days and investigates
+**Start in one command:** `co rem init` maps the last 180 days and investigates
 every eligible page. Run `co rem status` to see coverage and `co rem open` to
 read it. A refused page stays visible in the run history with its retry command.
 
@@ -61,7 +61,7 @@ co rem open                 # Read your page
 co rem start                # Reapprove changed sources or resume a stopped daily round
 ```
 
-The first run is one command (#1943). `init` first maps 90 days of
+The first run is one command (#1943). `init` first maps 180 days of
 mail and your local Codex / Claude Code sessions, saves the private mail
 material, and prints your own page's facts — who you write to most, how much
 mail, which projects you have been coding in — with the page's path, within the
@@ -99,7 +99,7 @@ directory, labelled as unreviewed contacts rather than as established people.
 `--estimate-only` it selects all eligible mapped pages without a REM quota stop.
 Each person currently retains its
 per-page source window; reading back to the first mapped message is tracked in
-draft PR #2209. An all-history map archives only the most recent 90 days of
+draft PR #2209. An all-history map archives only the most recent 180 days of
 mail bodies; older material is fetched for a selected investigation.
 
 Before it spends anything it says one total (#2008): which runner and model,
@@ -780,7 +780,7 @@ co rem init --all-history --investigate-all --estimate-only  # historical census
 co rem open
 ```
 
-This lists 90 days of mail by default: correspondent metadata plus the short
+This lists 180 days of mail by default: correspondent metadata plus the short
 preview the provider lists with each message. A seven-day window that fills the
 provider's 200-message listing cap is split until every message in it is
 listed, so a busy week is no longer cut off at 200 without a word. Init offers
