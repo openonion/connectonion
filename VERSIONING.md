@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.1b1
+## Current Version: 1.9.1b2
+
+1.9.1b2 is a 1.9.1 beta; stable remains 1.9.0. The first run's first pass reads
+each person's mapped window from disk while four background workers fetch the
+rest of two years into the archive; people with older mail are then deepened
+from disk. The project writer drops an untraceable citation's lines instead of
+refusing the page. See [1.9.1b2 notes](docs/releases/1.9.1b2.md).
+
+- 1.9.1b2 (Local-first first pass, background two-year backfill, deepening; project writer keeps pages).
+
+## Previous preview: 1.9.1b1
 
 1.9.1b1 is the first 1.9.1 beta; stable remains 1.9.0. After the 1.9.1a2 real
 180-day first run (84 of 84 people, 14 of 20 projects, every project refusal one

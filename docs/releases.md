@@ -24,15 +24,19 @@ python -m pip install --upgrade 'connectonion==1.9.0'
 
 ## Current preview
 
-Beta **1.9.1b1** keeps a project page when only one citation is wrong, draws
-decisions and principles from the first run, lists a page's documents, and runs
-init 16 pages at a time. See [1.9.1b1 notes](releases/1.9.1b1.md).
+Beta **1.9.1b2** writes the first pages from mail already on disk, fetches each
+person's older mail in the background and deepens those pages, and keeps
+project pages that only had a citation wrong. See [1.9.1b2 notes](releases/1.9.1b2.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.1b1'
+python -m pip install --upgrade 'connectonion==1.9.1b2'
 ```
 
 ## Previous previews
+
+Beta **1.9.1b1** keeps a project page when only one citation is wrong, draws
+decisions and principles from the first run, lists a page's documents, and runs
+init 16 pages at a time. See [1.9.1b1 notes](releases/1.9.1b1.md).
 
 Alpha **1.9.1a2** reads a large page's whole evidence in rounds, edits pages in
 place with a lead-following investigation Skill, enriches organisations from
