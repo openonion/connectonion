@@ -1934,3 +1934,35 @@ def test_a_kept_mail_body_is_read_from_disk_not_fetched_again(tmp_path):
                    "--- Email Body ---\nkept", fetched_at="2026-10-08T00:00:00Z")
     assert "kept" in inv._mail_body(Mail(), "m1", kind="gmail", root=tmp_path) and Mail.calls == 0
     assert "fresh" in inv._mail_body(Mail(), "m2", kind="gmail", root=tmp_path) and Mail.calls == 1
+
+
+def test_a_throttled_provider_is_waited_for_not_a_lost_page(monkeypatch):
+    """UNSW's page failed on Graph's HTTP 429 during a 16-worker init (2026-10-08)."""
+    from connectonion.provider_credentials import ProviderCredentialError
+    waits, calls = [], []
+    monkeypatch.setattr("time.sleep", waits.append)
+
+    def listing():
+        calls.append(1)
+        if len(calls) < 3:
+            raise ProviderCredentialError("provider_error", "Microsoft Graph API error (HTTP 429).", "co outlook inbox",
+                                          status=429)
+        return ["ok"]
+
+    assert inv._patient(listing) == ["ok"] and waits == [5, 10]
+
+
+def test_the_first_pass_reads_no_attachments_and_the_backfill_counts_them(tmp_path, monkeypatch):
+    """A fresh notebook's first pass asked the provider for every archived mail's attachments."""
+    from connectonion.rem import people_pages
+    seen = {}
+    monkeypatch.setattr(people_pages, "handles", lambda root, record: ("Vern", ["vern@x.y"]))
+    monkeypatch.setattr(inv, "investigate", lambda *a, **kw: seen.update(kw) or {})
+    monkeypatch.setattr(people_pages, "mark_investigated", lambda *a: None)
+    people_pages.investigate_person(tmp_path, {"record": "people/vern.md", "days": 180, "attachments": False},
+                                    clients={}, subscriptions={})
+    assert seen["fetch_attachments"] is False
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: ([{"role": "attachment", "timestamp": "2026-10-01T00:00:00Z"},
+                                                          {"role": "other", "timestamp": "2024-11-01T00:00:00Z"},
+                                                          {"role": "other", "timestamp": "2026-10-01T00:00:00Z"}], []))
+    assert people_pages.backfill_person(tmp_path, {"record": "people/vern.md"}, clients={}, subscriptions={}) == 2
