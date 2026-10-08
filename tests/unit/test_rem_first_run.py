@@ -573,7 +573,7 @@ def test_after_me_the_people_you_wrote_to_and_projects_four_at_a_time(people):
     assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
     text = Text.from_ansi(result.output).plain
     assert "up to two years of evidence each" in text
-    assert "10 at a time" in text and "No REM page or weekly quota cap stops this first run" in text
+    assert "16 at a time" in text and "No REM page or weekly quota cap stops this first run" in text
     assert "People 5/5" in text and "Projects 3/3" in text
     assert "Written this run: your page, 5 people" in text and "3 project pages" in text
 
@@ -682,7 +682,7 @@ def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
     from connectonion.rem import first_run as fr
     from connectonion.cli.commands.rem_commands import FIRST_RUN_WORKERS
 
-    assert fr.WORKERS == FIRST_RUN_WORKERS == 10
+    assert fr.WORKERS == FIRST_RUN_WORKERS == 16
 
     def run(phase, record, tokens, seconds, outcome="completed"):
         return {"phase": phase, "record": record, "outcome": outcome, "seconds": seconds,
@@ -902,3 +902,24 @@ def test_a_refused_full_owner_page_keeps_the_quick_first_pass(first_run, monkeyp
     assert data["investigate_me"]["outcome"] == "completed"
     assert data["owner_full"]["pages"][0]["outcome"] == "refused"
     assert data["background"]["started"] is False
+
+
+def test_the_first_run_ends_by_drawing_decisions_and_principles_from_its_pages(tmp_path, monkeypatch):
+    """The owner (2026-10-08): init should leave decisions and principles too."""
+    from connectonion.cli.commands import rem_commands
+    from connectonion.rem.runner import RunFailed
+    calls, said = [], []
+    monkeypatch.setattr("connectonion.rem.runner.run_stage", lambda notebook, items, config, stage: calls.append(stage)
+                        or {"changed": ["decisions/launchd-not-cron.md", "principles/test-before-you-ship.md",
+                                        "people/x.md"], "usage": {"input_tokens": 9}})
+    wrote = {"people_pages": {"pages": [{"outcome": "accepted"}]}}
+    out = rem_commands._first_abstract(tmp_path, {}, said.append, wrote)
+    assert calls == ["abstract"] and out["pages"] == ["decisions/launchd-not-cron.md", "principles/test-before-you-ship.md"]
+    assert rem_commands._first_abstract(tmp_path, {}, said.append, {"people_pages": {"pages": []}}) == {"started": False}
+    assert calls == ["abstract"]  # nothing written, nothing to lift
+
+    def refuse(*a, **k):
+        raise RunFailed("model denied access", {"input_tokens": 1})
+    monkeypatch.setattr("connectonion.rem.runner.run_stage", refuse)
+    failed = rem_commands._first_abstract(tmp_path, {}, said.append, wrote)
+    assert failed["outcome"] == "failed" and "co rem abstract" in said[-1]

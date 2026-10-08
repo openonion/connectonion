@@ -24,7 +24,14 @@ from .mail import _address, _list_all, correspondent, on_domains, participants, 
 from .source import KINDS, collect, timestamp
 
 MAIL_KINDS = ("outlook", "gmail")
-MAIL_FETCH_SLOTS = threading.BoundedSemaphore(10)
+# Shared by every page in flight, one pool per mailbox: Gmail takes many
+# concurrent reads; Microsoft Graph throttles a mailbox much sooner. One shared
+# 10 left half of a 10-page init waiting on mail (2026-10-08).
+MAIL_FETCH_SLOTS = {"gmail": threading.BoundedSemaphore(20), "outlook": threading.BoundedSemaphore(8)}
+
+
+def _fetch_slot(kind: str):
+    return MAIL_FETCH_SLOTS.get(kind) or MAIL_FETCH_SLOTS["outlook"]
 DOMAIN_HANDLE = re.compile(r"^@?([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})$")
 DOMAIN_RESULTS = 10_000
 
@@ -402,8 +409,8 @@ def _patient(call, *args, attempts: int = 4):
             time.sleep(2 ** attempt)
 
 
-def _mail_body(client, message_id: str) -> str:
-    with MAIL_FETCH_SLOTS:
+def _mail_body(client, message_id: str, kind: str = "") -> str:
+    with _fetch_slot(kind):
         return _patient(client.get_email_body, message_id)
 
 
@@ -431,7 +438,7 @@ def _attachment_files(client, kind: str, message_id: str, attachments_dir: Path)
         return short, sorted(str(p) for p in folder.iterdir() if p.is_file() and p.name != ".fetched"), ""
     try:
         folder.mkdir(parents=True, exist_ok=True)
-        with MAIL_FETCH_SLOTS:
+        with _fetch_slot(kind):
             paths = _saved_paths(_patient(_download, client, message_id, str(folder))) or []
     except Exception as error:  # noqa: BLE001 -- one bad attachment is not the run
         return short, [], type(error).__name__
@@ -638,8 +645,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         if sent_only:
             searched += ", kept the owner's own sent mail"
         mail_to_read = sorted(hit, key=lambda r: str(r["date"]))
-        with ThreadPoolExecutor(max_workers=min(len(mail_to_read) or 1, 10)) as pool:
-            bodies = pool.map(partial(_mail_body, client), (row["id"] for row in mail_to_read))
+        with ThreadPoolExecutor(max_workers=min(len(mail_to_read) or 1, 20)) as pool:
+            bodies = pool.map(partial(_mail_body, client, kind=kind), (row["id"] for row in mail_to_read))
             for number, (r, body) in enumerate(zip(mail_to_read, bodies), 1):
                 provenance = {}
                 if archive_root is not None:
@@ -1004,8 +1011,10 @@ ROUND_NOTE = ("Round {number} of {total}: part {number} of the material, dated {
 SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read in earlier rounds; nothing new "
                   "is supplied. Re-read the page whole and make it one account: Insight says what matters now; "
                   "History has one line per thread -- date, what it was about, how it ended; Open threads keeps "
-                  "only what is still open; decisions name what was chosen and why. Keep every cited fact you "
-                  "keep with its citation; add no claim without a citation already on the page.")
+                  "only what is still open; decisions name what was chosen and why. Keep every thread the "
+                  "rounds recorded in History; fold only the oldest by year. For a thread whose outcome is "
+                  "not established, request a mail search for the reply before writing so. Keep every cited "
+                  "fact you keep with its citation; add no claim without a citation on the page or from a search.")
 
 
 def _round_room(record: str, owner: bool, fixed: list[dict]) -> int:

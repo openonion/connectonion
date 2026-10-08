@@ -228,7 +228,9 @@ def drop_uncited_sources(text: str) -> str:
     after = re.search(r'^(?:## |Investigation:)', tail, re.M)
     if after:
         sources, rest = tail[:after.start()], tail[after.start():]
-    cited = set(re.findall(r'\[(W?\d+)\](?!\()', head + rest))
+    # Counted as validate counts them, in prose: a [9] only inside a diagram's
+    # code block left its source "unused" and refused a real project page (2026-10-08).
+    cited = set(re.findall(r'\[(W?\d+)\](?!\()', prose(head + rest)))
     kept = [line for line in sources.splitlines(keepends=True)
             if not (m := re.match(r'^\s*(?:- )?\[(W?\d+)\]', line)) or m[1] in cited]
     return head + marker + ''.join(kept) + rest
@@ -252,6 +254,12 @@ def repair_run_citations(record: str, text: str, original: str) -> str:
     kind = next((prefix for prefix in RUN_SOURCES if record.startswith(prefix)), None)
     if not kind:
         return text
+    if kind == "skills/" and "<!-- rem-skill-runs:start -->" in text:
+        # Edited in place, a skill page kept the collector's Run evidence block
+        # and the model added the heading again above it (linkedin-engagement).
+        before, marker, after = text.partition("<!-- rem-skill-runs:start -->")
+        before = re.sub(r"(?ms)^## Run evidence\n.*?(?=^## |\Z)", "", before)
+        text = before.rstrip("\n") + "\n\n" + marker + after
     head, marker, tail = text.partition('\n## Sources\n')
     run = set(re.findall(r'^\s*(?:- )?\[(W?\d+)\]\s*:?\s*(?:' + '|'.join(map(re.escape, RUN_SOURCES[kind])) + r')',
                          tail, re.M)) if marker else set()

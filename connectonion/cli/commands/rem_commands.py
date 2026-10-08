@@ -444,7 +444,7 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
 # The first run investigates the owner and every eligible mapped page. The
 # configured weekly budget is an advisory target here; explicit --first-*
 # flags cap a kind for a trial.
-FIRST_RUN_WORKERS = 10
+FIRST_RUN_WORKERS = 16  # pages in parallel; mail fetches share MAIL_FETCH_SLOTS per mailbox
 
 
 def _capped(rows: list, cap) -> list:
@@ -623,6 +623,30 @@ def _skill_jobs(root, rows) -> list[dict]:
         return {"kind": "skills", "record": row["path"], "mode": "full", "row": row,
                 "run": lambda: _investigate_page(root, Notebook(root), row["path"], quiet=True)}
     return [job(row) for row in rows]
+
+
+def _first_abstract(root, config, say, result) -> dict:
+    """Decisions, then principles, from the pages the first run just wrote.
+
+    The owner (2026-10-08): the first run should also leave the settled
+    questions and standing rules, not only people and projects. `co rem
+    abstract` reads pages, never sources; one failure leaves the pages intact.
+    """
+    written = sum(page.get("outcome") == "accepted" for key in ("people_pages", "project_pages", "org_pages")
+                  for page in (result.get(key) or {}).get("pages") or [])
+    if not written:
+        return {"started": False}
+    from ...rem.files import Notebook
+    from ...rem.runner import RunFailed, run_stage
+    say("Drawing decisions and principles from the pages just written…")
+    try:
+        out = run_stage(Notebook(root), [], config, stage="abstract")
+    except RunFailed as error:
+        say(f"Decisions and principles were not written ({str(error)[:160]}); retry with co rem abstract.")
+        return {"started": True, "outcome": "failed", "why": str(error), "usage": error.usage}
+    pages = [page for page in out.get("changed", []) if page.startswith(("decisions/", "principles/"))]
+    say(f"Decisions and principles: {len(pages)} page{'s' if len(pages) != 1 else ''} written.")
+    return {"started": True, "outcome": "completed", "pages": pages, "usage": out.get("usage")}
 
 
 def _kind_result(kind, jobs, outcomes, stopped) -> dict:
@@ -994,6 +1018,7 @@ def make_rem_app(factory):
             for key in KEYS.values():
                 if result[key].get("reason"):
                     say(result[key]["reason"])
+            result["abstract"] = _first_abstract(root, config, say, result)
             if result.get("investigation") == "failed":
                 return (result if ctx.obj["json"] else _init_done(ctx, result)), retry_me, True
             return (result if ctx.obj["json"] else _init_done(ctx, result)), ["open"]

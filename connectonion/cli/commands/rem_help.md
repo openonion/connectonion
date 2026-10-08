@@ -62,7 +62,7 @@ first pass in about 4 minutes, then the whole page alongside the rest. It also
 investigates all eligible mapped people, recent first (up to two years of
 their mail), projects (recent first), all pending mapped organizations,
 and installed skills from their source instructions and retained run evidence,
-10 pages at a time. The result should let you recognize useful relationships
+16 pages at a time. The result should let you recognize useful relationships
 and work immediately, with evidence cited on each page.
 --first-people, --first-projects, --first-orgs and --first-skills cap a kind (0 for none).
 `--all-history` maps available mail metadata since 1970 and local session
