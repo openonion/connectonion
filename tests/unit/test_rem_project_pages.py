@@ -707,3 +707,19 @@ def test_full_file_retention_does_not_expand_packet_bound_or_ignore_private_tail
     with maintenance_lock(tmp_path):
         assert project_pages.retain_repository_context(tmp_path, items, {i['source'] for i in items}) == 0
     assert not list((tmp_path / '.state/project-sources').glob('*.json'))
+
+
+def test_a_written_page_with_one_untraceable_citation_keeps_the_rest(world):
+    """1.9.1b1's first real project page was refused for one untraceable
+    citation; this writer had no repair, so the page was lost whole."""
+    codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide", [("user", "Tide should warn surfers.", 1)])
+    extract(world.root, world.subs)
+    source = stored(world.root, "projects/tide.md")[0]["source"]
+    page = _page_citing(source).replace("A swell warning tool for surfers. [1]",
+                                        "A swell warning tool for surfers. [1]\n\nIt pages the lifeguards. [2]")
+    page = page.replace(f"- [1] {source} — 2026-09-28", f"- [1] {source} — 2026-09-28\n- [2] codex:made-up:9 — 2026-09-28")
+    write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"},
+               run=_fake_runner(lambda prompt: page))
+    saved = world.notebook.read("projects/tide.md")
+    assert "A swell warning tool for surfers. [1]" in saved
+    assert "lifeguards" not in saved and "made-up" not in saved
