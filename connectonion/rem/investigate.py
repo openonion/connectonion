@@ -19,7 +19,7 @@ from pathlib import Path
 
 from .config import read_config
 from ..provider_credentials import ProviderCredentialError
-from .files import SECRET_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
+from .files import WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
 from .mail import _address, _list_all, correspondent, on_domains, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
 from .source import KINDS, collect, timestamp
 
@@ -1646,7 +1646,7 @@ def record_result(root, notebook, record: str, review_candidates: list, searched
     It waits for the lock: the model turn is already paid for, and with several
     pages in flight (the first run writes four at once) two finish together.
     """
-    with maintenance_lock(root, wait=60):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         from .reviews import ingest
         ingest(root, review_candidates)
         if changed:

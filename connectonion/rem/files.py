@@ -115,6 +115,12 @@ def write_json(path: Path, value) -> None:
     atomic_write(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
 
 
+# How long a write of work already done waits for the notebook lock. A promotion
+# can hold it for minutes (its cited-claim audit is a model turn), and a 30-second
+# wait lost UNSW's page in a 16-worker first run (1.9.1b5).
+WRITE_WAIT_SECONDS = 600
+
+
 @contextmanager
 def maintenance_lock(root: Path, wait: float = 0):
     """One OS-owned lock for every write path; process death releases it.
