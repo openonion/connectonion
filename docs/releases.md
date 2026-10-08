@@ -24,15 +24,20 @@ python -m pip install --upgrade 'connectonion==1.9.0'
 
 ## Current preview
 
-Alpha **1.9.1a1** maps the last 180 days on the first run and moves co rem's
-generated maps and skill run reports from Notes to a Run logs category. See
-[1.9.1a1 notes](releases/1.9.1a1.md).
+Alpha **1.9.1a2** reads a large page's whole evidence in rounds, edits pages in
+place with a lead-following investigation Skill, enriches organisations from
+their own site, shows a person's contact facts first and opens a cited mail as
+a message. See [1.9.1a2 notes](releases/1.9.1a2.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.1a1'
+python -m pip install --upgrade 'connectonion==1.9.1a2'
 ```
 
 ## Previous previews
+
+Alpha **1.9.1a1** maps the last 180 days on the first run and moves co rem's
+generated maps and skill run reports from Notes to a Run logs category. See
+[1.9.1a1 notes](releases/1.9.1a1.md).
 
 Alpha **1.9.0a43** shows failed investigations on Home and explains the nightly
 upkeep offer in init's overview. See [1.9.0a43 notes](releases/1.9.0a43.md).

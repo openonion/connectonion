@@ -477,7 +477,7 @@ def test_init_archive_is_private_resumable_and_people_read_it_without_listing(tm
                       archive_root=tmp_path, record=a, attachments_dir=tmp_path / ".state/attachments")
     assert len(delta.calls) == 1
     assert delta.calls[0][1] >= archive["range_end"]
-    assert delta.attachments == ["shared", "reply"]
+    assert sorted(delta.attachments) == ["reply", "shared"]  # fetched in parallel since 1.9.1a2
     assert any(item["role"] == "attachment" and item["text"] == "Decision attached" for item in items)
 
 
