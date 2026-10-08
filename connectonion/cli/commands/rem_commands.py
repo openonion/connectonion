@@ -589,7 +589,8 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills
     # alongside, and people it found older mail for are deepened at the end.
     from ...rem.files import MAP_DAYS
     deep = [row for row in people if row.get("mode") == "full" and (row.get("days") or 0) > MAP_DAYS]
-    first = [{**row, "days": MAP_DAYS} if row in deep else row for row in people]
+    # Attachments too: a fresh notebook asked the provider once per archived mail.
+    first = [{**row, "days": MAP_DAYS, "attachments": False} if row in deep else row for row in people]
     backfill = _start_backfill(root, deep)
     if deep:
         say(f"Fetching up to two years of mail for {len(deep)} people in the background…")
@@ -651,7 +652,7 @@ def _deepen(root, say, gate, rows, backfill, written, stopped) -> dict:
     ready = [row for row in rows if row["record"] in written and older.get(row["record"])]
     if not ready:
         return {"started": False, "backfilled": sum(older.values())}
-    say(f"Deepening {len(ready)} people with {sum(older[row['record']] for row in ready):,} older messages…")
+    say(f"Deepening {len(ready)} people with {sum(older[row['record']] for row in ready):,} older messages and attachments…")
     outcomes, halted = _in_parallel(_people_jobs(root, ready), workers=FIRST_RUN_WORKERS, gate=gate,
                                     done=lambda job, outcome: say(f"  deepened {job['record']}: {outcome['outcome']}"))
     return {"started": True, "backfilled": sum(older.values()), "pages": [outcome for _, outcome in outcomes],

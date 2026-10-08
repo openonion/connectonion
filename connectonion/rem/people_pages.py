@@ -164,7 +164,8 @@ def investigate_person(root: Path, row: dict, *, clients: dict, subscriptions: d
     try:
         result = investigation.investigate(root, row["record"], title, names, days=row["days"], clients=clients,
                                            subscriptions=subscriptions, max_calls=max_calls, progress=progress,
-                                           stage_progress=stage_progress)
+                                           stage_progress=stage_progress,
+                                           fetch_attachments=row.get("attachments", True))
     except investigation.NothingNew:
         # The window was read and held nothing: mail before `started` is not
         # new next run, or the same person is gathered again every run (#1984).
@@ -179,7 +180,8 @@ def backfill_person(root: Path, row: dict, *, clients: dict, subscriptions: dict
 
     The first run reads only the mapped window, already on disk, so no page
     waits on the provider; this fetches the rest of FIRST_WINDOW_DAYS alongside
-    it (owner, 2026-10-08). Returns how many messages predate the mapped window.
+    it (owner, 2026-10-08), and the attachments the first pass leaves to it.
+    Returns how many items the first pass did not read: older mail and attachments.
     """
     from . import investigate as investigation
     from .files import MAP_DAYS
@@ -189,6 +191,9 @@ def backfill_person(root: Path, row: dict, *, clients: dict, subscriptions: dict
                                     record=row["record"])
     cutoff, older = datetime.now(timezone.utc) - timedelta(days=MAP_DAYS), 0
     for item in items:
+        if item.get("role") == "attachment":
+            older += 1
+            continue
         try:
             older += timestamp(item["timestamp"]) < cutoff
         except (RemError, KeyError):  # an unreadable date is that mail's gap (#2013)

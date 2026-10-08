@@ -25,9 +25,9 @@ from .source import KINDS, collect, timestamp
 
 MAIL_KINDS = ("outlook", "gmail")
 # Shared by every page in flight, one pool per mailbox: Gmail takes many
-# concurrent reads; Microsoft Graph throttles a mailbox much sooner. One shared
+# concurrent reads; Microsoft Graph allows four per mailbox (8 drew HTTP 429). One shared
 # 10 left half of a 10-page init waiting on mail (2026-10-08).
-MAIL_FETCH_SLOTS = {"gmail": threading.BoundedSemaphore(20), "outlook": threading.BoundedSemaphore(8)}
+MAIL_FETCH_SLOTS = {"gmail": threading.BoundedSemaphore(20), "outlook": threading.BoundedSemaphore(4)}
 
 
 def _fetch_slot(kind: str):
@@ -388,7 +388,7 @@ def _newest_session(root: Path, record: str, page: str) -> str:
     return max([*seen, str(page_state(root, record).get("last_activity") or "")[:10]])
 
 
-def _patient(call, *args, attempts: int = 4):
+def _patient(call, *args, attempts: int = 5):
     """One transient timeout must not end a ten-minute gather.
 
     The owner's first investigation died on the 300th body fetch with a
@@ -402,11 +402,13 @@ def _patient(call, *args, attempts: int = 4):
             return call(*args)
         except Exception as error:  # noqa: BLE001 -- the providers raise their own timeout types
             name = type(error).__name__.lower()
-            transient = any(part in name for part in ("timeout", "connecterror", "connectionerror")) \
+            # Graph's HTTP 429 lost UNSW's page on a 16-worker init (2026-10-08): throttling waits, it does not fail.
+            throttled = getattr(error, "status", None) == 429 or "HTTP 429" in str(error)
+            transient = throttled or any(part in name for part in ("timeout", "connecterror", "connectionerror")) \
                 or "timed out" in str(error).lower()
             if not transient or attempt == attempts - 1:
                 raise
-            time.sleep(2 ** attempt)
+            time.sleep(2 ** attempt * (5 if throttled else 1))
 
 
 def _mail_body(client, message_id: str, kind: str = "", root: Path | None = None) -> str:
@@ -1264,7 +1266,8 @@ def _mail_comparison(root, record, handles, items, fresh, cited, subscriptions, 
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
-                quick: bool = False, retry_refused: bool = False, website=None) -> dict:
+                quick: bool = False, retry_refused: bool = False, website=None,
+                fetch_attachments: bool = True) -> dict:
     """Fill the page's gaps from everything gathered; the page itself is the first input."""
     notebook = Notebook(root)
     if not notebook.path(record).is_file():
@@ -1280,7 +1283,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     own_domains = (related["domains"] or org_domains(notebook.read(record))) if record.startswith("orgs/") else []
     search_handles = list(dict.fromkeys([*handles, *own_domains, *related["addresses"]]))
     items, coverage = gather(subject, search_handles, days=days, clients=clients, subscriptions=subscriptions,
-                             progress=progress, attachments_dir=root / ".state" / "attachments",
+                             progress=progress, attachments_dir=root / ".state" / "attachments" if fetch_attachments else None,
                              sent_only=sent_only, mail_skipped=mail_skipped, stage_progress=stage_progress,
                              quick=quick, archive_root=root, record=record)
     if own_domains and not quick:

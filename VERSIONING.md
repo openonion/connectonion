@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.1b2
+## Current Version: 1.9.1b3
+
+1.9.1b3 is a 1.9.1 beta; stable remains 1.9.0. The first pass reads no
+attachments (the background backfill fetches and counts them for the deepening
+pass), HTTP 429 backs off and retries, and Outlook is read four messages at a
+time. See [1.9.1b3 notes](docs/releases/1.9.1b3.md).
+
+- 1.9.1b3 (No network for people in the first pass; throttling waits).
+
+## Previous preview: 1.9.1b2
 
 1.9.1b2 is a 1.9.1 beta; stable remains 1.9.0. The first run's first pass reads
 each person's mapped window from disk while four background workers fetch the
