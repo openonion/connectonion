@@ -1004,8 +1004,10 @@ ROUND_NOTE = ("Round {number} of {total}: part {number} of the material, dated {
 SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read in earlier rounds; nothing new "
                   "is supplied. Re-read the page whole and make it one account: Insight says what matters now; "
                   "History has one line per thread -- date, what it was about, how it ended; Open threads keeps "
-                  "only what is still open; decisions name what was chosen and why. Keep every cited fact you "
-                  "keep with its citation; add no claim without a citation already on the page.")
+                  "only what is still open; decisions name what was chosen and why. Keep every thread the "
+                  "rounds recorded in History; fold only the oldest by year. For a thread whose outcome is "
+                  "not established, request a mail search for the reply before writing so. Keep every cited "
+                  "fact you keep with its citation; add no claim without a citation on the page or from a search.")
 
 
 def _round_room(record: str, owner: bool, fixed: list[dict]) -> int:
