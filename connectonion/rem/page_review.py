@@ -234,12 +234,14 @@ def drop_uncited_sources(text: str) -> str:
     return head + marker + ''.join(kept) + rest
 
 
-RUN_SOURCES = ("investigation:coverage", "investigation:project-scope", "investigation:project-inventory",
-               "investigation:project-repositories")
+RUN_SOURCES = {"projects/": ("investigation:coverage", "investigation:project-scope", "investigation:project-inventory",
+                             "investigation:project-repositories"),
+               # The same refusal on a skill page (title-refine, 2026-10-08).
+               "skills/": ("skill-runs:", "investigation:page")}
 MAPPED_LINE = re.compile(r'^- (Sessions|First seen|Last seen): [0-9-]+$', re.M)
 
 
-def repair_project_page(record: str, text: str, original: str) -> str:
+def repair_run_citations(record: str, text: str, original: str) -> str:
     """Fix the two refusals of a project page that need no model.
 
     A 1.9.0 Codex init refused 4 of its first 8 project pages whole: they cited
@@ -247,10 +249,11 @@ def repair_project_page(record: str, text: str, original: str) -> str:
     Last seen lines into one. A line resting only on the run is dropped, a run
     citation beside a real one is removed, and the mapped lines are put back.
     """
-    if not record.startswith('projects/'):
+    kind = next((prefix for prefix in RUN_SOURCES if record.startswith(prefix)), None)
+    if not kind:
         return text
     head, marker, tail = text.partition('\n## Sources\n')
-    run = set(re.findall(r'^\s*(?:- )?\[(W?\d+)\]\s*:?\s*(?:' + '|'.join(map(re.escape, RUN_SOURCES)) + r')',
+    run = set(re.findall(r'^\s*(?:- )?\[(W?\d+)\]\s*:?\s*(?:' + '|'.join(map(re.escape, RUN_SOURCES[kind])) + r')',
                          tail, re.M)) if marker else set()
     if run:
         lines = []

@@ -814,7 +814,7 @@ def test_the_first_mention_of_a_person_with_a_page_links_to_it(tmp_path):
 def test_a_project_page_is_not_refused_for_citing_the_run_or_folding_its_mapped_lines():
     """4 of the first 8 project pages of a real 1.9.0 Codex init were refused
     whole for these two, each fixable without the model (2026-10-08)."""
-    from connectonion.rem.page_review import repair_project_page
+    from connectonion.rem.page_review import repair_run_citations
     original = ('# Atlas\n\n## Paths\n- `/src/atlas` — mapped project directory\n- Sessions: 30\n'
                 '- First seen: 2026-07-29\n- Last seen: 2026-10-07\n')
     candidate = ('# Atlas\n\n## Where it stands\n- The importer ships nightly. [1]\n'
@@ -822,7 +822,7 @@ def test_a_project_page_is_not_refused_for_citing_the_run_or_folding_its_mapped_
                  '## Paths\n- `/src/atlas` — mapped project directory; Sessions: 30; First seen: 2026-07-29; '
                  'Last seen: 2026-10-07.\n\n## Sources\n- [1] codex:abc — 2026-10-01\n'
                  '- [2] investigation:coverage — today\n')
-    repaired = repair_project_page('projects/atlas.md', candidate, original)
+    repaired = repair_run_citations('projects/atlas.md', candidate, original)
     assert 'The importer ships nightly. [1]' in repaired
     assert 'exporter' not in repaired and 'investigation:coverage' not in repaired
     assert '- The CLI was renamed. [1]\n' in repaired
@@ -830,7 +830,7 @@ def test_a_project_page_is_not_refused_for_citing_the_run_or_folding_its_mapped_
     items = [{'role': 'session', 'source': 'codex:abc', 'text': 'importer ships nightly'}]
     errors = validate('projects/atlas.md', repaired, original, items)
     assert not [e for e in errors if 'coverage' in e or 'mapped project metadata' in e]
-    assert repair_project_page('people/x.md', candidate, original) == candidate
+    assert repair_run_citations('people/x.md', candidate, original) == candidate
 
 
 def test_an_investigation_edits_the_page_it_was_given_instead_of_starting_blank(tmp_path, monkeypatch):
@@ -852,3 +852,12 @@ def test_an_investigation_edits_the_page_it_was_given_instead_of_starting_blank(
     result = run_stage(nb, [{'role': 'page', 'record': record, 'text': original}], default_config(), stage='investigate')
     assert seen == [original]  # one turn: the page as it stands, and no follow-up for an honest NO CHANGE
     assert result['changed'] == []
+
+
+def test_a_skill_page_is_not_refused_for_citing_its_run_summary():
+    from connectonion.rem.page_review import repair_run_citations
+    candidate = ('# title-refine\n\n## Insight\n- Run 14 times in a month. [2]\n- It rewrites titles to name a fact. [1]\n\n'
+                 '## Sources\n- [1] skill-source:title-refine — 2026-10-01\n- [2] skill-runs:title-refine — today\n')
+    repaired = repair_run_citations('skills/catalog/title-refine.md', candidate, '# title-refine\n')
+    assert 'Run 14 times' not in repaired and 'skill-runs:' not in repaired
+    assert 'It rewrites titles to name a fact. [1]' in repaired
