@@ -499,9 +499,10 @@ def test_record_dates_do_not_disagree_when_the_index_is_stale(reader):
     page.goto(uri + "#r=people%2Fmara-ostrowski.md")
     expected = page.evaluate("known(byPath('people/mara-ostrowski.md')).last", isolated_context=False)
     page.evaluate("() => { byPath('people/mara-ostrowski.md').index = {last_contact: '2001-01-01'}; FACTS.clear(); render(); }", isolated_context=False)
-    assert expected in page.locator('.focus-facts').inner_text()
-    assert '2001' not in page.locator('.focus-facts').inner_text()
     formatted = page.evaluate('date => fmtDate(date)', expected, isolated_context=False)
+    # The contact strip leaves dates to the headline's last-contact line (#2104).
+    assert formatted in page.locator('.lead-meta').inner_text()
+    assert '2001' not in page.locator('.lead-meta').inner_text()
     assert formatted in page.locator('.factlist dt:text-is("Last contact") + dd').inner_text()
 
 

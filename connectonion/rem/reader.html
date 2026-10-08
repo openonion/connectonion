@@ -2559,13 +2559,14 @@ function contactStrip(r) {
   const parsed = parseFacts(r);
   // The parts of one field, put back together: "OpenOnion (internship; 2026)" is one value.
   const value = label => (parsed.get(label) || []).map(i => i.value + (i.qualifier ? " (" + i.qualifier + ")" : "")).join("; ");
-  const company = value("Company");
+  // Role and Company through facts(): a reviewed "Unknown" outranks an older index value.
+  const f = facts(r), company = f.company ? String(f.company) : "";
   const org = /\]\((\.\.\/orgs\/[^)]+\.md)\)/.exec(company);
   const orgRecord = org && byPath(org[1].replace(/^\.\.\//, ""));
   const what = orgRecord && (parseFacts(orgRecord).get("What they do") || [])[0];
   const aka = (parsed.get("Also known as") || []).map(i => i.value).filter(v => !v.includes("@")).join("; ");
   const rows = [["Email", value("Email"), true], ["Phone", value("Phone"), true], ["Also known as", aka, false],
-    ["Company", company, false], ["Role", value("Role"), false]].filter(([, v]) => v);
+    ["Company", company, false], ["Role", f.role ? String(f.role) : "", false]].filter(([, v]) => v);
   if (!rows.length) return null;
   return el("dl", { class: "focus-facts contact-strip" }, rows.map(([label, v, copyable]) => {
     const dd = el("dd", {}, [el("span", { html: inline(v, r.path) })]);
