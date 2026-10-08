@@ -1,0 +1,30 @@
+version: v1.9.1b1
+images:
+- file: before-documents-desktop.png
+  alt: Person page before the Documents section (desktop)
+  caption: A cited attachment was reachable only through its citation.
+  scenario: Invented fixture notebook; Mara Ostrowski's page citing an invented attachment
+  viewport: 1440x900, light
+  commit: a100ad3d
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py plus one invented attachment; 2026-10-08
+- file: before-documents-phone.png
+  alt: Person page before the Documents section (phone)
+  caption: A cited attachment was reachable only through its citation.
+  scenario: Invented fixture notebook; Mara Ostrowski's page citing an invented attachment
+  viewport: 390x900, light
+  commit: a100ad3d
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py plus one invented attachment; 2026-10-08
+- file: after-documents-desktop.png
+  alt: Person page with its Documents section (desktop)
+  caption: The page lists the documents it cites; each opens from the page.
+  scenario: Invented fixture notebook; Mara Ostrowski's page citing an invented attachment
+  viewport: 1440x900, light
+  commit: 49827450
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py plus one invented attachment; 2026-10-08
+- file: after-documents-phone.png
+  alt: Person page with its Documents section (phone)
+  caption: The page lists the documents it cites; each opens from the page.
+  scenario: Invented fixture notebook; Mara Ostrowski's page citing an invented attachment
+  viewport: 390x900, light
+  commit: 49827450
+  source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py plus one invented attachment; 2026-10-08

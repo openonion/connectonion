@@ -400,7 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.1a2
+## Current Version: 1.9.1b1
+
+1.9.1b1 is the first 1.9.1 beta; stable remains 1.9.0. After the 1.9.1a2 real
+180-day first run (84 of 84 people, 14 of 20 projects, every project refusal one
+citation), a project page's untraceable citation drops its lines after repairs,
+init ends by drawing decisions and principles, a page lists the documents it
+cites, init runs 16 pages at a time with one mail pool per mailbox, and the
+synthesis round keeps every thread and searches for missing outcomes. See
+[1.9.1b1 notes](docs/releases/1.9.1b1.md).
+
+- 1.9.1b1 (One citation is not a page; decisions and principles from init; Documents; 16 workers).
+
+## Previous preview: 1.9.1a2
 
 1.9.1a2 is a preview; stable remains 1.9.0. co rem investigations read a large
 page's whole evidence in rounds, each editing the page the last left, with a

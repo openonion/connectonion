@@ -24,16 +24,20 @@ python -m pip install --upgrade 'connectonion==1.9.0'
 
 ## Current preview
 
+Beta **1.9.1b1** keeps a project page when only one citation is wrong, draws
+decisions and principles from the first run, lists a page's documents, and runs
+init 16 pages at a time. See [1.9.1b1 notes](releases/1.9.1b1.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.1b1'
+```
+
+## Previous previews
+
 Alpha **1.9.1a2** reads a large page's whole evidence in rounds, edits pages in
 place with a lead-following investigation Skill, enriches organisations from
 their own site, shows a person's contact facts first and opens a cited mail as
 a message. See [1.9.1a2 notes](releases/1.9.1a2.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.1a2'
-```
-
-## Previous previews
 
 Alpha **1.9.1a1** maps the last 180 days on the first run and moves co rem's
 generated maps and skill run reports from Notes to a Run logs category. See
