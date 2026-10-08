@@ -23,3 +23,7 @@ python -m pytest tests/unit/test_rem_live_host.py tests/unit/test_co_ai_agent_ma
 ```
 
 No real-data init, model calls, mailbox scans or live Host trial were run on this computer. There is no rendered-page change and no new screenshot evidence. This is a lifecycle fix, not evidence of overall REM product maturity. The process check targets macOS/Linux, consistent with REM's current filesystem locking.
+
+## CI follow-up — 8 October (Sydney)
+
+The initial full CI failed two existing CLI forwarding assertions on all four Python versions: the expected kwargs omitted the new default `launch=True`. The expectations now include that default, and a CLI regression checks that a managed background invocation forwards `launch=False` and `listen=[]`. No provider or real notebook was contacted. Fresh CI is required; this follow-up is not release approval.
