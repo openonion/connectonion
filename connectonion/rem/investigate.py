@@ -899,6 +899,85 @@ def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: P
     return digests, usage
 
 
+def evidence_rounds(items: list[dict], room_bytes: int) -> list[list[dict]]:
+    """Oldest first, each round small enough to travel in the prompt, every item whole or split.
+
+    Laid out in files, the model read 3.6-8.7% of a large page's evidence
+    (2026-10-08 traces): Ody 4 of 143 files. A part in the prompt is read.
+    """
+    from .runner import readable_material
+    measure = lambda parts: len(readable_material(parts).encode("utf-8"))
+    rounds, current, size = [], [], 0
+    for item in sorted(items, key=lambda i: str(i.get("timestamp") or "")):
+        for part in _split_item(item, room_bytes, measure):
+            weight = measure([part])
+            if current and size + weight > room_bytes:
+                rounds.append(current)
+                current, size = [], 0
+            current.append(part)
+            size += weight
+    if current:
+        rounds.append(current)
+    return rounds
+
+
+ROUND_NOTE = ("Round {number} of {total}: part {number} of the material, dated {first} to {last}, every item "
+              "in full. Read all of it. Edit the page with what this part adds: new facts, how threads ended, "
+              "decisions, corrections. Keep what earlier rounds established unless this part contradicts it. "
+              "Then follow the leads it raises.")
+SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read in earlier rounds; nothing new "
+                  "is supplied. Re-read the page whole and make it one account: Insight says what matters now; "
+                  "History has one line per thread -- date, what it was about, how it ended; Open threads keeps "
+                  "only what is still open; decisions name what was chosen and why. Keep every cited fact you "
+                  "keep with its citation; add no claim without a citation already on the page.")
+
+
+def _round_room(record: str, owner: bool, fixed: list[dict]) -> int:
+    """Bytes left for one part once the page, its context and the round note are in the prompt."""
+    from .runner import INLINE_LIMIT, instructions, page_kind_of, readable_material
+    used = (len(instructions("investigate", page_kind=page_kind_of(record), owner=owner).encode("utf-8"))
+            + len(readable_material(fixed).encode("utf-8")) + 8000)
+    return max(INLINE_LIMIT - used, 20_000)
+
+
+def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list[dict], rounds: list[list[dict]],
+               config: dict, stage_progress=None) -> dict:
+    """One turn per part, each on the page the last one left, then a synthesis turn.
+
+    A refused round loses that round, not the page: the next part builds on
+    the last accepted page. Leads a round names in its reply go to the next.
+    """
+    from .runner import RunFailed
+    usage, changed, ledgers, refused = {}, [], [], []
+    total = len(rounds)
+    for number, part in enumerate([*rounds, []], 1):
+        dates = [str(i.get("timestamp") or "")[:10] for i in part if i.get("timestamp")]
+        note = (ROUND_NOTE.format(number=number, total=total, first=min(dates, default="?"),
+                                  last=max(dates, default="?"))
+                if part else SYNTHESIS_NOTE.format(total=total))
+        leads = ("\n\nLeads from earlier rounds:\n" + "\n\n".join(ledgers)[-6000:]) if ledgers else ""
+        items = [page_item(notebook.read(record)), *context,
+                 {"role": "round", "source": "investigation:round", "text": note + leads}, *part]
+        if stage_progress:
+            stage_progress(f"investigation round {number} of {total + 1}")
+        try:
+            out = runner(notebook, items, config, stage="investigate")
+        except RunFailed as error:
+            refused.append(str(error))
+            for key, value in (error.usage or {}).items():
+                usage[key] = usage.get(key, 0) + value
+            continue
+        for key, value in (out.get("usage") or {}).items():
+            usage[key] = usage.get(key, 0) + value
+        changed = sorted({*changed, *out.get("changed", [])})
+        if out.get("report"):
+            ledgers.append(f"Round {number}: {str(out['report']).strip()}")
+    if refused and not changed:
+        raise RunFailed(refused[-1], usage)
+    return {"usage": usage, "changed": changed, "report": "\n\n".join(ledgers),
+            "rounds": total + 1, "refused_rounds": refused}
+
+
 def searched_sources(coverage: list[str]) -> list[str]:
     """The sources this code searched, for the page's status line.
 
@@ -1253,6 +1332,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     original_items = items
     evidence_items = items
     evidence_dir = None
+    in_rounds = False
     if gathered_chars > room and summary:
         # A summary-tier model cannot search files (#1847), so it is handed
         # digests of the material in order, the shape investigation had before #1850.
@@ -1267,6 +1347,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             # would have only the page and this note to write from.
             raise _nothing_found(record, subject, coverage, me=sent_only, digested=True,
                                  usage=usage_by_stage["extract"] or None)
+    elif gathered_chars > room and not quick and config["limits"]["investigation_rounds"] > 1:
+        # Read in rounds once the turn's context is known, below (#2314).
+        in_rounds = True
+        coverage.append(f"evidence: {gathered_chars:,} chars gathered (~{gathered_chars // 4:,} tokens), over the "
+                        f"{room:,}-char room for one turn; read in rounds, every item in full")
     elif gathered_chars > room:
         if stage_progress:
             stage_progress("writing evidence files")
@@ -1302,13 +1387,13 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     if original_material:
         write_json(original_material, original_items)
     # `sent_only` is `investigate me`: the owner's own page, with its own spec (#2008).
-    current_page = normalize(record, notebook.read(record), owner=sent_only)
-    prompt_items = [
-        {"role": "page", "record": record, **({"owner": True} if sent_only else {}),
-         "text": f"The page as it stands, at {record}. Fill its Unknowns, update what "
-                 f"has moved, keep what is right:\n\n{current_page}",
-         "timestamp": now, "source": "investigation:page"},
-    ] + ([{"role": "project-repositories", "source": "investigation:project-repositories",
+    def page_item(text):
+        return {"role": "page", "record": record, **({"owner": True} if sent_only else {}),
+                "text": f"The page as it stands, at {record}. Fill its Unknowns, update what "
+                        f"has moved, keep what is right:\n\n{normalize(record, text, owner=sent_only)}",
+                "timestamp": now, "source": "investigation:page"}
+
+    prompt_items = [page_item(notebook.read(record))] + ([{"role": "project-repositories", "source": "investigation:project-repositories",
            "paths": project_roots, "timestamp": now,
            "text": "Live local repository paths for direct inspection: " + ", ".join(project_roots) +
                    ". Use git log, git show, README.md, pyproject.toml and package.json where present; "
@@ -1355,7 +1440,25 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     if stage_progress:
         stage_progress("writing investigation")
     try:
-        result = runner(notebook, prompt_items, config, stage="investigate")
+        if in_rounds:
+            context = prompt_items[1:len(prompt_items) - len(items)]
+            parts = evidence_rounds(items, _round_room(record, sent_only, [prompt_items[0], *context]))
+            parts, older = parts[-config["limits"]["investigation_rounds"]:], parts[:-config["limits"]["investigation_rounds"]]
+            if older:
+                # Past the round cap, the oldest material is still searchable from the first round.
+                import uuid
+                from .evidence import write_evidence
+                evidence_dir = state_path(root, f"evidence/{uuid.uuid4().hex}")
+                laid_out = write_evidence(evidence_dir, [i for part in older for i in part])
+                parts[0].insert(0, {"role": "evidence-index", "source": "investigation:evidence", "timestamp": now,
+                                    "file": str(laid_out["index"]), "sources": laid_out["sources"],
+                                    "text": f"Older material, before these rounds, is in files under {evidence_dir}; "
+                                            f"search it with rg when a lead goes back further. Index: {laid_out['index']}"})
+            coverage.append(f"rounds: {len(parts)} parts read in full" + (
+                f", {sum(map(len, older))} older items searchable in files" if older else ""))
+            result = run_rounds(runner, notebook, record, page_item, context, parts, config, stage_progress)
+        else:
+            result = runner(notebook, prompt_items, config, stage="investigate")
     except RemError as error:
         if "rejected" in str(error):
             _remember_refusal(root, record, list(gathered_sources), str(error))

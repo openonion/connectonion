@@ -432,8 +432,9 @@ def test_completed_extraction_chunks_are_reused_after_interruption(tmp_path):
 def test_over_input_limit_the_writer_searches_evidence_files_instead_of_digests(tmp_path, monkeypatch):
     """#1850: summarising everything first cost the owner's page 39 digest calls
     and 75 minutes. Over the limit, the material becomes files the one turn
-    searches; no digest call is made."""
+    searches; no digest call is made. Since #2314 that is the one-round setting."""
     root = _notebook(tmp_path, "codex")
+    set_config(root, ["limits.investigation_rounds", "1"])
     config = read_config(root)
     original = inv.Notebook(root).read("people/vern.md")
     items = [{"text": f"message {i}: " + "x" * 30_000, "source": f"outlook:{i}", "role": "other",
@@ -1678,6 +1679,7 @@ def test_file_only_investigation_keeps_exact_cited_snapshot_after_live_file_chan
     from connectonion.rem import project_pages
     from connectonion.rem.reader_model import cited_context
     root = _notebook(tmp_path, 'codex')
+    set_config(root, ['limits.investigation_rounds', '1'])  # the snapshot, not how it is read
     repo = tmp_path / 'project'
     repo.mkdir()
     original = '# Tide\n' + 'a' * 300000 + '\nThe full source ends here.'
@@ -1812,3 +1814,42 @@ def test_file_snapshot_retention_follows_the_successful_run_and_keeps_original_b
                             runner=lambda *a, **kw: pytest.fail('identical supplied material'))
         (folder / 'README.md').write_text('# Tide\nChanged without any new session.')
         inv.investigate(root, record, 'Tide', [str(folder)], days=30, clients={}, subscriptions={}, runner=runner)
+
+
+def test_over_input_limit_every_part_is_read_in_rounds_then_one_synthesis(tmp_path, monkeypatch):
+    """#2314: laid out in files, the model read 3.6-8.7% of a large page's
+    evidence. In rounds each part travels whole in the prompt, each round edits
+    the page the last one left, and a refused round costs only that round."""
+    from connectonion.rem.runner import RunFailed
+    root = _notebook(tmp_path, "codex")
+    items = [{"text": f"message {i}: " + "x" * 30_000, "source": f"outlook:{i}", "role": "other",
+              "speaker": "vern@x.y", "subject": f"Contract {i}",
+              "timestamp": f"2026-09-{i + 1:02d}T00:00:00Z"} for i in range(12)]
+    monkeypatch.setattr(inv, "gather", lambda *a, **kw: (items, ["outlook: 12 matched"]))
+    turns = []
+
+    def write(notebook, material, config, **kw):
+        note = next(i for i in material if i["role"] == "round")["text"]
+        sources = [i["source"] for i in material if i.get("source", "").startswith("outlook:")]
+        turns.append((note, sources, material[0]["text"]))
+        assert not any(i["role"] == "evidence-index" for i in material)
+        if len(turns) == 2:
+            raise RunFailed("Candidate rejected: one bad citation", {"input_tokens": 1})
+        page = notebook.path("people/vern.md")
+        page.write_text(page.read_text() + f"\nRound {len(turns)} line.\n")
+        return {"changed": ["people/vern.md"], "usage": {"input_tokens": 5},
+                "report": f"lead {len(turns)} — searched — found — next"}
+
+    out = inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7, clients={}, subscriptions={},
+                          extractor=lambda *a: pytest.fail("no digest pass"), runner=write)
+
+    read = [source for _, sources, _ in turns for source in sources]
+    assert sorted(read) == sorted(i["source"] for i in items) and len(read) == len(items)  # every item, once
+    assert read == sorted(read, key=lambda s: int(s.split(":")[1]))  # oldest first
+    assert len(turns) >= 3 and turns[-1][0].startswith("Final round") and not turns[-1][1]
+    assert "Round 1 line." in turns[2][2]  # the next round builds on the last accepted page
+    assert "lead 1" in turns[2][0]  # and gets the leads from earlier rounds
+    page = inv.Notebook(root).read("people/vern.md")
+    assert "Round 1 line." in page and f"Round {len(turns)} line." in page
+    assert out["usage"]["input_tokens"] == 5 * (len(turns) - 1) + 1
+    assert any(line.startswith("rounds: ") for line in out["coverage"])
