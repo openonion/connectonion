@@ -240,7 +240,7 @@ def test_the_owners_coding_agents_are_tools_and_the_lead_names_the_recent_projec
 def test_person_investigation_has_one_history_and_source_contract():
     """The live a13 prompt gave both oldest-first/every-thread and newest-first/eight."""
     person = instructions("investigate", page_kind="person")
-    assert "at most eight milestones, newest first" in person
+    assert "one line per thread, at most sixteen, newest first" in person
     assert "covers every thread" not in person
     assert "oldest first" not in person
     assert "local mail" in person

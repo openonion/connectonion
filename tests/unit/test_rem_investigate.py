@@ -1896,3 +1896,23 @@ def test_a_search_the_provider_refuses_is_reported_not_fatal():
     found = inv.mail_search({"outlook": Outlook()})(['"Phaedon Stough"', "deck"])
     assert found[0]["role"] == "search-failure" and "HTTP 400" in found[0]["text"]
     assert found[1]["source"].startswith("outlook:") and "deck is done" in found[1]["text"]
+
+
+def test_an_organisation_is_enriched_from_its_own_site_and_a_dead_site_is_a_note():
+    """#2315: what a company does, in its own words, cited by URL."""
+    from connectonion.useful_tools.page_fetch import FetchError
+    pages = {"https://fernhill.io/": {"url": "https://fernhill.io/", "title": "Fernhill", "redirect": None,
+             "markdown": "Climate data for insurers. [About us](https://fernhill.io/about) [Blog](https://fernhill.io/blog) "
+                         "[Partner](https://other.example/about)"},
+             "https://fernhill.io/about": {"url": "https://fernhill.io/about", "title": "About", "redirect": None,
+                                           "markdown": "Founded in Wellington in 2021."}}
+
+    def fetch(url):
+        if url not in pages:
+            raise FetchError(f"{url} unreachable", "")
+        return pages[url]
+
+    items, coverage = inv.website_items(["fernhill.io", "gone.example"], fetch=fetch)
+    assert [i["source"] for i in items] == ["https://fernhill.io/", "https://fernhill.io/about"]
+    assert "Founded in Wellington" in items[1]["text"] and items[0]["role"] == "website"
+    assert any("gone.example" in line and "could not be read" in line for line in coverage)

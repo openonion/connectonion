@@ -35,7 +35,7 @@ Move superseded values to dated `History`; explain contradictions in
 
 **Aim for about 15k characters.** Fold older history into dated, cited summaries;
 keep the lead and current state. Growth beyond 20,000 characters is refused.
-Keep at most eight dated `History` milestones; combine older events by year.
+`History`: one dated line per thread, how it ended; at most sixteen.
 
 ## Filling the page
 

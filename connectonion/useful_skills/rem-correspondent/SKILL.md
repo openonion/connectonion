@@ -25,9 +25,9 @@ description: Rules for investigating someone other than the user — composed af
   `# 李梅`, the address kept in `Also known as:`.
 - **Not a person** (a service, bot, shared or test inbox, an account the user
   runs): the lead says what it is and `Role:` reads `Not a person: <what>`.
-- **`History` keeps at most eight milestones, newest first**, as the person
-  page requires. Combine older events by year; do not turn every message or
-  thread into a milestone. Keep the current relationship and obligations in
+- **`History` keeps one line per thread, at most sixteen, newest first**, as the
+  person page requires: what it was about and how it ended. Combine older
+  threads by year; never one line per message. Keep the current relationship and obligations in
   their own sections.
 - **`How the user writes to them`** comes from the user's own messages to them
   (language, tone, length, how they open, what they ask); **`Cadence`** from the

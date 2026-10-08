@@ -442,8 +442,9 @@ def drop_tool_text(record: str, text: str, original: str) -> tuple[str, list[str
     return '\n'.join(kept) + marker + tail, removed
 
 
-# History is milestones (#2059): Ody Zhou's held 17 bullets, five of them "sent report X".
-HISTORY_LIMIT = 8
+# History is threads and how they ended (#2059, #2314): Ody Zhou's once held 17
+# bullets, five of them "sent report X"; eight then squeezed out how threads ended.
+HISTORY_LIMIT = 16
 
 
 def _history(text: str) -> list[str]:
@@ -456,7 +457,7 @@ def history_note(page: str) -> str:
     lines = len(_history(page))
     if not lines:
         return ""
-    return (f"History holds at most {HISTORY_LIMIT} dated milestones; it has {lines}"
+    return (f"History holds at most {HISTORY_LIMIT} dated lines, one per thread with how it ended; it has {lines}"
             + (": fold the oldest into one line per year. " if lines > HISTORY_LIMIT else ". "))
 
 
@@ -465,8 +466,8 @@ def history_errors(candidate: str, original: str) -> list[str]:
     lines, before = len(_history(candidate)), len(_history(original))
     if lines <= HISTORY_LIMIT or lines <= before:
         return []
-    return [f'History has {lines} lines (was {before}); keep at most {HISTORY_LIMIT} dated milestones: '
-            'fold the oldest into one line per year, and drop sends, reminders and newsletters']
+    return [f'History has {lines} lines (was {before}); keep at most {HISTORY_LIMIT} dated lines, one per thread '
+            'with how it ended: fold the oldest into one line per year, and drop sends, reminders and newsletters']
 
 
 def size_errors(candidate: str, original: str) -> list[str]:

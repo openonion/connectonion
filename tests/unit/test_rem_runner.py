@@ -748,7 +748,7 @@ def test_history_only_refusal_gets_one_repair_turn_with_usage_counted(notebook, 
     result = run_stage(notebook, [{'role': 'page', 'record': record,
                                    'text': notebook.read(record), 'source': 'investigation:page'}],
                        default_config(), stage='investigate')
-    assert len(prompts) == 2 and 'at most eight dated bullets' in prompts[1]
+    assert len(prompts) == 2 and 'at most sixteen dated History lines' in prompts[1]
     assert promotions[1] == result['usage'] == {'input_tokens': 20, 'output_tokens': 2}
 
 

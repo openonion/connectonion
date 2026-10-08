@@ -140,6 +140,53 @@ def org_pages(notebook: Notebook, record: str, handles: list[str], *, limit: int
     return found[:limit]
 
 
+WEBSITE_PAGES = 3
+WEBSITE_CHARS = 12_000
+WEBSITE_LINK = re.compile(r"\[([^\]]{1,80})\]\((https?://[^)\s]+)\)")
+WEBSITE_WORDS = re.compile(r"about|company|who-we-are|what-we-do|product|platform|solution|service|team|people", re.I)
+
+
+def website_items(domains: list[str], fetch=None) -> tuple[list[dict], list[str]]:
+    """Enrich (#2315): what an organisation says about itself, from its own site.
+
+    The home page of each mail domain and up to three of its own about,
+    product, service or team pages, as citable public sources. A site that
+    cannot be read is a coverage note, not the page's end.
+    """
+    from urllib.parse import urlparse
+
+    import httpx
+
+    from ..useful_tools.page_fetch import FetchError, fetch_page
+    fetch = fetch or fetch_page
+    items, coverage = [], []
+    now = datetime.now(timezone.utc).isoformat()
+    for domain in domains:
+        try:
+            home = fetch(f"https://{domain}/")
+        except (FetchError, httpx.HTTPError) as error:
+            coverage.append(f"web: https://{domain}/ could not be read ({type(error).__name__})")
+            continue
+        host = urlparse(home["url"]).netloc
+        links = [url for text, url in WEBSITE_LINK.findall(home["markdown"])
+                 if urlparse(url).netloc == host and WEBSITE_WORDS.search(url + " " + text)]
+        pages = [home]
+        for url in list(dict.fromkeys(links))[:WEBSITE_PAGES]:
+            try:
+                pages.append(fetch(url))
+            except (FetchError, httpx.HTTPError):
+                continue
+        for page in pages:
+            if page.get("redirect") or not page.get("markdown"):
+                continue
+            items.append({"role": "website", "source": page["url"], "timestamp": now, "captured_at": now,
+                          "subject": page.get("title", ""), "speaker": host,
+                          "text": "Public web page, the organisation's own words, fetched " + now[:10]
+                                  + ":\n\n" + page["markdown"][:WEBSITE_CHARS]})
+        coverage.append(f"web: read {sum(1 for i in items if urlparse(i['source']).netloc == host)} page(s) of {host}")
+    return items, coverage
+
+
 def org_contact_context(notebook: Notebook, record: str) -> dict:
     """Other domain pages sharing a canonical contact: leads to verify, not identity proof."""
     if not record.startswith("orgs/"):
@@ -1199,7 +1246,7 @@ def _mail_comparison(root, record, handles, items, fresh, cited, subscriptions, 
 def investigate(root: Path, record: str, subject: str, handles: list[str], *, days: int,
                 clients: dict, subscriptions: dict, runner=None, extractor=None, progress=None, max_calls=None,
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
-                quick: bool = False, retry_refused: bool = False) -> dict:
+                quick: bool = False, retry_refused: bool = False, website=None) -> dict:
     """Fill the page's gaps from everything gathered; the page itself is the first input."""
     notebook = Notebook(root)
     if not notebook.path(record).is_file():
@@ -1218,6 +1265,11 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                              progress=progress, attachments_dir=root / ".state" / "attachments",
                              sent_only=sent_only, mail_skipped=mail_skipped, stage_progress=stage_progress,
                              quick=quick, archive_root=root, record=record)
+    if own_domains and not quick:
+        if stage_progress:
+            stage_progress("reading the organisation's website")
+        web, web_coverage = website_items(own_domains, fetch=website)
+        items, coverage = [*items, *web], [*coverage, *web_coverage]
     # Build the bounded comparison before a full pass drops items already cited
     # by its quick page. That citation only says the first pass saw them; the
     # final writer still needs the earlier and later words side by side.

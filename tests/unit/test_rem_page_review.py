@@ -777,14 +777,15 @@ def _with_history(lines: int) -> str:
     return f'# P\n\n## History\n{rows}\n## Sources\n- [1] outlook:aaa — 2026-09-01\n'
 
 
-def test_a_history_past_eight_milestones_may_not_grow_and_may_come_down():
-    """Ody Zhou's History held 17 bullets, five of them "sent report X"."""
+def test_a_history_past_sixteen_threads_may_not_grow_and_may_come_down():
+    """Ody Zhou's History held 17 bullets, five of them "sent report X" (#2059);
+    eight then squeezed out how threads ended, so it is one line per thread, sixteen (#2314)."""
     from connectonion.rem.page_review import history_errors, history_note
-    assert history_errors(_with_history(9), _with_history(8))
-    assert 'at most 8' in history_errors(_with_history(9), _with_history(3))[0]
-    assert history_errors(_with_history(8), _with_history(3)) == []
-    assert history_errors(_with_history(12), _with_history(17)) == []          # coming down in steps
-    assert 'fold the oldest' in history_note(_with_history(17))
+    assert history_errors(_with_history(17), _with_history(16))
+    assert 'at most 16' in history_errors(_with_history(17), _with_history(3))[0]
+    assert history_errors(_with_history(16), _with_history(3)) == []
+    assert history_errors(_with_history(18), _with_history(20)) == []          # coming down in steps
+    assert 'fold the oldest' in history_note(_with_history(20))
     assert history_note('# P\n\n## History\n- Unknown — not investigated yet\n') == ''
 
 

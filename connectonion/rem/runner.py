@@ -969,7 +969,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                                        "claims. Preserve the page and save it.")
                     else:
                         instruction = (f"Review errors: {'; '.join(errors)}. "
-                                       "Keep at most eight dated bullets in History, folding older events by year. "
+                                       "Keep at most sixteen dated History lines, one per thread with how it ended, folding older threads by year. "
                                        f"For unresolved citations, read {directory / 'material.md'} and its named "
                                        "evidence index; copy the exact source ids for supported claims. Remove a "
                                        "claim only if evidence does not support it. Preserve all other sections "
