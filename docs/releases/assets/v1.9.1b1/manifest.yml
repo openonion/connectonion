@@ -19,12 +19,12 @@ images:
   caption: The page lists the documents it cites; each opens from the page.
   scenario: Invented fixture notebook; Mara Ostrowski's page citing an invented attachment
   viewport: 1440x900, light
-  commit: 49827450
+  commit: 9e350a25
   source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py plus one invented attachment; 2026-10-08
 - file: after-documents-phone.png
   alt: Person page with its Documents section (phone)
   caption: The page lists the documents it cites; each opens from the page.
   scenario: Invented fixture notebook; Mara Ostrowski's page citing an invented attachment
   viewport: 390x900, light
-  commit: 49827450
+  commit: 9e350a25
   source_run: Chrome capture of tests/fixtures/rem_reader_notebook.py plus one invented attachment; 2026-10-08
