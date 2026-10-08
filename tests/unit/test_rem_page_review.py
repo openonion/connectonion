@@ -870,3 +870,11 @@ def test_a_source_cited_only_inside_a_diagram_is_dropped_not_left_to_refuse_the_
             '## Sources\n- [6] codex:a:1 — 2026-07-16\n- [9] codex:b:2 — 2026-07-16\n')
     out = drop_uncited_sources(text)
     assert '- [6] codex:a:1' in out and 'codex:b:2' not in out
+
+
+def test_a_skill_page_edited_in_place_keeps_one_run_evidence_section():
+    from connectonion.rem.page_review import repair_run_citations
+    text = ('# x\n\n## Limitations\n- None known.\n\n## Run evidence\n<!-- rem-skill-runs:start -->\n## Run evidence\n\n'
+            '- Retained evaluation attempts: 2\n<!-- rem-skill-runs:end -->\n\nInvestigation: mapped\n')
+    out = repair_run_citations('skills/catalog/x.md', text, '# x\n')
+    assert out.count('## Run evidence') == 1 and '- None known.' in out and 'attempts: 2' in out

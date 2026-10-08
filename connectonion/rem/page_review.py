@@ -254,6 +254,12 @@ def repair_run_citations(record: str, text: str, original: str) -> str:
     kind = next((prefix for prefix in RUN_SOURCES if record.startswith(prefix)), None)
     if not kind:
         return text
+    if kind == "skills/" and "<!-- rem-skill-runs:start -->" in text:
+        # Edited in place, a skill page kept the collector's Run evidence block
+        # and the model added the heading again above it (linkedin-engagement).
+        before, marker, after = text.partition("<!-- rem-skill-runs:start -->")
+        before = re.sub(r"(?ms)^## Run evidence\n.*?(?=^## |\Z)", "", before)
+        text = before.rstrip("\n") + "\n\n" + marker + after
     head, marker, tail = text.partition('\n## Sources\n')
     run = set(re.findall(r'^\s*(?:- )?\[(W?\d+)\]\s*:?\s*(?:' + '|'.join(map(re.escape, RUN_SOURCES[kind])) + r')',
                          tail, re.M)) if marker else set()
