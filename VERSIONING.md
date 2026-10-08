@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.1b3
+## Current Version: 1.9.1b4
+
+1.9.1b4 is a 1.9.1 beta; stable remains 1.9.0. A first run scans the local
+coding-session window once and shares it across people for half an hour,
+instead of re-hashing every transcript for each person behind a lock. See
+[1.9.1b4 notes](docs/releases/1.9.1b4.md).
+
+- 1.9.1b4 (Coding sessions scanned once per run).
+
+## Previous preview: 1.9.1b3
 
 1.9.1b3 is a 1.9.1 beta; stable remains 1.9.0. The first pass reads no
 attachments (the background backfill fetches and counts them for the deepening

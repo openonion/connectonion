@@ -1,0 +1,2 @@
+version: v1.9.1b4
+no_visual_change: "Gathering only: the coding-session window is scanned once per run instead of once per person. Reader HTML is unchanged since 1.9.1b1."
