@@ -223,7 +223,7 @@ def test_skill_finding_citing_a_split_record_survives_promotion(tmp_path, monkey
     candidate = re.sub(r'(?ms)^## Sources\n.*?(?=^Investigation:|\Z)',
                        '## Sources\n- [1] skill-eval:abc123 — 2026-09-19\n\n', candidate)
     def run(directory, prompt, config, stage):
-        Path(re.search(r'NEW file (.+?candidate.md)', prompt)[1]).write_text(candidate)
+        Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1]).write_text(candidate)
         return {'usage': {'input_tokens': 7}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', run)
     items = [{'role': 'page', 'record': record, 'text': old},
@@ -255,9 +255,9 @@ def test_investigation_promotes_only_valid_new_candidate(tmp_path, monkeypatch, 
     if invalid:
         candidate += '\n## What it is\nDuplicate\n'
     def run(directory, prompt, config, stage):
-        path = Path(re.search(r'NEW file (.+?candidate.md)', prompt)[1])
+        path = Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1])
         from connectonion.useful_tools.file_tools.write import write
-        assert 'Successfully' in write(str(path), candidate)
+        path.write_text(candidate)
         return {'usage': {'input_tokens': 7}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', run)
     items = [{'role': 'page', 'record': 'projects/atlas.md', 'text': old}, {'source': 'fixture:readme', 'text': 'A local demo.'}]
@@ -324,21 +324,21 @@ def test_investigation_cannot_overwrite_live_page_on_failure(tmp_path, monkeypat
     def run(directory, prompt, config, stage):
         assert directory != nb.root
         working = next(directory.glob('investigate-*/notebook'))
-        first_turn = 'Your previous turn ended without writing' not in prompt
+        first_turn = 'Your previous turn ended without editing' not in prompt
         assert not first_turn or (working / record).read_text() == original
         assert 'Write notebook Markdown pages directly' not in prompt
         if action == 'wrong_target':
             (working / record).write_text('# Accidental direct edit')
         else:
             nb.write(record, original + '\nConcurrent user correction.\n')
-            Path(re.search(r'NEW file (.+?candidate.md)', prompt)[1]).write_text(original)
+            Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1]).write_text(original + '\nA new fact.\n')
         return {'usage': {'input_tokens': 5}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', run)
     with pytest.raises(RunFailed):
         run_stage(nb, [{'role': 'page', 'record': record, 'text': original}], default_config(), stage='investigate')
     assert nb.read(record) == original + ('\nConcurrent user correction.\n' if action == 'concurrent_update' else '')
     result = json.loads(next((tmp_path / '.state/tasks').glob('*/result.json')).read_text())
-    turns = 2 if action == 'wrong_target' else 1  # no candidate: one more turn, both charged
+    turns = 2 if action == 'wrong_target' else 1  # candidate untouched: one more turn, both charged
     assert result['status'] == 'failed' and result['usage']['input_tokens'] == 5 * turns
     assert result['duration_seconds'] >= 0
     assert result['instructions_chars'] > 0 and result['material_chars'] > 0
@@ -395,7 +395,7 @@ def test_flow_rejection_preserves_live_page_and_failure_usage(tmp_path, monkeypa
     page = old.replace('## Overview\n- Unknown — not investigated yet', '## Overview\nRun a local word counter. [1]')
     page = page.replace('- (none yet)', '- [1] fixture:readme')
     def execute(directory, prompt, config, stage):
-        Path(re.search(r'NEW file (.+?candidate.md)', prompt)[1]).write_text(page)
+        Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1]).write_text(page)
         return {'usage': {'input_tokens': 12}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', execute)
     with pytest.raises(RunFailed, match='Project Overview'):
@@ -831,3 +831,24 @@ def test_a_project_page_is_not_refused_for_citing_the_run_or_folding_its_mapped_
     errors = validate('projects/atlas.md', repaired, original, items)
     assert not [e for e in errors if 'coverage' in e or 'mapped project metadata' in e]
     assert repair_project_page('people/x.md', candidate, original) == candidate
+
+
+def test_an_investigation_edits_the_page_it_was_given_instead_of_starting_blank(tmp_path, monkeypatch):
+    """49 of 63 real Codex investigations wrote the page from scratch; UNSW's
+    People-here list fell from 20 linked people to 4 and was accepted (2026-10-08)."""
+    prepare(tmp_path)
+    nb = Notebook(tmp_path)
+    record = 'projects/atlas.md'
+    nb.stub_project(record, 'Atlas')
+    original = nb.read(record)
+    seen = []
+
+    def run(directory, prompt, config, stage):
+        path = Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1])
+        seen.append(path.read_text())
+        assert 'Do not rewrite the page from scratch' in prompt
+        return {'usage': {'input_tokens': 1}, 'result': 'Nothing new. NO CHANGE'}
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run)
+    result = run_stage(nb, [{'role': 'page', 'record': record, 'text': original}], default_config(), stage='investigate')
+    assert seen == [original]  # one turn: the page as it stands, and no follow-up for an honest NO CHANGE
+    assert result['changed'] == []

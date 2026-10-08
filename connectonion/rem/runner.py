@@ -481,8 +481,8 @@ def _one_more_turn(workdir, prompt, config, stage, candidate, first, run=None):
     writable and ended its turn. Both turns are charged to the run.
     """
     again = (run or run_task)(workdir, _followup_prompt(
-        prompt, f"Your previous turn ended without writing {candidate}. That path is "
-                f"inside your writable root {workdir}: write the complete page there now."),
+        prompt, f"Your previous turn ended without editing {candidate}. That path is "
+                f"inside your writable root {workdir}: edit the page there now with what the evidence adds."),
                      config, stage)
     usage = [first.get("usage") or {}, again.get("usage") or {}]
     again["usage"] = {key: sum(part.get(key) or 0 for part in usage) for key in usage[0].keys() | usage[1].keys()} or None
@@ -806,8 +806,14 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     if candidate:
         task_root = directory / "notebook"
         Notebook(task_root).write(record, before[record])
-        prompt += (f"\n\n## Output\nThe working notebook copy is {task_root}. Read its existing page at {task_root / record}. "
-                   f"Write the complete revised page to the NEW file {candidate}. "
+        # Edit, not rewrite: a page written from scratch each pass kept only
+        # what the model copied back, and each pass paid to type it again.
+        candidate.write_text(before[record], encoding="utf-8")
+        prompt += (f"\n\n## Output\nThe working notebook copy is {task_root}, with this page at {task_root / record}. "
+                   f"Your working copy of the page is the file {candidate}; it starts as the page as it stands. "
+                   "Edit it in place: add what the evidence adds, correct what it contradicts, and leave every "
+                   "supported line you have no reason to change exactly as it is. Do not rewrite the page from scratch. "
+                   "If the evidence changes nothing on the page, leave the file as it is and end your reply with NO CHANGE. "
                    "Write only that candidate file using an available local file tool. "
                    "The runner owns validation and replacement. Do not start nested co rem jobs. "
                    "After the candidate is complete, stop using tools and return a brief coverage summary. ")
@@ -903,7 +909,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         metrics["prompt_chars"] = len(prompt)
         selected_config = stage_config(notebook.root, config, "render") if candidate else config
         result = run_task(workdir, prompt, selected_config, stage)
-        if candidate and not summary and not candidate.is_file():
+        untouched = candidate and candidate.is_file() and candidate.read_text(encoding="utf-8") == before[record]
+        if candidate and not summary and (not candidate.is_file()
+                                          or untouched and "NO CHANGE" not in str(result.get("result") or "")):
             result = _one_more_turn(workdir, prompt, selected_config, stage, candidate, result)
         if candidate and search and not quick_first_pass and (directory / "search-requests.json").is_file():
             result = _searched_turn(workdir, prompt, selected_config, stage, directory, search, items, result)
@@ -913,7 +921,10 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         metrics["render_usage"] = result.get("usage")
         result["usage"] = {key: inquiry_usage.get(key, 0) + (result.get("usage") or {}).get(key, 0)
                            for key in inquiry_usage.keys() | (result.get("usage") or {}).keys()} or None
-        if candidate:
+        # An untouched copy the model says needs no change is no change, not a page to review.
+        no_change = bool(candidate) and candidate.is_file() and candidate.read_text(encoding="utf-8") == before[record] \
+            and "NO CHANGE" in str(result.get("result") or "")
+        if candidate and not no_change:
             def promote():
                 audit_usage = _promote_candidate(notebook, record, candidate, before[record], items, directory,
                                                  result.get("usage"), lock_held=maintenance_lock_held,
@@ -976,7 +987,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                     result["usage"] = {key: sum(part.get(key) or 0 for part in usage)
                                        for key in usage[0].keys() | usage[1].keys()} or None
             metrics["render_usage"] = result.get("usage")
-        elif stage in ("maintain", "abstract"):
+        elif stage in ("maintain", "abstract") and not candidate:
             refusals = _promote_maintenance(notebook, Notebook(task_root), before, items, directory,
                                             result.get("usage"), maintenance_lock_held)
             if stage == "maintain" and items and not changed():

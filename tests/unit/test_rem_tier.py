@@ -31,7 +31,7 @@ def model(monkeypatch):
 
     def agent(workspace, prompt, config, stage):   # drives tools: writes the file it is told to
         calls.append(prompt)
-        candidate = re.search(r"NEW file (\S+candidate\.md)", prompt)
+        candidate = re.search(r"page is the file (\S+candidate\.md)", prompt)
         if candidate:
             Path(candidate[1]).write_text(_filled(prompt), encoding="utf-8")
         return _envelope("Wrote the page.")

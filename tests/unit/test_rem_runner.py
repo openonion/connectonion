@@ -50,7 +50,7 @@ def delegate(monkeypatch):
         calls.append((argv, kw))
         if argv[-1].startswith('/rem-investigate'):
             import re
-            path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
+            path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
             path.write_text((Path(kw['cwd']).parent.parent / 'notes/old.md').read_text())
         if argv[-1].startswith('/rem-maintain'):
             workspace = Path(kw['cwd'])
@@ -60,7 +60,7 @@ def delegate(monkeypatch):
             (directory / 'completion.json').write_text(json.dumps({
                 'status': 'no_change', 'sources': sources, 'reason': 'No durable new fact.'}))
         return SimpleNamespace(returncode=0, stdout=json.dumps({
-            "outcome": "natural", "result": "done", "usage": {"input_tokens": 13}}), stderr="")
+            "outcome": "natural", "result": "done. NO CHANGE", "usage": {"input_tokens": 13}}), stderr="")
 
     monkeypatch.setattr("connectonion.rem.runner.co_command", lambda: ["/opt/bin/co"])
     monkeypatch.setattr("connectonion.rem.runner.subprocess.run", run)
