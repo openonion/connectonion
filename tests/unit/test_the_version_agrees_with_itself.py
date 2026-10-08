@@ -187,7 +187,12 @@ def test_readme_preview_install_pin_matches_the_version_being_shipped():
         return
 
     readme = (REPO / "README.md").read_text(encoding="utf-8")
-    preview = readme.split("### Try co rem · 1.9.0 preview", 1)[1].split("\n## ", 1)[0]
+    heading = re.search(r"^### Try co rem · (.+)$", readme, re.M)
+    # After a stable release the README recommends that stable; a later
+    # preview is offered from docs/releases.md and leaves it alone.
+    if not heading.group(1).endswith(" preview"):
+        return
+    preview = readme.split(heading.group(0), 1)[1].split("\n## ", 1)[0]
     pin = re.search(r"pip install --upgrade 'connectonion==([^']+)'", preview)
     assert pin, "README.md has no exact co rem preview install pin"
     assert pin.group(1) == version, (
