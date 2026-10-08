@@ -444,7 +444,7 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
 # The first run investigates the owner and every eligible mapped page. The
 # configured weekly budget is an advisory target here; explicit --first-*
 # flags cap a kind for a trial.
-FIRST_RUN_WORKERS = 16  # pages in parallel; mail fetches still share MAIL_FETCH_SLOTS (10)
+FIRST_RUN_WORKERS = 16  # pages in parallel; mail fetches share MAIL_FETCH_SLOTS per mailbox
 
 
 def _capped(rows: list, cap) -> list:
