@@ -923,3 +923,28 @@ def test_the_first_run_ends_by_drawing_decisions_and_principles_from_its_pages(t
     monkeypatch.setattr("connectonion.rem.runner.run_stage", refuse)
     failed = rem_commands._first_abstract(tmp_path, {}, said.append, wrote)
     assert failed["outcome"] == "failed" and "co rem abstract" in said[-1]
+
+
+def test_people_whose_backfill_found_older_mail_are_deepened_once_the_first_pass_wrote_them(tmp_path, monkeypatch):
+    """The owner (2026-10-08): read the mapped window first, fetch the rest of two
+    years in parallel, then deepen -- instead of every page waiting on the provider."""
+    from concurrent.futures import Future
+    from connectonion.cli.commands import rem_commands
+
+    def done(value):
+        future = Future()
+        future.set_result(value)
+        return future
+
+    rows = [{"record": f"people/{name}.md", "mode": "full", "days": 730} for name in ("a", "b", "c")]
+    backfill = {"people/a.md": done(12), "people/b.md": done(0), "people/c.md": done(5)}
+    ran, said = [], []
+    monkeypatch.setattr(rem_commands, "_people_jobs", lambda root, rows: [
+        {"kind": "people", "record": row["record"], "mode": "full", "row": row, "run": lambda row=row: ran.append(row)}
+        for row in rows])
+    out = rem_commands._deepen(tmp_path, said.append, lambda: "", rows, backfill,
+                               written={"people/a.md", "people/b.md"}, stopped="")
+    assert [row["record"] for row in ran] == ["people/a.md"]   # b found nothing older; c was not written
+    assert ran[0]["days"] == 730 and out["backfilled"] == 17
+    assert rem_commands._deepen(tmp_path, said.append, lambda: "", rows, backfill, written=set(),
+                                stopped="model denied access") == {"started": False}

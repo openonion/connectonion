@@ -174,6 +174,28 @@ def investigate_person(root: Path, row: dict, *, clients: dict, subscriptions: d
     return result
 
 
+def backfill_person(root: Path, row: dict, *, clients: dict, subscriptions: dict) -> int:
+    """Fetch a person's older mail into the local archive, without a model turn.
+
+    The first run reads only the mapped window, already on disk, so no page
+    waits on the provider; this fetches the rest of FIRST_WINDOW_DAYS alongside
+    it (owner, 2026-10-08). Returns how many messages predate the mapped window.
+    """
+    from . import investigate as investigation
+    from .files import MAP_DAYS
+    title, names = handles(root, row["record"])
+    items, _ = investigation.gather(title, names, days=FIRST_WINDOW_DAYS, clients=clients, subscriptions=subscriptions,
+                                    attachments_dir=root / ".state" / "attachments", archive_root=root,
+                                    record=row["record"])
+    cutoff, older = datetime.now(timezone.utc) - timedelta(days=MAP_DAYS), 0
+    for item in items:
+        try:
+            older += timestamp(item["timestamp"]) < cutoff
+        except (RemError, KeyError):  # an unreadable date is that mail's gap (#2013)
+            continue
+    return older
+
+
 def mark_investigated(root: Path, record: str, when: datetime) -> None:
     """When the gather for this page started: mail after it is new for the next run."""
     folder = state_path(root, "people")

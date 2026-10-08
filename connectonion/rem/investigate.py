@@ -409,7 +409,15 @@ def _patient(call, *args, attempts: int = 4):
             time.sleep(2 ** attempt)
 
 
-def _mail_body(client, message_id: str, kind: str = "") -> str:
+def _mail_body(client, message_id: str, kind: str = "", root: Path | None = None) -> str:
+    if root is not None:
+        # Already kept (the first-run archive, or a background backfill): read
+        # it from disk instead of asking the provider again.
+        from .mail_archive import message_path, observed_message_path
+        for path in (message_path(root, kind, message_id), observed_message_path(root, kind, message_id)):
+            body = read_json(path, {}).get("body") if path.is_file() else None
+            if isinstance(body, str):
+                return body
     with _fetch_slot(kind):
         return _patient(client.get_email_body, message_id)
 
@@ -646,7 +654,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             searched += ", kept the owner's own sent mail"
         mail_to_read = sorted(hit, key=lambda r: str(r["date"]))
         with ThreadPoolExecutor(max_workers=min(len(mail_to_read) or 1, 20)) as pool:
-            bodies = pool.map(partial(_mail_body, client, kind=kind), (row["id"] for row in mail_to_read))
+            bodies = pool.map(partial(_mail_body, client, kind=kind, root=archive_root),
+                              (row["id"] for row in mail_to_read))
             for number, (r, body) in enumerate(zip(mail_to_read, bodies), 1):
                 provenance = {}
                 if archive_root is not None:
