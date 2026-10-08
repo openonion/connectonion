@@ -763,3 +763,21 @@ def test_one_missing_body_does_not_take_the_whole_archive_away(tmp_path):
     assert beta is not None  # the sent reply remains available despite one missing incoming body
     assert "body four" in str(beta) and "body two" not in str(beta)
     assert domain_material(tmp_path, ["alpha.example"]) is not None
+
+
+def test_keeping_a_fetched_mail_waits_for_a_busy_notebook_instead_of_failing_the_page(tmp_path, monkeypatch):
+    """A 30-second wait lost UNSW's page while a promotion held the lock (1.9.1b5 first run)."""
+    from contextlib import contextmanager
+    from connectonion.rem import mail_archive
+    from connectonion.rem.files import WRITE_WAIT_SECONDS
+    waits = []
+
+    @contextmanager
+    def lock(root, wait=0):
+        waits.append(wait)
+        yield
+
+    monkeypatch.setattr(mail_archive, "maintenance_lock", lock)
+    mail_archive.retain_message(tmp_path, "gmail", {"id": "m1", "date": "2026-10-01", "from": "a@x.y"}, "body",
+                                fetched_at="2026-10-09T00:00:00Z")
+    assert waits == [WRITE_WAIT_SECONDS] and WRITE_WAIT_SECONDS >= 300

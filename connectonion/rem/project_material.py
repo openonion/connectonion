@@ -29,7 +29,7 @@ from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .files import (SECRET_SHAPES, Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path,
+from .files import (WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path,
                     write_json)
 from .investigate import project_paths
 from .scan import project_exclusion
@@ -386,7 +386,7 @@ def extract(root: Path, subscriptions: dict, *, since: datetime | None = None, f
                  "stayed_out": counts["excluded"].get(CONTAINER, 0)}
     index = {"extracted_at": now.isoformat(), "since": since.isoformat(), "created": created,
              "workspace": workspace, "unmapped": _unmapped(messages, folders)}
-    with nullcontext() if lock_held else maintenance_lock(root, wait=60):
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         pages = [_merge(root, record, by_page.get(record, []), full=full, now=now)
                  for record in sorted(set(folders.values()))]
         write_json(base / "index.json", index)
@@ -433,7 +433,7 @@ def _new_pages(root: Path, unmapped: list[dict], cutoff: datetime, lock_held: bo
                      "first": row["first"][:10],
                      "last": row["last"][:10], "repo": repo.get("toplevel", ""), "origin": repo.get("origin", "")})
     created = []
-    with nullcontext() if lock_held else maintenance_lock(root, wait=60):
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         notebook = Notebook(root)
         for identity, group in project_groups(rows).items():
             record, made = file_project(notebook, identity, group, refresh=False)

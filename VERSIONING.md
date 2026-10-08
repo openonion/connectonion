@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.1b5
+## Current Version: 1.9.1rc1
+
+1.9.1rc1 is the 1.9.1 release candidate; stable remains 1.9.0. After the 1.9.1b5
+real first run (all 280 pages in 82 minutes, 55 people deepened, 5 decisions and
+a principle), writes of finished work wait up to ten minutes for the notebook
+lock and token refreshes two minutes for the credential file. See
+[1.9.1rc1 notes](docs/releases/1.9.1rc1.md).
+
+- 1.9.1rc1 (Locks that wait long enough for sixteen workers).
+
+## Previous preview: 1.9.1b5
 
 1.9.1b5 is a 1.9.1 beta; stable remains 1.9.0. A first run builds its coding-
 session window once over two years and every page filters it by date, instead

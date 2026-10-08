@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import read_config
-from .files import SECRET_SHAPES, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
+from .files import WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .project_material import RECENT_DAYS, mark_refused, mark_written, page_state, stored, timestamp
 
 # Projects active in the last RECENT_DAYS (14, from project_material) are written first.
@@ -577,7 +577,7 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
         scrub_task(directory)
     messages = sum(1 for item in items if item["role"] == "user")
     tools = sorted({i["tool"] for i in items if i.get("tool")})
-    with maintenance_lock(root, wait=60):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         from .reader_model import _source_ids
         retain_repository_context(root, items, _source_ids([{"text": notebook.read(record)}]))
         notebook.note_pass(record, "written", "own messages: " + ", ".join(tools))

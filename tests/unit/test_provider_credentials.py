@@ -241,3 +241,32 @@ def test_new_authorization_cannot_leave_the_previous_accounts_metadata(selected)
     assert record.scopes == set()
     assert "GOOGLE_EMAIL" not in os.environ
     assert "GOOGLE_SCOPES" not in os.environ
+
+
+def test_a_refresh_waits_for_other_workers_refreshing_the_same_file(tmp_path, monkeypatch):
+    """1.9.1b5: 20 mail workers, a 30-second lock wait, 'Credential file is busy', one page lost."""
+    from contextlib import contextmanager
+    from connectonion import provider_credentials as pc
+    waits = []
+
+    @contextmanager
+    def lock(path, timeout=30.0):
+        waits.append(timeout)
+        yield
+
+    monkeypatch.setattr(pc, "env_lock", lock)
+    record = pc.ProviderCredentials("google", {"GOOGLE_REFRESH_TOKEN": "r"}, tmp_path / "keys.env")
+    monkeypatch.setattr(pc, "_latest", lambda record: record)
+    monkeypatch.setattr(pc, "_fresh", lambda record: False)
+    monkeypatch.setattr(pc, "_validated_values", lambda latest, data: {"GOOGLE_ACCESS_TOKEN": "a"})
+    monkeypatch.setattr(pc, "write_env_unlocked", lambda path, values: None)
+    monkeypatch.setattr(pc, "publish_values", lambda values, managed: None)
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {}
+
+    pc.refresh_credentials(record, backend="https://x", api_key="k", post=lambda *a, **k: Response())
+    assert waits == [pc.REFRESH_WAIT_SECONDS] and pc.REFRESH_WAIT_SECONDS >= 60
