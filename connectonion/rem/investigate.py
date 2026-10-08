@@ -375,6 +375,23 @@ def _download(client, email_id: str, folder: str):
     return client.download_attachments(email_id, folder)
 
 
+def _attachment_files(client, kind: str, message_id: str, attachments_dir: Path) -> tuple[str, list[str], str]:
+    """A message's saved attachments, asking the provider only the first time."""
+    short = hashlib.sha256(message_id.encode()).hexdigest()[:12]
+    folder = attachments_dir / kind / short
+    done = folder / ".fetched"
+    if done.is_file():
+        return short, sorted(str(p) for p in folder.iterdir() if p.is_file() and p.name != ".fetched"), ""
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        with MAIL_FETCH_SLOTS:
+            paths = _saved_paths(_patient(_download, client, message_id, str(folder))) or []
+    except Exception as error:  # noqa: BLE001 -- one bad attachment is not the run
+        return short, [], type(error).__name__
+    done.touch()
+    return short, paths, ""
+
+
 def _saved_paths(result) -> list[str]:
     """Whatever a download returned, the files that are now on disk."""
     if isinstance(result, dict):
@@ -477,20 +494,16 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         items.extend(local)
         attached = 0
 
-        def add_attachments(message_id: str, sender: str, stamp: str, subject: str, scope: str = "") -> None:
+        def add_attachments(message_id: str, sender: str, stamp: str, subject: str, scope: str = "",
+                            fetched=None) -> None:
             nonlocal attached
             if attachments_dir is None or not hasattr(client, "download_attachments"):
                 return
             from .attachments import extract_text
-            short = hashlib.sha256(message_id.encode()).hexdigest()[:12]
-            folder = attachments_dir / kind / short
-            try:
-                folder.mkdir(parents=True, exist_ok=True)
-                paths = _saved_paths(_patient(_download, client, message_id, str(folder)))
-            except Exception as error:  # noqa: BLE001 -- one bad attachment is not the run
-                paths = []
-                coverage.append(f"{kind}:{short}: attachments could not be saved ({type(error).__name__})")
-            for saved in paths or []:
+            short, paths, error = fetched or _attachment_files(client, kind, message_id, attachments_dir)
+            if error:
+                coverage.append(f"{kind}:{short}: attachments could not be saved ({error})")
+            for saved in paths:
                 attached += 1
                 items.append({"role": "attachment", "speaker": sender, "timestamp": stamp,
                               "subject": f"{subject} — {Path(saved).name}",
@@ -515,8 +528,14 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 coverage.append(f"{kind}: {searched}; requested body interval covered by local archive; "
                                 "attachments unavailable without provider")
             continue
-        for item in local:
-            add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""), item.get("relationship_scope", ""))
+        # One server call per archived mail, in sequence, was most of a heavy
+        # page's 15-minute gather (2026-10-08); fetched once, then read from disk.
+        if attachments_dir is not None and hasattr(client, "download_attachments") and local:
+            with ThreadPoolExecutor(max_workers=10) as pool:
+                found = pool.map(lambda item: _attachment_files(client, kind, item["_mail_id"], attachments_dir), local)
+                for item, fetched in zip(local, found):
+                    add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""),
+                                    item.get("relationship_scope", ""), fetched)
         # Only a whole address goes to the server: a page line with prose or a
         # citation in it made Gmail match 677 unrelated mails (#1954). A bare
         # domain is not an address; org pages search it through `domains` above.

@@ -1853,3 +1853,23 @@ def test_over_input_limit_every_part_is_read_in_rounds_then_one_synthesis(tmp_pa
     assert "Round 1 line." in page and f"Round {len(turns)} line." in page
     assert out["usage"]["input_tokens"] == 5 * (len(turns) - 1) + 1
     assert any(line.startswith("rounds: ") for line in out["coverage"])
+
+
+def test_a_message_s_attachments_are_asked_for_once_then_read_from_disk(tmp_path):
+    """One provider call per archived mail, in sequence, was most of a heavy
+    page's 15-minute gather on a real 1.9.0 init (2026-10-08)."""
+    calls = []
+
+    class Mail:
+        def download_attachments(self, email_id, out_dir):
+            calls.append(email_id)
+            if email_id == "with":
+                (Path(out_dir) / "offer.pdf").write_bytes(b"%PDF")
+                return [str(Path(out_dir) / "offer.pdf")]
+            return []
+
+    first = [inv._attachment_files(Mail(), "outlook", m, tmp_path) for m in ("with", "without")]
+    again = [inv._attachment_files(Mail(), "outlook", m, tmp_path) for m in ("with", "without")]
+    assert calls == ["with", "without"]
+    assert [paths for _, paths, _ in again] == [paths for _, paths, _ in first]
+    assert again[0][1][0].endswith("offer.pdf") and again[1][1] == []
