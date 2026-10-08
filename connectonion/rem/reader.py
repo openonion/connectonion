@@ -15,7 +15,7 @@ import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .files import CATEGORIES, Notebook
+from .files import CATEGORIES, MAP_DAYS, Notebook
 from .service import run_logs, status, subscriptions
 
 TEMPLATE = Path(__file__).with_name("reader.html")
@@ -88,7 +88,7 @@ def contact_candidates(root: Path) -> tuple[list[dict], dict]:
     rows.sort(key=lambda row: (-row["mails"], row["email"].casefold()))
     errors = [row for row in mapped.get("errors", []) if row.get("source") in ("gmail", "outlook")]
     return rows, {"scope": "all available history since 1970" if mapped.get("all_history") else
-                   f"last {mapped.get('days', 90)} days", "incomplete": bool(errors),
+                   f"last {mapped.get('days', MAP_DAYS)} days", "incomplete": bool(errors),
                    "mailbox_errors": len(errors), "automated": len(mapped.get("automated_correspondents", []))}
 
 

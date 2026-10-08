@@ -974,7 +974,7 @@ function el(tag, attrs, children) {
 const CATEGORY_LABEL = {
   people: "People", orgs: "Organisations", projects: "Projects", skills: "Skills", knowledge: "Knowledge",
   opportunities: "Opportunities", decisions: "Decisions", principles: "Principles", works: "Works",
-  agenda: "Agenda", notes: "Notes"
+  agenda: "Agenda", notes: "AI notes", logs: "Run logs"
 };
 const CATEGORY_ASK = {
   people: "who is this, and where did we leave off?",
@@ -987,7 +987,8 @@ const CATEGORY_ASK = {
   principles: "standing rules we adopted",
   works: "outputs that can be reused or shown",
   agenda: "promises, waiting on others, dates that matter",
-  notes: "everything durable that fits nowhere else"
+  notes: "the AI's own working notes: reflections and open questions",
+  logs: "what co rem recorded while it worked: maps and skill run counts"
 };
 function label(c) { return CATEGORY_LABEL[c] || c; }
 function singular(c) { return ({ people: "Person", orgs: "Organisation", skills: "Skill" })[c] || label(c).replace(/s$/, ""); }

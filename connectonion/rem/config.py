@@ -147,12 +147,30 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     return validate(config) if validated else config
 
 
+def _move_generated_notes(root: Path) -> None:
+    """Before 1.9.1 the maps and skill run reports went to notes/, and in every
+    real notebook they were all notes/ held. They are run logs now; the skill
+    pages that link a report follow it."""
+    notes = root / "notes"
+    moved = [*notes.glob("skill-runs-*.md"), *(notes / f"{c}-map.md" for c in ("people", "projects", "orgs"))]
+    moved = [path for path in moved if path.is_file()]
+    for path in moved:
+        path.replace(root / "logs" / path.name)
+    if not moved:
+        return
+    for page in (root / "skills/catalog").glob("*.md"):
+        text = page.read_text(encoding="utf-8")
+        if "../../notes/skill-runs-" in text:
+            atomic_write(page, text.replace("../../notes/skill-runs-", "../../logs/skill-runs-"))
+
+
 def prepare(root: Path) -> None:
     """Prepare only missing paths; caller holds the root lock when concurrent."""
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     state_path(root, "maintenance.lock").parent.mkdir(exist_ok=True, mode=0o700)
     for name in (*CATEGORIES, "skills/catalog", "skills/candidates", "skills/approved"):
         safe_path(root, name).mkdir(parents=True, exist_ok=True, mode=0o700)
+    _move_generated_notes(root)
     path = safe_path(root, "config.yaml")
     if not path.exists():
         atomic_write(path, yaml.safe_dump(default_config(), sort_keys=False))

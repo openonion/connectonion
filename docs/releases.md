@@ -22,6 +22,16 @@ visible nightly health. See [1.9.0 notes](releases/1.9.0.md) and the
 python -m pip install --upgrade 'connectonion==1.9.0'
 ```
 
+## Current preview
+
+Alpha **1.9.1a1** maps the last 180 days on the first run and moves co rem's
+generated maps and skill run reports from Notes to a Run logs category. See
+[1.9.1a1 notes](releases/1.9.1a1.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.1a1'
+```
+
 ## Previous previews
 
 Alpha **1.9.0a43** shows failed investigations on Home and explains the nightly

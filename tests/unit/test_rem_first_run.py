@@ -379,7 +379,7 @@ def test_a_failed_first_page_keeps_the_map_and_names_the_retry(first_run, monkey
     payload = json.loads(result.stdout)
     assert payload["data"]["investigation"] == "failed"
     assert payload["next"].endswith("investigate me --days 5")
-    assert (root / "notes/people-map.md").is_file()
+    assert (root / "logs/people-map.md").is_file()
 
 
 # ------------------------------------------------------- runner preflight

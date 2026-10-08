@@ -146,7 +146,7 @@ def _archive_message(root: Path, row: dict, clients: dict) -> str:
 def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seconds: float | None = None,
                  clock=time.monotonic, now=_utcnow, on_saved=None,
                  archive_days: int | None = None) -> dict:
-    """Fetch 90-day provider body snapshots once; keep files if interrupted.
+    """Fetch the mapped window's provider body snapshots once; keep files if interrupted.
 
     The inventory is the bounded enumeration. This pass uses its IDs, never a
     second mailbox-wide query, and an existing valid snapshot is reused on a

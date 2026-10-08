@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.0
+## Current Version: 1.9.1a1
+
+1.9.1a1 is a preview; stable remains 1.9.0. co rem's first map covers the last
+180 days instead of 90, and the reader names its generated files honestly: the
+people, project and organisation maps and the skill run reports move from Notes
+to a new Run logs category, and `notes/` is shown as AI notes. Existing
+notebooks move those files on their next command, and skill pages keep their
+links. See [1.9.1a1 notes](docs/releases/1.9.1a1.md).
+
+- 1.9.1a1 (180-day first map; Run logs and AI notes in the reader).
+
+## Previous stable: 1.9.0
 
 Stable 1.9.0 promotes co rem after the 90-day installed-package first-run,
 reader, and scheduled-upkeep acceptance recorded in

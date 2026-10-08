@@ -51,7 +51,7 @@ Build the notebook and investigate the full mapped cohort. One command.
 First the map is made without a model: a page for each person you write to, each organization,
 each coding project and each installed Skill, plus your own page, titled with your
 name and filled with who you write to most and where you work. init prints that
-page when the map is done. It lists 90 days of mail headers, the preview line your
+page when the map is done. It lists 180 days of mail headers, the preview line your
 provider lists with each message (to name people by your greeting), saved
 contacts, and session metadata, then saves a private copy of each listed message
 body, once, so investigating a person later reads it from disk.
@@ -66,7 +66,7 @@ and installed skills from their source instructions and retained run evidence,
 and work immediately, with evidence cited on each page.
 --first-people, --first-projects, --first-orgs and --first-skills cap a kind (0 for none).
 `--all-history` maps available mail metadata since 1970 and local session
-history, while keeping the first mail-body archive to 90 days. `--investigate-all`
+history, while keeping the first mail-body archive to 180 days. `--investigate-all`
 includes that history scan and explicitly selects every mapped person and project;
 each person still uses its current per-page source window. `--estimate-only`
 builds the map and prints that selection's cost without a model turn or body
@@ -87,7 +87,7 @@ Usage:    co rem init [--days N] [--mine ADDRESS[,ADDRESS...]] [--name NAME] [--
                        [--all-history] [--investigate-all] [--estimate-only]
                        [--start | --no-start] [--yes]
                        [--first-people N] [--first-projects N] [--first-orgs N] [--first-skills N]
-Example:  co rem init --days 90 --name "Aaron Xie" --mine aaron@mail.openonion.ai,aaron@openonion.ai
+Example:  co rem init --days 180 --name "Aaron Xie" --mine aaron@mail.openonion.ai,aaron@openonion.ai
 
 Inputs:   Connected mailboxes (co auth google, co auth microsoft) and local Codex /
           Claude Code sessions. --mine adds addresses that are yours (commas, or
@@ -119,7 +119,7 @@ Effects:  Writes pages and private files (owner-only). Reads mail bodies unless
           summary is approved. Noninteractive init without --yes leaves it off.
           The map costs nothing; the subsequent investigation uses the configured
           model for the selected people, projects and organizations.
-Takes:    About 10 minutes to map 90 days of two mailboxes; saving bodies takes
+Takes:    About 10 minutes to map 90 days of two mailboxes (the default 180, about twice that); saving bodies takes
           longer; investigation time depends on the selected pages and runner.
           An interrupted run resumes where it stopped.
 

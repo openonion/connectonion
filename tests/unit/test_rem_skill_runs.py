@@ -401,3 +401,17 @@ def test_unchanged_or_failed_skill_turn_keeps_no_record_bodies(tmp_path, monkeyp
         investigate_skill_page(root, record, [])
     assert not (root / '.state/skill-records').exists()
     assert not list((root / '.state/evidence').glob('skill-*'))
+
+
+def test_run_evidence_is_a_run_log_not_a_note(tmp_path):
+    """Every real notebook's notes/ held only these generated reports and maps,
+    so the reader's Notes held nothing the owner or AI wrote (2026-10-08)."""
+    logs = tmp_path / 'evals'
+    summaries(logs)
+    root = tmp_path / 'rem'
+    n = Notebook(root)
+    record = 'skills/catalog/example.md'
+    n.stub_skill(record, 'example', '/source/SKILL.md')
+    result = investigate_skill_runs(root, record, [logs])
+    assert result['report'].startswith('logs/skill-runs-')
+    assert '](../../logs/skill-runs-' in n.read(record)

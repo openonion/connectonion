@@ -559,7 +559,7 @@ def test_init_builds_all_maps_without_model_or_investigation(tmp_path, monkeypat
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)['data']
     assert data['phase'] == 'mapped' and data['investigation'] == 'not started'
-    for record in ('notes/people-map.md', 'notes/projects-map.md', 'notes/orgs-map.md', 'skills/catalog/index.md'):
+    for record in ('logs/people-map.md', 'logs/projects-map.md', 'logs/orgs-map.md', 'skills/catalog/index.md'):
         assert (tmp_path / record).is_file()
     assert (tmp_path / '.state/source-inventory.md').is_file()
     assert (tmp_path / '.state/source-inventory.jsonl').is_file()
