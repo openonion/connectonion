@@ -886,11 +886,11 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                            and item.get("role") not in ("evidence-index", "original_evidence")]}
     quick_first_pass = any(item.get("role") == "quick-first-pass" for item in items)
     if candidate and search and not quick_first_pass:
-        prompt += (f"\n\n## Optional runner-mediated mail search\nIf a section stays Unknown and the user's mailbox may hold the answer (a role, a phone, "
-                   f"how they met), also write up to {SEARCH_QUERIES} mail searches as a JSON list of strings "
-                   f"to {directory / 'search-requests.json'}: plain words, or from:, to:, participants: an "
-                   "address. You get one more turn with what they find. Never ask for what the material "
-                   "already answers.")
+        prompt += (f"\n\n## Mail search for your leads\nWhen a lead goes past the material -- the reply to a request, "
+                   "a person or company named in a thread, an attachment, how they met -- write up to "
+                   f"{SEARCH_QUERIES} mail searches as a JSON list of strings to {directory / 'search-requests.json'}: "
+                   "plain words, or from:, to:, participants: an address. You get one more turn with what they "
+                   "find. The coverage item says what was already searched; do not repeat those addresses.")
     started = time.monotonic()
     result = {}
     inquiry_usage = {}
