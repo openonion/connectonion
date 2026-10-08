@@ -769,6 +769,21 @@
   .evidence-find-status { min-height: 18px; font: 12px var(--mono); color: var(--ink-3); }
   .evidence-original mark { background: #ffe083; color: #171717; }
   .evidence-unavailable { color: var(--ink-2); }
+  .msg { margin-top: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); padding: 16px 18px; }
+  .msg-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .msg-time { font: 12px var(--mono); color: var(--ink-3); white-space: nowrap; }
+  .msg-from { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; }
+  .msg-address { font: 12px var(--mono); color: var(--ink-3); overflow-wrap: anywhere; }
+  .msg-person { display: inline-flex; align-items: center; gap: 8px; margin: 3px 12px 3px 0; color: var(--ink); font: 600 14px var(--ui); text-decoration: none; }
+  a.msg-person:hover span:last-child { text-decoration: underline; }
+  .msg-avatar { flex: none; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: hsl(var(--hue) 45% 88%); color: hsl(var(--hue) 45% 28%); font: 600 11px var(--ui); letter-spacing: .02em; }
+  .msg-subject { margin: 12px 0 6px; font: 600 16px var(--ui); color: var(--ink); overflow-wrap: anywhere; }
+  .msg-people { display: grid; gap: 4px; margin: 6px 0 4px; }
+  .msg-row { display: flex; flex-wrap: wrap; align-items: center; }
+  .msg-row .msg-person { font-weight: 500; font-size: 13px; }
+  .msg-row .msg-avatar { width: 22px; height: 22px; font-size: 9px; }
+  .msg-label { width: 30px; font: 11px var(--mono); color: var(--ink-3); }
+  .msg-body blockquote { margin: 12px 0 0; border-left: 0; border-radius: 10px; }
   @media (prefers-reduced-motion: reduce) { .relation-card { transition: none; } .relation-card:hover, .relation-card:focus-visible { transform: none; } }
 
   @media (min-width: 1180px) {
@@ -3091,6 +3106,52 @@ function sourceFind(excerpt, quote) {
     el("div", { class: "evidence-find-controls" }, [input, next]), status]);
 }
 
+// A mail as a message (#2106): who wrote it, to whom, when, then the words.
+function mailbox(text) {
+  const m = /^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/.exec(text || "");
+  const address = (m ? m[2] : text || "").trim().toLowerCase();
+  return { name: (m && m[1].trim()) || address.split("@")[0], address };
+}
+let PEOPLE_BY_ADDRESS = null;
+function personByAddress(address) {
+  if (!PEOPLE_BY_ADDRESS) {
+    PEOPLE_BY_ADDRESS = new Map();
+    for (const r of REM.records.filter(r => r.category === "people"))
+      for (const field of ["Email", "Handles"])
+        for (const i of parseFacts(r).get(field) || [])
+          for (const address of i.value.toLowerCase().match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) || [])
+            if (!PEOPLE_BY_ADDRESS.has(address) || r.path === REM.owner) PEOPLE_BY_ADDRESS.set(address, r);
+  }
+  return PEOPLE_BY_ADDRESS.get(address);
+}
+function avatar(name) {
+  const words = name.replace(/[^\p{L}\p{N} ]/gu, " ").trim().split(/\s+/);
+  const initials = (words.length > 1 ? words[0][0] + words.at(-1)[0] : (words[0] || "?").slice(0, 2)).toUpperCase();
+  let hue = 0;
+  for (const c of name) hue = (hue * 31 + c.codePointAt(0)) % 360;
+  return el("span", { class: "msg-avatar", "aria-hidden": "true", style: "--hue:" + hue, text: initials });
+}
+function personChip(text) {
+  const who = mailbox(text), page = personByAddress(who.address);
+  const name = page ? page.title : who.name;
+  return el(page ? "a" : "span", { class: "msg-person", title: who.address, ...(page ? { href: href(page) } : {}) },
+    [avatar(name), el("span", { text: name })]);
+}
+function mailMessage(context, quote) {
+  const headers = context.participants || {};
+  const list = value => (Array.isArray(value) ? value : value ? String(value).split(/,\s*(?=[^,]*@)/) : []).filter(Boolean);
+  const from = list(headers.from)[0] || context.sender || "";
+  const rows = [["To", list(headers.to)], ["Cc", list(headers.cc)]].filter(([, people]) => people.length);
+  return el("article", { class: "msg" }, [
+    el("header", { class: "msg-head" }, [el("span", { class: "msg-from" }, [personChip(from),
+        el("span", { class: "msg-address", text: mailbox(from).address })]),
+      el("time", { class: "msg-time", text: context.time ? "Sent " + fmtTime(context.time) : "Sent date unknown" })]),
+    ...(context.subject ? [el("p", { class: "msg-subject evidence-subject", text: context.subject })] : []),
+    ...(rows.length ? [el("div", { class: "msg-people evidence-participants" }, rows.map(([label, people]) =>
+      el("div", { class: "msg-row" }, [el("span", { class: "msg-label", text: label }), ...people.map(personChip)])))] : []),
+    context.body_empty ? el("p", { class: "evidence-empty-body", text: "The retained message has no body text. Its headers are available." })
+      : el("div", { class: "msg-body" }, [quote])]);
+}
 function openEvidence(r, number, trigger) {
   const source = sourceList(r).find(item => item.n.toLowerCase() === number.toLowerCase());
   if (!source) return false;
@@ -3098,7 +3159,6 @@ function openEvidence(r, number, trigger) {
   const context = (REM.source_context || {})[id];
   const mail = /^(gmail|outlook)$/.test(context?.source || "");
   const headers = context?.participants;
-  const headerText = value => Array.isArray(value) ? value.join(", ") : value || "Not recorded";
   const revision = /:([0-9a-f]{40,64}):(.+)$/.exec(context?.origin || "");
   const origin = revision ? revision[2] + " @ " + revision[1].slice(0, 8)
     : context?.origin ? context.origin.split("/").at(-1).replace(/.*:checkout-state$/, "Checkout state") : "";
@@ -3119,20 +3179,17 @@ function openEvidence(r, number, trigger) {
     dialog.append(el("div", { class: "evidence-original private" }, [
     el("span", { class: "focus-kicker", text: (/^skill-(source|reference)$/.test(context.source) ? "Instruction excerpt" : context.source === "project-source" ? "Repository snapshot" : mail ? context.body_empty ? "Mail headers" : "Mail body excerpt" : "Original source context") + " · not a validated claim span" }),
     ...(origin ? [el("p", { class: "evidence-meta", text: origin })] : []),
-    el("p", { class: "evidence-meta", text: [context.source, context.sender,
-      context.time ? (mail ? "Sent " : "") + fmtTime(context.time) : "",
+    el("p", { class: "evidence-meta", text: [context.source, mail ? "" : context.sender,
+      context.time && !mail ? fmtTime(context.time) : "",
       context.captured_at ? (mail ? "Retrieved " : "Captured ") + fmtTime(context.captured_at) : "",
       context.retained_at && !context.captured_at ? "Archived " + fmtTime(context.retained_at) : ""].filter(Boolean).join(" · ") }),
-    ...(mail && headers ? [el("details", { class: "evidence-participants" }, [
-      el("summary", { text: "From, To and Cc" }),
-      ...["from", "to", "cc"].map(key => el("p", { class: "evidence-meta", text: ({from: "From", to: "To", cc: "Cc"}[key]) + ": " + headerText(headers[key]) }))])] : []),
     ...(context.body_format ? [el("p", { class: "evidence-meta", text: context.body_format })] : []),
-    ...(mail && context.subject ? [el("p", { class: "evidence-meta evidence-subject", text: "Subject: " + context.subject })] : []),
     ...(context.mapped_session_folder ? [el("p", { class: "evidence-meta", text: "Mapped project session folder: " + context.mapped_session_folder + " · source routing only; does not verify completion" })] : []),
     ...(context.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(context.input_scope) })] : []),
     ...(context.truncated ? [el("p", { class: "evidence-meta", text: "This archived excerpt is truncated; find searches only the text shown." })] : []),
     ...(context.excerpt.length > 2000 ? [sourceFind(excerpt, quote)] : []),
-    context.body_empty ? el("p", { class: "evidence-empty-body", text: "The retained message has no body text. Its headers are available." })
+    mail ? mailMessage(context, quote)
+      : context.body_empty ? el("p", { class: "evidence-empty-body", text: "The retained message has no body text. Its headers are available." })
       : quote]));
   }
   else dialog.appendChild(el("p", { class: "evidence-unavailable", text: "The original source is not archived in this snapshot. The citation above identifies a source; it does not show its original text." }));

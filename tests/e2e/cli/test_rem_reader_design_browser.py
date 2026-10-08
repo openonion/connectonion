@@ -522,11 +522,12 @@ def test_empty_mail_keeps_private_header_evidence_without_inventing_a_body_excer
         dialog = page.locator('#evidence-dialog')
         assert 'MAIL HEADERS' in dialog.inner_text()
         assert dialog.locator('.evidence-empty-body').is_visible()
-        assert 'Subject: Accepted: Workshop' in dialog.locator('.evidence-subject').inner_text()
+        assert 'Accepted: Workshop' in dialog.locator('.evidence-subject').inner_text()
         assert not dialog.locator('blockquote').count()
         assert not dialog.locator('.evidence-unavailable').count()
-        dialog.get_by_text('From, To and Cc', exact=True).click()
-        assert 'mara@example.org' in dialog.locator('.evidence-participants').inner_text()
+        # A message (#2106): the sender and their address head it, recipients follow.
+        assert 'mara@example.org' in dialog.locator('.msg-head').inner_text()
+        assert dialog.locator('.evidence-participants .msg-person').count() == 1
         page.evaluate('togglePrivate()', isolated_context=False)
         assert not dialog.locator('.evidence-original').is_visible()
         assert not dialog.locator('.evidence-subject').is_visible()
@@ -827,10 +828,10 @@ def test_recovered_mail_shows_participants_and_separate_archive_clock_privately(
     dialog = page.locator('#evidence-dialog')
     participants = dialog.locator('.evidence-participants')
     assert participants.is_visible()
-    assert participants.locator('summary').bounding_box()['height'] >= 44
-    participants.locator('summary').click()
-    assert 'From: Mentor <mentor@example.org>' in participants.inner_text()
-    assert 'Cc: Guest <guest@example.org>' in participants.inner_text()
+    head = dialog.locator('.msg-head').inner_text()
+    assert 'Mentor' in head and 'mentor@example.org' in head
+    assert 'Cc' in participants.inner_text() and 'Guest' in participants.inner_text()
+    assert participants.locator('[title="guest@example.org"]').count() == 1
     assert 'Sent ' in dialog.inner_text() and 'Archived ' in dialog.inner_text()
     assert 'Original retrieval time unknown' in dialog.inner_text()
     assert 'Retrieved ' not in dialog.inner_text()
