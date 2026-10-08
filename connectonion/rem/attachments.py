@@ -27,6 +27,7 @@ def attachment_context(root: Path, source: str) -> dict | None:
     if not text:
         return None
     return {"source": "attachment", "excerpt": text[:640], "truncated": len(text) > 640,
+            "filename": filename, "file": path.as_uri(),
             "body_format": "Local attachment text extraction; images and signature appearances are not verified.",
             "input_scope": "Current local attachment. Original capture time and the version read by the writer are unknown."}
 

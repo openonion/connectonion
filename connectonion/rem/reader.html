@@ -769,6 +769,9 @@
   .evidence-find-status { min-height: 18px; font: 12px var(--mono); color: var(--ink-3); }
   .evidence-original mark { background: #ffe083; color: #171717; }
   .evidence-unavailable { color: var(--ink-2); }
+  .document-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .document-list a { font: 600 14px var(--ui); overflow-wrap: anywhere; }
+  .evidence-open-file { display: inline-block; margin: 8px 0 4px; font: 600 13px var(--ui); }
   .msg { margin-top: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); padding: 16px 18px; }
   .msg-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   .msg-time { font: 12px var(--mono); color: var(--ink-3); white-space: nowrap; }
@@ -2704,6 +2707,14 @@ function recordFocus(r) {
   const shown = labels.filter(([, value]) => value).slice(0, 3);
   if (shown.length && !person) out.appendChild(el("dl", { class: "focus-facts" }, shown.map(([key, value]) =>
     el("div", { class: "focus-fact" }, [el("dt", { text: key }), el("dd", { html: inline(String(value), r.path), title: plainLine(String(value)) })]))));
+  // Enrich (#2315): the documents this page cites, each one click from its file.
+  const documents = sourceList(r).map(source => [source, (REM.source_context || {})[sourceId(source.text)]])
+    .filter(([, c]) => c?.source === "attachment" && c.file);
+  if (documents.length) out.appendChild(el("div", { class: "focus-section documents private" }, [
+    el("h2", { text: "Documents" }),
+    el("ul", { class: "document-list" }, documents.map(([source, c]) => el("li", {}, [
+      el("a", { href: c.file, target: "_blank", rel: "noopener", text: c.filename }),
+      el("span", { html: " " + citeChip(source.n, r.path, false, true) })])))]));
   const conversations = [...new Set(sourceList(r).map(source => {
     const id = sourceId(source.text);
     return id && (REM.source_context || {})[id]?.thread;
@@ -3184,6 +3195,8 @@ function openEvidence(r, number, trigger) {
       context.captured_at ? (mail ? "Retrieved " : "Captured ") + fmtTime(context.captured_at) : "",
       context.retained_at && !context.captured_at ? "Archived " + fmtTime(context.retained_at) : ""].filter(Boolean).join(" · ") }),
     ...(context.body_format ? [el("p", { class: "evidence-meta", text: context.body_format })] : []),
+    ...(context.file ? [el("a", { class: "evidence-open-file", href: context.file, target: "_blank", rel: "noopener",
+      text: "Open " + (context.filename || "the file") + " →" })] : []),
     ...(context.mapped_session_folder ? [el("p", { class: "evidence-meta", text: "Mapped project session folder: " + context.mapped_session_folder + " · source routing only; does not verify completion" })] : []),
     ...(context.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(context.input_scope) })] : []),
     ...(context.truncated ? [el("p", { class: "evidence-meta", text: "This archived excerpt is truncated; find searches only the text shown." })] : []),

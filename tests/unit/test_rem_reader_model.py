@@ -56,6 +56,8 @@ def test_pdf_source_preview_reads_only_the_pages_needed(tmp_path, monkeypatch):
     context = attachment_context(tmp_path, source)
     assert context['excerpt'] == first.strip()[:640]
     assert context['truncated']
+    # Enrich (#2315): a cited document opens from the page.
+    assert context['file'] == path.as_uri() and context['filename'] == path.name
     assert calls == ['first']
     calls.clear()
     assert extract_text(path, limit=None).endswith('Later clause.')
