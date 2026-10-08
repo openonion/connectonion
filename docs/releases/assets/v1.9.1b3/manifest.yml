@@ -1,0 +1,2 @@
+version: v1.9.1b3
+no_visual_change: "Mail fetching only: HTTP 429 back-off, four Outlook reads at a time, first pass without attachment lookups. Reader HTML is unchanged since 1.9.1b1."
