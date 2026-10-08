@@ -24,15 +24,18 @@ python -m pip install --upgrade 'connectonion==1.9.0'
 
 ## Current preview
 
-Beta **1.9.1b3** writes people's first pages without touching the network,
-fetches attachments with the background backfill, and waits out a throttled
-mailbox. See [1.9.1b3 notes](releases/1.9.1b3.md).
+Beta **1.9.1b4** scans your coding sessions once per first run instead of once
+per person. See [1.9.1b4 notes](releases/1.9.1b4.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.1b3'
+python -m pip install --upgrade 'connectonion==1.9.1b4'
 ```
 
 ## Previous previews
+
+Beta **1.9.1b3** writes people's first pages without touching the network,
+fetches attachments with the background backfill, and waits out a throttled
+mailbox. See [1.9.1b3 notes](releases/1.9.1b3.md).
 
 Beta **1.9.1b2** writes the first pages from mail already on disk, fetches each
 person's older mail in the background and deepens those pages, and keeps

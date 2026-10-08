@@ -1615,6 +1615,7 @@ def test_scoped_sessions_reuse_disk_window_and_find_new_input(tmp_path, monkeypa
     assert {item["text"] for item in first} == {"Vern's earlier decision", "Vern's current decision"}
     assert len(reads) == 2
 
+    inv._WINDOWS.clear()  # each gather below is a later CLI run; the in-run memo is per process
     recent, _ = inv.gather("Vern", ["Vern"], days=1, clients={}, subscriptions=subs,
                            archive_root=notebook)
     assert [item["text"] for item in recent] == ["Vern's current decision"]
@@ -1623,6 +1624,7 @@ def test_scoped_sessions_reuse_disk_window_and_find_new_input(tmp_path, monkeypa
     with current.open("a") as output:
         output.write(json.dumps({"type": "response_item", "timestamp": now.isoformat(), "payload": {
             "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Vern's new input"}]}}) + "\n")
+    inv._WINDOWS.clear()
     updated, _ = inv.gather("Vern", ["Vern"], days=1, clients={}, subscriptions=subs,
                             archive_root=notebook)
     assert {item["text"] for item in updated} == {"Vern's current decision", "Vern's new input"}
@@ -1631,6 +1633,7 @@ def test_scoped_sessions_reuse_disk_window_and_find_new_input(tmp_path, monkeypa
 
     added = sessions / "rollout-added.jsonl"
     rollout(added, now, "Vern's separate new session")
+    inv._WINDOWS.clear()
     with_new_file, _ = inv.gather("Vern", ["Vern"], days=1, clients={}, subscriptions=subs,
                                   archive_root=notebook)
     assert {item["text"] for item in with_new_file} == {
@@ -1638,6 +1641,7 @@ def test_scoped_sessions_reuse_disk_window_and_find_new_input(tmp_path, monkeypa
     assert reads == [old, current, current, added]
 
     old.unlink()
+    inv._WINDOWS.clear()
     after_deletion, _ = inv.gather("Vern", ["Vern"], days=10, clients={}, subscriptions=subs,
                                    archive_root=notebook)
     assert {item["text"] for item in after_deletion} == {item["text"] for item in with_new_file}
@@ -1966,3 +1970,26 @@ def test_the_first_pass_reads_no_attachments_and_the_backfill_counts_them(tmp_pa
                                                           {"role": "other", "timestamp": "2024-11-01T00:00:00Z"},
                                                           {"role": "other", "timestamp": "2026-10-01T00:00:00Z"}], []))
     assert people_pages.backfill_person(tmp_path, {"record": "people/vern.md"}, clients={}, subscriptions={}) == 2
+
+
+def test_one_run_scans_its_sessions_once_for_every_person(tmp_path, monkeypatch):
+    """1.9.1b3: 350 of a 363-second first-pass gather was re-hashing every session
+    file for each person in turn, under the lock; the window is kept for the run."""
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem import source
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    now = datetime.now(timezone.utc)
+    meta = {"type": "session_meta", "payload": {"id": "r", "cwd": "/work/demo"}}
+    row = {"type": "response_item", "timestamp": (now - timedelta(days=2)).isoformat(), "payload": {
+        "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Vern and Ody decided"}]}}
+    (sessions / "rollout-a.jsonl").write_text(json.dumps(meta) + "\n" + json.dumps(row) + "\n")
+    calls, original = [], source.collect
+    monkeypatch.setattr(inv, "collect", lambda *a, **k: calls.append(1) or original(*a, **k))
+    subs = {"codex": {"kind": "codex", "root": str(sessions)}}
+    scans = []
+    for name in ("Vern", "Ody"):
+        items, _ = inv.gather(name, [name], days=10, clients={}, subscriptions=subs, archive_root=tmp_path / "book")
+        assert [i["text"] for i in items] == ["Vern and Ody decided"]
+        scans.append(len(calls))
+    assert scans[0] > 0 and scans[1] == scans[0]  # the second person read the kept window

@@ -832,12 +832,26 @@ def _window_items(read, scoped: dict, label: str, stage_progress=None,
 
 
 SESSION_WINDOW_VERSION = 1  # Bump when source.collect changes which messages it accepts.
+# A first run is hours long; re-verifying every rollout each ten minutes held all
+# its workers behind one three-minute scan. Half an hour stale is fine for it.
+SESSION_MEMO_SECONDS = 1800
 
 
 def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tuple[list[dict], int]:
-    """Reuse typed session messages across CLI runs; collect reads only changed files."""
+    """Reuse typed session messages across CLI runs; collect reads only changed files.
+
+    Within one run the window is kept in memory for SESSION_MEMO_SECONDS: even
+    unchanged, collect re-hashes every rollout's prefix to catch a rewrite, about
+    three minutes on the owner's Mac, and each of a 16-worker init's people paid
+    it in turn under the lock (1.9.1b3: 350 of a 363-second gather).
+    """
     identity = json.dumps({key: value for key, value in scoped.items() if key != "since"},
                           sort_keys=True, default=str)
+    memo = ("session-window", str(root), identity)
+    kept = _WINDOWS.get(memo)
+    if kept and time.monotonic() - kept[0] < SESSION_MEMO_SECONDS and kept[1] <= timestamp(scoped["since"]):
+        since = timestamp(scoped["since"])
+        return [item for item in kept[2] if timestamp(item["timestamp"]) >= since], kept[3]
     cache_path = state_path(root, f"session-windows/{hashlib.sha256(identity.encode()).hexdigest()[:16]}.json")
     saved = read_json(cache_path, {})
     since = timestamp(scoped["since"])
@@ -860,6 +874,7 @@ def _session_window(scoped: dict, label: str, stage_progress, root: Path) -> tup
         cursor = batch.progress
     if saved["progress"] != cursor or not cache_path.is_file():
         write_json(cache_path, {**saved, "items": items, "progress": cursor, "unfamiliar": unfamiliar})
+    _WINDOWS[memo] = (time.monotonic(), timestamp(saved["since"]), items, unfamiliar)
     if timestamp(saved["since"]) < since:
         items = [item for item in items if timestamp(item["timestamp"]) >= since]
     return items, unfamiliar
