@@ -584,8 +584,17 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills
     One line per page as it finishes. Returns owner_full, people_pages,
     project_pages and org_pages, each in the shape its own command reports.
     """
+    # The first pass reads only the mapped window, already on disk, so no page
+    # waits on the provider; the rest of each person's two years is fetched
+    # alongside, and people it found older mail for are deepened at the end.
+    from ...rem.files import MAP_DAYS
+    deep = [row for row in people if row.get("mode") == "full" and (row.get("days") or 0) > MAP_DAYS]
+    first = [{**row, "days": MAP_DAYS} if row in deep else row for row in people]
+    backfill = _start_backfill(root, deep)
+    if deep:
+        say(f"Fetching up to two years of mail for {len(deep)} people in the background…")
     kinds = {"me": [_owner_full_job(root, me_days)] if owner_full else [],
-             "people": _people_jobs(root, people), "projects": _project_jobs(root, config, projects),
+             "people": _people_jobs(root, first), "projects": _project_jobs(root, config, projects),
              "orgs": _org_jobs(root, orgs), "skills": _skill_jobs(root, skills)}
 
     from itertools import zip_longest
@@ -613,7 +622,40 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills
         else:
             say(f"Stopped before the rest: {stopped}. Write them later with "
                 f"{_next(ctx, ['investigate', 'all'])} and {_next(ctx, ['projects', 'write'])}.")
-    return {KEYS[kind]: _kind_result(kind, jobs, outcomes, stopped) for kind, jobs in kinds.items()}
+    result = {KEYS[kind]: _kind_result(kind, jobs, outcomes, stopped) for kind, jobs in kinds.items()}
+    written = {outcome["page"] for job, outcome in outcomes if job["kind"] == "people" and outcome["outcome"] == "accepted"}
+    result["people_deepened"] = _deepen(root, say, gate, deep, backfill, written, stopped)
+    return result
+
+
+def _start_backfill(root, rows) -> dict:
+    """Each person's older mail, fetched into the archive in the background, four people at a time."""
+    from concurrent.futures import ThreadPoolExecutor
+    from ...rem.people_pages import backfill_person
+    from ...rem.service import subscriptions
+    if not rows:
+        return {}
+    pool = ThreadPoolExecutor(max_workers=4)
+    futures = {row["record"]: pool.submit(backfill_person, root, row, clients=_mail_clients(root),
+                                          subscriptions=subscriptions(root)) for row in rows}
+    pool.shutdown(wait=False)
+    return futures
+
+
+def _deepen(root, say, gate, rows, backfill, written, stopped) -> dict:
+    """A second pass on the people whose backfill found mail before the mapped window."""
+    if not rows or stopped:
+        return {"started": False}
+    say("Waiting for the older mail to finish arriving…")
+    older = {record: future.result() if future.exception() is None else 0 for record, future in backfill.items()}
+    ready = [row for row in rows if row["record"] in written and older.get(row["record"])]
+    if not ready:
+        return {"started": False, "backfilled": sum(older.values())}
+    say(f"Deepening {len(ready)} people with {sum(older[row['record']] for row in ready):,} older messages…")
+    outcomes, halted = _in_parallel(_people_jobs(root, ready), workers=FIRST_RUN_WORKERS, gate=gate,
+                                    done=lambda job, outcome: say(f"  deepened {job['record']}: {outcome['outcome']}"))
+    return {"started": True, "backfilled": sum(older.values()), "pages": [outcome for _, outcome in outcomes],
+            **({"stopped": halted} if halted else {})}
 
 
 def _skill_jobs(root, rows) -> list[dict]:

@@ -1916,3 +1916,21 @@ def test_an_organisation_is_enriched_from_its_own_site_and_a_dead_site_is_a_note
     assert [i["source"] for i in items] == ["https://fernhill.io/", "https://fernhill.io/about"]
     assert "Founded in Wellington" in items[1]["text"] and items[0]["role"] == "website"
     assert any("gone.example" in line and "could not be read" in line for line in coverage)
+
+
+def test_a_kept_mail_body_is_read_from_disk_not_fetched_again(tmp_path):
+    """A background backfill keeps older mail; the deepening pass must not ask
+    the provider for the same bodies again (2026-10-08)."""
+    from connectonion.rem.mail_archive import retain_message
+
+    class Mail:
+        calls = 0
+
+        def get_email_body(self, message_id):
+            Mail.calls += 1
+            return "--- Email Body ---\nfresh"
+
+    retain_message(tmp_path, "gmail", {"id": "m1", "date": "2025-01-02", "from": "a@x.y"},
+                   "--- Email Body ---\nkept", fetched_at="2026-10-08T00:00:00Z")
+    assert "kept" in inv._mail_body(Mail(), "m1", kind="gmail", root=tmp_path) and Mail.calls == 0
+    assert "fresh" in inv._mail_body(Mail(), "m2", kind="gmail", root=tmp_path) and Mail.calls == 1
