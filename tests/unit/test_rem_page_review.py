@@ -223,7 +223,7 @@ def test_skill_finding_citing_a_split_record_survives_promotion(tmp_path, monkey
     candidate = re.sub(r'(?ms)^## Sources\n.*?(?=^Investigation:|\Z)',
                        '## Sources\n- [1] skill-eval:abc123 — 2026-09-19\n\n', candidate)
     def run(directory, prompt, config, stage):
-        Path(re.search(r'NEW file (.+?candidate.md)', prompt)[1]).write_text(candidate)
+        Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1]).write_text(candidate)
         return {'usage': {'input_tokens': 7}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', run)
     items = [{'role': 'page', 'record': record, 'text': old},
@@ -255,9 +255,9 @@ def test_investigation_promotes_only_valid_new_candidate(tmp_path, monkeypatch, 
     if invalid:
         candidate += '\n## What it is\nDuplicate\n'
     def run(directory, prompt, config, stage):
-        path = Path(re.search(r'NEW file (.+?candidate.md)', prompt)[1])
+        path = Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1])
         from connectonion.useful_tools.file_tools.write import write
-        assert 'Successfully' in write(str(path), candidate)
+        path.write_text(candidate)
         return {'usage': {'input_tokens': 7}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', run)
     items = [{'role': 'page', 'record': 'projects/atlas.md', 'text': old}, {'source': 'fixture:readme', 'text': 'A local demo.'}]
@@ -324,21 +324,21 @@ def test_investigation_cannot_overwrite_live_page_on_failure(tmp_path, monkeypat
     def run(directory, prompt, config, stage):
         assert directory != nb.root
         working = next(directory.glob('investigate-*/notebook'))
-        first_turn = 'Your previous turn ended without writing' not in prompt
+        first_turn = 'Your previous turn ended without editing' not in prompt
         assert not first_turn or (working / record).read_text() == original
         assert 'Write notebook Markdown pages directly' not in prompt
         if action == 'wrong_target':
             (working / record).write_text('# Accidental direct edit')
         else:
             nb.write(record, original + '\nConcurrent user correction.\n')
-            Path(re.search(r'NEW file (.+?candidate.md)', prompt)[1]).write_text(original)
+            Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1]).write_text(original + '\nA new fact.\n')
         return {'usage': {'input_tokens': 5}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', run)
     with pytest.raises(RunFailed):
         run_stage(nb, [{'role': 'page', 'record': record, 'text': original}], default_config(), stage='investigate')
     assert nb.read(record) == original + ('\nConcurrent user correction.\n' if action == 'concurrent_update' else '')
     result = json.loads(next((tmp_path / '.state/tasks').glob('*/result.json')).read_text())
-    turns = 2 if action == 'wrong_target' else 1  # no candidate: one more turn, both charged
+    turns = 2 if action == 'wrong_target' else 1  # candidate untouched: one more turn, both charged
     assert result['status'] == 'failed' and result['usage']['input_tokens'] == 5 * turns
     assert result['duration_seconds'] >= 0
     assert result['instructions_chars'] > 0 and result['material_chars'] > 0
@@ -395,7 +395,7 @@ def test_flow_rejection_preserves_live_page_and_failure_usage(tmp_path, monkeypa
     page = old.replace('## Overview\n- Unknown — not investigated yet', '## Overview\nRun a local word counter. [1]')
     page = page.replace('- (none yet)', '- [1] fixture:readme')
     def execute(directory, prompt, config, stage):
-        Path(re.search(r'NEW file (.+?candidate.md)', prompt)[1]).write_text(page)
+        Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1]).write_text(page)
         return {'usage': {'input_tokens': 12}}
     monkeypatch.setattr('connectonion.rem.runner.run_task', execute)
     with pytest.raises(RunFailed, match='Project Overview'):
@@ -777,14 +777,15 @@ def _with_history(lines: int) -> str:
     return f'# P\n\n## History\n{rows}\n## Sources\n- [1] outlook:aaa — 2026-09-01\n'
 
 
-def test_a_history_past_eight_milestones_may_not_grow_and_may_come_down():
-    """Ody Zhou's History held 17 bullets, five of them "sent report X"."""
+def test_a_history_past_sixteen_threads_may_not_grow_and_may_come_down():
+    """Ody Zhou's History held 17 bullets, five of them "sent report X" (#2059);
+    eight then squeezed out how threads ended, so it is one line per thread, sixteen (#2314)."""
     from connectonion.rem.page_review import history_errors, history_note
-    assert history_errors(_with_history(9), _with_history(8))
-    assert 'at most 8' in history_errors(_with_history(9), _with_history(3))[0]
-    assert history_errors(_with_history(8), _with_history(3)) == []
-    assert history_errors(_with_history(12), _with_history(17)) == []          # coming down in steps
-    assert 'fold the oldest' in history_note(_with_history(17))
+    assert history_errors(_with_history(17), _with_history(16))
+    assert 'at most 16' in history_errors(_with_history(17), _with_history(3))[0]
+    assert history_errors(_with_history(16), _with_history(3)) == []
+    assert history_errors(_with_history(18), _with_history(20)) == []          # coming down in steps
+    assert 'fold the oldest' in history_note(_with_history(20))
     assert history_note('# P\n\n## History\n- Unknown — not investigated yet\n') == ''
 
 
@@ -809,3 +810,71 @@ def test_the_first_mention_of_a_person_with_a_page_links_to_it(tmp_path):
     assert 'met [Ivan Zhu](../people/ivan.md) and Harry Cao' in linked           # the only Ivan, ivanxzhu@
     assert '- [1] outlook:aaa — Jiexuan Deng, 2026-09-25' in linked               # Sources untouched
     assert link_people('people/richard.md', linked, person_names(nb)) == linked  # idempotent
+
+
+def test_a_project_page_is_not_refused_for_citing_the_run_or_folding_its_mapped_lines():
+    """4 of the first 8 project pages of a real 1.9.0 Codex init were refused
+    whole for these two, each fixable without the model (2026-10-08)."""
+    from connectonion.rem.page_review import repair_run_citations
+    original = ('# Atlas\n\n## Paths\n- `/src/atlas` — mapped project directory\n- Sessions: 30\n'
+                '- First seen: 2026-07-29\n- Last seen: 2026-10-07\n')
+    candidate = ('# Atlas\n\n## Where it stands\n- The importer ships nightly. [1]\n'
+                 '- No sessions mention the exporter. [2]\n- The CLI was renamed. [1][2]\n\n'
+                 '## Paths\n- `/src/atlas` — mapped project directory; Sessions: 30; First seen: 2026-07-29; '
+                 'Last seen: 2026-10-07.\n\n## Sources\n- [1] codex:abc — 2026-10-01\n'
+                 '- [2] investigation:coverage — today\n')
+    repaired = repair_run_citations('projects/atlas.md', candidate, original)
+    assert 'The importer ships nightly. [1]' in repaired
+    assert 'exporter' not in repaired and 'investigation:coverage' not in repaired
+    assert '- The CLI was renamed. [1]\n' in repaired
+    assert '- Sessions: 30\n- First seen: 2026-07-29\n- Last seen: 2026-10-07\n' in repaired
+    items = [{'role': 'session', 'source': 'codex:abc', 'text': 'importer ships nightly'}]
+    errors = validate('projects/atlas.md', repaired, original, items)
+    assert not [e for e in errors if 'coverage' in e or 'mapped project metadata' in e]
+    assert repair_run_citations('people/x.md', candidate, original) == candidate
+
+
+def test_an_investigation_edits_the_page_it_was_given_instead_of_starting_blank(tmp_path, monkeypatch):
+    """49 of 63 real Codex investigations wrote the page from scratch; UNSW's
+    People-here list fell from 20 linked people to 4 and was accepted (2026-10-08)."""
+    prepare(tmp_path)
+    nb = Notebook(tmp_path)
+    record = 'projects/atlas.md'
+    nb.stub_project(record, 'Atlas')
+    original = nb.read(record)
+    seen = []
+
+    def run(directory, prompt, config, stage):
+        path = Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1])
+        seen.append(path.read_text())
+        assert 'Do not rewrite the page from scratch' in prompt
+        return {'usage': {'input_tokens': 1}, 'result': 'Nothing new. NO CHANGE'}
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run)
+    result = run_stage(nb, [{'role': 'page', 'record': record, 'text': original}], default_config(), stage='investigate')
+    assert seen == [original]  # one turn: the page as it stands, and no follow-up for an honest NO CHANGE
+    assert result['changed'] == []
+
+
+def test_a_skill_page_is_not_refused_for_citing_its_run_summary():
+    from connectonion.rem.page_review import repair_run_citations
+    candidate = ('# title-refine\n\n## Insight\n- Run 14 times in a month. [2]\n- It rewrites titles to name a fact. [1]\n\n'
+                 '## Sources\n- [1] skill-source:title-refine — 2026-10-01\n- [2] skill-runs:title-refine — today\n')
+    repaired = repair_run_citations('skills/catalog/title-refine.md', candidate, '# title-refine\n')
+    assert 'Run 14 times' not in repaired and 'skill-runs:' not in repaired
+    assert 'It rewrites titles to name a fact. [1]' in repaired
+
+
+def test_a_source_cited_only_inside_a_diagram_is_dropped_not_left_to_refuse_the_page():
+    from connectonion.rem.page_review import drop_uncited_sources
+    text = ('# GTM\n\n## How it works\n```\nlead -> rank [6][9]\n```\n- Ranks prospects. [6]\n\n'
+            '## Sources\n- [6] codex:a:1 — 2026-07-16\n- [9] codex:b:2 — 2026-07-16\n')
+    out = drop_uncited_sources(text)
+    assert '- [6] codex:a:1' in out and 'codex:b:2' not in out
+
+
+def test_a_skill_page_edited_in_place_keeps_one_run_evidence_section():
+    from connectonion.rem.page_review import repair_run_citations
+    text = ('# x\n\n## Limitations\n- None known.\n\n## Run evidence\n<!-- rem-skill-runs:start -->\n## Run evidence\n\n'
+            '- Retained evaluation attempts: 2\n<!-- rem-skill-runs:end -->\n\nInvestigation: mapped\n')
+    out = repair_run_citations('skills/catalog/x.md', text, '# x\n')
+    assert out.count('## Run evidence') == 1 and '- None known.' in out and 'attempts: 2' in out

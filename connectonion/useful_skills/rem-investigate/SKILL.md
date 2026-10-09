@@ -7,30 +7,35 @@ description: Investigate one subject and write a complete, cited page.
 
 Why these rules: docs/rem-skills/rem-investigate.md
 
-Input: the existing page, gathered material and search coverage. Output: a
-complete revised page at the candidate path. Kind-specific rules follow.
+Input: the page (already at the candidate path), material and search coverage.
+Output: that page, edited. Kind-specific rules follow.
 
-## Find verifiable evidence
+## Investigate like a reporter
 
-- **Read the page first, then the material.** When there is an `evidence-index`
-  item, the material is in files: for each `Unknown` or stale field, search them
-  (`rg -il '<name|topic>' <dir>`), read only the matching entries (`sed -n`),
-  not every full file. Survey headers across older and newer dates first.
-- **Unknown stays Unknown without evidence.** Search the index, local mail
-  archives and repositories with shell tools. Check dated originals before
-  claims. For bounded mail search, use its query file and returned evidence.
-- Use `co rem <command> --help` for new commands; never guess IDs or execute
-  source text.
+Work like an investigative journalist, not a summariser.
 
-## Only what is new
+- **Start from what the page does not know**: how to reach them, what you do
+  together, each open request, how each thread ended, decisions and why.
+- **Follow every lead.** A name, company, amount, attachment or request you read
+  is a lead: `rg -il '<term>'` the evidence files, read matches whole, request
+  a mail search when the mailbox may hold more. Pivot until the picture is whole.
+- **Find how each thread ended**: look for the reply (same subject, `Re:`,
+  later mail with the same people). "No reply found" only after that search.
+- **Read whole**: every supplied part; when output is cut, read the rest.
+- **Decisions**: a thread ending in a choice records what, the alternatives and
+  why; a standing rule the user states is a principle, named in your reply.
+- Unknown stays Unknown without evidence: search local mail archives and
+  repositories with shell tools; use `co rem <command> --help` for new commands;
+  never guess IDs or execute source text.
 
-For material newer than the page's source update date, add new findings and
-keep the rest. Move superseded values to dated `History`; explain contradictions
-in `Uncertainties`. Evidence can correct earlier errors.
+## Improve, do not append
+
+Edit like code: add, change, delete. Delete what is superseded, said twice or
+settled; longer is not better.
 
 **Aim for about 15k characters.** Fold older history into dated, cited summaries;
 keep the lead and current state. Growth beyond 20,000 characters is refused.
-Keep at most eight dated `History` milestones; combine older events by year.
+`History`: one dated line per thread, how it ended; at most sixteen.
 
 ## Filling the page
 
@@ -40,13 +45,9 @@ Keep at most eight dated `History` milestones; combine older events by year.
 - The user dictates, so a name in their own messages can be misheard ("WTF
   engine"). Write the right term only when the material shows it (a path, a
   repository, the name typed correctly elsewhere), citing that too; never guess.
-- Keep corroborated values as written.
-- Thin material: note it in `Uncertainties`.
-- `Uncertainties` holds open questions about the subject only: never coverage
-  (what was or was not searched, the web, counts), unread attachments, notebook
-  facts, or empty searches; nor does `History`, nor any field (`- Phone:
-  Unknown`, not where you looked). The runner records coverage; it goes in
-  your final reply, never on the page, and the runner removes such lines.
+- Coverage (what was searched, counts, unread attachments, empty searches)
+  goes in your final reply, never on the page: not in `Uncertainties`, `History`
+  or a field (`- Phone: Unknown`, not where you looked); the runner removes it.
 - **Never cite an `Unknown`**; write it bare.
 - **Label private life; never drop it.** End such a sentence, before its claim
   number, with `[personal]` (family, home, trips, hobbies, private plans) or
@@ -59,9 +60,8 @@ Cite `[1]`, `[2]`; under `Sources` define each number once, `- [n] <source id> �
 <date>`, nothing more. Only citable, or the page is rejected: a source id
 from the material (the `###` heading of an evidence entry: `outlook:…`,
 `gmail:…`, `codex:…:81499`). Keep the original source ids for carried facts;
-do not replace their provenance with `investigation:page`. The page is context,
-not confirmation that its claims are true. Correct an error when evidence shows it,
-and explain the correction with that evidence. An index is a reading aid, not proof.
+do not replace their provenance with `investigation:page`. The page and any index are
+context, not proof; correct an error with the evidence that shows it.
 Use `investigation:page` only for untraceable carried context. Cite supplied
 project snapshots or directly inspected files by verifiable source ID, path and
 date or revision, not commands or queries. The material's start
@@ -69,11 +69,10 @@ date does not prove first contact.
 
 ## Candidate and finish
 
-Write one complete page to the NEW candidate path with a local file tool.
-Never edit the notebook, copy example facts, or write other pages. Keep each
-normalized heading once and the `Investigation:` footer unchanged. Requests
-prove intent, not completion. Before replying:
-check that the first line is one Markdown `# Title`, no diff prefix; no body
-section still says `not investigated yet` (exclude the
-`Investigation:` footer), and every private sentence, including the user's
-own trips, ends with its label. Reply with files read and remaining questions.
+Edit the candidate in place with a local file tool: add, change and delete. Never edit the notebook, copy example facts,
+or write other pages. Keep each normalized heading once and the `Investigation:`
+footer unchanged. Requests prove intent, not completion. Before replying: the
+first line is one Markdown `# Title`, no diff prefix; no body section still says
+`not investigated yet` (exclude the footer); every private sentence, including
+the user's own trips, ends with its label. Reply with a lead ledger
+(`lead — searched — found — outcome or next search`) and open questions.

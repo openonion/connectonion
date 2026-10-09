@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import read_config
-from .files import SECRET_SHAPES, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
+from .files import WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .project_material import RECENT_DAYS, mark_refused, mark_written, page_state, stored, timestamp
 
 # Projects active in the last RECENT_DAYS (14, from project_material) are written first.
@@ -543,7 +543,7 @@ def prompt(directory: Path, items: list[dict], candidate: Path, page_chars: int 
 def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
                now: datetime | None = None, progress=None) -> dict:
     """One call: write the page from its pending messages; save it only if it passes review."""
-    from .runner import RunFailed, _one_more_turn, _promote_candidate, run_task
+    from .runner import RunFailed, _one_more_turn, promote_or_drop, run_task
     config = config or read_config(root)
     run = run or run_task
     notebook = Notebook(root)
@@ -563,7 +563,7 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
         result = run(workdir, text, config, "investigate")
         if not candidate.is_file():
             result = _one_more_turn(workdir, text, config, "investigate", candidate, result, run)
-        _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"))
+        promote_or_drop(notebook, record, candidate, original, items, directory, result.get("usage"))
     except (RemError, OSError) as error:
         usage = error.usage if isinstance(error, RunFailed) else result.get("usage")
         write_json(directory / "result.json", {**metrics, "status": "failed", "error": str(error),
@@ -577,7 +577,7 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
         scrub_task(directory)
     messages = sum(1 for item in items if item["role"] == "user")
     tools = sorted({i["tool"] for i in items if i.get("tool")})
-    with maintenance_lock(root, wait=60):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         from .reader_model import _source_ids
         retain_repository_context(root, items, _source_ids([{"text": notebook.read(record)}]))
         notebook.note_pass(record, "written", "own messages: " + ", ".join(tools))

@@ -27,3 +27,7 @@ No real-data init, model calls, mailbox scans or live Host trial were run on thi
 ## CI follow-up — 8 October (Sydney)
 
 The initial full CI failed two existing CLI forwarding assertions on all four Python versions: the expected kwargs omitted the new default `launch=True`. The expectations now include that default, and a CLI regression checks that a managed background invocation forwards `launch=False` and `listen=[]`. No provider or real notebook was contacted. Fresh CI is required; this follow-up is not release approval.
+
+## Main-branch integration — 9 October (Sydney)
+
+The corrected PR passed its full CI matrix, then main advanced and added `MAP_DAYS` to the reader imports. The integration conflict keeps both `MAP_DAYS` and this fix's `RemError` import. All other changed files merged automatically onto main commit `229d4382d358338924d9d35bc6bcbd58b5217626`. This merge requires fresh CI before approval or publication; no real notebook or model trial was run.

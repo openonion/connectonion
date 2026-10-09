@@ -9,7 +9,7 @@ from pathlib import Path
 
 import yaml
 
-from .files import Notebook, RemError, maintenance_lock
+from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock
 
 MAX_BYTES = 4_000_000
 
@@ -102,9 +102,9 @@ def investigate_skill_runs(root: Path, record: str, directories: list[Path]) -> 
     name = skill_identity(notebook, record)
     result = collect_skill_runs(name, directories)
     key = hashlib.sha256(record.encode()).hexdigest()[:12]
-    report = f'notes/skill-runs-{key}.md'
+    report = f'logs/skill-runs-{key}.md'
     text = _report(name, result)
-    with maintenance_lock(root, wait=60):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         notebook.write(report, text)
         page = notebook.read(record)
         start, end = '<!-- rem-skill-runs:start -->', '<!-- rem-skill-runs:end -->'
@@ -297,7 +297,7 @@ def retain_instruction_context(root: Path, items: list[dict], cited: set[str]) -
 def _save_instruction_context(root: Path, value: dict) -> None:
     from .files import read_json, state_path, write_json
     path = state_path(root, 'skill-sources/' + hashlib.sha256(value['id'].encode()).hexdigest() + '.json')
-    with maintenance_lock(root, wait=60):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         previous = read_json(path, {})
         if previous:
             if previous.get('content_sha256') != value['content_sha256']:

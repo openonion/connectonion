@@ -1,0 +1,2 @@
+version: v1.9.1rc1
+no_visual_change: "Lock waits only: archive and page writes wait up to ten minutes for the notebook, provider refreshes up to two minutes for the credential file. Reader HTML is unchanged since 1.9.1b1."

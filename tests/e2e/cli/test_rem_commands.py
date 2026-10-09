@@ -385,6 +385,7 @@ def test_start_yes_then_stop(lifecycle):
 def test_init_offers_start_and_yes_installs_without_a_duplicate_sync(lifecycle, monkeypatch):
     root, sessions, calls = lifecycle
     monkeypatch.setattr("connectonion.rem.service.run_sync", lambda *a, **kw: pytest.fail("init repeated sync"))
+    monkeypatch.setattr("connectonion.rem.runner.ready", lambda config: ("runner unavailable", "install runner"))
     deferred = invoke(root, "--json", "init", "--no-investigate")
     assert deferred.exit_code == 0, deferred.output
     assert json.loads(deferred.stdout)["data"]["background"]["started"] is False
@@ -559,7 +560,7 @@ def test_init_builds_all_maps_without_model_or_investigation(tmp_path, monkeypat
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)['data']
     assert data['phase'] == 'mapped' and data['investigation'] == 'not started'
-    for record in ('notes/people-map.md', 'notes/projects-map.md', 'notes/orgs-map.md', 'skills/catalog/index.md'):
+    for record in ('logs/people-map.md', 'logs/projects-map.md', 'logs/orgs-map.md', 'skills/catalog/index.md'):
         assert (tmp_path / record).is_file()
     assert (tmp_path / '.state/source-inventory.md').is_file()
     assert (tmp_path / '.state/source-inventory.jsonl').is_file()

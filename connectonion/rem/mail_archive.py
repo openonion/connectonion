@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .files import RemError, atomic_write, is_address, maintenance_lock, read_json, state_path, write_json
+from .files import WRITE_WAIT_SECONDS, RemError, atomic_write, is_address, maintenance_lock, read_json, state_path, write_json
 from .mail import _address, _addresses, on_domains, participants, RELATED_ORG_SCOPE
 
 
@@ -39,7 +39,7 @@ def retain_message(root: Path, provider: str, row: dict, body: str, *, fetched_a
     if not isinstance(body, str):
         raise RemError("Mail provider returned no text body")
     metadata = state_path(root, f"mail/observed-metadata/{provider}/{_key(row['id'])}.json")
-    with maintenance_lock(root, wait=30):
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         path = original if original.is_file() else observed_message_path(root, provider, row["id"])
         for folder in ("mail", "mail/observed", f"mail/observed/{provider}",
                        "mail/observed-metadata", f"mail/observed-metadata/{provider}"):
@@ -146,7 +146,7 @@ def _archive_message(root: Path, row: dict, clients: dict) -> str:
 def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seconds: float | None = None,
                  clock=time.monotonic, now=_utcnow, on_saved=None,
                  archive_days: int | None = None) -> dict:
-    """Fetch 90-day provider body snapshots once; keep files if interrupted.
+    """Fetch the mapped window's provider body snapshots once; keep files if interrupted.
 
     The inventory is the bounded enumeration. This pass uses its IDs, never a
     second mailbox-wide query, and an existing valid snapshot is reused on a

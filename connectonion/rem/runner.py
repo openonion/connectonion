@@ -297,6 +297,25 @@ def run_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
     return envelope
 
 
+def model_access(root: Path, config: dict) -> tuple[str, str]:
+    """Check the selected model with a source-free turn before a long first run."""
+    workspace = root / ".state" / "tasks" / "model-access"
+    workspace.mkdir(parents=True, exist_ok=True)
+    try:
+        run_task(workspace, "Reply READY only. Do not use tools or read files.", config, "abstract")
+    except RunFailed as error:
+        login = {"claude-code": "claude auth login", "codex": "codex login"}.get(config["runner"])
+        return str(error), (login or "co auth status")
+    return "", ""
+
+
+def model_denial(error: Exception) -> bool:
+    """A provider refusal that will also fail the rest of an unattended queue."""
+    detail = str(error).lower()
+    return any(marker in detail for marker in ("403", "401", "authentication_failed",
+                                                "permission_denied", "not supported when using codex"))
+
+
 def run_claim_task(workspace: Path, prompt: str, config: dict, stage: str) -> dict:
     """Audit cited originals in a read-only Codex turn with structured output."""
     if config["runner"] != "codex":
@@ -462,8 +481,8 @@ def _one_more_turn(workdir, prompt, config, stage, candidate, first, run=None):
     writable and ended its turn. Both turns are charged to the run.
     """
     again = (run or run_task)(workdir, _followup_prompt(
-        prompt, f"Your previous turn ended without writing {candidate}. That path is "
-                f"inside your writable root {workdir}: write the complete page there now."),
+        prompt, f"Your previous turn ended without editing {candidate}. That path is "
+                f"inside your writable root {workdir}: edit the page there now with what the evidence adds."),
                      config, stage)
     usage = [first.get("usage") or {}, again.get("usage") or {}]
     again["usage"] = {key: sum(part.get(key) or 0 for part in usage) for key in usage[0].keys() | usage[1].keys()} or None
@@ -491,12 +510,15 @@ def _searched_turn(workdir, prompt, config, stage, directory, search, items, fir
     asked = json.loads((directory / "search-requests.json").read_text(encoding="utf-8"))
     queries = [query.strip()[:200] for query in asked if isinstance(query, str) and query.strip()][:SEARCH_QUERIES]
     known = {item.get("source") for item in items}
-    found = [item for item in search(queries) if item["source"] not in known]
+    answers = search(queries)
+    failed = [item for item in answers if item.get("role") == "search-failure"]
+    found = [item for item in answers if item.get("role") != "search-failure" and item["source"] not in known]
     items.extend(found)
     results = directory / "search-results.md"
     results.write_text("\n\n".join(
-        f"### {item['source']}\nFrom: {item['speaker']}\nDate: {item['timestamp']}\nSubject: {item['subject']}\n"
-        f"Query: {item.get('query', '')}\n\n{item['text']}" for item in found) or "No mail matched.", encoding="utf-8")
+        [f"### {item['source']}\nFrom: {item['speaker']}\nDate: {item['timestamp']}\nSubject: {item['subject']}\n"
+         f"Query: {item.get('query', '')}\n\n{item['text']}" for item in found]
+        + [f"Query {item['query']!r}: {item['text']}" for item in failed]) or "No mail matched.", encoding="utf-8")
     again = run_task(workdir, _followup_prompt(
         prompt, f"Your searches {json.dumps(queries, ensure_ascii=False)} found "
                 f"{len(found)} new message(s), in {results}. Update the candidate with what "
@@ -510,11 +532,33 @@ def _searched_turn(workdir, prompt, config, stage, directory, search, items, fir
 PROMOTE_WAIT_SECONDS = 1800
 
 
+CITATION_ONLY = ("Citation has no identifiable source:", "Unused citation:", "Cited local file needs ")
+
+
+def citation_only(errors: list[str]) -> bool:
+    """Is a refusal only about citations, which dropping their lines can settle?"""
+    return bool(errors) and all(error.startswith(CITATION_ONLY) for error in errors)
+
+
+def promote_or_drop(notebook, record, candidate, original, items, directory, usage):
+    """Promote; if only citations fail, drop the lines resting on them and promote that.
+
+    The project writer had no repair at all: 1.9.1b1's first project page was
+    refused for one untraceable citation, as six were on 1.9.1a2.
+    """
+    try:
+        return _promote_candidate(notebook, record, candidate, original, items, directory, usage)
+    except RunFailed:
+        if not citation_only(read_json(directory / "review.json", {}).get("errors") or []):
+            raise
+        return _promote_candidate(notebook, record, candidate, original, items, directory, usage, last_resort=True)
+
+
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
-                       investigation=True, claim_config=None):
+                       investigation=True, claim_config=None, last_resort=False):
     from .page_review import (compact_page, drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
-                              link_company, normalize_numbered_sources, placeholder_errors, restore_runner_fields,
-                              unresolved_findings, validate)
+                              link_company, normalize_numbered_sources, placeholder_errors, repair_run_citations,
+                              restore_runner_fields, unresolved_findings, validate)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     from . import facts
@@ -530,10 +574,11 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text, tool_lines = drop_tool_text(record, text, original)
     # Minor unresolved claims can be omitted, but losing a lead or finding
     # needs a repair turn instead of quietly promoting an impoverished page.
-    cited_text = normalize_numbered_sources(text)
-    if investigation and record.startswith("projects/"):
+    cited_text = repair_run_citations(record, normalize_numbered_sources(text), original)
+    if investigation and record.startswith("projects/") and not last_resort:
         # A dropped citation can strand an uncited diagram or command in the
-        # same section. Let validation ask the agent to repair the whole page.
+        # same section. Let validation ask the agent to repair the whole page;
+        # after its repairs, the last resort drops only those lines.
         text, dropped = cited_text, {"citations": [], "lines": 0}
     else:
         text, dropped = drop_unresolved(record, cited_text, original, items)
@@ -787,8 +832,15 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     if candidate:
         task_root = directory / "notebook"
         Notebook(task_root).write(record, before[record])
-        prompt += (f"\n\n## Output\nThe working notebook copy is {task_root}. Read its existing page at {task_root / record}. "
-                   f"Write the complete revised page to the NEW file {candidate}. "
+        # Edit, not rewrite: a page written from scratch each pass kept only
+        # what the model copied back, and each pass paid to type it again.
+        candidate.write_text(before[record], encoding="utf-8")
+        prompt += (f"\n\n## Output\nThe working notebook copy is {task_root}, with this page at {task_root / record}. "
+                   f"Your working copy of the page is the file {candidate}; it starts as the page as it stands. "
+                   "Edit it in place the way you edit code: add what the evidence adds, change what it corrects, and delete "
+                   "what it supersedes, what the page now says twice and doubts it settles. Leave correct lines as they are. "
+                   "Do not rewrite the page from scratch. "
+                   "If the evidence changes nothing on the page, leave the file as it is and end your reply with NO CHANGE. "
                    "Write only that candidate file using an available local file tool. "
                    "The runner owns validation and replacement. Do not start nested co rem jobs. "
                    "After the candidate is complete, stop using tools and return a brief coverage summary. ")
@@ -861,11 +913,11 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                            and item.get("role") not in ("evidence-index", "original_evidence")]}
     quick_first_pass = any(item.get("role") == "quick-first-pass" for item in items)
     if candidate and search and not quick_first_pass:
-        prompt += (f"\n\n## Optional runner-mediated mail search\nIf a section stays Unknown and the user's mailbox may hold the answer (a role, a phone, "
-                   f"how they met), also write up to {SEARCH_QUERIES} mail searches as a JSON list of strings "
-                   f"to {directory / 'search-requests.json'}: plain words, or from:, to:, participants: an "
-                   "address. You get one more turn with what they find. Never ask for what the material "
-                   "already answers.")
+        prompt += (f"\n\n## Mail search for your leads\nWhen a lead goes past the material -- the reply to a request, "
+                   "a person or company named in a thread, an attachment, how they met -- write up to "
+                   f"{SEARCH_QUERIES} mail searches as a JSON list of strings to {directory / 'search-requests.json'}: "
+                   "plain words, or from:, to:, participants: an address. You get one more turn with what they "
+                   "find. The coverage item says what was already searched; do not repeat those addresses.")
     started = time.monotonic()
     result = {}
     inquiry_usage = {}
@@ -884,7 +936,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         metrics["prompt_chars"] = len(prompt)
         selected_config = stage_config(notebook.root, config, "render") if candidate else config
         result = run_task(workdir, prompt, selected_config, stage)
-        if candidate and not summary and not candidate.is_file():
+        untouched = candidate and candidate.is_file() and candidate.read_text(encoding="utf-8") == before[record]
+        if candidate and not summary and (not candidate.is_file()
+                                          or untouched and "NO CHANGE" not in str(result.get("result") or "")):
             result = _one_more_turn(workdir, prompt, selected_config, stage, candidate, result)
         if candidate and search and not quick_first_pass and (directory / "search-requests.json").is_file():
             result = _searched_turn(workdir, prompt, selected_config, stage, directory, search, items, result)
@@ -894,11 +948,15 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         metrics["render_usage"] = result.get("usage")
         result["usage"] = {key: inquiry_usage.get(key, 0) + (result.get("usage") or {}).get(key, 0)
                            for key in inquiry_usage.keys() | (result.get("usage") or {}).keys()} or None
-        if candidate:
-            def promote():
+        # An untouched copy the model says needs no change is no change, not a page to review.
+        no_change = bool(candidate) and candidate.is_file() and candidate.read_text(encoding="utf-8") == before[record] \
+            and "NO CHANGE" in str(result.get("result") or "")
+        if candidate and not no_change:
+            def promote(last_resort=False):
                 audit_usage = _promote_candidate(notebook, record, candidate, before[record], items, directory,
                                                  result.get("usage"), lock_held=maintenance_lock_held,
-                                                 investigation=stage == "investigate", claim_config=selected_config)
+                                                 investigation=stage == "investigate", claim_config=selected_config,
+                                                 last_resort=last_resort)
                 if audit_usage:
                     result["usage"] = {key: (result.get("usage") or {}).get(key, 0) + audit_usage.get(key, 0)
                                        for key in (result.get("usage") or {}).keys() | audit_usage.keys()}
@@ -914,6 +972,13 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                     audit_failed = errors == ["Cited-claim audit did not pass; see claim-review.json"]
                     source_failed = (record.startswith("projects/") and errors and all(error.startswith(
                         ("Cited local file needs ", "Citation has no identifiable source:")) for error in errors))
+                    if attempt == max_repairs and source_failed or attempt == max_repairs and errors and all(
+                            error.startswith(("Citation has no identifiable source:", "Unused citation:"))
+                            for error in errors) and record.startswith("projects/"):
+                        # One untraceable citation drops its lines, not a paid-for page:
+                        # 3 of 4 project refusals on a real 1.9.1a2 init were one citation each.
+                        promote(last_resort=True)
+                        break
                     if (attempt == max_repairs or not errors or
                             (not audit_failed and not source_failed and any(not error.startswith(
                                 ("History has ", "Finding has unresolved citations")) for error in errors))):
@@ -936,7 +1001,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                                        "claims. Preserve the page and save it.")
                     else:
                         instruction = (f"Review errors: {'; '.join(errors)}. "
-                                       "Keep at most eight dated bullets in History, folding older events by year. "
+                                       "Keep at most sixteen dated History lines, one per thread with how it ended, folding older threads by year. "
                                        f"For unresolved citations, read {directory / 'material.md'} and its named "
                                        "evidence index; copy the exact source ids for supported claims. Remove a "
                                        "claim only if evidence does not support it. Preserve all other sections "
@@ -957,7 +1022,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
                     result["usage"] = {key: sum(part.get(key) or 0 for part in usage)
                                        for key in usage[0].keys() | usage[1].keys()} or None
             metrics["render_usage"] = result.get("usage")
-        elif stage in ("maintain", "abstract"):
+        elif stage in ("maintain", "abstract") and not candidate:
             refusals = _promote_maintenance(notebook, Notebook(task_root), before, items, directory,
                                             result.get("usage"), maintenance_lock_held)
             if stage == "maintain" and items and not changed():

@@ -116,6 +116,39 @@ class StageProgress:
             self.bar = None
 
 
+class FirstRunProgress:
+    """One live counter for the selected page queue; page workers never write to it."""
+
+    LABELS = {"me": "You", "people": "People", "projects": "Projects",
+              "orgs": "Organisations", "skills": "Skills"}
+
+    def __init__(self, totals: dict, stream=None, quiet=False):
+        self.totals = totals
+        self.completed = {kind: 0 for kind in totals}
+        self.total = sum(totals.values())
+        stream = stream or sys.stderr
+        self.bar = (style.progress(_terminal(stream))
+                    if self.total and not quiet and getattr(stream, "isatty", lambda: False)() else None)
+        if self.bar is not None:
+            self.bar.start()
+            self.task = self.bar.add_task("Investigating pages", total=self.total)
+
+    def finish(self, kind: str) -> str:
+        self.completed[kind] += 1
+        done = sum(self.completed.values())
+        parts = [f"{self.LABELS[key]} {self.completed[key]}/{total}"
+                 for key, total in self.totals.items() if total]
+        summary = " · ".join(parts)
+        if self.bar is not None:
+            self.bar.update(self.task, description=summary, completed=done, refresh=True)
+        return f"[{done}/{self.total}] {summary} ·"
+
+    def close(self):
+        if self.bar is not None:
+            self.bar.stop()
+            self.bar = None
+
+
 class Turn:
     """One model turn, which can take ten minutes: in a terminal a spinner with the time so far
     ("Writing your page… 3:12", #1996); anywhere else one line per stage, as before."""

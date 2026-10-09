@@ -499,9 +499,10 @@ def test_record_dates_do_not_disagree_when_the_index_is_stale(reader):
     page.goto(uri + "#r=people%2Fmara-ostrowski.md")
     expected = page.evaluate("known(byPath('people/mara-ostrowski.md')).last", isolated_context=False)
     page.evaluate("() => { byPath('people/mara-ostrowski.md').index = {last_contact: '2001-01-01'}; FACTS.clear(); render(); }", isolated_context=False)
-    assert expected in page.locator('.focus-facts').inner_text()
-    assert '2001' not in page.locator('.focus-facts').inner_text()
     formatted = page.evaluate('date => fmtDate(date)', expected, isolated_context=False)
+    # The contact strip leaves dates to the headline's last-contact line (#2104).
+    assert formatted in page.locator('.lead-meta').inner_text()
+    assert '2001' not in page.locator('.lead-meta').inner_text()
     assert formatted in page.locator('.factlist dt:text-is("Last contact") + dd').inner_text()
 
 
@@ -521,11 +522,12 @@ def test_empty_mail_keeps_private_header_evidence_without_inventing_a_body_excer
         dialog = page.locator('#evidence-dialog')
         assert 'MAIL HEADERS' in dialog.inner_text()
         assert dialog.locator('.evidence-empty-body').is_visible()
-        assert 'Subject: Accepted: Workshop' in dialog.locator('.evidence-subject').inner_text()
+        assert 'Accepted: Workshop' in dialog.locator('.evidence-subject').inner_text()
         assert not dialog.locator('blockquote').count()
         assert not dialog.locator('.evidence-unavailable').count()
-        dialog.get_by_text('From, To and Cc', exact=True).click()
-        assert 'mara@example.org' in dialog.locator('.evidence-participants').inner_text()
+        # A message (#2106): the sender and their address head it, recipients follow.
+        assert 'mara@example.org' in dialog.locator('.msg-head').inner_text()
+        assert dialog.locator('.evidence-participants .msg-person').count() == 1
         page.evaluate('togglePrivate()', isolated_context=False)
         assert not dialog.locator('.evidence-original').is_visible()
         assert not dialog.locator('.evidence-subject').is_visible()
@@ -826,10 +828,10 @@ def test_recovered_mail_shows_participants_and_separate_archive_clock_privately(
     dialog = page.locator('#evidence-dialog')
     participants = dialog.locator('.evidence-participants')
     assert participants.is_visible()
-    assert participants.locator('summary').bounding_box()['height'] >= 44
-    participants.locator('summary').click()
-    assert 'From: Mentor <mentor@example.org>' in participants.inner_text()
-    assert 'Cc: Guest <guest@example.org>' in participants.inner_text()
+    head = dialog.locator('.msg-head').inner_text()
+    assert 'Mentor' in head and 'mentor@example.org' in head
+    assert 'Cc' in participants.inner_text() and 'Guest' in participants.inner_text()
+    assert participants.locator('[title="guest@example.org"]').count() == 1
     assert 'Sent ' in dialog.inner_text() and 'Archived ' in dialog.inner_text()
     assert 'Original retrieval time unknown' in dialog.inner_text()
     assert 'Retrieved ' not in dialog.inner_text()

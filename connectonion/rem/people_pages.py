@@ -25,7 +25,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
+from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .source import timestamp
 
 # Correspondents of the last two weeks are investigated before anyone older (owner, 2026-09-30).
@@ -164,7 +164,8 @@ def investigate_person(root: Path, row: dict, *, clients: dict, subscriptions: d
     try:
         result = investigation.investigate(root, row["record"], title, names, days=row["days"], clients=clients,
                                            subscriptions=subscriptions, max_calls=max_calls, progress=progress,
-                                           stage_progress=stage_progress)
+                                           stage_progress=stage_progress,
+                                           fetch_attachments=row.get("attachments", True))
     except investigation.NothingNew:
         # The window was read and held nothing: mail before `started` is not
         # new next run, or the same person is gathered again every run (#1984).
@@ -174,11 +175,40 @@ def investigate_person(root: Path, row: dict, *, clients: dict, subscriptions: d
     return result
 
 
+def backfill_person(root: Path, row: dict, *, clients: dict, subscriptions: dict) -> int:
+    """Fetch a person's older mail into the local archive, without a model turn.
+
+    The first run reads only the mapped window, already on disk, so no page
+    waits on the provider; this fetches the rest of FIRST_WINDOW_DAYS alongside
+    it (owner, 2026-10-08), and the attachments the first pass leaves to it.
+    Returns how many items the first pass did not read: older mail and attachments.
+    """
+    from . import investigate as investigation
+    from .files import MAP_DAYS
+    title, names = handles(root, row["record"])
+    # Mail only: the first pass already read coding sessions, and scanning them
+    # again for two years held every page behind the session lock (1.9.1b4).
+    mail = {name: sub for name, sub in subscriptions.items() if sub.get("kind", name) in investigation.MAIL_KINDS}
+    items, _ = investigation.gather(title, names, days=FIRST_WINDOW_DAYS, clients=clients, subscriptions=mail,
+                                    attachments_dir=root / ".state" / "attachments", archive_root=root,
+                                    record=row["record"])
+    cutoff, older = datetime.now(timezone.utc) - timedelta(days=MAP_DAYS), 0
+    for item in items:
+        if item.get("role") == "attachment":
+            older += 1
+            continue
+        try:
+            older += timestamp(item["timestamp"]) < cutoff
+        except (RemError, KeyError):  # an unreadable date is that mail's gap (#2013)
+            continue
+    return older
+
+
 def mark_investigated(root: Path, record: str, when: datetime) -> None:
     """When the gather for this page started: mail after it is new for the next run."""
     folder = state_path(root, "people")
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with maintenance_lock(root, wait=60):  # people finishing together each rewrite this file
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):  # people finishing together each rewrite this file
         done = read_json(folder / "investigated.json", {})
         done[record] = when.isoformat()
         write_json(folder / "investigated.json", done)

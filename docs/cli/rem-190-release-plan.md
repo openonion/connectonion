@@ -1,6 +1,11 @@
 # co rem 1.9.0 release plan
 
-co rem feature release targets **1.9.0** ([#1443](https://github.com/openonion/connectonion/issues/1443)). Published `1.8.8b1` remains immutable; `1.8.8b3` is a later preview candidate. Neither preview declares co rem ready for a stable release. `VERSIONING.md` names the version of the checked-out candidate, which becomes public only after review and tagging.
+This is the historical plan for the **1.9.0** co rem release
+([#1443](https://github.com/openonion/connectonion/issues/1443)). The
+[1.9.0 release record](../releases/1.9.0.md) states what the 90-day public-wheel
+trial, installed candidate, source review and browser checks actually proved.
+The plan does not turn a sampled page or a source check into an all-page quality
+claim. Follow-up work has a [1.9.1 milestone](https://github.com/openonion/connectonion/milestone/41).
 
 ## Release gate
 
@@ -13,7 +18,7 @@ The live failure in [#1628](https://github.com/openonion/connectonion/issues/162
 | Issue | Role in 1.9.0 |
 | --- | --- |
 | [#1443](https://github.com/openonion/connectonion/issues/1443) | Feature umbrella and release decision. |
-| [#1523](https://github.com/openonion/connectonion/issues/1523), [#1616](https://github.com/openonion/connectonion/issues/1616) | Lifecycle and current init contract. The map phase uses no model; init then investigates the owner, recent important people, active projects and related organizations in terminals, scripts and JSON runs. About 35% of a weekly runner allowance is a soft target; the selected cohort completes unless the configured safety floor is reached. See [the updated init contract](rem-init-contract.md). |
+| [#1523](https://github.com/openonion/connectonion/issues/1523), [#1616](https://github.com/openonion/connectonion/issues/1616) | Lifecycle and current init contract. The map phase uses no model; init then investigates the owner and every eligible mapped person, project, organisation and installed Skill in terminals, scripts and JSON runs. The foreground first run has no REM page or weekly quota stop; provider limits and model access still apply. See [the updated init contract](rem-init-contract.md). |
 | [#1580](https://github.com/openonion/connectonion/issues/1580) | Product scenarios and experience criteria; not proof that every proposed interface is implemented. |
 | [#1610](https://github.com/openonion/connectonion/issues/1610) | Question-driven investigation and model routing; validate actual result quality and cost. |
 | [#1611](https://github.com/openonion/connectonion/issues/1611) | Attributed reflections, corrections, and incremental updates. |
@@ -23,4 +28,6 @@ The live failure in [#1628](https://github.com/openonion/connectonion/issues/162
 | [#1628](https://github.com/openonion/connectonion/issues/1628) | Blocking real-person investigation failure. |
 | [#1629](https://github.com/openonion/connectonion/issues/1629) | Harness dependency audit; resolve co rem-critical findings. |
 
-The feature branch and draft [PR #1454](https://github.com/openonion/connectonion/pull/1454) remain the integration point. Issues and preview releases are evidence of work in progress, not a claim that the full 1.9.0 behavior has passed acceptance.
+The preview issues and old feature branch are historical evidence. The stable
+release record names its own acceptance and remaining limits; it supersedes
+this plan's assumptions about what a preview established.

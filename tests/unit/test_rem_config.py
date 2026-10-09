@@ -37,3 +37,17 @@ def test_the_daily_cap_leaves_room_for_a_manual_sync_after_a_full_night(tmp_path
     assert read_config(tmp_path)["limits"]["runner_calls_per_day"] == 50
     set_config(tmp_path, ["limits.runner_calls_per_day", "30"])
     assert read_config(tmp_path)["limits"]["runner_calls_per_day"] == 30
+
+
+def test_generated_notes_move_to_run_logs_and_links_follow(tmp_path):
+    """Before 1.9.1 the maps and skill run reports were written to notes/."""
+    from connectonion.rem.config import prepare
+    prepare(tmp_path)
+    (tmp_path / "notes/people-map.md").write_text("# People map\n")
+    (tmp_path / "notes/skill-runs-abc.md").write_text("# Run evidence: x\n")
+    (tmp_path / "notes/idea.md").write_text("# An idea the owner wrote\n")
+    (tmp_path / "skills/catalog/x.md").write_text("# x\n- [Run-by-run](../../notes/skill-runs-abc.md)\n")
+    prepare(tmp_path)
+    assert (tmp_path / "logs/people-map.md").is_file() and (tmp_path / "logs/skill-runs-abc.md").is_file()
+    assert sorted(p.name for p in (tmp_path / "notes").iterdir()) == ["idea.md"]
+    assert "../../logs/skill-runs-abc.md" in (tmp_path / "skills/catalog/x.md").read_text()

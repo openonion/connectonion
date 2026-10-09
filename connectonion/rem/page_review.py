@@ -228,10 +228,59 @@ def drop_uncited_sources(text: str) -> str:
     after = re.search(r'^(?:## |Investigation:)', tail, re.M)
     if after:
         sources, rest = tail[:after.start()], tail[after.start():]
-    cited = set(re.findall(r'\[(W?\d+)\](?!\()', head + rest))
+    # Counted as validate counts them, in prose: a [9] only inside a diagram's
+    # code block left its source "unused" and refused a real project page (2026-10-08).
+    cited = set(re.findall(r'\[(W?\d+)\](?!\()', prose(head + rest)))
     kept = [line for line in sources.splitlines(keepends=True)
             if not (m := re.match(r'^\s*(?:- )?\[(W?\d+)\]', line)) or m[1] in cited]
     return head + marker + ''.join(kept) + rest
+
+
+RUN_SOURCES = {"projects/": ("investigation:coverage", "investigation:project-scope", "investigation:project-inventory",
+                             "investigation:project-repositories"),
+               # The same refusal on a skill page (title-refine, 2026-10-08).
+               "skills/": ("skill-runs:", "investigation:page")}
+MAPPED_LINE = re.compile(r'^- (Sessions|First seen|Last seen): [0-9-]+$', re.M)
+
+
+def repair_run_citations(record: str, text: str, original: str) -> str:
+    """Fix the two refusals of a project page that need no model.
+
+    A 1.9.0 Codex init refused 4 of its first 8 project pages whole: they cited
+    the run's own coverage note, or folded the mapped Sessions / First seen /
+    Last seen lines into one. A line resting only on the run is dropped, a run
+    citation beside a real one is removed, and the mapped lines are put back.
+    """
+    kind = next((prefix for prefix in RUN_SOURCES if record.startswith(prefix)), None)
+    if not kind:
+        return text
+    if kind == "skills/" and "<!-- rem-skill-runs:start -->" in text:
+        # Edited in place, a skill page kept the collector's Run evidence block
+        # and the model added the heading again above it (linkedin-engagement).
+        before, marker, after = text.partition("<!-- rem-skill-runs:start -->")
+        before = re.sub(r"(?ms)^## Run evidence\n.*?(?=^## |\Z)", "", before)
+        text = before.rstrip("\n") + "\n\n" + marker + after
+    head, marker, tail = text.partition('\n## Sources\n')
+    run = set(re.findall(r'^\s*(?:- )?\[(W?\d+)\]\s*:?\s*(?:' + '|'.join(map(re.escape, RUN_SOURCES[kind])) + r')',
+                         tail, re.M)) if marker else set()
+    if run:
+        lines = []
+        for line in head.splitlines(keepends=True):
+            cites = re.findall(r'\[(W?\d+)\](?!\()', line)
+            if cites and set(cites) <= run:
+                continue
+            lines.append(re.sub(r'\[(W?\d+)\](?!\()', lambda m: '' if m[1] in run else m[0], line))
+        head = ''.join(lines)
+    text = drop_uncited_sources(head + marker + tail)
+    mapped = MAPPED_LINE.findall(prose(original))
+    if mapped and MAPPED_LINE.findall(prose(text)) != mapped:
+        lines = ''.join(m[0] + '\n' for m in MAPPED_LINE.finditer(original))
+        text = MAPPED_LINE.sub('', text).replace('\n\n\n', '\n\n')
+        paths = re.search(r'(?ms)^## Paths\n.*?(?=\n## |\Z)', text)
+        at = paths.end() if paths else len(text.partition('\n## Sources\n')[0])
+        rest = text[at:].lstrip('\n')
+        text = text[:at].rstrip('\n') + '\n' + lines + ('\n' + rest if rest else '')
+    return text
 
 
 def normalize_numbered_sources(text: str) -> str:
@@ -401,8 +450,9 @@ def drop_tool_text(record: str, text: str, original: str) -> tuple[str, list[str
     return '\n'.join(kept) + marker + tail, removed
 
 
-# History is milestones (#2059): Ody Zhou's held 17 bullets, five of them "sent report X".
-HISTORY_LIMIT = 8
+# History is threads and how they ended (#2059, #2314): Ody Zhou's once held 17
+# bullets, five of them "sent report X"; eight then squeezed out how threads ended.
+HISTORY_LIMIT = 16
 
 
 def _history(text: str) -> list[str]:
@@ -415,7 +465,7 @@ def history_note(page: str) -> str:
     lines = len(_history(page))
     if not lines:
         return ""
-    return (f"History holds at most {HISTORY_LIMIT} dated milestones; it has {lines}"
+    return (f"History holds at most {HISTORY_LIMIT} dated lines, one per thread with how it ended; it has {lines}"
             + (": fold the oldest into one line per year. " if lines > HISTORY_LIMIT else ". "))
 
 
@@ -424,8 +474,8 @@ def history_errors(candidate: str, original: str) -> list[str]:
     lines, before = len(_history(candidate)), len(_history(original))
     if lines <= HISTORY_LIMIT or lines <= before:
         return []
-    return [f'History has {lines} lines (was {before}); keep at most {HISTORY_LIMIT} dated milestones: '
-            'fold the oldest into one line per year, and drop sends, reminders and newsletters']
+    return [f'History has {lines} lines (was {before}); keep at most {HISTORY_LIMIT} dated lines, one per thread '
+            'with how it ended: fold the oldest into one line per year, and drop sends, reminders and newsletters']
 
 
 def size_errors(candidate: str, original: str) -> list[str]:

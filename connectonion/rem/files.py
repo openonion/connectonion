@@ -42,8 +42,11 @@ CONTACT_LABELS = ALIAS_LABELS + EMAIL_LABELS + (
     "电话:", "电话：", "公司:", "公司：")
 
 CATEGORIES = ("people", "orgs", "projects", "skills", "knowledge", "opportunities",
-              "decisions", "principles", "works", "agenda", "notes")
+              "decisions", "principles", "works", "agenda", "notes", "logs")
 MAX_NOTE_BYTES = 1_000_000
+# The map's default window. 90 days left out people the owner works with every
+# season but had not written to this quarter; the owner chose 180 (2026-10-08).
+MAP_DAYS = 180
 # The maintainer has a read-only shell and this is its only write path; a key it
 # was tricked into cat-ing must not become a page. Shapes, not words: prose about
 # "the API key" is fine, the key itself is not.
@@ -110,6 +113,12 @@ def read_json(path: Path, default):
 
 def write_json(path: Path, value) -> None:
     atomic_write(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+
+
+# How long a write of work already done waits for the notebook lock. A promotion
+# can hold it for minutes (its cited-claim audit is a model turn), and a 30-second
+# wait lost UNSW's page in a 16-worker first run (1.9.1b5).
+WRITE_WAIT_SECONDS = 600
 
 
 @contextmanager

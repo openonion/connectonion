@@ -15,6 +15,19 @@ from connectonion.rem.files import Notebook
 from connectonion.rem.runner import RunFailed, run_stage, task_prompt
 
 
+def test_model_access_probes_without_sources(tmp_path, monkeypatch):
+    from connectonion.rem import runner as rem_runner
+    prompts = []
+    monkeypatch.setattr(rem_runner, "run_task", lambda workspace, prompt, config, stage:
+                        prompts.append((workspace, prompt, stage)) or {"outcome": "natural"})
+    assert rem_runner.model_access(tmp_path, {"runner": "claude-code"}) == ("", "")
+    assert prompts[0][0].is_dir()
+    assert "Do not use tools or read files" in prompts[0][1]
+    assert prompts[0][2] == "abstract"
+    assert rem_runner.model_denial(RunFailed("provider 403 permission_denied"))
+    assert not rem_runner.model_denial(RunFailed("transient timeout"))
+
+
 @pytest.fixture
 def notebook(tmp_path):
     root = tmp_path / "rem"
@@ -37,7 +50,7 @@ def delegate(monkeypatch):
         calls.append((argv, kw))
         if argv[-1].startswith('/rem-investigate'):
             import re
-            path = Path(re.search(r'NEW file (.+?candidate.md)', argv[-1])[1])
+            path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
             path.write_text((Path(kw['cwd']).parent.parent / 'notes/old.md').read_text())
         if argv[-1].startswith('/rem-maintain'):
             workspace = Path(kw['cwd'])
@@ -47,7 +60,7 @@ def delegate(monkeypatch):
             (directory / 'completion.json').write_text(json.dumps({
                 'status': 'no_change', 'sources': sources, 'reason': 'No durable new fact.'}))
         return SimpleNamespace(returncode=0, stdout=json.dumps({
-            "outcome": "natural", "result": "done", "usage": {"input_tokens": 13}}), stderr="")
+            "outcome": "natural", "result": "done. NO CHANGE", "usage": {"input_tokens": 13}}), stderr="")
 
     monkeypatch.setattr("connectonion.rem.runner.co_command", lambda: ["/opt/bin/co"])
     monkeypatch.setattr("connectonion.rem.runner.subprocess.run", run)
@@ -735,7 +748,7 @@ def test_history_only_refusal_gets_one_repair_turn_with_usage_counted(notebook, 
     result = run_stage(notebook, [{'role': 'page', 'record': record,
                                    'text': notebook.read(record), 'source': 'investigation:page'}],
                        default_config(), stage='investigate')
-    assert len(prompts) == 2 and 'at most eight dated bullets' in prompts[1]
+    assert len(prompts) == 2 and 'at most sixteen dated History lines' in prompts[1]
     assert promotions[1] == result['usage'] == {'input_tokens': 20, 'output_tokens': 2}
 
 
@@ -949,3 +962,34 @@ def test_quick_first_pass_never_offers_or_runs_extra_mail_search(notebook, monke
     assert len(prompts) == 1 and not asked
     assert 'Optional runner-mediated mail search' not in prompts[0]
     assert prompts[0].endswith('</co_rem_task>')
+
+
+def test_a_project_still_refused_for_one_citation_after_its_repairs_drops_those_lines(notebook, monkeypatch):
+    """3 of 4 project refusals on a real 1.9.1a2 init were one untraceable
+    citation each, after two repair turns; the page was lost whole."""
+    import re
+    from connectonion.rem.files import write_json
+
+    record = 'projects/example.md'
+    notebook.stub_project(record, 'Example', [])
+    modes = []
+
+    def run_model(workdir, prompt, config, stage):
+        Path(re.search(r'(/\S+/candidate\.md)', prompt).group(1)).write_text('# Example\nStill one bad citation')
+        return {'usage': {'input_tokens': 1}, 'result': 'done'}
+
+    def promote(book, record, candidate, original, items, directory, usage, last_resort=False, **options):
+        modes.append(last_resort)
+        if not last_resort:
+            write_json(directory / 'review.json', {'accepted': False,
+                       'errors': ['Citation has no identifiable source: 13']})
+            raise RunFailed('Candidate rejected', usage)
+        book.write(record, candidate.read_text())
+
+    monkeypatch.setattr('connectonion.rem.runner.run_task', run_model)
+    monkeypatch.setattr('connectonion.rem.runner._promote_candidate', promote)
+    result = run_stage(notebook, [{'role': 'page', 'record': record,
+                                   'text': notebook.read(record), 'source': 'investigation:page'}],
+                       default_config(), stage='investigate')
+    assert modes == [False, False, False, True]  # two repairs, then the lines go, not the page
+    assert result['changed'] == [record]

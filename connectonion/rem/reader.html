@@ -577,8 +577,8 @@
   .sheet .c-company .clamp, .sheet .c-role .clamp { max-width: 112px; }
   .sheet .c-email { max-width: 140px; }
   .sheet .trunc { display: block; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sheet .c-phone { min-width: 128px; }
-  .sheet .c-phone .mono { white-space: nowrap; }
+  .sheet .c-phone { min-width: 128px; max-width: 180px; white-space: normal; }
+  .sheet .c-phone .mono { white-space: normal; overflow-wrap: anywhere; }
   .open-cell { flex-wrap: wrap; row-gap: 2px; }
   .open-cell .txt { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; flex-basis: 100%; }
   .name-cell .st { display: inline-flex; }
@@ -663,7 +663,8 @@
   .focus-next { position: relative; z-index: 1; max-width: 68ch; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--night-line); }
   .focus-next .k { display: block; font: 600 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--night-2); }
   .focus-next p { margin: 5px 0 0; font: 15px/1.45 var(--text); }
-  .focus-more { position: relative; z-index: 1; border: 0; background: transparent; color: var(--night-ink); cursor: pointer; margin: 4px 0 0 12px; padding: 0; min-height: 44px; font: 600 12px var(--ui); text-decoration: underline; text-underline-offset: 3px; }
+  .focus-more { position: relative; z-index: 1; display: block; border: 0; background: transparent; color: var(--night-ink); cursor: pointer; margin: 4px 0 0; padding: 0; min-height: 44px; font: 600 12px var(--ui); text-decoration: underline; text-underline-offset: 3px; }
+  .focus-more[hidden] { display: none; }
   .focus-section.next-exchanges { grid-column: 1 / -1; }
   .project-workspace { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
   .project-workspace.single { grid-template-columns: 1fr; }
@@ -682,6 +683,9 @@
   .focus-fact { min-width: 0; }
   .focus-facts dt { font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--blue); }
   .focus-facts dd { margin: 6px 0 0; font-size: 13px; color: var(--ink); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .contact-strip dd { display: block; }
+  .contact-strip .contact-what { display: block; margin-top: 3px; font-size: 12px; color: var(--ink-2); }
+  .contact-strip .copy { margin-left: 8px; font: 10.5px var(--ui); color: var(--ink-3); background: var(--sheet); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; cursor: pointer; vertical-align: 1px; }
   .relation-description { font: 13px/1.5 var(--ui); color: var(--ink-2); margin: 0 0 10px; }
   .relation-entry { min-width: 0; }
   .relation-provenance { font: 12px/1.5 var(--ui); color: var(--ink-2); padding: 7px 3px; overflow-wrap: anywhere; }
@@ -696,7 +700,7 @@
   .more-relations > summary { cursor: pointer; font: 600 14px/1.5 var(--ui); color: var(--blue); min-height: 44px; display: list-item; padding: 11px 0; box-sizing: border-box; }
   .more-relations .relation-list { margin-top: 10px; }
   .related-records { grid-column: 1 / -1; }
-  .conversation-view { grid-column: 1 / -1; }
+  .conversation-view, .documents { grid-column: 1 / -1; }
   .conversation-list { display: flex; flex-wrap: wrap; gap: 9px; }
   .conversation-open { flex: 1 1 210px; text-align: left; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: var(--paper); color: var(--ink); cursor: pointer; }
   .conversation-open:hover, .conversation-open:focus-visible { border-color: var(--blue); }
@@ -765,6 +769,24 @@
   .evidence-find-status { min-height: 18px; font: 12px var(--mono); color: var(--ink-3); }
   .evidence-original mark { background: #ffe083; color: #171717; }
   .evidence-unavailable { color: var(--ink-2); }
+  .document-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .document-list a { font: 600 14px var(--ui); overflow-wrap: anywhere; }
+  .evidence-open-file { display: inline-block; margin: 8px 0 4px; font: 600 13px var(--ui); }
+  .msg { margin-top: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); padding: 16px 18px; }
+  .msg-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .msg-time { font: 12px var(--mono); color: var(--ink-3); white-space: nowrap; }
+  .msg-from { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; }
+  .msg-address { font: 12px var(--mono); color: var(--ink-3); overflow-wrap: anywhere; }
+  .msg-person { display: inline-flex; align-items: center; gap: 8px; margin: 3px 12px 3px 0; color: var(--ink); font: 600 14px var(--ui); text-decoration: none; }
+  a.msg-person:hover span:last-child { text-decoration: underline; }
+  .msg-avatar { flex: none; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: hsl(var(--hue) 45% 88%); color: hsl(var(--hue) 45% 28%); font: 600 11px var(--ui); letter-spacing: .02em; }
+  .msg-subject { margin: 12px 0 6px; font: 600 16px var(--ui); color: var(--ink); overflow-wrap: anywhere; }
+  .msg-people { display: grid; gap: 4px; margin: 6px 0 4px; }
+  .msg-row { display: flex; flex-wrap: wrap; align-items: center; }
+  .msg-row .msg-person { font-weight: 500; font-size: 13px; }
+  .msg-row .msg-avatar { width: 22px; height: 22px; font-size: 9px; }
+  .msg-label { width: 30px; font: 11px var(--mono); color: var(--ink-3); }
+  .msg-body blockquote { margin: 12px 0 0; border-left: 0; border-radius: 10px; }
   @media (prefers-reduced-motion: reduce) { .relation-card { transition: none; } .relation-card:hover, .relation-card:focus-visible { transform: none; } }
 
   @media (min-width: 1180px) {
@@ -787,7 +809,7 @@
     .record-focus.people .focus-statement { font-size: 20px; margin-top: 12px; }
     .record-focus.people .focus-statement.clamped { -webkit-line-clamp: 5; }
     .focus-section { padding: 16px; }
-    .focus-facts, .related-records, .activity-view, .conversation-view, .project-workspace { grid-column: 1; }
+    .focus-facts, .related-records, .activity-view, .conversation-view, .documents, .project-workspace { grid-column: 1; }
     .project-workspace { grid-template-columns: 1fr; }
     .focus-facts { display: grid; grid-template-columns: 1fr; gap: 14px; }
     .focus-facts dd { margin: 0; }
@@ -862,6 +884,14 @@
     .mobile-back { margin-bottom: 8px; }
     .page-head { margin-bottom: 4px; }
     .leadrow { margin-top: 8px; }
+    .lead-open { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start;
+      gap: 4px 10px; width: 100%; box-sizing: border-box; }
+    .lead-open .dir, .lead-open .txt { grid-column: 1 / -1; }
+    .lead-open .txt { max-width: none; }
+    .lead-open .age { grid-column: 1; }
+    .lead-open .more { grid-column: 2; justify-self: end; }
+    .lead-meta.usage { display: block; width: 100%; }
+    .lead-meta.usage .bar { display: none; }
     .record-focus, .record-focus.people { margin-top: 4px; }
     .focus-head { padding-top: 16px; }
     .focus-head.purpose-lead .focus-statement { margin-top: 10px; }
@@ -965,7 +995,7 @@ function el(tag, attrs, children) {
 const CATEGORY_LABEL = {
   people: "People", orgs: "Organisations", projects: "Projects", skills: "Skills", knowledge: "Knowledge",
   opportunities: "Opportunities", decisions: "Decisions", principles: "Principles", works: "Works",
-  agenda: "Agenda", notes: "Notes"
+  agenda: "Agenda", notes: "AI notes", logs: "Run logs"
 };
 const CATEGORY_ASK = {
   people: "who is this, and where did we leave off?",
@@ -978,7 +1008,8 @@ const CATEGORY_ASK = {
   principles: "standing rules we adopted",
   works: "outputs that can be reused or shown",
   agenda: "promises, waiting on others, dates that matter",
-  notes: "everything durable that fits nowhere else"
+  notes: "the AI's own working notes: reflections and open questions",
+  logs: "what co rem recorded while it worked: maps and skill run counts"
 };
 function label(c) { return CATEGORY_LABEL[c] || c; }
 function singular(c) { return ({ people: "Person", orgs: "Organisation", skills: "Skill" })[c] || label(c).replace(/s$/, ""); }
@@ -1066,10 +1097,10 @@ function citeRun(ns, from) {
   return '<a class="cite run" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + ns[0].toLowerCase() + '" data-tip="' + esc(tips.join("\n")) +
     '" aria-label="' + ns.length + " sources: " + esc(tips.join("; ")) + '">' + ns.length + " sources</a>";
 }
-function citeChip(n, from, showDescription = true) {
+function citeChip(n, from, showDescription = true, visibleLabel = false) {
   const tip = showDescription && from === CITES.from ? CITES.sources[n] : "";
   return '<a class="cite" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + n.toLowerCase() + '"' +
-    (tip ? ' data-tip="' + esc(tip) + '"' : "") + ' aria-label="Source ' + n + (tip ? ": " + esc(tip) : "") + '">' + n + "</a>";
+    (tip ? ' data-tip="' + esc(tip) + '"' : "") + ' aria-label="Source ' + n + (tip ? ": " + esc(tip) : "") + '">' + (visibleLabel ? "Source " : "") + n + "</a>";
 }
 // Pages are written about "the user"; the reader is read by them. At render time
 // only (the Markdown keeps its wording, and Copy Markdown copies it as written)
@@ -1344,7 +1375,8 @@ function byActivity(a, b) {
 }
 function statusPill(r) {
   const st = known(r).status;
-  return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: known(r).stamp || st }, [moon(st), st]);
+  const label = r.category === "skills" && st === "Investigated" ? "Source reviewed" : st;
+  return el("span", { class: "pill status" + (st === "Mapped" ? " mapped" : ""), title: known(r).stamp || label }, [moon(st), label]);
 }
 
 // ---------- reading a page's parts ----------
@@ -1833,7 +1865,8 @@ function renderRail(active) {
   foot.appendChild(privacy);
   foot.appendChild(el("div", { text: "Also hides raw excerpts; other details stay visible." }));
   foot.appendChild(el("div", { text: "Snapshot " + fmtTime(REM.as_of) }));
-  const schedule = s.next_run ? "Next pass " + fmtTime(s.next_run)
+  const schedule = /^Background needs attention/.test(s.state || "") ? scheduleState(s)
+    : s.next_run ? "Next pass " + fmtTime(s.next_run)
     : (scheduleState(s) || "No pass scheduled");
   foot.appendChild(el("div", { text: plainLine(schedule) }));
   foot.appendChild(el("div", { text: location.protocol === "about:" ? "Reload for latest" : "co rem open re-renders" }));
@@ -1957,9 +1990,10 @@ function morningBrief() {
       const maintenance = document.querySelector("details.maint");
       if (!maintenance) return;
       maintenance.open = true;
-      const summary = maintenance.querySelector(":scope > summary");
-      summary?.focus();
-      maintenance.scrollIntoView({ behavior: "smooth", block: "start" });
+      const failedRun = maintenance.querySelector(".runs tr.failed-run");
+      const target = failedRun || maintenance.querySelector(":scope > summary");
+      target?.focus();
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
     };
     brief.appendChild(el("div", { class: "first-map-actions" }, [review]));
   }
@@ -2167,7 +2201,7 @@ function maintenance(s) {
       const u = run.usage || {};
       const outcome = String(run.outcome || "");
       const ok = /^(completed|pass)$/i.test(outcome);
-      table.appendChild(el("tr", {}, [
+      table.appendChild(el("tr", FAILED.test(outcome) ? { class: "failed-run", tabindex: "-1" } : {}, [
         el("td", { text: fmtTime(run.started_at) }),
         el("td", {}, [el("span", { class: "pill" + (ok ? "" : FAILED.test(outcome) ? " warn" : " quiet"), text: outcome })]),
         el("td", { text: String(run.items ?? "") }),
@@ -2450,7 +2484,7 @@ function leadRow(r) {
     row.appendChild(privateFallback(el("span", { class: "lead-meta project-purpose-preview", html: inline(preview, r.path) })));
     const purposeSources = [...new Set(projectLead.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
     if (purposeSources.length) row.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": "Purpose sources" },
-      [el("span", { text: "Purpose sources" }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false) }))]));
+      [el("span", { text: "Purpose sources" }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
   } else if (k.last && r.category !== "skills" && r.category !== "projects") row.appendChild(el("span", { class: "lead-meta" }, [el("span", { class: "k", text: r.category === "people" && r.path !== REM.owner ? (mappedContact(r) ? "Last contact in map " : "Last contact ") : "Last active " }), el("span", { class: "mono", text: fmtDate(k.last) + " · " + age(k.last) + (age(k.last) === "today" ? "" : " ago") })]));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u) row.append(el("span", { class: "lead-meta usage" }, [usageBar(u), el("span", { class: "mono", text: usageCaption(u) })]),
@@ -2537,6 +2571,32 @@ function connectedContext(r) {
 function investigateCommand(r) {
   return "co rem --root '" + String(REM.root).replace(/'/g, "'\\''") + "' investigate '" + r.path.replace(/'/g, "'\\''") + "'";
 }
+// Who they are and how to reach them, first on a person (#2104): the owner
+// asked to see email, phone, what to call them and the company at a glance.
+function contactStrip(r) {
+  const parsed = parseFacts(r);
+  // The parts of one field, put back together: "OpenOnion (internship; 2026)" is one value.
+  const value = label => (parsed.get(label) || []).map(i => i.value + (i.qualifier ? " (" + i.qualifier + ")" : "")).join("; ");
+  // Role and Company through facts(): a reviewed "Unknown" outranks an older index value.
+  const f = facts(r), company = f.company ? String(f.company) : "";
+  const org = /\]\((\.\.\/orgs\/[^)]+\.md)\)/.exec(company);
+  const orgRecord = org && byPath(org[1].replace(/^\.\.\//, ""));
+  const what = orgRecord && (parseFacts(orgRecord).get("What they do") || [])[0];
+  const aka = (parsed.get("Also known as") || []).map(i => i.value).filter(v => !v.includes("@")).join("; ");
+  const rows = [["Email", value("Email"), true], ["Phone", value("Phone"), true], ["Also known as", aka, false],
+    ["Company", company, false], ["Role", f.role ? String(f.role) : "", false]].filter(([, v]) => v);
+  if (!rows.length) return null;
+  return el("dl", { class: "focus-facts contact-strip" }, rows.map(([label, v, copyable]) => {
+    const dd = el("dd", {}, [el("span", { html: inline(v, r.path) })]);
+    if (label === "Company" && what) dd.appendChild(el("span", { class: "contact-what", html: inline(what.value, orgRecord.path) }));
+    if (copyable) {
+      const btn = el("button", { type: "button", class: "copy", "aria-label": "Copy " + label.toLowerCase(), text: "Copy" });
+      btn.onclick = () => copyToClipboard((parsed.get(label) || []).map(i => i.value).join("; "), btn, "Copied");
+      dd.appendChild(btn);
+    }
+    return el("div", { class: "focus-fact" }, [el("dt", { text: label }), dd]);
+  }));
+}
 function recordFocus(r) {
   const k = known(r), out = el("section", { class: "record-focus " + r.category,
     "aria-label": "At a glance" });
@@ -2560,6 +2620,18 @@ function recordFocus(r) {
   const statementNode = privateFallback(el("p", { class: "focus-statement" + (privateMapped || r.category === "projects" && !projectNeedsContext ? "" : " clamped"), html: inline(statement || (k.status === "Mapped"
     ? "Mapped from source metadata. REM has not investigated this record yet." : "No supported summary yet."), r.path) }));
   focusHead.appendChild(statementNode);
+  if (statement && !privateMapped && (r.category !== "projects" || projectNeedsContext)) {
+    const label = projectNeedsContext ? "Read full purpose" : r.category === "skills" ? "Read complete finding" :
+      r.category === "orgs" ? "Read complete relationship" : "Read full context";
+    const more = el("button", { type: "button", class: "focus-more", "aria-expanded": "false", text: label, hidden: "" });
+    more.onclick = () => {
+      const clamped = statementNode.classList.toggle("clamped");
+      more.setAttribute("aria-expanded", String(!clamped));
+      more.textContent = clamped ? label : "Show less";
+      refreshFocusExpansion();
+    };
+    focusHead.appendChild(more);
+  }
   if (r.category === "skills" && k.status === "Mapped") {
     const copy = el("button", { type: "button", class: "focus-source focus-command", text: "Copy investigation command" });
     copy.onclick = () => copyToClipboard(investigateCommand(r), copy, "Copied — paste it in a terminal");
@@ -2570,12 +2642,12 @@ function recordFocus(r) {
     if (findingSources.length) focusHead.appendChild(el("span", { class: "skill-finding-cites" + (/\[(?:personal|sensitive)\]/i.test(findingLine) ? " private" : ""),
       role: "group", "aria-label": "Finding sources" },
       [el("span", { text: findingSources.length === 1 ? "Finding source" : "Finding sources" }),
-        ...findingSources.map(n => el("span", { html: citeChip(n, r.path, false) }))]));
+        ...findingSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
   }
   if (projectNeedsContext) {
     const purposeSources = [...new Set(projectPurposeLine.match(/(?<=\[)W?\d{1,3}(?=\])/g) || [])];
     if (purposeSources.length) focusHead.appendChild(el("span", { class: "project-purpose-cites", role: "group", "aria-label": "Purpose sources" },
-      [el("span", { text: "Purpose sources" }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false) }))]));
+      [el("span", { text: "Purpose sources" }), ...purposeSources.map(n => el("span", { html: citeChip(n, r.path, false, true) }))]));
     const days = r.project_coverage?.days;
     const limit = r.project_coverage?.inputs_read === 0
       ? "No coding-session input was assigned to this project in this " + (days ? days + "-day " : "") + "investigation."
@@ -2595,18 +2667,10 @@ function recordFocus(r) {
         el("p", { html: inline(step[0].toUpperCase() + step.slice(1), r.path) })]));
     }
   }
-  if (statement && !privateMapped && (r.category !== "projects" || projectNeedsContext)) {
-    const label = projectNeedsContext ? "Read full purpose" : "Read full context";
-    const more = el("button", { type: "button", class: "focus-more", "aria-expanded": "false", text: label, hidden: "" });
-    more.onclick = () => {
-      const expanded = statementNode.classList.toggle("clamped");
-      more.setAttribute("aria-expanded", String(!expanded));
-      more.textContent = expanded ? label : "Show less";
-      refreshFocusExpansion();
-    };
-    focusHead.appendChild(more);
-  }
   out.appendChild(focusHead);
+  const person = r.category === "people" && r.path !== REM.owner;
+  const strip = person && contactStrip(r);
+  if (strip) out.appendChild(strip);
   const coverage = r.category === "projects" ? r.project_coverage : null;
   const coverageNote = coverage && coverage.inputs_available > coverage.inputs_read
     ? el("p", { class: "scope-note", text: coverage.scope === "queued"
@@ -2641,8 +2705,16 @@ function recordFocus(r) {
       : r.category === "orgs" ? [["Domain", f.domain], ["Last contact", f.last]]
       : r.category === "skills" ? [["Skill-name matches", skillUsage(r) ? String(skillUsage(r).count) : ""], ["Last name match", f.last]] : [];
   const shown = labels.filter(([, value]) => value).slice(0, 3);
-  if (shown.length) out.appendChild(el("dl", { class: "focus-facts" }, shown.map(([key, value]) =>
+  if (shown.length && !person) out.appendChild(el("dl", { class: "focus-facts" }, shown.map(([key, value]) =>
     el("div", { class: "focus-fact" }, [el("dt", { text: key }), el("dd", { html: inline(String(value), r.path), title: plainLine(String(value)) })]))));
+  // Enrich (#2315): the documents this page cites, each one click from its file.
+  const documents = sourceList(r).map(source => [source, (REM.source_context || {})[sourceId(source.text)]])
+    .filter(([, c]) => c?.source === "attachment" && c.file);
+  if (documents.length) out.appendChild(el("div", { class: "focus-section documents private" }, [
+    el("h2", { text: "Documents" }),
+    el("ul", { class: "document-list" }, documents.map(([source, c]) => el("li", {}, [
+      el("a", { href: c.file, target: "_blank", rel: "noopener", text: c.filename }),
+      el("span", { html: " " + citeChip(source.n, r.path, false, true) })])))]));
   const conversations = [...new Set(sourceList(r).map(source => {
     const id = sourceId(source.text);
     return id && (REM.source_context || {})[id]?.thread;
@@ -3045,6 +3117,52 @@ function sourceFind(excerpt, quote) {
     el("div", { class: "evidence-find-controls" }, [input, next]), status]);
 }
 
+// A mail as a message (#2106): who wrote it, to whom, when, then the words.
+function mailbox(text) {
+  const m = /^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/.exec(text || "");
+  const address = (m ? m[2] : text || "").trim().toLowerCase();
+  return { name: (m && m[1].trim()) || address.split("@")[0], address };
+}
+let PEOPLE_BY_ADDRESS = null;
+function personByAddress(address) {
+  if (!PEOPLE_BY_ADDRESS) {
+    PEOPLE_BY_ADDRESS = new Map();
+    for (const r of REM.records.filter(r => r.category === "people"))
+      for (const field of ["Email", "Handles"])
+        for (const i of parseFacts(r).get(field) || [])
+          for (const address of i.value.toLowerCase().match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) || [])
+            if (!PEOPLE_BY_ADDRESS.has(address) || r.path === REM.owner) PEOPLE_BY_ADDRESS.set(address, r);
+  }
+  return PEOPLE_BY_ADDRESS.get(address);
+}
+function avatar(name) {
+  const words = name.replace(/[^\p{L}\p{N} ]/gu, " ").trim().split(/\s+/);
+  const initials = (words.length > 1 ? words[0][0] + words.at(-1)[0] : (words[0] || "?").slice(0, 2)).toUpperCase();
+  let hue = 0;
+  for (const c of name) hue = (hue * 31 + c.codePointAt(0)) % 360;
+  return el("span", { class: "msg-avatar", "aria-hidden": "true", style: "--hue:" + hue, text: initials });
+}
+function personChip(text) {
+  const who = mailbox(text), page = personByAddress(who.address);
+  const name = page ? page.title : who.name;
+  return el(page ? "a" : "span", { class: "msg-person", title: who.address, ...(page ? { href: href(page) } : {}) },
+    [avatar(name), el("span", { text: name })]);
+}
+function mailMessage(context, quote) {
+  const headers = context.participants || {};
+  const list = value => (Array.isArray(value) ? value : value ? String(value).split(/,\s*(?=[^,]*@)/) : []).filter(Boolean);
+  const from = list(headers.from)[0] || context.sender || "";
+  const rows = [["To", list(headers.to)], ["Cc", list(headers.cc)]].filter(([, people]) => people.length);
+  return el("article", { class: "msg" }, [
+    el("header", { class: "msg-head" }, [el("span", { class: "msg-from" }, [personChip(from),
+        el("span", { class: "msg-address", text: mailbox(from).address })]),
+      el("time", { class: "msg-time", text: context.time ? "Sent " + fmtTime(context.time) : "Sent date unknown" })]),
+    ...(context.subject ? [el("p", { class: "msg-subject evidence-subject", text: context.subject })] : []),
+    ...(rows.length ? [el("div", { class: "msg-people evidence-participants" }, rows.map(([label, people]) =>
+      el("div", { class: "msg-row" }, [el("span", { class: "msg-label", text: label }), ...people.map(personChip)])))] : []),
+    context.body_empty ? el("p", { class: "evidence-empty-body", text: "The retained message has no body text. Its headers are available." })
+      : el("div", { class: "msg-body" }, [quote])]);
+}
 function openEvidence(r, number, trigger) {
   const source = sourceList(r).find(item => item.n.toLowerCase() === number.toLowerCase());
   if (!source) return false;
@@ -3052,7 +3170,6 @@ function openEvidence(r, number, trigger) {
   const context = (REM.source_context || {})[id];
   const mail = /^(gmail|outlook)$/.test(context?.source || "");
   const headers = context?.participants;
-  const headerText = value => Array.isArray(value) ? value.join(", ") : value || "Not recorded";
   const revision = /:([0-9a-f]{40,64}):(.+)$/.exec(context?.origin || "");
   const origin = revision ? revision[2] + " @ " + revision[1].slice(0, 8)
     : context?.origin ? context.origin.split("/").at(-1).replace(/.*:checkout-state$/, "Checkout state") : "";
@@ -3073,20 +3190,19 @@ function openEvidence(r, number, trigger) {
     dialog.append(el("div", { class: "evidence-original private" }, [
     el("span", { class: "focus-kicker", text: (/^skill-(source|reference)$/.test(context.source) ? "Instruction excerpt" : context.source === "project-source" ? "Repository snapshot" : mail ? context.body_empty ? "Mail headers" : "Mail body excerpt" : "Original source context") + " · not a validated claim span" }),
     ...(origin ? [el("p", { class: "evidence-meta", text: origin })] : []),
-    el("p", { class: "evidence-meta", text: [context.source, context.sender,
-      context.time ? (mail ? "Sent " : "") + fmtTime(context.time) : "",
+    el("p", { class: "evidence-meta", text: [context.source, mail ? "" : context.sender,
+      context.time && !mail ? fmtTime(context.time) : "",
       context.captured_at ? (mail ? "Retrieved " : "Captured ") + fmtTime(context.captured_at) : "",
       context.retained_at && !context.captured_at ? "Archived " + fmtTime(context.retained_at) : ""].filter(Boolean).join(" · ") }),
-    ...(mail && headers ? [el("details", { class: "evidence-participants" }, [
-      el("summary", { text: "From, To and Cc" }),
-      ...["from", "to", "cc"].map(key => el("p", { class: "evidence-meta", text: ({from: "From", to: "To", cc: "Cc"}[key]) + ": " + headerText(headers[key]) }))])] : []),
     ...(context.body_format ? [el("p", { class: "evidence-meta", text: context.body_format })] : []),
-    ...(mail && context.subject ? [el("p", { class: "evidence-meta evidence-subject", text: "Subject: " + context.subject })] : []),
+    ...(context.file ? [el("a", { class: "evidence-open-file", href: context.file, target: "_blank", rel: "noopener",
+      text: "Open " + (context.filename || "the file") + " →" })] : []),
     ...(context.mapped_session_folder ? [el("p", { class: "evidence-meta", text: "Mapped project session folder: " + context.mapped_session_folder + " · source routing only; does not verify completion" })] : []),
     ...(context.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(context.input_scope) })] : []),
     ...(context.truncated ? [el("p", { class: "evidence-meta", text: "This archived excerpt is truncated; find searches only the text shown." })] : []),
     ...(context.excerpt.length > 2000 ? [sourceFind(excerpt, quote)] : []),
-    context.body_empty ? el("p", { class: "evidence-empty-body", text: "The retained message has no body text. Its headers are available." })
+    mail ? mailMessage(context, quote)
+      : context.body_empty ? el("p", { class: "evidence-empty-body", text: "The retained message has no body text. Its headers are available." })
       : quote]));
   }
   else dialog.appendChild(el("p", { class: "evidence-unavailable", text: "The original source is not archived in this snapshot. The citation above identifies a source; it does not show its original text." }));
