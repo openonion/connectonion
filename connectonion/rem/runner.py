@@ -602,6 +602,9 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         text, dropped = cited_text, {"citations": [], "lines": 0}
     else:
         text, dropped = drop_unresolved(record, cited_text, original, items)
+        # A fact part whose only citation was just dropped is uncited now: it goes, not the page (Lisa, 1.9.2b3).
+        text, more = facts.drop_uncited(record, text, original)
+        uncited = [*uncited, *more]
     citation_errors = unresolved_findings(cited_text, dropped['citations']) if investigation else []
     text = link_company(notebook, record, drop_uncited_sources(text))
     # A phone, address, link or contact date our code read from the material
