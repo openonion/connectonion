@@ -70,7 +70,8 @@ Rules:
 - **`Language` is observed**: the language they write to the user in.
 - Attribute group replies to their sender using exact From/To/Cc metadata.
   Greetings do not bind names by recipient order; the owner's phone is not
-  the contact's. Date historical plans and handoffs; missing completion
+  the contact's, nor one the source gives as someone else's; relay
+  addresses are not `Email`. Date historical plans and handoffs; missing completion
   evidence does not make them current pending work.
 - **`Company` needs stated employment.** Student or mailbox affiliation proves
   none: `Unknown`. Link schools/groups in relationship text, not as employers.
@@ -99,8 +100,8 @@ Rules:
 - **Keep what the map already knew.** `Email`, `Handles`, `Also known as`
   arrive filled; keep them. Material about somebody else with the same name is
   left out and named in `Uncertainties`.
-- **`Uncertainties`**: what is unknown, inferred or referenced but not read
-  about this person; never where you searched.
+- **`Uncertainties`**: at most five unknowns that change the user's next step;
+  never where you searched.
 - **Sources**: `- [n] <source id> — <date>`; claims stay in sentences.
   Reuse numbers and list only cited sources.
 

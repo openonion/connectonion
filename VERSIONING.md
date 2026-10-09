@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.1
+## Current Version: 1.9.2b1
+
+1.9.2b1 is a 1.9.2 beta; stable remains 1.9.1. Each investigation pass may
+delete as well as add: the round, final-round and edit prompts treat the page
+like code, the final round keeps at most five Uncertainties, and a number the
+source gives as someone else's stays out of a Person's Facts. See
+[1.9.2b1 notes](docs/releases/1.9.2b1.md).
+
+- 1.9.2b1 (Each pass improves the page, not only grows it).
+
+## Stable release: 1.9.1
 
 Stable 1.9.1 makes co rem's first run investigate rather than skim. It reads
 180 days of mail sixteen pages at a time, fetches two years in the background

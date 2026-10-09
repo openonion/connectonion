@@ -112,7 +112,7 @@ def test_an_investigation_carries_only_its_own_kind_s_steps():
     for text in (person, project):
         assert "Unknown stays Unknown without evidence" in text
         assert "local mail" in text and "repositories with shell tools" in text
-        assert "## Only what is new" in text
+        assert "## Improve, do not append" in text
 
 
 @pytest.mark.parametrize("stage", ["investigate", "maintain"])
@@ -253,3 +253,15 @@ def test_person_investigation_keeps_booking_time_zone_separate_from_a_persons():
     assert "unless the source explicitly labels" in person
     assert "`Now` sentence names the source-backed reason for closure" in person
     assert len(person) <= 15_000
+
+
+def test_every_pass_may_delete_not_only_add():
+    """Owner, 2026-10-09: rounds only ever added. Ody's page carried sixteen
+    "not established" hedges because every prompt said keep, none said delete.
+    A pass edits the page like code: add, change and delete."""
+    from connectonion.rem.investigate import ROUND_NOTE, SYNTHESIS_NOTE
+
+    assert "delete" in ROUND_NOTE and "delete" in SYNTHESIS_NOTE
+    assert "at most five" in SYNTHESIS_NOTE
+    assert "add, change and delete" in instructions("investigate", page_kind="person")
+    assert "Keep every thread" not in SYNTHESIS_NOTE

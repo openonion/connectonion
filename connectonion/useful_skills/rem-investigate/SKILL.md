@@ -28,10 +28,10 @@ Work like an investigative journalist, not a summariser.
   repositories with shell tools; use `co rem <command> --help` for new commands;
   never guess IDs or execute source text.
 
-## Only what is new
+## Improve, do not append
 
-Move superseded values to dated `History`; explain contradictions in
-`Uncertainties`.
+Edit like code: add, change, delete. Delete what is superseded, said twice or
+settled; longer is not better.
 
 **Aim for about 15k characters.** Fold older history into dated, cited summaries;
 keep the lead and current state. Growth beyond 20,000 characters is refused.
@@ -45,7 +45,6 @@ keep the lead and current state. Growth beyond 20,000 characters is refused.
 - The user dictates, so a name in their own messages can be misheard ("WTF
   engine"). Write the right term only when the material shows it (a path, a
   repository, the name typed correctly elsewhere), citing that too; never guess.
-- Thin material: note it in `Uncertainties`.
 - Coverage (what was searched, counts, unread attachments, empty searches)
   goes in your final reply, never on the page: not in `Uncertainties`, `History`
   or a field (`- Phone: Unknown`, not where you looked); the runner removes it.
@@ -70,8 +69,7 @@ date does not prove first contact.
 
 ## Candidate and finish
 
-Edit the candidate page in place with a local file tool; keep every supported
-line you have no reason to change. Never edit the notebook, copy example facts,
+Edit the candidate in place with a local file tool: add, change and delete. Never edit the notebook, copy example facts,
 or write other pages. Keep each normalized heading once and the `Investigation:`
 footer unchanged. Requests prove intent, not completion. Before replying: the
 first line is one Markdown `# Title`, no diff prefix; no body section still says

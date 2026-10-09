@@ -23,6 +23,15 @@ and cited mail opens as a message. See [1.9.1 notes](releases/1.9.1.md) and the
 python -m pip install --upgrade 'connectonion==1.9.1'
 ```
 
+## Current preview
+
+Beta **1.9.2b1** lets each investigation pass delete as well as add, so pages
+improve instead of only growing. See [1.9.2b1 notes](releases/1.9.2b1.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.2b1'
+```
+
 ## Previous previews
 
 Release candidate **1.9.1rc1** waits long enough for its notebook and credential
