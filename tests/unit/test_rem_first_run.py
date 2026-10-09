@@ -976,3 +976,28 @@ def test_a_finished_page_can_queue_its_follow_up_behind_the_pages_still_waiting(
     outcomes, _ = _in_parallel(jobs, workers=1, gate=lambda: "",
                                done=lambda job, outcome: [follow] if job["record"] == "a" else [])
     assert order == ["a", "b", "a-deepen"] and len(outcomes) == 3
+
+
+def test_a_failed_page_is_tried_once_more_at_the_end_of_the_queue():
+    """1.9.2b2 lost three pages to a Codex routing timeout, an interrupted turn and a
+    dropped Gmail connection, each of which a second try would have survived."""
+    from connectonion.rem.files import RemError
+    from connectonion.cli.commands.rem_commands import _in_parallel
+    tries = []
+
+    def flaky(name, failures):
+        def run():
+            tries.append(name)
+            if tries.count(name) <= failures:
+                raise RemError(f"{name}: workspace routing discovery timed out")
+        return {"record": name, "mode": "full", "run": run}
+
+    def refused():
+        tries.append("r")
+        raise RemError("Candidate rejected: one bad citation")
+
+    jobs = [flaky("a", 1), flaky("b", 0), flaky("c", 5), {"record": "r", "mode": "full", "run": refused}]
+    outcomes, _ = _in_parallel(jobs, workers=1, gate=lambda: "", done=lambda job, outcome: [])
+    assert tries == ["a", "b", "c", "r", "a", "c"]
+    assert {o["page"]: o["outcome"] for _, o in outcomes} == {"a": "accepted", "b": "accepted", "c": "failed",
+                                                             "r": "refused"}

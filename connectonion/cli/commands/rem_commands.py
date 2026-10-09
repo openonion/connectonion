@@ -528,6 +528,11 @@ def _in_parallel(jobs, *, workers, gate, done):
                 outcome = {"page": job["record"], "mode": job["mode"], "outcome": "accepted"} if error is None else {
                     "page": job["record"], "mode": job["mode"], "why": str(error)[:300],
                     "outcome": "refused" if "rejected" in str(error) else "failed"}
+                if outcome["outcome"] == "failed" and not stopped and not job.get("retried"):
+                    # A timeout or a dropped connection under load (1.9.2b2 lost three
+                    # pages so): once more, behind the pages still waiting.
+                    pending.append({**job, "retried": True})
+                    continue
                 outcomes.append((job, outcome))
                 pending.extend(done(job, outcome) or [])
     finally:
