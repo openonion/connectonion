@@ -303,25 +303,33 @@ def normalize_numbered_sources(text: str) -> str:
     return head + marker + sources + rest
 
 
-IDENTITY_LINE = re.compile(r'^(- (?:Email|Handles|Also known as): )(.*)$', re.M)
+IDENTITY_LINE = re.compile(r'^(- (?:Email|Phone|Handles|Also known as): )(.*)$', re.M)
+
+
+def _identity_key(value: str) -> str:
+    """A phone compares by its last nine digits (+61 435 ... is 0435 ...); anything else by case-folded text."""
+    digits = re.sub(r"\D", "", re.sub(r"\(.*?\)", "", value))
+    return digits[-9:] if len(digits) >= 8 else value.casefold()
 
 
 def drop_owner_addresses(text: str, owner: set[str]) -> tuple[str, list[str]]:
-    """Take the account owner's own addresses off someone else's identity lines.
+    """Take the account owner's own addresses and phones off someone else's identity lines.
 
     Mail between the user and a person carries both addresses, and a real page
-    (Dora, 2026-09-23) listed the user's own Outlook as her email and handle.
-    Which addresses are the owner's is known, so this is removed mechanically
-    rather than asked of the model; the rest of the page is kept.
+    (Dora, 2026-09-23) listed the user's own Outlook as her email and handle;
+    1.9.2b1 gave Weiwei the user's phone from his own quoted signature
+    (2026-10-09), though the instructions forbid it. Which values are the
+    owner's is known, so they are removed mechanically; the rest of the page is kept.
     """
+    owner = {_identity_key(value) for value in owner}
     removed = []
 
     def clean(match):
         head, value = match.groups()
         body, cites = re.match(r'^(.*?)((?:\s*\[W?\d+\])*)\s*$', value).groups()
         parts = [part.strip() for part in re.split(r'[;,]', body) if part.strip()]
-        kept = [part for part in parts if part.casefold() not in owner]
-        removed.extend(part for part in parts if part.casefold() in owner)
+        kept = [part for part in parts if _identity_key(part) not in owner]
+        removed.extend(part for part in parts if _identity_key(part) in owner)
         if kept == parts:
             return match.group(0)
         return head + ('; '.join(kept) + cites if kept else 'Unknown')

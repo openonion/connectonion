@@ -16,7 +16,7 @@ from statistics import median
 FIRST_PEOPLE = None    # None: every eligible page of the kind; init's flags cap it
 FIRST_PROJECTS = None
 FIRST_ORGS = None
-WORKERS = 16           # pages investigated at once after the owner's page
+WORKERS = 48           # pages investigated at once after the owner's page
 
 # Planning rates from the 2026-10-03 90-day concurrent first-run sample and
 # separate full Person/Skill reads. The sample was interrupted; these rates

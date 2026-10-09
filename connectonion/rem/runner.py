@@ -554,6 +554,15 @@ def promote_or_drop(notebook, record, candidate, original, items, directory, usa
         return _promote_candidate(notebook, record, candidate, original, items, directory, usage, last_resort=True)
 
 
+def _owner_phones(notebook, record) -> list[str]:
+    """The phones on the owner's own page, which no one else's page may carry."""
+    if not record or not notebook.path(record).is_file():
+        return []
+    line = next((line for line in notebook.read(record).splitlines() if line.startswith("- Phone:")), "")
+    return [part for part in re.split(r"[;,]", re.sub(r"\[W?\d+\]", "", line[len("- Phone:"):]))
+            if "unknown" not in part.casefold() and part.strip()]
+
+
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False):
     from .page_review import (compact_page, drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
@@ -567,9 +576,9 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text = facts.upgrade(record, restore_runner_fields(record, candidate.read_text(encoding="utf-8"), original))
     text, uncited = facts.drop_uncited(record, text, original)
     owner = (read_json(state_path(notebook.root, "map.json"), {}).get("owner") or {})
-    removed = []
+    removed, owner_values = [], {*owner.get("addresses", []), *_owner_phones(notebook, owner.get("record"))}
     if record.startswith("people/") and record != owner.get("record"):
-        text, removed = drop_owner_addresses(text, {a.casefold() for a in owner.get("addresses", [])})
+        text, removed = drop_owner_addresses(text, owner_values)
     # "web: not searched; Wiki runs are offline" is about the run, not the subject (#2058).
     text, tool_lines = drop_tool_text(record, text, original)
     # Minor unresolved claims can be omitted, but losing a lead or finding
@@ -588,6 +597,10 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     # is not lost because the turn did not copy it (#2068).
     extracted = next((item.get("facts") or [] for item in items if item.get("role") == "facts"), [])
     text, restored = facts.keep_extracted(record, text, extracted)
+    if record.startswith("people/") and record != owner.get("record"):
+        # A phone read from the owner's own quoted signature is restored as "extracted"; take it off again.
+        text, again = drop_owner_addresses(text, owner_values)
+        removed = sorted({*removed, *again})
     from .page_review import link_people, link_projects, person_names, project_names
     text = link_people(record, text, person_names(notebook, owner.get("record", "")))
     if record == owner.get("record"):

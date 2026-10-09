@@ -333,7 +333,7 @@ def _mail_progress(kind, stop, count):
     rem_look.line(f"  {kind}: to {stop:%Y-%m-%d}, {count} mails", err=True)
 
 
-def _investigate_me(root, *, days, quick, handle=(), quiet=False):
+def _investigate_me(root, *, days, quick, handle=(), quiet=False, rounds=None):
     """The owner's page from what they sent: `investigate me`, and init's last step (#1943)."""
     from ...rem.files import Notebook, RemError, read_json, state_path
     from ...rem.investigate import investigate
@@ -355,7 +355,7 @@ def _investigate_me(root, *, days, quick, handle=(), quiet=False):
     result = _logged(root, record, "investigate me", lambda update: investigate(
         root, record, title, [*owner.get("addresses", []), *handle], days=days or 30,
         clients=_mail_clients(root), subscriptions=subscriptions(root), progress=_mail_progress,
-        sent_only=True, stage_progress=update, quick=quick), quiet=quiet)
+        sent_only=True, stage_progress=update, quick=quick, rounds=rounds), quiet=quiet)
     return result, record
 
 
@@ -400,7 +400,7 @@ def _spending_skipped(ctx, *, want, problem, fix) -> str:
 
 
 def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=(), progress=None,
-                      quiet=False, retry_refused=False):
+                      quiet=False, retry_refused=False, rounds=None):
     """One page of `co rem investigate PAGE|CATEGORY`, and of the first run's organisations."""
     from ...rem import investigate as rem_investigate
     from ...rem.files import RemError, split_handles
@@ -438,13 +438,17 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
     return _logged(root, record, "investigate", lambda update: rem_investigate.investigate(
         root, record, title, handles, days=days or rem_investigate.window_since(text), clients=clients,
         subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped,
-        stage_progress=update, retry_refused=retry_refused), quiet=quiet)
+        stage_progress=update, retry_refused=retry_refused, rounds=rounds), quiet=quiet)
 
 
 # The first run investigates the owner and every eligible mapped page. The
 # configured weekly budget is an advisory target here; explicit --first-*
 # flags cap a kind for a trial.
-FIRST_RUN_WORKERS = 16  # pages in parallel; mail fetches share MAIL_FETCH_SLOTS per mailbox
+# Measured on rc1's 338 real runs (2026-10-09): 16 workers took 133 minutes, and
+# past 32 more workers bought nothing, because a large page reads up to nine
+# rounds one after another. 48 workers and three rounds replay to ~44 minutes.
+FIRST_RUN_WORKERS = 48  # pages in parallel; mail fetches share MAIL_FETCH_SLOTS per mailbox
+FIRST_RUN_ROUNDS = 3    # parts read in full per page; the rest stay searchable in files
 
 
 def _capped(rows: list, cap) -> list:
@@ -495,7 +499,8 @@ def _in_parallel(jobs, *, workers, gate, done):
     """Run `jobs` with up to `workers` at once; `gate()` says why not to start the next, or ''.
 
     A refused or failed page does not stop the others. `done(job, outcome)` is
-    called in this thread as each one finishes. Returns (outcomes, stopped).
+    called in this thread as each one finishes; the jobs it returns join the
+    end of the queue. Returns (outcomes, stopped).
     """
     from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
@@ -524,7 +529,7 @@ def _in_parallel(jobs, *, workers, gate, done):
                     "page": job["record"], "mode": job["mode"], "why": str(error)[:300],
                     "outcome": "refused" if "rejected" in str(error) else "failed"}
                 outcomes.append((job, outcome))
-                done(job, outcome)
+                pending.extend(done(job, outcome) or [])
     finally:
         pool.shutdown(wait=False, cancel_futures=True)
     return outcomes, stopped
@@ -549,7 +554,8 @@ def _project_jobs(root, config, rows) -> list[dict]:
     def job(row):
         if row['mode'] == 'full':
             return {'kind': 'projects', 'record': row['record'], 'mode': 'full', 'row': row,
-                    'run': lambda: _investigate_page(root, Notebook(root), row['record'], quiet=True)}
+                    'run': lambda: _investigate_page(root, Notebook(root), row['record'], quiet=True,
+                                                     rounds=FIRST_RUN_ROUNDS)}
         write = lambda update: project_pages.write_page(root, row["record"], config=config)  # noqa: E731
         return {"kind": "projects", "record": row["record"], "mode": row["mode"], "row": row,
                 "run": lambda: _logged(root, row["record"], "projects write", write, quiet=True)}
@@ -561,7 +567,8 @@ def _org_jobs(root, rows) -> list[dict]:
 
     def job(row):
         return {"kind": "orgs", "record": row["path"], "mode": "full", "row": row,
-                "run": lambda: _investigate_page(root, Notebook(root), row["path"], quiet=True)}
+                "run": lambda: _investigate_page(root, Notebook(root), row["path"], quiet=True,
+                                                 rounds=FIRST_RUN_ROUNDS)}
     return [job(row) for row in rows]
 
 
@@ -570,7 +577,7 @@ def _owner_full_job(root, days) -> dict:
     from ...rem.files import read_json, state_path
     record = read_json(state_path(root, "map.json"), {})["owner"]["record"]
     return {"kind": "me", "record": record, "mode": "full",
-            "run": lambda: _investigate_me(root, days=days, quick=False, quiet=True)}
+            "run": lambda: _investigate_me(root, days=days, quick=False, quiet=True, rounds=FIRST_RUN_ROUNDS)}
 
 
 KEYS = {"me": "owner_full", "people": "people_pages", "projects": "project_pages", "orgs": "org_pages",
@@ -586,12 +593,17 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills
     """
     # The first pass reads only the mapped window, already on disk, so no page
     # waits on the provider; the rest of each person's two years is fetched
-    # alongside, and people it found older mail for are deepened at the end.
+    # alongside, and a person it found older mail for is deepened as soon as
+    # their first page is written -- not after every other page (rc1 waited 80 minutes).
+    from datetime import date, timedelta
     from ...rem.files import MAP_DAYS
     deep = [row for row in people if row.get("mode") == "full" and (row.get("days") or 0) > MAP_DAYS]
     # Attachments too: a fresh notebook asked the provider once per archived mail.
-    first = [{**row, "days": MAP_DAYS, "attachments": False} if row in deep else row for row in people]
+    first = [{**row, "rounds": FIRST_RUN_ROUNDS, **({"days": MAP_DAYS, "attachments": False} if row in deep else {})}
+             for row in people]
     backfill = _start_backfill(root, deep)
+    before = (date.today() - timedelta(days=MAP_DAYS)).isoformat()
+    deep_rows = {row["record"]: row for row in deep}
     if deep:
         say(f"Fetching up to two years of mail for {len(deep)} people in the background…")
     kinds = {"me": [_owner_full_job(root, me_days)] if owner_full else [],
@@ -607,9 +619,16 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills
         say(f"Investigating 0/{len(jobs)} pages with up to {FIRST_RUN_WORKERS} workers…")
 
     def done(job, outcome):
+        if job["kind"] == "deepen":
+            say(f"  deepened {job['record']}: {outcome['outcome'] if job['older']() else 'no older mail'}")
+            return []
         why = f" ({outcome['why'][:120]})" if outcome["outcome"] != "accepted" else ""
         say(f"  {progress.finish(job['kind'])} {job['record']}: "
             f"{'written' if not why else 'not written' + why}")
+        row = deep_rows.get(job["record"])
+        if job["kind"] == "people" and row and outcome["outcome"] == "accepted":
+            return [_deepen_job(root, row, backfill[row["record"]], before)]
+        return []
 
     try:
         outcomes, stopped = _in_parallel(jobs, workers=FIRST_RUN_WORKERS, gate=gate, done=done)
@@ -624,8 +643,11 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills
             say(f"Stopped before the rest: {stopped}. Write them later with "
                 f"{_next(ctx, ['investigate', 'all'])} and {_next(ctx, ['projects', 'write'])}.")
     result = {KEYS[kind]: _kind_result(kind, jobs, outcomes, stopped) for kind, jobs in kinds.items()}
-    written = {outcome["page"] for job, outcome in outcomes if job["kind"] == "people" and outcome["outcome"] == "accepted"}
-    result["people_deepened"] = _deepen(root, say, gate, deep, backfill, written, stopped)
+    deepened = [outcome for job, outcome in outcomes if job["kind"] == "deepen" and job["older"]()]
+    result["people_deepened"] = {"started": bool(deepened),
+                                 "backfilled": sum(future.result() for future in backfill.values()
+                                                   if future.done() and future.exception() is None),
+                                 "pages": deepened, **({"stopped": stopped} if stopped else {})}
     return result
 
 
@@ -643,20 +665,11 @@ def _start_backfill(root, rows) -> dict:
     return futures
 
 
-def _deepen(root, say, gate, rows, backfill, written, stopped) -> dict:
-    """A second pass on the people whose backfill found mail before the mapped window."""
-    if not rows or stopped:
-        return {"started": False}
-    say("Waiting for the older mail to finish arriving…")
-    older = {record: future.result() if future.exception() is None else 0 for record, future in backfill.items()}
-    ready = [row for row in rows if row["record"] in written and older.get(row["record"])]
-    if not ready:
-        return {"started": False, "backfilled": sum(older.values())}
-    say(f"Deepening {len(ready)} people with {sum(older[row['record']] for row in ready):,} older messages and attachments…")
-    outcomes, halted = _in_parallel(_people_jobs(root, ready), workers=FIRST_RUN_WORKERS, gate=gate,
-                                    done=lambda job, outcome: say(f"  deepened {job['record']}: {outcome['outcome']}"))
-    return {"started": True, "backfilled": sum(older.values()), "pages": [outcome for _, outcome in outcomes],
-            **({"stopped": halted} if halted else {})}
+def _deepen_job(root, row, backfill, before: str) -> dict:
+    """A second pass on one person once their older mail has arrived: the parts dated before the mapped window."""
+    older = lambda: backfill.exception() is None and backfill.result() > 0  # noqa: E731 -- waits for the fetch
+    person = _people_jobs(root, [{**row, "rounds": FIRST_RUN_ROUNDS, "read_before": before}])[0]
+    return {**person, "kind": "deepen", "older": older, "run": lambda: person["run"]() if older() else None}
 
 
 def _skill_jobs(root, rows) -> list[dict]:

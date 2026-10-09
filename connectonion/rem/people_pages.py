@@ -165,7 +165,8 @@ def investigate_person(root: Path, row: dict, *, clients: dict, subscriptions: d
         result = investigation.investigate(root, row["record"], title, names, days=row["days"], clients=clients,
                                            subscriptions=subscriptions, max_calls=max_calls, progress=progress,
                                            stage_progress=stage_progress,
-                                           fetch_attachments=row.get("attachments", True))
+                                           fetch_attachments=row.get("attachments", True),
+                                           rounds=row.get("rounds"), read_before=row.get("read_before", ""))
     except investigation.NothingNew:
         # The window was read and held nothing: mail before `started` is not
         # new next run, or the same person is gathered again every run (#1984).

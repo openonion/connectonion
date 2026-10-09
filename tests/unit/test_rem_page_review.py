@@ -878,3 +878,14 @@ def test_a_skill_page_edited_in_place_keeps_one_run_evidence_section():
             '- Retained evaluation attempts: 2\n<!-- rem-skill-runs:end -->\n\nInvestigation: mapped\n')
     out = repair_run_citations('skills/catalog/x.md', text, '# x\n')
     assert out.count('## Run evidence') == 1 and '- None known.' in out and 'attempts: 2' in out
+
+
+def test_the_owners_phone_from_a_quoted_signature_is_taken_off_a_contacts_page():
+    """1.9.2b1 (2026-10-09) gave Weiwei the user's phone from his own signature, against the instructions."""
+    from connectonion.rem.page_review import drop_owner_addresses
+    page = "## Facts\n- Email: weiwei.lei@rmit.edu.au\n- Phone: +61 435 525 634 [2]\n- Role: Professor [1]\n"
+    text, removed = drop_owner_addresses(page, {"aaron@openonion.ai", "0435 525 634 (work)"})
+    assert "- Phone: Unknown\n" in text and removed == ["+61 435 525 634"]
+    assert "- Email: weiwei.lei@rmit.edu.au" in text
+    other = page.replace("+61 435 525 634", "+61 400 111 222")
+    assert drop_owner_addresses(other, {"0435 525 634 (work)"}) == (other, [])

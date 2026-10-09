@@ -573,7 +573,7 @@ def test_after_me_the_people_you_wrote_to_and_projects_four_at_a_time(people):
     assert sorted(projects_written) == ["projects/alpha.md", "projects/beta.md", "projects/old.md"]
     text = Text.from_ansi(result.output).plain
     assert "up to two years of evidence each" in text
-    assert "16 at a time" in text and "No REM page or weekly quota cap stops this first run" in text
+    assert "48 at a time" in text and "No REM page or weekly quota cap stops this first run" in text
     assert "People 5/5" in text and "Projects 3/3" in text
     assert "Written this run: your page, 5 people" in text and "3 project pages" in text
 
@@ -682,7 +682,7 @@ def test_the_estimate_is_the_median_of_this_notebooks_own_runs():
     from connectonion.rem import first_run as fr
     from connectonion.cli.commands.rem_commands import FIRST_RUN_WORKERS
 
-    assert fr.WORKERS == FIRST_RUN_WORKERS == 16
+    assert fr.WORKERS == FIRST_RUN_WORKERS == 48
 
     def run(phase, record, tokens, seconds, outcome="completed"):
         return {"phase": phase, "record": record, "outcome": outcome, "seconds": seconds,
@@ -925,9 +925,10 @@ def test_the_first_run_ends_by_drawing_decisions_and_principles_from_its_pages(t
     assert failed["outcome"] == "failed" and "co rem abstract" in said[-1]
 
 
-def test_people_whose_backfill_found_older_mail_are_deepened_once_the_first_pass_wrote_them(tmp_path, monkeypatch):
+def test_people_whose_backfill_found_older_mail_are_deepened_on_the_parts_before_the_window(tmp_path, monkeypatch):
     """The owner (2026-10-08): read the mapped window first, fetch the rest of two
-    years in parallel, then deepen -- instead of every page waiting on the provider."""
+    years in parallel, then deepen. 2026-10-09: within a 45-minute first run, so
+    the deepen pass reads three parts, the ones before the window the first pass read."""
     from concurrent.futures import Future
     from connectonion.cli.commands import rem_commands
 
@@ -936,15 +937,25 @@ def test_people_whose_backfill_found_older_mail_are_deepened_once_the_first_pass
         future.set_result(value)
         return future
 
-    rows = [{"record": f"people/{name}.md", "mode": "full", "days": 730} for name in ("a", "b", "c")]
-    backfill = {"people/a.md": done(12), "people/b.md": done(0), "people/c.md": done(5)}
-    ran, said = [], []
+    ran = []
     monkeypatch.setattr(rem_commands, "_people_jobs", lambda root, rows: [
         {"kind": "people", "record": row["record"], "mode": "full", "row": row, "run": lambda row=row: ran.append(row)}
         for row in rows])
-    out = rem_commands._deepen(tmp_path, said.append, lambda: "", rows, backfill,
-                               written={"people/a.md", "people/b.md"}, stopped="")
-    assert [row["record"] for row in ran] == ["people/a.md"]   # b found nothing older; c was not written
-    assert ran[0]["days"] == 730 and out["backfilled"] == 17
-    assert rem_commands._deepen(tmp_path, said.append, lambda: "", rows, backfill, written=set(),
-                                stopped="model denied access") == {"started": False}
+    row = {"record": "people/a.md", "mode": "full", "days": 730}
+    found = rem_commands._deepen_job(tmp_path, row, done(12), "2026-04-12")
+    empty = rem_commands._deepen_job(tmp_path, {**row, "record": "people/b.md"}, done(0), "2026-04-12")
+    found["run"](), empty["run"]()
+    assert [r["record"] for r in ran] == ["people/a.md"]   # b's backfill found nothing older
+    assert ran[0] == {**row, "rounds": rem_commands.FIRST_RUN_ROUNDS, "read_before": "2026-04-12"}
+    assert found["kind"] == "deepen" and found["older"]() and not empty["older"]()
+
+
+def test_a_finished_page_can_queue_its_follow_up_behind_the_pages_still_waiting():
+    """A person's deepen starts once every first-pass page has started, not finished (rc1 idled 80 minutes)."""
+    from connectonion.cli.commands.rem_commands import _in_parallel
+    order = []
+    follow = {"record": "people/a.md#deepen", "mode": "full", "run": lambda: order.append("a-deepen")}
+    jobs = [{"record": name, "mode": "full", "run": lambda name=name: order.append(name)} for name in ("a", "b")]
+    outcomes, _ = _in_parallel(jobs, workers=1, gate=lambda: "",
+                               done=lambda job, outcome: [follow] if job["record"] == "a" else [])
+    assert order == ["a", "b", "a-deepen"] and len(outcomes) == 3
