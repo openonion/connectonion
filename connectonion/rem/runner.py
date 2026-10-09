@@ -575,6 +575,7 @@ def _owner_phones(notebook, record) -> list[str]:
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False):
     from .page_review import (compact_page, drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
+                              keep_signature_phones,
                               link_company, normalize_numbered_sources, placeholder_errors, repair_run_citations,
                               restore_runner_fields, unresolved_findings, validate)
     if not candidate.is_file():
@@ -609,7 +610,9 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     if record.startswith("people/") and record != owner.get("record"):
         # A phone read from the owner's own quoted signature is restored as "extracted"; take it off again.
         text, again = drop_owner_addresses(text, owner_values)
-        removed = sorted({*removed, *again})
+        # Nor anyone else's: a contact's phone must come from their own signature (#2348).
+        text, borrowed = keep_signature_phones(text, [row["value"] for row in extracted if row["field"] == "Phone"])
+        removed = sorted({*removed, *again, *borrowed})
     from .page_review import link_people, link_projects, person_names, project_names
     text = link_people(record, text, person_names(notebook, owner.get("record", "")))
     if record == owner.get("record"):

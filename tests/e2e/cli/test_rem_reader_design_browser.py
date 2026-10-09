@@ -364,6 +364,9 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
         "the user is waiting; the user doesn't know": "you are waiting; you don't know",
         "the user should send a proposal": "you should send a proposal",
         "the user replies within a day": "you reply within a day",
+        # 1.9.2b1 pages: an adverb before the verb, and a compound adjective.
+        "Use when the user explicitly asks": "Use when you explicitly ask",
+        "a user-facing request; the user-facing copy": "a user-facing request; the user-facing copy",
     }
     assert page.evaluate("cases => Object.keys(cases).map(youify)", cases, isolated_context=False) == list(cases.values())
     # A thread addressed to the owner by name ("Avery: collect …") is the owner's to do.

@@ -891,6 +891,28 @@ def test_the_owners_phone_from_a_quoted_signature_is_taken_off_a_contacts_page()
     assert drop_owner_addresses(other, {"0435 525 634 (work)"}) == (other, [])
 
 
+def test_the_owners_phone_is_found_when_each_number_carries_its_own_citation():
+    """1.9.2b2 (2026-10-09) kept the user's phone on Sasha's page: `[48]` was read as two more digits."""
+    from connectonion.rem.page_review import drop_owner_addresses
+    page = "## Facts\n- Phone: +61-0435525634 (work) [48]; +61 2 9065 4432 (work) [49]\n"
+    text, removed = drop_owner_addresses(page, {"0435 525 634"})
+    assert "- Phone: +61 2 9065 4432 (work) [49]\n" in text and "0435525634" not in text
+    assert removed == ["+61-0435525634 (work) [48]"]
+
+
+def test_a_contacts_phone_is_kept_only_when_read_from_their_own_signature():
+    """#2348: 6 of 25 phones in 1.9.2b1 were someone else's, copied from a quoted
+    signature (David Burt's office line on Vern and Sasha; Larry's mobile on Ody)."""
+    from connectonion.rem.page_review import keep_signature_phones
+    page = "## Facts\n- Phone: 0412 000 111 (mobile) [3]; +61 2 9065 4432 (work) [49]\n- Role: Lead [1]\n"
+    text, removed = keep_signature_phones(page, ["+61 412 000 111"])
+    assert "- Phone: 0412 000 111 (mobile) [3]\n" in text and removed == ["+61 2 9065 4432 (work) [49]"]
+    text, removed = keep_signature_phones(page, [])
+    assert "- Phone: Unknown\n" in text and "- Role: Lead [1]" in text
+    web = "## Facts\n- Phone: +61 2 9385 1000 [W1]\n"
+    assert keep_signature_phones(web, []) == (web, [])
+
+
 def test_a_malformed_search_request_keeps_the_candidate_instead_of_failing_the_page(tmp_path):
     """1.9.2b1 lost a whole person page in round 5 of 9 to `Expecting ',' delimiter`."""
     from connectonion.rem.runner import _searched_turn

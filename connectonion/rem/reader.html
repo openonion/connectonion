@@ -1120,11 +1120,11 @@ function youify(text) {
   const cap = (t, s) => t === "T" ? s[0].toUpperCase() + s.slice(1) : s;
   return String(text)
     .replace(/\b([Tt])he user(?:'s|’s)/g, (m, t) => cap(t, "your"))
-    .replace(/\b([Tt])he user (?:(still|also|now|then|already|never|often|usually) )?([a-z]+(?:['’]t)?)\b/g, (m, t, adverb, word) => {
+    .replace(/\b([Tt])he user (?:(still|also|now|then|already|never|often|usually|[a-z]+ly) )?([a-z]+(?:['’]t)?)\b/g, (m, t, adverb, word) => {
       const verb = plural(word.replace("’", "'"));
       return cap(t, "you") + " " + (adverb ? adverb + " " : "") + (verb || word);
     })
-    .replace(/\b([Tt])he user\b/g, (m, t) => cap(t, "you"));
+    .replace(/\b([Tt])he user\b(?!-)/g, (m, t) => cap(t, "you"));  // "the user-facing copy" stays
 }
 function inline(text, from) {
   let s = esc(text);

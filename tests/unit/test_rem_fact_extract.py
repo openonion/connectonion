@@ -270,6 +270,40 @@ def test_the_turn_is_handed_the_facts_and_the_dropped_phone_comes_back(tmp_path,
     assert result["facts"]["extracted"] >= 3                        # email, phone and last contact
 
 
+def test_a_phone_the_turn_copied_from_someone_elses_signature_is_taken_off(tmp_path, monkeypatch):
+    """#2348: Vern's page carried David Burt's office line from a signature quoted in his thread."""
+    from connectonion.rem import investigate as inv
+    from connectonion.rem import runner
+    from connectonion.rem.config import prepare
+    monkeypatch.setattr("connectonion.rem.runner.check_skill", lambda root, stage: None)
+    root = tmp_path / "rem"
+    prepare(root)
+    notebook = inv.Notebook(root)
+    notebook.stub_person("people/vern.md", "Vern Chan", ["vern"], email="vern.chan@unsw.edu.au")
+    original = notebook.read("people/vern.md")
+    monkeypatch.setattr(Signed, "list_between", lambda self, s, e, n: [
+        {"id": "s1", "from": "Vern Chan <vern.chan@unsw.edu.au>", "to": ["me@x.y"],
+         "subject": "Hello", "date": "2026-09-30T23:03:58Z"}])
+
+    def write(nb, items, config, stage):
+        source = next(i["source"] for i in items if i.get("role") == "other")
+        page = (original.replace("Unknown — not investigated yet. Last contact: Unknown.",
+                                 "Vern runs the programme [1]. Last contact: 2026-09-30 [1].")
+                .replace("- Unknown — not investigated yet", "- Unknown")
+                .replace("- Phone: Unknown", "- Phone: +61 2 9065 4432 (work) [2]; +61 412 000 111 (mobile) [1]")
+                .replace("- (none yet)", f"- [1] {source} — 2026-09-30, high\n- [2] outlook:quoted — a forwarded signature"))
+        candidate = tmp_path / "candidate.md"
+        candidate.write_text(page)
+        runner._promote_candidate(nb, "people/vern.md", candidate, original, items, tmp_path, None)
+        return {"changed": ["people/vern.md"], "usage": None}
+
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern", "vern.chan@unsw.edu.au"], days=5,
+                    clients={"outlook": Signed()}, subscriptions={}, runner=write)
+    page = notebook.read("people/vern.md")
+    assert "- Phone: +61 412 000 111 (mobile) [1]\n" in page and "9065" not in page
+    assert "outlook:quoted" not in page   # its source, cited by nothing else, goes too rather than refuse the page
+
+
 def test_a_page_that_already_cites_the_mail_gets_its_lost_phone_without_a_model_call(tmp_path, monkeypatch):
     """Ody's case: the signature mail was cited, so nothing was new, and the phone stayed Unknown."""
     from connectonion.rem import investigate as inv
