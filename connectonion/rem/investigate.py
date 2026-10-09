@@ -1583,6 +1583,9 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             context = prompt_items[1:len(prompt_items) - len(items)]
             parts = evidence_rounds(items, _round_room(record, sent_only, [prompt_items[0], *context]))
             parts, older = rounds_to_read(parts, rounds or config["limits"]["investigation_rounds"], read_before)
+            if not parts:
+                raise NothingNew(f"Nothing dated before {read_before} for {subject}. No model was called; "
+                                 f"{record} is unchanged.")
             if older:
                 # Past the round cap, the rest of the material is still searchable from the first round.
                 import uuid

@@ -508,6 +508,23 @@ def test_refused_first_run_page_names_its_retry_and_keeps_schedule_off(projects,
     assert data["next"].endswith("investigate projects/alpha.md --retry-refused")
 
 
+def test_a_first_run_with_pages_not_written_says_how_many_instead_of_an_empty_error(projects, monkeypatch):
+    """1.9.2b2 trial: 23 pages were not written and the run ended on a bare "Error: "."""
+    from connectonion.rem.runner import RunFailed
+
+    (root, init, _), _written = projects
+
+    def write_page(root, record, **kw):
+        if record == "projects/alpha.md":
+            raise RunFailed("Candidate rejected; cited-claim audit did not pass")
+        return {"record": record, "changed": [record]}
+
+    monkeypatch.setattr("connectonion.rem.project_pages.write_page", write_page)
+    lines = Text.from_ansi(init("--yes").output).plain.splitlines()
+    assert "Error:" not in [line.rstrip() for line in lines], lines[-8:]
+    assert "Error: 1 page was not written this run; each is named above with why." in lines
+
+
 def test_projects_follow_explicit_skip_and_runner_readiness(projects, monkeypatch):
     (root, init, calls), written = projects
     assert init("--no-investigate").exit_code == 0

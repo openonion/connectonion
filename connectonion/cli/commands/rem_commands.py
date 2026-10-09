@@ -737,8 +737,12 @@ def _init_done(ctx, result) -> str:
     reviewed = sum(page.get("outcome") == "accepted" for page in (result.get("skill_pages") or {}).get("pages") or [])
     written += [f"{reviewed} skill page{'s' if reviewed != 1 else ''}"] if reviewed else []
     owner = (result.get("owner_page") or {}).get("path") or ""
+    missed = sum(page.get("outcome") not in ("accepted", "nothing_new")
+                 for key in KEYS.values() for page in (result.get(key) or {}).get("pages") or [])
     return "\n".join([
-        "",
+        # A failed result is printed after "Error: "; this line is what it says.
+        f"{missed} page{' was' if missed == 1 else 's were'} not written this run; each is named above with why."
+        if missed else "",
         f"Your notebook: {', '.join(counts)} and {names} skill{'s' if names != 1 else ''}.",
         "Written this run: " + (", ".join(written[:-1]) + " and " + written[-1] if len(written) > 1
                                 else written[0] if written else "nothing yet") + ".",
