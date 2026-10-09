@@ -87,6 +87,9 @@ Unknown — historical requests alone do not establish a current obligation. [2]
 
 ## Rules
 
+- **The heading is the organisation's name.** A page mapped under its domain
+  (`# rmit.edu.au`) is renamed to the name the material uses
+  (`# RMIT University`); the domain stays under `Domains`.
 - **`Facts` is data**: those seven labels, one line each, every one present,
   a missing value exactly `Unknown`, every value cited, dates `YYYY-MM-DD`.
 - **`People here` is links, never copies.** A sentence true of the person and
