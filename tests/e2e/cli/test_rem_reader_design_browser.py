@@ -379,6 +379,14 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
               "The latest session, 2026-06-09, proposed an npm CLI [1].\n\n## Limitations\nUnknown — not verified.\n"}
     kept = page.evaluate("r => known(r).kept.map(s => s.title)", record, isolated_context=False)
     assert kept == ["Current status"]
+    # 1.9.2b1 History ranges: the end date leaked into the text or the gutter was blank.
+    lines = "\n".join(["- 2026-08-26–2026-08-28: Town asked [1].", "- 2026-09-23 to 2026-10-09: Daily reports [2].",
+                       "- 2026-08-10–11: Demos sent [3].", "- 2026-07-29–08-04: Trip [4].", "- 2025-10: Met at a meetup [5].", "- 2025-10–11: Term [6]."])
+    got = page.evaluate("t => historyItems(t).map(i => [i.day, i.end, i.text.slice(0, 4)])", lines, isolated_context=False)
+    assert got == [["2026-08-26", "2026-08-28", "Town"], ["2026-09-23", "2026-10-09", "Dail"],
+                   ["2026-08-10", "2026-08-11", "Demo"], ["2026-07-29", "2026-08-04", "Trip"], ["2025-10", "", "Met "], ["2025-10", "2025-11", "Term"]]
+    assert page.evaluate("dayLabel({day: '2025-10', end: ''})", isolated_context=False) == "Oct 2025"
+    assert page.evaluate("dayLabel({day: '2026-08-10', end: '2026-08-11'})", isolated_context=False).count("–") == 1
     # A thread addressed to the owner by name ("Avery: collect …") is the owner's to do.
     assert page.evaluate("direction('Avery: collect the swipe card from Security')", isolated_context=False) == "mine"
     home_threads = page.locator("ul.threads").first.inner_text()
