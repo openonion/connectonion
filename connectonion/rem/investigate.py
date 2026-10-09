@@ -1038,16 +1038,17 @@ def evidence_rounds(items: list[dict], room_bytes: int) -> list[list[dict]]:
 
 
 ROUND_NOTE = ("Round {number} of {total}: part {number} of the material, dated {first} to {last}, every item "
-              "in full. Read all of it. Edit the page with what this part adds: new facts, how threads ended, "
-              "decisions, corrections. Keep what earlier rounds established unless this part contradicts it. "
-              "Then follow the leads it raises.")
+              "in full. Read all of it. Improve the page with it, as you would improve code: add new facts, how "
+              "threads ended and decisions; change what it corrects; delete what it supersedes, repeats or settles. "
+              "The page should get better, not only longer. Then follow the leads it raises.")
 SYNTHESIS_NOTE = ("Final round: all {total} parts of the material have been read in earlier rounds; nothing new "
-                  "is supplied. Re-read the page whole and make it one account: Insight says what matters now; "
-                  "History has one line per thread -- date, what it was about, how it ended; Open threads keeps "
-                  "only what is still open; decisions name what was chosen and why. Keep every thread the "
-                  "rounds recorded in History; fold only the oldest by year. For a thread whose outcome is "
-                  "not established, request a mail search for the reply before writing so. Keep every cited "
-                  "fact you keep with its citation; add no claim without a citation on the page or from a search.")
+                  "is supplied. Edit the page whole into one account, as an editor would: delete repetition, "
+                  "superseded statements and doubts that do not change what the user does next; merge what "
+                  "is said twice. Insight says what matters now; History has one line per thread -- date, what "
+                  "it was about, how it ended; Open threads keeps only what is still open; Uncertainties keeps at "
+                  "most five, each one that would change the next step. For a thread whose outcome is not "
+                  "established, request a mail search for the reply before writing so. Keep each cited fact you "
+                  "keep with its citation; add no claim without a citation on the page or from a search.")
 
 
 def _round_room(record: str, owner: bool, fixed: list[dict]) -> int:

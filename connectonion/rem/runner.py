@@ -837,8 +837,9 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
         candidate.write_text(before[record], encoding="utf-8")
         prompt += (f"\n\n## Output\nThe working notebook copy is {task_root}, with this page at {task_root / record}. "
                    f"Your working copy of the page is the file {candidate}; it starts as the page as it stands. "
-                   "Edit it in place: add what the evidence adds, correct what it contradicts, and leave every "
-                   "supported line you have no reason to change exactly as it is. Do not rewrite the page from scratch. "
+                   "Edit it in place the way you edit code: add what the evidence adds, change what it corrects, and delete "
+                   "what it supersedes, what the page now says twice and doubts it settles. Leave correct lines as they are. "
+                   "Do not rewrite the page from scratch. "
                    "If the evidence changes nothing on the page, leave the file as it is and end your reply with NO CHANGE. "
                    "Write only that candidate file using an available local file tool. "
                    "The runner owns validation and replacement. Do not start nested co rem jobs. "
