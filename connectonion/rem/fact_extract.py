@@ -148,12 +148,37 @@ def extract(items: list[dict], handles: list[str], *, owner: bool = False, timez
                 at = min([low.find(n) for n in [*names, *addresses] if n in low], default=-1)
                 if at >= 0:   # a flattened invite is one long line: the window around the name
                     add(_row("Calendar", line[max(0, at - 60):at + 140] if len(line) > 200 else line, item, zone))
+    if not owner:
+        for row in _others_phones(mail, addresses, names, zone):
+            add(row)
     if mail and not owner:
         add(_row("Last contact", _date(mail[-1], zone), mail[-1], zone))
     return rows
 
 
-ORDER = ("Email", "Phone", "Links", "Last contact", "Company domain", "Signature", "Calendar")
+OTHERS_PHONE = "Someone else's phone"
+
+
+def _others_phones(mail: list[dict], addresses: set, names: list[str], zone: ZoneInfo) -> list[dict]:
+    """Phones in the signatures of the other people writing in the subject's threads (#2348).
+
+    David Burt's office line, from his own signature, sat on two colleagues'
+    pages; the turn is told whose it is, and code takes it off if it lands anyway.
+    """
+    rows = []
+    for item in reversed(mail):
+        speaker = item.get("speaker") or ""
+        if item["role"] != "other" or _subject(item, addresses, names) or INVITE.search(
+                item.get("subject", "") + "\n" + (item.get("text") or "")):
+            continue
+        name = re.sub(r"\s*<[^>]*>", "", speaker).strip().strip('"')
+        own = [n.casefold() for n in [name, name.split()[0] if name.split() else ""] if len(n) >= 3]
+        for row in _phones(signature(_body(item), own), item, zone) if own else []:
+            rows.append({**row, "field": OTHERS_PHONE, "qualifier": name})
+    return rows
+
+
+ORDER = ("Email", "Phone", "Links", "Last contact", "Company domain", "Signature", "Calendar", OTHERS_PHONE)
 
 
 def facts_item(rows: list[dict], timezone: str = "UTC") -> dict:
@@ -167,6 +192,7 @@ def facts_item(rows: list[dict], timezone: str = "UTC") -> dict:
                     "Calendar lines are the text itself: read the role, company, location or time zone from "
                     "them. Correct a fact only where the material contradicts it, and say so in "
                     "Uncertainties; a phone, address, link or last-contact date left off the page is put back "
-                    f"after the turn. Dates use {timezone}; event dates are separate. The earliest "
+                    f"after the turn. \"{OTHERS_PHONE}\" is a number in another person's own signature, named "
+                    f"beside it: it is never this person's. Dates use {timezone}; event dates are separate. The earliest "
                     "retained mail does not establish first contact.\n"
                     + "\n".join(lines)}

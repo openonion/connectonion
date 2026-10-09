@@ -575,12 +575,13 @@ def _owner_phones(notebook, record) -> list[str]:
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False):
     from .page_review import (compact_page, drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
-                              keep_signature_phones,
+                              drop_others_phones,
                               link_company, normalize_numbered_sources, placeholder_errors, repair_run_citations,
                               restore_runner_fields, unresolved_findings, validate)
     if not candidate.is_file():
         raise RunFailed("Investigation did not write candidate.md; page not promoted", usage)
     from . import facts
+    from .fact_extract import OTHERS_PHONE
     # A candidate built on a page from before #2068 keeps `## Contact`; the
     # shape is code's to settle, not a reason to refuse a paid-for page.
     text = facts.upgrade(record, restore_runner_fields(record, candidate.read_text(encoding="utf-8"), original))
@@ -610,9 +611,13 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     if record.startswith("people/") and record != owner.get("record"):
         # A phone read from the owner's own quoted signature is restored as "extracted"; take it off again.
         text, again = drop_owner_addresses(text, owner_values)
-        # Nor anyone else's: a contact's phone must come from their own signature (#2348).
-        text, borrowed = keep_signature_phones(text, [row["value"] for row in extracted if row["field"] == "Phone"])
+        # Nor a number from someone else's own signature in the thread (#2348).
+        values = lambda field: [row["value"] for row in extracted if row["field"] == field]  # noqa: E731
+        text, borrowed = drop_others_phones(text, values(OTHERS_PHONE), values("Phone"))
         removed = sorted({*removed, *again, *borrowed})
+        if again or borrowed:
+            # The number's own source, cited nowhere else now: Dannielle's page was refused for it.
+            text = drop_uncited_sources(text)
     from .page_review import link_people, link_projects, person_names, project_names
     text = link_people(record, text, person_names(notebook, owner.get("record", "")))
     if record == owner.get("record"):

@@ -270,8 +270,22 @@ def test_the_turn_is_handed_the_facts_and_the_dropped_phone_comes_back(tmp_path,
     assert result["facts"]["extracted"] >= 3                        # email, phone and last contact
 
 
-def test_a_phone_the_turn_copied_from_someone_elses_signature_is_taken_off(tmp_path, monkeypatch):
-    """#2348: Vern's page carried David Burt's office line from a signature quoted in his thread."""
+class Thread(Signed):
+    """Vern gives a number in his own words; David, copied in, signs with his office line."""
+    def list_between(self, s, e, n):
+        return [{"id": "s1", "from": "Vern Chan <vern.chan@unsw.edu.au>", "to": ["me@x.y"], "subject": "Hello",
+                 "date": "2026-09-30T23:03:58Z"},
+                {"id": "s2", "from": "David Burt <david.burt@unsw.edu.au>", "to": ["me@x.y", "vern.chan@unsw.edu.au"],
+                 "subject": "Re: Hello", "date": "2026-09-29T01:00:00Z"}]
+    def get_email_body(self, i):
+        return ("Call me on 0457 222 333 any time.\n\nRegards,\nVern Chan\nM: +61 412 000 111\n" if i == "s1" else
+                "Thanks both.\n\nKind regards,\nDavid Burt\nDirector of Entrepreneurship\nT: +61 2 9065 4432\n")
+
+
+def test_a_phone_from_someone_elses_signature_is_taken_off_and_one_they_gave_in_their_words_stays(tmp_path, monkeypatch):
+    """#2348: Vern's page carried David Burt's office line from David's signature in the
+    thread. The rule that kept only signature phones also took Dannielle's own
+    "give me a call on …" and refused her page over the source left uncited (1.9.2b3 trial)."""
     from connectonion.rem import investigate as inv
     from connectonion.rem import runner
     from connectonion.rem.config import prepare
@@ -281,27 +295,28 @@ def test_a_phone_the_turn_copied_from_someone_elses_signature_is_taken_off(tmp_p
     notebook = inv.Notebook(root)
     notebook.stub_person("people/vern.md", "Vern Chan", ["vern"], email="vern.chan@unsw.edu.au")
     original = notebook.read("people/vern.md")
-    monkeypatch.setattr(Signed, "list_between", lambda self, s, e, n: [
-        {"id": "s1", "from": "Vern Chan <vern.chan@unsw.edu.au>", "to": ["me@x.y"],
-         "subject": "Hello", "date": "2026-09-30T23:03:58Z"}])
+    seen = {}
 
     def write(nb, items, config, stage):
-        source = next(i["source"] for i in items if i.get("role") == "other")
+        seen["facts"] = next(i for i in items if i["role"] == "facts")["text"]
+        mine, davids = (next(i["source"] for i in items if i.get("role") == "other" and name in i.get("speaker", ""))
+                        for name in ("Vern", "David"))
         page = (original.replace("Unknown — not investigated yet. Last contact: Unknown.",
                                  "Vern runs the programme [1]. Last contact: 2026-09-30 [1].")
                 .replace("- Unknown — not investigated yet", "- Unknown")
-                .replace("- Phone: Unknown", "- Phone: +61 2 9065 4432 (work) [2]; +61 412 000 111 (mobile) [1]")
-                .replace("- (none yet)", f"- [1] {source} — 2026-09-30, high\n- [2] outlook:quoted — a forwarded signature"))
+                .replace("- Phone: Unknown", "- Phone: 0457 222 333 (mobile) [1]; +61 2 9065 4432 (work) [2]")
+                .replace("- (none yet)", f"- [1] {mine} — 2026-09-30, high\n- [2] {davids} — 2026-09-29"))
         candidate = tmp_path / "candidate.md"
         candidate.write_text(page)
         runner._promote_candidate(nb, "people/vern.md", candidate, original, items, tmp_path, None)
         return {"changed": ["people/vern.md"], "usage": None}
 
     inv.investigate(root, "people/vern.md", "Vern Chan", ["vern", "vern.chan@unsw.edu.au"], days=5,
-                    clients={"outlook": Signed()}, subscriptions={}, runner=write)
+                    clients={"outlook": Thread()}, subscriptions={}, runner=write)
+    assert "Someone else's phone: +61 2 9065 4432 (David Burt)" in seen["facts"]
     page = notebook.read("people/vern.md")
-    assert "- Phone: +61 412 000 111 (mobile) [1]\n" in page and "9065" not in page
-    assert "outlook:quoted" not in page   # its source, cited by nothing else, goes too rather than refuse the page
+    assert "0457 222 333 (mobile) [1]" in page and "9065" not in page
+    assert "- [2]" not in page   # David's mail, cited by nothing else now, goes rather than refuse the page
 
 
 def test_a_page_that_already_cites_the_mail_gets_its_lost_phone_without_a_model_call(tmp_path, monkeypatch):

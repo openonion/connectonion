@@ -342,26 +342,25 @@ def drop_owner_addresses(text: str, owner: set[str]) -> tuple[str, list[str]]:
 PHONE_LINE = re.compile(r'^(- Phone: )(.*)$', re.M)
 
 
-def keep_signature_phones(text: str, signed: list[str]) -> tuple[str, list[str]]:
-    """Keep a contact's phone only when code read it from their own signature (#2348).
+def drop_others_phones(text: str, others: list[str], own: list[str]) -> tuple[str, list[str]]:
+    """Take a number off a contact's page when it is in someone else's own signature (#2348).
 
-    1.9.2b1 put someone else's number on 6 of 25 people: the owner's, a
-    colleague's office line, a friend's mobile, each from a signature quoted in
-    the thread. A wrong number is worse than Unknown, so a phone the model
-    found in mail anywhere else is taken off.
+    1.9.2b1 put another person's number on 6 of 25 people, each from a signature
+    quoted in the thread. Keeping only numbers from the person's own signature
+    went too far: it took 7 right ones, a number given in their own words among
+    them. A number that is theirs too (`own`) stays.
     """
-    keys = {_identity_key(value) for value in signed}
+    keys = {_identity_key(value) for value in others} - {_identity_key(value) for value in own}
     removed = []
 
     def clean(match):
-        parts = [part.strip() for part in re.split(r';', match.group(2)) if part.strip()]
-        # A number looked up on the web ([W1], a staff directory) was sought for this person on purpose.
-        kept = [part for part in parts if _identity_key(part) in keys or "unknown" in part.casefold()
-                or re.search(r"\[W\d+\]", part)]
+        parts = [part.strip() for part in match.group(2).split(';') if part.strip()]
+        kept = [part for part in parts if _identity_key(part) not in keys]
         removed.extend(part for part in parts if part not in kept)
         return match.group(0) if kept == parts else match.group(1) + ("; ".join(kept) or "Unknown")
 
     return PHONE_LINE.sub(clean, text), removed
+
 
 # What an investigation hands the model about itself, not about the subject.
 # A page that cites only these was written from nothing (#1974).
