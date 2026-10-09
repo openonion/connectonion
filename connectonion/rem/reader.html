@@ -1157,6 +1157,8 @@ function inline(text, from) {
   return s;
 }
 const UNKNOWN_TEXT = /^Unknown\s*—\s*(?:not investigated yet|not verified)/i;
+// Only the placeholder: "Unknown — not verified. The latest session, 2026-06-09, …" is a finding (1.9.2b1).
+const UNFILLED_LINE = /^Unknown\s*—\s*(?:not investigated yet|not verified)[.;]?\s*(?:\[W?\d+\]\s*)*$/i;
 
 function markdownList(lines, start, from) {
   const marker = /^( *)([-*+]|\d+[.)])\s+(.*)$/;
@@ -1333,7 +1335,7 @@ function known(r) {
     const text = part.slice(head[0].length).split("\n").filter(line => {
       // Keep a specific missing outcome readable, without promoting it to a task.
       const explanation = /^\s*(?:[-*]\s*)?Unknown\s*[—:.()]\s*\S/i.test(line)
-        && !UNKNOWN_TEXT.test(line.replace(/^\s*[-*]\s*/, ""));
+        && !UNFILLED_LINE.test(line.replace(/^\s*[-*]\s*/, ""));
       return (!UNKNOWN_LINE.test(line) || explanation) && !PLACEHOLDER.test(line) && !repeatsTitle(line);
     }).join("\n").trim();
     if (text) kept.push({ title: head[1].trim(), text });
@@ -1411,11 +1413,17 @@ function listItems(text) {
   }
   return items;
 }
+// A line saying nothing is open, in the words pages use for it (1.9.2b1 showed
+// "None identified" and "No explicit open request" as OPEN for 30 days).
+function isCalm(t) {
+  return /^(?:nothing (?:open|owed|outstanding|pending)|none(?:\s+(?:identified|open|outstanding|known|as of))?\b(?![-\w])|no (?:explicit |known |confirmed |current )?(?:open|outstanding|pending)\b)/i
+    .test(t.replace(/\*/g, "").trim());
+}
 function threads(r) {
   const s = section(r, "open threads");
   if (!s) return { items: [], calm: "" };
   const all = listItems(s.text);
-  const calm = all.find(t => /^nothing open\b/i.test(t.replace(/\*/g, ""))) || "";
+  const calm = all.find(isCalm) || "";
   const today = calendarDay(REM.as_of);
   const items = all.filter(t => t !== calm && !/^(?:unknown\b|no (?:confirmed|known) pending work\b)/i.test(t)).map(text => {
     const days = text.match(/\d{4}-\d{2}-\d{2}/g) || [];

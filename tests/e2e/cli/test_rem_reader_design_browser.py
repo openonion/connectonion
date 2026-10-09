@@ -369,6 +369,16 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
         "a user-facing request; the user-facing copy": "a user-facing request; the user-facing copy",
     }
     assert page.evaluate("cases => Object.keys(cases).map(youify)", cases, isolated_context=False) == list(cases.values())
+    # 1.9.2b1: these said nothing was open and showed as OPEN, "open for N days"; a real thread stays open.
+    calm = ["None identified as of 2026-10-01.", "None as of 2026-09-30 [2].", "No explicit open request in the material.",
+            "Nothing owed either way [3].", "No outstanding items.", "Nothing open as of 2026-10-02."]
+    still_open = ["No reply from Lisa since 2026-09-12 [4].", "Unknown — whether Ody sent the invoice; Aaron asked 2026-09-30 [2]."]
+    assert page.evaluate("t => t.map(isCalm)", calm + still_open, isolated_context=False) == [True] * 6 + [False] * 2
+    # 1.9.2b1 skill pages: the finding after "Unknown — not verified." was hidden with the placeholder.
+    record = {"path": "skills/catalog/x.md", "title": "x", "text": "# x\n\n## Current status\nUnknown — not verified. "
+              "The latest session, 2026-06-09, proposed an npm CLI [1].\n\n## Limitations\nUnknown — not verified.\n"}
+    kept = page.evaluate("r => known(r).kept.map(s => s.title)", record, isolated_context=False)
+    assert kept == ["Current status"]
     # A thread addressed to the owner by name ("Avery: collect …") is the owner's to do.
     assert page.evaluate("direction('Avery: collect the swipe card from Security')", isolated_context=False) == "mine"
     home_threads = page.locator("ul.threads").first.inner_text()
