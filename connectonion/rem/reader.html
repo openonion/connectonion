@@ -384,7 +384,7 @@
   .timeline li::before { content: ""; position: absolute; left: 101px; top: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--sheet); box-shadow: 0 0 0 1.5px var(--blue); }
   .timeline li::after { content: ""; position: absolute; left: 104px; top: 20px; bottom: -2px; width: 1px; background: var(--line); }
   .timeline li:last-child::after { display: none; }
-  .timeline .d { font: 12px/1.9 var(--mono); color: var(--ink-3); text-align: right; padding-right: 20px; white-space: nowrap; }
+  .timeline .d { font: 12px/1.9 var(--mono); color: var(--ink-3); text-align: right; padding-right: 20px; white-space: pre-line; }
   .timeline .e { padding-left: 18px; font-size: 15.5px; line-height: 1.55; }
   .timeline li.undated .d { visibility: hidden; }
   .timeline li.undated::before { box-shadow: 0 0 0 1.5px var(--line); }
@@ -1444,10 +1444,13 @@ function historyItems(text) {
     return { day: m[1], end: m[2] ? m[1].slice(0, m[1].length - m[2].length) + m[2] : "", text: m[3] };
   });
 }
-// "Aug 26 – Aug 28"; a month alone is "Oct 2025", not the 1st of it.
+// A range on two lines so it fits the date column: "Aug 26" over "– 28", or
+// "Jul 29" over "– Aug 4". A month alone is "Oct 2025", not the 1st of it.
 function dayLabel(item) {
   const one = d => d.length === 7 ? new Date(d + "-01T00:00:00Z").toLocaleDateString(undefined, { timeZone: "UTC", month: "short", year: "numeric" }) : shortDate(d);
-  return one(item.day) + (item.end && item.end !== item.day ? " – " + one(item.end) : "");
+  if (!item.end || item.end === item.day) return one(item.day);
+  const sameMonth = item.end.length === 10 && item.end.slice(0, 7) === item.day.slice(0, 7);
+  return one(item.day) + "\n– " + (sameMonth ? String(Number(item.end.slice(8))) : one(item.end));
 }
 // "- [n] id — what it shows; confidence; observed date" -> {n: "id — what it shows ..."}
 function rawSection(r, name) {
