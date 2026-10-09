@@ -507,7 +507,16 @@ def _searched_turn(workdir, prompt, config, stage, directory, search, items, fir
     carries instructions. So it names searches and our code runs them; what
     they find joins `items`, so citing it passes validation like any source.
     """
-    asked = json.loads((directory / "search-requests.json").read_text(encoding="utf-8"))
+    try:
+        asked = json.loads((directory / "search-requests.json").read_text(encoding="utf-8"))
+    except ValueError:
+        # The model wrote this file. A malformed one cost a whole page after four
+        # accepted rounds in 1.9.2b1 (2026-10-09); the candidate it wrote still stands.
+        first["report"] = (str(first.get("report") or "") + "\nSearch requests were not valid JSON; "
+                           "no searches were run.").strip()
+        return first
+    if not isinstance(asked, list):
+        asked = []
     queries = [query.strip()[:200] for query in asked if isinstance(query, str) and query.strip()][:SEARCH_QUERIES]
     known = {item.get("source") for item in items}
     answers = search(queries)
