@@ -481,8 +481,18 @@ def scan_projects(subscriptions: dict, days: int, rem_root: Path | None = None,
                 continue
             try:
                 with path.open("rb") as handle:
-                    first = json.loads(handle.readline(1_000_000))
-                meta = KINDS[kind]["meta"](first) if isinstance(first, dict) else {}
+                    meta, remaining = {}, 1_000_000
+                    # Claude Code can put mode/queue records before the first cwd.
+                    # Bound discovery without guessing from lossy folder names.
+                    for _ in range(256 if kind == "claude-code" else 1):
+                        line = handle.readline(remaining)
+                        if not line:
+                            break
+                        remaining -= len(line)
+                        first = json.loads(line)
+                        meta = KINDS[kind]["meta"](first) if isinstance(first, dict) else {}
+                        if kind != "claude-code" or meta.get("cwd") or not remaining:
+                            break
             except (ValueError, UnicodeError, RemError):
                 continue
             cwd = (meta or {}).get("cwd") or ""
