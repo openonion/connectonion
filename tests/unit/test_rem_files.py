@@ -1,6 +1,8 @@
 """The notebook is plain files; its permission boundary is not a prompt."""
 
 
+import time
+
 import pytest
 
 from connectonion.rem.config import prepare, read_config, set_config
@@ -350,3 +352,28 @@ def test_a_written_lead_is_what_the_roster_recognises_someone_by(tmp_path):
     summary = Notebook(tmp_path).people()[0]["summary"]
 
     assert summary.startswith("Mia leads Harbour Analytics")
+
+
+def test_a_waiting_writer_gets_the_lock_while_other_threads_keep_taking_it(tmp_path):
+    """The 1.9.2b2 first run: 48 workers saving mail one message at a time took the
+    lock back-to-back, and three organisation pages waited ten minutes and failed."""
+    import threading
+    prepare(tmp_path)
+    stop = threading.Event()
+
+    def busy():
+        while not stop.is_set():
+            with maintenance_lock(tmp_path, wait=30):
+                time.sleep(0.02)
+
+    workers = [threading.Thread(target=busy) for _ in range(8)]
+    for worker in workers:
+        worker.start()
+    time.sleep(0.2)
+    try:
+        with maintenance_lock(tmp_path, wait=3):
+            pass
+    finally:
+        stop.set()
+        for worker in workers:
+            worker.join()

@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import tempfile
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
@@ -119,6 +120,11 @@ def write_json(path: Path, value) -> None:
 # can hold it for minutes (its cited-claim audit is a model turn), and a 30-second
 # wait lost UNSW's page in a 16-worker first run (1.9.1b5).
 WRITE_WAIT_SECONDS = 600
+# Threads of one process queue here before they poll the file lock. Polling
+# alone let 48 first-run workers saving mail take the lock back-to-back while a
+# waiter slept between tries: three organisation pages waited ten minutes and
+# failed (1.9.2b2 trial).
+_THREADS = threading.Lock()
 
 
 @contextmanager
@@ -129,6 +135,18 @@ def maintenance_lock(root: Path, wait: float = 0):
     once and retries on the next one; a finished investigation has no next
     tick, so it waits rather than lose a page it already paid for.
     """
+    if not (_THREADS.acquire(timeout=wait) if wait > 0 else _THREADS.acquire(blocking=False)):
+        raise RemError("co rem is busy; wait for the active maintenance run")
+    try:
+        with _file_lock(root, wait):
+            yield
+    finally:
+        _THREADS.release()
+
+
+@contextmanager
+def _file_lock(root: Path, wait: float):
+    """The lock other processes see: a scheduled tick, a second terminal."""
     import fcntl
 
     path = state_path(root, "maintenance.lock")
