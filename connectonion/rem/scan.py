@@ -126,7 +126,8 @@ def _greeting_name(row: dict, address: str, mine: set) -> str:
         return ""
     match = _GREETING.match(html.unescape(str(row.get("snippet") or "")))
     name = (match.group(1) or match.group(2)) if match else ""
-    if not name or name.casefold() in _NOT_A_NAME:
+    # "hi" above a quote: "hi On Fri, May 8, 2026 at 5:06 PM … wrote:" (1.9.2b1).
+    if not name or name.casefold() in _NOT_A_NAME or re.search(r"(?i)\b(?:mon|tue|wed|thu|fri|sat|sun)\b", name):
         return ""
     return name[0].upper() + name[1:] if name.islower() else name
 
