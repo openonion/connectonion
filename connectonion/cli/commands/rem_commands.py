@@ -444,10 +444,11 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
 # The first run investigates the owner and every eligible mapped page. The
 # configured weekly budget is an advisory target here; explicit --first-*
 # flags cap a kind for a trial.
-# Measured on rc1's 338 real runs (2026-10-09): 16 workers took 133 minutes, and
-# past 32 more workers bought nothing, because a large page reads up to nine
-# rounds one after another. 48 workers and three rounds replay to ~44 minutes.
-FIRST_RUN_WORKERS = 48  # pages in parallel; mail fetches share MAIL_FETCH_SLOTS per mailbox
+# Measured on real first runs (2026-10-09): 48 workers wrote the same work in the
+# first 66 minutes as 16 (161 runs against 167), each turn three times slower;
+# the model provider's throughput is the limit, not the queue. 48 only added
+# routing timeouts and lock waits. Three rounds per page is what saved: $11.37 to $8.87.
+FIRST_RUN_WORKERS = 16  # pages in parallel; mail fetches share MAIL_FETCH_SLOTS per mailbox
 FIRST_RUN_ROUNDS = 3    # parts read in full per page; the rest stay searchable in files
 
 
