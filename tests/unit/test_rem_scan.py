@@ -287,6 +287,13 @@ def test_a_personal_mailbox_is_never_an_organisation():
     assert scan_orgs(people) == []
 
 
+def test_a_short_provider_address_or_a_home_internet_mailbox_is_not_an_organisation():
+    """1.9.2b1 wrote orgs/pm-me (Proton's short addresses) and orgs/xtra-co-nz (Spark NZ home mail)."""
+    from connectonion.rem.scan import personal_mailbox
+    assert all(map(personal_mailbox, ["pm.me", "xtra.co.nz", "tpg.com.au", "iinet.net.au", "comcast.net"]))
+    assert not personal_mailbox("unsw.edu.au")
+
+
 def test_a_single_person_on_a_work_domain_stays_a_field_unless_asked_for():
     """One person with a work address is a `Company:` field on their own page. The
     threshold can be lowered deliberately, which is how a one-person client that

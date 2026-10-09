@@ -51,6 +51,9 @@ PERSONAL_MAILBOX = frozenset({
     "hotmail.co.uk", "live.com", "live.com.au", "msn.com", "yahoo.com", "yahoo.com.au", "yahoo.co.jp",
     "icloud.com", "me.com", "mac.com", "aol.com", "protonmail.com", "proton.me", "gmx.com",
     "qq.com", "163.com", "126.com", "foxmail.com", "sina.com", "bigpond.com", "optusnet.com.au",
+    # Short provider addresses and home-internet mail: orgs/pm-me and orgs/xtra-co-nz on 1.9.2b1.
+    "pm.me", "xtra.co.nz", "bigpond.net.au", "tpg.com.au", "iinet.net.au", "internode.on.net", "ozemail.com.au",
+    "dodo.com.au", "comcast.net", "verizon.net", "att.net", "btinternet.com", "sky.com", "virginmedia.com",
 })
 # A provider's name under any country suffix is the same provider: yahoo.com.hk
 # became an organisation on the 1.9.0a5 acceptance map (#2018).
