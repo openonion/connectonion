@@ -400,7 +400,21 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.1rc1
+## Current Version: 1.9.1
+
+Stable 1.9.1 makes co rem's first run investigate rather than skim. It reads
+180 days of mail sixteen pages at a time, fetches two years in the background
+and deepens every person with older material, works through large evidence in
+rounds that edit the page in place, and ends with decisions and principles.
+Person pages lead with contact facts, cited mail opens as a message, and cited
+documents open from the page. The public 1.9.1rc1 wheel ran a full 180-day
+first run on the owner's real mail in 133 minutes with no lock-wait failures;
+six of 338 investigations did not land (five review refusals, one network
+timeout). See [1.9.1 notes](docs/releases/1.9.1.md).
+
+- 1.9.1 (A first run that investigates, deepens and edits in place).
+
+## Previous preview: 1.9.1rc1
 
 1.9.1rc1 is the 1.9.1 release candidate; stable remains 1.9.0. After the 1.9.1b5
 real first run (all 280 pages in 82 minutes, 55 people deepened, 5 decisions and
