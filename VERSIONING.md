@@ -400,14 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b1
+## Current Version: 1.9.2b2
 
-1.9.2b1 is a 1.9.2 beta; stable remains 1.9.1. Each investigation pass may
-delete as well as add: the round, final-round and edit prompts treat the page
-like code, the final round keeps at most five Uncertainties, and a number the
-source gives as someone else's stays out of a Person's Facts. See
-[1.9.2b1 notes](docs/releases/1.9.2b1.md).
+1.9.2b2 is a 1.9.2 beta; stable remains 1.9.1. A first run loses fewer pages:
+threads queue for the notebook lock, a failed page is retried once, a second
+pass with nothing older ends cleanly, and three rounds per page cut the cost.
+A contact's page loses only numbers the mail shows are someone else's. The
+reader shows calm threads as clear and History ranges with both dates. Back to
+16 workers: the provider's throughput, not the queue, is the limit. See
+[1.9.2b2 notes](docs/releases/1.9.2b2.md).
 
+- 1.9.2b2 (A first run that loses fewer pages).
 - 1.9.2b1 (Each pass improves the page, not only grows it).
 
 ## Stable release: 1.9.1
