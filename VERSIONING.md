@@ -400,17 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b2
+## Current Version: 1.9.2b3
 
-1.9.2b2 is a 1.9.2 beta; stable remains 1.9.1. A first run loses fewer pages:
-threads queue for the notebook lock, a failed page is retried once, a second
-pass with nothing older ends cleanly, and three rounds per page cut the cost.
-A contact's page loses only numbers the mail shows are someone else's. The
-reader shows calm threads as clear and History ranges with both dates. Back to
-16 workers: the provider's throughput, not the queue, is the limit. See
-[1.9.2b2 notes](docs/releases/1.9.2b2.md).
+1.9.2b3 is a 1.9.2 beta; stable remains 1.9.1. It includes the unpublished
+1.9.2b2. A first run you can read straight away: sources are numbered 1, 2, 3,
+a person's Company links the organisation page for their mail domain, probable
+duplicate people are named with the merge command, pages speak in one voice,
+and a missing required section is added as Unknown instead of the page being
+refused. The reader keeps Facts labels and addresses on whole words and
+shortens 64-character ids. See [1.9.2b3 notes](docs/releases/1.9.2b3.md).
 
-- 1.9.2b2 (A first run that loses fewer pages).
+- 1.9.2b3 (A first run you can read straight away).
+- 1.9.2b2 (A first run that loses fewer pages; built, not published).
 - 1.9.2b1 (Each pass improves the page, not only grows it).
 
 ## Stable release: 1.9.1
