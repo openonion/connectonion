@@ -198,10 +198,11 @@ def handle_status(handoff_id: str) -> None:
               'co handoff send <who> "<what to hand off>"')
     from .project_cmd_lib import load_api_key
     load_api_key()
+    # Both exist when you handed something to yourself: one Next line, the sender's.
+    if accepted.exists():
+        _recipient_status(json.loads(accepted.read_text(encoding="utf-8")), quiet=sent.exists())
     if sent.exists():
         _sender_status(json.loads(sent.read_text(encoding="utf-8")))
-    if accepted.exists():
-        _recipient_status(json.loads(accepted.read_text(encoding="utf-8")))
 
 
 def _sender_status(record: dict) -> None:
@@ -235,7 +236,7 @@ def _sender_status(record: dict) -> None:
         _next(f"co handoff status {handoff_id}")
 
 
-def _recipient_status(code: dict) -> None:
+def _recipient_status(code: dict, quiet: bool = False) -> None:
     handoff_id = code["id"]
     out.print(style.heading(f"Handoff {handoff_id} (accepted from {code['mailbox']})"))
     answers = [b for b in replies.received(handoff_id)
@@ -247,7 +248,8 @@ def _recipient_status(code: dict) -> None:
     brief = _home() / "accepted" / handoff_id / "HANDOFF.md"
     if brief.exists():
         out.print(f"Brief: {style.path(brief)}")
-    _next(f"co handoff status {handoff_id}")
+    if not quiet:
+        _next(f"co handoff status {handoff_id}")
 
 
 # ---- recipient: accept, ask ----
