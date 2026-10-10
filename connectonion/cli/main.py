@@ -2771,6 +2771,13 @@ def audit(
     handle_audit(command, review, since, inventory, json_output, model)
 
 
+from .commands.experiments.register import register as register_experiments
+
+register_experiments(app)
+
+from .commands.feedback_commands import feedback_app
+app.add_typer(feedback_app, name="feedback")
+
 from .typer_groups import name_the_way_back  # noqa: E402 — needs every command registered
 
 name_the_way_back(app)
@@ -2781,11 +2788,19 @@ def cli():
     from ..environment import EnvironmentError
     from ..credentials import AmbientCredentialError
     from ..provider_credentials import ProviderCredentialError
+    from .commands.experiments.api import ExperimentError
+    import httpx
     try:
         app()
-    except (EnvironmentError, AmbientCredentialError, ProviderCredentialError) as error:
-        console.print(str(error), markup=False)
+    except httpx.HTTPError:
+        Console(stderr=True, highlight=False).print("API connection failed. Inspect provider state before retrying a write.", markup=False)
         raise SystemExit(1) from None
+    except (EnvironmentError, AmbientCredentialError, ProviderCredentialError, ExperimentError) as error:
+        Console(stderr=True, highlight=False).print(str(error), markup=False)
+        raise SystemExit(1) from None
+    finally:
+        from .commands.feedback_commands import print_feedback_footer
+        print_feedback_footer()
 
 
 if __name__ == "__main__":

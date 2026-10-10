@@ -139,6 +139,7 @@ NEXT = {
     "co setup": "Preview what would be published:  co announce --dry-run",
     "co status": HANDLER,             # rotating STATUS_TIPS
     "co transfer": HANDLER,           # "co transfer list" / "co transfer <address> <amount>"
+    "co feedback *": "co feedback --help",
     # -- groups --
     "co feishu listen": "co feishu receive --timeout 0",
     "co feishu receive": "co feishu reply <message-id>",
