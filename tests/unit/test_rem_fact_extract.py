@@ -319,6 +319,36 @@ def test_a_phone_from_someone_elses_signature_is_taken_off_and_one_they_gave_in_
     assert "- [2]" not in page   # David's mail, cited by nothing else now, goes rather than refuse the page
 
 
+def test_an_unknown_company_links_the_organisation_page_for_the_persons_mail_domain(tmp_path, monkeypatch):
+    """#2349: 28 of 53 `Company: Unknown` people wrote from a domain the notebook has an
+    organisation page for; the turn left it Unknown, code knows the domain."""
+    from connectonion.rem import investigate as inv
+    from connectonion.rem import runner
+    from connectonion.rem.config import prepare
+    monkeypatch.setattr("connectonion.rem.runner.check_skill", lambda root, stage: None)
+    root = tmp_path / "rem"
+    prepare(root)
+    notebook = inv.Notebook(root)
+    notebook.stub_person("people/vern.md", "Vern Chan", ["vern"], email="vern.chan@unsw.edu.au")
+    notebook.stub_org("orgs/unsw.md", "UNSW Sydney", ["unsw.edu.au"])
+    original = notebook.read("people/vern.md")
+
+    def write(nb, items, config, stage):
+        mine = next(i["source"] for i in items if i.get("role") == "other" and "Vern" in i.get("speaker", ""))
+        page = (original.replace("Unknown — not investigated yet. Last contact: Unknown.",
+                                 "Vern runs the programme [1]. Last contact: 2026-09-30 [1].")
+                .replace("- Unknown — not investigated yet", "- Unknown")
+                .replace("- (none yet)", f"- [1] {mine} — 2026-09-30, high"))
+        candidate = tmp_path / "candidate.md"
+        candidate.write_text(page)
+        runner._promote_candidate(nb, "people/vern.md", candidate, original, items, tmp_path, None)
+        return {"changed": ["people/vern.md"], "usage": None}
+
+    inv.investigate(root, "people/vern.md", "Vern Chan", ["vern", "vern.chan@unsw.edu.au"], days=5,
+                    clients={"outlook": Signed()}, subscriptions={}, runner=write)
+    assert "- Company: [UNSW Sydney](../orgs/unsw.md) [1]" in notebook.read("people/vern.md")
+
+
 def test_a_page_that_already_cites_the_mail_gets_its_lost_phone_without_a_model_call(tmp_path, monkeypatch):
     """Ody's case: the signature mail was cited, so nothing was new, and the phone stayed Unknown."""
     from connectonion.rem import investigate as inv

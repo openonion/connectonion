@@ -807,3 +807,34 @@ def link_company(notebook, record: str, text: str) -> str:
         if title.casefold() == name.casefold():
             return text[:match.start()] + f'- Company: [{name}](../{org}){cites}' + text[match.end():]
     return text
+
+
+def _named_orgs(notebook) -> list[tuple[str, str, list[str]]]:
+    """(record, title, domains) of each organisation page whose title is a name, not its domain."""
+    from .investigate import org_domains
+    found = []
+    for org in notebook.list('orgs'):
+        page = notebook.read(org)
+        title = next((line[2:].strip() for line in page.splitlines() if line.startswith('# ')), '')
+        if title and title.casefold() not in org_domains(page):
+            found.append((org, title, org_domains(page)))
+    return found
+
+
+def company_from_domain(notebook, record: str, text: str, rows: list[dict]) -> str:
+    """`Company: Unknown` takes the organisation page whose Domains hold the person's own mail domain (#2349).
+
+    28 of 53 unknown companies on a real notebook wrote from a domain it had a
+    page for. The newest mail from that domain is the citation. A page still
+    titled by its domain is the map's stub: its name is not known yet.
+    """
+    match = re.search(r'^- Company: (.*)$', text, re.M)
+    if not record.startswith('people/') or not match or not match.group(1).casefold().startswith('unknown'):
+        return text
+    for row in (row for row in rows if row['field'] == 'Company domain'):
+        for org, title, domains in _named_orgs(notebook):
+            if any(row['value'] == domain or row['value'].endswith('.' + domain) for domain in domains):
+                text, number = facts._cite(text, row)
+                match = re.search(r'^- Company: (.*)$', text, re.M)
+                return text[:match.start()] + f'- Company: [{title}](../{org}) [{number}]' + text[match.end():]
+    return text

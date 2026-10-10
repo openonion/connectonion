@@ -650,6 +650,23 @@ def test_company_links_to_the_organisation_page_when_there_is_one(tmp_path):
     assert link_company(notebook, 'people/mia.md', other) == other
 
 
+def test_an_unknown_company_takes_the_organisation_page_of_the_persons_own_mail_domain(tmp_path):
+    """28 of 53 `Company: Unknown` pages on a real 1.9.2b2 notebook wrote from a
+    domain the notebook has an organisation page for (#2349)."""
+    from connectonion.rem.page_review import company_from_domain
+    notebook, original = _person(tmp_path)
+    notebook.stub_org('orgs/unsw-1234.md', 'UNSW Sydney', ['unsw.edu.au'])
+    rows = [{'field': 'Company domain', 'value': 'gmail.example', 'qualifier': '', 'source': 'gmail:aaa', 'date': '2026-09-02'},
+            {'field': 'Company domain', 'value': 'student.unsw.edu.au', 'qualifier': '',
+             'source': 'outlook:bbb', 'date': '2026-08-01'}]
+    filled = company_from_domain(notebook, 'people/mia.md', original, rows)
+    number = re.search(r'^- \[(\d+)\] outlook:bbb — 2026-08-01$', filled, re.M)[1]
+    assert f'- Company: [UNSW Sydney](../orgs/unsw-1234.md) [{number}]' in filled
+    named = original.replace('- Company: Unknown', '- Company: Acme [1]')
+    assert company_from_domain(notebook, 'people/mia.md', named, rows) == named
+    assert company_from_domain(notebook, 'people/mia.md', original, rows[:1]) == original
+
+
 def test_an_investigated_page_that_still_says_not_investigated_yet_is_refused(tmp_path):
     """#2008: project pages came back after 0.6-0.9M tokens with five and six
     sections still saying "Unknown — not investigated yet"."""
