@@ -13,12 +13,19 @@ Usage:
     grep("import", output_mode="count")        # Count imports per file
 """
 
+import os
 import re
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Literal, Optional
 
 from ...core.tool_result import ToolFailure
 from .glob import IGNORE_DIRS
+
+# One grep from $HOME once walked for 26 minutes in-process (#1453).
+MAX_FILES = 20_000
+# Reading, not walking, was the cost: 20k files under $HOME held 22 GB.
+MAX_FILE_BYTES = 2_000_000
 
 
 def grep(
@@ -35,7 +42,9 @@ def grep(
 
     Args:
         pattern: Regular expression pattern to search for
-        path: File or directory to search in (default: current directory)
+        path: File or directory to search in (default: current directory).
+            A directory search skips files over 2 MB and stops after 20,000
+            files; pass a single file as `path` to search it whatever its size.
         file_pattern: Glob pattern to filter files (e.g., "*.py", "*.ts")
         output_mode:
             - "files": Return only matching file paths (default)
@@ -66,22 +75,17 @@ def grep(
     except re.error as e:
         return ToolFailure(f"Error: Invalid regex pattern: {e}")
 
-    # Collect files to search
-    if base.is_file():
-        files = [base]
-    else:
-        if file_pattern:
-            files = list(base.glob(f"**/{file_pattern}"))
-        else:
-            files = list(base.glob("**/*"))
-
-        files = [f for f in files if f.is_file() and not _should_ignore(f) and _is_text_file(f)]
+    files = [base] if base.is_file() else _walk(base, file_pattern)
+    walk_capped = False
 
     results = []
     total_matches = 0
 
-    for file in files:
+    for visited, file in enumerate(files):
         if total_matches >= max_results:
+            break
+        if visited >= MAX_FILES:
+            walk_capped = True
             break
 
         try:
@@ -126,10 +130,12 @@ def grep(
                 if total_matches >= max_results:
                     break
 
+    capped = (f"\n\n... search stopped after {MAX_FILES} files; "
+              "narrow `path` or set `file_pattern`") if walk_capped else ""
     if not results:
-        return f"No matches found for '{pattern}'"
+        return f"No matches found for '{pattern}'{capped}"
 
-    output = "\n".join(results)
+    output = "\n".join(results) + capped
 
     if total_matches >= max_results:
         output += f"\n\n... results truncated at {max_results}"
@@ -137,16 +143,19 @@ def grep(
     return output
 
 
-def _should_ignore(path: Path) -> bool:
-    """Check if path should be ignored."""
-    parts = path.parts
-    for part in parts:
-        if part in IGNORE_DIRS:
-            return True
-        for ignore in IGNORE_DIRS:
-            if "*" in ignore and Path(part).match(ignore):
-                return True
-    return False
+def _walk(base: Path, file_pattern: Optional[str]):
+    """Yield searchable files lazily, never entering an ignored directory."""
+    for dirpath, dirnames, filenames in os.walk(base):
+        dirnames[:] = sorted(d for d in dirnames if not _ignored(d))
+        for name in sorted(filenames):
+            file = Path(dirpath) / name
+            if ((file_pattern is None or file.relative_to(base).match(file_pattern)) and _is_text_file(file)
+                    and file.is_file() and file.stat().st_size <= MAX_FILE_BYTES):
+                yield file
+
+
+def _ignored(name: str) -> bool:
+    return any(name == ignore or ("*" in ignore and fnmatch(name, ignore)) for ignore in IGNORE_DIRS)
 
 
 def _is_text_file(path: Path) -> bool:
