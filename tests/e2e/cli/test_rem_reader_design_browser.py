@@ -398,6 +398,30 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
     assert page.evaluate("REM.records.find(r => r.path === 'people/mara-ostrowski.md').text.includes('the user has not signed it')", isolated_context=False)
 
 
+def test_a_compound_predicate_agrees_with_you_and_threads_name_the_right_debtor(reader):
+    page, _ = reader
+    # 1.9.2b1: "You run events there and has asked" — only the first verb agreed.
+    cases = {
+        "the user runs events there and has asked Mara for a deck": "you run events there and have asked Mara for a deck",
+        "The user signed on 2026-09-02 but is waiting for the countersigned copy": "You signed on 2026-09-02 but are waiting for the countersigned copy",
+        "the user sends invoices and receipts": "you send invoices and receipts",
+        "Mara asked the user and has replied since": "Mara asked you and has replied since",
+        "the user signed, and Tomas has asked for a copy": "you signed, and Tomas has asked for a copy",
+    }
+    assert page.evaluate("cases => Object.keys(cases).map(youify)", cases, isolated_context=False) == list(cases.values())
+    # 1.9.2b1/b3 pages: who owes is the subject of the request, not the first name in the line.
+    threads = {
+        "User owes pickup of the replacement card at Gate 2 [1].": "mine",
+        "Avery asked Mara on 2026-09-28 for a first reaction to the name; no reply [6].": "theirs",
+        "Avery asked Tomas to arrange a call and provide a time [2].": "theirs",
+        "Avery is awaiting Mara's answer to the 2026-08-19 question [10].": "theirs",
+        "Mara asks Avery to choose a time for a 30-minute demo [8].": "mine",
+        "Avery offered Mara a free two-week trial; acceptance is not shown [5].": "plain",
+        "Avery offered to cover the $25 card fee [12].": "mine",
+    }
+    assert page.evaluate("t => t.map(direction)", list(threads), isolated_context=False) == list(threads.values())
+
+
 def test_the_owner_focus_prefers_a_supported_change_to_a_generic_now(reader):
     page, uri = reader
     page.goto(uri + "#r=people%2Favery-lin.md")

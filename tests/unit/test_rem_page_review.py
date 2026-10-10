@@ -937,3 +937,19 @@ def test_a_malformed_search_request_keeps_the_candidate_instead_of_failing_the_p
         raise AssertionError("no search should run")
     out = _searched_turn(tmp_path, "prompt", {}, "investigate", tmp_path, never, [], first)
     assert out["result"] == "edited" and "not valid JSON" in out["report"]
+
+
+def test_an_assistants_memory_file_beside_a_supplied_transcript_is_not_a_source(tmp_path):
+    """1.9.2b1: Ian's page cited the owner's Claude memory file by path. It sat in
+    the folder of a supplied session transcript, so it passed as a local file."""
+    from connectonion.rem.page_review import drop_unresolved
+    folder = tmp_path / '.claude/projects/-work'
+    (folder / 'memory').mkdir(parents=True)
+    transcript, memory = folder / 's1.jsonl', folder / 'memory/reference_ian.md'
+    transcript.write_text('{}')
+    memory.write_text('Ian: MBA at UNSW')
+    items = [{'role': 'owner-work-evidence', 'file': str(transcript), 'sources': ['claude-code:s1']}]
+    text = ('# Ian\n\nIan asked about pricing [1].\n\n## Who they are\nIan studies an MBA [2].\n\n'
+            f'## Sources\n- [1] claude-code:s1 — 2026-08-11\n- [2] {memory} — 2026-08-11\n')
+    kept, dropped = drop_unresolved('people/ian.md', text, '', items)
+    assert dropped['citations'] == ['2'] and str(memory) not in kept and 'Ian asked about pricing [1].' in kept
