@@ -14,6 +14,20 @@ Two on-disk formats, both checked on a real Mac (codex-cli 0.162.1, Claude Code 
 Both clients write far more into the user slot than anyone typed (AGENTS.md,
 environment context, skill bodies); `INJECTED_BLOCK` from co rem's importer is the
 measured filter for that, reused rather than re-learned.
+
+Compaction. Both clients keep the full history on disk and add a marker when the
+model's context was compacted:
+
+- Claude Code writes a ``user`` row with ``isCompactSummary: true`` whose text is
+  the plaintext summary ("This session is being continued from a previous
+  conversation…"). It is read as a ``summary`` turn.
+- Codex writes a ``compacted`` row. Its summary is a ``compaction`` item holding
+  only ``encrypted_content`` (0 of 107 compactions on one Mac had plaintext), so it
+  cannot be read. What Codex itself kept is ``replacement_history``: the user's own
+  earlier messages. Those are read as ``earlier`` turns.
+
+So a compacted session yields: what survived the last compaction, then the turns
+after it. An uncompacted one yields its last EXCERPT_TURNS turns.
 """
 
 import json
@@ -24,6 +38,7 @@ from pathlib import Path
 from ..rem.source import INJECTED_BLOCK
 
 MAX_TURN_CHARS = 2000
+SUMMARY_CHARS = 12000
 # Only the end of a session is the task being handed off. Forty turns covers a
 # discussion that settled two options; the draft names the cut so it is visible.
 EXCERPT_TURNS = 40
@@ -89,26 +104,76 @@ def _claude_candidates(cwd: Path) -> list[Path]:
 
 
 def read_turns(agent: str, path: Path) -> list[dict]:
-    """Every spoken turn, oldest first: {role, text, timestamp}. Tool calls and output are left out."""
+    """The turns a handoff needs, oldest first: {role, text, timestamp}.
+
+    Roles: user, assistant, and for a compacted session `summary` (Claude Code's
+    plaintext summary) or `earlier` (messages Codex retained). Tool calls, tool
+    output and reasoning are left out.
+    """
     parse = _codex_turn if agent == "codex" else _claude_turn
     turns = []
     with Path(path).open(encoding="utf-8") as f:
         for line in f:
-            if line.strip():
-                turn = parse(json.loads(line))
-                if turn:
-                    turns.append(turn)
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            kept = _compaction(agent, row)
+            if kept is not None:
+                turns = kept          # everything before is what the compaction replaced
+                continue
+            turn = parse(row)
+            if turn:
+                turns.append(turn)
     return turns
 
 
+def _compaction(agent: str, row: dict) -> list[dict] | None:
+    if agent == "claude" and row.get("type") == "user" and row.get("isCompactSummary"):
+        text = (row.get("message") or {}).get("content")
+        text = text if isinstance(text, str) else "\n".join(
+            p.get("text", "") for p in text or [] if isinstance(p, dict))
+        return [{"role": "summary", "text": text.strip(), "timestamp": row.get("timestamp", "")}]
+    if agent == "codex" and row.get("type") == "compacted":
+        payload = row.get("payload") or {}
+        kept = [{"role": "summary", "text": payload["message"], "timestamp": row.get("timestamp", "")}] \
+            if payload.get("message") else []
+        for item in payload.get("replacement_history") or []:
+            turn = _codex_turn({"type": "response_item", "payload": item, "timestamp": row.get("timestamp", "")})
+            if turn and turn["role"] == "user":
+                kept.append(dict(turn, role="earlier"))
+        return kept
+    return None
+
+
+def find_by_id(ref: str) -> tuple[str, Path]:
+    """A session named by path, Codex thread id or Claude Code session id."""
+    path = Path(ref).expanduser()
+    if path.is_file():
+        with path.open(encoding="utf-8") as f:
+            first = json.loads(f.readline() or "{}")
+        return ("codex" if first.get("type") == "session_meta" else "claude"), path.resolve()
+    named = sorted((codex_home() / "sessions").glob(f"*/*/*/rollout-*-{ref}.jsonl"))
+    if named:
+        return "codex", named[-1]
+    named = sorted((Path.home() / ".claude" / "projects").glob(f"*/{ref}.jsonl"))
+    if named:
+        return "claude", named[-1]
+    raise SessionNotFound(f"No session file or id '{ref}' under {codex_home() / 'sessions'} "
+                          f"or {Path.home() / '.claude' / 'projects'}")
+
+
 def excerpt(turns: list[dict], limit: int = EXCERPT_TURNS) -> list[dict]:
-    return [dict(t, text=_clip(t["text"])) for t in turns[-limit:]]
+    """What survived compaction (always kept), then the last `limit` turns after it."""
+    head = [t for t in turns if t["role"] in ("summary", "earlier")]
+    tail = [t for t in turns if t["role"] not in ("summary", "earlier")][-limit:]
+    return [dict(t, text=_clip(t["text"], SUMMARY_CHARS if t["role"] == "summary" else MAX_TURN_CHARS))
+            for t in head + tail]
 
 
-def _clip(text: str) -> str:
-    if len(text) <= MAX_TURN_CHARS:
+def _clip(text: str, limit: int) -> str:
+    if len(text) <= limit:
         return text
-    return text[:MAX_TURN_CHARS] + f"\n[cut by co handoff: {len(text) - MAX_TURN_CHARS} more characters]"
+    return text[:limit] + f"\n[cut by co handoff: {len(text) - limit} more characters]"
 
 
 def _codex_turn(row: dict) -> dict | None:

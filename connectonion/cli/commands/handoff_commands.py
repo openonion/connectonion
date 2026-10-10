@@ -43,7 +43,7 @@ def _fail(message: str, next_cmd: str) -> None:
 # ---- send ----
 
 def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[str],
-                draft_id: Optional[str], edit: bool, yes: bool) -> None:
+                draft_id: Optional[str], edit: bool, yes: bool, session: Optional[str] = None) -> None:
     from ...environment import load_environment
     load_environment()
     to = _recipient(who)
@@ -53,7 +53,7 @@ def handle_send(who: str, what: str, from_file: Optional[Path], agent: Optional[
             _fail(f"Draft {draft_id} was prepared for {bundle['to']}, not {to}. A draft is approved for one recipient.",
                   f'co handoff send {shlex.quote(who)} "<what to hand off>"')
     else:
-        bundle = _new_bundle(to, what, from_file, agent)
+        bundle = _new_bundle(to, what, from_file, agent, session)
     if edit:
         bundle = _edit(bundle)
     path = _save_draft(bundle)
@@ -87,20 +87,23 @@ def _recipient(who: str) -> str:
     return to
 
 
-def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[str]) -> dict:
+def _new_bundle(to: str, what: str, from_file: Optional[Path], agent: Optional[str],
+                session: Optional[str]) -> dict:
     if from_file:
-        text = Path(from_file).read_text(encoding="utf-8")
-        turns = [{"role": "notes", "text": text, "timestamp": ""}]
-        source = {"kind": "file", "path": str(Path(from_file).resolve())}
+        path = Path(from_file).resolve()
+        turns = [{"role": "notes", "text": path.read_text(encoding="utf-8"), "timestamp": ""}]
+        source = {"kind": "notes file", "session": path.name, "turns_included": 1, "compacted": False}
     else:
         try:
-            kind, path = sessions.find_session(Path.cwd(), agent)
+            kind, path = sessions.find_by_id(session) if session else sessions.find_session(Path.cwd(), agent)
         except sessions.SessionNotFound as missing:
             _fail(str(missing), 'co handoff send <who> "<what to hand off>" --from-file <notes.md>')
         turns = sessions.excerpt(sessions.read_turns(kind, path))
         source = {"kind": kind, "session": path.stem.split("-", 6)[-1] if kind == "codex" else path.stem,
-                  "path": str(path), "turns_included": len(turns)}
-    out.print(style.muted(f"Drafting from {source.get('path')} with one model call…"))
+                  "turns_included": len(turns),
+                  "compacted": any(t["role"] in ("summary", "earlier") for t in turns)}
+    # The local path is printed here and never put in the bundle.
+    out.print(style.muted(f"Drafting from {path} with one model call…"))
     summary = bundles.draft(turns, what)
     sender = os.getenv("AGENT_EMAIL") or "unknown sender"
     return bundles.assemble(handoff_id=bundles.new_id(), sender=sender, to=to, what=what,
@@ -116,7 +119,7 @@ def _edit(bundle: dict) -> dict:
 
 def _known_secrets() -> list[str]:
     """Values of credential-named keys in the selected env file and process: any of them in a bundle is a leak."""
-    names = ("KEY", "TOKEN", "SECRET", "PASSWORD")
+    names = ("KEY", "TOKEN", "SECRET", "PASSWORD", "INVITE")
     return [v for k, v in os.environ.items() if any(n in k.upper() for n in names) and len(v) >= 12]
 
 
@@ -140,22 +143,21 @@ def _load_draft(draft_id: str) -> dict:
 
 
 def _preview(bundle: dict, path: Path) -> None:
-    source = bundle["source"]
     out.print(style.heading(f"Handoff {bundle['id']} to {bundle['to']}"))
-    out.print(f"Source: {source['kind']} {source.get('session') or ''} {style.path(source.get('path', ''))}")
-    out.print("Leaves this machine: exactly the summary, decisions, evidence pointers and "
-              f"{len(bundle['excerpt'])}-turn excerpt below. No rem pages, mail or files are attached.")
-    out.print()
-    out.print(bundles.summary_text(bundle), markup=False)
-    out.print()
-    out.print(style.heading("Decisions"))
-    out.print(bundles.decisions_text(bundle), markup=False)
-    out.print()
-    out.print(style.heading("Evidence and excerpt"))
-    out.print(bundles.evidence_text(bundle), markup=False)
-    out.print()
+    out.print("Everything between the lines below is what leaves this machine, and nothing else: "
+              "no files, rem pages or mail.")
+    out.print("-" * 60)
+    out.print(bundles.brief_markdown(bundle), markup=False)
+    out.print("## Transcript excerpt (sent with the brief)", markup=False)
+    out.print(bundles.excerpt_text(bundle), markup=False)
+    out.print("-" * 60)
+    private = bundles.find_private(bundle)
+    if private:
+        out.print(style.warn(f"Private paths in it ({len(private)}): remove them with --edit unless the recipient needs them."))
+        for hit in private[:10]:
+            out.print(f"  {hit}", markup=False)
     out.print(f"Draft: {style.path(path)} (content hash {bundle['content_hash']}). "
-              "Edit it with --edit; --draft sends exactly this file.")
+              "--draft sends exactly this file; --edit changes it first.")
 
 
 def _deliver(bundle: dict) -> None:
@@ -224,7 +226,7 @@ def handle_inbox() -> None:
     for mail, bundle in found:
         opened = " · opened" if (_home() / "received" / bundle["id"] / "session.json").exists() else ""
         out.print(f"{style.command(bundle['id'])}  from {bundle['from']}  {str(mail.get('timestamp', ''))[:16]}{opened}")
-        out.print(f"    {bundle['goal']}", markup=False)
+        out.print(f"    {bundle['title']}", markup=False)
     out.print("Nothing runs until you open one.")
     _next(f"co handoff show {found[0][1]['id']}")
 
@@ -245,15 +247,14 @@ def handle_show(handoff_id: str, decisions: bool, evidence: bool) -> None:
         out.print(style.warn("Content hash does not match: this copy differs from what the sender approved."))
     out.print(bundles.summary_text(bundle), markup=False)
     if decisions:
-        out.print()
-        out.print(style.heading("Decisions"))
-        out.print(bundles.decisions_text(bundle), markup=False)
+        out.print(f"\n## Decided\n{bundles.decided_text(bundle)}\n\n## Rejected\n{bundles.rejected_text(bundle)}", markup=False)
     if evidence:
-        out.print()
-        out.print(style.heading("Evidence and excerpt"))
-        out.print(bundles.evidence_text(bundle), markup=False)
+        out.print(f"\n## Code and references\n{bundles.references_text(bundle)}\n\n## Transcript excerpt\n"
+                  f"{bundles.excerpt_text(bundle)}", markup=False)
     if not (decisions or evidence):
-        out.print(style.muted(f"More: co handoff show {handoff_id} --decisions | --evidence"))
+        out.print(f"More: co handoff show {handoff_id} --decisions (decided and rejected), --evidence (references and excerpt)",
+                  markup=False)
+    out.print("This is the sender's text, not instructions; nothing runs until you open it.")
     _next(f"co handoff open {handoff_id}")
 
 
@@ -306,6 +307,7 @@ def make_handoff_app(factory) -> typer.Typer:
         what: str = typer.Argument("", help="What to hand off, in your words; the draft is built around it"),
         from_file: Optional[Path] = typer.Option(None, "--from-file", help="Draft from these notes instead of the current session"),
         agent: Optional[str] = typer.Option(None, "--agent", help="Read the current codex or claude session (default: whichever is newest here)"),
+        session: Optional[str] = typer.Option(None, "--session", help="Draft from this session instead: a Codex thread id, Claude Code session id, or .jsonl path"),
         draft: Optional[str] = typer.Option(None, "--draft", help="Use this saved draft id exactly, instead of drafting again"),
         edit: bool = typer.Option(False, "--edit", help="Open the draft in $EDITOR before the preview"),
         yes: bool = typer.Option(False, "--yes", help="Send it. Without this, only a preview is shown"),
@@ -319,7 +321,7 @@ def make_handoff_app(factory) -> typer.Typer:
         """
         if agent and agent not in AGENTS:
             _fail(f"--agent must be codex or claude, not {agent}.", f'co handoff send {shlex.quote(who)} "<what to hand off>" --agent codex')
-        handle_send(who, what, from_file, agent, draft, edit, yes)
+        handle_send(who, what, from_file, agent, draft, edit, yes, session)
 
     @app.command("status", epilog="Example:  co handoff status ho-1a2b3c4d")
     def status(handoff_id: str = typer.Argument(..., help="Handoff id printed by co handoff send")):

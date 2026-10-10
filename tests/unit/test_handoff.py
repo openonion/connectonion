@@ -85,15 +85,14 @@ def model(monkeypatch):
     def fake_llm_do(prompt, output=None, **kwargs):
         prompts.append(prompt)
         return bundles.Draft(
-            goal="Store the login token",
-            decisions=[bundles.Decision(decision="Use an httpOnly cookie", why="JS cannot read it",
-                                        rejected=[bundles.Rejected(option="B: localStorage",
-                                                                   why_not="any XSS can read localStorage")])],
-            current_state="Option chosen, no code yet",
-            next_step="Write the middleware in auth/session.py",
+            title="Store the login token",
+            task="Store the login session token; done when the cookie is set on login.",
+            may_do=["edit auth/"],
+            where_it_stands="Option chosen, no code yet",
+            decided=[bundles.Decided(decision="Use an httpOnly cookie", why="JS cannot read it")],
+            rejected=[bundles.Rejected(option="B: localStorage", why_not="any XSS can read localStorage")],
             open_questions=["Cookie lifetime?"],
-            evidence=[bundles.Evidence(pointer="auth/session.py", note="where the middleware goes")],
-            recipient_may=["edit auth/"],
+            references=[bundles.Reference(reference="auth/session.py", note="where the middleware goes")],
         )
 
     import connectonion.llm_do  # noqa: F401  (the module, not the function the package re-exports)
@@ -237,11 +236,11 @@ def test_a_value_from_keys_env_is_refused_even_without_a_known_shape(monkeypatch
 
 
 def test_a_changed_bundle_is_not_verified():
-    bundle = bundles.seal({"format": bundles.FORMAT, "id": "ho-1", "goal": "g", "from": "a", "to": "b",
-                           "current_state": "", "next_step": ""})
+    bundle = bundles.seal({"format": bundles.FORMAT, "id": "ho-1", "title": "t", "task": "g", "from": "a", "to": "b",
+                           "created_at": "2026-10-10", "where_it_stands": ""})
     subject, body = bundles.to_mail(bundle)
     assert bundles.from_mail(body)["verified"]
-    tampered = dict(bundle, goal="something else")          # keeps the approved hash
+    tampered = dict(bundle, task="something else")          # keeps the approved hash
     assert not bundles.from_mail(bundles.to_mail(tampered)[1])["verified"]
 
 
@@ -258,7 +257,7 @@ def test_inbox_show_and_open_from_the_mailbox(project, model, mailbox, monkeypat
     summary = _invoke("handoff", "show", handoff_id)
     assert "Store the login token" in summary.output and "localStorage" not in summary.output
     detail = _invoke("handoff", "show", handoff_id, "--decisions")
-    assert "Rejected: B: localStorage — any XSS can read localStorage" in detail.output
+    assert "- B: localStorage: any XSS can read localStorage" in detail.output
 
     seeds = []
 
@@ -283,3 +282,97 @@ def test_inbox_show_and_open_from_the_mailbox(project, model, mailbox, monkeypat
 def test_show_of_an_unknown_id_points_at_the_inbox(project, mailbox):
     result = _invoke("handoff", "show", "ho-00000000")
     assert result.exit_code == 1 and "Next: co handoff inbox" in result.output
+
+
+# ---- compaction and picking a session ----
+
+def test_a_compacted_codex_session_keeps_what_codex_retained_then_the_turns_after(project):
+    path = write_codex_session(project)
+    rows = path.read_text().splitlines()
+    compacted = _row("compacted", {"message": "", "replacement_history": [
+        {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Original ask: store the login token."}]},
+        {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "# AGENTS.md instructions\nrules"}]},
+        {"type": "compaction", "encrypted_content": "gAAAA-opaque"}]})
+    after = _codex_message("user", "After compaction: lifetime is 7 days.")
+    path.write_text("\n".join(rows + [compacted, after]) + "\n")
+    turns = sessions.excerpt(sessions.read_turns("codex", path))
+    assert [(t["role"], t["text"]) for t in turns] == [
+        ("earlier", "Original ask: store the login token."),
+        ("user", "After compaction: lifetime is 7 days.")]
+
+
+def test_a_compacted_claude_session_starts_from_its_summary(project):
+    path = write_claude_session(project)
+    rows = path.read_text().splitlines()
+    summary = {"type": "user", "isCompactSummary": True, "timestamp": "2026-10-10T11:00:00Z",
+               "message": {"role": "user", "content": "This session is being continued from a previous "
+                                                      "conversation.\n\nSummary: chose the queue over backoff."}}
+    after = {"type": "user", "timestamp": "2026-10-10T11:00:01Z",
+             "message": {"role": "user", "content": "Now write the worker."}}
+    path.write_text("\n".join(rows + [json.dumps(summary), json.dumps(after)]) + "\n")
+    turns = sessions.excerpt(sessions.read_turns("claude", path))
+    assert [t["role"] for t in turns] == ["summary", "user"]
+    assert "chose the queue over backoff" in turns[0]["text"]
+
+
+def test_a_long_session_keeps_the_last_turns_but_never_drops_the_summary():
+    turns = [{"role": "summary", "text": "S", "timestamp": ""}] + \
+            [{"role": "user", "text": str(i), "timestamp": ""} for i in range(100)]
+    kept = sessions.excerpt(turns, limit=5)
+    assert [t["text"] for t in kept] == ["S", "95", "96", "97", "98", "99"]
+
+
+def test_session_by_id_or_path(project, tmp_path):
+    path = write_codex_session(tmp_path / "another-project")
+    assert sessions.find_by_id(THREAD) == ("codex", path)
+    assert sessions.find_by_id(str(path)) == ("codex", path.resolve())
+    claude = write_claude_session(project)
+    assert sessions.find_by_id("5b2c") == ("claude", claude)
+
+
+def test_send_from_another_session_does_not_put_local_paths_in_the_bundle(project, model, mailbox, tmp_path):
+    write_codex_session(tmp_path / "another-project")
+    result = _invoke("handoff", "send", SELF, "task", "--session", THREAD)
+    assert result.exit_code == 0, result.output
+    draft = json.loads((Path.home() / ".co/handoff/drafts" / f"{_draft_id(result.output)}.json").read_text())
+    assert draft["source"] == {"kind": "codex", "session": THREAD, "turns_included": 3, "compacted": False}
+    assert str(Path.home()) not in json.dumps(draft)
+
+
+# ---- what must never be mailed ----
+
+def test_a_planted_sk_test_key_is_refused(project, model, mailbox):
+    write_codex_session(project, extra=" use sk-test-4f9a8b7c6d5e4f3a2b1c")
+    result = _invoke("handoff", "send", SELF, "task", "--yes")
+    assert result.exit_code == 1 and "Refusing to send" in result.output and mailbox == []
+
+
+def test_an_invite_code_is_refused_by_shape_and_by_value(project, model, mailbox, monkeypatch):
+    # A holder of the invite becomes a contact, and contacts may EXEC on the host.
+    from connectonion.network.host.server import EXEC_REQUIRES
+    assert "contact" in EXEC_REQUIRES
+    write_codex_session(project, extra=" the invite is ABCDE-FGHJK-MNPQR")
+    result = _invoke("handoff", "send", SELF, "task", "--yes")
+    assert result.exit_code == 1 and "ConnectOnion invite code" in result.output and mailbox == []
+    monkeypatch.setenv("CO_INVITE_CODE", "OpenOnion-legacy-code")
+    assert bundles.find_credentials({"t": "code OpenOnion-legacy-code"},
+                                    __import__("connectonion.cli.commands.handoff_commands",
+                                               fromlist=["_known_secrets"])._known_secrets())
+
+
+def test_the_mail_carries_no_invite_code_or_token(project, model, mailbox, monkeypatch):
+    monkeypatch.setenv("CO_INVITE_CODE", "ZZZZZ-YYYYY-XXXXX")
+    monkeypatch.setenv("OPENONION_API_KEY", "eyJhbGciOiJIUzI1NiJ9.payload-part-x.signature-part")
+    write_codex_session(project)
+    handoff_id = _draft_id(_invoke("handoff", "send", SELF, "task").output)
+    _invoke("handoff", "send", SELF, "--draft", handoff_id, "--yes")
+    mail = mailbox[0]["subject"] + mailbox[0]["message"]
+    assert "ZZZZZ-YYYYY-XXXXX" not in mail and "eyJhbGciOiJIUzI1NiJ9" not in mail
+    assert "invite" not in mail.lower()
+
+
+def test_private_paths_are_shown_in_the_preview(project, model, mailbox):
+    write_codex_session(project, extra=" see /Users/alice/secret-notes/plan.md")
+    result = _invoke("handoff", "send", SELF, "task")
+    assert result.exit_code == 0
+    assert "Private paths in it" in result.output and "/Users/alice/secret-notes/plan.md" in result.output

@@ -1,9 +1,9 @@
 """The handoff bundle: what crosses from one person's agent to another's.
 
-A bundle is one JSON document. The summary (goal, current state, next step, open
-questions, what the recipient may do) is what a person reads first; decisions
-with their rejected options, evidence pointers and the raw transcript excerpt are
-there on request. `content_hash` covers everything the sender saw in the preview,
+A bundle is one JSON document whose fields are the handoff skill's brief sections
+(Task / Where it stands / Decided / Rejected / Open questions / Code and
+references), plus the raw transcript excerpt. Task, state and open questions are
+what a person reads first; the rest is there on request. `content_hash` covers everything the sender saw in the preview,
 so the copy that arrives can be checked against the one that was approved.
 """
 
@@ -21,43 +21,49 @@ BEGIN = "----- BEGIN CO HANDOFF BUNDLE -----"
 END = "----- END CO HANDOFF BUNDLE -----"
 
 
-class Rejected(BaseModel):
-    option: str = Field(description="The option that was considered and not taken")
-    why_not: str = Field(description="The reason given in the conversation for rejecting it")
-
-
-class Decision(BaseModel):
+class Decided(BaseModel):
     decision: str = Field(description="What was decided")
     why: str = Field(description="The reason, as stated in the conversation")
-    rejected: list[Rejected] = Field(default_factory=list, description="Alternatives turned down, each with its reason")
 
 
-class Evidence(BaseModel):
-    pointer: str = Field(description="A file path, URL, commit, issue or message the claim rests on")
-    note: str = Field(description="What it shows")
+class Rejected(BaseModel):
+    option: str = Field(description="The alternative that was dropped, named so a stranger knows what it is")
+    why_not: str = Field(description="The reason given in the conversation for dropping it")
+
+
+class Reference(BaseModel):
+    reference: str = Field(description="Repository URL, branch, commit, PR, issue, or a file by its path in the repository")
+    note: str = Field(description="What it is or shows")
 
 
 class Draft(BaseModel):
-    goal: str = Field(description="The task being handed off, in one or two sentences")
-    decisions: list[Decision] = Field(default_factory=list)
-    current_state: str = Field(description="Where the work stands now: done, in progress, not started")
-    next_step: str = Field(description="The single next concrete step for the recipient")
-    open_questions: list[str] = Field(default_factory=list)
-    evidence: list[Evidence] = Field(default_factory=list)
-    recipient_may: list[str] = Field(default_factory=list, description="What the recipient is allowed to do, only as stated by the sender; empty if not discussed")
+    """The brief, in the same sections as the handoff skill (Codex's compaction structure)."""
+    title: str = Field(description="The task in one line")
+    task: str = Field(description="What to do, and what 'done' means")
+    may_do: list[str] = Field(default_factory=list, description="What the recipient may do, only as the sender stated; empty if not discussed")
+    where_it_stands: str = Field(description="What is finished, what is in progress, what was tried")
+    decided: list[Decided] = Field(default_factory=list)
+    rejected: list[Rejected] = Field(default_factory=list)
+    open_questions: list[str] = Field(default_factory=list, description="Each undecided question, and who is waiting on it")
+    references: list[Reference] = Field(default_factory=list)
 
 
-DRAFT_PROMPT = """You prepare a handoff so a colleague's coding agent can continue a task
+DRAFT_PROMPT = """You write a handoff brief so a colleague's coding agent can continue a task
 without the sender rewriting the background. Use ONLY the conversation below.
 
-- Record every decision with its reason, and every option that was rejected with
-  the reason it was rejected. Rejected options matter most: the recipient will ask
-  "why not X?".
-- Separate what was decided from what was only proposed; proposals go in open_questions.
-- Evidence pointers are concrete: file paths, commands, URLs, issue/PR numbers that
-  appear in the conversation. Never invent one.
-- recipient_may lists only permissions the sender stated; leave it empty otherwise.
-- Never copy a credential, token, password or key.
+- Write only what the conversation established. If something is uncertain, say so.
+- Readable on its own: "the file", "option B" and "what we said" mean nothing to a
+  stranger, so name the thing ("option B (localStorage)").
+- Record every decision with its reason, and every rejected alternative with the
+  reason it was rejected. The recipient will ask "why not X?".
+- Proposals that were not settled go in open_questions.
+- References are concrete: repository, branch, commit, PR, issue, or a file by its
+  path inside the repository. Never a path under a home directory (/Users/..., /home/...,
+  ~/...), never an internal hostname or IP, never invented.
+- may_do lists only permissions the sender stated; leave it empty otherwise.
+- Never copy a credential, token, password, key or invite code.
+- A "summary" turn is the client's own summary of earlier conversation; "earlier"
+  turns are the user's messages kept from before a compaction.
 
 The sender's own words about what to hand off: {what}
 
@@ -104,12 +110,13 @@ def seal(bundle: dict) -> dict:
 # ---- credentials never leave the machine ----
 
 CREDENTIAL_PATTERNS = {
-    "OpenAI/Anthropic-style key": r"\bsk-(?:ant-)?[A-Za-z0-9_-]{20,}",
+    "OpenAI/Anthropic-style key": r"\bsk-(?:ant-)?[A-Za-z0-9_-]{16,}",
     "GitHub token": r"\b(?:ghp|gho|ghs|ghu|ghr)_[A-Za-z0-9]{20,}|\bgithub_pat_[A-Za-z0-9_]{20,}",
     "AWS access key": r"\bAKIA[0-9A-Z]{16}\b",
     "Slack token": r"\bxox[abposr]-[A-Za-z0-9-]{10,}",
     "Google API key": r"\bAIza[0-9A-Za-z_-]{35}\b",
     "private key block": r"-----BEGIN [A-Z ]*PRIVATE KEY-----",
+    "ConnectOnion invite code": r"\b[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}\b",
     "JWT": r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",
     "secret assignment": r"(?i)\b[A-Z0-9_]*(?:api[_-]?key|secret|token|password|passwd)[A-Z0-9_]*\s*[:=]\s*['\"]?[A-Za-z0-9_\-/+=.]{16,}",
 }
@@ -128,6 +135,23 @@ def find_credentials(bundle: dict, known_secrets: list[str] = ()) -> list[str]:
     return hits
 
 
+# Not secrets, but not the recipient's business either: they are shown in the
+# preview so the sender removes or keeps each one knowingly (the skill's audit).
+PRIVATE_PATTERNS = {
+    "home directory path": r"(?:/Users|/home)/[A-Za-z0-9._-]+(?:/[^\s`'\")\]]*)?",
+    "agent config path": r"~/\.(?:codex|claude|co)\b[^\s`'\")\]]*",
+}
+
+
+def find_private(bundle: dict) -> list[str]:
+    """Private paths in the bundle, as 'field: match' (deduplicated)."""
+    hits = []
+    for field, text in _strings(bundle):
+        for pattern in PRIVATE_PATTERNS.values():
+            hits += [f"{field}: {m}" for m in re.findall(pattern, text)]
+    return list(dict.fromkeys(hits))
+
+
 def _strings(value, field: str = ""):
     if isinstance(value, str):
         yield field, value
@@ -143,11 +167,12 @@ def _strings(value, field: str = ""):
 
 def to_mail(bundle: dict) -> tuple[str, str]:
     """(subject, body). The body opens with the readable summary; the bundle follows, base64 so no mail system rewrites it."""
-    subject = f"[co handoff] {bundle['id']}: {_one_line(bundle['goal'], 80)}"
+    subject = f"[co handoff] {bundle['id']}: {_one_line(bundle['title'], 80)}"
     encoded = base64.b64encode(json.dumps(bundle, ensure_ascii=False).encode()).decode()
     wrapped = "\n".join(encoded[i:i + 76] for i in range(0, len(encoded), 76))
-    body = (f"{summary_text(bundle)}\n\n"
-            f"To continue this in your own coding agent: co handoff open {bundle['id']}\n\n"
+    body = (f"{brief_markdown(bundle)}\n"
+            f"Continue this with your AI: run co handoff inbox, then co handoff open {bundle['id']}.\n"
+            f"Not using ConnectOnion? Reply to this email; your questions reach the sender.\n\n"
             f"{BEGIN}\n{wrapped}\n{END}\n")
     return subject, body
 
@@ -168,50 +193,62 @@ def _one_line(text: str, width: int) -> str:
     return text if len(text) <= width else text[:width - 1] + "…"
 
 
-# ---- what a person reads ----
+# ---- what a person reads: one format everywhere ----
+
+def task_section(bundle: dict) -> str:
+    lines = [bundle["task"]]
+    lines.append("You may: " + ("; ".join(bundle["may_do"]) if bundle.get("may_do") else "not stated by the sender"))
+    return "\n\n".join(lines)
+
+
+def decided_text(bundle: dict) -> str:
+    return "\n".join(f"- {d['decision']} (why: {d['why']})" for d in bundle.get("decided", [])) or "- none recorded"
+
+
+def rejected_text(bundle: dict) -> str:
+    return "\n".join(f"- {r['option']}: {r['why_not']}" for r in bundle.get("rejected", [])) or "- none recorded"
+
+
+def questions_text(bundle: dict) -> str:
+    return "\n".join(f"- {q}" for q in bundle.get("open_questions", [])) or "- none"
+
+
+def references_text(bundle: dict) -> str:
+    lines = [f"- {r['reference']}: {r['note']}" for r in bundle.get("references", [])]
+    source = bundle.get("source", {})
+    lines.append(f"- Transcript excerpt: {len(bundle.get('excerpt', []))} turns of the sender's "
+                 f"{source.get('kind', '?')} session{' (compacted; earlier part as kept by the client)' if source.get('compacted') else ''}")
+    return "\n".join(lines)
+
+
+def excerpt_text(bundle: dict) -> str:
+    return "\n\n".join(f"[{t['role']}] {t['text']}" for t in bundle.get("excerpt", []))
+
+
+def header(bundle: dict) -> str:
+    return (f"# Handoff: {bundle['title']}\n"
+            f"From: {bundle['from']} · To: {bundle['to']} · {bundle['created_at'][:10]} · {bundle['id']}")
+
 
 def summary_text(bundle: dict) -> str:
-    lines = [f"Handoff {bundle['id']} from {bundle['from']}", "",
-             f"Goal: {bundle['goal']}", "",
-             f"Current state: {bundle['current_state']}", "",
-             f"Next step: {bundle['next_step']}"]
-    if bundle.get("open_questions"):
-        lines += ["", "Open questions:"] + [f"- {q}" for q in bundle["open_questions"]]
-    lines += ["", "You may: " + ("; ".join(bundle["recipient_may"]) if bundle.get("recipient_may")
-                                 else "not stated by the sender")]
-    lines += ["", f"{_count(bundle.get('decisions'), 'decision')}, {_count(bundle.get('evidence'), 'evidence pointer')}, "
-                  f"{len(bundle.get('excerpt', []))}-turn transcript excerpt included."]
-    return "\n".join(lines)
+    """The first screen: task, where it stands, open questions, and what else there is."""
+    return (f"{header(bundle)}\n\n## Task\n{task_section(bundle)}\n\n"
+            f"## Where it stands\n{bundle['where_it_stands']}\n\n## Open questions\n{questions_text(bundle)}\n\n"
+            f"{_count(bundle.get('decided'), 'decision')}, {_count(bundle.get('rejected'), 'rejected option')}, "
+            f"{_count(bundle.get('references'), 'reference')}, {len(bundle.get('excerpt', []))}-turn excerpt.")
+
+
+def brief_markdown(bundle: dict) -> str:
+    """The whole brief in the handoff skill's sections: preview, mail body and HANDOFF.md."""
+    return (f"{header(bundle)}\n\n"
+            f"## Task\n{task_section(bundle)}\n\n"
+            f"## Where it stands\n{bundle['where_it_stands']}\n\n"
+            f"## Decided\n{decided_text(bundle)}\n\n"
+            f"## Rejected\n{rejected_text(bundle)}\n\n"
+            f"## Open questions\n{questions_text(bundle)}\n\n"
+            f"## Code and references\n{references_text(bundle)}\n")
 
 
 def _count(items, noun: str) -> str:
     n = len(items or [])
     return f"{n} {noun}" + ("" if n == 1 else "s")
-
-
-def decisions_text(bundle: dict) -> str:
-    lines = []
-    for i, d in enumerate(bundle.get("decisions", []), 1):
-        lines += [f"{i}. {d['decision']}", f"   Why: {d['why']}"]
-        lines += [f"   Rejected: {r['option']} — {r['why_not']}" for r in d.get("rejected", [])]
-    return "\n".join(lines) or "No decisions recorded."
-
-
-def evidence_text(bundle: dict) -> str:
-    lines = [f"- {e['pointer']}: {e['note']}" for e in bundle.get("evidence", [])] or ["No evidence pointers."]
-    source = bundle.get("source", {})
-    lines += ["", f"Transcript excerpt ({source.get('kind', '?')} session {source.get('session', '?')}, "
-                  f"last {len(bundle.get('excerpt', []))} turns):"]
-    lines += [f"[{t['role']}] {t['text']}" for t in bundle.get("excerpt", [])]
-    return "\n".join(lines)
-
-
-def brief_markdown(bundle: dict) -> str:
-    """HANDOFF.md, the file the recipient's coding agent reads first."""
-    return (f"# Handoff {bundle['id']}\n\n"
-            f"From {bundle['from']} to {bundle['to']}, {bundle['created_at']}. "
-            f"Sender's request: {bundle.get('task') or '(none)'}\n\n"
-            f"## Summary\n\n{summary_text(bundle)}\n\n"
-            f"## Decisions (with rejected options)\n\n{decisions_text(bundle)}\n\n"
-            f"## Evidence\n\n" + "\n".join(f"- {e['pointer']}: {e['note']}" for e in bundle.get("evidence", []))
-            + "\n\nThe raw transcript excerpt is in excerpt.md next to this file.\n")
