@@ -8,6 +8,7 @@ EXPECTED_DEFAULTS = {
     "install-connectonion",
     "co-browser",
     "co-mail-and-drive",
+    "handoff",
     "rem-init",
     "rem-investigate",
     "rem-extract",
