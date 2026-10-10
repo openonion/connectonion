@@ -85,7 +85,13 @@ def test_the_mail_is_one_prompt_with_the_brief_inline_and_no_power_user_commands
     # Plain `pip install connectonion` gets the last stable release, which has no co handoff accept.
     from connectonion import __version__
     # A pre-release floor admits pre-releases of co by itself (PEP 440); --pre would admit them for dependencies too.
-    assert f'pip install --upgrade "connectonion>={__version__}"' in body and "--pre" not in body and "co init --yes" in body
+    floor = f'"connectonion>={__version__}"'
+    # Isolated installs only, in this order; never the recipient's global Python (#2396).
+    uv, pipx = body.index(f"uv tool install {floor}"), body.index(f"pipx install --force {floor}")
+    venv = body.index(f"python3 -m venv ~/.co-venv && ~/.co-venv/bin/pip install {floor}")
+    assert uv < pipx < venv
+    assert "pip install --upgrade" not in body and "--pre" not in body
+    assert "do not run co init" in body and "co init --yes" in body
     assert f"co handoff accept {_code(body)}" in body and "co handoff ask " in body
     assert "co handoff inbox" not in body and "co handoff open" not in body       # #2378
     raw = world["mails"][-1]["message"]

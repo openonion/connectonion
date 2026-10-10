@@ -27,7 +27,7 @@ and code shortened and the version as a 1.9.2b7 sender would write it:
 ```text
 aaron.xie@mail.openonion.ai handed you a task with ConnectOnion (handoff ho-5359a292). Do these steps in order.
 
-1. Run co --version. If it prints 1.9.2b7 or newer, go to step 2 and do not run co init. If co is missing or older, install it with pip install --upgrade "connectonion>=1.9.2b7" (if pip refuses, python3 -m venv ~/.co-venv && ~/.co-venv/bin/pip install "connectonion>=1.9.2b7", then use ~/.co-venv/bin/co), and only then run co init --yes.
+1. Run co --version. If it prints 1.9.2b7 or newer, go to step 2 and do not run co init. If co is missing or older, install it in its own environment, never into the global Python: if uv is available, uv tool install "connectonion>=1.9.2b7"; otherwise, if pipx is available, pipx install --force "connectonion>=1.9.2b7"; otherwise python3 -m venv ~/.co-venv && ~/.co-venv/bin/pip install "connectonion>=1.9.2b7". Use that co for every co command below (uv and pipx put it in ~/.local/bin, the venv in ~/.co-venv/bin), and only then run co init --yes.
 
 2. Save the brief below, from its first line '# Handoff:' through the end of 'Code and references', as HANDOFF.md in the current directory.
 
@@ -43,6 +43,10 @@ aaron.xie@mail.openonion.ai handed you a task with ConnectOnion (handoff ho-5359
 - The version floor is the sender's own co version. Plain `pip install
   connectonion` installs the last stable release, which has no `co handoff accept`;
   a pre-release floor lets pip pick the preview without `--pre`.
+- co goes into its own environment (uv tool, then pipx, then a venv), never the
+  recipient's global Python. Their agent runs in a login shell, so a bare
+  `pip install` would change the person's own packages. `pipx install --force`
+  replaces an older co; `uv tool install` already does that when the floor moves.
 - The mail is HTML with the prompt in `<pre>`: the mail service sends the body
   as HTML, and plain text arrived as one paragraph with its line breaks gone.
 - There are no `<placeholders>` in it; the mail service drops anything shaped

@@ -75,9 +75,11 @@ def prompt(brief: str, code: str, handoff_id: str, sender: str) -> str:
     steps = [
         f"{sender} handed you a task with ConnectOnion (handoff {handoff_id}). Do these steps in order.",
         f"1. Run co --version. If it prints {__version__} or newer, go to step 2 and do not run co init. "
-        f"If co is missing or older, install it with pip install --upgrade \"connectonion>={__version__}\" "
-        f"(if pip refuses, python3 -m venv ~/.co-venv && ~/.co-venv/bin/pip install "
-        f"\"connectonion>={__version__}\", then use ~/.co-venv/bin/co), and only then run co init --yes.",
+        f"If co is missing or older, install it in its own environment, never into the global Python: "
+        f"if uv is available, uv tool install \"connectonion>={__version__}\"; otherwise, if pipx is available, "
+        f"pipx install --force \"connectonion>={__version__}\"; otherwise python3 -m venv ~/.co-venv && "
+        f"~/.co-venv/bin/pip install \"connectonion>={__version__}\". Use that co for every co command below "
+        f"(uv and pipx put it in ~/.local/bin, the venv in ~/.co-venv/bin), and only then run co init --yes.",
         "2. Save the brief below, from its first line '# Handoff:' through the end of 'Code and references', "
         "as HANDOFF.md in the current directory.",
         f"3. Accept the handoff, which tells the sender it arrived: co handoff accept {code} --brief HANDOFF.md",
