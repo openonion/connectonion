@@ -19,6 +19,7 @@ from pathlib import Path
 import requests
 from rich import box
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
@@ -617,6 +618,15 @@ def handle_doctor(*, fix: bool = False, yes: bool = False, json_output: bool = F
         found.append(f"skill {label}: {reason}")
 
     _add_skill_preflight_rows(skills_table, found, skills)
+
+    # Whether Codex and Claude Code are told co exists (#2113). Same check
+    # host startup and co init use, so the three never disagree.
+    from .agent_index import doctor_rows
+    for severity, text in doctor_rows():
+        mark = "[green]✓[/green]" if severity == "ok" else "[yellow]○[/yellow]"
+        skills_table.add_row("Command index", f"{mark} {escape(text)}")
+        if severity != "ok":
+            warnings.append(text)
 
     console.print(Panel(skills_table, title="[bold]Skills[/bold]", border_style="yellow"))
     console.print()

@@ -59,6 +59,12 @@ def handle_global_init(key: Optional[str] = None) -> None:
     console.print(f"[green]✓ Global configuration: {global_dir / 'keys.env'}[/green]")
     if not authenticated:
         console.print("[yellow]Managed-key setup is incomplete. Run co auth when ready.[/yellow]")
+    # Codex and Claude Code cannot know co exists unless something tells
+    # them; their always-loaded files are the one place every session reads.
+    from .agent_index import handle_skills_index
+    from .skills_commands import handle_skills_link
+    handle_skills_link()
+    handle_skills_index()
     console.print("[dim]For a project, pass its directory explicitly: co init ./[/dim]")
 
 

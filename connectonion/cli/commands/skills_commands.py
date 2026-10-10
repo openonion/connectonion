@@ -455,10 +455,11 @@ def handle_skills_list():
 # Write direction: publish the skills bundled with ConnectOnion into the
 # agent tools that read them. SOURCES above is the read side; these are the
 # two targets that use the same <name>/SKILL.md layout.
-LINK_TARGETS = [
-    ("claude", Path.home() / ".claude" / "skills"),
-    ("codex", Path.home() / ".codex" / "skills"),
-]
+def link_targets():
+    """Resolved per call, not at import: a module-level Path.home() is whatever
+    HOME was when the module was first imported — under pytest, the real one."""
+    home = Path.home()
+    return [("claude", home / ".claude" / "skills"), ("codex", home / ".codex" / "skills")]
 
 BUNDLED_SKILLS = Path(__file__).parent.parent.parent / "useful_skills"
 
@@ -498,12 +499,18 @@ def handle_skills_link(force: bool = False):
 
     table = Table(title=f"Linking {len(skills)} bundled skill(s)")
     table.add_column("Skill", style="cyan")
-    for name, _ in LINK_TARGETS:
+    roots = link_targets()
+    for name, _ in roots:
         table.add_column(name)
 
     for skill in skills:
         row = [skill.name]
-        for _, root in LINK_TARGETS:
+        for _, root in roots:
+            # A tool that is not installed gets nothing: creating ~/.codex
+            # would make every later check believe Codex is here.
+            if not root.parent.is_dir():
+                row.append(f"no {root.parent.name}, skipped")
+                continue
             row.append(_link_one(skill, root / skill.name, force))
         table.add_row(*row)
 
