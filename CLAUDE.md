@@ -214,8 +214,6 @@ connectonion/
 ├── wiki/                           # GitHub Wiki (nested repo)
 ├── docs-site/                      # Next.js docs site (nested repo, private)
 ├── examples/                       # Example agents
-├── subagents/                      # Subagent definitions
-├── prompts/                        # System prompt templates
 ├── pytest.ini                      # Test configuration
 └── pyproject.toml                  # Package configuration (hatchling)
 ```
