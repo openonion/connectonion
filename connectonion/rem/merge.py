@@ -219,3 +219,58 @@ def _relink(notebook: Notebook, old: str, new: str) -> list[str]:
             notebook.write(record, updated)
             changed.append(record)
     return changed
+
+
+IDENTITY_LINES = ("- email:", "- handles:", "- also known as:")
+
+
+def _identity(page: str) -> tuple[str, set[str], set[str]]:
+    """The page's title, the addresses on its identity lines, and the other names they give."""
+    from .files import EMAIL, split_handles
+    title = next((line[2:].strip() for line in page.splitlines() if line.startswith("# ")), "")
+    lines = [line for line in page.splitlines()[:40] if line.casefold().startswith(IDENTITY_LINES)]
+    addresses = {address.casefold() for line in lines for address in EMAIL.findall(line)}
+    names = {re.sub(r"\s*\(.*", "", handle).strip().casefold() for line in lines
+             if not line.casefold().startswith("- email:")
+             for handle in split_handles(line.split(":", 1)[1]) if "@" not in handle}
+    return title, addresses, names
+
+
+def _distinctive(name: str) -> bool:
+    """A full name or one not in Latin script: a first name alone ("David") is many people."""
+    return len(name.split()) >= 2 or (len(name) >= 2 and not name.isascii())
+
+
+def _why(a: tuple, b: tuple) -> str:
+    """Why page `a` is probably the person on page `b`, or ''."""
+    (title, addresses, names), (other, others, _) = a, b
+    shared = sorted(addresses & others)
+    if shared:
+        return f"both list {', '.join(shared)}"
+    if other.casefold() in names and _distinctive(other):
+        return f"{title} is also known as {other}"
+    local = {re.sub(r"[\d._-]+$", "", address.split("@")[0]): address for address in others}
+    own = set(title.casefold().split())   # "David" on David Burt's page is his first name, not a handle
+    handle = next((name for name in sorted(names) if len(name) >= 4 and name in local and name not in own), "")
+    return f"{title} lists the handle {handle}, as in {local[handle]}" if handle else ""
+
+
+def likely_pairs(notebook: Notebook) -> list[dict]:
+    """People pages that are probably one person, with the evidence; never merged here (#2349).
+
+    A real first run gave Ody two pages on one Gmail, Ziming Gong and 子明 one
+    shared address, and Lee Larry the handle of liqingyong0507@gmail.com. Names
+    alone are not evidence enough to merge, so the owner confirms each with
+    `co rem merge KEPT OTHER`; the page with more written is the one to keep.
+    """
+    pages = {record: notebook.read(record) for record in notebook.list("people")}
+    known = {record: _identity(page) for record, page in pages.items()}
+    records = sorted(pages)
+    pairs = []
+    for index, a in enumerate(records):
+        for b in records[index + 1:]:
+            why = _why(known[a], known[b]) or _why(known[b], known[a])
+            if why:
+                kept, other = (a, b) if weight(pages[a]) >= weight(pages[b]) else (b, a)
+                pairs.append({"kept": kept, "other": other, "why": why})
+    return pairs
