@@ -577,8 +577,8 @@ def _owner_phones(notebook, record) -> list[str]:
 
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False):
-    from .page_review import (compact_page, drop_owner_addresses, drop_tool_text, drop_uncited_sources, drop_unresolved,
-                              company_from_domain, drop_others_phones,
+    from .page_review import (add_missing_sections, compact_page, drop_owner_addresses, drop_tool_text,
+                              drop_uncited_sources, drop_unresolved, company_from_domain, drop_others_phones,
                               link_company, normalize_numbered_sources, placeholder_errors, repair_run_citations,
                               renumber_sources, restore_runner_fields, unresolved_findings, validate)
     if not candidate.is_file():
@@ -635,6 +635,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         text = compact_page(record, text)
     # Lost citations can themselves cause empty-section or no-source errors.
     # Repair them first; the next promotion still runs the complete validator.
+    if investigation:
+        text = add_missing_sections(record, text, owner=record == owner.get("record"))
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"))
     # Only a page's own investigation must finish its sections. Applied to a
     # one-page maintenance turn, it refused every page not investigated yet:

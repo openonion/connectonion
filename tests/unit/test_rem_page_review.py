@@ -974,3 +974,22 @@ def test_sources_already_in_order_are_unchanged():
     from connectonion.rem.page_review import renumber_sources
     text = "# A\n\nFact [1].\n\n## Sources\n- [1] outlook:aaa\n"
     assert renumber_sources(text) == text
+
+
+def test_a_required_section_the_turn_left_out_is_added_as_unknown():
+    # 1.9.2b3 trial: a project page without "Open threads" and a skill page
+    # without "Limitations" were refused whole, reported as "must occur once".
+    from connectonion.rem.page_review import add_missing_sections, headings
+    page = ('# startup\n\n## Facts\n- Status: active [1]\n\n## Insight\nIt ships [1].\n\n'
+            '## What it is\nA shop [1].\n\n## Where it stands\nLive [1].\n\n## Paths\n- /work/startup [1]\n\n'
+            '## Uncertainties\n- Unknown\n\n## Sources\n- [1] claude-code:s1 — 2026-08-11\n')
+    fixed = add_missing_sections('projects/startup.md', page)
+    assert re.findall(r'^## (.+)$', fixed, re.M) == list(headings('projects/startup.md'))
+    assert '## Paths\n- /work/startup [1]\n\n## Open threads\n- Unknown\n\n## Uncertainties' in fixed
+
+
+def test_a_missing_section_is_reported_as_missing_not_as_a_duplicate():
+    page = '# A\n\n## Facts\n- Status: Unknown\n\n## Sources\n- [1] claude-code:s1\n'
+    errors = validate('projects/a.md', page, '', [])
+    assert 'Missing section: Open threads' in errors
+    assert not any('must occur once: Open threads' in e for e in errors)
