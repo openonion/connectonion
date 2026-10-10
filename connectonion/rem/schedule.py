@@ -7,10 +7,14 @@ macOS: one declarative job file. A worker process of ours would still need a
 login launcher per OS and would add a process on top -- so the per-OS part is
 kept to this one file, and everything else stays one implementation in `sync`.
 
-The job is a tick, not a calendar. Measured 2026-09-07 on macOS 26: a
-`StartCalendarInterval` job -- array or dict form, plain /bin/sh, with or
-without ProcessType -- never fired in three experiments, while `StartInterval`
-fired to the second every time. So launchd runs `co rem sync --scheduled` (formerly `daily --scheduled`, which still works)
+The job is a tick, and it is set twice, because each trigger has been
+measured dead on one macOS. 2026-09-07, macOS 26: a `StartCalendarInterval`
+job -- array or dict form, plain /bin/sh, with or without ProcessType -- never
+fired in three experiments, while `StartInterval` fired to the second.
+2026-10-11, macOS 14.1: the installed job had runs = 0 a day after install, a
+60 s `StartInterval` test job ran 0 times in four minutes, and a calendar job
+bootstrapped the same way ran every minute. So the job carries both: every
+TICK_SECONDS, and on every matching minute of the clock. So launchd runs `co rem sync --scheduled` (formerly `daily --scheduled`, which still works)
 every TICK_SECONDS, and `sync` decides whether one of the saved times has come
 due since the last scheduled batch, in the saved timezone rather than the
 machine's. Missed slots (asleep, powered off) collapse into one catch-up at the
@@ -137,6 +141,7 @@ class Launchd:
             "ProgramArguments": ["/usr/bin/caffeinate", "-i", *command,
                                  "rem", "--root", str(root), "sync", "--scheduled"],
             "StartInterval": TICK_SECONDS,
+            "StartCalendarInterval": [{"Minute": minute} for minute in range(0, 60, TICK_SECONDS // 60)],
             "RunAtLoad": False,
             "ProcessType": "Background",
             "EnvironmentVariables": env,
