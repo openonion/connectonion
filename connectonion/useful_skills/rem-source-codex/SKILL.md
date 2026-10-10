@@ -5,8 +5,6 @@ description: Where the user's own words are inside Codex CLI sessions, how that 
 
 # Codex CLI as a source
 
-Why these rules: docs/rem-skills/rem-source-codex.md
-
 Read with the stage Skill that loaded it (`rem-extract`, `rem-maintain` or
 `rem-investigate`): that one says what to produce, this one what is true of
 this source.

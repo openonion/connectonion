@@ -5,8 +5,6 @@ description: Investigate one subject and write a complete, cited page.
 
 # Investigate one subject
 
-Why these rules: docs/rem-skills/rem-investigate.md
-
 Input: the page (already at the candidate path), material and search coverage.
 Output: that page, edited. Kind-specific rules follow.
 

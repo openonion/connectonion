@@ -5,8 +5,6 @@ description: Lift the notebook one layer — settled questions out of what happe
 
 # Abstract the layer above
 
-Why these rules: docs/rem-skills/rem-abstract.md
-
 Your input is **pages the notebook already holds**, never raw messages. If you
 find yourself wanting the original mail or session, stop: that material belongs
 to `rem-investigate`.

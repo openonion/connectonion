@@ -148,7 +148,7 @@ def test_config_set_model_checks_it_on_a_fixture_page_and_records_its_tier(tmp_p
     assert "In force: summary" in shown and shown.rstrip().endswith(f"Next: co rem --root {root} status")
     invoke(root, "config", "set", "model", "gpt-7-pico", "--no-check")
     shown = invoke(root, "config").output
-    assert "last checked for claude-code gpt-7-nova" in shown
+    assert "last checked for codex gpt-7-nova" in shown
     # The check is named in the tier's note; Next no longer reads as "set the model" (#1974).
     assert f"co rem --root {root} config set model gpt-7-pico (one or two model calls)" in shown
     assert shown.rstrip().endswith(f"Next: co rem --root {root} status")

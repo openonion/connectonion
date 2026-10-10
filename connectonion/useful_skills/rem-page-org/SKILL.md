@@ -5,8 +5,6 @@ description: What an organisation's page in the notebook is made of — the fixe
 
 # An organisation's page
 
-Why these rules: docs/rem-skills/rem-page-org.md
-
 Facts of the entity (programme, agreement, fees, legal entity, who the user
 deals with) go here, not on the sender's page.
 

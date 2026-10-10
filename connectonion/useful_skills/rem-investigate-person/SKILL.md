@@ -5,8 +5,6 @@ description: Read a person’s identity, relationship and obligations from gathe
 
 # Investigating a person
 
-Why these rules: docs/rem-skills/rem-investigate.md
-
 ## Identity is given, not guessed
 
 - The user's addresses (the mailbox names in coverage) are never the subject's;

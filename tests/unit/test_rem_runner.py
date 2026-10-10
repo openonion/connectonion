@@ -1014,3 +1014,11 @@ def test_a_project_still_refused_for_one_citation_after_its_repairs_drops_those_
                        default_config(), stage='investigate')
     assert modes == [False, False, False, True]  # two repairs, then the lines go, not the page
     assert result['changed'] == [record]
+
+
+def test_a_run_names_the_codex_threads_that_ran_it(notebook, monkeypatch):
+    """The 1.9.2b3 audit could match only about 102 of 331 runs to their Codex
+    threads, by timestamps; the run record carried no thread id."""
+    monkeypatch.setattr("connectonion.rem.runner.subprocess.run", lambda argv, **kw: SimpleNamespace(
+        returncode=0, stdout='{"outcome": "natural", "session_id": "01a12370-thread"}', stderr=""))
+    assert run_stage(notebook, [], default_config())["threads"] == ["01a12370-thread"]

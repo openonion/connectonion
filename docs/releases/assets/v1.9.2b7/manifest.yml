@@ -1,0 +1,6 @@
+version: v1.9.2b7
+no_visual_change: >-
+  No rendered page or reader layout changes. A new notebook's default runner
+  and the help text that names it change; the rest is run records, credential
+  refresh, Skill text and a maintainers' audit script. Each is covered by
+  regression tests, and the audit script was run on two real notebooks.

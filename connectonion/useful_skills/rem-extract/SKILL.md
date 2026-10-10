@@ -5,8 +5,6 @@ description: Read one batch of authorized session messages or mail and write the
 
 # Extract what is worth keeping from a batch
 
-Why these rules: docs/rem-skills/rem-extract.md (repo path; not needed at runtime).
-
 You are the first of two passes. Read a batch of raw messages and write
 **extraction notes**: facts the user would want their assistant to know in a
 month, each tied to who said it and where. The second pass (`rem-maintain`) sees

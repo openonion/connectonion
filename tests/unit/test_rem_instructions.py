@@ -124,17 +124,20 @@ def test_a_one_page_turn_stays_within_15k_characters_of_instructions(stage, kind
     assert len(instructions(stage, page_kind=kind)) <= 15_000
 
 
-def test_every_runtime_skill_names_where_its_rationale_lives():
+def test_rationale_docs_name_their_skill_and_no_skill_points_a_turn_at_them():
+    """Codex loads a SKILL.md as written. 'Why these rules: docs/rem-skills/…' sent
+    204 of 585 turns in the 1.9.2b3 run looking for a file the wheel does not
+    ship. The rationale names its Skill; the Skill does not name the rationale."""
     from connectonion.skills_catalog import useful_skills_dir
     from pathlib import Path
 
     repo = Path(__file__).resolve().parents[2]
-    for name in ("rem-investigate", "rem-maintain", "rem-extract", "rem-abstract", "rem-page-person",
-                 "rem-page-org", "rem-page-project", "rem-page-skill", "rem-source-codex",
-                 "rem-source-whatsapp"):
-        text = (useful_skills_dir() / name / "SKILL.md").read_text(encoding="utf-8")
-        assert f"Why these rules: docs/rem-skills/{name}.md" in text, name
-        assert (repo / "docs" / "rem-skills" / f"{name}.md").is_file(), name
+    for doc in sorted((repo / "docs" / "rem-skills").glob("*.md")):
+        name = doc.stem
+        assert f"useful_skills/{name}/SKILL.md" in doc.read_text(encoding="utf-8"), name
+        assert (useful_skills_dir() / name / "SKILL.md").is_file(), name
+    for skill in sorted(useful_skills_dir().glob("rem-*/SKILL.md")):
+        assert "docs/rem-skills" not in skill.read_text(encoding="utf-8"), skill.parent.name
 
 
 def test_project_and_skill_templates_match_created_skeletons(tmp_path):

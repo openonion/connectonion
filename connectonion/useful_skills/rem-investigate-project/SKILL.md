@@ -5,8 +5,6 @@ description: The steps for investigating a project's page, composed after rem-in
 
 # Investigating a project
 
-Why these rules: docs/rem-skills/rem-investigate.md
-
 - **Sessions show intent, not repository state.** Check files before claiming
   anything shipped or passed.
 - **Inspect mapped repository paths.** Use the evidence index, `git log`,

@@ -1132,7 +1132,7 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
     the last accepted page. Leads a round names in its reply go to the next.
     """
     from .runner import RunFailed
-    usage, changed, ledgers, refused = {}, [], [], []
+    usage, changed, ledgers, refused, threads = {}, [], [], [], []
     total = len(rounds)
     for number, part in enumerate([*rounds, []], 1):
         dates = [str(i.get("timestamp") or "")[:10] for i in part if i.get("timestamp")]
@@ -1153,6 +1153,7 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
             continue
         for key, value in (out.get("usage") or {}).items():
             usage[key] = usage.get(key, 0) + value
+        threads += out.get("threads", [])
         changed = sorted({*changed, *out.get("changed", [])})
         if out.get("report"):
             ledgers.append(f"Round {number}: {str(out['report']).strip()}")
@@ -1164,10 +1165,11 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
             usage[key] = usage.get(key, 0) + value
         if edit.get("refused"):
             refused.append(edit["refused"])
+        threads += edit.get("threads", [])
         changed = sorted({*changed, *edit.get("changed", [])})
         if edit.get("report"):
             ledgers.append(f"Editing round: {str(edit['report']).strip()}")
-    return {"usage": usage, "changed": changed, "report": "\n\n".join(ledgers),
+    return {"usage": usage, "changed": changed, "report": "\n\n".join(ledgers), "threads": threads,
             "rounds": total + 1, "refused_rounds": refused, "hedged_lines": [len(before), len(after)]}
 
 
@@ -1712,7 +1714,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,
-            "usage_by_stage": usage_by_stage, "report": result.get("report", ""),
+            "usage_by_stage": usage_by_stage, "report": result.get("report", ""), "threads": result.get("threads", []),
             "hedged_lines": result.get("hedged_lines"), "rounds": result.get("rounds"),
             "refused_rounds": result.get("refused_rounds"),
             "evidence": cited_live + [{key: item[key] for key in ("source", "file", "timestamp", "captured_at", "origin", "paths")

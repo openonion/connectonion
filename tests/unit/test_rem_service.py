@@ -1018,7 +1018,7 @@ def test_a_finished_extraction_is_reused_when_only_the_maintainer_failed(tmp_pat
 
 
 @pytest.mark.parametrize("change", [
-    ["runner", "codex"],
+    ["runner", "coai"],   # never picked by a new notebook, whatever this machine has installed
     ["model", "gpt-other"],
     ["schedule.times", "03:00"],
 ])

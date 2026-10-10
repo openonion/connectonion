@@ -277,7 +277,7 @@ def test_runner_ok_investigates_me_once_with_inits_window(first_run):
     assert all(call["days"] == 5 and call["sent_only"] is True for call in mine)
     assert "me@example.org" in mine[0]["handles"]
     text = Text.from_ansi(result.output).plain
-    assert "claude-code" in text and "claude-sonnet-5-5" in text
+    assert "codex" in text and "gpt-6-luna" in text
     assert "your own" in text and "Ctrl-C" in text
     assert text.rstrip().endswith(f"--root {root} open")
     assert f"--root {root} start" in text

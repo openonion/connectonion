@@ -112,6 +112,24 @@ def test_clients_of_a_record_without_an_email_survive_this_process_rotating_its_
                                post=lambda *a, **k: pytest.fail("already refreshed")) == "rotated-access"
 
 
+def test_clients_of_a_record_without_an_email_survive_another_process_rotating_it(selected, monkeypatch):
+    """1.9.2b3 real run, 2026-10-11: 14 co rem threads failed together with
+    "The selected credential record changed" when a co command in another
+    terminal refreshed the same Microsoft record. Rotation was remembered only in
+    the process that made it."""
+    import connectonion.provider_credentials as credentials
+    save_authorization("microsoft", selected, grant("microsoft", microsoft_email=None))
+    other, stale = (resolve_provider_credentials("microsoft") for _ in range(2))
+    rotated = grant("microsoft", microsoft_email=None, access_token="rotated-access", refresh_token="rotated-refresh")
+    refresh_credentials(other, backend="https://broker.invalid", api_key="synthetic",
+                        post=lambda *a, **k: httpx.Response(200, json=rotated))
+    monkeypatch.setattr(credentials, "_ROTATED", {})   # this process did not see it happen
+    stale.values["MICROSOFT_TOKEN_EXPIRES_AT"] = "2000-01-01T00:00:00+00:00"
+    assert refresh_credentials(stale, backend="https://broker.invalid", api_key="synthetic",
+                               post=lambda *a, **k: pytest.fail("already refreshed")) == "rotated-access"
+    assert "rotated-refresh" not in (selected.parent / ".token-rotations").read_text()  # hashes, never tokens
+
+
 def test_a_record_without_an_email_replaced_by_another_grant_is_still_refused(selected):
     save_authorization("microsoft", selected, grant("microsoft", microsoft_email=None))
     record = resolve_provider_credentials("microsoft")

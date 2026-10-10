@@ -1842,7 +1842,7 @@ def test_over_input_limit_every_part_is_read_in_rounds_then_one_synthesis(tmp_pa
         page = notebook.path("people/vern.md")
         page.write_text(page.read_text() + f"\nRound {len(turns)} line.\n")
         return {"changed": ["people/vern.md"], "usage": {"input_tokens": 5},
-                "report": f"lead {len(turns)} — searched — found — next"}
+                "report": f"lead {len(turns)} — searched — found — next", "threads": [f"thread-{len(turns)}"]}
 
     out = inv.investigate(root, "people/vern.md", "Vern", ["me@x.y"], days=7, clients={}, subscriptions={},
                           extractor=lambda *a: pytest.fail("no digest pass"), runner=write)
@@ -1857,6 +1857,8 @@ def test_over_input_limit_every_part_is_read_in_rounds_then_one_synthesis(tmp_pa
     assert "Round 1 line." in page and f"Round {len(turns)} line." in page
     assert out["usage"]["input_tokens"] == 5 * (len(turns) - 1) + 1
     assert any(line.startswith("rounds: ") for line in out["coverage"])
+    # Each accepted round's thread is on the record, so the run leads to every trace.
+    assert out["threads"] == [f"thread-{n}" for n in range(1, len(turns) + 1) if n != 2]
 
 
 def test_hedged_lines_left_after_the_final_round_get_one_editing_turn_that_names_them(tmp_path, monkeypatch):
