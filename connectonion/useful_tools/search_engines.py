@@ -29,6 +29,8 @@ from bs4 import BeautifulSoup
 from ..backend import backend_url
 
 TIMEOUT = 20
+# A grounded answer took 8-46 s in measured runs (#1933); 20 s failed half of them.
+CO_TIMEOUT = 90
 ENGINES = ("auto", "co", "serper", "brave", "ddg")
 FREE_HINT = (
     "Free alternatives: co search \"<query>\" --engine ddg (no key needed), "
@@ -56,7 +58,7 @@ def _search_co(query: str, count: int) -> tuple:
         raise SearchError("auth_required", "Not logged in to ConnectOnion.", "Log in: co auth")
     with _http() as client:
         response = client.post(f"{backend_url()}/api/v1/search", json={"query": query, "count": count},
-                               headers={"Authorization": f"Bearer {token}"})
+                               headers={"Authorization": f"Bearer {token}"}, timeout=CO_TIMEOUT)
     if response.status_code == 402:
         raise SearchError("payment_required", "Your ConnectOnion credits are used up.",
                           f"Add credits: co status. {FREE_HINT}")
@@ -150,6 +152,14 @@ def search(query: str, engine: str = "auto", count: int = 10) -> dict:
                 raise
             if error.code != "auth_required" or name != "co":
                 notes.append(f"{name}: {error} {error.hint}".strip())
+        except httpx.ReadTimeout as error:
+            # Connected, then no answer in time: not a network problem, and the
+            # server may still finish the query and charge for it.
+            message = (f"{name}: timed out after {CO_TIMEOUT}s; the search may still be charged." if name == "co"
+                       else f"{name}: timed out after {TIMEOUT}s.")
+            if engine != "auto" or name == names[-1]:
+                raise SearchError("timeout", message) from error
+            notes.append(message)
         except httpx.RequestError as error:
             if engine != "auto" or name == names[-1]:
                 raise SearchError("network_error", f"{name}: could not connect ({type(error).__name__}).") from error
