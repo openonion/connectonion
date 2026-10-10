@@ -14,9 +14,10 @@ co auth google
 
 What `co auth` does:
 - Authenticates your agent and saves a secure token
-- Token is saved to `~/.co/keys.env` as `OPENONION_API_KEY`
-- If your project has a `.env`, it's updated too
-- `~/.co/keys.env` gains `IS_EMAIL_ACTIVE=true`
+- Signs in as your global identity (`~/.co/keys/`) and saves the token to
+  `~/.co/keys.env` as `OPENONION_API_KEY`, with `IS_EMAIL_ACTIVE=true`
+- Writes one file only. A project `.env` is never touched unless you select it
+  with `--env-file` before the command (see [For one project](#for-one-project))
 
 `co auth login` is the same as bare `co auth`.
 
@@ -39,7 +40,7 @@ co auth logout    # asks, then removes OPENONION_API_KEY; the keypair stays
 What `co auth google` does:
 - Requests the supported Gmail, Drive, Calendar and YouTube permissions by default
 - Opens browser for OAuth authorization
-- Saves credentials only locally in `~/.co/keys.env` and an existing project `.env`
+- Saves credentials locally, in `~/.co/keys.env` (or the file `--env-file` selects)
 - Accepts `--scopes youtube.readonly` (or a comma-separated subset) for restricted consent
 - Running again will switch to a different Google account
 - See [Google Integration](../integrations/google.md) for details
@@ -60,4 +61,20 @@ Works across providers:
 
 - Missing token? Run `co auth` again
 - Network issue? Try again or check your connection
-- Global vs project: `co auth` prefers local `.co` if keys exist, otherwise uses `~/.co`
+- Global vs project: `co auth` always uses `~/.co` unless you pass `--env-file`
+  before the command. Changing directory does not change the account.
+
+## For one project
+
+To keep a project's credentials in its own `.env`, select that file before the
+command, and select it again for every command that should use it:
+
+```bash
+co --env-file ./.env auth google
+co --env-file ./.env gmail inbox
+```
+
+The selected file replaces `~/.co/keys.env` for that command rather than adding
+to it. If the `.env` sits next to a `.co/` that holds a keypair (from
+`co init ./`), that keypair signs in; otherwise the global identity does. See
+[Environment selection](environment.md).
