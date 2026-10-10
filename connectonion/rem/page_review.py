@@ -391,7 +391,15 @@ def _known_sources(items: list[dict]) -> set:
     return known
 
 
+# An assistant's memory and transcript folders hold its own notes, not material.
+# Ian's page cited the owner's Claude memory file, which sat beside a supplied
+# transcript (1.9.2b1). A session is cited by its id, `claude-code:<id>`.
+PRIVATE_STORE = re.compile(r'/\.claude/projects/|/\.codex/(?:sessions|archived_sessions|memories)/')
+
+
 def _identifiable(value: str, *, known, record, original, old_sources, items, pages) -> bool:
+    if PRIVATE_STORE.search(value):
+        return False
     if record.startswith('projects/') and value.strip().startswith(('file:', 'git:')):
         from .project_pages import live_source_snapshot
         source = re.split(r'\s+[—–]\s+', value.strip(), 1)[0]
