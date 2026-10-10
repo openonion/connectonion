@@ -23,11 +23,12 @@ from connectonion.cli.commands.skills_commands import (
 
 
 @pytest.fixture
-def targets(tmp_path, monkeypatch):
-    """Point the link targets at a scratch home."""
-    roots = [("claude", tmp_path / ".claude" / "skills"), ("codex", tmp_path / ".codex" / "skills")]
-    monkeypatch.setattr(skills_commands, "LINK_TARGETS", roots)
-    return [root for _, root in roots]
+def targets():
+    """Both tools installed in the per-test HOME conftest provides."""
+    roots = [root for _, root in skills_commands.link_targets()]
+    for root in roots:
+        root.parent.mkdir()
+    return roots
 
 
 def bundled_names():
@@ -140,3 +141,13 @@ class TestCoBrowserSkillMatchesBehaviour:
     def test_points_agents_at_the_board_before_they_act(self):
         text = self._skill()
         assert "tab ls" in text
+
+
+def test_a_tool_that_is_not_installed_is_never_created(capsys):
+    """co init runs this; creating ~/.codex would make Codex look installed."""
+    claude = Path.home() / ".claude"
+    claude.mkdir()
+    handle_skills_link()
+    assert (claude / "skills" / "co-browser" / "SKILL.md").exists()
+    assert not (Path.home() / ".codex").exists()
+    assert "no .codex, skipped" in capsys.readouterr().out

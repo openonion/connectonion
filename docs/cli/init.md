@@ -31,6 +31,25 @@ If authentication cannot complete, local identity setup remains available and
 the command tells you to run `co auth` later. Successful local initialization
 does not mean managed models or email are authenticated.
 
+### Telling Codex and Claude Code that `co` exists
+
+Global `co init` also does two things for the coding agents on this machine,
+only for those installed (their `~/.codex` or `~/.claude` directory exists):
+
+- runs `co skills link`, so ConnectOnion's bundled skills appear in
+  `~/.codex/skills/` and `~/.claude/skills/`;
+- writes ConnectOnion's command index into `~/.codex/AGENTS.md` and
+  `~/.claude/CLAUDE.md`, between `<!-- co:begin <version> -->` and
+  `<!-- co:end -->`. It is generated from the CLI: a few rules (use `co
+  commands` and `co <cmd> --help` before a browser or a script; do not hunt
+  for credentials) and one line per top-level command.
+
+It prints each path it changed. Your own text outside the markers is never
+touched. To take the block out: `co skills index --remove`; to refresh it
+without re-running init: `co skills index`. Agents started with `host()` or
+`co ai` refresh a stale block on their own, and `co doctor` reports one that
+is missing or stale. See [co skills index](skills.md#co-skills-index).
+
 ## Project setup: explicit path
 
 `co init ./` uses the global identity and initializes the selected directory.
