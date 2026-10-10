@@ -279,6 +279,7 @@ NEXT = {
     "co skills manifest": "Preview what would be published:  co announce --dry-run",
     "co skills list": "Link them into Claude Code and Codex:  co skills link",
     "co skills link": "What is linked now:  co skills list",
+    "co skills index": HANDLER,   # Next: co doctor, or co skills index after --remove
     "co sms pair": "Read what the phone uploads:  co sms inbox",
     "co sms inbox": "See paired phones:  co sms devices",
     "co sms devices revoke": "See remaining phones:  co sms devices",
