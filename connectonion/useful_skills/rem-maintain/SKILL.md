@@ -5,8 +5,6 @@ description: Maintain an AI-owned co rem from explicitly authorized source messa
 
 # Maintain the current notebook
 
-Why these rules: docs/rem-skills/rem-maintain.md (repo path; not needed at runtime).
-
 Your output is the notebook itself, not a patch or summary. In a staged run, read
 the material and notebook copy with local file tools (bounded chunks) and write
 Markdown in the task workspace; offline means no network, not no file access. Never

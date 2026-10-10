@@ -5,8 +5,6 @@ description: A skill page for judging usefulness, observed reliability and how t
 
 # An installed skill's page
 
-Why these rules: docs/rem-skills/rem-page-skill.md
-
 Help a reader choose and start a task. Keep the lead short; link, don't paste,
 the source. State missing execution evidence once in `Current status`.
 Keep `#` title exactly the mapped invocation name, without a descriptive suffix;

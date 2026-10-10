@@ -5,8 +5,6 @@ description: A project page with a short visual overview and evidence-backed det
 
 # A project's page
 
-Why these rules: docs/rem-skills/rem-page-project.md
-
 Read the page and material. Write once, check once, fix once, stop.
 Do not search examples, logs or the repo for a format.
 

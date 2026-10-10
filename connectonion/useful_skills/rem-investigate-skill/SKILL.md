@@ -5,8 +5,6 @@ description: The steps for investigating a skill catalog page, composed after re
 
 # Investigating a skill
 
-Why these rules: docs/rem-skills/rem-investigate.md
-
 - The material is the skill's own files, matching coding-session turns and recorded eval runs (`co rem
   investigate skills/catalog/<page>.md --eval-dir <dir>` gathers them; no mail,
   no model call for the gathering).

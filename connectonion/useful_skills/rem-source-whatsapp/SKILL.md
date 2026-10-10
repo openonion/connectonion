@@ -5,8 +5,6 @@ description: What is true of WhatsApp chats as a co rem source — who is speaki
 
 # WhatsApp as a source
 
-Why these rules: docs/rem-skills/rem-source-whatsapp.md
-
 Read this together with the stage Skill that loaded it. That one says what to
 produce; this one says only what is true of **this** source.
 

@@ -5,8 +5,6 @@ description: Fixed sections, roster labels and evidence rules for a person's pag
 
 # A person's page
 
-Why these rules: docs/rem-skills/rem-page-person.md
-
 Read supplied page/material. Write, check, fix once, stop; use this format.
 
 This is a growing relationship memory; never shrink it to a summary. Keep
