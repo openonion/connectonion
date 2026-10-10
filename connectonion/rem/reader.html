@@ -1116,14 +1116,23 @@ function plural(verb) {
   if (/(?:sh|ch|x|z|o)es$/i.test(verb)) return verb.slice(0, -2);
   return verb.slice(0, -1);
 }
+// "the user" opening a clause is its subject, so a second verb after "and"/"but"
+// agrees too: "the user runs events and has asked" reads "you run events and have
+// asked" (1.9.2b1). Only verbs that are never plural nouns: "invoices and receipts" stays.
+const CLAUSE_START = /(?:^|[.;:!?(—–,>]\s*|\b(?:and|but|or|that|when|while|because|if|since|until|after|before|whether|so)\s+)$/i;
+const ALSO_VERBS = new Set([...Object.keys(YOU_VERBS), "owes", "says", "asks", "wants", "expects", "prefers", "agrees", "replies", "writes", "thinks", "knows", "seems"]);
 function youify(text) {
   const cap = (t, s) => t === "T" ? s[0].toUpperCase() + s.slice(1) : s;
   return String(text)
     .replace(/\b([Tt])he user(?:'s|’s)/g, (m, t) => cap(t, "your"))
-    .replace(/\b([Tt])he user (?:(still|also|now|then|already|never|often|usually|[a-z]+ly) )?([a-z]+(?:['’]t)?)\b/g, (m, t, adverb, word) => {
+    .replace(/\b([Tt])he user (?:(still|also|now|then|already|never|often|usually|[a-z]+ly) )?([a-z]+(?:['’]t)?)\b/g, (m, t, adverb, word, at, all) => {
       const verb = plural(word.replace("’", "'"));
-      return cap(t, "you") + " " + (adverb ? adverb + " " : "") + (verb || word);
+      const subject = CLAUSE_START.test(all.slice(0, at)) ? "\u0004" : "";
+      return cap(t, "you") + subject + " " + (adverb ? adverb + " " : "") + (verb || word);
     })
+    .replace(/\u0004((?:(?!\b(?:and|but|or|yet)\b)[^.;!?\u0004])*?\b(?:and|but|or|yet) (?:(?:still|also|now|then|already|never|[a-z]+ly) )?)([a-z]+(?:['’]t)?)\b/g,
+      (m, between, word) => between + (ALSO_VERBS.has(word.replace("’", "'").toLowerCase()) ? plural(word.replace("’", "'")) : word))
+    .replace(/\u0004/g, "")
     .replace(/\b([Tt])he user\b(?!-)/g, (m, t) => cap(t, "you"));  // "the user-facing copy" stays
 }
 function inline(text, from) {
@@ -1390,11 +1399,15 @@ function owing() {
   if (OWING) return OWING;
   const owner = REM.owner && byPath(REM.owner);
   const first = owner ? owner.title.trim().split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "";
-  const me = "(?:the user|you" + (first ? "|" + first : "") + ")";
+  // "User owes pickup of the card" (1.9.2b1) names the owner without "the".
+  const me = "(?:the user|user|you" + (first ? "|" + first : "") + ")";
+  // The owner asking or waiting on someone is their debt: "Aaron asked Adi to arrange a call" (1.9.2b3).
+  const chasing = "\\b" + me + "\\s+(?:asked|asks|requested|requests|reminded|chased|is awaiting|awaits|awaited|is waiting (?:on|for)|was waiting (?:on|for))\\s+(?!" + me + "\\b)";
   OWING = {
-    mine: new RegExp("\\b" + me + "(?:['’]s)?\\s+(?:has |have |had |still )?(?:owes?|owed|promised|offered|agreed|needs? to|must|should|said (?:he|she|they) would|to (?:send|reply|sign|confirm|pay|review|decide)|has not|have not|hasn't|haven't)\\b" +
-      "|^\\s*" + me + "\\s*:|\\b(?:asked|requested)\\s+" + me + "\\s+to\\b|\\b(?:requested|asked for|awaits?|awaiting|waiting (?:on|for))\\s+(?:" + me + "(?:['’]s)?|your)\\b|\\brequested (?:confirmation|approval|a reply|an answer)\\b|\\byou owe\\b", "i"),
-    theirs: /\b(?:owes?|owed) (?:the user|you)\b|\bwaiting (?:on|for) (?:them|him|her|their)\b|\bunanswered\b|\b(?:he|she|they) (?:has|have) not (?:replied|answered|sent|confirmed)\b|\bno reply\b|\b[A-Z][\w-]+(?:['’]s)? (?:promised|is expected to|agreed to|owes|said (?:he|she|they) would)\b|\bpromised\b/
+    // An offer of something ("offered Mara a trial") is optional; an offer to do something is owed.
+    mine: new RegExp("\\b" + me + "(?:['’]s)?\\s+(?:has |have |had |still )?(?:owes?|owed|promised|offered to|agreed|needs? to|must|should|said (?:he|she|they) would|to (?:send|reply|sign|confirm|pay|review|decide)|has not|have not|hasn't|haven't)\\b" +
+      "|^\\s*" + me + "\\s*:|\\b(?:asks?|asked|requests?|requested|wants|invited)\\s+" + me + "\\s+to\\b|\\b(?:requested|asked for|awaits?|awaiting|waiting (?:on|for))\\s+(?:" + me + "(?:['’]s)?|your)\\b|\\brequested (?:confirmation|approval|a reply|an answer)\\b|\\byou owe\\b", "i"),
+    theirs: new RegExp(chasing + "|\\b(?:owes?|owed) (?:the user|you)\\b|\\bwaiting (?:on|for) (?:them|him|her|their)\\b|\\bunanswered\\b|\\b(?:he|she|they) (?:has|have) not (?:replied|answered|sent|confirmed)\\b|\\bno reply\\b|\\b[A-Z][\\w-]+(?:['’]s)? (?:promised|is expected to|agreed to|owes|said (?:he|she|they) would)\\b|\\bpromised\\b")
   };
   return OWING;
 }
