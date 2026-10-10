@@ -348,7 +348,9 @@ class Outlook:
         endpoint = "/me/messages"
         params = {
             "$top": max_results,
-            "$search": f'"{query}"',
+            # The query is itself quoted, so a phrase inside it must be escaped:
+            # unescaped, Graph answered 400 to every quoted lead REM sent.
+            "$search": '"' + query.replace('"', '\\"') + '"',
             "$select": "id,from,subject,receivedDateTime,bodyPreview,isRead"
         }
 
