@@ -58,7 +58,7 @@ without the sender rewriting the background. Use ONLY the conversation below.
   reason it was rejected. The recipient will ask "why not X?".
 - Proposals that were not settled go in open_questions.
 - References are concrete: repository, branch, commit, PR, issue, or a file by its
-  path inside the repository. Never a path under a home directory (/Users/..., /home/...,
+  path inside the repository. Never a path under a home directory (/Users/you/..., /home/you/...,
   ~/...), never an internal hostname or IP, never invented.
 - may_do lists only permissions the sender stated; leave it empty otherwise.
 - Never copy a credential, token, password, key or invite code.
