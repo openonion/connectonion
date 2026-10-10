@@ -269,7 +269,11 @@ def handle_email_read(email_id: str, mark_read: bool = False):
     console.print()
     console.print(Panel.fit(header, title=f"✉️  Email #{email_id}", border_style="cyan"))
     console.print()
-    console.print(match.get("message", "") or "[dim](empty body)[/dim]")
+    # soft_wrap: a long token (a handoff code, a URL) must stay on one line to be copyable.
+    if match.get("message"):
+        console.print(match["message"], soft_wrap=True, markup=False)
+    else:
+        console.print("[dim](empty body)[/dim]")
     console.print()
 
     if mark_read:

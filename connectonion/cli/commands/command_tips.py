@@ -229,6 +229,9 @@ NEXT = {
     "co handoff inbox": HANDLER,
     "co handoff show": HANDLER,
     "co handoff open": HANDLER,
+    "co handoff accept": HANDLER,
+    "co handoff ask": HANDLER,
+    "co handoff answer": HANDLER,
     "co env *": HANDLER,  # path/get intentionally remain bare values
     "co schedule list": "co schedule run <name>",
     "co schedule check": "co schedule list",

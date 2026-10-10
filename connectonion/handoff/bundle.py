@@ -11,6 +11,7 @@ import base64
 import email
 import email.policy
 import hashlib
+import html
 import json
 import re
 import uuid
@@ -167,17 +168,19 @@ def _strings(value, field: str = ""):
 
 # ---- how a bundle travels in a mail body ----
 
-def to_mail(bundle: dict) -> tuple[str, str]:
-    """(subject, body). The body opens with the readable summary; the bundle follows, base64 so no mail system rewrites it."""
+def to_mail(bundle: dict, prompt: str) -> tuple[str, str]:
+    """(subject, HTML body). The mail is the prompt to paste into a coding agent, brief inline,
+    then the machine-readable bundle for co handoff open (base64, so no mail system rewrites it).
+
+    HTML with <pre>, because the mail service sends the body as HTML: plain text arrived as
+    one paragraph in every client (newlines collapse), and anything shaped like a tag vanished.
+    """
     subject = f"[co handoff] {bundle['id']}: {_one_line(bundle['title'], 80)}"
     encoded = base64.b64encode(json.dumps(bundle, ensure_ascii=False).encode()).decode()
     wrapped = "\n".join(encoded[i:i + 76] for i in range(0, len(encoded), 76))
-    body = (f"{brief_markdown(bundle)}\n"
-            # No <placeholder>: the mail service strips anything shaped like a tag.
-            f"Continue this with your AI: save this whole email as handoff.eml (or paste all of it into handoff.txt), "
-            f"then run co handoff open handoff.eml. If it reached your co agent mailbox, co handoff open {bundle['id']} is enough.\n"
-            f"Not using ConnectOnion? Reply to this email; your questions reach the sender.\n\n"
-            f"{BEGIN}\n{wrapped}\n{END}\n")
+    body = (f"<pre>{html.escape(prompt)}</pre>\n"
+            "<p>No AI agent at hand? Read the brief above, and reply to this email with any question.</p>\n"
+            f"<pre>{BEGIN}\n{wrapped}\n{END}</pre>\n")
     return subject, body
 
 
@@ -192,6 +195,7 @@ def from_saved_mail(text: str) -> dict | None:
 
 
 def from_mail(body: str) -> dict | None:
+    body = html.unescape(body or "")
     found = re.search(_marker(BEGIN) + r"(.*?)" + _marker(END), body or "", re.S)
     if not found:
         return None
@@ -215,9 +219,7 @@ def _one_line(text: str, width: int) -> str:
 # ---- what a person reads: one format everywhere ----
 
 def task_section(bundle: dict) -> str:
-    lines = [bundle["task"]]
-    lines.append("You may: " + ("; ".join(bundle["may_do"]) if bundle.get("may_do") else "not stated by the sender"))
-    return "\n\n".join(lines)
+    return bundle["task"]
 
 
 def decided_text(bundle: dict) -> str:
@@ -235,7 +237,7 @@ def questions_text(bundle: dict) -> str:
 def references_text(bundle: dict) -> str:
     lines = [f"- {r['reference']}: {r['note']}" for r in bundle.get("references", [])]
     source = bundle.get("source", {})
-    lines.append(f"- Transcript excerpt: {len(bundle.get('excerpt', []))} turns of the sender's "
+    lines.append(f"- Transcript excerpt: {_count(bundle.get('excerpt'), 'turn')} of the sender's "
                  f"{source.get('kind', '?')} session{' (compacted; earlier part as kept by the client)' if source.get('compacted') else ''}")
     return "\n".join(lines)
 
@@ -246,8 +248,11 @@ def excerpt_text(bundle: dict) -> str:
 
 def header(bundle: dict) -> str:
     # A blank line, not a single newline: the mail service joins single newlines in the text part.
-    return (f"# Handoff: {bundle['title']}\n\n"
-            f"From: {bundle['from']} · To: {bundle['to']} · {bundle['created_at'][:10]} · {bundle['id']}")
+    lines = [f"# Handoff: {bundle['title']}",
+             f"From: {bundle['from']} · To: {bundle['to']} · {bundle['created_at'][:10]} · {bundle['id']}"]
+    if bundle.get("may_do"):
+        lines.append("Recipient may: " + "; ".join(bundle["may_do"]))
+    return "\n\n".join(lines)
 
 
 def summary_text(bundle: dict) -> str:

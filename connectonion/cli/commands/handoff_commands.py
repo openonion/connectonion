@@ -21,7 +21,7 @@ from .. import style
 from .command_tips import print_tip
 from ...environment import global_config_dir
 from ...handoff import bundle as bundles
-from ...handoff import opener, sessions, transport
+from ...handoff import opener, replies, sessions, transport
 
 out = style.console()
 
@@ -166,37 +166,156 @@ def _preview(bundle: dict, path: Path) -> None:
 
 
 def _deliver(bundle: dict) -> None:
-    subject, body = bundles.to_mail(bundle)
+    secret = replies.new_secret()
+    code = replies.make_code({"address": transport.my_address(), "mailbox": bundle["from"],
+                              "id": bundle["id"], "hash": bundle["content_hash"], "secret": secret})
+    prompt = replies.prompt(bundles.brief_markdown(bundle), code, bundle["id"], bundle["from"])
+    subject, body = bundles.to_mail(bundle, prompt)
     result = transport.deliver(bundle["to"], subject, body, idempotency_key=bundle["id"])
     if not result.get("success"):
         _fail(f"Not sent: {result.get('error')}", f"co handoff send {bundle['to']} --draft {bundle['id']} --yes")
     record = {"id": bundle["id"], "to": bundle["to"], "from": result.get("from"), "subject": subject,
               "message_id": result.get("message_id"), "content_hash": bundle["content_hash"],
-              "sent_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+              "secret": secret, "sent_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     sent = _home() / "sent"
     sent.mkdir(parents=True, exist_ok=True)
-    (sent / f"{bundle['id']}.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    path = sent / f"{bundle['id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    path.chmod(0o600)
     out.print(style.ok(f"Sent handoff {bundle['id']} to {bundle['to']}") + f" (message {record['message_id']}).")
-    out.print(f"They continue with: co handoff open {bundle['id']} (from their co agent mailbox), "
-              "or co handoff open <the mail saved as a file>", markup=False)
+    out.print("The mail is this prompt. To use another channel (chat, WhatsApp), send them the same block:")
+    print(prompt)   # plain print: Rich would wrap the code and the commands
     _next(f"co handoff status {bundle['id']}")
 
 
-# ---- sender: status ----
+# ---- status: either side ----
 
 def handle_status(handoff_id: str) -> None:
+    sent = _home() / "sent" / f"{handoff_id}.json"
+    accepted = _home() / "accepted" / handoff_id / "code.json"
+    if not sent.exists() and not accepted.exists():
+        _fail(f"No handoff {handoff_id} sent or accepted on this machine ({_home()}).",
+              'co handoff send <who> "<what to hand off>"')
+    from .project_cmd_lib import load_api_key
+    load_api_key()
+    # Both exist when you handed something to yourself: one Next line, the sender's.
+    if accepted.exists():
+        _recipient_status(json.loads(accepted.read_text(encoding="utf-8")), quiet=sent.exists())
+    if sent.exists():
+        _sender_status(json.loads(sent.read_text(encoding="utf-8")))
+
+
+def _sender_status(record: dict) -> None:
+    handoff_id = record["id"]
+    out.print(style.heading(f"Handoff {handoff_id} (sent)"))
+    out.print(f"To {record['to']}, sent {record['sent_at']}, content hash {record['content_hash']}")
+    if "secret" not in record:
+        out.print("Sent before acceptance existed: the recipient opens it with co handoff open.")
+        _next(f"co handoff open {handoff_id}  (run by the recipient)")
+        return
+    state = replies.settle(record)
+    who = state["accepted"]
+    if not who:
+        mail = transport.sent_status(record["to"], record["subject"])
+        out.print(f"Not accepted yet. Mail service: {(mail or {}).get('status', 'no record of this message yet')}.")
+        out.print("Acceptance arrives when their agent runs the prompt from the mail.")
+        if state["ignored"]:
+            out.print(style.warn(f"Ignored {state['ignored']} message(s) that did not carry this handoff's code."))
+        _next(f"co handoff status {handoff_id}")
+        return
+    replies.remember_peer(who["address"], who["mailbox"], handoff_id)
+    out.print(style.ok(f"Accepted by {who['address']} ({who['mailbox']}) at {who['at']}"))
+    if state["ignored"]:
+        out.print(style.warn(f"Ignored {state['ignored']} acceptance or question(s) from other agents holding the code."))
+    for q in state["questions"]:
+        out.print(f"Question, {q['at']}: {q['text']}", markup=False)
+    if state["questions"]:
+        _next(f'co handoff answer {handoff_id} "<your answer>"')
+    else:
+        out.print("No questions yet.")
+        _next(f"co handoff status {handoff_id}")
+
+
+def _recipient_status(code: dict, quiet: bool = False) -> None:
+    handoff_id = code["id"]
+    out.print(style.heading(f"Handoff {handoff_id} (accepted from {code['mailbox']})"))
+    answers = [b for b in replies.received(handoff_id)
+               if b["kind"] == "answer" and b["secret"] == code["secret"] and b["address"] == code["address"]]
+    for a in answers:
+        out.print(f"Answer, {a['at']}: {a['text']}", markup=False)
+    if not answers:
+        out.print("No answers from the sender yet.")
+    brief = _home() / "accepted" / handoff_id / "HANDOFF.md"
+    if brief.exists():
+        out.print(f"Brief: {style.path(brief)}")
+    if not quiet:
+        _next(f"co handoff status {handoff_id}")
+
+
+# ---- recipient: accept, ask ----
+
+def _parse(code: str) -> dict:
+    try:
+        return replies.parse_code(code)
+    except ValueError as error:
+        _fail(f"Not a handoff code: {error}.", "copy the whole co handoff accept line from the handoff again")
+
+
+def _mail_ready() -> None:
+    from .project_cmd_lib import load_api_key
+    if not load_api_key() or not os.getenv("AGENT_EMAIL"):
+        _fail("This machine has no co identity with a mailbox yet, so the sender cannot be told.", "co init --yes")
+
+
+def handle_accept(code_text: str, brief: Optional[Path]) -> None:
+    code = _parse(code_text)
+    _mail_ready()
+    folder = _home() / "accepted" / code["id"]
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "code.json").write_text(json.dumps(code, indent=2) + "\n", encoding="utf-8")
+    (folder / "code.json").chmod(0o600)
+    if brief:
+        shutil.copyfile(brief, folder / "HANDOFF.md")
+    result = replies.send("accept", code, code["mailbox"], reply_to=os.getenv("AGENT_EMAIL"))
+    if not result.get("success"):
+        _fail(f"Not delivered: {result.get('error')}", f"co handoff accept {code_text}")
+    out.print(style.ok(f"Accepted handoff {code['id']}") + f": {code['mailbox']} has been told, "
+              f"with your agent {transport.my_address()}.")
+    if brief:
+        out.print(f"Brief saved: {style.path(folder / 'HANDOFF.md')}")
+    out.print("Continue from the brief; ask the person here before changing anything.")
+    _next(f'co handoff ask {code_text} "<question the brief does not answer>"')
+
+
+def handle_ask(code_text: str, question: str) -> None:
+    code = _parse(code_text)
+    if not (_home() / "accepted" / code["id"] / "code.json").exists():
+        _fail(f"Handoff {code['id']} is not accepted on this machine yet.", f"co handoff accept {code_text}")
+    _mail_ready()
+    result = replies.send("question", code, code["mailbox"], text=question)
+    if not result.get("success"):
+        _fail(f"Not delivered: {result.get('error')}", f'co handoff ask {code_text} "<question>"')
+    out.print(style.ok(f"Asked {code['mailbox']} about {code['id']}."))
+    _next(f"co handoff status {code['id']}")
+
+
+# ---- sender: answer ----
+
+def handle_answer(handoff_id: str, text: str) -> None:
     path = _home() / "sent" / f"{handoff_id}.json"
     if not path.exists():
-        _fail(f"No sent handoff {handoff_id} on this machine ({path.parent}).", 'co handoff send <who> "<what to hand off>"')
+        _fail(f"No sent handoff {handoff_id} on this machine.", "co handoff status <id>")
     record = json.loads(path.read_text(encoding="utf-8"))
     from .project_cmd_lib import load_api_key
     load_api_key()
-    mail = transport.sent_status(record["to"], record["subject"])
-    out.print(style.heading(f"Handoff {handoff_id}"))
-    out.print(f"To {record['to']}, sent {record['sent_at']}, content hash {record['content_hash']}")
-    out.print(f"Mail service: {'accepted and sent' if mail and mail.get('status') == 'sent' else (mail or {}).get('status', 'no record of this message yet')}")
-    out.print("Whether they opened it is not reported back yet. The recipient continues on their machine with:")
-    _next(f"co handoff open {handoff_id}  (run by the recipient)")
+    who = replies.settle(record)["accepted"] if "secret" in record else None
+    if not who:
+        _fail(f"Handoff {handoff_id} has not been accepted, so there is no one to answer.", f"co handoff status {handoff_id}")
+    result = replies.send("answer", {"id": handoff_id, "secret": record["secret"]}, who["mailbox"], text=text)
+    if not result.get("success"):
+        _fail(f"Not delivered: {result.get('error')}", f'co handoff answer {handoff_id} "<your answer>"')
+    out.print(style.ok(f"Answered {who['mailbox']} about {handoff_id}."))
+    _next(f"co handoff status {handoff_id}")
 
 
 def handle_contact(name: str, address: str) -> None:
@@ -360,9 +479,38 @@ def make_handoff_app(factory) -> typer.Typer:
             _fail(f"--agent must be codex or claude, not {agent}.", f'co handoff send {shlex.quote(who)} "<what to hand off>" --agent codex')
         handle_send(who, what, from_file, agent, draft, edit, yes, session)
 
+    @app.command("accept", epilog="Example:  co handoff accept coh1.eyJhIjoi... --brief HANDOFF.md")
+    def accept(
+        code: str = typer.Argument(..., metavar="CODE", help="The coh1.… code from the handoff prompt"),
+        brief: Optional[Path] = typer.Option(None, "--brief", exists=True, dir_okay=False, help="The brief from the prompt, saved as a file, to keep with the handoff"),
+    ):
+        """Accept a handoff someone sent you, from the code in its prompt. Sends the sender an acceptance with your agent address; writes ~/.co/handoff/accepted/<id>/.
+
+        The code only lets you accept this one handoff and ask about it; it is not
+        an invite and grants nothing on the sender's agent. Works wherever the
+        prompt came from: mail, chat, or a pasted message.
+        """
+        handle_accept(code, brief)
+
+    @app.command("ask", epilog='Example:  co handoff ask coh1.eyJhIjoi... "Cookie lifetime: 7 or 30 days?"')
+    def ask(
+        code: str = typer.Argument(..., help="The coh1.… code from the handoff prompt"),
+        question: str = typer.Argument(..., help="A question the brief does not answer"),
+    ):
+        """Ask the sender of an accepted handoff a question. Sends it to their agent mailbox; their answer shows in co handoff status."""
+        handle_ask(code, question)
+
+    @app.command("answer", epilog='Example:  co handoff answer ho-1a2b3c4d "30 days"')
+    def answer(
+        handoff_id: str = typer.Argument(..., help="Handoff id printed by co handoff send"),
+        text: str = typer.Argument(..., help="Your answer"),
+    ):
+        """Answer the questions on a handoff you sent. Sends it to the agent that accepted it."""
+        handle_answer(handoff_id, text)
+
     @app.command("status", epilog="Example:  co handoff status ho-1a2b3c4d")
     def status(handoff_id: str = typer.Argument(..., help="Handoff id printed by co handoff send")):
-        """Show a handoff you sent: recipient, content hash and the mail service's delivery status. Read-only."""
+        """Show where a handoff stands: who accepted it and their questions (sender), or the sender's answers (recipient). Read-only."""
         handle_status(handoff_id)
 
     @app.command("contact", epilog="Example:  co handoff contact ody ody@example.com")

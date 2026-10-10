@@ -115,6 +115,7 @@ def mailbox(monkeypatch):
     monkeypatch.setattr(transport, "fetch", lambda last=200: [m for m in reversed(mails)
                                                               if m["subject"].startswith(transport.SUBJECT_PREFIX)])
     monkeypatch.setattr("connectonion.cli.commands.project_cmd_lib.load_api_key", lambda: "token")
+    monkeypatch.setattr(transport, "my_address", lambda: "0x" + "ab" * 32)
     return mails
 
 
@@ -239,10 +240,10 @@ def test_a_value_from_keys_env_is_refused_even_without_a_known_shape(monkeypatch
 def test_a_changed_bundle_is_not_verified():
     bundle = bundles.seal({"format": bundles.FORMAT, "id": "ho-1", "title": "t", "task": "g", "from": "a", "to": "b",
                            "created_at": "2026-10-10", "where_it_stands": ""})
-    subject, body = bundles.to_mail(bundle)
+    subject, body = bundles.to_mail(bundle, "prompt")
     assert bundles.from_mail(body)["verified"]
     tampered = dict(bundle, task="something else")          # keeps the approved hash
-    assert not bundles.from_mail(bundles.to_mail(tampered)[1])["verified"]
+    assert not bundles.from_mail(bundles.to_mail(tampered, "prompt")[1])["verified"]
 
 
 # ---- recipient ----
@@ -410,9 +411,11 @@ def _fake_open(monkeypatch) -> list:
     return seeds
 
 
-def test_the_mail_tells_a_personal_address_to_open_the_saved_mail(project, model, mailbox):
+def test_the_mail_to_a_personal_address_is_a_prompt_that_needs_no_mailbox(project, model, mailbox):
+    # #2378: nothing in it depends on where the mail landed.
     mail = _sent_to_a_personal_address(project, mailbox)
-    assert "co handoff open handoff.eml" in mail["message"] and "<" not in mail["message"].split("BEGIN")[0][-300:]
+    assert mail["message"].startswith("<pre>Paste this into Codex or Claude Code")
+    assert "co handoff inbox" not in mail["message"] and "&lt;" not in mail["message"]
 
 
 def test_open_a_handoff_from_the_mail_as_co_email_read_prints_it(project, model, mailbox, monkeypatch, tmp_path):

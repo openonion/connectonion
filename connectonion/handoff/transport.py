@@ -42,6 +42,12 @@ def mail_address(address: str) -> str:
     raise ValueError(f"'{address}' is neither an email nor a full 0x agent address (0x + 64 hex)")
 
 
+def my_address() -> str:
+    """This agent's full 0x address (the global identity in ~/.co)."""
+    from ..address import load
+    return load(global_config_dir())["address"]
+
+
 def resolve(who: str) -> str | None:
     """Recipient mailbox for a name, email or 0x address; None for an unknown name."""
     if "@" in who or who.startswith("0x"):
