@@ -19,7 +19,8 @@ def test_handoff_is_a_copyable_single_file_skill():
 
 def test_every_co_command_the_skill_names_exists():
     body = SKILL.read_text(encoding="utf-8")
-    for command in ("rem show", "email send", "email sent", "trust add"):
+    for command in ("rem show", "email send", "email sent", "trust add",
+                    "handoff send", "handoff status", "handoff contact", "handoff inbox", "handoff show", "handoff open"):
         assert f"co {command}" in body
         result = CliRunner().invoke(app, [*command.split(), "--help"])
         assert result.exit_code == 0, (command, result.output)

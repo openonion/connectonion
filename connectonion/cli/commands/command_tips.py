@@ -223,6 +223,12 @@ NEXT = {
     "co email share": HANDLER,
     "co email unshare": "See remaining grants:  co email share --list",
     "co email upgrade": "See the new balance:  co status",
+    "co handoff send": HANDLER,
+    "co handoff status": HANDLER,
+    "co handoff contact": HANDLER,
+    "co handoff inbox": HANDLER,
+    "co handoff show": HANDLER,
+    "co handoff open": HANDLER,
     "co env *": HANDLER,  # path/get intentionally remain bare values
     "co schedule list": "co schedule run <name>",
     "co schedule check": "co schedule list",
