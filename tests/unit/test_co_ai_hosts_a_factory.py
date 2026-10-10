@@ -60,3 +60,17 @@ def test_a_module_level_agent_still_loads(tmp_path):
         "agent = Agent('a', system_prompt='p', model='co/gemini-3.8-flash', quiet=True)\n"
         "host(agent)\n")
     assert get_agent_from_file("agent.py", str(tmp_path)).name == "a"
+
+
+def test_a_factory_hosted_only_under_main_still_loads(tmp_path):
+    """#1778: `host(create_agent)` inside `if __name__ == "__main__"` never
+    runs on import, so eval found no Agent and called a valid Host file
+    malformed. The conventional `create_agent` factory is the fallback."""
+    (tmp_path / "agent.py").write_text(
+        "from connectonion import Agent, host\n"
+        "def create_agent():\n"
+        "    return Agent('guest', system_prompt='p', model='co/gemini-3.8-flash', quiet=True)\n"
+        "if __name__ == '__main__':\n"
+        "    host(create_agent)\n")
+
+    assert get_agent_from_file("agent.py", str(tmp_path)).name == "guest"
