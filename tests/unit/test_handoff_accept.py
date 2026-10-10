@@ -84,7 +84,8 @@ def test_the_mail_is_one_prompt_with_the_brief_inline_and_no_power_user_commands
     assert "Option B (localStorage): third-party scripts can read it" in body      # the brief, inline
     # Plain `pip install connectonion` gets the last stable release, which has no co handoff accept.
     from connectonion import __version__
-    assert f'pip install --pre --upgrade "connectonion>={__version__}"' in body and "co init --yes" in body
+    # A pre-release floor admits pre-releases of co by itself (PEP 440); --pre would admit them for dependencies too.
+    assert f'pip install --upgrade "connectonion>={__version__}"' in body and "--pre" not in body and "co init --yes" in body
     assert f"co handoff accept {_code(body)}" in body and "co handoff ask " in body
     assert "co handoff inbox" not in body and "co handoff open" not in body       # #2378
     raw = world["mails"][-1]["message"]

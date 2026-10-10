@@ -46,7 +46,7 @@ is refused and nothing is sent.
 **`pip install connectonion` installs the wrong thing.** On a machine without co,
 Codex followed the install step exactly and got the last stable release, which
 has no `handoff accept`. The step now asks for at least the sender's own version,
-with `--pre`. With that, a clean home directory went from no co to accepted in 83
+which lets pip take a preview without `--pre`. With that, a clean home directory went from no co to accepted in 83
 seconds, with no signup. `co init --yes` created the identity and its mailbox.
 
 ## What the code is not

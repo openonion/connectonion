@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Hand the work discussed in this session (decisions, rejected options, code, open questions) to another person, by email or straight to their ConnectOnion agent, after removing secrets and getting the user's approval of the exact text; and receive one: a pasted prompt with a `coh1.` code (`co handoff accept`). Use for "hand this to Bob", "hand off", "pass this task to Bob", "give this to Bob's Codex", "交给 Bob", "转给 Bob", "send Bob the context", or when a message says it is a handoff.
+description: Hand the work discussed in this session (decisions, rejected options, code, open questions) to another person, by email or straight to their ConnectOnion agent, after removing secrets and getting the user's approval of the exact text; and receive one from a pasted prompt that carries a `coh1.` code (`co handoff accept`). Use for "hand this to Bob", "hand off", "pass this task to Bob", "give this to Bob's Codex", "交给 Bob", "转给 Bob", "send Bob the context", or when a message says it is a handoff.
 ---
 
 # Handoff
