@@ -392,3 +392,36 @@ def test_a_mapped_person_is_not_also_known_by_their_addresses(tmp_path):
     assert "- Also known as: Mimi" in page
     notebook.stub_person("people/bo.md", "Bo", ["bo@town.example"])
     assert "- Also known as: Unknown" in notebook.read("people/bo.md")
+
+
+def test_a_thread_that_lets_go_does_not_take_the_notebook_back_ahead_of_a_waiter(tmp_path):
+    """#2370: the in-process gate was a plain threading.Lock, which CPython does not
+    hand out in order. A thread that released and asked again won every time, and a
+    waiter starved (1.9.2b2 first run; a flaky test on slow CI)."""
+    import threading
+    prepare(tmp_path)
+    turns, waiting, got = [], threading.Event(), []
+
+    def busy():
+        for n in range(20):
+            with maintenance_lock(tmp_path, wait=30):
+                turns.append(n)
+                if n == 0:
+                    waiting.wait()
+                    time.sleep(0.05)   # the waiter is queued now
+                time.sleep(0.005)
+
+    def waiter():
+        waiting.set()
+        with maintenance_lock(tmp_path, wait=30):
+            got.append(len(turns))
+
+    first = threading.Thread(target=busy)
+    first.start()
+    while not turns:
+        time.sleep(0.001)
+    second = threading.Thread(target=waiter)
+    second.start()
+    first.join()
+    second.join()
+    assert got[0] <= 2, f"the waiter got the notebook only after {got[0]} of 20 turns"

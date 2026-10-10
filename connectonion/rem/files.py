@@ -8,6 +8,7 @@ import re
 import sys
 import tempfile
 import threading
+from collections import deque
 import time
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
@@ -120,11 +121,44 @@ def write_json(path: Path, value) -> None:
 # can hold it for minutes (its cited-claim audit is a model turn), and a 30-second
 # wait lost UNSW's page in a 16-worker first run (1.9.1b5).
 WRITE_WAIT_SECONDS = 600
-# Threads of one process queue here before they poll the file lock. Polling
-# alone let 48 first-run workers saving mail take the lock back-to-back while a
-# waiter slept between tries: three organisation pages waited ten minutes and
-# failed (1.9.2b2 trial).
-_THREADS = threading.Lock()
+class _InOrder:
+    """A lock threads get in the order they asked for it.
+
+    threading.Lock is not fair: a thread that let go and asked again usually won,
+    so a waiter could lose to the same busy threads until its wait ran out (#2370).
+    """
+
+    def __init__(self):
+        self._changed = threading.Condition()
+        self._queue = deque()
+        self._held = False
+
+    def acquire(self, timeout: float = 0) -> bool:
+        me = object()
+        with self._changed:
+            if not self._held and not self._queue:
+                self._held = True
+                return True
+            if timeout <= 0:
+                return False
+            self._queue.append(me)
+            turn = self._changed.wait_for(lambda: not self._held and self._queue[0] is me, timeout)
+            self._queue.remove(me)
+            self._held = self._held or turn
+            self._changed.notify_all()
+            return turn
+
+    def release(self) -> None:
+        with self._changed:
+            self._held = False
+            self._changed.notify_all()
+
+
+# Threads of one process queue here, in order, before they poll the file lock.
+# Polling alone let 48 first-run workers saving mail take the lock back-to-back
+# while a waiter slept between tries: three organisation pages waited ten
+# minutes and failed (1.9.2b2 trial).
+_THREADS = _InOrder()
 
 
 @contextmanager
@@ -135,7 +169,7 @@ def maintenance_lock(root: Path, wait: float = 0):
     once and retries on the next one; a finished investigation has no next
     tick, so it waits rather than lose a page it already paid for.
     """
-    if not (_THREADS.acquire(timeout=wait) if wait > 0 else _THREADS.acquire(blocking=False)):
+    if not _THREADS.acquire(timeout=wait):
         raise RemError("co rem is busy; wait for the active maintenance run")
     try:
         with _file_lock(root, wait):
