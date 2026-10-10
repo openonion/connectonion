@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [typer, cli/style.py, cli/typer_groups.py, command_tips.py, useful_tools/codex.py] | imported by [cli/main.py] | tested by [tests/unit/test_mcp_commands.py]
   Data flow: argv → start `codex app-server` → initialize → ephemeral thread/start (no turn, no model) → mcpServerStatus/list or mcpServer/tool/call → print rows, or the tool's own data as JSON
   State/Effects: reads only, except `call` of a tool not marked read-only with --yes, which acts as the user's connected account (send mail, create an issue)
-  Integration: mcp_app is added to the root app in main.py; Codex holds every credential, co never sees one
+  Integration: mcp_app is added to the root app in main.py; every credential stays with Codex
   Errors: no codex on PATH, an unknown server or tool, a tool error → `✗ <cause>` and `Next: <command>` on stderr, exit 1
 """
 
@@ -17,7 +17,6 @@ from rich.markup import escape
 
 from .. import style
 from ..typer_groups import _OneSuggestion
-from ...useful_tools.codex import CodexAppServer, _base_command
 from .command_tips import mark_next_step_named, print_tip, selected_tip
 
 mcp_app = typer.Typer(
@@ -63,6 +62,8 @@ def _reported(handler):
 @contextmanager
 def _codex():
     """A `codex app-server` with one ephemeral thread: the thread scopes MCP calls and starts no turn."""
+    # Imported here: useful_tools loads Google's client, and `co` must start without it.
+    from ...useful_tools.codex import CodexAppServer, _base_command
     command = _base_command()
     if not command:
         raise McpError("Codex is not installed; co mcp calls the servers Codex has connected",

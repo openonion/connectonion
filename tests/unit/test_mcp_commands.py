@@ -11,8 +11,10 @@ import json
 import pytest
 from typer.testing import CliRunner
 
-from connectonion.cli.commands import mcp_commands
+import importlib
 from connectonion.cli.main import app
+
+codex = importlib.import_module("connectonion.useful_tools.codex")
 
 SEARCH = {"name": "gmail.search_emails", "description": "Search Gmail for emails matching a query.",
           "annotations": {"readOnlyHint": True}}
@@ -57,8 +59,8 @@ SENT = []
 @pytest.fixture(autouse=True)
 def fake_codex(monkeypatch):
     SENT.clear()
-    monkeypatch.setattr(mcp_commands, "CodexAppServer", FakeServer)
-    monkeypatch.setattr(mcp_commands, "_base_command", lambda: ["codex", "app-server"])
+    monkeypatch.setattr(codex, "CodexAppServer", FakeServer)
+    monkeypatch.setattr(codex, "_base_command", lambda: ["codex", "app-server"])
 
 
 def run(*args):
@@ -116,7 +118,7 @@ def test_an_unknown_server_names_the_command_that_lists_them():
 
 
 def test_without_codex_it_says_so(monkeypatch):
-    monkeypatch.setattr(mcp_commands, "_base_command", lambda: None)
+    monkeypatch.setattr(codex, "_base_command", lambda: None)
     result = run("ls")
     assert result.exit_code == 1
     assert "Codex" in result.output

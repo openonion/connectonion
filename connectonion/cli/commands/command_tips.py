@@ -247,6 +247,9 @@ NEXT = {
     "co gdrive *": HANDLER,
     "co gmail *": HANDLER,
     # Each co linear handler names the next command from what it found (#2049).
+    "co mcp ls": HANDLER,            # names co mcp tools <server>
+    "co mcp tools": HANDLER,         # names co mcp call <server> <tool>
+    "co mcp call": HANDLER,          # the tool's data is the output; a preview names --yes
     "co linear issues": HANDLER,
     "co linear issue": HANDLER,
     "co linear search": HANDLER,
