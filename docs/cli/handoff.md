@@ -16,6 +16,9 @@ co handoff status ho-98fb1cb3
 co handoff inbox
 co handoff show ho-98fb1cb3 --decisions
 co handoff open ho-98fb1cb3                     # starts his own Codex session
+
+# Sent to an ordinary email instead: save the mail, open the file
+co handoff open handoff.eml
 ```
 
 ## What is sent
@@ -104,6 +107,14 @@ base64 block. One small module (`connectonion/handoff/transport.py`) knows
 this, so a direct agent-to-agent route can replace it.
 
 ## Opening
+
+`co handoff open` takes the handoff id, or the handoff email saved as a file.
+Only mail to a co agent mailbox shows in `co handoff inbox`; a handoff sent to
+an ordinary email (Gmail, Outlook) is opened from the saved mail: a downloaded
+`.eml` (quoted-printable or base64 bodies are decoded), the text pasted into a
+file, or `co email read <#> > handoff.txt`. The mail itself says so. The file
+must hold the whole mail, including the `BEGIN/END CO HANDOFF BUNDLE` block;
+the content hash is checked and a mismatch is printed as a warning.
 
 `co handoff open <id>` writes `HANDOFF.md`, `excerpt.md` and `bundle.json` to
 `~/.co/handoff/received/<id>/`, then runs one read-only `codex exec` turn seeded

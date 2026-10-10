@@ -8,6 +8,8 @@ so the copy that arrives can be checked against the one that was approved.
 """
 
 import base64
+import email
+import email.policy
 import hashlib
 import json
 import re
@@ -171,14 +173,26 @@ def to_mail(bundle: dict) -> tuple[str, str]:
     encoded = base64.b64encode(json.dumps(bundle, ensure_ascii=False).encode()).decode()
     wrapped = "\n".join(encoded[i:i + 76] for i in range(0, len(encoded), 76))
     body = (f"{brief_markdown(bundle)}\n"
-            f"Continue this with your AI: run co handoff inbox, then co handoff open {bundle['id']}.\n"
+            # No <placeholder>: the mail service strips anything shaped like a tag.
+            f"Continue this with your AI: save this whole email as handoff.eml (or paste all of it into handoff.txt), "
+            f"then run co handoff open handoff.eml. If it reached your co agent mailbox, co handoff open {bundle['id']} is enough.\n"
             f"Not using ConnectOnion? Reply to this email; your questions reach the sender.\n\n"
             f"{BEGIN}\n{wrapped}\n{END}\n")
     return subject, body
 
 
+def from_saved_mail(text: str) -> dict | None:
+    """The bundle in a mail saved by any client: `co email read` output, the pasted body, or a downloaded .eml,
+    whose text part may be quoted-printable or base64 encoded."""
+    message = email.message_from_string(text, policy=email.policy.default)
+    if message["MIME-Version"] or message["Content-Type"]:
+        body = message.get_body(preferencelist=("plain",))
+        text = body.get_content() if body else ""
+    return from_mail(text)
+
+
 def from_mail(body: str) -> dict | None:
-    found = re.search(re.escape(BEGIN) + r"(.*?)" + re.escape(END), body or "", re.S)
+    found = re.search(_marker(BEGIN) + r"(.*?)" + _marker(END), body or "", re.S)
     if not found:
         return None
     bundle = json.loads(base64.b64decode(re.sub(r"\s+", "", found.group(1))))
@@ -186,6 +200,11 @@ def from_mail(body: str) -> dict | None:
         return None
     bundle["verified"] = seal(bundle)["content_hash"] == bundle.get("content_hash")
     return bundle
+
+
+def _marker(line: str) -> str:
+    """Spaces inside a marker may come back as line breaks: a terminal wraps `co email read` at its width."""
+    return r"\s+".join(map(re.escape, line.split()))
 
 
 def _one_line(text: str, width: int) -> str:

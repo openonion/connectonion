@@ -177,7 +177,8 @@ def _deliver(bundle: dict) -> None:
     sent.mkdir(parents=True, exist_ok=True)
     (sent / f"{bundle['id']}.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     out.print(style.ok(f"Sent handoff {bundle['id']} to {bundle['to']}") + f" (message {record['message_id']}).")
-    out.print(f"They continue with: co handoff open {bundle['id']}", markup=False)
+    out.print(f"They continue with: co handoff open {bundle['id']} (from their co agent mailbox), "
+              "or co handoff open <the mail saved as a file>", markup=False)
     _next(f"co handoff status {bundle['id']}")
 
 
@@ -253,6 +254,9 @@ def handle_inbox() -> None:
 
 
 def _find(handoff_id: str) -> dict:
+    """A handoff by id (saved here, or in the agent mailbox), or from a file holding the mail."""
+    if Path(handoff_id).expanduser().is_file():
+        return _from_file(Path(handoff_id).expanduser())
     saved = _home() / "received" / handoff_id / "bundle.json"
     if saved.exists() and json.loads(saved.read_text(encoding="utf-8")).get("format") == bundles.FORMAT:
         return json.loads(saved.read_text(encoding="utf-8"))
@@ -260,6 +264,15 @@ def _find(handoff_id: str) -> dict:
         if bundle["id"] == handoff_id:
             return bundle
     _fail(f"No handoff {handoff_id} in your agent mailbox.", "co handoff inbox")
+
+
+def _from_file(path: Path) -> dict:
+    bundle = bundles.from_saved_mail(path.read_text(encoding="utf-8", errors="replace"))
+    if not bundle:
+        _fail(f"No handoff in {path}: it needs the whole mail, including the BEGIN/END CO HANDOFF BUNDLE block.",
+              "save the whole handoff email to a file, then co handoff open <that file>")
+    _keep(bundle)
+    return bundle
 
 
 def handle_show(handoff_id: str, decisions: bool, evidence: bool) -> None:
@@ -281,6 +294,9 @@ def handle_show(handoff_id: str, decisions: bool, evidence: bool) -> None:
 
 def handle_open(handoff_id: str, agent: str, cd: Optional[Path]) -> None:
     bundle = _find(handoff_id)
+    handoff_id = bundle["id"]   # the argument may have been a saved mail file
+    if not bundle.get("verified", True):
+        out.print(style.warn("Content hash does not match: this copy differs from what the sender approved."))
     folder = _home() / "received" / handoff_id
     opener.materialize(bundle, folder)
     record_path = folder / f"session-{agent}.json"   # one session per agent; reopening reuses it
@@ -364,21 +380,23 @@ def make_handoff_app(factory) -> typer.Typer:
 
     @app.command("show", epilog="Examples:  co handoff show ho-1a2b3c4d  |  co handoff show ho-1a2b3c4d --decisions --evidence")
     def show(
-        handoff_id: str = typer.Argument(..., help="Handoff id from co handoff inbox"),
+        handoff_id: str = typer.Argument(..., help="Handoff id from co handoff inbox, or the handoff email saved as a file"),
         decisions: bool = typer.Option(False, "--decisions", help="Also show decisions and the rejected options"),
         evidence: bool = typer.Option(False, "--evidence", help="Also show evidence pointers and the transcript excerpt"),
     ):
         """Read one incoming handoff: the summary first, details with --decisions and --evidence. Read-only."""
         handle_show(handoff_id, decisions, evidence)
 
-    @app.command("open", epilog="Examples:  co handoff open ho-1a2b3c4d  |  co handoff open ho-1a2b3c4d --agent claude --cd ~/project")
+    @app.command("open", epilog="Examples:  co handoff open ho-1a2b3c4d  |  co handoff open handoff.eml --agent claude --cd ~/project")
     def open_(
-        handoff_id: str = typer.Argument(..., help="Handoff id from co handoff inbox"),
+        handoff_id: str = typer.Argument(..., help="Handoff id from co handoff inbox, or the handoff email saved as a file"),
         agent: str = typer.Option("codex", "--agent", help="codex or claude"),
         cd: Optional[Path] = typer.Option(None, "--cd", help="Run the session in this directory (default: the handoff's own folder)"),
     ):
         """Continue a handoff in your own coding agent. Starts a dedicated Codex (or Claude Code) session seeded with it and prints how to resume it.
 
+        A handoff sent to an ordinary email is opened from that email saved as a
+        file (co email read output, a downloaded .eml, or the pasted text).
         Writes HANDOFF.md, excerpt.md and bundle.json under ~/.co/handoff/received/<id>/
         and runs one read-only model turn. Opening the same handoff again creates no
         second session; it prints the resume command.
