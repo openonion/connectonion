@@ -273,3 +273,18 @@ def test_the_example_printed_on_an_empty_project_passes_check(tmp_path, monkeypa
     checked = co("benchmark", "check", "example")
 
     assert checked.exit_code == 0, checked.output
+
+
+def test_check_suggests_a_run_that_invokes_the_named_skill(project):
+    # #1810: the hint left out --invoke explicit; followed with a real skill it
+    # ran 50 paid attempts in auto mode, and the skill activated 0 of 50 times.
+    result = co("benchmark", "check", "ops")
+
+    assert "--skill <skill> --invoke explicit" in result.output
+
+
+def test_a_named_skill_in_auto_mode_is_flagged_before_anything_is_spent(project):
+    result = co("eval", "run", "ops", "--agent", "agent.py", "--skill", "guest-enquiry", "--runs", "1")
+
+    assert "--invoke auto" in result.output and "--invoke explicit" in result.output
+    assert result.output.index("--invoke auto") < result.output.index("Paid from your balance")
