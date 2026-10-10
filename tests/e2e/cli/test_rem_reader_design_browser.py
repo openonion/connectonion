@@ -1407,7 +1407,7 @@ def test_failed_init_is_visible_and_keyboard_reachable(reader, tmp_path, monkeyp
     button.focus()
     button.press('Enter')
     assert page.locator('details.maint').evaluate('(node) => node.open')
-    assert page.locator('details.maint > summary').evaluate('(node) => node === document.activeElement')
+    assert page.locator('details.maint .runs tr.failed-run').first.evaluate('(node) => node === document.activeElement')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
