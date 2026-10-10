@@ -723,3 +723,34 @@ def test_a_written_page_with_one_untraceable_citation_keeps_the_rest(world):
     saved = world.notebook.read("projects/tide.md")
     assert "A swell warning tool for surfers. [1]" in saved
     assert "lifeguards" not in saved and "made-up" not in saved
+
+
+def test_a_written_page_citing_a_number_it_never_listed_keeps_the_rest(world):
+    """1.9.2b1 lost LayeredVisions (300 sessions, the busiest project) and
+    1.9.2b3 lost browser to 'Missing or duplicate citation': a marker with no
+    Sources line, beside a good one. The page stayed 'not investigated yet'."""
+    codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide", [("user", "Tide should warn surfers.", 1)])
+    extract(world.root, world.subs)
+    source = stored(world.root, "projects/tide.md")[0]["source"]
+    page = _page_citing(source).replace("A swell warning tool for surfers. [1]",
+                                        "A swell warning tool for surfers. [1][2]")
+    write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"},
+               run=_fake_runner(lambda prompt: page))
+    saved = world.notebook.read("projects/tide.md")
+    assert "A swell warning tool for surfers. [1]" in saved and "[2]" not in saved
+
+
+def test_a_written_finding_resting_on_one_untraceable_citation_does_not_cost_the_page(world):
+    """1.9.2b3 refused linkedin-workshop for 'Finding has unresolved citations
+    in Insight: [11]'. This writer has no repair turn, so refusing threw away
+    every other cited section with it."""
+    codex(world.codex / "2026/09/20/rollout-a.jsonl", "/work/tide", [("user", "Tide should warn surfers.", 1)])
+    extract(world.root, world.subs)
+    source = stored(world.root, "projects/tide.md")[0]["source"]
+    page = _page_citing(source).replace("## Open threads\n- Unknown", "## Open threads\n- Lifeguards want an SMS alert. [2]")
+    page = page.replace(f"- [1] {source} — 2026-09-28", f"- [1] {source} — 2026-09-28\n- [2] codex:made-up:9 — 2026-09-28")
+    write_page(world.root, "projects/tide.md", config={"runner": "codex", "model": "default"},
+               run=_fake_runner(lambda prompt: page))
+    saved = world.notebook.read("projects/tide.md")
+    assert "A swell warning tool for surfers. [1]" in saved
+    assert "Lifeguards" not in saved and re.search(r"## Open threads\n+- Unknown", saved)
