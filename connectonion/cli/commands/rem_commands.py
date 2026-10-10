@@ -523,12 +523,14 @@ def _in_parallel(jobs, *, workers, gate, done):
                 if error is not None and not isinstance(error, RemError):
                     raise error
                 if error is not None:
+                    from ...rem.investigate import NothingFound
                     from ...rem.runner import model_denial
                     if model_denial(error):
                         stopped = "The selected model denied access; sign in or choose an available model"
                 outcome = {"page": job["record"], "mode": job["mode"], "outcome": "accepted"} if error is None else {
                     "page": job["record"], "mode": job["mode"], "why": str(error)[:300],
-                    "outcome": "refused" if "rejected" in str(error) else "failed"}
+                    "outcome": "refused" if "rejected" in str(error) else
+                               "nothing_new" if isinstance(error, NothingFound) else "failed"}
                 if outcome["outcome"] == "failed" and not stopped and not job.get("retried"):
                     # A timeout or a dropped connection under load (1.9.2b2 lost three
                     # pages so): once more, behind the pages still waiting.
@@ -626,7 +628,8 @@ def _first_pages(ctx, root, config, say, gate, *, people, projects, orgs, skills
 
     def done(job, outcome):
         if job["kind"] == "deepen":
-            say(f"  deepened {job['record']}: {outcome['outcome'] if job['older']() else 'no older mail'}")
+            said = {"nothing_new": "nothing older"}.get(outcome["outcome"], outcome["outcome"])
+            say(f"  deepened {job['record']}: {said if job['older']() else 'no older mail'}")
             return []
         why = f" ({outcome['why'][:120]})" if outcome["outcome"] != "accepted" else ""
         say(f"  {progress.finish(job['kind'])} {job['record']}: "

@@ -1001,3 +1001,19 @@ def test_a_failed_page_is_tried_once_more_at_the_end_of_the_queue():
     assert tries == ["a", "b", "c", "r", "a", "c"]
     assert {o["page"]: o["outcome"] for _, o in outcomes} == {"a": "accepted", "b": "accepted", "c": "failed",
                                                              "r": "refused"}
+
+
+def test_a_deepen_with_nothing_older_is_not_a_failure_and_is_not_retried():
+    """1.9.2b3 trial: three people with no older mail printed 'deepened …: failed'
+    and ran twice; nothing had failed."""
+    from connectonion.rem.investigate import NothingNew
+    from connectonion.cli.commands.rem_commands import _in_parallel
+    tries = []
+
+    def run():
+        tries.append("dora")
+        raise NothingNew("Nothing dated before 2026-04-13 for Dora. No model was called.")
+
+    outcomes, _ = _in_parallel([{"record": "people/dora.md", "mode": "full", "run": run}], workers=1,
+                               gate=lambda: "", done=lambda job, outcome: [])
+    assert tries == ["dora"] and outcomes[0][1]["outcome"] == "nothing_new"
