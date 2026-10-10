@@ -25,16 +25,26 @@ python -m pip install --upgrade 'connectonion==1.9.1'
 
 ## Current preview
 
+Beta **1.9.2b6** makes co rem's second pass go deeper: follow-up searches hand
+back mail from people the notebook knows, and one editing turn rewrites the
+lines the final round leaves saying what is not known. See
+[1.9.2b6 notes](releases/1.9.2b6.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.2b6'
+```
+
+## Previous previews
+
 Beta **1.9.2b5** adds `co handoff` (Experimental): hand the work in a Codex or
 Claude Code session to someone else's agent, which continues it in its own
 session. Codex and Claude Code now learn co's commands at `co init`. See
 [1.9.2b5 notes](releases/1.9.2b5.md).
 
-```bash
-python -m pip install --upgrade 'connectonion==1.9.2b5'
-```
-
-## Previous previews
+Beta **1.9.2b4** hands a session's work to another person or their agent with
+the `handoff` skill, and fixes what a real run of 1.9.2b3 found: REM reading
+its own sessions, quoted Outlook searches, a background job macOS never
+started, and installing on Intel Macs. See [1.9.2b4 notes](releases/1.9.2b4.md).
 
 Beta **1.9.2b3** gives a first run you can read straight away: sources numbered
 1, 2, 3, Company filled from the organisation page, probable duplicates named,

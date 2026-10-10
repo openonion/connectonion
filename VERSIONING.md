@@ -400,17 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.2b5
+## Current Version: 1.9.2b6
 
-1.9.2b5 is a 1.9.2 beta; stable remains 1.9.1. `co handoff` (Experimental)
-hands a Codex or Claude Code session's work to another person's agent: it
-drafts a brief from the session (compacted ones included), previews exactly
-what leaves, sends it to their agent mailbox, and the recipient opens it as a
-Codex or Claude Code session that continues from it. `co init` and agent start
-write co's command index into Codex's and Claude Code's instruction files, so
-those agents find co commands on their own. Plus ten fixes from the open
-issues. See [1.9.2b5 notes](docs/releases/1.9.2b5.md).
+1.9.2b6 is a 1.9.2 beta; stable remains 1.9.1. co rem's second pass goes
+deeper: a follow-up search hands the model only mail from people the notebook
+knows, and after the final round code counts the lines that still say what is
+not known outside Uncertainties and gives the model one editing turn to fix
+them (measured live on one page: 10 such lines to 0 in 40 seconds). The
+scheduled job keeps the Mac awake while it runs, and `co rem logs --usage` no
+longer crashes on skill runs. See [1.9.2b6 notes](docs/releases/1.9.2b6.md).
 
+- 1.9.2b6 (The second pass goes deeper).
 - 1.9.2b5 (Hand a session to someone else's agent).
 - 1.9.2b4 (Hand work to someone else).
 - 1.9.2b3 (A first run you can read straight away).
