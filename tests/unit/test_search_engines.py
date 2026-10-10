@@ -126,3 +126,28 @@ def test_a_multiline_markdown_snippet_prints_as_one_short_line():
     line = text.splitlines()[-1].strip()
     assert line.startswith("The latest is 1.98.1 ### Key Facts: bash rustup update") and line.endswith("…")
     assert len(line) <= engines.SNIPPET_CHARS and len(text.splitlines()) == 4
+
+
+def test_managed_search_waits_long_enough_for_a_grounded_answer(web, monkeypatch):
+    """#1933: the server answered in 8-46 s; the client gave up at 20."""
+    monkeypatch.setenv("OPENONION_API_KEY", "tok")
+    web.routes["oo.test"] = managed(200, {"answer": "", "results": []})
+
+    engines.search("q", engine="co")
+
+    assert web.requests[0].extensions["timeout"]["read"] >= 60
+
+
+def test_a_slow_answer_says_timed_out_not_could_not_connect(web, monkeypatch):
+    """The connection was fine and the query was still charged; "could not
+    connect" sent people to check their network."""
+    monkeypatch.setenv("OPENONION_API_KEY", "tok")
+    def slow(request):
+        raise httpx.ReadTimeout("slow")
+    web.routes["oo.test"] = slow
+
+    message = engines.web_search("q", engine="co")
+
+    assert "could not connect" not in message
+    assert f"timed out after {engines.CO_TIMEOUT}s" in message
+    assert "charged" in message
